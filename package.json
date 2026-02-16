@@ -1,0 +1,10 @@
+{
+  "name": "crm-root",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "start": "node backend/server.js"
+  }
+}
