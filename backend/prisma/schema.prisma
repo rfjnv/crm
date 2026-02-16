@@ -1,0 +1,543 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  OPERATOR
+  MANAGER
+  ACCOUNTANT
+  WAREHOUSE
+  WAREHOUSE_MANAGER
+}
+
+enum DealStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_STOCK_CONFIRMATION
+  STOCK_CONFIRMED
+  FINANCE_APPROVED
+  ADMIN_APPROVED
+  READY_FOR_SHIPMENT
+  SHIPMENT_ON_HOLD
+  SHIPPED
+  CLOSED
+  CANCELED
+  REJECTED
+}
+
+enum ConversationType {
+  SALES
+  WAREHOUSE
+  ACCOUNTING
+  SHIPMENT
+}
+
+enum MovementType {
+  IN
+  OUT
+}
+
+enum PaymentType {
+  FULL
+  PARTIAL
+  DEBT
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ARCHIVE
+  RESTORE
+  STATUS_CHANGE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  NOTIFICATION_BROADCAST
+  PAYMENT_CREATE
+  STOCK_WRITE_OFF
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  URGENT
+}
+
+// ==================== USERS & AUTH ====================
+
+model User {
+  id          String   @id @default(uuid())
+  login       String   @unique
+  password    String
+  fullName    String   @map("full_name")
+  role        Role     @default(MANAGER)
+  permissions String[] @default([])
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  clients            Client[]           @relation("ClientManager")
+  deals              Deal[]             @relation("DealManager")
+  comments           DealComment[]
+  auditLogs          AuditLog[]
+  dailyClosings      DailyClosing[]     @relation("DailyClosingClosedBy")
+  confirmedItems     DealItem[]         @relation("ItemConfirmedBy")
+  shipments          Shipment[]         @relation("ShippedBy")
+  notificationsReceived  Notification[]      @relation("NotificationRecipient")
+  notificationsSent      Notification[]      @relation("NotificationSender")
+  notificationBatches    NotificationBatch[] @relation("BatchCreatedBy")
+  paymentsMade           Payment[]           @relation("PaymentCreator")
+  lastSeenAt         DateTime?        @map("last_seen_at")
+  messagesSent       Message[]        @relation("MessageSender")
+  conversationReads  ConversationRead[]
+  expenses           Expense[]        @relation("ExpenseCreator")
+  tasksAssigned      Task[]           @relation("TaskAssignee")
+  tasksCreated       Task[]           @relation("TaskCreator")
+  tasksApproved      Task[]           @relation("TaskApprover")
+
+  @@map("users")
+}
+
+model Session {
+  id                   String    @id @default(uuid())
+  userId               String    @map("user_id")
+  refreshTokenHash     String    @map("refresh_token_hash")
+  expiresAt            DateTime  @map("expires_at")
+  revokedAt            DateTime? @map("revoked_at")
+  replacedBySessionId  String?   @map("replaced_by_session_id")
+  lastUsedAt           DateTime? @map("last_used_at")
+  ip                   String?
+  userAgent            String?   @map("user_agent")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([refreshTokenHash])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ==================== CLIENTS ====================
+
+model Client {
+  id          String   @id @default(uuid())
+  companyName String   @map("company_name")
+  contactName String   @map("contact_name")
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  managerId   String   @map("manager_id")
+  isArchived  Boolean  @default(false) @map("is_archived")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  manager   User       @relation("ClientManager", fields: [managerId], references: [id])
+  deals     Deal[]
+  contracts Contract[]
+  payments  Payment[]
+
+  @@index([managerId, isArchived])
+  @@index([isArchived])
+  @@map("clients")
+}
+
+// ==================== CONTRACTS ====================
+
+model Contract {
+  id             String    @id @default(uuid())
+  clientId       String    @map("client_id")
+  contractNumber String    @unique @map("contract_number")
+  startDate      DateTime  @map("start_date")
+  endDate        DateTime? @map("end_date")
+  isActive       Boolean   @default(true) @map("is_active")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id])
+  deals  Deal[]
+
+  @@index([clientId])
+  @@map("contracts")
+}
+
+// ==================== DEALS ====================
+
+model Deal {
+  id            String        @id @default(uuid())
+  title         String
+  status        DealStatus    @default(NEW)
+  amount        Decimal       @default(0) @db.Decimal(12, 2)
+  clientId      String        @map("client_id")
+  managerId     String        @map("manager_id")
+  contractId    String?       @map("contract_id")
+  paymentType   PaymentType   @default(FULL) @map("payment_type")
+  paidAmount    Decimal       @default(0) @db.Decimal(12, 2) @map("paid_amount")
+  dueDate       DateTime?     @map("due_date")
+  paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  terms         String?
+  isArchived    Boolean       @default(false) @map("is_archived")
+  dailyClosingId String?      @map("daily_closing_id")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  client             Client              @relation(fields: [clientId], references: [id])
+  manager            User                @relation("DealManager", fields: [managerId], references: [id])
+  contract           Contract?           @relation(fields: [contractId], references: [id])
+  dailyClosing       DailyClosing?       @relation(fields: [dailyClosingId], references: [id])
+  comments           DealComment[]
+  items              DealItem[]
+  movements          InventoryMovement[]
+  shipment           Shipment?
+  payments           Payment[]
+  messages           Message[]
+
+  @@index([managerId, isArchived])
+  @@index([clientId])
+  @@index([contractId])
+  @@index([status])
+  @@index([isArchived])
+  @@index([paymentStatus])
+  @@index([dailyClosingId])
+  @@map("deals")
+}
+
+model DealItem {
+  id               String          @id @default(uuid())
+  dealId           String          @map("deal_id")
+  productId        String          @map("product_id")
+  requestedQty     Decimal?        @db.Decimal(12, 3) @map("requested_qty")
+  price            Decimal?        @db.Decimal(12, 2)
+  requestComment   String?         @map("request_comment")
+  warehouseComment String?         @map("warehouse_comment")
+  confirmedBy      String?         @map("confirmed_by")
+  confirmedAt      DateTime?       @map("confirmed_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  deal      Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+  confirmer User?   @relation("ItemConfirmedBy", fields: [confirmedBy], references: [id])
+
+  @@index([dealId])
+  @@map("deal_items")
+}
+
+model DealComment {
+  id        String   @id @default(uuid())
+  dealId    String   @map("deal_id")
+  authorId  String   @map("author_id")
+  text      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal   Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([dealId])
+  @@map("deal_comments")
+}
+
+// ==================== SHIPMENT ====================
+
+model Shipment {
+  id                 String   @id @default(uuid())
+  dealId             String   @unique @map("deal_id")
+  vehicleType        String   @map("vehicle_type")
+  vehicleNumber      String   @map("vehicle_number")
+  driverName         String   @map("driver_name")
+  departureTime      DateTime @map("departure_time")
+  deliveryNoteNumber String   @map("delivery_note_number")
+  shipmentComment    String?  @map("shipment_comment")
+  shippedBy          String   @map("shipped_by")
+  shippedAt          DateTime @default(now()) @map("shipped_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  user User @relation("ShippedBy", fields: [shippedBy], references: [id])
+
+  @@map("shipments")
+}
+
+// ==================== WAREHOUSE ====================
+
+model Product {
+  id              String   @id @default(uuid())
+  name            String
+  sku             String   @unique
+  unit            String   @default("шт")
+  category        String?
+  countryOfOrigin String?  @map("country_of_origin")
+  stock           Decimal  @default(0) @db.Decimal(12, 3)
+  minStock        Decimal  @default(0) @db.Decimal(12, 3) @map("min_stock")
+  purchasePrice   Decimal? @db.Decimal(12, 2) @map("purchase_price")
+  salePrice       Decimal? @db.Decimal(12, 2) @map("sale_price")
+  installmentPrice Decimal? @db.Decimal(12, 2) @map("installment_price")
+  pricingMode     String   @default("PER_UNIT") @map("pricing_mode")
+  specifications  Json?
+  isActive        Boolean  @default(true) @map("is_active")
+  manufacturedAt  DateTime? @map("manufactured_at")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  movements InventoryMovement[]
+  dealItems DealItem[]
+
+  @@index([category])
+  @@index([countryOfOrigin])
+  @@map("products")
+}
+
+model InventoryMovement {
+  id        String       @id @default(uuid())
+  productId String       @map("product_id")
+  type      MovementType
+  quantity  Decimal      @db.Decimal(12, 3)
+  dealId    String?      @map("deal_id")
+  note      String?
+  createdBy String       @map("created_by")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  deal    Deal?   @relation(fields: [dealId], references: [id])
+
+  @@index([productId])
+  @@index([dealId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+// ==================== DAILY CLOSINGS ====================
+
+model DailyClosing {
+  id               String   @id @default(uuid())
+  date             DateTime @unique @db.Date
+  totalAmount      Decimal  @default(0) @db.Decimal(14, 2) @map("total_amount")
+  closedDealsCount Int      @default(0) @map("closed_deals_count")
+  closedById       String   @map("closed_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  closedBy User   @relation("DailyClosingClosedBy", fields: [closedById], references: [id])
+  deals    Deal[]
+
+  @@map("daily_closings")
+}
+
+// ==================== AUDIT ====================
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String      @map("user_id")
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String?     @map("entity_id")
+  before     Json?
+  after      Json?
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model NotificationBatch {
+  id              String   @id @default(uuid())
+  createdByUserId String   @map("created_by_user_id")
+  targetType      String   @map("target_type")
+  targetPayload   Json     @map("target_payload")
+  title           String
+  recipientCount  Int      @default(0) @map("recipient_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  createdBy     User           @relation("BatchCreatedBy", fields: [createdByUserId], references: [id])
+  notifications Notification[]
+
+  @@index([createdByUserId, createdAt])
+  @@map("notification_batches")
+}
+
+model Notification {
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  title           String
+  body            String
+  severity        NotificationSeverity @default(INFO)
+  link            String?
+  isRead          Boolean              @default(false) @map("is_read")
+  readAt          DateTime?            @map("read_at")
+  createdByUserId String               @map("created_by_user_id")
+  batchId         String?              @map("batch_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  user      User               @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User               @relation("NotificationSender", fields: [createdByUserId], references: [id])
+  batch     NotificationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@index([batchId])
+  @@map("notifications")
+}
+
+// ==================== PAYMENTS ====================
+
+model Payment {
+  id        String   @id @default(uuid())
+  dealId    String   @map("deal_id")
+  clientId  String   @map("client_id")
+  amount    Decimal  @db.Decimal(12, 2)
+  paidAt    DateTime @default(now()) @map("paid_at")
+  method    String?
+  note      String?
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal    Deal   @relation(fields: [dealId], references: [id])
+  client  Client @relation(fields: [clientId], references: [id])
+  creator User   @relation("PaymentCreator", fields: [createdBy], references: [id])
+
+  @@index([dealId])
+  @@index([clientId, paidAt])
+  @@map("payments")
+}
+
+// ==================== MESSAGES (Chat) ====================
+
+model Message {
+  id               String           @id @default(uuid())
+  conversationType ConversationType @map("conversation_type")
+  senderId         String           @map("sender_id")
+  text             String
+  dealId           String?          @map("deal_id")
+  replyToId        String?          @map("reply_to_id")
+  editedAt         DateTime?        @map("edited_at")
+  isDeleted        Boolean          @default(false) @map("is_deleted")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  sender  User     @relation("MessageSender", fields: [senderId], references: [id])
+  deal    Deal?    @relation(fields: [dealId], references: [id])
+  replyTo Message? @relation("MessageReply", fields: [replyToId], references: [id])
+  replies Message[] @relation("MessageReply")
+  attachments MessageAttachment[]
+
+  @@index([conversationType, createdAt])
+  @@index([senderId])
+  @@index([dealId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  filename  String
+  path      String
+  mimeType  String   @map("mime_type")
+  size      Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+model ConversationRead {
+  id               String           @id @default(uuid())
+  userId           String           @map("user_id")
+  conversationType ConversationType @map("conversation_type")
+  lastReadAt       DateTime         @default(now()) @map("last_read_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationType])
+  @@map("conversation_reads")
+}
+
+// ==================== EXPENSES ====================
+
+model Expense {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  note      String?
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  creator User @relation("ExpenseCreator", fields: [createdBy], references: [id])
+
+  @@index([date])
+  @@index([category])
+  @@map("expenses")
+}
+
+// ==================== TASKS ====================
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  APPROVED
+}
+
+model Task {
+  id           String      @id @default(uuid())
+  title        String
+  description  String?
+  status       TaskStatus  @default(TODO)
+  assigneeId   String      @map("assignee_id")
+  createdById  String      @map("created_by_id")
+  report       String?
+  dueDate      DateTime?   @map("due_date")
+  approvedById String?     @map("approved_by_id")
+  approvedAt   DateTime?   @map("approved_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  assignee    User             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy   User             @relation("TaskCreator", fields: [createdById], references: [id])
+  approvedBy  User?            @relation("TaskApprover", fields: [approvedById], references: [id])
+  attachments TaskAttachment[]
+
+  @@index([assigneeId, status])
+  @@index([createdById])
+  @@map("tasks")
+}
+
+model TaskAttachment {
+  id        String   @id @default(uuid())
+  taskId    String   @map("task_id")
+  filename  String
+  path      String
+  mimeType  String   @map("mime_type")
+  size      Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("task_attachments")
+}

@@ -1,0 +1,265 @@
+### ============================================================
+### CRM API — E2E Test Scenarios
+### Формат: VS Code REST Client (.http)
+### Каждый запрос можно выполнить через curl (примеры ниже)
+### ============================================================
+
+@base = http://localhost:3000/api
+@adminToken = {{login_admin.response.body.accessToken}}
+@refreshToken = {{login_admin.response.body.refreshToken}}
+
+### ==================== HEALTH ====================
+
+### Health check
+GET {{base}}/health
+
+### ==================== AUTH ====================
+
+### 1. Login as admin
+# @name login_admin
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@crm.local",
+  "password": "admin123"
+}
+
+### 2. Get current user
+GET {{base}}/auth/me
+Authorization: Bearer {{adminToken}}
+
+### 3. Refresh token
+POST {{base}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 4. Logout
+POST {{base}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### ==================== USERS (ADMIN only) ====================
+
+### 5. Create manager
+# @name create_manager
+POST {{base}}/users
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "manager@crm.local",
+  "password": "manager123",
+  "fullName": "Иванов Пётр",
+  "role": "MANAGER"
+}
+
+### 6. List all users
+GET {{base}}/users
+Authorization: Bearer {{adminToken}}
+
+### 7. Update user
+PATCH {{base}}/users/{{create_manager.response.body.id}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "fullName": "Иванов Пётр Сергеевич"
+}
+
+### ==================== CLIENTS ====================
+
+### 8. Create client
+# @name create_client
+POST {{base}}/clients
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "companyName": "ООО РасходМаркет",
+  "contactName": "Сидоров Алексей",
+  "phone": "+7-999-123-4567",
+  "email": "alex@rashodmarket.ru",
+  "address": "г. Москва, ул. Примерная, д. 1"
+}
+
+### 9. List clients
+GET {{base}}/clients
+Authorization: Bearer {{adminToken}}
+
+### 10. Get client details
+GET {{base}}/clients/{{create_client.response.body.id}}
+Authorization: Bearer {{adminToken}}
+
+### 11. Update client
+PATCH {{base}}/clients/{{create_client.response.body.id}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "notes": "VIP клиент, скидка 10%"
+}
+
+### 12. Get client history
+GET {{base}}/clients/{{create_client.response.body.id}}/history
+Authorization: Bearer {{adminToken}}
+
+### 13. Archive client (ADMIN only)
+PATCH {{base}}/clients/{{create_client.response.body.id}}/archive
+Authorization: Bearer {{adminToken}}
+
+### ==================== DEALS ====================
+
+### 14. Create deal
+# @name create_deal
+POST {{base}}/deals
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "title": "Поставка бумаги A4",
+  "clientId": "{{create_client.response.body.id}}",
+  "amount": 150000
+}
+
+### 15. List deals
+GET {{base}}/deals
+Authorization: Bearer {{adminToken}}
+
+### 16. List deals by status
+GET {{base}}/deals?status=NEW
+Authorization: Bearer {{adminToken}}
+
+### 17. Get deal details
+GET {{base}}/deals/{{create_deal.response.body.id}}
+Authorization: Bearer {{adminToken}}
+
+### 18. Update deal status
+PATCH {{base}}/deals/{{create_deal.response.body.id}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "IN_PROGRESS"
+}
+
+### 19. Update deal to APPROVED
+PATCH {{base}}/deals/{{create_deal.response.body.id}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "APPROVED",
+  "amount": 145000
+}
+
+### 20. Add comment to deal
+POST {{base}}/deals/{{create_deal.response.body.id}}/comments
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "text": "Клиент запросил скидку, согласовано 145 000 руб."
+}
+
+### 21. Get deal comments
+GET {{base}}/deals/{{create_deal.response.body.id}}/comments
+Authorization: Bearer {{adminToken}}
+
+### 22. Get deal change logs
+GET {{base}}/deals/{{create_deal.response.body.id}}/logs
+Authorization: Bearer {{adminToken}}
+
+### 23. Archive deal (ADMIN only)
+PATCH {{base}}/deals/{{create_deal.response.body.id}}/archive
+Authorization: Bearer {{adminToken}}
+
+### ==================== INVENTORY ====================
+
+### 24. Create product
+# @name create_product
+POST {{base}}/inventory/products
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Бумага A4 SvetoCopy",
+  "sku": "PAPER-A4-SC",
+  "unit": "пачка"
+}
+
+### 25. List all products
+GET {{base}}/inventory/products
+Authorization: Bearer {{adminToken}}
+
+### 26. Income: add stock
+# @name income
+POST {{base}}/inventory/movements
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{create_product.response.body.id}}",
+  "type": "IN",
+  "quantity": 100,
+  "note": "Закупка у поставщика"
+}
+
+### 27. Expense: ship to client (linked to deal)
+POST {{base}}/inventory/movements
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{create_product.response.body.id}}",
+  "type": "OUT",
+  "quantity": 25,
+  "dealId": "{{create_deal.response.body.id}}",
+  "note": "Отгрузка по сделке"
+}
+
+### 28. Try overdraft (should fail with 400)
+POST {{base}}/inventory/movements
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{create_product.response.body.id}}",
+  "type": "OUT",
+  "quantity": 99999,
+  "note": "Попытка списать больше, чем есть"
+}
+
+### 29. Get product movements
+GET {{base}}/inventory/products/{{create_product.response.body.id}}/movements
+Authorization: Bearer {{adminToken}}
+
+### 30. Get all movements
+GET {{base}}/inventory/movements
+Authorization: Bearer {{adminToken}}
+
+### ==================== DASHBOARD ====================
+
+### 31. Get dashboard stats
+GET {{base}}/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+### ==================== SECURITY CHECKS ====================
+
+### 32. Access without token (should return 401)
+GET {{base}}/clients
+
+### 33. Manager tries to access users (should return 403)
+# First login as manager, then use manager's token
+# POST {{base}}/auth/login  {"email":"manager@crm.local","password":"manager123"}
+# GET {{base}}/users  Authorization: Bearer {{managerToken}}
+
+### 34. Rate limit test: login 6 times quickly (6th should return 429)
+# Run in terminal:
+# for i in $(seq 1 6); do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"email":"wrong@test.com","password":"wrong"}'; done
