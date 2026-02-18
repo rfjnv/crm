@@ -24,7 +24,16 @@ import tasksRoutes from './modules/tasks/tasks.routes';
 const app = express();
 
 // Security
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:'],
+      styleSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: config.cors.origin, credentials: true }));
 
 // Body parsing
