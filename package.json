@@ -8,6 +8,10 @@
     "heroku-postbuild": "cd backend && npm install --include=dev && npm run build",
     "build": "cd backend && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build",
     "postinstall": "cd backend && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build",
-    "start": "cd backend && npm run start"
+    "start": "cd backend && npm run start",
+    "copy-dist": "rimraf public && mkdir -p public && cp -r frontend/dist/* public/"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3"
   }
 }

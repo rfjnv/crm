@@ -1,8 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.join(__dirname, '../frontend/dist');
 const destDir = path.join(__dirname, '../public');
 
@@ -13,6 +12,11 @@ if (!fs.existsSync(destDir)) {
 
 // Copy all files from frontend/dist to public
 function copyRecursive(src, dest) {
+  if (!fs.existsSync(src)) {
+    console.error(`Source directory not found: ${src}`);
+    process.exit(1);
+  }
+
   if (fs.lstatSync(src).isDirectory()) {
     if (!fs.existsSync(dest)) {
       fs.mkdirSync(dest, { recursive: true });
@@ -28,6 +32,15 @@ function copyRecursive(src, dest) {
 try {
   console.log(`Copying ${srcDir} to ${destDir}...`);
   copyRecursive(srcDir, destDir);
+
+  // Create 404.html for SPA routing
+  const indexPath = path.join(destDir, 'index.html');
+  const notFoundPath = path.join(destDir, '404.html');
+  if (fs.existsSync(indexPath)) {
+    fs.copyFileSync(indexPath, notFoundPath);
+    console.log('✓ Created 404.html for SPA routing');
+  }
+
   console.log('✓ Copy completed successfully');
 } catch (err) {
   console.error('✗ Copy failed:', err.message);
