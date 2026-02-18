@@ -3,10 +3,8 @@
   "private": true,
   "engines": {
     "node": "18.x"
-  {
-    "name": "crm-root",
-    "private": true,
-    "scripts": {
-      "heroku-postbuild": "cd backend && npm install && npm run build"
-    }
+  },
+  "scripts": {
+    "heroku-postbuild": "cd backend && npm install && npm run build"
   }
+}
