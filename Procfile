@@ -1,1 +1,1 @@
-web: node backend/dist/server.js
+web: cd backend && npm run start
