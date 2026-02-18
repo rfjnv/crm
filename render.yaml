@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: crm-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install --include=dev && npx prisma generate && npm run build
+    startCommand: cd backend && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+databases:
+  - name: crm_db
+    databaseName: crm_db
+    user: crm_user
+    region: oregon
+    plan: free
