@@ -6,16 +6,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.join(__dirname, '../frontend/dist');
 
 export default function handler(req, res) {
-  const filePath = path.join(distDir, req.url === '/' ? 'index.html' : req.url);
+  const url = req.url.split('?')[0]; // Remove query string
+  const filePath = path.join(distDir, url === '/' ? 'index.html' : url);
 
   try {
     // Try to serve the exact file
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = fs.readFileSync(filePath);
       const ext = path.extname(filePath);
 
       const mimeTypes = {
-        '.html': 'text/html',
+        '.html': 'text/html; charset=utf-8',
         '.js': 'application/javascript',
         '.css': 'text/css',
         '.json': 'application/json',
@@ -25,17 +26,18 @@ export default function handler(req, res) {
       };
 
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-      return res.status(200).send(content);
+      return res.end(content);
     }
 
     // For any other route, serve index.html (SPA routing)
     const indexPath = path.join(distDir, 'index.html');
-    const indexContent = fs.readFileSync(indexPath, 'utf-8');
+    const indexContent = fs.readFileSync(indexPath);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    return res.status(200).send(indexContent);
+    return res.end(indexContent);
   } catch (err) {
-    console.error('Error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Error:', err.message);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).end(JSON.stringify({ error: 'Internal server error' }));
   }
 }
