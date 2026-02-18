@@ -1,0 +1,9 @@
+backend
+docker-compose.yml
+Dockerfile.*
+nginx
+.git
+.gitignore
+DEPLOY.md
+Procfile
+vercel-build.sh
