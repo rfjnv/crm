@@ -1,0 +1,2 @@
+# This file ensures the public directory is tracked by git
+# The actual dist files will be copied here during build
