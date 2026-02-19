@@ -524,9 +524,9 @@ export default function DealDetailPage() {
                         <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="Оплачено">{formatUZS(deal.paidAmount)} / {formatUZS(deal.amount)}</Descriptions.Item>
-                      {Number(deal.amount) - Number(deal.paidAmount) > 0 && (
+                      {Number(deal.amount) - Number(deal.discount || 0) - Number(deal.paidAmount) > 0 && (
                         <Descriptions.Item label="Долг">
-                          <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
+                          <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.discount || 0) - Number(deal.paidAmount))}</Typography.Text>
                         </Descriptions.Item>
                       )}
                       {deal.dueDate && (

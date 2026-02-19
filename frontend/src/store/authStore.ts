@@ -12,9 +12,14 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: (() => {
-    const raw = JSON.parse(localStorage.getItem('crm_user') || 'null');
-    if (raw && !raw.permissions) raw.permissions = [];
-    return raw;
+    try {
+      const raw = JSON.parse(localStorage.getItem('crm_user') || 'null');
+      if (raw && !raw.permissions) raw.permissions = [];
+      return raw;
+    } catch {
+      localStorage.removeItem('crm_user');
+      return null;
+    }
   })(),
   accessToken: localStorage.getItem('crm_access_token'),
   refreshToken: localStorage.getItem('crm_refresh_token'),

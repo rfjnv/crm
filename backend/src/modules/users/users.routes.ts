@@ -6,6 +6,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { createUserDto, updateUserDto } from './users.dto';
 import prisma from '../../lib/prisma';
+import { Prisma } from '@prisma/client';
 
 const router = Router();
 
@@ -53,13 +54,12 @@ router.get(
           where: { managerId: userId, status: 'CLOSED', updatedAt: { gte: from } },
           select: { createdAt: true, updatedAt: true },
         }),
-        prisma.$queryRawUnsafe<{ day: string; count: bigint }[]>(
-          `SELECT DATE(created_at) as day, COUNT(*)::bigint as count
+        prisma.$queryRaw<{ day: string; count: bigint }[]>(
+          Prisma.sql`SELECT DATE(created_at) as day, COUNT(*)::bigint as count
            FROM deals
-           WHERE manager_id = $1 AND created_at >= $2
+           WHERE manager_id = ${userId} AND created_at >= ${from}
            GROUP BY DATE(created_at)
-           ORDER BY day`,
-          userId, from,
+           ORDER BY day`
         ),
       ]);
 

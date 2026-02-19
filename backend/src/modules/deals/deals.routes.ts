@@ -43,11 +43,11 @@ router.post('/:id/stock-confirm', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'A
 router.post('/:id/set-quantities', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(setItemQuantitiesDto), asyncHandler(dealsController.setItemQuantities.bind(dealsController)));
 
 // Workflow: Finance
-router.post('/:id/finance-approve', asyncHandler(dealsController.approveFinance.bind(dealsController)));
-router.post('/:id/finance-reject', validate(financeRejectDto), asyncHandler(dealsController.rejectFinance.bind(dealsController)));
+router.post('/:id/finance-approve', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveFinance.bind(dealsController)));
+router.post('/:id/finance-reject', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), validate(financeRejectDto), asyncHandler(dealsController.rejectFinance.bind(dealsController)));
 
 // Workflow: Admin Approve
-router.post('/:id/admin-approve', asyncHandler(dealsController.approveAdmin.bind(dealsController)));
+router.post('/:id/admin-approve', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveAdmin.bind(dealsController)));
 
 // Workflow: Shipment
 router.post('/:id/shipment', validate(shipmentDto), asyncHandler(dealsController.submitShipment.bind(dealsController)));

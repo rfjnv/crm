@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Input, Button, Badge, Spin, Empty, theme, Dropdown, Popconfirm, Tag,
+  Typography, Input, Button, Badge, Spin, Empty, theme, Dropdown, Modal, Tag,
 } from 'antd';
 import {
   SendOutlined, PaperClipOutlined, CloseOutlined, CheckOutlined, MoreOutlined,
 } from '@ant-design/icons';
 import { conversationsApi } from '../api/conversations.api';
+import { API_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import type { ConversationType, Conversation, ChatMessage, MessageAttachmentInfo } from '../types';
 import dayjs from 'dayjs';
@@ -222,7 +223,7 @@ export default function MessagesPage() {
     return (
       <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {attachments.map((att) => {
-          const url = `/api/conversations/attachments/${att.id}`;
+          const url = `${API_URL}/conversations/attachments/${att.id}`;
           if (isImageMime(att.mimeType)) {
             return (
               <a key={att.id} href={url} target="_blank" rel="noopener noreferrer">
@@ -277,25 +278,17 @@ export default function MessagesPage() {
                 onClick: ({ key }) => {
                   if (key === 'reply') startReply(msg);
                   else if (key === 'edit') startEdit(msg);
-                  // delete handled via popconfirm below
+                  else if (key === 'delete') {
+                    Modal.confirm({
+                      title: 'Удалить сообщение?',
+                      okText: 'Да',
+                      cancelText: 'Нет',
+                      onOk: () => deleteMut.mutate(msg.id),
+                    });
+                  }
                 },
               }}
               trigger={['click']}
-              dropdownRender={(menu) => (
-                <div>
-                  {menu}
-                  {showActions && (
-                    <Popconfirm
-                      title="Удалить сообщение?"
-                      onConfirm={() => deleteMut.mutate(msg.id)}
-                      okText="Да"
-                      cancelText="Нет"
-                    >
-                      <div style={{ display: 'none' }} />
-                    </Popconfirm>
-                  )}
-                </div>
-              )}
             >
               <Button type="text" size="small" icon={<MoreOutlined />} style={{ opacity: 0.4 }} />
             </Dropdown>
@@ -548,7 +541,7 @@ export default function MessagesPage() {
               <div
                 style={{
                   padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
-                  background: '#fff8e1', margin: '0 12px', borderRadius: 4,
+                  background: tk.colorWarningBg || '#fff8e1', margin: '0 12px', borderRadius: 4,
                 }}
               >
                 <div style={{ flex: 1, fontSize: 12 }}>

@@ -1,8 +1,14 @@
 import app from './app';
 import { config } from './lib/config';
 import prisma from './lib/prisma';
+import fs from 'fs';
+import path from 'path';
 
 async function main() {
+  // Ensure uploads directory exists
+  const uploadsDir = path.resolve(config.uploads.dir);
+  fs.mkdirSync(uploadsDir, { recursive: true });
+
   // Verify DB connection
   await prisma.$connect();
   console.log('Database connected');

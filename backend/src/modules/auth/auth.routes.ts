@@ -4,11 +4,15 @@ import { authenticate } from '../../middleware/authenticate';
 import { validate } from '../../middleware/validate';
 import { loginDto, refreshDto } from './auth.dto';
 import { asyncHandler } from '../../lib/asyncHandler';
+import { rateLimiter } from '../../middleware/rateLimiter';
 
 const router = Router();
 
+const loginLimiter = rateLimiter(15 * 60 * 1000, 10);
+
 router.post(
   '/login',
+  loginLimiter,
   validate(loginDto),
   asyncHandler(authController.login.bind(authController)),
 );

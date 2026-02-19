@@ -163,7 +163,7 @@ export class ClientsService {
 
   async archive(id: string, user: AuthUser) {
     // Only ADMIN can archive
-    if (user.role !== 'ADMIN') {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       throw new AppError(403, 'Только администратор может архивировать клиентов');
     }
 

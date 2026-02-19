@@ -1,4 +1,4 @@
-import client from './client';
+import client, { API_URL } from './client';
 import type { Task, TaskAttachment, TaskStatus } from '../types';
 
 export const tasksApi = {
@@ -26,7 +26,7 @@ export const tasksApi = {
   },
 
   downloadAttachmentUrl: (taskId: string, attachmentId: string) =>
-    `/api/tasks/${taskId}/attachments/${attachmentId}`,
+    `${API_URL}/tasks/${taskId}/attachments/${attachmentId}`,
 
   remove: (id: string) => client.delete(`/tasks/${id}`).then((r) => r.data),
 };

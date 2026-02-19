@@ -2,12 +2,11 @@
   "name": "crm-root",
   "private": true,
   "engines": {
-    "node": "18.x"
+    "node": ">=18.x"
   },
   "scripts": {
-    "heroku-postbuild": "cd backend && npm install --include=dev && npm run build",
-    "build": "cd backend && npm install --include=dev && npx prisma generate && npm run build",
-    "postinstall": "cd backend && npm install --include=dev || true",
+    "build": "cd backend && npm install --include=dev && npx prisma generate && npx prisma db push --skip-generate && npm run build",
+    "postinstall": "cd backend && npm install --include=dev",
     "start": "cd backend && npm run start"
   }
 }

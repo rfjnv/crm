@@ -86,7 +86,7 @@ export default function WarehousePage() {
       width: 160,
       render: (_: unknown, r: Product) => (
         <Space>
-          {user?.role === 'ADMIN' && (
+          {['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'].includes(user?.role ?? '') && (
             <Button
               size="small"
               type="primary"

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -48,10 +48,6 @@ router.get(
     const period = (req.query.period as string) || 'month';
     const { start, end } = getPeriodRange(period);
 
-    const managerWhere = dealScope.managerId
-      ? `AND d.manager_id = '${dealScope.managerId}'`
-      : '';
-
     // ──── SALES ────
     const [
       salesRevenueAgg,
@@ -87,17 +83,26 @@ router.get(
         where: { ...dealScope, status: 'CANCELED', isArchived: false, createdAt: { gte: start, lt: end } },
       }),
       // Revenue by day
-      prisma.$queryRawUnsafe<{ day: Date; total: string }[]>(
-        `SELECT DATE(d.updated_at) as day, SUM(d.amount)::text as total
-         FROM deals d
-         WHERE d.status IN ('SHIPPED', 'CLOSED')
-           AND d.is_archived = false
-           AND d.updated_at >= $1 AND d.updated_at < $2
-           ${managerWhere}
-         GROUP BY DATE(d.updated_at)
-         ORDER BY day ASC`,
-        start, end,
-      ),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE(d.updated_at) as day, SUM(d.amount)::text as total
+             FROM deals d
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY DATE(d.updated_at)
+             ORDER BY day ASC`
+          )
+        : prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE(d.updated_at) as day, SUM(d.amount)::text as total
+             FROM deals d
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+             GROUP BY DATE(d.updated_at)
+             ORDER BY day ASC`
+          ),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -105,30 +110,40 @@ router.get(
         _count: true,
       }),
       // Top 5 clients by revenue
-      prisma.$queryRawUnsafe<{ client_id: string; company_name: string; total_revenue: string }[]>(
-        `SELECT c.id as client_id, c.company_name, SUM(d.amount)::text as total_revenue
-         FROM deals d
-         JOIN clients c ON c.id = d.client_id
-         WHERE d.status IN ('SHIPPED', 'CLOSED')
-           AND d.is_archived = false
-           AND d.updated_at >= $1 AND d.updated_at < $2
-           ${managerWhere}
-         GROUP BY c.id, c.company_name
-         ORDER BY SUM(d.amount) DESC
-         LIMIT 5`,
-        start, end,
-      ),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ client_id: string; company_name: string; total_revenue: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount)::text as total_revenue
+             FROM deals d
+             JOIN clients c ON c.id = d.client_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(d.amount) DESC
+             LIMIT 5`
+          )
+        : prisma.$queryRaw<{ client_id: string; company_name: string; total_revenue: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount)::text as total_revenue
+             FROM deals d
+             JOIN clients c ON c.id = d.client_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(d.amount) DESC
+             LIMIT 5`
+          ),
       // Top 5 products by quantity sold
-      prisma.$queryRawUnsafe<{ product_id: string; name: string; total_quantity: string }[]>(
-        `SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_quantity
+      prisma.$queryRaw<{ product_id: string; name: string; total_quantity: string }[]>(
+        Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_quantity
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
          WHERE m.type = 'OUT'
-           AND m.created_at >= $1 AND m.created_at < $2
+           AND m.created_at >= ${start} AND m.created_at < ${end}
          GROUP BY p.id, p.name
          ORDER BY SUM(m.quantity) DESC
-         LIMIT 5`,
-        start, end,
+         LIMIT 5`
       ),
     ]);
 
@@ -161,13 +176,20 @@ router.get(
 
     // ──── FINANCE ────
     const [totalDebtRaw, overdueDeals, topDebtorsRaw, realTurnoverAgg, paperTurnoverAgg] = await Promise.all([
-      prisma.$queryRawUnsafe<{ debt: string }[]>(
-        `SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
-         FROM deals d
-         WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
-           AND d.is_archived = false
-           ${managerWhere}`,
-      ),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+             FROM deals d
+             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+               AND d.is_archived = false
+               AND d.manager_id = ${dealScope.managerId}`
+          )
+        : prisma.$queryRaw<{ debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+             FROM deals d
+             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+               AND d.is_archived = false`
+          ),
       prisma.deal.findMany({
         where: {
           ...dealScope,
@@ -179,17 +201,28 @@ router.get(
         orderBy: { dueDate: 'asc' },
         take: 20,
       }),
-      prisma.$queryRawUnsafe<{ client_id: string; company_name: string; total_debt: string }[]>(
-        `SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
-         FROM deals d
-         JOIN clients c ON c.id = d.client_id
-         WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
-           AND d.is_archived = false
-           ${managerWhere}
-         GROUP BY c.id, c.company_name
-         ORDER BY SUM(d.amount - d.paid_amount) DESC
-         LIMIT 10`,
-      ),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
+             FROM deals d
+             JOIN clients c ON c.id = d.client_id
+             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+               AND d.is_archived = false
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(d.amount - d.paid_amount) DESC
+             LIMIT 10`
+          )
+        : prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
+             FROM deals d
+             JOIN clients c ON c.id = d.client_id
+             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+               AND d.is_archived = false
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(d.amount - d.paid_amount) DESC
+             LIMIT 10`
+          ),
       prisma.deal.aggregate({
         where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false },
         _sum: { paidAmount: true },
@@ -220,30 +253,30 @@ router.get(
 
     // ──── WAREHOUSE ────
     const [belowMinStockRaw, deadStockRaw, topSellingRaw, frozenCapitalRaw] = await Promise.all([
-      prisma.$queryRawUnsafe<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
-        `SELECT id, name, sku, stock, min_stock
+      prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
+        Prisma.sql`SELECT id, name, sku, stock, min_stock
          FROM products
          WHERE is_active = true AND stock < min_stock AND stock >= 0
-         ORDER BY stock ASC`,
+         ORDER BY stock ASC`
       ),
-      prisma.$queryRawUnsafe<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
-        `SELECT p.id, p.name, p.sku, p.stock,
+      prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
+        Prisma.sql`SELECT p.id, p.name, p.sku, p.stock,
                 MAX(m.created_at) as last_out_date
          FROM products p
          LEFT JOIN inventory_movements m ON m.product_id = p.id AND m.type = 'OUT'
          WHERE p.is_active = true AND p.stock > 0
          GROUP BY p.id, p.name, p.sku, p.stock
          HAVING MAX(m.created_at) IS NULL OR MAX(m.created_at) < NOW() - INTERVAL '30 days'
-         ORDER BY p.stock DESC`,
+         ORDER BY p.stock DESC`
       ),
-      prisma.$queryRawUnsafe<{ product_id: string; name: string; total_sold: string }[]>(
-        `SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_sold
+      prisma.$queryRaw<{ product_id: string; name: string; total_sold: string }[]>(
+        Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
          WHERE m.type = 'OUT'
          GROUP BY p.id, p.name
          ORDER BY SUM(m.quantity) DESC
-         LIMIT 10`,
+         LIMIT 10`
       ),
       prisma.$queryRaw<{ value: string }[]>`
         SELECT COALESCE(SUM(stock * purchase_price), 0)::text as value
@@ -268,12 +301,12 @@ router.get(
 
     // ──── MANAGERS ────
     const [managerStatsRaw, managerAvgDaysRaw] = await Promise.all([
-      prisma.$queryRawUnsafe<{
+      prisma.$queryRaw<{
         manager_id: string; full_name: string;
         completed_count: string; total_revenue: string; avg_deal_amount: string;
         total_deals: string;
       }[]>(
-        `SELECT
+        Prisma.sql`SELECT
            d.manager_id,
            u.full_name,
            COUNT(*) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED'))::text as completed_count,
@@ -284,15 +317,15 @@ router.get(
          JOIN users u ON u.id = d.manager_id
          WHERE d.is_archived = false
          GROUP BY d.manager_id, u.full_name
-         ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`,
+         ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`
       ),
-      prisma.$queryRawUnsafe<{ manager_id: string; avg_days: string }[]>(
-        `SELECT
+      prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
+        Prisma.sql`SELECT
            d.manager_id,
            AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
          FROM deals d
          WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
-         GROUP BY d.manager_id`,
+         GROUP BY d.manager_id`
       ),
     ]);
 
@@ -312,37 +345,33 @@ router.get(
 
     // ──── PROFITABILITY ────
     const [revenueRaw, cogsRaw, totalExpensesRaw, expByCategoryRaw] = await Promise.all([
-      prisma.$queryRawUnsafe<{ total: string }[]>(
-        `SELECT COALESCE(SUM(p.amount), 0)::text as total
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
          FROM payments p
-         WHERE p.paid_at >= $1 AND p.paid_at < $2`,
-        start, end,
+         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}`
       ),
-      prisma.$queryRawUnsafe<{ total: string }[]>(
-        `SELECT COALESCE(SUM(di.requested_qty * pr.purchase_price), 0)::text as total
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * pr.purchase_price), 0)::text as total
          FROM deal_items di
          JOIN deals d ON d.id = di.deal_id
          JOIN products pr ON pr.id = di.product_id
          WHERE d.status IN ('SHIPPED', 'CLOSED')
            AND d.is_archived = false
-           AND d.updated_at >= $1 AND d.updated_at < $2
+           AND d.updated_at >= ${start} AND d.updated_at < ${end}
            AND di.requested_qty IS NOT NULL
-           AND pr.purchase_price IS NOT NULL`,
-        start, end,
+           AND pr.purchase_price IS NOT NULL`
       ),
-      prisma.$queryRawUnsafe<{ total: string }[]>(
-        `SELECT COALESCE(SUM(amount), 0)::text as total
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`SELECT COALESCE(SUM(amount), 0)::text as total
          FROM expenses
-         WHERE date >= $1 AND date < $2`,
-        start, end,
+         WHERE date >= ${start} AND date < ${end}`
       ),
-      prisma.$queryRawUnsafe<{ category: string; total: string }[]>(
-        `SELECT category, SUM(amount)::text as total
+      prisma.$queryRaw<{ category: string; total: string }[]>(
+        Prisma.sql`SELECT category, SUM(amount)::text as total
          FROM expenses
-         WHERE date >= $1 AND date < $2
+         WHERE date >= ${start} AND date < ${end}
          GROUP BY category
-         ORDER BY SUM(amount) DESC`,
-        start, end,
+         ORDER BY SUM(amount) DESC`
       ),
     ]);
 

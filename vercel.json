@@ -1,4 +1,7 @@
 {
   "buildCommand": "cd frontend && npm ci && npm run build && cd .. && node scripts/copy-dist.js",
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

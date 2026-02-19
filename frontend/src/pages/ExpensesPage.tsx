@@ -12,7 +12,7 @@ import {
   DatePicker,
   Select,
   Popconfirm,
-  App,
+  message,
   Space,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -35,7 +35,6 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function ExpensesPage() {
-  const { message } = App.useApp();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const canDelete = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';

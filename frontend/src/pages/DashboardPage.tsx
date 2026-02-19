@@ -13,22 +13,9 @@ import { Link } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
+import { Area, Bar as BarChart } from '@ant-design/charts';
 import { statusConfig } from '../components/DealStatusTag';
 import type { UserRole, DealStatus } from '../types';
-
-let Area: React.ComponentType<Record<string, unknown>> | null = null;
-let BarChart: React.ComponentType<Record<string, unknown>> | null = null;
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const charts = (globalThis as unknown as { require?: (id: string) => Record<string, unknown> }).require?.('@ant-design/charts');
-  if (charts) {
-    Area = charts.Area as typeof Area;
-    BarChart = charts.Bar as typeof BarChart;
-  }
-} catch {
-  // charts not available
-}
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -148,7 +135,7 @@ export default function DashboardPage() {
       </Row>
 
       {/* Charts — Admin only */}
-      {isAdmin && Area && BarChart && (
+      {isAdmin && (
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={14}>
             <Card title="Выручка за 30 дней" bordered={false}>

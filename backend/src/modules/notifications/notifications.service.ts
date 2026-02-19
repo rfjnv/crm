@@ -102,21 +102,91 @@ export class NotificationsService {
           GTE: '>=',
         };
         const sqlOp = operatorMap[targets.operator];
+        if (!sqlOp) {
+          throw new AppError(400, 'Неизвестный оператор');
+        }
 
-        const roleCondition = targets.roleFilter
-          ? `AND u.role = '${targets.roleFilter}'`
-          : '';
+        // Build separate queries with/without roleFilter to avoid SQL injection
+        // sqlOp is safe because it comes from the controlled operatorMap above
+        let users: { id: string; full_name: string; role: string; deal_count: string }[];
 
-        const users = await prisma.$queryRawUnsafe<{ id: string; full_name: string; role: string; deal_count: string }[]>(
-          `SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
-           FROM users u
-           LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= $1 AND d.is_archived = false
-           WHERE u.is_active = true ${roleCondition}
-           GROUP BY u.id, u.full_name, u.role
-           HAVING COUNT(d.id) ${sqlOp} $2`,
-          cutoffDate,
-          targets.value,
-        );
+        if (targets.roleFilter) {
+          if (sqlOp === '<') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true AND u.role = ${targets.roleFilter}
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) < ${targets.value}`
+            );
+          } else if (sqlOp === '>') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true AND u.role = ${targets.roleFilter}
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) > ${targets.value}`
+            );
+          } else if (sqlOp === '<=') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true AND u.role = ${targets.roleFilter}
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) <= ${targets.value}`
+            );
+          } else {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true AND u.role = ${targets.roleFilter}
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) >= ${targets.value}`
+            );
+          }
+        } else {
+          if (sqlOp === '<') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) < ${targets.value}`
+            );
+          } else if (sqlOp === '>') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) > ${targets.value}`
+            );
+          } else if (sqlOp === '<=') {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) <= ${targets.value}`
+            );
+          } else {
+            users = await prisma.$queryRaw<{ id: string; full_name: string; role: string; deal_count: string }[]>(
+              Prisma.sql`SELECT u.id, u.full_name, u.role, COUNT(d.id)::text as deal_count
+               FROM users u
+               LEFT JOIN deals d ON d.manager_id = u.id AND d.created_at >= ${cutoffDate} AND d.is_archived = false
+               WHERE u.is_active = true
+               GROUP BY u.id, u.full_name, u.role
+               HAVING COUNT(d.id) >= ${targets.value}`
+            );
+          }
+        }
 
         return users.map((u) => ({
           id: u.id,

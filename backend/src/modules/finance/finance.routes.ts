@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -193,15 +193,14 @@ router.get(
     const startOfNextDay = new Date(startOfDay);
     startOfNextDay.setDate(startOfNextDay.getDate() + 1);
 
-    const closedLogs = await prisma.$queryRawUnsafe<{ entity_id: string; created_at: Date }[]>(
-      `SELECT DISTINCT ON (entity_id) entity_id, created_at
+    const closedLogs = await prisma.$queryRaw<{ entity_id: string; created_at: Date }[]>(
+      Prisma.sql`SELECT DISTINCT ON (entity_id) entity_id, created_at
        FROM audit_logs
        WHERE entity_type = 'deal'
          AND action = 'STATUS_CHANGE'
          AND after->>'status' = 'CLOSED'
-         AND created_at >= $1 AND created_at < $2
-       ORDER BY entity_id, created_at DESC`,
-      startOfDay, startOfNextDay,
+         AND created_at >= ${startOfDay} AND created_at < ${startOfNextDay}
+       ORDER BY entity_id, created_at DESC`
     );
 
     const closedDealIds = closedLogs.map((l) => l.entity_id);

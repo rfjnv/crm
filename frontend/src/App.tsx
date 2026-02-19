@@ -55,7 +55,7 @@ export default function App() {
         algorithm: mode === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
           colorPrimary: '#22609A',
-          colorBgLayout: mode === 'dark' ? '#1f1e1e' : '#f5f6f8',
+          colorBgLayout: mode === 'dark' ? '#1e1e1e' : '#f5f6f8',
           colorBorderSecondary: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
           colorSplit: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
         },

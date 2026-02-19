@@ -9,13 +9,17 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
 import { createTaskDto, updateTaskDto, moveTaskDto } from './tasks.dto';
 
+import { config } from '../../lib/config';
+
 const router = Router();
 
 // ──── Multer config ────
+const uploadsDir = path.resolve(config.uploads.dir);
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../../../../uploads'),
+  destination: uploadsDir,
   filename: (_req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, `${Date.now()}-${sanitized}`);
   },
 });
 
