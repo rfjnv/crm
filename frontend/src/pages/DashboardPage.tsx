@@ -33,12 +33,12 @@ export default function DashboardPage() {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   }
 
-  const revenueDelta = data.revenueToday - data.revenueYesterday;
-  const closedDealsDelta = data.closedDealsToday - data.closedDealsYesterday;
+  const revenueDelta = (data.revenueToday || 0) - (data.revenueYesterday || 0);
+  const closedDealsDelta = (data.closedDealsToday || 0) - (data.closedDealsYesterday || 0);
 
   const allStockIssues = [
-    ...data.zeroStockProducts.map((p) => ({ ...p, issue: 'zero' as const })),
-    ...data.lowStockProducts.map((p) => ({ ...p, issue: 'low' as const })),
+    ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
+    ...(data.lowStockProducts || []).map((p) => ({ ...p, issue: 'low' as const })),
   ];
 
   return (
@@ -140,7 +140,7 @@ export default function DashboardPage() {
           <Col xs={24} lg={14}>
             <Card title="Выручка за 30 дней" bordered={false}>
               <Area
-                data={data.revenueLast30Days}
+                data={data.revenueLast30Days || []}
                 xField="day"
                 yField="total"
                 shapeField="smooth"
@@ -158,7 +158,7 @@ export default function DashboardPage() {
           <Col xs={24} lg={10}>
             <Card title="Сделки по статусам" bordered={false}>
               <BarChart
-                data={data.dealsByStatusCounts.map((d) => ({
+                data={(data.dealsByStatusCounts || []).map((d) => ({
                   status: (statusConfig[d.status as DealStatus]?.label) || d.status,
                   count: d.count,
                 }))}
