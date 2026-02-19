@@ -11,7 +11,7 @@ const client = axios.create({
 // Request interceptor: attach access token
 client.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
-  if (token) {
+  if (token && token !== 'undefined') {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
