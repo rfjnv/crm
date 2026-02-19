@@ -29,7 +29,6 @@ services:
   - type: web
     name: crm-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
