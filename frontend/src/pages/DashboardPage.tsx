@@ -143,7 +143,7 @@ export default function DashboardPage() {
                 data={data.revenueLast30Days}
                 xField="day"
                 yField="total"
-                smooth={true}
+                shapeField="smooth"
                 height={280}
                 style={{ fill: 'linear-gradient(-90deg, rgba(82, 196, 26, 0.15) 0%, rgba(82, 196, 26, 0.6) 100%)' }}
                 line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
