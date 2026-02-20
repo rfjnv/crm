@@ -20,17 +20,17 @@ export const updateProductDto = z.object({
   name: z.string().min(1).optional(),
   sku: z.string().min(1).optional(),
   unit: z.string().optional(),
-  format: z.string().nullable().optional(),
-  category: z.string().nullable().optional(),
-  countryOfOrigin: z.string().nullable().optional(),
+  format: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
+  category: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
+  countryOfOrigin: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   minStock: z.number().min(0).optional(),
   purchasePrice: z.number().min(0).nullable().optional(),
   salePrice: z.number().min(0).nullable().optional(),
   installmentPrice: z.number().min(0).nullable().optional(),
   specifications: z.record(z.unknown()).nullable().optional(),
   isActive: z.boolean().optional(),
-  manufacturedAt: z.string().datetime().nullable().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
+  manufacturedAt: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
+  expiresAt: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
 });
 
 export const createMovementDto = z.object({

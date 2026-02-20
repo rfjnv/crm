@@ -62,7 +62,8 @@ export default function ProductsPage() {
       setEditProduct(null);
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      const resp = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data;
+      const msg = resp?.details?.join(', ') || resp?.error || 'Ошибка';
       message.error(msg);
     },
   });
@@ -74,7 +75,8 @@ export default function ProductsPage() {
       message.success('Товар удалён');
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      const resp = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data;
+      const msg = resp?.details?.join(', ') || resp?.error || 'Ошибка';
       message.error(msg);
     },
   });
