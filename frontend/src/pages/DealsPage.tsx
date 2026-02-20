@@ -17,7 +17,7 @@ const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string 
 };
 
 const kanbanStatuses: DealStatus[] = [
-  'NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED',
+  'NEW', 'IN_PROGRESS',
   'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPPED',
 ];
 
