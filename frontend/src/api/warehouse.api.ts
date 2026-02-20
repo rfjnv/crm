@@ -10,6 +10,9 @@ export const inventoryApi = {
   updateProduct: (id: string, data: Partial<{ name: string; sku: string; unit: string; category: string | null; countryOfOrigin: string | null; minStock: number; purchasePrice: number | null; salePrice: number | null; specifications: Record<string, unknown> | null; isActive: boolean }>) =>
     client.patch<Product>(`/inventory/products/${id}`, data).then((r) => r.data),
 
+  deleteProduct: (id: string) =>
+    client.delete(`/inventory/products/${id}`).then((r) => r.data),
+
   getProductMovements: (id: string) =>
     client.get<InventoryMovement[]>(`/inventory/products/${id}/movements`).then((r) => r.data),
 

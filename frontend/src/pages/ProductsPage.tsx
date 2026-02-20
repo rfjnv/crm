@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { Product } from '../types';
@@ -67,6 +67,18 @@ export default function ProductsPage() {
     },
   });
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => inventoryApi.deleteProduct(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Товар удалён');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
   const columns = [
     { title: 'Название', dataIndex: 'name' },
     { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
@@ -115,31 +127,43 @@ export default function ProductsPage() {
     },
     ...(canManageProducts ? [{
       title: '',
-      width: 40,
+      width: 80,
       render: (_: unknown, r: Product) => (
-        <Button
-          type="text"
-          icon={<EditOutlined />}
-          size="small"
-          onClick={() => {
-            setEditProduct(r);
-            editForm.setFieldsValue({
-              name: r.name,
-              sku: r.sku,
-              unit: r.unit,
-              format: r.format,
-              category: r.category,
-              countryOfOrigin: r.countryOfOrigin,
-              minStock: r.minStock,
-              purchasePrice: r.purchasePrice ? Number(r.purchasePrice) : undefined,
-              salePrice: r.salePrice ? Number(r.salePrice) : undefined,
-              installmentPrice: r.installmentPrice ? Number(r.installmentPrice) : undefined,
-              manufacturedAt: r.manufacturedAt ? dayjs(r.manufacturedAt) : null,
-              expiresAt: r.expiresAt ? dayjs(r.expiresAt) : null,
-              isActive: r.isActive,
-            });
-          }}
-        />
+        <Space size={0}>
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            size="small"
+            onClick={() => {
+              setEditProduct(r);
+              editForm.setFieldsValue({
+                name: r.name,
+                sku: r.sku,
+                unit: r.unit,
+                format: r.format,
+                category: r.category,
+                countryOfOrigin: r.countryOfOrigin,
+                minStock: r.minStock,
+                purchasePrice: r.purchasePrice ? Number(r.purchasePrice) : undefined,
+                salePrice: r.salePrice ? Number(r.salePrice) : undefined,
+                installmentPrice: r.installmentPrice ? Number(r.installmentPrice) : undefined,
+                manufacturedAt: r.manufacturedAt ? dayjs(r.manufacturedAt) : null,
+                expiresAt: r.expiresAt ? dayjs(r.expiresAt) : null,
+                isActive: r.isActive,
+              });
+            }}
+          />
+          <Popconfirm
+            title="Удалить товар?"
+            description={`«${r.name}» будет удалён`}
+            onConfirm={() => deleteMut.mutate(r.id)}
+            okText="Удалить"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" icon={<DeleteOutlined />} size="small" danger />
+          </Popconfirm>
+        </Space>
       ),
     }] : []),
   ];

@@ -79,6 +79,31 @@ export class WarehouseService {
     return updated;
   }
 
+  async deleteProduct(id: string, userId: string) {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      throw new AppError(404, 'Товар не найден');
+    }
+
+    const usedInDeals = await prisma.dealItem.findFirst({ where: { productId: id } });
+    if (usedInDeals) {
+      throw new AppError(400, 'Невозможно удалить товар — он используется в сделках');
+    }
+
+    await prisma.inventoryMovement.deleteMany({ where: { productId: id } });
+    await prisma.product.delete({ where: { id } });
+
+    await auditLog({
+      userId,
+      action: 'DELETE',
+      entityType: 'product',
+      entityId: id,
+      before: { name: product.name, sku: product.sku },
+    });
+
+    return { success: true };
+  }
+
   // ==================== MOVEMENTS ====================
 
   async createMovement(dto: CreateMovementDto, userId: string) {

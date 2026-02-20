@@ -18,6 +18,11 @@ export class WarehouseController {
     res.json(product);
   }
 
+  async deleteProduct(req: Request, res: Response): Promise<void> {
+    const result = await warehouseService.deleteProduct(req.params.id as string, req.user!.userId as string);
+    res.json(result);
+  }
+
   // Movements
   async createMovement(req: Request, res: Response): Promise<void> {
     const movement = await warehouseService.createMovement(req.body, req.user!.userId as string);
