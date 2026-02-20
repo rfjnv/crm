@@ -160,7 +160,7 @@ export default function DebtsPage() {
         columns={columns}
         rowKey="id"
         loading={isLoading}
-        pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
         locale={{ emptyText: 'Нет задолженностей' }}

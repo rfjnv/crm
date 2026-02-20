@@ -14,8 +14,8 @@ import {
 
 const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   NEW: ['IN_PROGRESS', 'CANCELED'],
-  IN_PROGRESS: ['WAITING_STOCK_CONFIRMATION', 'READY_FOR_SHIPMENT', 'CANCELED'],
-  WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'CANCELED'],
+  IN_PROGRESS: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'REJECTED', 'CANCELED'],
+  WAITING_STOCK_CONFIRMATION: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'CANCELED'],
   STOCK_CONFIRMED: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'REJECTED', 'CANCELED'],
   FINANCE_APPROVED: ['ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'CANCELED'],
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'CANCELED'],
@@ -270,10 +270,10 @@ export class DealsService {
     if (dto.status !== undefined && dto.status !== deal.status) {
       validateStatusTransition(deal.status, dto.status as DealStatus, user.role);
 
-      // Require items for WAITING_STOCK_CONFIRMATION
-      if (dto.status === 'WAITING_STOCK_CONFIRMATION') {
+      // Require items for finance approval
+      if (dto.status === 'FINANCE_APPROVED') {
         if (deal._count.items === 0) {
-          throw new AppError(400, 'Нельзя отправить на подтверждение склада сделку без товаров');
+          throw new AppError(400, 'Нельзя одобрить сделку без товаров');
         }
       }
 
@@ -402,8 +402,8 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'STOCK_CONFIRMED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Склад подтверждён" для установки количеств');
+    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для установки количеств');
     }
 
     // Verify user is manager of this deal or admin
@@ -517,8 +517,8 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'STOCK_CONFIRMED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Склад подтверждён" для финансового одобрения');
+    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для финансового одобрения');
     }
 
     validateStatusTransition(deal.status, 'FINANCE_APPROVED', user.role);
@@ -549,8 +549,8 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'STOCK_CONFIRMED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Склад подтверждён" для отклонения');
+    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для отклонения');
     }
 
     validateStatusTransition(deal.status, 'REJECTED', user.role);

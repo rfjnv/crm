@@ -225,7 +225,7 @@ export default function DealDetailPage() {
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = deal.status === 'CLOSED' || deal.status === 'CANCELED';
-  const canEditItems = ['NEW', 'IN_PROGRESS'].includes(deal.status) && (isAdmin || role === 'MANAGER');
+  const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
   // ──── Role-based action buttons ────
@@ -241,32 +241,7 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER')) {
-      actions.push(
-        <Button key="stock-req" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
-          Запросить ответ склада
-        </Button>,
-      );
-    }
-
-    if (deal.status === 'WAITING_STOCK_CONFIRMATION' && (isAdmin || role === 'WAREHOUSE' || role === 'WAREHOUSE_MANAGER')) {
-      actions.push(
-        <Button key="warehouse-response" type="primary" icon={<CheckCircleOutlined />} onClick={() => {
-          const initialValues = (deal.items ?? []).map((item) => ({
-            dealItemId: item.id,
-            productName: item.product?.name || 'Товар',
-            requestComment: item.requestComment || '',
-            warehouseComment: '',
-          }));
-          warehouseForm.setFieldsValue({ items: initialValues });
-          setWarehouseResponseModal(true);
-        }}>
-          Ответить
-        </Button>,
-      );
-    }
-
-    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
       actions.push(
         <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={() => {
           const initialValues = (deal.items ?? []).map((item) => ({
@@ -285,7 +260,7 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'ACCOUNTANT') && hasQuantities) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'ACCOUNTANT') && hasQuantities) {
       actions.push(
         <Popconfirm key="fin-approve" title="Одобрить финансы?" onConfirm={() => financeApproveMut.mutate()}>
           <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
