@@ -12,6 +12,8 @@ export const usersApi = {
 
   deactivate: (id: string) => client.delete<User>(`/users/${id}`).then((r) => r.data),
 
+  deleteUser: (id: string) => client.delete<{ success: boolean }>(`/users/${id}/permanent`).then((r) => r.data),
+
   activate: (id: string) => client.patch<User>(`/users/${id}/activate`).then((r) => r.data),
 
   kpi: (id: string, period: string = 'month') =>

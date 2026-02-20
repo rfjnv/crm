@@ -40,6 +40,12 @@ export class WarehouseController {
     res.json(movements);
   }
 
+  async getProductAnalytics(req: Request, res: Response): Promise<void> {
+    const periodDays = parseInt(req.query.periodDays as string) || 30;
+    const data = await warehouseService.getProductAnalytics(req.params.id as string, periodDays);
+    res.json(data);
+  }
+
 }
 
 export const warehouseController = new WarehouseController();

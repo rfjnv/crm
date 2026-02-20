@@ -115,6 +115,31 @@ export interface Contract {
   deals?: DealShort[];
 }
 
+export interface ContractListItem extends Contract {
+  dealsCount: number;
+  totalAmount: number;
+  totalPaid: number;
+  remaining: number;
+}
+
+export interface ContractDetail extends Contract {
+  totalAmount: number;
+  totalPaid: number;
+  remaining: number;
+  payments: {
+    id: string;
+    dealId: string;
+    amount: number;
+    paidAt: string;
+    method?: string | null;
+    note?: string | null;
+    createdBy: string;
+    createdAt: string;
+    deal?: { id: string; title: string };
+    creator?: { id: string; fullName: string };
+  }[];
+}
+
 export interface DealItem {
   id: string;
   dealId: string;
@@ -590,4 +615,28 @@ export interface UserKPI {
   shipmentsCount: number;
   avgDealDays: number;
   activityByDay: { day: string; count: number }[];
+}
+
+// ──── Product Analytics ────
+
+export interface ProductAnalytics {
+  product: Product;
+  movements: {
+    totalIn: number;
+    totalOut: number;
+    movementsByDay: { day: string; inQty: number; outQty: number }[];
+  };
+  sales: {
+    totalRevenue: number;
+    totalQuantitySold: number;
+    dealsUsing: number;
+    avgPricePerUnit: number;
+  };
+  profitability: {
+    totalCost: number;
+    totalRevenue: number;
+    grossProfit: number;
+    marginPercent: number;
+  };
+  topClients: { clientId: string; companyName: string; totalQty: number }[];
 }

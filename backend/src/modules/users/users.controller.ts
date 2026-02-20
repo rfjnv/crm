@@ -22,6 +22,11 @@ export class UsersController {
     res.json(user);
   }
 
+  async deleteUser(req: Request, res: Response): Promise<void> {
+    const result = await usersService.deleteUser(req.params.id as string, req.user!.userId as string);
+    res.json(result);
+  }
+
   async activate(req: Request, res: Response): Promise<void> {
     const user = await usersService.activate(req.params.id as string, req.user!.userId as string);
     res.json(user);

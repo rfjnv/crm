@@ -31,6 +31,8 @@ import MessagesPage from './pages/MessagesPage';
 import RevenueTodayPage from './pages/RevenueTodayPage';
 import ExpensesPage from './pages/ExpensesPage';
 import TasksPage from './pages/TasksPage';
+import ContractsPage from './pages/ContractsPage';
+import ProductDetailPage from './pages/ProductDetailPage';
 import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
@@ -80,11 +82,13 @@ export default function App() {
                 <Route path="/revenue/today" element={<RevenueTodayPage />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetailPage />} />
+                <Route path="/contracts" element={<ContractsPage />} />
                 <Route path="/deals" element={<DealsPage />} />
                 <Route path="/deals/new" element={<DealCreatePage />} />
                 <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 <Route path="/deals/:id" element={<DealDetailPage />} />
                 <Route path="/inventory/products" element={<ProductsPage />} />
+                <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
                 <Route path="/inventory/warehouse" element={<WarehousePage />} />
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />

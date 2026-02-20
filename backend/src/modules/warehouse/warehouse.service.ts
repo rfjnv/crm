@@ -205,6 +205,93 @@ export class WarehouseService {
     });
   }
 
+  async getProductAnalytics(productId: string, periodDays: number) {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new AppError(404, 'Товар не найден');
+    }
+
+    const from = new Date();
+    from.setDate(from.getDate() - periodDays);
+
+    const [movements, dealItems, topClientsRaw] = await Promise.all([
+      prisma.inventoryMovement.findMany({
+        where: { productId, createdAt: { gte: from } },
+        select: { type: true, quantity: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.dealItem.findMany({
+        where: { productId, deal: { createdAt: { gte: from }, status: { not: 'CANCELED' } } },
+        select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
+      }),
+      prisma.$queryRaw<{ client_id: string; company_name: string; total_qty: number }[]>(
+        Prisma.sql`
+          SELECT c.id as client_id, c.company_name, COALESCE(SUM(di.requested_qty), 0)::int as total_qty
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          JOIN clients c ON c.id = d.client_id
+          WHERE di.product_id = ${productId}
+            AND d.created_at >= ${from}
+            AND d.status != 'CANCELED'
+            AND di.requested_qty > 0
+          GROUP BY c.id, c.company_name
+          ORDER BY total_qty DESC
+          LIMIT 10
+        `,
+      ),
+    ]);
+
+    const totalIn = movements.filter((m) => m.type === 'IN').reduce((s, m) => s + Number(m.quantity), 0);
+    const totalOut = movements.filter((m) => m.type === 'OUT').reduce((s, m) => s + Number(m.quantity), 0);
+
+    // Movement trend by day
+    const dayMap = new Map<string, { inQty: number; outQty: number }>();
+    for (const m of movements) {
+      const day = m.createdAt.toISOString().slice(0, 10);
+      const entry = dayMap.get(day) || { inQty: 0, outQty: 0 };
+      if (m.type === 'IN') entry.inQty += Number(m.quantity);
+      else entry.outQty += Number(m.quantity);
+      dayMap.set(day, entry);
+    }
+    const movementsByDay = Array.from(dayMap.entries())
+      .map(([day, v]) => ({ day, ...v }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+
+    // Sales metrics
+    const totalQuantitySold = dealItems.reduce((s, di) => s + Number(di.requestedQty || 0), 0);
+    const totalRevenue = dealItems.reduce((s, di) => s + Number(di.requestedQty || 0) * Number(di.price || 0), 0);
+    const uniqueDeals = new Set(dealItems.map((di) => di.deal.id));
+    const avgPricePerUnit = totalQuantitySold > 0 ? totalRevenue / totalQuantitySold : 0;
+
+    // Profitability
+    const purchasePrice = Number(product.purchasePrice || 0);
+    const totalCost = purchasePrice * totalQuantitySold;
+    const grossProfit = totalRevenue - totalCost;
+    const marginPercent = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+    return {
+      product,
+      movements: { totalIn, totalOut, movementsByDay },
+      sales: {
+        totalRevenue,
+        totalQuantitySold,
+        dealsUsing: uniqueDeals.size,
+        avgPricePerUnit,
+      },
+      profitability: {
+        totalCost,
+        totalRevenue,
+        grossProfit,
+        marginPercent,
+      },
+      topClients: topClientsRaw.map((r) => ({
+        clientId: r.client_id,
+        companyName: r.company_name,
+        totalQty: Number(r.total_qty),
+      })),
+    };
+  }
+
 }
 
 export const warehouseService = new WarehouseService();

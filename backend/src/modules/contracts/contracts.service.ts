@@ -6,12 +6,28 @@ import { CreateContractDto, UpdateContractDto } from './contracts.dto';
 
 export class ContractsService {
   async findAll(clientId?: string) {
-    return prisma.contract.findMany({
+    const contracts = await prisma.contract.findMany({
       where: clientId ? { clientId } : {},
       include: {
         client: { select: { id: true, companyName: true } },
+        deals: {
+          select: { id: true, amount: true, paidAmount: true, status: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
+    });
+
+    return contracts.map((c) => {
+      const totalAmount = c.deals.reduce((s, d) => s + Number(d.amount), 0);
+      const totalPaid = c.deals.reduce((s, d) => s + Number(d.paidAmount), 0);
+      return {
+        ...c,
+        dealsCount: c.deals.length,
+        totalAmount,
+        totalPaid,
+        remaining: totalAmount - totalPaid,
+        deals: undefined,
+      };
     });
   }
 
@@ -21,8 +37,10 @@ export class ContractsService {
       include: {
         client: { select: { id: true, companyName: true } },
         deals: {
-          where: { isArchived: false },
-          select: { id: true, title: true, status: true, amount: true, createdAt: true },
+          select: {
+            id: true, title: true, status: true, amount: true,
+            paidAmount: true, paymentStatus: true, paymentType: true, createdAt: true,
+          },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -32,7 +50,39 @@ export class ContractsService {
       throw new AppError(404, 'Договор не найден');
     }
 
-    return contract;
+    const totalAmount = contract.deals.reduce((s, d) => s + Number(d.amount), 0);
+    const totalPaid = contract.deals.reduce((s, d) => s + Number(d.paidAmount), 0);
+
+    const dealIds = contract.deals.map((d) => d.id);
+    const payments = dealIds.length > 0
+      ? await prisma.payment.findMany({
+          where: { dealId: { in: dealIds } },
+          include: {
+            deal: { select: { id: true, title: true } },
+            creator: { select: { id: true, fullName: true } },
+          },
+          orderBy: { paidAt: 'desc' },
+        })
+      : [];
+
+    return {
+      ...contract,
+      totalAmount,
+      totalPaid,
+      remaining: totalAmount - totalPaid,
+      payments: payments.map((p) => ({
+        id: p.id,
+        dealId: p.dealId,
+        amount: Number(p.amount),
+        paidAt: p.paidAt,
+        method: p.method,
+        note: p.note,
+        createdBy: p.createdBy,
+        createdAt: p.createdAt,
+        deal: p.deal,
+        creator: p.creator,
+      })),
+    };
   }
 
   async create(dto: CreateContractDto, user: AuthUser) {

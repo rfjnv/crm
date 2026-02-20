@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Card, Typography, Space, Button, Select, Input,
+  Card, Typography, Space, Button, Select, Input, InputNumber,
   Segmented, DatePicker, message, Descriptions,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -15,69 +15,50 @@ import { useAuthStore } from '../store/authStore';
 import type { Product } from '../types';
 import dayjs from 'dayjs';
 
-// ──── Draft item type ────
-
 interface DraftItem {
   key: string;
   productId?: string;
+  requestedQty?: number;
+  price?: number;
   requestComment: string;
 }
 
 let nextKey = 0;
 function makeKey() { return `ci-${nextKey++}`; }
 
-// ──── Page ────
+function fmt(n: number) {
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+}
 
 export default function DealCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
-  // ── Basic info ──
   const [clientId, setClientId] = useState<string>();
   const [title, setTitle] = useState('');
-
-  // ── Contract ──
   const [contractMode, setContractMode] = useState<'none' | 'existing' | 'new'>('none');
   const [contractId, setContractId] = useState<string>();
   const [newContract, setNewContract] = useState({
-    number: '',
-    startDate: dayjs(),
-    endDate: null as dayjs.Dayjs | null,
-    notes: '',
+    number: '', startDate: dayjs(), endDate: null as dayjs.Dayjs | null, notes: '',
   });
-
-  // ── Items ──
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
+  const [paymentType, setPaymentType] = useState<'FULL' | 'PARTIAL' | 'DEBT'>('FULL');
+  const [discount, setDiscount] = useState<number>(0);
+  const [dueDate, setDueDate] = useState<dayjs.Dayjs | null>(null);
+  const [terms, setTerms] = useState('');
 
-  // ── Queries ──
-  const { data: clients } = useQuery({
-    queryKey: ['clients'],
-    queryFn: clientsApi.list,
-  });
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: contracts } = useQuery({ queryKey: ['contracts', clientId], queryFn: () => contractsApi.list(clientId), enabled: !!clientId });
+  const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
 
-  const { data: contracts } = useQuery({
-    queryKey: ['contracts', clientId],
-    queryFn: () => contractsApi.list(clientId),
-    enabled: !!clientId,
-  });
-
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: inventoryApi.listProducts,
-  });
-
-  // Reset contract when client changes
   useEffect(() => {
     setContractId(undefined);
     if (contractMode === 'existing') setContractMode('none');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  // ── Mutations ──
-  const contractMut = useMutation({
-    mutationFn: (data: Parameters<typeof contractsApi.create>[0]) => contractsApi.create(data),
-  });
+  const contractMut = useMutation({ mutationFn: (data: Parameters<typeof contractsApi.create>[0]) => contractsApi.create(data) });
 
   const createMut = useMutation({
     mutationFn: (data: Parameters<typeof dealsApi.create>[0]) => dealsApi.create(data),
@@ -92,11 +73,22 @@ export default function DealCreatePage() {
     },
   });
 
-  // ── Item helpers ──
   const usedProductIds = useMemo(
     () => new Set(draftItems.filter((i) => i.productId).map((i) => i.productId!)),
     [draftItems],
   );
+
+  const subtotal = useMemo(
+    () => draftItems.reduce((s, i) => s + (i.requestedQty ?? 0) * (i.price ?? 0), 0),
+    [draftItems],
+  );
+  const finalAmount = Math.max(0, subtotal - discount);
+
+  const productMap = useMemo(() => {
+    const m = new Map<string, Product>();
+    (products ?? []).forEach((p: Product) => m.set(p.id, p));
+    return m;
+  }, [products]);
 
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
@@ -109,15 +101,24 @@ export default function DealCreatePage() {
     });
   }
 
-  // ── Submit ──
+  function updateItem(key: string, patch: Partial<DraftItem>) {
+    setDraftItems((prev) => prev.map((i) => i.key === key ? { ...i, ...patch } : i));
+  }
+
+  function handleProductSelect(key: string, productId: string) {
+    const p = productMap.get(productId);
+    updateItem(key, {
+      productId,
+      price: p?.salePrice ? Number(p.salePrice) : undefined,
+    });
+  }
+
   async function handleSubmit() {
     if (!clientId) { message.error('Выберите клиента'); return; }
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) { message.error('Добавьте хотя бы один товар'); return; }
 
     let resolvedContractId = contractMode === 'existing' ? contractId : undefined;
-
-    // Create contract first if needed
     if (contractMode === 'new') {
       if (!newContract.number.trim()) { message.error('Укажите номер договора'); return; }
       try {
@@ -139,8 +140,14 @@ export default function DealCreatePage() {
       title: title || undefined,
       clientId,
       contractId: resolvedContractId,
+      paymentType,
+      discount: discount || undefined,
+      dueDate: dueDate ? dueDate.format('YYYY-MM-DD') : undefined,
+      terms: terms || undefined,
       items: validItems.map((i) => ({
         productId: i.productId!,
+        requestedQty: i.requestedQty || undefined,
+        price: i.price || undefined,
         requestComment: i.requestComment || undefined,
       })),
     });
@@ -148,7 +155,6 @@ export default function DealCreatePage() {
 
   const isSaving = contractMut.isPending || createMut.isPending;
 
-  // ──── Render ────
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -160,37 +166,22 @@ export default function DealCreatePage() {
       </div>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-
-        {/* ── Card 1: Основное ── */}
         <Card title="Основное" bordered={false}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
-              <Select
-                showSearch
-                placeholder="Выберите клиента"
-                optionFilterProp="label"
-                style={{ width: '100%' }}
-                value={clientId}
-                onChange={setClientId}
+              <Select showSearch placeholder="Выберите клиента" optionFilterProp="label" style={{ width: '100%' }}
+                value={clientId} onChange={setClientId}
                 options={(clients ?? []).map((c) => ({ label: c.companyName, value: c.id }))}
               />
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Название</Typography.Text>
-              <Input
-                placeholder={`Авто: Сделка от ${dayjs().format('DD.MM.YYYY')}`}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Input placeholder={`Авто: Сделка от ${dayjs().format('DD.MM.YYYY')}`} value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Менеджер</Typography.Text>
               <Typography.Text>{user?.fullName}</Typography.Text>
-            </div>
-            <div>
-              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Дата</Typography.Text>
-              <Typography.Text>{dayjs().format('DD.MM.YYYY')}</Typography.Text>
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
@@ -199,7 +190,6 @@ export default function DealCreatePage() {
           </div>
         </Card>
 
-        {/* ── Card 2: Договор ── */}
         <Card title="Договор" bordered={false}>
           <Segmented
             value={contractMode}
@@ -211,111 +201,135 @@ export default function DealCreatePage() {
             ]}
             style={{ marginBottom: 16 }}
           />
-
           {contractMode === 'existing' && (
-            <Select
-              allowClear
-              placeholder="Выберите договор"
-              style={{ width: '100%', maxWidth: 400 }}
-              disabled={!clientId}
-              value={contractId}
-              onChange={setContractId}
+            <Select allowClear placeholder="Выберите договор" style={{ width: '100%', maxWidth: 400 }}
+              disabled={!clientId} value={contractId} onChange={setContractId}
               options={(contracts ?? []).map((c) => ({ label: c.contractNumber, value: c.id }))}
             />
           )}
-
           {contractMode === 'new' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 600 }}>
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Номер договора *</Typography.Text>
-                <Input
-                  value={newContract.number}
-                  onChange={(e) => setNewContract((p) => ({ ...p, number: e.target.value }))}
-                />
+                <Input value={newContract.number} onChange={(e) => setNewContract((p) => ({ ...p, number: e.target.value }))} />
               </div>
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Дата начала</Typography.Text>
-                <DatePicker
-                  style={{ width: '100%' }}
-                  format="DD.MM.YYYY"
-                  value={newContract.startDate}
-                  onChange={(d) => setNewContract((p) => ({ ...p, startDate: d || dayjs() }))}
-                />
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={newContract.startDate} onChange={(d) => setNewContract((p) => ({ ...p, startDate: d || dayjs() }))} />
               </div>
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Дата окончания</Typography.Text>
-                <DatePicker
-                  style={{ width: '100%' }}
-                  format="DD.MM.YYYY"
-                  value={newContract.endDate}
-                  onChange={(d) => setNewContract((p) => ({ ...p, endDate: d }))}
-                />
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={newContract.endDate} onChange={(d) => setNewContract((p) => ({ ...p, endDate: d }))} />
               </div>
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Примечание</Typography.Text>
-                <Input
-                  value={newContract.notes}
-                  onChange={(e) => setNewContract((p) => ({ ...p, notes: e.target.value }))}
-                />
+                <Input value={newContract.notes} onChange={(e) => setNewContract((p) => ({ ...p, notes: e.target.value }))} />
               </div>
             </div>
           )}
         </Card>
 
-        {/* ── Card 3: Товары (only product + comment) ── */}
         <Card title={`Товары (${draftItems.filter((i) => i.productId).length})`} bordered={false}>
-          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-            Выберите товары и укажите комментарий для склада. Количество и цены указываются после ответа склада.
-          </Typography.Text>
-
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Комментарий / запрос</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 140 }}>Цена</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Комментарий</th>
                 <th style={{ width: 40 }} />
               </tr>
             </thead>
             <tbody>
-              {draftItems.map((item) => (
-                <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '6px 8px', width: '45%' }}>
-                    <Select
-                      showSearch
-                      optionFilterProp="label"
-                      placeholder="Выберите товар"
-                      style={{ width: '100%' }}
-                      value={item.productId}
-                      onChange={(v) => setDraftItems((prev) => prev.map((i) => i.key === item.key ? { ...i, productId: v } : i))}
-                      options={(products ?? []).filter((p: Product) => p.isActive).map((p: Product) => ({
-                        label: `${p.name} (${p.sku}) — ${p.stock} ${p.unit}`,
-                        value: p.id,
-                        disabled: usedProductIds.has(p.id) && p.id !== item.productId,
-                      }))}
-                    />
-                  </td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <Input.TextArea
-                      rows={1}
-                      placeholder="Например: нужно 50 тонн, уточнить наличие"
-                      value={item.requestComment}
-                      onChange={(e) => setDraftItems((prev) => prev.map((i) => i.key === item.key ? { ...i, requestComment: e.target.value } : i))}
-                    />
-                  </td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
-                  </td>
-                </tr>
-              ))}
+              {draftItems.map((item) => {
+                const p = item.productId ? productMap.get(item.productId) : null;
+                const lineTotal = (item.requestedQty ?? 0) * (item.price ?? 0);
+                return (
+                  <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <td style={{ padding: '6px 8px' }}>
+                      <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
+                        value={item.productId}
+                        onChange={(v) => handleProductSelect(item.key, v)}
+                        options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
+                          label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
+                          value: pr.id,
+                          disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
+                        }))}
+                      />
+                      {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {p.stock} {p.unit}</div>}
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <InputNumber min={1} style={{ width: '100%' }} placeholder="Кол"
+                        value={item.requestedQty} onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <InputNumber min={0} style={{ width: '100%' }} placeholder="Цена"
+                        value={item.price} onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 8px', fontWeight: 500 }}>
+                      {lineTotal > 0 ? fmt(lineTotal) : '—'}
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <Input placeholder="Коммент" value={item.requestComment}
+                        onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
           <Button type="dashed" block icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={addItemRow}>
             Добавить позицию
           </Button>
+
+          {subtotal > 0 && (
+            <div style={{ marginTop: 16, textAlign: 'right', fontSize: 14 }}>
+              <div>Подитог: <strong>{fmt(subtotal)}</strong> so'm</div>
+              {discount > 0 && <div>Скидка: <strong>-{fmt(discount)}</strong> so'm</div>}
+              <div style={{ fontSize: 18, marginTop: 4 }}>Итого: <strong>{fmt(finalAmount)}</strong> so'm</div>
+            </div>
+          )}
         </Card>
 
-        {/* ── Card 4: Комментарии ── */}
+        <Card title="Оплата и условия" bordered={false}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Тип оплаты</Typography.Text>
+              <Select style={{ width: '100%' }} value={paymentType} onChange={setPaymentType}
+                options={[
+                  { label: 'Полная оплата', value: 'FULL' },
+                  { label: 'Частичная оплата', value: 'PARTIAL' },
+                  { label: 'В долг', value: 'DEBT' },
+                ]}
+              />
+            </div>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Скидка</Typography.Text>
+              <InputNumber min={0} style={{ width: '100%' }} value={discount} onChange={(v) => setDiscount(v ?? 0)} />
+            </div>
+            {(paymentType === 'PARTIAL' || paymentType === 'DEBT') && (
+              <div>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Срок оплаты</Typography.Text>
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={dueDate} onChange={setDueDate} />
+              </div>
+            )}
+          </div>
+          {(paymentType === 'PARTIAL' || paymentType === 'DEBT') && (
+            <div style={{ marginTop: 12 }}>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Условия</Typography.Text>
+              <Input.TextArea rows={2} value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Условия оплаты..." />
+            </div>
+          )}
+        </Card>
+
         <Card title="Комментарии" bordered={false}>
           <Descriptions>
             <Descriptions.Item>
@@ -323,7 +337,6 @@ export default function DealCreatePage() {
             </Descriptions.Item>
           </Descriptions>
         </Card>
-
       </Space>
     </div>
   );

@@ -11,7 +11,11 @@ export const dealsApi = {
     title?: string;
     clientId: string;
     contractId?: string;
-    items: { productId: string; requestComment?: string }[];
+    paymentType?: 'FULL' | 'PARTIAL' | 'DEBT';
+    dueDate?: string;
+    terms?: string;
+    discount?: number;
+    items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
 

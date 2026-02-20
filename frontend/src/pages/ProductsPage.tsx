@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { Product } from '../types';
@@ -9,6 +10,7 @@ import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
 
 export default function ProductsPage() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [form] = Form.useForm();
@@ -82,7 +84,7 @@ export default function ProductsPage() {
   });
 
   const columns = [
-    { title: 'Название', dataIndex: 'name' },
+    { title: 'Название', dataIndex: 'name', render: (v: string, r: Product) => <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/inventory/products/${r.id}`)}>{v}</Button> },
     { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
     { title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
@@ -129,9 +131,15 @@ export default function ProductsPage() {
     },
     ...(canManageProducts ? [{
       title: '',
-      width: 80,
+      width: 110,
       render: (_: unknown, r: Product) => (
         <Space size={0}>
+          <Button
+            type="text"
+            icon={<BarChartOutlined />}
+            size="small"
+            onClick={() => navigate(`/inventory/products/${r.id}`)}
+          />
           <Button
             type="text"
             icon={<EditOutlined />}
@@ -211,7 +219,7 @@ export default function ProductsPage() {
         columns={columns}
         rowKey="id"
         loading={isLoading}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
       />

@@ -97,6 +97,18 @@ export default function UsersPage() {
     },
   });
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => usersApi.deleteUser(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      message.success('Пользователь удалён');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
+      message.error(msg);
+    },
+  });
+
   const purgeMut = useMutation({
     mutationFn: () => adminApi.purgeData(),
     onSuccess: () => {
@@ -191,7 +203,7 @@ export default function UsersPage() {
     },
     {
       title: 'Действия',
-      width: 160,
+      width: 200,
       render: (_: unknown, r: User) => {
         const isSelf = r.id === currentUser?.id;
         const isTargetSuperAdmin = r.role === 'SUPER_ADMIN';
@@ -212,6 +224,18 @@ export default function UsersPage() {
             {!r.isActive && canToggle && (
               <Popconfirm title="Активировать пользователя?" onConfirm={() => activateMut.mutate(r.id)}>
                 <Button type="text" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} size="small" />
+              </Popconfirm>
+            )}
+            {canToggle && (
+              <Popconfirm
+                title="Удалить пользователя навсегда?"
+                description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
+                onConfirm={() => deleteMut.mutate(r.id)}
+                okText="Удалить"
+                cancelText="Отмена"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="text" danger icon={<DeleteOutlined />} size="small" />
               </Popconfirm>
             )}
           </div>

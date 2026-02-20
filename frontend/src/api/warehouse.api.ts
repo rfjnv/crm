@@ -1,5 +1,5 @@
 import client from './client';
-import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayResponse } from '../types';
+import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayResponse, ProductAnalytics } from '../types';
 
 export const inventoryApi = {
   listProducts: () => client.get<Product[]>('/inventory/products').then((r) => r.data),
@@ -15,6 +15,9 @@ export const inventoryApi = {
 
   getProductMovements: (id: string) =>
     client.get<InventoryMovement[]>(`/inventory/products/${id}/movements`).then((r) => r.data),
+
+  getProductAnalytics: (id: string, periodDays?: number) =>
+    client.get<ProductAnalytics>(`/inventory/products/${id}/analytics`, { params: periodDays ? { periodDays } : {} }).then((r) => r.data),
 
   createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),

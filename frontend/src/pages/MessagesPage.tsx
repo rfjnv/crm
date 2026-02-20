@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Input, Button, Badge, Spin, Empty, theme, Dropdown, Modal, Tag,
+  Typography, Input, Button, Badge, Spin, Empty, theme, Dropdown, Modal, Tag, Image,
 } from 'antd';
 import {
   SendOutlined, PaperClipOutlined, CloseOutlined, CheckOutlined, MoreOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import { conversationsApi } from '../api/conversations.api';
 import { API_URL } from '../api/client';
@@ -44,6 +45,10 @@ function isImageMime(mime: string): boolean {
   return mime.startsWith('image/');
 }
 
+function isVideoMime(mime: string): boolean {
+  return mime.startsWith('video/');
+}
+
 export default function MessagesPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -75,12 +80,6 @@ export default function MessagesPage() {
     queryFn: () => conversationsApi.getMessages(activeType!, undefined, 100),
     enabled: !!activeType && !searchQuery,
     refetchInterval: 3_000,
-  });
-
-  const { data: onlineUsers } = useQuery({
-    queryKey: ['online-users'],
-    queryFn: conversationsApi.getOnlineUsers,
-    refetchInterval: 30_000,
   });
 
   const { data: readStatus } = useQuery({
@@ -158,7 +157,6 @@ export default function MessagesPage() {
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
 
-  const onlineSet = new Set((onlineUsers ?? []).map((u) => u.id));
   const latestRead = readStatus?.latestReadAt ? new Date(readStatus.latestReadAt).getTime() : 0;
 
   // ── Handlers ──
@@ -218,34 +216,59 @@ export default function MessagesPage() {
     }
   }
 
-  // ── Attachment renderer ──
+  // ── Attachment renderer with lightbox & video ──
   function renderAttachments(attachments: MessageAttachmentInfo[], isOwn: boolean) {
+    const images = attachments.filter((a) => isImageMime(a.mimeType));
+    const videos = attachments.filter((a) => isVideoMime(a.mimeType));
+    const files = attachments.filter((a) => !isImageMime(a.mimeType) && !isVideoMime(a.mimeType));
+
     return (
-      <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {attachments.map((att) => {
-          const url = `${API_URL}/conversations/attachments/${att.id}`;
-          if (isImageMime(att.mimeType)) {
-            return (
-              <a key={att.id} href={url} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={url}
+      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Images with lightbox */}
+        {images.length > 0 && (
+          <Image.PreviewGroup>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {images.map((att) => (
+                <Image
+                  key={att.id}
+                  src={`${API_URL}/conversations/attachments/${att.id}`}
                   alt={att.filename}
-                  style={{ maxWidth: 200, maxHeight: 200, borderRadius: 6, display: 'block' }}
+                  style={{ maxWidth: 220, maxHeight: 220, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
+                  preview={{ mask: null }}
                 />
-              </a>
-            );
-          }
-          return (
-            <a
-              key={att.id}
-              href={url}
-              download={att.filename}
-              style={{ color: isOwn ? '#fff' : tk.colorPrimary, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+              ))}
+            </div>
+          </Image.PreviewGroup>
+        )}
+
+        {/* Videos with inline player */}
+        {videos.map((att) => (
+          <div key={att.id} style={{ position: 'relative', maxWidth: 280 }}>
+            <video
+              src={`${API_URL}/conversations/attachments/${att.id}`}
+              controls
+              preload="metadata"
+              style={{ maxWidth: '100%', borderRadius: 8, display: 'block' }}
             >
-              <PaperClipOutlined /> {att.filename} ({formatFileSize(att.size)})
-            </a>
-          );
-        })}
+              <track kind="captions" />
+            </video>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+              <PlayCircleOutlined /> {att.filename} ({formatFileSize(att.size)})
+            </div>
+          </div>
+        ))}
+
+        {/* Other files */}
+        {files.map((att) => (
+          <a
+            key={att.id}
+            href={`${API_URL}/conversations/attachments/${att.id}`}
+            download={att.filename}
+            style={{ color: isOwn ? '#fff' : tk.colorPrimary, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <PaperClipOutlined /> {att.filename} ({formatFileSize(att.size)})
+          </a>
+        ))}
       </div>
     );
   }
@@ -267,7 +290,7 @@ export default function MessagesPage() {
     return (
       <div
         key={msg.id}
-        style={{ display: 'flex', justifyContent: isOwn ? 'flex-end' : 'flex-start', position: 'relative' }}
+        style={{ display: 'flex', justifyContent: isOwn ? 'flex-end' : 'flex-start', marginBottom: 4, position: 'relative' }}
       >
         <div style={{ maxWidth: '65%', position: 'relative' }}>
           {/* Action dropdown */}
@@ -296,17 +319,16 @@ export default function MessagesPage() {
 
           <div
             style={{
-              padding: '8px 12px',
-              borderRadius: isOwn ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+              padding: '10px 14px',
+              borderRadius: isOwn ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
               background: isOwn ? tk.colorPrimary : tk.colorFillSecondary,
               color: isOwn ? '#fff' : tk.colorText,
             }}
           >
             {/* Sender name */}
             {!isOwn && !msg.isDeleted && (
-              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2, opacity: 0.8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 3, color: tk.colorPrimary }}>
                 {msg.sender?.fullName}
-                {onlineSet.has(msg.senderId) && <span style={{ color: '#52c41a', marginLeft: 4 }}>●</span>}
               </div>
             )}
 
@@ -315,8 +337,8 @@ export default function MessagesPage() {
               <div
                 style={{
                   borderLeft: `2px solid ${isOwn ? 'rgba(255,255,255,0.6)' : tk.colorPrimary}`,
-                  padding: '2px 8px',
-                  marginBottom: 4,
+                  padding: '3px 8px',
+                  marginBottom: 6,
                   fontSize: 12,
                   opacity: 0.8,
                   borderRadius: 2,
@@ -334,7 +356,7 @@ export default function MessagesPage() {
             {msg.isDeleted ? (
               <div style={{ fontStyle: 'italic', opacity: 0.6 }}>Сообщение удалено</div>
             ) : (
-              <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+              <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{msg.text}</div>
             )}
 
             {/* Attachments */}
@@ -342,7 +364,7 @@ export default function MessagesPage() {
 
             {/* Deal link */}
             {!msg.isDeleted && msg.deal && (
-              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
                 <Link
                   to={`/deals/${msg.deal.id}`}
                   style={{ color: isOwn ? '#fff' : tk.colorPrimary, textDecoration: 'underline' }}
@@ -353,7 +375,7 @@ export default function MessagesPage() {
             )}
 
             {/* Footer: time + edited + read status */}
-            <div style={{ fontSize: 10, textAlign: 'right', marginTop: 4, opacity: 0.6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 3 }}>
+            <div style={{ fontSize: 10, textAlign: 'right', marginTop: 5, opacity: 0.6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 3 }}>
               {msg.editedAt && <span>(ред.)</span>}
               <span>{dayjs(msg.createdAt).format('HH:mm')}</span>
               {isOwn && !msg.isDeleted && (
@@ -391,11 +413,6 @@ export default function MessagesPage() {
             allowClear
             size="small"
           />
-          {onlineUsers && (
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
-              Онлайн: {onlineUsers.length}
-            </Typography.Text>
-          )}
         </div>
 
         <div style={{ flex: 1, overflow: 'auto' }}>
@@ -453,12 +470,6 @@ export default function MessagesPage() {
             }}
           >
             <Typography.Text strong style={{ fontSize: 16 }}>{CONVERSATION_LABELS[activeType]}</Typography.Text>
-            {onlineUsers && onlineUsers.length > 0 && (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {onlineUsers.map((u) => u.fullName).slice(0, 5).join(', ')}
-                {onlineUsers.length > 5 && ` +${onlineUsers.length - 5}`}
-              </Typography.Text>
-            )}
           </div>
         )}
 
@@ -466,7 +477,7 @@ export default function MessagesPage() {
         <div
           style={{
             flex: 1, overflow: 'auto', padding: '16px 20px',
-            display: 'flex', flexDirection: 'column', gap: 6,
+            display: 'flex', flexDirection: 'column', gap: 2,
           }}
         >
           {/* Search results mode */}
@@ -503,7 +514,7 @@ export default function MessagesPage() {
               {dateGroups.map((group) => (
                 <div key={group.date}>
                   {/* Date separator */}
-                  <div style={{ display: 'flex', alignItems: 'center', margin: '8px 0', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', margin: '12px 0', gap: 12 }}>
                     <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />
                     <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{group.label}</Typography.Text>
                     <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />

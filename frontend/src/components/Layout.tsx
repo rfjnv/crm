@@ -25,6 +25,7 @@ import {
   MessageOutlined,
   WalletOutlined,
   ProjectOutlined,
+  SolutionOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -99,6 +100,13 @@ export default function Layout() {
         key: '/clients',
         icon: <TeamOutlined />,
         label: <Link to="/clients">Клиенты</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT')
+      ? [{
+        key: '/contracts',
+        icon: <SolutionOutlined />,
+        label: <Link to="/contracts">Договоры</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER')

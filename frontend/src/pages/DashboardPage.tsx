@@ -9,7 +9,7 @@ import {
   ArrowDownOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +25,7 @@ export default function DashboardPage() {
   });
   const user = useAuthStore((s) => s.user);
   const { token: themeToken } = theme.useToken();
+  const navigate = useNavigate();
 
   const role = user?.role as UserRole | undefined;
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -76,61 +77,69 @@ export default function DashboardPage() {
 
         {isAdmin ? (
           <Col xs={24} sm={12} lg={6}>
-            <Card bordered={false}>
-              <Statistic
-                title="Закрыто сделок"
-                value={data.closedDealsToday}
-                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-              <div style={{ marginTop: 4, fontSize: 12 }}>
-                {closedDealsDelta >= 0 ? (
-                  <span style={{ color: '#52c41a' }}>
-                    <ArrowUpOutlined /> +{closedDealsDelta}
-                  </span>
-                ) : (
-                  <span style={{ color: '#ff4d4f' }}>
-                    <ArrowDownOutlined /> {closedDealsDelta}
-                  </span>
-                )}
-                <span style={{ color: themeToken.colorTextTertiary, marginLeft: 4 }}>vs вчера</span>
-              </div>
-            </Card>
+            <Link to="/deals/closed" style={{ display: 'block' }}>
+              <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
+                <Statistic
+                  title="Закрыто сделок"
+                  value={data.closedDealsToday}
+                  prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  {closedDealsDelta >= 0 ? (
+                    <span style={{ color: '#52c41a' }}>
+                      <ArrowUpOutlined /> +{closedDealsDelta}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#ff4d4f' }}>
+                      <ArrowDownOutlined /> {closedDealsDelta}
+                    </span>
+                  )}
+                  <span style={{ color: themeToken.colorTextTertiary, marginLeft: 4 }}>vs вчера</span>
+                </div>
+              </Card>
+            </Link>
           </Col>
         ) : (
           <Col xs={24} sm={12} lg={6}>
-            <Card bordered={false}>
-              <Statistic
-                title="Выручка за месяц"
-                value={data.revenueMonth}
-                formatter={(val) => formatUZS(val as number)}
-                prefix={<RiseOutlined style={{ color: '#1677ff' }} />}
-                valueStyle={{ color: '#1677ff' }}
-              />
-            </Card>
+            <Link to="/analytics" style={{ display: 'block' }}>
+              <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
+                <Statistic
+                  title="Выручка за месяц"
+                  value={data.revenueMonth}
+                  formatter={(val) => formatUZS(val as number)}
+                  prefix={<RiseOutlined style={{ color: '#1677ff' }} />}
+                  valueStyle={{ color: '#1677ff' }}
+                />
+              </Card>
+            </Link>
           </Col>
         )}
 
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Активные сделки"
-              value={data.activeDealsCount}
-              prefix={<FundOutlined style={{ color: '#fa8c16' }} />}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
+          <Link to="/deals" style={{ display: 'block' }}>
+            <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
+              <Statistic
+                title="Активные сделки"
+                value={data.activeDealsCount}
+                prefix={<FundOutlined style={{ color: '#fa8c16' }} />}
+                valueStyle={{ color: '#fa8c16' }}
+              />
+            </Card>
+          </Link>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false}>
-            <Statistic
-              title="Общий долг"
-              value={data.totalDebt}
-              formatter={(val) => formatUZS(val as number)}
-              prefix={<WarningOutlined style={{ color: '#ff4d4f' }} />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
+          <Link to="/finance/debts" style={{ display: 'block' }}>
+            <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
+              <Statistic
+                title="Общий долг"
+                value={data.totalDebt}
+                formatter={(val) => formatUZS(val as number)}
+                prefix={<WarningOutlined style={{ color: '#ff4d4f' }} />}
+                valueStyle={{ color: '#ff4d4f' }}
+              />
+            </Card>
+          </Link>
         </Col>
       </Row>
 
@@ -161,6 +170,7 @@ export default function DashboardPage() {
                 data={(data.dealsByStatusCounts || []).map((d) => ({
                   status: (statusConfig[d.status as DealStatus]?.label) || d.status,
                   count: d.count,
+                  rawStatus: d.status,
                 }))}
                 xField="count"
                 yField="status"
@@ -168,6 +178,12 @@ export default function DashboardPage() {
                 colorField="status"
                 axis={{ y: { labelFormatter: (v: string) => v.length > 16 ? v.slice(0, 14) + '...' : v } }}
                 tooltip={{ items: [{ channel: 'x', name: 'Сделок' }] }}
+                onReady={(plot) => {
+                  plot.chart.on('element:click', (evt: { data?: { data?: { rawStatus?: string } } }) => {
+                    const status = evt?.data?.data?.rawStatus;
+                    if (status) navigate(`/deals?status=${status}`);
+                  });
+                }}
               />
             </Card>
           </Col>
@@ -198,6 +214,7 @@ export default function DashboardPage() {
             size="small"
             bordered={false}
             rowClassName={(r) => r.issue === 'zero' ? 'stock-row-zero' : 'stock-row-low'}
+            onRow={(r) => ({ onClick: () => navigate(`/inventory/products/${r.id}`), style: { cursor: 'pointer' } })}
             columns={[
               { title: 'Товар', dataIndex: 'name' },
               { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme } from 'antd';
+import { Link, useNavigate } from 'react-router-dom';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -9,6 +9,7 @@ import {
   FallOutlined,
   WarningOutlined,
   StockOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { Pie, Bar, Area } from '@ant-design/charts';
 import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
@@ -37,9 +38,18 @@ const periodOptions = [
   { label: 'Год', value: 'year' },
 ];
 
+function FormulaHint({ text }: { text: string }) {
+  return (
+    <Tooltip title={text}>
+      <InfoCircleOutlined style={{ marginLeft: 4, fontSize: 12, opacity: 0.45 }} />
+    </Tooltip>
+  );
+}
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
   const { token } = theme.useToken();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ['analytics', period],
@@ -63,16 +73,13 @@ export default function AnalyticsPage() {
   const pieColorDomain = pieData.map((d) => d.type);
   const pieColorRange = pieData.map((d) => d.color);
 
-  // Smooth revenue chart data with rolling average for realistic appearance
-  const MONTH_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  const MONTH_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
   const buildRevenueChartData = (
     raw: { day: string; total: number }[],
     p: AnalyticsPeriod,
   ): { day: string; total: number }[] => {
     if (raw.length === 0) return [];
-
-    // 1. Fill all days in range
     const map = new Map(raw.map((d) => [d.day, d.total]));
     const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
     const startDate = new Date(sorted[0].day + 'T12:00:00Z');
@@ -82,8 +89,6 @@ export default function AnalyticsPage() {
       const key = dt.toISOString().slice(0, 10);
       filled.push({ day: key, total: map.get(key) ?? 0 });
     }
-
-    // 2. Rolling average to smooth out zero-value gaps
     const windowMap: Record<string, number> = { week: 1, month: 3, quarter: 5, year: 7 };
     const win = windowMap[p] || 3;
     const smoothed = filled.map((item, i) => {
@@ -94,8 +99,6 @@ export default function AnalyticsPage() {
       const avg = slice.reduce((s, d) => s + d.total, 0) / slice.length;
       return { ...item, total: Math.round(avg) };
     });
-
-    // 3. Format dates in Russian
     return smoothed.map((d) => {
       const parts = d.day.split('-');
       const dayNum = parseInt(parts[2]);
@@ -109,17 +112,19 @@ export default function AnalyticsPage() {
   const clientBarData = sales.topClients.map((c) => ({
     name: c.companyName,
     value: c.totalRevenue,
+    clientId: c.clientId,
   }));
 
   const productBarData = sales.topProducts.map((p) => ({
     name: p.name,
     value: p.totalQuantity,
+    productId: p.productId,
   }));
 
-  // ──── Warehouse tab data ────
   const topSellingBarData = warehouse.topSelling.map((p) => ({
     name: p.name,
     value: p.totalSold,
+    productId: p.productId,
   }));
 
   const salesTab = (
@@ -127,25 +132,49 @@ export default function AnalyticsPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} size="small">
-            <Statistic title="Общая выручка" value={sales.totalRevenue} formatter={(v) => formatUZS(v as number)} prefix={<DollarOutlined />} valueStyle={{ color: '#52c41a' }} />
+            <Statistic
+              title={<span>Общая выручка<FormulaHint text="Сумма оплат по закрытым сделкам за период" /></span>}
+              value={sales.totalRevenue}
+              formatter={(v) => formatUZS(v as number)}
+              prefix={<DollarOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} size="small">
-            <Statistic title="Средний чек" value={sales.avgDealAmount} formatter={(v) => formatUZS(v as number)} prefix={<RiseOutlined />} valueStyle={{ color: '#1677ff' }} />
+            <Statistic
+              title={<span>Средний чек<FormulaHint text="Общая выручка ÷ Кол-во завершённых сделок" /></span>}
+              value={sales.avgDealAmount}
+              formatter={(v) => formatUZS(v as number)}
+              prefix={<RiseOutlined />}
+              valueStyle={{ color: '#1677ff' }}
+            />
           </Card>
         </Col>
         {sales.conversionNewToCompleted !== null && (
           <Col xs={24} sm={12} lg={6}>
             <Card bordered={false} size="small">
-              <Statistic title="Конверсия" value={(sales.conversionNewToCompleted * 100).toFixed(1)} suffix="%" prefix={<PercentageOutlined />} valueStyle={{ color: '#52c41a' }} />
+              <Statistic
+                title={<span>Конверсия<FormulaHint text="Завершённых сделок ÷ Всего созданных × 100%" /></span>}
+                value={(sales.conversionNewToCompleted * 100).toFixed(1)}
+                suffix="%"
+                prefix={<PercentageOutlined />}
+                valueStyle={{ color: '#52c41a' }}
+              />
             </Card>
           </Col>
         )}
         {sales.cancellationRate !== null && (
           <Col xs={24} sm={12} lg={6}>
             <Card bordered={false} size="small">
-              <Statistic title="Отмены" value={(sales.cancellationRate * 100).toFixed(1)} suffix="%" prefix={<FallOutlined />} valueStyle={{ color: '#ff4d4f' }} />
+              <Statistic
+                title={<span>Отмены<FormulaHint text="Отменённых сделок ÷ Всего созданных × 100%" /></span>}
+                value={(sales.cancellationRate * 100).toFixed(1)}
+                suffix="%"
+                prefix={<FallOutlined />}
+                valueStyle={{ color: '#ff4d4f' }}
+              />
             </Card>
           </Col>
         )}
@@ -213,19 +242,30 @@ export default function AnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Топ 5 клиентов по выручке" bordered={false}>
             {clientBarData.length > 0 ? (
-              <Bar
-                data={clientBarData}
-                xField="name"
-                yField="value"
-                height={300}
-                colorField="name"
-                axis={{
-                  x: { labelFill: token.colorTextSecondary },
-                  y: { labelFormatter: (v: number) => formatUZS(v), labelFill: token.colorTextSecondary },
-                }}
-                tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
-                theme={isDark ? 'classicDark' : 'classic'}
-              />
+              <>
+                <Bar
+                  data={clientBarData}
+                  xField="name"
+                  yField="value"
+                  height={300}
+                  colorField="name"
+                  axis={{
+                    x: { labelFill: token.colorTextSecondary },
+                    y: { labelFormatter: (v: number) => formatUZS(v), labelFill: token.colorTextSecondary },
+                  }}
+                  tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
+                  theme={isDark ? 'classicDark' : 'classic'}
+                  onReady={(plot) => {
+                    plot.chart.on('element:click', (evt: { data?: { data?: { clientId?: string } } }) => {
+                      const id = evt?.data?.data?.clientId;
+                      if (id) navigate(`/clients/${id}`);
+                    });
+                  }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: token.colorTextTertiary }}>
+                  Нажмите на столбец для перехода к клиенту
+                </div>
+              </>
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
             )}
@@ -234,19 +274,30 @@ export default function AnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Топ 5 товаров по продажам" bordered={false}>
             {productBarData.length > 0 ? (
-              <Bar
-                data={productBarData}
-                xField="name"
-                yField="value"
-                height={300}
-                colorField="name"
-                axis={{
-                  x: { labelFill: token.colorTextSecondary },
-                  y: { labelFill: token.colorTextSecondary },
-                }}
-                tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
-                theme={isDark ? 'classicDark' : 'classic'}
-              />
+              <>
+                <Bar
+                  data={productBarData}
+                  xField="name"
+                  yField="value"
+                  height={300}
+                  colorField="name"
+                  axis={{
+                    x: { labelFill: token.colorTextSecondary },
+                    y: { labelFill: token.colorTextSecondary },
+                  }}
+                  tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
+                  theme={isDark ? 'classicDark' : 'classic'}
+                  onReady={(plot) => {
+                    plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
+                      const id = evt?.data?.data?.productId;
+                      if (id) navigate(`/inventory/products/${id}`);
+                    });
+                  }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: token.colorTextTertiary }}>
+                  Нажмите на столбец для перехода к товару
+                </div>
+              </>
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
             )}
@@ -260,18 +311,38 @@ export default function AnalyticsPage() {
     <div>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={8}>
+          <Link to="/finance/debts" style={{ display: 'block' }}>
+            <Card bordered={false} hoverable>
+              <Statistic
+                title={<span>Общий долг<FormulaHint text="Сумма (amount − paidAmount) по всем сделкам со статусом оплаты UNPAID или PARTIAL" /></span>}
+                value={finance.totalDebt}
+                formatter={(v) => formatUZS(v as number)}
+                prefix={<WarningOutlined />}
+                valueStyle={{ color: '#ff4d4f' }}
+              />
+            </Card>
+          </Link>
+        </Col>
+        <Col xs={24} sm={8}>
           <Card bordered={false}>
-            <Statistic title="Общий долг" value={finance.totalDebt} formatter={(v) => formatUZS(v as number)} prefix={<WarningOutlined />} valueStyle={{ color: '#ff4d4f' }} />
+            <Statistic
+              title={<span>Реальный оборот<FormulaHint text="Сумма всех внесённых оплат (payments.amount) за период" /></span>}
+              value={finance.realTurnover}
+              formatter={(v) => formatUZS(v as number)}
+              prefix={<DollarOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
           <Card bordered={false}>
-            <Statistic title="Реальный оборот" value={finance.realTurnover} formatter={(v) => formatUZS(v as number)} prefix={<DollarOutlined />} valueStyle={{ color: '#52c41a' }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false}>
-            <Statistic title="Бумажный оборот" value={finance.paperTurnover} formatter={(v) => formatUZS(v as number)} prefix={<StockOutlined />} valueStyle={{ color: '#1677ff' }} />
+            <Statistic
+              title={<span>Бумажный оборот<FormulaHint text="Сумма amount (суммы) всех закрытых сделок за период" /></span>}
+              value={finance.paperTurnover}
+              formatter={(v) => formatUZS(v as number)}
+              prefix={<StockOutlined />}
+              valueStyle={{ color: '#1677ff' }}
+            />
           </Card>
         </Col>
       </Row>
@@ -287,6 +358,7 @@ export default function AnalyticsPage() {
                 rowKey="dealId"
                 pagination={false}
                 size="small"
+                onRow={(r) => ({ onClick: () => navigate(`/deals/${r.dealId}`), style: { cursor: 'pointer' } })}
                 columns={[
                   { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.dealId}`}>{v}</Link> },
                   { title: 'Клиент', dataIndex: 'clientName' },
@@ -307,8 +379,9 @@ export default function AnalyticsPage() {
                 rowKey="clientId"
                 pagination={false}
                 size="small"
+                onRow={(r) => ({ onClick: () => navigate(`/clients/${r.clientId}`), style: { cursor: 'pointer' } })}
                 columns={[
-                  { title: 'Клиент', dataIndex: 'companyName' },
+                  { title: 'Клиент', dataIndex: 'companyName', render: (v: string, r) => <Link to={`/clients/${r.clientId}`}>{v}</Link> },
                   { title: 'Общий долг', dataIndex: 'totalDebt', align: 'right' as const, render: (v: number) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(v)}</span> },
                 ]}
               />
@@ -324,14 +397,29 @@ export default function AnalyticsPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={8}>
           <Card bordered={false}>
-            <Statistic title="Замороженный капитал" value={warehouse.frozenCapital} formatter={(v) => formatUZS(v as number)} valueStyle={{ color: '#722ed1' }} />
+            <Statistic
+              title={<span>Замороженный капитал<FormulaHint text="Сумма (stock × purchasePrice) по всем товарам с остатком > 0" /></span>}
+              value={warehouse.frozenCapital}
+              formatter={(v) => formatUZS(v as number)}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card bordered={false}>
+            <Statistic title="Ниже минимума" value={warehouse.belowMinStock.length} valueStyle={{ color: warehouse.belowMinStock.length > 0 ? '#ff4d4f' : '#52c41a' }} suffix="товаров" />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card bordered={false}>
+            <Statistic title="Мёртвый остаток" value={warehouse.deadStock.length} valueStyle={{ color: warehouse.deadStock.length > 0 ? '#fa8c16' : '#52c41a' }} suffix="товаров" />
           </Card>
         </Col>
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title="Ниже минимального остатка" bordered={false}>
+          <Card title={<span>Ниже минимального остатка<FormulaHint text="Товары где stock < minStock" /></span>} bordered={false}>
             {warehouse.belowMinStock.length === 0 ? (
               <Typography.Text type="secondary">Все товары в норме</Typography.Text>
             ) : (
@@ -340,6 +428,7 @@ export default function AnalyticsPage() {
                 rowKey="id"
                 pagination={false}
                 size="small"
+                onRow={(r) => ({ onClick: () => navigate(`/inventory/products/${r.id}`), style: { cursor: 'pointer' } })}
                 columns={[
                   { title: 'Товар', dataIndex: 'name' },
                   { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
@@ -351,7 +440,7 @@ export default function AnalyticsPage() {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="Мёртвый остаток (>30 дней)" bordered={false}>
+          <Card title={<span>Мёртвый остаток (&gt;30 дней)<FormulaHint text="Товары с остатком > 0, последний расход более 30 дней назад" /></span>} bordered={false}>
             {warehouse.deadStock.length === 0 ? (
               <Typography.Text type="secondary">Нет мёртвого остатка</Typography.Text>
             ) : (
@@ -360,6 +449,7 @@ export default function AnalyticsPage() {
                 rowKey="id"
                 pagination={false}
                 size="small"
+                onRow={(r) => ({ onClick: () => navigate(`/inventory/products/${r.id}`), style: { cursor: 'pointer' } })}
                 columns={[
                   { title: 'Товар', dataIndex: 'name' },
                   { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
@@ -374,19 +464,30 @@ export default function AnalyticsPage() {
 
       <Card title="Топ продаваемых товаров" bordered={false} style={{ marginTop: 16 }}>
         {topSellingBarData.length > 0 ? (
-          <Bar
-            data={topSellingBarData}
-            xField="name"
-            yField="value"
-            height={300}
-            colorField="name"
-            axis={{
-              x: { labelFill: token.colorTextSecondary },
-              y: { labelFill: token.colorTextSecondary },
-            }}
-            tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
-            theme={isDark ? 'classicDark' : 'classic'}
-          />
+          <>
+            <Bar
+              data={topSellingBarData}
+              xField="name"
+              yField="value"
+              height={300}
+              colorField="name"
+              axis={{
+                x: { labelFill: token.colorTextSecondary },
+                y: { labelFill: token.colorTextSecondary },
+              }}
+              tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
+              theme={isDark ? 'classicDark' : 'classic'}
+              onReady={(plot) => {
+                plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
+                  const id = evt?.data?.data?.productId;
+                  if (id) navigate(`/inventory/products/${id}`);
+                });
+              }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, color: token.colorTextTertiary }}>
+              Нажмите на столбец для перехода к товару
+            </div>
+          </>
         ) : (
           <Typography.Text type="secondary">Нет данных</Typography.Text>
         )}
@@ -405,62 +506,106 @@ export default function AnalyticsPage() {
           { title: 'Менеджер', dataIndex: 'fullName' },
           { title: 'Завершённых', dataIndex: 'completedCount', align: 'right' as const },
           { title: 'Общая сумма', dataIndex: 'totalRevenue', align: 'right' as const, render: (v: number) => formatUZS(v) },
-          { title: 'Средний чек', dataIndex: 'avgDealAmount', align: 'right' as const, render: (v: number) => formatUZS(v) },
-          { title: 'Конверсия', dataIndex: 'conversionRate', align: 'right' as const, render: (v: number) => `${(v * 100).toFixed(1)}%` },
-          { title: 'Ср. время (дн.)', dataIndex: 'avgDealDays', align: 'right' as const, render: (v: number) => v.toFixed(1) },
+          {
+            title: <span>Средний чек<FormulaHint text="Общая сумма ÷ Кол-во завершённых сделок" /></span>,
+            dataIndex: 'avgDealAmount',
+            align: 'right' as const,
+            render: (v: number) => formatUZS(v),
+          },
+          {
+            title: <span>Конверсия<FormulaHint text="Завершённых ÷ Всего созданных × 100%" /></span>,
+            dataIndex: 'conversionRate',
+            align: 'right' as const,
+            render: (v: number) => {
+              const pct = v * 100;
+              return <span style={{ color: pct >= 50 ? '#52c41a' : pct >= 25 ? '#fa8c16' : '#ff4d4f' }}>{pct.toFixed(1)}%</span>;
+            },
+          },
+          {
+            title: <span>Ср. время<FormulaHint text="Среднее кол-во дней от создания до закрытия сделки" /></span>,
+            dataIndex: 'avgDealDays',
+            align: 'right' as const,
+            render: (v: number) => `${v.toFixed(1)} дн.`,
+          },
         ]}
         locale={{ emptyText: 'Нет данных по менеджерам' }}
       />
     </Card>
   );
 
-  // ──── Profitability tab ────
   const expensePieData = (profitability?.expensesByCategory ?? []).map((e) => ({
     type: e.category,
     value: e.total,
   }));
 
+  const grossMargin = profitability?.revenue ? ((profitability.grossProfit / profitability.revenue) * 100) : 0;
+  const netMargin = profitability?.revenue ? ((profitability.netProfit / profitability.revenue) * 100) : 0;
+
   const profitabilityTab = (
     <div>
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card bordered={false} size="small">
             <Statistic
-              title="Выручка"
+              title={<span>Выручка<FormulaHint text="Сумма оплат по закрытым сделкам" /></span>}
               value={profitability?.revenue ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card bordered={false} size="small">
             <Statistic
-              title="Себестоимость"
+              title={<span>Себестоимость<FormulaHint text="Сумма (purchasePrice × qty) по проданным товарам" /></span>}
               value={profitability?.cogs ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: '#fa8c16' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card bordered={false} size="small">
             <Statistic
-              title="Валовая прибыль"
+              title={<span>Вал. прибыль<FormulaHint text="Выручка − Себестоимость" /></span>}
               value={profitability?.grossProfit ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: '#1677ff' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card bordered={false} size="small">
             <Statistic
-              title="Чистая прибыль"
+              title={<span>Расходы<FormulaHint text="Сумма всех расходов из раздела Расходы" /></span>}
+              value={profitability?.expenses ?? 0}
+              formatter={(v) => formatUZS(v as number)}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={4}>
+          <Card bordered={false} size="small">
+            <Statistic
+              title={<span>Чистая прибыль<FormulaHint text="Валовая прибыль − Расходы" /></span>}
               value={profitability?.netProfit ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: (profitability?.netProfit ?? 0) >= 0 ? '#52c41a' : '#ff4d4f' }}
             />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={4}>
+          <Card bordered={false} size="small">
+            <Statistic
+              title={<span>Маржа<FormulaHint text="Чистая прибыль ÷ Выручка × 100%" /></span>}
+              value={netMargin}
+              precision={1}
+              suffix="%"
+              valueStyle={{ color: netMargin >= 0 ? '#52c41a' : '#ff4d4f' }}
+            />
+            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>
+              Валовая: {grossMargin.toFixed(1)}%
+            </div>
           </Card>
         </Col>
       </Row>

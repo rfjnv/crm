@@ -143,6 +143,58 @@ export class UsersService {
     return updated;
   }
 
+  async deleteUser(id: string, performedBy: string) {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new AppError(404, 'Пользователь не найден');
+    }
+
+    if (id === performedBy) {
+      throw new AppError(400, 'Нельзя удалить самого себя');
+    }
+
+    // Protect SUPER_ADMIN
+    if (user.role === 'SUPER_ADMIN') {
+      const performer = await prisma.user.findUnique({ where: { id: performedBy }, select: { role: true } });
+      if (performer?.role !== 'SUPER_ADMIN') {
+        throw new AppError(403, 'Только суперадминистратор может удалить суперадминистратора');
+      }
+      const superAdminCount = await prisma.user.count({ where: { role: 'SUPER_ADMIN' } });
+      if (superAdminCount <= 1) {
+        throw new AppError(400, 'Нельзя удалить последнего суперадминистратора');
+      }
+    }
+
+    // Check for related data
+    const [dealsCount, clientsCount] = await Promise.all([
+      prisma.deal.count({ where: { managerId: id } }),
+      prisma.client.count({ where: { managerId: id } }),
+    ]);
+
+    if (dealsCount > 0 || clientsCount > 0) {
+      throw new AppError(400,
+        `Невозможно удалить: у пользователя есть ${dealsCount} сделок и ${clientsCount} клиентов. Используйте деактивацию.`,
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { userId: id } });
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.conversationRead.deleteMany({ where: { userId: id } });
+      await tx.user.delete({ where: { id } });
+    });
+
+    await auditLog({
+      userId: performedBy,
+      action: 'DELETE',
+      entityType: 'user',
+      entityId: id,
+      before: { login: user.login, fullName: user.fullName, role: user.role },
+    });
+
+    return { success: true };
+  }
+
   async activate(id: string, performedBy: string) {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {

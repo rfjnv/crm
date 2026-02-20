@@ -10,8 +10,14 @@ export const createDealDto = z.object({
   title: z.string().optional().default(''),
   clientId: z.string().uuid('Некорректный ID клиента'),
   contractId: z.string().uuid('Некорректный ID договора').optional(),
+  paymentType: z.enum(['FULL', 'PARTIAL', 'DEBT']).default('FULL'),
+  dueDate: z.string().optional(),
+  terms: z.string().optional(),
+  discount: z.number().min(0).default(0),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
+    requestedQty: z.number().positive('Количество должно быть положительным').optional(),
+    price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
     requestComment: z.string().optional(),
   })).min(1, 'Добавьте хотя бы один товар'),
 });

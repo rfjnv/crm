@@ -14,10 +14,10 @@ import {
 
 const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   NEW: ['IN_PROGRESS', 'CANCELED'],
-  IN_PROGRESS: ['WAITING_STOCK_CONFIRMATION', 'CANCELED'],
+  IN_PROGRESS: ['WAITING_STOCK_CONFIRMATION', 'READY_FOR_SHIPMENT', 'CANCELED'],
   WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'CANCELED'],
-  STOCK_CONFIRMED: ['FINANCE_APPROVED', 'REJECTED', 'CANCELED'],
-  FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
+  STOCK_CONFIRMED: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'REJECTED', 'CANCELED'],
+  FINANCE_APPROVED: ['ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'CANCELED'],
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'CANCELED'],
   READY_FOR_SHIPMENT: ['SHIPPED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
@@ -33,7 +33,7 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   STOCK_CONFIRMED: ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   FINANCE_APPROVED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
   ADMIN_APPROVED: ['ADMIN', 'SUPER_ADMIN'],
-  READY_FOR_SHIPMENT: ['ADMIN', 'SUPER_ADMIN'],
+  READY_FOR_SHIPMENT: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   SHIPPED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   SHIPMENT_ON_HOLD: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   CLOSED: ['ADMIN', 'SUPER_ADMIN'],
@@ -135,28 +135,47 @@ export class DealsService {
     // Auto-generate title
     const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU')}`;
 
-    // Transaction: create deal + items (no amount calculation — amount stays 0)
+    // Calculate amount from items if qty+price provided
+    const subtotal = dto.items.reduce(
+      (s, i) => s + (i.requestedQty ?? 0) * (i.price ?? 0),
+      0,
+    );
+    const discount = dto.discount || 0;
+    const finalAmount = Math.max(0, subtotal - discount);
+
+    // Payment info
+    const paymentType = dto.paymentType || 'FULL';
+    const paidAmount = paymentType === 'FULL' && finalAmount > 0 ? finalAmount : 0;
+
+    let paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID' = 'UNPAID';
+    if (paidAmount >= finalAmount && finalAmount > 0) paymentStatus = 'PAID';
+    else if (paidAmount > 0) paymentStatus = 'PARTIAL';
+
+    // Transaction: create deal + items
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
         data: {
           title,
-          amount: 0,
-          discount: 0,
+          amount: finalAmount,
+          discount,
           clientId: dto.clientId,
           managerId: user.userId,
           contractId: dto.contractId,
-          paymentType: 'FULL',
-          paidAmount: 0,
-          paymentStatus: 'UNPAID',
+          paymentType,
+          paidAmount,
+          paymentStatus,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          terms: dto.terms,
         },
       });
 
-      // Create all items (only productId + requestComment)
       for (const item of dto.items) {
         await tx.dealItem.create({
           data: {
             dealId: created.id,
             productId: item.productId,
+            requestedQty: item.requestedQty ?? null,
+            price: item.price ?? null,
             requestComment: item.requestComment,
           },
         });

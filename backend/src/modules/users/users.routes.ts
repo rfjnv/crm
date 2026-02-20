@@ -95,5 +95,6 @@ router.post('/', authorize('ADMIN', 'SUPER_ADMIN'), validate(createUserDto), asy
 router.patch('/:id', authorize('ADMIN', 'SUPER_ADMIN'), validate(updateUserDto), asyncHandler(usersController.update.bind(usersController)));
 router.patch('/:id/activate', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.activate.bind(usersController)));
 router.delete('/:id', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.deactivate.bind(usersController)));
+router.delete('/:id/permanent', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.deleteUser.bind(usersController)));
 
 export default router;

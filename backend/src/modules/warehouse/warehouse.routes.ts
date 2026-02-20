@@ -16,6 +16,7 @@ router.post('/products', requirePermission('manage_products'), validate(createPr
 router.patch('/products/:id', requirePermission('manage_products'), validate(updateProductDto), asyncHandler(warehouseController.updateProduct.bind(warehouseController)));
 router.delete('/products/:id', requirePermission('manage_products'), asyncHandler(warehouseController.deleteProduct.bind(warehouseController)));
 router.get('/products/:id/movements', asyncHandler(warehouseController.getProductMovements.bind(warehouseController)));
+router.get('/products/:id/analytics', asyncHandler(warehouseController.getProductAnalytics.bind(warehouseController)));
 
 // Movements — ADMIN only for direct creation
 router.post('/movements', authorize('ADMIN'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));
