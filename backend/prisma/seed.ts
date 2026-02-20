@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const ALL_PERMISSIONS = [
   'manage_users', 'view_all_deals', 'manage_deals', 'manage_leads',
   'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve',
-  'admin_approve', 'confirm_shipment', 'manage_inventory', 'view_all_clients',
+  'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients',
 ];
 
 function daysAgo(n: number): Date {
@@ -102,6 +102,14 @@ async function main() {
     ),
   );
   console.log(`Products: ${products.length} created/found`);
+
+  // ========== CHECK IF DEMO DATA ALREADY EXISTS ==========
+  const existingContract = await prisma.contract.findUnique({ where: { contractNumber: 'CTR-2025-001' } });
+  if (existingContract) {
+    console.log('Demo data already exists, skipping...');
+    console.log('\n--- Seed complete (skipped existing demo data) ---');
+    return;
+  }
 
   // ========== CLIENTS ==========
   const clientsData = [
