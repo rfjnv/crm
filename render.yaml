@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install --include=dev && npx prisma generate && npx prisma db push --skip-generate && npm run build && npx tsx prisma/seed.ts && npx tsx prisma/import-products.ts
+    buildCommand: npm install --include=dev && npx prisma generate && npx prisma db push --skip-generate && npm run build && npx tsx prisma/seed.ts && npx tsx prisma/import-products.ts && npx tsx prisma/import-clients.ts
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:
