@@ -12,6 +12,7 @@ const permissionValues = [
   'admin_approve',
   'confirm_shipment',
   'manage_inventory',
+  'manage_products',
   'view_all_clients',
 ] as const;
 

@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   ADMIN_APPROVE: 'admin_approve',
   CONFIRM_SHIPMENT: 'confirm_shipment',
   MANAGE_INVENTORY: 'manage_inventory',
+  MANAGE_PRODUCTS: 'manage_products',
   VIEW_ALL_CLIENTS: 'view_all_clients',
 } as const;
 
