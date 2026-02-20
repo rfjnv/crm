@@ -13,7 +13,7 @@ import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
 import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
-import type { ContractListItem, ContractDetail } from '../types';
+import type { ContractListItem, ContractDetail, DealStatus } from '../types';
 import DealStatusTag from '../components/DealStatusTag';
 
 function fmt(n: number) {
@@ -433,13 +433,13 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
             {
               title: 'Сделка',
               dataIndex: 'title',
-              render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || `Сделка от ${dayjs(r.createdAt).format('DD.MM.YYYY')}`}</Link>,
+              render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link>,
             },
             {
               title: 'Статус',
               dataIndex: 'status',
               width: 140,
-              render: (v: string) => <DealStatusTag status={v} />,
+              render: (v: DealStatus) => <DealStatusTag status={v} />,
             },
             {
               title: 'Сумма',

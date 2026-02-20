@@ -247,7 +247,7 @@ export default function ProductDetailPage() {
               {
                 title: 'Сделка',
                 dataIndex: ['deal', 'title'],
-                render: (v: string | undefined, r: { deal?: { id: string; title: string } | null }) =>
+                render: (_v: string | undefined, r: { deal?: { id: string; title: string } | null }) =>
                   r.deal ? <Link to={`/deals/${r.deal.id}`}>{r.deal.title || r.deal.id.slice(0, 8)}</Link> : '—',
               },
               {
