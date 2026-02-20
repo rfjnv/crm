@@ -10,9 +10,35 @@ const ALL_PERMISSIONS = [
 ];
 
 async function main() {
-  const hash = await bcrypt.hash('password123', 12);
+  // ========== CLEANUP OLD DATA (everything except users) ==========
+  console.log('Cleaning old data...');
+
+  await prisma.messageAttachment.deleteMany();
+  await prisma.taskAttachment.deleteMany();
+  await prisma.conversationRead.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.dealComment.deleteMany();
+  await prisma.dealItem.deleteMany();
+  await prisma.shipment.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.notificationBatch.deleteMany();
+  await prisma.inventoryMovement.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.expense.deleteMany();
+  await prisma.deal.deleteMany();
+  await prisma.dailyClosing.deleteMany();
+  await prisma.contract.deleteMany();
+  await prisma.client.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.session.deleteMany();
+
+  console.log('Old data cleaned.');
 
   // ========== USERS ==========
+  const hash = await bcrypt.hash('password123', 12);
+
   const users = await Promise.all([
     prisma.user.upsert({
       where: { login: 'admin' },
