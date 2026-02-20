@@ -284,6 +284,7 @@ model Product {
   name            String
   sku             String   @unique
   unit            String   @default("шт")
+  format          String?
   category        String?
   countryOfOrigin String?  @map("country_of_origin")
   stock           Decimal  @default(0) @db.Decimal(12, 3)

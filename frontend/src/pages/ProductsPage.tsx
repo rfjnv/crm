@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { Product } from '../types';
+import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
 
 export default function ProductsPage() {
@@ -17,6 +18,10 @@ export default function ProductsPage() {
   const [stockFilter, setStockFilter] = useState<string>('all');
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
+  const user = useAuthStore((s) => s.user);
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
@@ -65,6 +70,7 @@ export default function ProductsPage() {
   const columns = [
     { title: 'Название', dataIndex: 'name' },
     { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
+    { title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
     { title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
     { title: 'Страна', dataIndex: 'countryOfOrigin', render: (v: string | null) => v || '—' },
     { title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
@@ -80,6 +86,13 @@ export default function ProductsPage() {
       ),
     },
     { title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
+    ...(isSuperAdmin ? [{
+      title: 'Цена закупки',
+      dataIndex: 'purchasePrice',
+      align: 'right' as const,
+      width: 130,
+      render: (v: string | null) => v ? formatUZS(v) : '—',
+    }] : []),
     {
       title: 'Цена продажи',
       dataIndex: 'salePrice',
@@ -100,7 +113,7 @@ export default function ProductsPage() {
       width: 100,
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Активен' : 'Неактивен'}</Tag>,
     },
-    {
+    ...(canManageProducts ? [{
       title: '',
       width: 40,
       render: (_: unknown, r: Product) => (
@@ -114,6 +127,7 @@ export default function ProductsPage() {
               name: r.name,
               sku: r.sku,
               unit: r.unit,
+              format: r.format,
               category: r.category,
               countryOfOrigin: r.countryOfOrigin,
               minStock: r.minStock,
@@ -127,7 +141,7 @@ export default function ProductsPage() {
           }}
         />
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -161,7 +175,9 @@ export default function ProductsPage() {
             ]}
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+        {canManageProducts && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+        )}
       </div>
 
       <Table
@@ -204,31 +220,39 @@ export default function ProductsPage() {
               <Select options={[
                 { label: 'шт', value: 'шт' },
                 { label: 'кг', value: 'кг' },
+                { label: 'литр', value: 'литр' },
+                { label: 'лист', value: 'лист' },
+                { label: 'пачка', value: 'пачка' },
                 { label: 'рулон', value: 'рулон' },
                 { label: 'м²', value: 'м²' },
                 { label: 'мп', value: 'мп' },
               ]} />
             </Form.Item>
+            <Form.Item name="format" label="Формат" style={{ flex: 1 }}>
+              <Input placeholder="A4, 72×104, 640мм..." />
+            </Form.Item>
+          </Space>
+          <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="category" label="Категория" style={{ flex: 1 }}>
               <Input placeholder="Бумага, Тонер..." />
             </Form.Item>
-          </Space>
-          <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="countryOfOrigin" label="Страна производства" style={{ flex: 1 }}>
               <Input placeholder="Узбекистан, Китай..." />
             </Form.Item>
-            <Form.Item name="minStock" label="Мин. остаток" initialValue={0} style={{ flex: 1 }}>
-              <InputNumber style={{ width: '100%' }} min={0} />
-            </Form.Item>
           </Space>
           <Space size="middle" style={{ width: '100%' }}>
-            <Form.Item name="purchasePrice" label="Цена закупки" style={{ flex: 1 }}>
-              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            <Form.Item name="minStock" label="Мин. остаток" initialValue={0} style={{ flex: 1 }}>
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
             <Form.Item name="salePrice" label="Цена продажи" style={{ flex: 1 }}>
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
           </Space>
+          {isSuperAdmin && (
+            <Form.Item name="purchasePrice" label="Цена закупки">
+              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            </Form.Item>
+          )}
           <Form.Item name="installmentPrice" label="Цена рассрочки">
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
@@ -274,31 +298,39 @@ export default function ProductsPage() {
               <Select options={[
                 { label: 'шт', value: 'шт' },
                 { label: 'кг', value: 'кг' },
+                { label: 'литр', value: 'литр' },
+                { label: 'лист', value: 'лист' },
+                { label: 'пачка', value: 'пачка' },
                 { label: 'рулон', value: 'рулон' },
                 { label: 'м²', value: 'м²' },
                 { label: 'мп', value: 'мп' },
               ]} />
             </Form.Item>
+            <Form.Item name="format" label="Формат" style={{ flex: 1 }}>
+              <Input placeholder="A4, 72×104, 640мм..." />
+            </Form.Item>
+          </Space>
+          <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="category" label="Категория" style={{ flex: 1 }}>
               <Input />
             </Form.Item>
-          </Space>
-          <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="countryOfOrigin" label="Страна производства" style={{ flex: 1 }}>
               <Input />
             </Form.Item>
-            <Form.Item name="minStock" label="Мин. остаток" style={{ flex: 1 }}>
-              <InputNumber style={{ width: '100%' }} min={0} />
-            </Form.Item>
           </Space>
           <Space size="middle" style={{ width: '100%' }}>
-            <Form.Item name="purchasePrice" label="Цена закупки" style={{ flex: 1 }}>
-              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            <Form.Item name="minStock" label="Мин. остаток" style={{ flex: 1 }}>
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
             <Form.Item name="salePrice" label="Цена продажи" style={{ flex: 1 }}>
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
           </Space>
+          {isSuperAdmin && (
+            <Form.Item name="purchasePrice" label="Цена закупки">
+              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            </Form.Item>
+          )}
           <Form.Item name="installmentPrice" label="Цена рассрочки">
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>

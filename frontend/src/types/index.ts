@@ -12,6 +12,7 @@ export type Permission =
   | 'admin_approve'
   | 'confirm_shipment'
   | 'manage_inventory'
+  | 'manage_products'
   | 'view_all_clients';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
@@ -26,11 +27,12 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'admin_approve', label: 'Админ одобрение' },
   { key: 'confirm_shipment', label: 'Подтверждение отгрузки' },
   { key: 'manage_inventory', label: 'Управление складом' },
+  { key: 'manage_products', label: 'Добавление товаров' },
   { key: 'view_all_clients', label: 'Просмотр всех клиентов' },
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'view_all_clients'],
+  ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients'],
   OPERATOR: ['manage_leads', 'view_all_clients'],
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients'],
   ACCOUNTANT: ['finance_approve', 'view_all_deals'],
@@ -182,6 +184,7 @@ export interface Product {
   name: string;
   sku: string;
   unit: string;
+  format?: string | null;
   category?: string | null;
   countryOfOrigin?: string | null;
   stock: number;
