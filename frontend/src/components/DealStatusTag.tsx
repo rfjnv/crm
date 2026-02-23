@@ -8,7 +8,7 @@ const statusConfig: Record<DealStatus, { color: string; label: string }> = {
   STOCK_CONFIRMED: { color: 'cyan', label: 'Склад подтверждён' },
   FINANCE_APPROVED: { color: 'lime', label: 'Финансы одобрены' },
   ADMIN_APPROVED: { color: 'geekblue', label: 'Админ одобрил' },
-  READY_FOR_SHIPMENT: { color: 'purple', label: 'Готова к отгрузке' },
+  READY_FOR_SHIPMENT: { color: 'purple', label: 'Оформить отгрузку' },
   SHIPMENT_ON_HOLD: { color: 'warning', label: 'Отгрузка приостановлена' },
   SHIPPED: { color: 'orange', label: 'Отгружена' },
   CLOSED: { color: 'success', label: 'Закрыта' },

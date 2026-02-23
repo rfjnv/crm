@@ -18,8 +18,8 @@ router.delete('/products/:id', requirePermission('manage_products'), asyncHandle
 router.get('/products/:id/movements', asyncHandler(warehouseController.getProductMovements.bind(warehouseController)));
 router.get('/products/:id/analytics', asyncHandler(warehouseController.getProductAnalytics.bind(warehouseController)));
 
-// Movements — ADMIN only for direct creation
-router.post('/movements', authorize('ADMIN'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));
+// Movements — warehouse roles + admin
+router.post('/movements', requirePermission('create_inventory_in'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));
 router.get('/movements', asyncHandler(warehouseController.getMovements.bind(warehouseController)));
 
 export default router;

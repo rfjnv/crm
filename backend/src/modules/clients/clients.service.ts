@@ -116,9 +116,14 @@ export class ClientsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
+    // Managers can only edit their own clients
+    const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+    if (!isAdmin && client.managerId !== user.userId) {
+      throw new AppError(403, 'Вы можете редактировать только своих клиентов');
+    }
+
     // Validate managerId change (admin only)
     if (dto.managerId) {
-      const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
       if (!isAdmin) {
         throw new AppError(403, 'Только администратор может менять менеджера');
       }

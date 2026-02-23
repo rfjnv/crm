@@ -6,7 +6,7 @@ const pipelineSteps: { status: DealStatus; label: string }[] = [
   { status: 'IN_PROGRESS', label: 'В работе' },
   { status: 'FINANCE_APPROVED', label: 'Финансы одобрены' },
   { status: 'ADMIN_APPROVED', label: 'Админ одобрил' },
-  { status: 'READY_FOR_SHIPMENT', label: 'Готова к отгрузке' },
+  { status: 'READY_FOR_SHIPMENT', label: 'Оформить отгрузку' },
   { status: 'SHIPPED', label: 'Отгружена' },
   { status: 'CLOSED', label: 'Закрыта' },
 ];

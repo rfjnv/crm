@@ -1,14 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
-  Segmented, DatePicker, message, Descriptions,
+  DatePicker, message, Descriptions,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
-import { contractsApi } from '../api/contracts.api';
 import { inventoryApi } from '../api/warehouse.api';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
@@ -37,28 +36,14 @@ export default function DealCreatePage() {
 
   const [clientId, setClientId] = useState<string>();
   const [title, setTitle] = useState('');
-  const [contractMode, setContractMode] = useState<'none' | 'existing' | 'new'>('none');
-  const [contractId, setContractId] = useState<string>();
-  const [newContract, setNewContract] = useState({
-    number: '', startDate: dayjs(), endDate: null as dayjs.Dayjs | null, notes: '',
-  });
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
-  const [paymentType, setPaymentType] = useState<'FULL' | 'PARTIAL' | 'DEBT'>('FULL');
+  const [paymentType, setPaymentType] = useState<'FULL' | 'PARTIAL' | 'INSTALLMENT'>('FULL');
   const [discount, setDiscount] = useState<number>(0);
   const [dueDate, setDueDate] = useState<dayjs.Dayjs | null>(null);
   const [terms, setTerms] = useState('');
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
-  const { data: contracts } = useQuery({ queryKey: ['contracts', clientId], queryFn: () => contractsApi.list(clientId), enabled: !!clientId });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
-
-  useEffect(() => {
-    setContractId(undefined);
-    if (contractMode === 'existing') setContractMode('none');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
-
-  const contractMut = useMutation({ mutationFn: (data: Parameters<typeof contractsApi.create>[0]) => contractsApi.create(data) });
 
   const createMut = useMutation({
     mutationFn: (data: Parameters<typeof dealsApi.create>[0]) => dealsApi.create(data),
@@ -118,28 +103,9 @@ export default function DealCreatePage() {
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) { message.error('Добавьте хотя бы один товар'); return; }
 
-    let resolvedContractId = contractMode === 'existing' ? contractId : undefined;
-    if (contractMode === 'new') {
-      if (!newContract.number.trim()) { message.error('Укажите номер договора'); return; }
-      try {
-        const created = await contractMut.mutateAsync({
-          clientId: clientId!,
-          contractNumber: newContract.number.trim(),
-          startDate: newContract.startDate.format('YYYY-MM-DD'),
-          endDate: newContract.endDate ? newContract.endDate.format('YYYY-MM-DD') : undefined,
-          notes: newContract.notes || undefined,
-        });
-        resolvedContractId = created.id;
-      } catch {
-        message.error('Ошибка создания договора');
-        return;
-      }
-    }
-
     createMut.mutate({
       title: title || undefined,
       clientId,
-      contractId: resolvedContractId,
       paymentType,
       discount: discount || undefined,
       dueDate: dueDate ? dueDate.format('YYYY-MM-DD') : undefined,
@@ -153,15 +119,13 @@ export default function DealCreatePage() {
     });
   }
 
-  const isSaving = contractMut.isPending || createMut.isPending;
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Новая сделка</Typography.Title>
         <Space>
           <Button onClick={() => navigate('/deals')}>Отмена</Button>
-          <Button type="primary" loading={isSaving} onClick={handleSubmit}>Сохранить сделку</Button>
+          <Button type="primary" loading={createMut.isPending} onClick={handleSubmit}>Сохранить сделку</Button>
         </Space>
       </div>
 
@@ -188,45 +152,6 @@ export default function DealCreatePage() {
               <DealStatusTag status="NEW" />
             </div>
           </div>
-        </Card>
-
-        <Card title="Договор" bordered={false}>
-          <Segmented
-            value={contractMode}
-            onChange={(v) => { setContractMode(v as 'none' | 'existing' | 'new'); setContractId(undefined); }}
-            options={[
-              { label: 'Без договора', value: 'none' },
-              { label: 'Выбрать', value: 'existing' },
-              { label: 'Создать новый', value: 'new' },
-            ]}
-            style={{ marginBottom: 16 }}
-          />
-          {contractMode === 'existing' && (
-            <Select allowClear placeholder="Выберите договор" style={{ width: '100%', maxWidth: 400 }}
-              disabled={!clientId} value={contractId} onChange={setContractId}
-              options={(contracts ?? []).map((c) => ({ label: c.contractNumber, value: c.id }))}
-            />
-          )}
-          {contractMode === 'new' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 600 }}>
-              <div>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Номер договора *</Typography.Text>
-                <Input value={newContract.number} onChange={(e) => setNewContract((p) => ({ ...p, number: e.target.value }))} />
-              </div>
-              <div>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Дата начала</Typography.Text>
-                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={newContract.startDate} onChange={(d) => setNewContract((p) => ({ ...p, startDate: d || dayjs() }))} />
-              </div>
-              <div>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Дата окончания</Typography.Text>
-                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={newContract.endDate} onChange={(d) => setNewContract((p) => ({ ...p, endDate: d }))} />
-              </div>
-              <div>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Примечание</Typography.Text>
-                <Input value={newContract.notes} onChange={(e) => setNewContract((p) => ({ ...p, notes: e.target.value }))} />
-              </div>
-            </div>
-          )}
         </Card>
 
         <Card title={`Товары (${draftItems.filter((i) => i.productId).length})`} bordered={false}>
@@ -307,7 +232,7 @@ export default function DealCreatePage() {
                 options={[
                   { label: 'Полная оплата', value: 'FULL' },
                   { label: 'Частичная оплата', value: 'PARTIAL' },
-                  { label: 'В долг', value: 'DEBT' },
+                  { label: 'Рассрочка', value: 'INSTALLMENT' },
                 ]}
               />
             </div>
@@ -315,14 +240,14 @@ export default function DealCreatePage() {
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Скидка</Typography.Text>
               <InputNumber min={0} style={{ width: '100%' }} value={discount} onChange={(v) => setDiscount(v ?? 0)} />
             </div>
-            {(paymentType === 'PARTIAL' || paymentType === 'DEBT') && (
+            {(paymentType === 'PARTIAL' || paymentType === 'INSTALLMENT') && (
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Срок оплаты</Typography.Text>
                 <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" value={dueDate} onChange={setDueDate} />
               </div>
             )}
           </div>
-          {(paymentType === 'PARTIAL' || paymentType === 'DEBT') && (
+          {(paymentType === 'PARTIAL' || paymentType === 'INSTALLMENT') && (
             <div style={{ marginTop: 12 }}>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Условия</Typography.Text>
               <Input.TextArea rows={2} value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Условия оплаты..." />

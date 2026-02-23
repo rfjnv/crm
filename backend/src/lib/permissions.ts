@@ -12,6 +12,7 @@ export const PERMISSIONS = {
   MANAGE_INVENTORY: 'manage_inventory',
   MANAGE_PRODUCTS: 'manage_products',
   VIEW_ALL_CLIENTS: 'view_all_clients',
+  CREATE_INVENTORY_IN: 'create_inventory_in',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -38,10 +39,12 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.STOCK_CONFIRM,
     PERMISSIONS.MANAGE_INVENTORY,
     PERMISSIONS.VIEW_ALL_DEALS,
+    PERMISSIONS.CREATE_INVENTORY_IN,
   ],
   WAREHOUSE_MANAGER: [
     PERMISSIONS.CONFIRM_SHIPMENT,
     PERMISSIONS.MANAGE_INVENTORY,
     PERMISSIONS.VIEW_ALL_DEALS,
+    PERMISSIONS.CREATE_INVENTORY_IN,
   ],
 };

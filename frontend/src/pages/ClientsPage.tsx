@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select } from 'antd';
@@ -41,6 +41,8 @@ export default function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [search, setSearch] = useState('');
+  const [managerFilter, setManagerFilter] = useState<string>();
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -56,6 +58,23 @@ export default function ClientsPage() {
     queryFn: usersApi.list,
     enabled: canAssignManager,
   });
+
+  const filteredClients = useMemo(() => {
+    let list = clients ?? [];
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        c.companyName.toLowerCase().includes(q) ||
+        c.contactName.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q))
+      );
+    }
+    if (managerFilter) {
+      list = list.filter(c => c.managerId === managerFilter);
+    }
+    return list;
+  }, [clients, search, managerFilter]);
 
   const createMut = useMutation({
     mutationFn: (data: CreateClientData) => clientsApi.create(data),
@@ -108,18 +127,23 @@ export default function ClientsPage() {
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Email', dataIndex: 'email' },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
-    ...(isAdmin
+    ...(isAdmin || user?.role === 'MANAGER'
       ? [{
         title: '',
         width: 100,
-        render: (_: unknown, r: Client) => (
-          <Space>
-            <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
-            <Popconfirm title="Архивировать клиента?" onConfirm={() => archiveMut.mutate(r.id)}>
-              <Button type="text" danger icon={<InboxOutlined />} size="small" />
-            </Popconfirm>
-          </Space>
-        ),
+        render: (_: unknown, r: Client) => {
+          const canEdit = isAdmin || r.managerId === user?.id;
+          return (
+            <Space>
+              {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
+              {isAdmin && (
+                <Popconfirm title="Архивировать клиента?" onConfirm={() => archiveMut.mutate(r.id)}>
+                  <Button type="text" danger icon={<InboxOutlined />} size="small" />
+                </Popconfirm>
+              )}
+            </Space>
+          );
+        },
       }]
       : []),
   ];
@@ -162,13 +186,34 @@ export default function ClientsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Клиенты</Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+        <Space wrap>
+          <Input.Search
+            placeholder="Поиск (компания, контакт, телефон, email)..."
+            style={{ width: 300 }}
+            allowClear
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {isAdmin && (
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Менеджер"
+              style={{ width: 200 }}
+              value={managerFilter}
+              onChange={setManagerFilter}
+              options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: u.fullName, value: u.id }))}
+            />
+          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+        </Space>
       </div>
 
       <Table
-        dataSource={clients}
+        dataSource={filteredClients}
         columns={columns}
         rowKey="id"
         loading={isLoading}

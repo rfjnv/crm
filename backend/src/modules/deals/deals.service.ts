@@ -122,16 +122,6 @@ export class DealsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
-    // Verify contract if provided
-    if (dto.contractId) {
-      const contract = await prisma.contract.findFirst({
-        where: { id: dto.contractId, clientId: dto.clientId },
-      });
-      if (!contract) {
-        throw new AppError(404, 'Договор не найден или не принадлежит данному клиенту');
-      }
-    }
-
     // Auto-generate title
     const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU')}`;
 
@@ -160,7 +150,6 @@ export class DealsService {
           discount,
           clientId: dto.clientId,
           managerId: user.userId,
-          contractId: dto.contractId,
           paymentType,
           paidAmount,
           paymentStatus,
@@ -222,6 +211,14 @@ export class DealsService {
 
     if (!deal) {
       throw new AppError(404, 'Сделка не найдена');
+    }
+
+    // Block non-admin edits on CLOSED deals
+    if (deal.status === 'CLOSED') {
+      const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+      if (!isAdmin) {
+        throw new AppError(403, 'Только администратор может редактировать закрытые сделки');
+      }
     }
 
     const before: Record<string, unknown> = {};
@@ -436,8 +433,8 @@ export class DealsService {
     if (paidAmount > finalAmount) {
       throw new AppError(400, 'Оплата не может превышать сумму сделки');
     }
-    if ((dto.paymentType === 'PARTIAL' || dto.paymentType === 'DEBT') && !dto.dueDate) {
-      throw new AppError(400, 'Укажите срок оплаты для частичной оплаты или долга');
+    if ((dto.paymentType === 'PARTIAL' || dto.paymentType === 'INSTALLMENT') && !dto.dueDate) {
+      throw new AppError(400, 'Укажите срок оплаты для частичной оплаты или рассрочки');
     }
 
     // Auto-compute paymentStatus
@@ -522,6 +519,11 @@ export class DealsService {
     }
 
     validateStatusTransition(deal.status, 'FINANCE_APPROVED', user.role);
+
+    // INSTALLMENT deals require a contract
+    if (deal.paymentType === 'INSTALLMENT' && !deal.contractId) {
+      throw new AppError(400, 'Для рассрочки необходимо привязать договор к сделке');
+    }
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -691,7 +693,7 @@ export class DealsService {
     }
 
     if (deal.status !== 'READY_FOR_SHIPMENT') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Готова к отгрузке" для приостановки');
+      throw new AppError(400, 'Сделка должна быть в статусе "Оформить отгрузку" для приостановки');
     }
 
     validateStatusTransition(deal.status, 'SHIPMENT_ON_HOLD', user.role);
@@ -765,7 +767,7 @@ export class DealsService {
     }
 
     if (deal.status !== 'READY_FOR_SHIPMENT') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Готова к отгрузке" для оформления отгрузки');
+      throw new AppError(400, 'Сделка должна быть в статусе "Оформить отгрузку" для оформления отгрузки');
     }
 
     validateStatusTransition(deal.status, 'SHIPPED', user.role);

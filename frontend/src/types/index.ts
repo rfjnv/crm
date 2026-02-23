@@ -98,7 +98,8 @@ export type DealStatus =
   | 'CANCELED'
   | 'REJECTED';
 
-export type PaymentType = 'FULL' | 'PARTIAL' | 'DEBT';
+export type PaymentType = 'FULL' | 'PARTIAL' | 'INSTALLMENT';
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'INSTALLMENT';
 export type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
 export interface Contract {

@@ -50,7 +50,15 @@ enum MovementType {
 enum PaymentType {
   FULL
   PARTIAL
-  DEBT
+  INSTALLMENT
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  PAYME
+  QR
+  INSTALLMENT
 }
 
 enum PaymentStatus {

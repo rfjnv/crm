@@ -9,8 +9,7 @@ const dealStatuses = [
 export const createDealDto = z.object({
   title: z.string().optional().default(''),
   clientId: z.string().uuid('Некорректный ID клиента'),
-  contractId: z.string().uuid('Некорректный ID договора').optional(),
-  paymentType: z.enum(['FULL', 'PARTIAL', 'DEBT']).default('FULL'),
+  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).default('FULL'),
   dueDate: z.string().optional(),
   terms: z.string().optional(),
   discount: z.number().min(0).default(0),
@@ -33,7 +32,7 @@ export const updateDealDto = z.object({
 
 export const paymentDto = z.object({
   paidAmount: z.number().min(0, 'Сумма не может быть отрицательной'),
-  paymentType: z.enum(['FULL', 'PARTIAL', 'DEBT']).optional(),
+  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   dueDate: z.string().nullable().optional(),
   terms: z.string().nullable().optional(),
 });
@@ -61,7 +60,7 @@ export const setItemQuantitiesDto = z.object({
     price: z.number().min(0, 'Цена не может быть отрицательной'),
   })).min(1, 'Укажите хотя бы одну позицию'),
   discount: z.number().min(0, 'Скидка не может быть отрицательной').default(0),
-  paymentType: z.enum(['FULL', 'PARTIAL', 'DEBT']).default('FULL'),
+  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).default('FULL'),
   paidAmount: z.number().min(0, 'Сумма не может быть отрицательной').default(0),
   dueDate: z.string().optional(),
   terms: z.string().optional(),
@@ -86,7 +85,7 @@ export const shipmentHoldDto = z.object({
 
 export const createPaymentRecordDto = z.object({
   amount: z.number().positive('Сумма должна быть положительной'),
-  method: z.string().max(50).optional(),
+  method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'INSTALLMENT']).optional(),
   note: z.string().max(500).optional(),
   paidAt: z.string().datetime().optional(),
 });

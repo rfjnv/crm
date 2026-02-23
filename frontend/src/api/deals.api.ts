@@ -10,8 +10,7 @@ export const dealsApi = {
   create: (data: {
     title?: string;
     clientId: string;
-    contractId?: string;
-    paymentType?: 'FULL' | 'PARTIAL' | 'DEBT';
+    paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
     dueDate?: string;
     terms?: string;
     discount?: number;
@@ -22,7 +21,7 @@ export const dealsApi = {
   update: (id: string, data: Partial<{ title: string; status: DealStatus; contractId: string | null; discount: number; terms: string | null; managerId: string }>) =>
     client.patch<Deal>(`/deals/${id}`, data).then((r) => r.data),
 
-  updatePayment: (id: string, data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'DEBT'; dueDate?: string | null; terms?: string | null }) =>
+  updatePayment: (id: string, data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT'; dueDate?: string | null; terms?: string | null }) =>
     client.patch<Deal>(`/deals/${id}/payment`, data).then((r) => r.data),
 
   archive: (id: string) => client.patch<Deal>(`/deals/${id}/archive`).then((r) => r.data),
@@ -59,7 +58,7 @@ export const dealsApi = {
   setItemQuantities: (dealId: string, data: {
     items: { dealItemId: string; requestedQty: number; price: number }[];
     discount?: number;
-    paymentType?: 'FULL' | 'PARTIAL' | 'DEBT';
+    paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
     paidAmount?: number;
     dueDate?: string;
     terms?: string;

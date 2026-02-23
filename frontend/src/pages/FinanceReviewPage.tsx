@@ -13,7 +13,7 @@ import dayjs from 'dayjs';
 const paymentTypeLabels: Record<string, string> = {
   FULL: 'Полная',
   PARTIAL: 'Частичная',
-  DEBT: 'В долг',
+  INSTALLMENT: 'Рассрочка',
 };
 
 type FinanceDeal = Deal & { clientDebt: number };

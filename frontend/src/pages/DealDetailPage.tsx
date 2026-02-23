@@ -102,7 +102,7 @@ export default function DealDetailPage() {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка обновления статуса';
       message.error(msg);
     },
-    onSettled: () => { invalidate(); },
+    onSettled: () => { invalidate(); queryClient.invalidateQueries({ queryKey: ['deals'] }); },
     onSuccess: () => { message.success('Статус обновлён'); },
   });
 
@@ -123,7 +123,7 @@ export default function DealDetailPage() {
   });
 
   const paymentMut = useMutation({
-    mutationFn: (data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'DEBT'; dueDate?: string | null; terms?: string | null }) => dealsApi.updatePayment(id!, data),
+    mutationFn: (data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT'; dueDate?: string | null; terms?: string | null }) => dealsApi.updatePayment(id!, data),
     onSuccess: () => { invalidate(); setPaymentModal(false); message.success('Оплата обновлена'); },
     onError: () => message.error('Ошибка обновления оплаты'),
   });
@@ -142,7 +142,7 @@ export default function DealDetailPage() {
     mutationFn: (data: {
       items: { dealItemId: string; requestedQty: number; price: number }[];
       discount?: number;
-      paymentType?: 'FULL' | 'PARTIAL' | 'DEBT';
+      paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
       paidAmount?: number;
       dueDate?: string;
       terms?: string;
@@ -224,7 +224,7 @@ export default function DealDetailPage() {
   const deal = dealData;
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
-  const isReadOnly = deal.status === 'CLOSED' || deal.status === 'CANCELED';
+  const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
@@ -286,7 +286,7 @@ export default function DealDetailPage() {
     if (deal.status === 'ADMIN_APPROVED' && isAdmin) {
       actions.push(
         <Button key="ready-ship" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('READY_FOR_SHIPMENT')}>
-          Готова к отгрузке
+          Оформить отгрузку
         </Button>,
       );
     }
@@ -434,6 +434,16 @@ export default function DealDetailPage() {
 
       {renderWorkflowActions()}
 
+      {deal.paymentType === 'INSTALLMENT' && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Для рассрочки необходим договор"
+          description="Привяжите договор к сделке перед отправкой на финансовое одобрение."
+        />
+      )}
+
       <Tabs
         defaultActiveKey="details"
         items={[
@@ -494,7 +504,7 @@ export default function DealDetailPage() {
                     bordered={false}
                   >
                     <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-                      <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'В долг'}</Descriptions.Item>
+                      <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
                       <Descriptions.Item label="Статус оплаты">
                         <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
                       </Descriptions.Item>
@@ -677,7 +687,7 @@ export default function DealDetailPage() {
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
           <Form.Item name="paymentType" label="Тип оплаты">
-            <Select options={[{ label: 'Полная', value: 'FULL' }, { label: 'Частичная', value: 'PARTIAL' }, { label: 'В долг', value: 'DEBT' }]} />
+            <Select options={[{ label: 'Полная', value: 'FULL' }, { label: 'Частичная', value: 'PARTIAL' }, { label: 'Рассрочка', value: 'INSTALLMENT' }]} />
           </Form.Item>
           <Form.Item name="dueDate" label="Срок оплаты">
             <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
@@ -801,7 +811,7 @@ export default function DealDetailPage() {
                 <Radio.Group>
                   <Radio.Button value="FULL">Полная</Radio.Button>
                   <Radio.Button value="PARTIAL">Частичная</Radio.Button>
-                  <Radio.Button value="DEBT">В долг</Radio.Button>
+                  <Radio.Button value="INSTALLMENT">Рассрочка</Radio.Button>
                 </Radio.Group>
               </Form.Item>
               <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paymentType !== cur.paymentType}>
@@ -896,7 +906,13 @@ export default function DealDetailPage() {
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
           <Form.Item name="method" label="Способ оплаты">
-            <Input placeholder="Наличные, перевод, карта..." />
+            <Select allowClear placeholder="Выберите" options={[
+              { label: 'Наличные', value: 'CASH' },
+              { label: 'Перечисление', value: 'TRANSFER' },
+              { label: 'Payme', value: 'PAYME' },
+              { label: 'QR', value: 'QR' },
+              { label: 'Рассрочка', value: 'INSTALLMENT' },
+            ]} />
           </Form.Item>
           <Form.Item name="paidAt" label="Дата оплаты">
             <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />

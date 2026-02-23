@@ -16,6 +16,7 @@ import { dealsApi } from '../api/deals.api';
 import { moneyFormatter, moneyParser } from '../utils/currency';
 import type { ContractListItem, ContractDetail, DealStatus } from '../types';
 import DealStatusTag from '../components/DealStatusTag';
+import { useAuthStore } from '../store/authStore';
 
 function fmt(n: number) {
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
@@ -23,6 +24,8 @@ function fmt(n: number) {
 
 export default function ContractsPage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const canManageContracts = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const [createOpen, setCreateOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractListItem | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -232,7 +235,7 @@ export default function ContractsPage() {
       render: (_: unknown, r: ContractListItem) => (
         <Space size={4}>
           <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => setDetailId(r.id)} />
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
+          {canManageContracts && <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />}
         </Space>
       ),
     },
@@ -263,7 +266,7 @@ export default function ContractsPage() {
             onChange={setFilterClient}
             options={clientOptions}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Создать</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!canManageContracts}>Создать</Button>
         </Space>
       </div>
 
@@ -391,9 +394,11 @@ export default function ContractsPage() {
           </Form.Item>
           <Form.Item name="method" label="Способ оплаты">
             <Select allowClear placeholder="Выберите" options={[
-              { label: 'Наличные', value: 'cash' },
-              { label: 'Перечисление', value: 'transfer' },
-              { label: 'Карта', value: 'card' },
+              { label: 'Наличные', value: 'CASH' },
+              { label: 'Перечисление', value: 'TRANSFER' },
+              { label: 'Payme', value: 'PAYME' },
+              { label: 'QR', value: 'QR' },
+              { label: 'Рассрочка', value: 'INSTALLMENT' },
             ]} />
           </Form.Item>
           <Form.Item name="note" label="Примечание">

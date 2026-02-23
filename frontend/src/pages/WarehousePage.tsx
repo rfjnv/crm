@@ -1,16 +1,23 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Typography, message, Tag, Space } from 'antd';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space } from 'antd';
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import type { Product } from '../types';
 import dayjs from 'dayjs';
 
+type StockFilter = 'all' | 'zero' | 'low' | 'normal';
+type ActiveFilter = 'all' | 'active' | 'inactive';
+
 export default function WarehousePage() {
   const [inModal, setInModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [movementsProduct, setMovementsProduct] = useState<Product | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [unitFilter, setUnitFilter] = useState<string | undefined>(undefined);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active');
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -43,7 +50,48 @@ export default function WarehousePage() {
     },
   });
 
-  const activeProducts = (products ?? []).filter((p) => p.isActive);
+  const uniqueUnits = useMemo(() => {
+    const allProducts = products ?? [];
+    const units = [...new Set(allProducts.map((p) => p.unit).filter(Boolean))];
+    return units.sort();
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    let list = products ?? [];
+
+    // Active/inactive filter
+    if (activeFilter === 'active') {
+      list = list.filter((p) => p.isActive);
+    } else if (activeFilter === 'inactive') {
+      list = list.filter((p) => !p.isActive);
+    }
+
+    // Search by name or SKU
+    if (searchText.trim()) {
+      const lower = searchText.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(lower) ||
+          (p.sku && p.sku.toLowerCase().includes(lower))
+      );
+    }
+
+    // Stock filter
+    if (stockFilter === 'zero') {
+      list = list.filter((p) => p.stock === 0);
+    } else if (stockFilter === 'low') {
+      list = list.filter((p) => p.stock > 0 && p.stock < p.minStock);
+    } else if (stockFilter === 'normal') {
+      list = list.filter((p) => p.stock >= p.minStock);
+    }
+
+    // Unit filter
+    if (unitFilter) {
+      list = list.filter((p) => p.unit === unitFilter);
+    }
+
+    return list;
+  }, [products, searchText, stockFilter, unitFilter, activeFilter]);
 
   const columns = [
     { title: 'Название', dataIndex: 'name', sorter: (a: Product, b: Product) => a.name.localeCompare(b.name) },
@@ -57,9 +105,14 @@ export default function WarehousePage() {
       width: 100,
       sorter: (a: Product, b: Product) => a.stock - b.stock,
       render: (v: number, r: Product) => {
-        const isLow = v < r.minStock;
+        let color = '#52c41a'; // green — normal
+        if (v === 0) {
+          color = '#ff4d4f'; // red — zero stock
+        } else if (v < r.minStock) {
+          color = '#faad14'; // orange — low stock warning
+        }
         return (
-          <span style={{ fontWeight: 600, color: v === 0 ? '#999' : isLow ? '#f5222d' : '#52c41a' }}>
+          <span style={{ fontWeight: 600, color }}>
             {v}
           </span>
         );
@@ -76,8 +129,8 @@ export default function WarehousePage() {
       key: 'stockStatus',
       width: 120,
       render: (_: unknown, r: Product) => {
-        if (r.stock === 0) return <Tag color="default">Нет на складе</Tag>;
-        if (r.stock < r.minStock) return <Tag color="red">Нужен приход</Tag>;
+        if (r.stock === 0) return <Tag color="red">Нет на складе</Tag>;
+        if (r.stock < r.minStock) return <Tag color="orange">Нужен приход</Tag>;
         return <Tag color="green">В норме</Tag>;
       },
     },
@@ -126,12 +179,56 @@ export default function WarehousePage() {
         <Typography.Title level={4} style={{ margin: 0 }}>Склад</Typography.Title>
       </div>
 
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Input.Search
+          placeholder="Поиск по названию или артикулу"
+          allowClear
+          style={{ width: 280 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+        <Select
+          value={stockFilter}
+          onChange={setStockFilter}
+          style={{ width: 180 }}
+          options={[
+            { label: 'Все остатки', value: 'all' },
+            { label: 'Нет на складе (0)', value: 'zero' },
+            { label: 'Мало на складе', value: 'low' },
+            { label: 'В норме', value: 'normal' },
+          ]}
+        />
+        <Select
+          value={unitFilter}
+          onChange={setUnitFilter}
+          allowClear
+          placeholder="Ед. измерения"
+          style={{ width: 160 }}
+          options={uniqueUnits.map((u) => ({ label: u, value: u }))}
+        />
+        <Select
+          value={activeFilter}
+          onChange={setActiveFilter}
+          style={{ width: 160 }}
+          options={[
+            { label: 'Все товары', value: 'all' },
+            { label: 'Активные', value: 'active' },
+            { label: 'Неактивные', value: 'inactive' },
+          ]}
+        />
+      </div>
+
       <Table
-        dataSource={activeProducts}
+        dataSource={filteredProducts}
         columns={columns}
         rowKey="id"
         loading={isLoading}
-        pagination={{ pageSize: 30 }}
+        pagination={{
+          defaultPageSize: 30,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '30', '50', '100'],
+          showTotal: (total) => `Всего: ${total}`,
+        }}
         size="middle"
         rowClassName={(r) => r.stock < r.minStock ? 'low-stock-row' : ''}
       />
