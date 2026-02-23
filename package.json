@@ -5,7 +5,7 @@
     "node": ">=18.x"
   },
   "scripts": {
-    "build": "cd backend && npm install --include=dev && npx prisma generate && npx prisma db push --skip-generate && npm run build",
+    "build": "cd backend && npm install --include=dev && npx prisma generate && npx tsx prisma/migrate-debt.ts && npx prisma db push --skip-generate --accept-data-loss && npm run build",
     "postinstall": "cd backend && npm install --include=dev",
     "start": "cd backend && npm run start"
   },
