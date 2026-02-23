@@ -102,6 +102,7 @@ export class ContractsService {
       data: {
         clientId: dto.clientId,
         contractNumber: dto.contractNumber,
+        amount: dto.amount ?? 0,
         startDate: new Date(dto.startDate),
         endDate: dto.endDate ? new Date(dto.endDate) : null,
         notes: dto.notes,
@@ -139,6 +140,7 @@ export class ContractsService {
 
     const before = {
       contractNumber: contract.contractNumber,
+      amount: contract.amount,
       startDate: contract.startDate,
       endDate: contract.endDate,
       isActive: contract.isActive,
@@ -147,6 +149,7 @@ export class ContractsService {
 
     const data: Record<string, unknown> = {};
     if (dto.contractNumber !== undefined) data.contractNumber = dto.contractNumber;
+    if (dto.amount !== undefined) data.amount = dto.amount;
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = dto.endDate ? new Date(dto.endDate) : null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
@@ -168,6 +171,7 @@ export class ContractsService {
       before,
       after: {
         contractNumber: updated.contractNumber,
+        amount: updated.amount,
         startDate: updated.startDate,
         endDate: updated.endDate,
         isActive: updated.isActive,

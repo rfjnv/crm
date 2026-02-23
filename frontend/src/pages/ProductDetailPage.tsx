@@ -53,7 +53,7 @@ export default function ProductDetailPage() {
 
   const stockStatus = p.stock <= 0
     ? { color: 'red', label: 'Нет в наличии' }
-    : p.stock <= p.minStock
+    : p.stock < p.minStock
       ? { color: 'orange', label: 'Мало' }
       : { color: 'green', label: 'В наличии' };
 

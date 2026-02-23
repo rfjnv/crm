@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, Typography, message, Tag,
+  Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag,
   DatePicker, Card, Space, Descriptions, Drawer, Timeline, Statistic, Row, Col,
 } from 'antd';
 import {
@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
 import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
+import { moneyFormatter, moneyParser } from '../utils/currency';
 import type { ContractListItem, ContractDetail, DealStatus } from '../types';
 import DealStatusTag from '../components/DealStatusTag';
 
@@ -105,6 +106,7 @@ export default function ContractsPage() {
     form.setFieldsValue({
       clientId: contract.clientId,
       contractNumber: contract.contractNumber,
+      amount: Number(contract.amount) || 0,
       startDate: dayjs(contract.startDate),
       endDate: contract.endDate ? dayjs(contract.endDate) : null,
       notes: contract.notes || '',
@@ -116,6 +118,7 @@ export default function ContractsPage() {
     createMut.mutate({
       clientId: values.clientId as string,
       contractNumber: values.contractNumber as string,
+      amount: (values.amount as number) || undefined,
       startDate: (values.startDate as dayjs.Dayjs).format('YYYY-MM-DD'),
       endDate: values.endDate ? (values.endDate as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
       notes: (values.notes as string) || undefined,
@@ -128,6 +131,7 @@ export default function ContractsPage() {
       id: editingContract.id,
       data: {
         contractNumber: values.contractNumber as string,
+        amount: (values.amount as number) || 0,
         startDate: (values.startDate as dayjs.Dayjs).format('YYYY-MM-DD'),
         endDate: values.endDate ? (values.endDate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
         notes: (values.notes as string) || null,
@@ -193,7 +197,13 @@ export default function ContractsPage() {
       align: 'center' as const,
     },
     {
-      title: 'Сумма',
+      title: 'Сумма договора',
+      dataIndex: 'amount',
+      render: (v: number) => Number(v) > 0 ? fmt(Number(v)) : '—',
+      align: 'right' as const,
+    },
+    {
+      title: 'Сумма сделок',
       dataIndex: 'totalAmount',
       render: (v: number) => v > 0 ? fmt(v) : '—',
       align: 'right' as const,
@@ -277,7 +287,7 @@ export default function ContractsPage() {
         columns={columns}
         rowKey="id"
         loading={isLoading}
-        pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
       />
@@ -299,6 +309,9 @@ export default function ContractsPage() {
           </Form.Item>
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input />
+          </Form.Item>
+          <Form.Item name="amount" label="Сумма договора">
+            <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="0" />
           </Form.Item>
           <Form.Item name="startDate" label="Дата начала" rules={[{ required: true, message: 'Укажите дату' }]}>
             <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
@@ -326,6 +339,9 @@ export default function ContractsPage() {
         <Form form={form} layout="vertical" onFinish={handleEditFinish}>
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input />
+          </Form.Item>
+          <Form.Item name="amount" label="Сумма договора">
+            <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
           <Form.Item name="startDate" label="Дата начала" rules={[{ required: true, message: 'Укажите дату' }]}>
             <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
@@ -405,17 +421,22 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
       </Descriptions>
 
       <Row gutter={12}>
-        <Col span={8}>
+        <Col span={6}>
           <Card size="small">
-            <Statistic title="Сумма" value={detail.totalAmount} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+            <Statistic title="Сумма договора" value={Number(detail.amount)} formatter={(v) => fmt(Number(v))} suffix="so'm" />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Сумма сделок" value={detail.totalAmount} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+          </Card>
+        </Col>
+        <Col span={6}>
           <Card size="small">
             <Statistic title="Оплачено" value={detail.totalPaid} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card size="small">
             <Statistic title="Остаток" value={detail.remaining} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: detail.remaining > 0 ? '#ff4d4f' : '#52c41a' }} />
           </Card>

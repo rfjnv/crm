@@ -105,6 +105,7 @@ export interface Contract {
   id: string;
   clientId: string;
   contractNumber: string;
+  amount: number;
   startDate: string;
   endDate?: string | null;
   isActive: boolean;
