@@ -26,6 +26,23 @@ interface DraftItem {
 let nextKey = 0;
 function makeKey() { return `ci-${nextKey++}`; }
 
+/** Units that are discrete (integer-only) */
+const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп']);
+
+function isIntegerUnit(unit?: string): boolean {
+  if (!unit) return false;
+  return INTEGER_UNITS.has(unit.toLowerCase());
+}
+
+/** Format qty: integers show without .0, decimals show up to 3 digits */
+function formatQty(value: number | string | null | undefined): string {
+  if (value == null) return '—';
+  const n = Number(value);
+  if (isNaN(n)) return '—';
+  if (Number.isInteger(n)) return n.toString();
+  return parseFloat(n.toFixed(3)).toString();
+}
+
 export default function DealCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -94,6 +111,13 @@ export default function DealCreatePage() {
 
   function updateItem(key: string, patch: Partial<DraftItem>) {
     setDraftItems((prev) => prev.map((i) => i.key === key ? { ...i, ...patch } : i));
+  }
+
+  /** When product is selected, auto-fill price from salePrice */
+  function handleProductChange(key: string, productId: string) {
+    const product = productMap.get(productId);
+    const autoPrice = product?.salePrice ? Number(product.salePrice) : undefined;
+    updateItem(key, { productId, price: autoPrice || undefined });
   }
 
   async function handleSubmit() {
@@ -178,22 +202,28 @@ export default function DealCreatePage() {
               {draftItems.map((item) => {
                 const p = item.productId ? productMap.get(item.productId) : null;
                 const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
+                const intUnit = isIntegerUnit(p?.unit);
                 return (
                   <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={{ padding: '6px 8px' }}>
                       <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
                         value={item.productId}
-                        onChange={(v) => updateItem(item.key, { productId: v })}
+                        onChange={(v) => handleProductChange(item.key, v)}
                         options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
                           label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
                           value: pr.id,
                           disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
                         }))}
                       />
-                      {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {p.stock} {p.unit}</div>}
+                      {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <InputNumber min={0.01} step={0.1} placeholder="Кол-во" style={{ width: '100%' }}
+                      <InputNumber
+                        min={intUnit ? 1 : 0.001}
+                        step={intUnit ? 1 : 0.1}
+                        precision={intUnit ? 0 : 3}
+                        placeholder="Кол-во"
+                        style={{ width: '100%' }}
                         value={item.requestedQty}
                         onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
                       />

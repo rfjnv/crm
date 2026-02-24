@@ -10,10 +10,7 @@ import { Column } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
-
-function fmt(n: number) {
-  return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
-}
+import { formatUZS, moneyFormatter } from '../utils/currency';
 
 const PERIODS = [
   { label: 'Месяц', value: 30 },
@@ -90,9 +87,9 @@ export default function ProductDetailPage() {
               <Tag color={stockStatus.color}>{p.stock} {p.unit}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Мин. остаток">{p.minStock} {p.unit}</Descriptions.Item>
-            <Descriptions.Item label="Цена продажи">{p.salePrice ? `${fmt(Number(p.salePrice))} so'm` : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Цена продажи">{p.salePrice ? formatUZS(Number(p.salePrice)) : '—'}</Descriptions.Item>
             {isSuperAdmin && (
-              <Descriptions.Item label="Закупочная">{p.purchasePrice ? `${fmt(Number(p.purchasePrice))} so'm` : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Закупочная">{p.purchasePrice ? formatUZS(Number(p.purchasePrice)) : '—'}</Descriptions.Item>
             )}
           </Descriptions>
         </Card>
@@ -101,7 +98,7 @@ export default function ProductDetailPage() {
         <Row gutter={[12, 12]}>
           <Col span={6}>
             <Card size="small">
-              <Statistic title="Выручка" value={sales.totalRevenue} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+              <Statistic title="Выручка" value={sales.totalRevenue} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
           </Col>
           <Col span={6}>
@@ -116,7 +113,7 @@ export default function ProductDetailPage() {
           </Col>
           <Col span={6}>
             <Card size="small">
-              <Statistic title="Ср. цена" value={sales.avgPricePerUnit} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+              <Statistic title="Ср. цена" value={sales.avgPricePerUnit} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
           </Col>
         </Row>
@@ -126,16 +123,16 @@ export default function ProductDetailPage() {
           <Card title="Рентабельность" size="small" bordered={false}>
             <Row gutter={12}>
               <Col span={6}>
-                <Statistic title="Себестоимость" value={profitability.totalCost} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+                <Statistic title="Себестоимость" value={profitability.totalCost} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
               </Col>
               <Col span={6}>
-                <Statistic title="Выручка" value={profitability.totalRevenue} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+                <Statistic title="Выручка" value={profitability.totalRevenue} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
               </Col>
               <Col span={6}>
                 <Statistic
                   title="Валовая прибыль"
                   value={profitability.grossProfit}
-                  formatter={(v) => fmt(Number(v))}
+                  formatter={(v) => moneyFormatter(Number(v))}
                   suffix="so'm"
                   valueStyle={{ color: profitability.grossProfit >= 0 ? '#52c41a' : '#ff4d4f' }}
                 />
@@ -208,7 +205,7 @@ export default function ProductDetailPage() {
                   title: `Кол-во (${p.unit})`,
                   dataIndex: 'totalQty',
                   align: 'right' as const,
-                  render: (v: number) => fmt(v),
+                  render: (v: number) => moneyFormatter(v),
                 },
               ]}
             />

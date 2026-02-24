@@ -35,6 +35,15 @@ const paymentMethodLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
+/** Format qty: integers without .0, decimals up to 3 digits */
+function formatQty(value: number | string | null | undefined): string {
+  if (value == null) return '—';
+  const n = Number(value);
+  if (isNaN(n)) return '—';
+  if (Number.isInteger(n)) return n.toString();
+  return parseFloat(n.toFixed(3)).toString();
+}
+
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [comment, setComment] = useState('');
@@ -460,7 +469,7 @@ export default function DealDetailPage() {
     { title: 'Артикул', dataIndex: ['product', 'sku'], render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Комментарий запроса', dataIndex: 'requestComment', render: (v: string | null) => v || '—' },
     ...(hasQuantities ? [
-      { title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, width: 90, render: (v: number | null) => v != null ? Number(v) : '—' },
+      { title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, width: 90, render: (v: number | null) => v != null ? formatQty(v) : '—' },
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
       { title: 'Цена', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatUZS(v) : '—' },
       { title: 'Сумма', key: 'total', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty)) : '—' },

@@ -13,14 +13,10 @@ import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
 import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
-import { moneyFormatter, moneyParser } from '../utils/currency';
+import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ContractListItem, ContractDetail, DealStatus } from '../types';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
-
-function fmt(n: number) {
-  return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
-}
 
 export default function ContractsPage() {
   const queryClient = useQueryClient();
@@ -202,25 +198,25 @@ export default function ContractsPage() {
     {
       title: 'Сумма договора',
       dataIndex: 'amount',
-      render: (v: number) => Number(v) > 0 ? fmt(Number(v)) : '—',
+      render: (v: number) => Number(v) > 0 ? formatUZS(Number(v)) : '—',
       align: 'right' as const,
     },
     {
       title: 'Сумма сделок',
       dataIndex: 'totalAmount',
-      render: (v: number) => v > 0 ? fmt(v) : '—',
+      render: (v: number) => v > 0 ? formatUZS(v) : '—',
       align: 'right' as const,
     },
     {
       title: 'Оплачено',
       dataIndex: 'totalPaid',
-      render: (v: number) => v > 0 ? <span style={{ color: '#52c41a' }}>{fmt(v)}</span> : '—',
+      render: (v: number) => v > 0 ? <span style={{ color: '#52c41a' }}>{formatUZS(v)}</span> : '—',
       align: 'right' as const,
     },
     {
       title: 'Остаток',
       dataIndex: 'remaining',
-      render: (v: number) => v > 0 ? <span style={{ color: '#ff4d4f', fontWeight: 500 }}>{fmt(v)}</span> : '—',
+      render: (v: number) => v > 0 ? <span style={{ color: '#ff4d4f', fontWeight: 500 }}>{formatUZS(v)}</span> : '—',
       align: 'right' as const,
     },
     {
@@ -275,13 +271,13 @@ export default function ContractsPage() {
           <Card size="small"><Statistic title="Договоров" value={totals.count} /></Card>
         </Col>
         <Col span={6}>
-          <Card size="small"><Statistic title="Общая сумма" value={totals.total} formatter={(v) => fmt(Number(v))} suffix="so'm" /></Card>
+          <Card size="small"><Statistic title="Общая сумма" value={totals.total} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" /></Card>
         </Col>
         <Col span={6}>
-          <Card size="small"><Statistic title="Оплачено" value={totals.paid} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} /></Card>
+          <Card size="small"><Statistic title="Оплачено" value={totals.paid} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} /></Card>
         </Col>
         <Col span={6}>
-          <Card size="small"><Statistic title="Остаток" value={totals.remaining} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: totals.remaining > 0 ? '#ff4d4f' : undefined }} /></Card>
+          <Card size="small"><Statistic title="Остаток" value={totals.remaining} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: totals.remaining > 0 ? '#ff4d4f' : undefined }} /></Card>
         </Col>
       </Row>
 
@@ -428,22 +424,22 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
       <Row gutter={12}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Сумма договора" value={Number(detail.amount)} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+            <Statistic title="Сумма договора" value={Number(detail.amount)} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Сумма сделок" value={detail.totalAmount} formatter={(v) => fmt(Number(v))} suffix="so'm" />
+            <Statistic title="Сумма сделок" value={detail.totalAmount} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Оплачено" value={detail.totalPaid} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} />
+            <Statistic title="Оплачено" value={detail.totalPaid} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Остаток" value={detail.remaining} formatter={(v) => fmt(Number(v))} suffix="so'm" valueStyle={{ color: detail.remaining > 0 ? '#ff4d4f' : '#52c41a' }} />
+            <Statistic title="Остаток" value={detail.remaining} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: detail.remaining > 0 ? '#ff4d4f' : '#52c41a' }} />
           </Card>
         </Col>
       </Row>
@@ -472,7 +468,7 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
               dataIndex: 'amount',
               width: 120,
               align: 'right' as const,
-              render: (v: string) => fmt(Number(v)),
+              render: (v: string) => formatUZS(v),
             },
             {
               title: '',
@@ -498,7 +494,7 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
               children: (
                 <div key={p.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong>{fmt(p.amount)} so'm</strong>
+                    <strong>{formatUZS(p.amount)}</strong>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       {dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>

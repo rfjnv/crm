@@ -99,6 +99,10 @@ export default function DealsPage() {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       message.success('Сделка архивирована');
     },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка архивации';
+      message.error(msg);
+    },
   });
 
   const dealsByStatus = kanbanStatuses.reduce((acc, status) => {

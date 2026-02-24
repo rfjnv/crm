@@ -6,6 +6,7 @@ import { Area } from '@ant-design/charts';
 import { usersApi } from '../api/users.api';
 import { adminApi } from '../api/admin.api';
 import { useAuthStore } from '../store/authStore';
+import { moneyFormatter } from '../utils/currency';
 import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 
@@ -350,7 +351,7 @@ export default function UsersPage() {
                   <Statistic
                     title="Выручка"
                     value={kpiData.revenue}
-                    precision={0}
+                    formatter={(v) => moneyFormatter(Number(v))}
                     suffix="so'm"
                   />
                 </Card>
