@@ -92,7 +92,7 @@ export class DealsService {
         contract: { select: { id: true, contractNumber: true } },
         items: {
           include: {
-            product: { select: { id: true, name: true, sku: true, unit: true, stock: true } },
+            product: { select: { id: true, name: true, sku: true, unit: true, stock: true, salePrice: true } },
             confirmer: { select: { id: true, fullName: true } },
           },
           orderBy: { createdAt: 'desc' },

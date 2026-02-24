@@ -174,7 +174,7 @@ export interface DealItem {
   confirmedBy?: string | null;
   confirmedAt?: string | null;
   createdAt: string;
-  product?: { id: string; name: string; sku: string; unit: string; stock?: number };
+  product?: { id: string; name: string; sku: string; unit: string; stock?: number; salePrice?: string | null };
   confirmer?: { id: string; fullName: string } | null;
 }
 
