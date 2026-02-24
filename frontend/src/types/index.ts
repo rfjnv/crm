@@ -44,12 +44,12 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients'],
+  ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients', 'create_inventory_in', 'edit_client', 'edit_closed_deal', 'manage_contract', 'approve_deal', 'shipment_execute'],
   OPERATOR: ['manage_leads', 'view_all_clients'],
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
   ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract'],
-  WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals'],
-  WAREHOUSE_MANAGER: ['confirm_shipment', 'manage_inventory', 'view_all_deals', 'shipment_execute'],
+  WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals', 'create_inventory_in'],
+  WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute'],
 };
 
 export interface User {

@@ -14,6 +14,12 @@ const permissionValues = [
   'manage_inventory',
   'manage_products',
   'view_all_clients',
+  'create_inventory_in',
+  'edit_client',
+  'edit_closed_deal',
+  'manage_contract',
+  'approve_deal',
+  'shipment_execute',
 ] as const;
 
 const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER'] as const;
