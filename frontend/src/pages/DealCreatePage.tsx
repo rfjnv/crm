@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Card, Typography, Space, Button, Select, Input,
+  Card, Typography, Space, Button, Select, Input, InputNumber,
   message,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -17,6 +17,7 @@ import dayjs from 'dayjs';
 interface DraftItem {
   key: string;
   productId?: string;
+  requestedQty?: number;
   requestComment: string;
 }
 
@@ -86,6 +87,7 @@ export default function DealCreatePage() {
       comment: commentText || undefined,
       items: validItems.map((i) => ({
         productId: i.productId!,
+        requestedQty: i.requestedQty || undefined,
         requestComment: i.requestComment || undefined,
       })),
     });
@@ -131,6 +133,7 @@ export default function DealCreatePage() {
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Кол-во</th>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Комментарий</th>
                 <th style={{ width: 40 }} />
               </tr>
@@ -151,6 +154,12 @@ export default function DealCreatePage() {
                         }))}
                       />
                       {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {p.stock} {p.unit}</div>}
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <InputNumber min={1} placeholder="Кол-во" style={{ width: '100%' }}
+                        value={item.requestedQty}
+                        onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                      />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <Input placeholder="Коммент" value={item.requestComment}

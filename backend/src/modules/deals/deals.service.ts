@@ -154,6 +154,16 @@ export class DealsService {
         });
       }
 
+      // Smart status: if ALL items have qty > 0 → IN_PROGRESS (skip warehouse)
+      // Otherwise → WAITING_STOCK_CONFIRMATION
+      const allHaveQty = dto.items.every((i) => i.requestedQty && i.requestedQty > 0);
+      const initialStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
+
+      const updated = await tx.deal.update({
+        where: { id: created.id },
+        data: { status: initialStatus as any },
+      });
+
       // Add initial comment if provided
       if (dto.comment) {
         await tx.dealComment.create({
@@ -165,7 +175,7 @@ export class DealsService {
         });
       }
 
-      return created;
+      return updated;
     });
 
     await auditLog({
