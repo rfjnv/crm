@@ -375,7 +375,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                     { label: 'Наличные', value: 'CASH' },
                     { label: 'Payme', value: 'PAYME' },
                     { label: 'QR', value: 'QR' },
-                    { label: 'Рассрочка', value: 'INSTALLMENT' },
+                    { label: 'Перечисление', value: 'TRANSFER' },
                   ]} />
                 </Form.Item>
                 <Form.Item name="paymentType" label="Тип оплаты">

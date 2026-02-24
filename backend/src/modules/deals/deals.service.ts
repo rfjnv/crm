@@ -354,7 +354,7 @@ export class DealsService {
     }
 
     // Determine target status based on payment method
-    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'INSTALLMENT';
+    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'TRANSFER';
     const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'ADMIN_APPROVED';
 
     validateStatusTransition(deal.status, targetStatus, user.role);
@@ -577,8 +577,8 @@ export class DealsService {
     const targetStatus: DealStatus = 'ADMIN_APPROVED';
 
     // QR/INSTALLMENT deals require a contract
-    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
-      throw new AppError(400, 'Для QR/рассрочки необходимо привязать договор к сделке');
+    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
+      throw new AppError(400, 'Для QR/перечисления необходимо привязать договор к сделке');
     }
 
     await prisma.deal.update({

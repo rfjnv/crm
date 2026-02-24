@@ -36,6 +36,7 @@ const paymentMethodLabels: Record<string, string> = {
   CASH: 'Наличные',
   PAYME: 'Payme',
   QR: 'QR',
+  TRANSFER: 'Перечисление',
   INSTALLMENT: 'Рассрочка',
 };
 
@@ -115,7 +116,7 @@ export default function DealDetailPage() {
   });
 
   // Contracts for the deal's client (for attach modal)
-  const needsContract = dealData?.paymentMethod === 'QR' || dealData?.paymentMethod === 'INSTALLMENT';
+  const needsContract = dealData?.paymentMethod === 'QR' || dealData?.paymentMethod === 'INSTALLMENT' || dealData?.paymentMethod === 'TRANSFER';
   const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
 
   const isSuperAdmin = role === 'SUPER_ADMIN';
@@ -610,7 +611,7 @@ export default function DealDetailPage() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Для QR/рассрочки необходим договор"
+          message="Для QR/перечисления необходим договор"
           description={canManageContract
             ? 'Создайте новый или прикрепите существующий договор к сделке.'
             : 'Привяжите договор к сделке перед финансовым одобрением.'}
@@ -1069,7 +1070,7 @@ export default function DealDetailPage() {
         cancelText="Отмена"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Выберите способ оплаты. Наличные и Payme не требуют проверки финансов и пойдут сразу на одобрение админа. QR и Рассрочка направляются на проверку бухгалтера.
+          Выберите способ оплаты. Наличные и Payme не требуют проверки финансов и пойдут сразу на одобрение админа. QR и Перечисление направляются на проверку бухгалтера.
         </Typography.Paragraph>
         <Radio.Group
           value={selectedPaymentMethod}
@@ -1089,8 +1090,8 @@ export default function DealDetailPage() {
               QR
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
             </Radio.Button>
-            <Radio.Button value="INSTALLMENT" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
-              Рассрочка
+            <Radio.Button value="TRANSFER" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Перечисление
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
             </Radio.Button>
           </Space>
@@ -1172,7 +1173,6 @@ export default function DealDetailPage() {
               { label: 'Перечисление', value: 'TRANSFER' },
               { label: 'Payme', value: 'PAYME' },
               { label: 'QR', value: 'QR' },
-              { label: 'Рассрочка', value: 'INSTALLMENT' },
             ]} />
           </Form.Item>
           <Form.Item name="paidAt" label="Дата оплаты">

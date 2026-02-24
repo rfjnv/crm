@@ -71,7 +71,7 @@ export const setItemQuantitiesDto = z.object({
 });
 
 export const sendToFinanceDto = z.object({
-  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'INSTALLMENT']),
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER']),
 });
 
 export const shipmentDto = z.object({

@@ -11,7 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:import-products": "tsx prisma/import-products.ts",
-    "db:import-clients": "tsx prisma/import-clients.ts"
+    "db:import-clients": "tsx prisma/import-clients.ts",
+    "db:import-stock": "tsx prisma/import-stock.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",

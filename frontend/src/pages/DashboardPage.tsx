@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Badge, theme } from 'antd';
+import { Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Badge, theme, Progress } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -13,8 +13,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
-import { Area, Bar as BarChart } from '@ant-design/charts';
-import { statusConfig } from '../components/DealStatusTag';
+import { Area } from '@ant-design/charts';
+import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import type { UserRole, DealStatus } from '../types';
 
 export default function DashboardPage() {
@@ -166,25 +166,48 @@ export default function DashboardPage() {
           </Col>
           <Col xs={24} lg={10}>
             <Card title="Сделки по статусам" bordered={false}>
-              <BarChart
-                data={(data.dealsByStatusCounts || []).map((d) => ({
-                  status: (statusConfig[d.status as DealStatus]?.label) || d.status,
-                  count: d.count,
-                  rawStatus: d.status,
-                }))}
-                xField="count"
-                yField="status"
-                height={280}
-                colorField="status"
-                axis={{ y: { labelFormatter: (v: string) => v.length > 16 ? v.slice(0, 14) + '...' : v } }}
-                tooltip={{ items: [{ channel: 'x', name: 'Сделок' }] }}
-                onReady={(plot) => {
-                  plot.chart.on('element:click', (evt: { data?: { data?: { rawStatus?: string } } }) => {
-                    const status = evt?.data?.data?.rawStatus;
-                    if (status) navigate(`/deals?status=${status}`);
-                  });
-                }}
-              />
+              {(() => {
+                const statusCounts = (data.dealsByStatusCounts || [])
+                  .filter((d) => d.count > 0)
+                  .sort((a, b) => b.count - a.count);
+                const maxCount = Math.max(1, ...statusCounts.map((d) => d.count));
+                const tagColorToHex: Record<string, string> = {
+                  blue: '#1677ff', processing: '#1677ff', gold: '#faad14', cyan: '#13c2c2',
+                  orange: '#fa8c16', lime: '#a0d911', geekblue: '#2f54eb', purple: '#722ed1',
+                  warning: '#faad14', success: '#52c41a', volcano: '#ff7a45', red: '#ff4d4f',
+                };
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                    {statusCounts.map((d) => {
+                      const cfg = statusConfig[d.status as DealStatus];
+                      const pct = Math.round((d.count / maxCount) * 100);
+                      const barColor = tagColorToHex[cfg?.color || ''] || themeToken.colorPrimary;
+                      return (
+                        <div
+                          key={d.status}
+                          style={{ cursor: 'pointer', padding: '4px 0' }}
+                          onClick={() => navigate(`/deals?status=${d.status}`)}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <DealStatusTag status={d.status as DealStatus} />
+                            <Typography.Text strong style={{ fontSize: 14 }}>{d.count}</Typography.Text>
+                          </div>
+                          <Progress
+                            percent={pct}
+                            showInfo={false}
+                            size="small"
+                            strokeColor={barColor}
+                            trailColor={themeToken.colorFillSecondary}
+                          />
+                        </div>
+                      );
+                    })}
+                    {statusCounts.length === 0 && (
+                      <Typography.Text type="secondary">Нет активных сделок</Typography.Text>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
           </Col>
         </Row>
