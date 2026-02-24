@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
@@ -9,14 +9,18 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, EditOutlined, DollarOutlined,
-  FileTextOutlined, LinkOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import { adminApi } from '../api/admin.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
+import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
+import SuperOverrideModal from '../components/SuperOverrideModal';
+import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem } from '../types';
@@ -46,6 +50,7 @@ function formatQty(value: number | string | null | undefined): string {
 
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [comment, setComment] = useState('');
   const [itemModal, setItemModal] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
@@ -59,6 +64,9 @@ export default function DealDetailPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
+  const [overrideModal, setOverrideModal] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
@@ -109,6 +117,14 @@ export default function DealDetailPage() {
   // Contracts for the deal's client (for attach modal)
   const needsContract = dealData?.paymentMethod === 'QR' || dealData?.paymentMethod === 'INSTALLMENT';
   const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
+
+  const isSuperAdmin = role === 'SUPER_ADMIN';
+
+  const { data: clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: clientsApi.list,
+    enabled: isSuperAdmin,
+  });
 
   const { data: clientContracts } = useQuery({
     queryKey: ['client-contracts', dealData?.clientId],
@@ -314,6 +330,20 @@ export default function DealDetailPage() {
     },
   });
 
+  // SUPER_ADMIN: Hard delete deal
+  const deleteDealMut = useMutation({
+    mutationFn: (reason: string) => adminApi.deleteDeal(id!, reason),
+    onSuccess: () => {
+      message.success('Сделка удалена');
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+      navigate('/deals');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
+      message.error(msg);
+    },
+  });
+
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!dealData) return <Typography.Text>Сделка не найдена</Typography.Text>;
   const deal = dealData;
@@ -451,6 +481,30 @@ export default function DealDetailPage() {
             Отменить
           </Button>
         </Popconfirm>,
+      );
+    }
+
+    // SUPER_ADMIN: Override button (always visible for SA)
+    if (isSuperAdmin) {
+      actions.push(
+        <Button
+          key="override"
+          icon={<ThunderboltOutlined />}
+          onClick={() => setOverrideModal(true)}
+          style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
+        >
+          Super Override
+        </Button>,
+      );
+      actions.push(
+        <Button
+          key="delete-deal"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => { setDeleteReason(''); setDeleteConfirmModal(true); }}
+        >
+          Удалить сделку
+        </Button>,
       );
     }
 
@@ -797,6 +851,15 @@ export default function DealDetailPage() {
               </Card>
             ),
           },
+          ...(isSuperAdmin ? [{
+            key: 'audit',
+            label: <><AuditOutlined /> Аудит (SA)</>,
+            children: (
+              <Card bordered={false}>
+                <AuditHistoryPanel dealId={id!} />
+              </Card>
+            ),
+          }] : []),
         ]}
       />
 
@@ -1208,6 +1271,53 @@ export default function DealDetailPage() {
         >
           Создать новый договор
         </Button>
+      </Modal>
+
+      {/* SUPER_ADMIN: Override Modal */}
+      {isSuperAdmin && (
+        <SuperOverrideModal
+          open={overrideModal}
+          deal={deal}
+          products={products ?? []}
+          users={users ?? []}
+          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
+          onClose={() => setOverrideModal(false)}
+          onSuccess={() => invalidate()}
+        />
+      )}
+
+      {/* SUPER_ADMIN: Delete Confirm Modal */}
+      <Modal
+        title={<Typography.Text type="danger" strong>Удалить сделку</Typography.Text>}
+        open={deleteConfirmModal}
+        onCancel={() => { setDeleteConfirmModal(false); setDeleteReason(''); }}
+        onOk={() => {
+          if (deleteReason.trim().length < 3) {
+            message.error('Укажите причину удаления (мин. 3 символа)');
+            return;
+          }
+          deleteDealMut.mutate(deleteReason.trim());
+        }}
+        confirmLoading={deleteDealMut.isPending}
+        okText="Удалить навсегда"
+        okButtonProps={{ danger: true }}
+        cancelText="Отмена"
+      >
+        <Alert
+          type="error"
+          showIcon
+          message="Это действие необратимо!"
+          description="Сделка и все связанные данные (товары, комментарии, платежи) будут удалены. Складские движения блокируют удаление."
+          style={{ marginBottom: 16 }}
+        />
+        <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>Причина удаления *</Typography.Text>
+        <Input.TextArea
+          rows={3}
+          value={deleteReason}
+          onChange={(e) => setDeleteReason(e.target.value)}
+          placeholder="Укажите причину удаления (мин. 3 символа)..."
+          status={deleteReason.length > 0 && deleteReason.length < 3 ? 'error' : undefined}
+        />
       </Modal>
     </div>
   );

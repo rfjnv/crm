@@ -8,6 +8,7 @@ interface AuditParams {
   entityId?: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  reason?: string;
 }
 
 export async function auditLog(params: AuditParams): Promise<void> {
@@ -20,6 +21,7 @@ export async function auditLog(params: AuditParams): Promise<void> {
         entityId: params.entityId ?? null,
         before: (params.before ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         after: (params.after ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        reason: params.reason ?? null,
       },
     });
   } catch (err) {

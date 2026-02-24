@@ -81,6 +81,8 @@ enum AuditAction {
   NOTIFICATION_BROADCAST
   PAYMENT_CREATE
   STOCK_WRITE_OFF
+  OVERRIDE_UPDATE
+  OVERRIDE_DELETE
 }
 
 enum NotificationSeverity {
@@ -364,6 +366,7 @@ model AuditLog {
   entityId   String?     @map("entity_id")
   before     Json?
   after      Json?
+  reason     String?
   createdAt  DateTime    @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])

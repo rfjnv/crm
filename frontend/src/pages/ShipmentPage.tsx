@@ -143,11 +143,13 @@ export default function ShipmentPage() {
                 columns={[
                   { title: 'Товар', dataIndex: ['product', 'name'] },
                   { title: 'Артикул', dataIndex: ['product', 'sku'], render: (v: string) => <Tag>{v}</Tag> },
-                  { title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, render: (v: number | null) => {
+                  {
+                    title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, render: (v: number | null) => {
                       if (v == null) return '—';
                       const n = Number(v);
                       return Number.isInteger(n) ? n.toString() : parseFloat(n.toFixed(3)).toString();
-                    } },
+                    }
+                  },
                   {
                     title: 'Остаток на складе',
                     dataIndex: ['product', 'stock'],

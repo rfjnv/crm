@@ -110,3 +110,42 @@ export type ShipmentDto = z.infer<typeof shipmentDto>;
 export type FinanceRejectDto = z.infer<typeof financeRejectDto>;
 export type ShipmentHoldDto = z.infer<typeof shipmentHoldDto>;
 export type CreatePaymentRecordDto = z.infer<typeof createPaymentRecordDto>;
+
+// ──── SUPER_ADMIN Override ────
+
+export const superOverrideDealDto = z.object({
+  reason: z.string().min(3, 'Укажите причину изменения (мин. 3 символа)'),
+  title: z.string().min(1).optional(),
+  status: z.enum(dealStatuses).optional(),
+  clientId: z.string().uuid().optional(),
+  managerId: z.string().uuid().optional(),
+  contractId: z.string().uuid().nullable().optional(),
+  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'INSTALLMENT']).nullable().optional(),
+  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
+  paidAmount: z.number().min(0).optional(),
+  dueDate: z.string().nullable().optional(),
+  discount: z.number().min(0).optional(),
+  terms: z.string().nullable().optional(),
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    requestedQty: z.number().positive().optional(),
+    price: z.number().min(0).optional(),
+    requestComment: z.string().optional(),
+    warehouseComment: z.string().optional(),
+  })).optional(),
+  shipment: z.object({
+    vehicleType: z.string().min(1),
+    vehicleNumber: z.string().min(1),
+    driverName: z.string().min(1),
+    departureTime: z.string().min(1),
+    deliveryNoteNumber: z.string().min(1),
+    shipmentComment: z.string().optional(),
+  }).optional(),
+});
+
+export const superDeleteDealDto = z.object({
+  reason: z.string().min(3, 'Укажите причину удаления (мин. 3 символа)'),
+});
+
+export type SuperOverrideDealDto = z.infer<typeof superOverrideDealDto>;
+export type SuperDeleteDealDto = z.infer<typeof superDeleteDealDto>;

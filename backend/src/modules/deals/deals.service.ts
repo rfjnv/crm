@@ -8,6 +8,7 @@ import {
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
   ShipmentDto, FinanceRejectDto, SendToFinanceDto,
   CreatePaymentRecordDto, ShipmentHoldDto,
+  SuperOverrideDealDto,
 } from './deals.dto';
 
 // ==================== STATUS WORKFLOW ====================
@@ -1299,6 +1300,268 @@ export class DealsService {
     return prisma.dealComment.findMany({
       where: { dealId },
       include: { author: { select: { id: true, fullName: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ==================== SUPER_ADMIN OVERRIDE ====================
+
+  async overrideUpdate(id: string, dto: SuperOverrideDealDto, user: AuthUser) {
+    const deal = await prisma.deal.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        shipment: true,
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    // Build complete "before" snapshot
+    const beforeSnapshot: Record<string, unknown> = {
+      title: deal.title,
+      status: deal.status,
+      amount: Number(deal.amount),
+      discount: Number(deal.discount),
+      clientId: deal.clientId,
+      managerId: deal.managerId,
+      contractId: deal.contractId,
+      paymentMethod: deal.paymentMethod,
+      paymentType: deal.paymentType,
+      paidAmount: Number(deal.paidAmount),
+      paymentStatus: deal.paymentStatus,
+      dueDate: deal.dueDate,
+      terms: deal.terms,
+      items: deal.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
+        price: i.price != null ? Number(i.price) : null,
+      })),
+      shipment: deal.shipment ? {
+        vehicleType: deal.shipment.vehicleType,
+        vehicleNumber: deal.shipment.vehicleNumber,
+        driverName: deal.shipment.driverName,
+        deliveryNoteNumber: deal.shipment.deliveryNoteNumber,
+      } : null,
+    };
+
+    await prisma.$transaction(async (tx) => {
+      const data: Record<string, unknown> = {};
+
+      if (dto.title !== undefined) data.title = dto.title;
+      if (dto.status !== undefined) data.status = dto.status;
+      if (dto.discount !== undefined) data.discount = dto.discount;
+      if (dto.terms !== undefined) data.terms = dto.terms;
+      if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
+      if (dto.paymentType !== undefined) data.paymentType = dto.paymentType;
+      if (dto.dueDate !== undefined) data.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+      if (dto.paidAmount !== undefined) data.paidAmount = dto.paidAmount;
+
+      if (dto.clientId !== undefined && dto.clientId !== deal.clientId) {
+        const client = await tx.client.findUnique({ where: { id: dto.clientId } });
+        if (!client) throw new AppError(404, 'Клиент не найден');
+        data.clientId = dto.clientId;
+      }
+
+      if (dto.managerId !== undefined && dto.managerId !== deal.managerId) {
+        const manager = await tx.user.findUnique({ where: { id: dto.managerId } });
+        if (!manager || !manager.isActive) throw new AppError(404, 'Менеджер не найден или неактивен');
+        data.managerId = dto.managerId;
+      }
+
+      if (dto.contractId !== undefined) {
+        if (dto.contractId !== null) {
+          const contract = await tx.contract.findUnique({ where: { id: dto.contractId } });
+          if (!contract) throw new AppError(404, 'Договор не найден');
+        }
+        data.contractId = dto.contractId;
+      }
+
+      // Items full replacement
+      if (dto.items !== undefined) {
+        await tx.dealItem.deleteMany({ where: { dealId: id } });
+        for (const item of dto.items) {
+          const product = await tx.product.findUnique({ where: { id: item.productId } });
+          if (!product) throw new AppError(404, `Товар ${item.productId} не найден`);
+          await tx.dealItem.create({
+            data: {
+              dealId: id,
+              productId: item.productId,
+              requestedQty: item.requestedQty ?? null,
+              price: item.price ?? null,
+              requestComment: item.requestComment,
+              warehouseComment: item.warehouseComment,
+            },
+          });
+        }
+      }
+
+      // Shipment upsert
+      if (dto.shipment !== undefined) {
+        await tx.shipment.upsert({
+          where: { dealId: id },
+          update: {
+            vehicleType: dto.shipment.vehicleType,
+            vehicleNumber: dto.shipment.vehicleNumber,
+            driverName: dto.shipment.driverName,
+            departureTime: new Date(dto.shipment.departureTime),
+            deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
+            shipmentComment: dto.shipment.shipmentComment,
+          },
+          create: {
+            dealId: id,
+            vehicleType: dto.shipment.vehicleType,
+            vehicleNumber: dto.shipment.vehicleNumber,
+            driverName: dto.shipment.driverName,
+            departureTime: new Date(dto.shipment.departureTime),
+            deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
+            shipmentComment: dto.shipment.shipmentComment,
+            shippedBy: user.userId,
+          },
+        });
+      }
+
+      if (Object.keys(data).length > 0) {
+        await tx.deal.update({ where: { id }, data });
+      }
+    });
+
+    // Recalculate amount if items or discount changed
+    if (dto.items !== undefined || dto.discount !== undefined) {
+      await this.recalcAmount(id);
+    }
+
+    // Recompute paymentStatus
+    if (dto.paidAmount !== undefined || dto.items !== undefined) {
+      const freshDeal = await prisma.deal.findUnique({ where: { id } });
+      if (freshDeal) {
+        const amount = Number(freshDeal.amount);
+        const paid = Number(freshDeal.paidAmount);
+        let paymentStatus: PrismaPaymentStatus = 'UNPAID';
+        if (paid >= amount && amount > 0) paymentStatus = 'PAID';
+        else if (paid > 0) paymentStatus = 'PARTIAL';
+        await prisma.deal.update({ where: { id }, data: { paymentStatus } });
+      }
+    }
+
+    // Build "after" snapshot
+    const updatedDeal = await prisma.deal.findUnique({
+      where: { id },
+      include: { items: true, shipment: true },
+    });
+
+    const afterSnapshot: Record<string, unknown> = {
+      title: updatedDeal!.title,
+      status: updatedDeal!.status,
+      amount: Number(updatedDeal!.amount),
+      discount: Number(updatedDeal!.discount),
+      clientId: updatedDeal!.clientId,
+      managerId: updatedDeal!.managerId,
+      contractId: updatedDeal!.contractId,
+      paymentMethod: updatedDeal!.paymentMethod,
+      paymentType: updatedDeal!.paymentType,
+      paidAmount: Number(updatedDeal!.paidAmount),
+      paymentStatus: updatedDeal!.paymentStatus,
+      items: updatedDeal!.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
+        price: i.price != null ? Number(i.price) : null,
+      })),
+      shipment: updatedDeal!.shipment ? {
+        vehicleType: updatedDeal!.shipment.vehicleType,
+        vehicleNumber: updatedDeal!.shipment.vehicleNumber,
+        driverName: updatedDeal!.shipment.driverName,
+        deliveryNoteNumber: updatedDeal!.shipment.deliveryNoteNumber,
+      } : null,
+    };
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_UPDATE',
+      entityType: 'deal',
+      entityId: id,
+      before: beforeSnapshot,
+      after: afterSnapshot,
+      reason: dto.reason,
+    });
+
+    return this.findById(id, user);
+  }
+
+  async hardDelete(id: string, reason: string, user: AuthUser) {
+    const deal = await prisma.deal.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        shipment: true,
+        comments: true,
+        payments: true,
+        movements: true,
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (deal.movements.length > 0) {
+      throw new AppError(409,
+        `Невозможно удалить: ${deal.movements.length} складских движений. Архивируйте сделку или удалите движения.`,
+      );
+    }
+
+    const snapshot: Record<string, unknown> = {
+      id: deal.id,
+      title: deal.title,
+      status: deal.status,
+      amount: Number(deal.amount),
+      clientId: deal.clientId,
+      clientName: deal.client?.companyName,
+      managerId: deal.managerId,
+      managerName: deal.manager?.fullName,
+      itemsCount: deal.items.length,
+      commentsCount: deal.comments.length,
+      paymentsCount: deal.payments.length,
+      totalPaid: Number(deal.paidAmount),
+      createdAt: deal.createdAt,
+    };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
+      await tx.payment.deleteMany({ where: { dealId: id } });
+      await tx.deal.delete({ where: { id } });
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_DELETE',
+      entityType: 'deal',
+      entityId: id,
+      before: snapshot,
+      after: null,
+      reason,
+    });
+
+    return { success: true, deletedDealId: id };
+  }
+
+  async getAuditHistory(dealId: string) {
+    const deal = await prisma.deal.findUnique({ where: { id: dealId } });
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    return prisma.auditLog.findMany({
+      where: { entityType: 'deal', entityId: dealId },
+      include: { user: { select: { id: true, fullName: true, role: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }

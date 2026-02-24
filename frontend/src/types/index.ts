@@ -19,7 +19,10 @@ export type Permission =
   | 'edit_closed_deal'
   | 'manage_contract'
   | 'approve_deal'
-  | 'shipment_execute';
+  | 'shipment_execute'
+  | 'super_deal_override'
+  | 'delete_any_deal'
+  | 'view_audit_history';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -41,10 +44,15 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_contract', label: 'Управление договорами' },
   { key: 'approve_deal', label: 'Одобрение сделок' },
   { key: 'shipment_execute', label: 'Оформление отгрузки' },
+  { key: 'super_deal_override', label: 'Суперредактирование сделок' },
+  { key: 'delete_any_deal', label: 'Удаление любых сделок' },
+  { key: 'view_audit_history', label: 'Просмотр истории аудита' },
 ];
 
+const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history'];
+
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients', 'create_inventory_in', 'edit_client', 'edit_closed_deal', 'manage_contract', 'approve_deal', 'shipment_execute'],
+  ADMIN: ALL_PERMISSIONS.map((p) => p.key).filter((p) => !SUPER_ONLY.includes(p)),
   OPERATOR: ['manage_leads', 'view_all_clients'],
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
   ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract'],
@@ -262,8 +270,9 @@ export interface AuditLog {
   entityId?: string | null;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  reason?: string | null;
   createdAt: string;
-  user?: { id: string; fullName: string };
+  user?: { id: string; fullName: string; role?: string };
 }
 
 export interface DashboardSummary {

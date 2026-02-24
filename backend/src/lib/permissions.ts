@@ -18,15 +18,25 @@ export const PERMISSIONS = {
   MANAGE_CONTRACT: 'manage_contract',
   APPROVE_DEAL: 'approve_deal',
   SHIPMENT_EXECUTE: 'shipment_execute',
+  SUPER_DEAL_OVERRIDE: 'super_deal_override',
+  DELETE_ANY_DEAL: 'delete_any_deal',
+  VIEW_AUDIT_HISTORY: 'view_audit_history',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const ALL_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
 
+/** Permissions exclusive to SUPER_ADMIN */
+const SUPER_ONLY: Permission[] = [
+  PERMISSIONS.SUPER_DEAL_OVERRIDE,
+  PERMISSIONS.DELETE_ANY_DEAL,
+  PERMISSIONS.VIEW_AUDIT_HISTORY,
+];
+
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   SUPER_ADMIN: [...ALL_PERMISSIONS],
-  ADMIN: [...ALL_PERMISSIONS],
+  ADMIN: ALL_PERMISSIONS.filter((p) => !SUPER_ONLY.includes(p)),
   OPERATOR: [
     PERMISSIONS.MANAGE_LEADS,
     PERMISSIONS.VIEW_ALL_CLIENTS,
