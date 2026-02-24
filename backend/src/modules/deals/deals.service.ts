@@ -15,12 +15,12 @@ import {
 
 const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   NEW: ['WAITING_STOCK_CONFIRMATION', 'CANCELED'],
-  WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'CANCELED'],
-  STOCK_CONFIRMED: ['IN_PROGRESS', 'CANCELED'],
-  IN_PROGRESS: ['WAITING_FINANCE', 'ADMIN_APPROVED', 'REJECTED', 'CANCELED'],
-  WAITING_FINANCE: ['ADMIN_APPROVED', 'REJECTED', 'CANCELED'],
+  WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'NEW', 'CANCELED'],
+  STOCK_CONFIRMED: ['IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'CANCELED'],
+  IN_PROGRESS: ['WAITING_FINANCE', 'ADMIN_APPROVED', 'WAITING_STOCK_CONFIRMATION', 'REJECTED', 'CANCELED'],
+  WAITING_FINANCE: ['ADMIN_APPROVED', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
   FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
-  ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'CANCELED'],
+  ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
   READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
   SHIPPED: ['CLOSED'],
@@ -30,6 +30,7 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
 };
 
 const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
+  NEW: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   WAITING_STOCK_CONFIRMATION: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   STOCK_CONFIRMED: ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   IN_PROGRESS: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
@@ -117,9 +118,9 @@ export class DealsService {
   // ==================== CREATE (simplified — client + items + comment only) ====================
 
   async create(dto: CreateDealDto, user: AuthUser) {
-    // Verify client
+    // Verify client exists (any user can create a deal for any client)
     const client = await prisma.client.findFirst({
-      where: { id: dto.clientId, ...ownerScope(user), isArchived: false },
+      where: { id: dto.clientId, isArchived: false },
     });
     if (!client) {
       throw new AppError(404, 'Клиент не найден');
@@ -177,6 +178,14 @@ export class DealsService {
             authorId: user.userId,
             text: dto.comment,
           },
+        });
+      }
+
+      // Update client's managerId to track "last served by"
+      if (client.managerId !== user.userId) {
+        await tx.client.update({
+          where: { id: dto.clientId },
+          data: { managerId: user.userId },
         });
       }
 

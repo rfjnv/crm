@@ -164,7 +164,7 @@ export default function DealCreatePage() {
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
               <Select showSearch placeholder="Выберите клиента" optionFilterProp="label" style={{ width: '100%' }}
                 value={clientId} onChange={setClientId}
-                options={(clients ?? []).map((c) => ({ label: c.companyName, value: c.id }))}
+                options={(clients ?? []).map((c) => ({ label: `${c.companyName}${c.manager ? ` (${c.manager.fullName})` : ''}`, value: c.id }))}
               />
             </div>
             <div>
@@ -226,6 +226,10 @@ export default function DealCreatePage() {
                         style={{ width: '100%' }}
                         value={item.requestedQty}
                         onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                        parser={(v) => {
+                          const s = (v || '').replace(',', '.');
+                          return Number(s) as unknown as 0;
+                        }}
                       />
                     </td>
                     <td style={{ padding: '6px 8px' }}>

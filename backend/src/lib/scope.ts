@@ -15,9 +15,7 @@ export function ownerScope(user: AuthUser): { managerId?: string } {
   return { managerId: user.userId };
 }
 
-export function clientOwnerScope(user: AuthUser): { managerId?: string } {
-  if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_clients')) {
-    return {};
-  }
-  return { managerId: user.userId };
+export function clientOwnerScope(_user: AuthUser): { managerId?: string } {
+  // All users can see all clients; managerId tracks "last served by"
+  return {};
 }

@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, ArrowRightOutlined, EditOutlined, DollarOutlined,
+  CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
   FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
@@ -386,6 +386,13 @@ export default function DealDetailPage() {
           Указать количества и цены
         </Button>,
       );
+      actions.push(
+        <Popconfirm key="back-to-warehouse" title="Вернуть на склад?" onConfirm={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
+          <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
+            Назад на склад
+          </Button>
+        </Popconfirm>,
+      );
     }
 
     // IN_PROGRESS without quantities → Set quantities
@@ -420,6 +427,17 @@ export default function DealDetailPage() {
       );
     }
 
+    // IN_PROGRESS → Go back to warehouse
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER')) {
+      actions.push(
+        <Popconfirm key="back-to-warehouse-ip" title="Вернуть на склад?" onConfirm={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
+          <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
+            Назад на склад
+          </Button>
+        </Popconfirm>,
+      );
+    }
+
     // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
     if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT')) {
       actions.push(
@@ -434,12 +452,28 @@ export default function DealDetailPage() {
       );
     }
 
+    // WAITING_FINANCE → Go back to IN_PROGRESS
+    if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'MANAGER')) {
+      actions.push(
+        <Popconfirm key="back-to-ip-wf" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
+          <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
+            Назад в работу
+          </Button>
+        </Popconfirm>,
+      );
+    }
+
     // ADMIN_APPROVED → Admin approves → READY_FOR_SHIPMENT
     if (deal.status === 'ADMIN_APPROVED' && isAdmin) {
       actions.push(
         <Popconfirm key="admin-approve" title="Одобрить и отправить на отгрузку?" onConfirm={() => adminApproveMut.mutate()}>
           <Button type="primary" icon={<CheckCircleOutlined />} loading={adminApproveMut.isPending}>
             Одобрить (Админ)
+          </Button>
+        </Popconfirm>,
+        <Popconfirm key="back-to-ip-aa" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
+          <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
+            Назад в работу
           </Button>
         </Popconfirm>,
       );
@@ -1006,7 +1040,15 @@ export default function DealDetailPage() {
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <Form.Item name={[field.name, 'requestedQty']} label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
-                          <InputNumber style={{ width: '100%' }} min={0.1} step={0.1} />
+                          <InputNumber
+                            style={{ width: '100%' }}
+                            min={0.1}
+                            step={0.1}
+                            parser={(v) => {
+                              const s = (v || '').replace(',', '.');
+                              return Number(s) as unknown as 0;
+                            }}
+                          />
                         </Form.Item>
                         <Form.Item name={[field.name, 'price']} label="Цена за единицу" rules={[{ required: true, message: 'Обязательно' }]}>
                           <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
