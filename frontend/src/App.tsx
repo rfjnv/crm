@@ -93,7 +93,9 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/users" element={<UsersPage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/analytics" element={<AnalyticsPage />} />
+                </Route>
                 <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<ExpensesPage />} />

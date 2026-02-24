@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Badge, theme, Progress } from 'antd';
 import {
   DollarOutlined,
-  RiseOutlined,
   FundOutlined,
   WarningOutlined,
   ArrowUpOutlined,
@@ -102,17 +101,14 @@ export default function DashboardPage() {
           </Col>
         ) : (
           <Col xs={24} sm={12} lg={6}>
-            <Link to="/analytics" style={{ display: 'block' }}>
-              <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
-                <Statistic
-                  title="Выручка за месяц"
-                  value={data.revenueMonth}
-                  formatter={(val) => formatUZS(val as number)}
-                  prefix={<RiseOutlined style={{ color: '#1677ff' }} />}
-                  valueStyle={{ color: '#1677ff' }}
-                />
-              </Card>
-            </Link>
+            <Card bordered={false}>
+              <Statistic
+                title="Закрыто сделок"
+                value={data.closedDealsToday}
+                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
           </Col>
         )}
 

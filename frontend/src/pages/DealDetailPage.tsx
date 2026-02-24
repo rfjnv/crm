@@ -378,7 +378,7 @@ export default function DealDetailPage() {
             unit: item.product?.unit || 'шт',
             warehouseComment: item.warehouseComment || '',
             requestedQty: Number(item.requestedQty) || 0,
-            price: Number(item.price) || 0,
+            price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
           }));
           quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
           setSetQuantitiesModal(true);
@@ -398,7 +398,7 @@ export default function DealDetailPage() {
             unit: item.product?.unit || 'шт',
             warehouseComment: item.warehouseComment || '',
             requestedQty: Number(item.requestedQty) || 0,
-            price: Number(item.price) || 0,
+            price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
           }));
           quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
           setSetQuantitiesModal(true);
