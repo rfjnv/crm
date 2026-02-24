@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, ArrowRightOutlined, EditOutlined,
+  CloseCircleOutlined, ArrowRightOutlined, EditOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { inventoryApi } from '../api/warehouse.api';
@@ -17,13 +17,20 @@ import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole } from '../types';
+import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod } from '../types';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
   PARTIAL: { color: 'orange', label: 'Частично' },
   PAID: { color: 'green', label: 'Оплачено' },
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  CASH: 'Наличные',
+  PAYME: 'Payme',
+  QR: 'QR',
+  INSTALLMENT: 'Рассрочка',
 };
 
 export default function DealDetailPage() {
@@ -37,6 +44,8 @@ export default function DealDetailPage() {
   const [rejectModal, setRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [paymentRecordModal, setPaymentRecordModal] = useState(false);
+  const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
@@ -154,6 +163,21 @@ export default function DealDetailPage() {
     },
   });
 
+  const sendToFinanceMut = useMutation({
+    mutationFn: (paymentMethod: PaymentMethod) => dealsApi.sendToFinance(id!, paymentMethod),
+    onSuccess: (result) => {
+      invalidate();
+      setSendToFinanceModal(false);
+      setSelectedPaymentMethod(null);
+      const skipped = result.status === 'ADMIN_APPROVED';
+      message.success(skipped ? 'Отправлено на одобрение админа (финансы не требуются)' : 'Отправлено на проверку финансов');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
   const financeApproveMut = useMutation({
     mutationFn: () => dealsApi.approveFinance(id!),
     onSuccess: () => { invalidate(); message.success('Финансы одобрены'); },
@@ -184,7 +208,7 @@ export default function DealDetailPage() {
   const shipmentMut = useMutation({
     mutationFn: (data: { vehicleType: string; vehicleNumber: string; driverName: string; departureTime: string; deliveryNoteNumber: string; shipmentComment?: string }) =>
       dealsApi.submitShipment(id!, data),
-    onSuccess: () => { invalidate(); setShipmentModal(false); shipmentForm.resetFields(); message.success('Отгрузка оформлена'); },
+    onSuccess: () => { invalidate(); setShipmentModal(false); shipmentForm.resetFields(); message.success('Отгрузка оформлена, сделка закрыта'); },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка оформления отгрузки';
       message.error(msg);
@@ -233,15 +257,17 @@ export default function DealDetailPage() {
   function renderWorkflowActions() {
     const actions: React.ReactNode[] = [];
 
+    // NEW → Send to warehouse (WAITING_STOCK_CONFIRMATION)
     if (deal.status === 'NEW' && (isAdmin || role === 'MANAGER')) {
       actions.push(
-        <Button key="start" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('IN_PROGRESS')}>
-          Взять в работу
+        <Button key="to-warehouse" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
+          Отправить на склад
         </Button>,
       );
     }
 
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
+    // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
+    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={() => {
           const initialValues = (deal.items ?? []).map((item) => ({
@@ -260,7 +286,40 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'ACCOUNTANT') && hasQuantities) {
+    // IN_PROGRESS without quantities → Set quantities
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
+      actions.push(
+        <Button key="set-quantities-ip" type="primary" icon={<EditOutlined />} onClick={() => {
+          const initialValues = (deal.items ?? []).map((item) => ({
+            dealItemId: item.id,
+            productName: item.product?.name || 'Товар',
+            unit: item.product?.unit || 'шт',
+            warehouseComment: item.warehouseComment || '',
+            requestedQty: Number(item.requestedQty) || 0,
+            price: Number(item.price) || 0,
+          }));
+          quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
+          setSetQuantitiesModal(true);
+        }}>
+          Указать количества и цены
+        </Button>,
+      );
+    }
+
+    // IN_PROGRESS with quantities → Send to finance (payment method selection)
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
+      actions.push(
+        <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
+          setSelectedPaymentMethod(null);
+          setSendToFinanceModal(true);
+        }}>
+          Отправить в финансы
+        </Button>,
+      );
+    }
+
+    // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
+    if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT')) {
       actions.push(
         <Popconfirm key="fin-approve" title="Одобрить финансы?" onConfirm={() => financeApproveMut.mutate()}>
           <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
@@ -273,9 +332,10 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'FINANCE_APPROVED' && isAdmin) {
+    // ADMIN_APPROVED → Admin approves → READY_FOR_SHIPMENT
+    if (deal.status === 'ADMIN_APPROVED' && isAdmin) {
       actions.push(
-        <Popconfirm key="admin-approve" title="Одобрить сделку?" onConfirm={() => adminApproveMut.mutate()}>
+        <Popconfirm key="admin-approve" title="Одобрить и отправить на отгрузку?" onConfirm={() => adminApproveMut.mutate()}>
           <Button type="primary" icon={<CheckCircleOutlined />} loading={adminApproveMut.isPending}>
             Одобрить (Админ)
           </Button>
@@ -283,14 +343,7 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'ADMIN_APPROVED' && isAdmin) {
-      actions.push(
-        <Button key="ready-ship" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('READY_FOR_SHIPMENT')}>
-          Оформить отгрузку
-        </Button>,
-      );
-    }
-
+    // READY_FOR_SHIPMENT → Shipment (closes deal)
     if (deal.status === 'READY_FOR_SHIPMENT' && (isAdmin || role === 'WAREHOUSE_MANAGER')) {
       actions.push(
         <Button key="ship" type="primary" icon={<CheckCircleOutlined />} onClick={() => setShipmentModal(true)}>
@@ -299,6 +352,7 @@ export default function DealDetailPage() {
       );
     }
 
+    // SHIPMENT_ON_HOLD → Release hold
     if (deal.status === 'SHIPMENT_ON_HOLD' && (isAdmin || role === 'WAREHOUSE_MANAGER')) {
       actions.push(
         <Popconfirm key="release-hold" title="Вернуть сделку в очередь на отгрузку?" onConfirm={() => releaseHoldMut.mutate()}>
@@ -309,16 +363,7 @@ export default function DealDetailPage() {
       );
     }
 
-    if (deal.status === 'SHIPPED' && isAdmin) {
-      actions.push(
-        <Popconfirm key="close" title="Закрыть сделку?" onConfirm={() => statusMut.mutate('CLOSED')}>
-          <Button type="primary" icon={<CheckCircleOutlined />} loading={statusMut.isPending}>
-            Закрыть сделку
-          </Button>
-        </Popconfirm>,
-      );
-    }
-
+    // REJECTED → Return to IN_PROGRESS
     if (deal.status === 'REJECTED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Button key="rework" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('IN_PROGRESS')}>
@@ -327,6 +372,7 @@ export default function DealDetailPage() {
       );
     }
 
+    // Cancel button (available on most statuses)
     if (!isReadOnly && deal.status !== 'REJECTED' && deal.status !== 'SHIPPED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Popconfirm key="cancel" title="Отменить сделку?" onConfirm={() => statusMut.mutate('CANCELED')}>
@@ -434,13 +480,13 @@ export default function DealDetailPage() {
 
       {renderWorkflowActions()}
 
-      {deal.paymentType === 'INSTALLMENT' && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
+      {(deal.paymentMethod === 'QR' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
         <Alert
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Для рассрочки необходим договор"
-          description="Привяжите договор к сделке перед отправкой на финансовое одобрение."
+          message="Для QR/рассрочки необходим договор"
+          description="Привяжите договор к сделке перед финансовым одобрением."
         />
       )}
 
@@ -481,6 +527,11 @@ export default function DealDetailPage() {
                     <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
                     {deal.contract && (
                       <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
+                    )}
+                    {deal.paymentMethod && (
+                      <Descriptions.Item label="Способ оплаты">
+                        <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
+                      </Descriptions.Item>
                     )}
                     <Descriptions.Item label="Статус">
                       <DealStatusTag status={deal.status} />
@@ -834,6 +885,51 @@ export default function DealDetailPage() {
             </Form.Item>
           </Card>
         </Form>
+      </Modal>
+
+      {/* Send to Finance Modal — Payment Method Selection */}
+      <Modal
+        title="Отправить в финансы"
+        open={sendToFinanceModal}
+        onCancel={() => { setSendToFinanceModal(false); setSelectedPaymentMethod(null); }}
+        onOk={() => {
+          if (!selectedPaymentMethod) {
+            message.warning('Выберите способ оплаты');
+            return;
+          }
+          sendToFinanceMut.mutate(selectedPaymentMethod);
+        }}
+        confirmLoading={sendToFinanceMut.isPending}
+        okText="Отправить"
+        cancelText="Отмена"
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          Выберите способ оплаты. Наличные и Payme не требуют проверки финансов и пойдут сразу на одобрение админа. QR и Рассрочка направляются на проверку бухгалтера.
+        </Typography.Paragraph>
+        <Radio.Group
+          value={selectedPaymentMethod}
+          onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+          style={{ width: '100%' }}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Radio.Button value="CASH" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Наличные
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
+            </Radio.Button>
+            <Radio.Button value="PAYME" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Payme
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
+            </Radio.Button>
+            <Radio.Button value="QR" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              QR
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
+            </Radio.Button>
+            <Radio.Button value="INSTALLMENT" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Рассрочка
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
+            </Radio.Button>
+          </Space>
+        </Radio.Group>
       </Modal>
 
       {/* Shipment Modal */}

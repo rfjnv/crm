@@ -93,6 +93,12 @@ export class DealsController {
     res.json(deals);
   }
 
+  // Workflow: Send to Finance (payment method selection)
+  async sendToFinance(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.sendToFinance(req.params.id as string, req.body, getUser(req));
+    res.json(deal);
+  }
+
   // Workflow: Finance
   async findForFinanceReview(req: Request, res: Response): Promise<void> {
     const deals = await dealsService.findForFinanceReview(getUser(req));

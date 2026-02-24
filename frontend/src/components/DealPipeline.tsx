@@ -3,13 +3,19 @@ import type { DealStatus } from '../types';
 
 const pipelineSteps: { status: DealStatus; label: string }[] = [
   { status: 'NEW', label: 'Новая' },
+  { status: 'WAITING_STOCK_CONFIRMATION', label: 'Склад' },
   { status: 'IN_PROGRESS', label: 'В работе' },
-  { status: 'FINANCE_APPROVED', label: 'Финансы одобрены' },
-  { status: 'ADMIN_APPROVED', label: 'Админ одобрил' },
-  { status: 'READY_FOR_SHIPMENT', label: 'Оформить отгрузку' },
-  { status: 'SHIPPED', label: 'Отгружена' },
+  { status: 'WAITING_FINANCE', label: 'Финансы' },
+  { status: 'ADMIN_APPROVED', label: 'Админ' },
+  { status: 'READY_FOR_SHIPMENT', label: 'Отгрузка' },
   { status: 'CLOSED', label: 'Закрыта' },
 ];
+
+// Map intermediate statuses to their pipeline step position
+const statusToStep: Partial<Record<DealStatus, DealStatus>> = {
+  STOCK_CONFIRMED: 'WAITING_STOCK_CONFIRMATION',
+  FINANCE_APPROVED: 'WAITING_FINANCE',
+};
 
 export default function DealPipeline({ status }: { status: DealStatus }) {
   if (status === 'CANCELED') {
@@ -34,11 +40,11 @@ export default function DealPipeline({ status }: { status: DealStatus }) {
     );
   }
 
-  // Handle legacy statuses (WAITING_STOCK_CONFIRMATION, STOCK_CONFIRMED) — map to IN_PROGRESS position
-  let currentIndex = pipelineSteps.findIndex((s) => s.status === status);
+  // Map intermediate statuses (STOCK_CONFIRMED → same step as WAITING_STOCK_CONFIRMATION)
+  const mappedStatus = statusToStep[status] || status;
+  let currentIndex = pipelineSteps.findIndex((s) => s.status === mappedStatus);
   if (currentIndex === -1) {
-    // Legacy status: show at IN_PROGRESS step
-    currentIndex = pipelineSteps.findIndex((s) => s.status === 'IN_PROGRESS');
+    currentIndex = 0;
   }
 
   return (

@@ -13,7 +13,13 @@ export type Permission =
   | 'confirm_shipment'
   | 'manage_inventory'
   | 'manage_products'
-  | 'view_all_clients';
+  | 'view_all_clients'
+  | 'create_inventory_in'
+  | 'edit_client'
+  | 'edit_closed_deal'
+  | 'manage_contract'
+  | 'approve_deal'
+  | 'shipment_execute';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -29,15 +35,21 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_inventory', label: 'Управление складом' },
   { key: 'manage_products', label: 'Добавление товаров' },
   { key: 'view_all_clients', label: 'Просмотр всех клиентов' },
+  { key: 'create_inventory_in', label: 'Приход товаров' },
+  { key: 'edit_client', label: 'Редактирование клиентов' },
+  { key: 'edit_closed_deal', label: 'Редактирование закрытых сделок' },
+  { key: 'manage_contract', label: 'Управление договорами' },
+  { key: 'approve_deal', label: 'Одобрение сделок' },
+  { key: 'shipment_execute', label: 'Оформление отгрузки' },
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients'],
   OPERATOR: ['manage_leads', 'view_all_clients'],
-  MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients'],
-  ACCOUNTANT: ['finance_approve', 'view_all_deals'],
+  MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
+  ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract'],
   WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals'],
-  WAREHOUSE_MANAGER: ['confirm_shipment', 'manage_inventory', 'view_all_deals'],
+  WAREHOUSE_MANAGER: ['confirm_shipment', 'manage_inventory', 'view_all_deals', 'shipment_execute'],
 };
 
 export interface User {
@@ -89,6 +101,7 @@ export type DealStatus =
   | 'IN_PROGRESS'
   | 'WAITING_STOCK_CONFIRMATION'
   | 'STOCK_CONFIRMED'
+  | 'WAITING_FINANCE'
   | 'FINANCE_APPROVED'
   | 'ADMIN_APPROVED'
   | 'READY_FOR_SHIPMENT'
@@ -180,6 +193,7 @@ export interface Deal {
   clientId: string;
   managerId: string;
   contractId?: string | null;
+  paymentMethod?: PaymentMethod | null;
   paymentType: PaymentType;
   paidAmount: string;
   dueDate?: string | null;

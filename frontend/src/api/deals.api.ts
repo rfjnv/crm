@@ -1,5 +1,5 @@
 import client from './client';
-import type { Deal, DealItem, DealComment, AuditLog, DealStatus, DealHistoryEntry, Shipment, PaymentRecord } from '../types';
+import type { Deal, DealItem, DealComment, AuditLog, DealStatus, DealHistoryEntry, Shipment, PaymentRecord, PaymentMethod } from '../types';
 
 export const dealsApi = {
   list: (status?: DealStatus, includeClosed?: boolean) =>
@@ -10,10 +10,7 @@ export const dealsApi = {
   create: (data: {
     title?: string;
     clientId: string;
-    paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
-    dueDate?: string;
-    terms?: string;
-    discount?: number;
+    comment?: string;
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
@@ -67,6 +64,10 @@ export const dealsApi = {
 
   stockConfirmationQueue: () =>
     client.get<Deal[]>('/deals/stock-confirmation-queue').then((r) => r.data),
+
+  // Workflow: Send to Finance (Manager selects payment method)
+  sendToFinance: (dealId: string, paymentMethod: PaymentMethod) =>
+    client.post<Deal>(`/deals/${dealId}/send-to-finance`, { paymentMethod }).then((r) => r.data),
 
   // Workflow: Finance
   approveFinance: (dealId: string) =>

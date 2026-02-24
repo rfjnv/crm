@@ -16,6 +16,13 @@ const paymentTypeLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
+const paymentMethodLabels: Record<string, string> = {
+  CASH: 'Наличные',
+  PAYME: 'Payme',
+  QR: 'QR',
+  INSTALLMENT: 'Рассрочка',
+};
+
 type FinanceDeal = Deal & { clientDebt: number };
 
 export default function FinanceReviewPage() {
@@ -78,6 +85,11 @@ export default function FinanceReviewPage() {
       title: 'Тип оплаты',
       dataIndex: 'paymentType',
       render: (v: string) => <Tag>{paymentTypeLabels[v] ?? v}</Tag>,
+    },
+    {
+      title: 'Способ оплаты',
+      dataIndex: 'paymentMethod',
+      render: (v: string | null) => v ? <Tag color="blue">{paymentMethodLabels[v] ?? v}</Tag> : '—',
     },
     {
       title: 'Долг клиента',
@@ -160,7 +172,7 @@ export default function FinanceReviewPage() {
               <Table.Summary.Cell index={2} align="right">
                 <Typography.Text strong>{formatUZS(total)}</Typography.Text>
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={3} colSpan={7} />
+              <Table.Summary.Cell index={3} colSpan={8} />
             </Table.Summary.Row>
           );
         }}

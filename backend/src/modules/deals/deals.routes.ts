@@ -7,7 +7,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import {
   createDealDto, updateDealDto, createCommentDto, paymentDto,
   addDealItemDto, warehouseResponseDto, setItemQuantitiesDto,
-  shipmentDto, financeRejectDto,
+  shipmentDto, financeRejectDto, sendToFinanceDto,
   createPaymentRecordDto, shipmentHoldDto,
 } from './deals.dto';
 
@@ -41,6 +41,9 @@ router.post('/:id/stock-confirm', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'A
 
 // Workflow: Set Item Quantities (Manager fills after warehouse response)
 router.post('/:id/set-quantities', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(setItemQuantitiesDto), asyncHandler(dealsController.setItemQuantities.bind(dealsController)));
+
+// Workflow: Send to Finance (Manager selects payment method)
+router.post('/:id/send-to-finance', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(sendToFinanceDto), asyncHandler(dealsController.sendToFinance.bind(dealsController)));
 
 // Workflow: Finance
 router.post('/:id/finance-approve', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveFinance.bind(dealsController)));
