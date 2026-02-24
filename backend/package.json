@@ -12,7 +12,8 @@
     "db:studio": "prisma studio",
     "db:import-products": "tsx prisma/import-products.ts",
     "db:import-clients": "tsx prisma/import-clients.ts",
-    "db:import-stock": "tsx prisma/import-stock.ts"
+    "db:import-stock": "tsx prisma/import-stock.ts",
+    "db:cleanup": "tsx prisma/cleanup-test-data.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",
