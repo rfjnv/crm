@@ -11,13 +11,15 @@ import { clientsApi } from '../api/clients.api';
 import { inventoryApi } from '../api/warehouse.api';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
-import type { Product } from '../types';
+import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import type { Product, DealStatus } from '../types';
 import dayjs from 'dayjs';
 
 interface DraftItem {
   key: string;
   productId?: string;
   requestedQty?: number;
+  price?: number;
   requestComment: string;
 }
 
@@ -61,6 +63,24 @@ export default function DealCreatePage() {
     return m;
   }, [products]);
 
+  // Compute total amount from items
+  const totalAmount = useMemo(() => {
+    return draftItems.reduce((sum, item) => {
+      if (item.requestedQty && item.price) {
+        return sum + item.requestedQty * item.price;
+      }
+      return sum;
+    }, 0);
+  }, [draftItems]);
+
+  // Smart status preview: all items with qty → IN_PROGRESS, otherwise → WAITING_STOCK_CONFIRMATION
+  const previewStatus: DealStatus = useMemo(() => {
+    const validItems = draftItems.filter((i) => i.productId);
+    if (validItems.length === 0) return 'WAITING_STOCK_CONFIRMATION';
+    const allHaveQty = validItems.every((i) => i.requestedQty && i.requestedQty > 0);
+    return allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
+  }, [draftItems]);
+
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
   }
@@ -81,6 +101,15 @@ export default function DealCreatePage() {
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) { message.error('Добавьте хотя бы один товар'); return; }
 
+    // Validation: if qty is set, price must also be set
+    for (const item of validItems) {
+      if (item.requestedQty && item.requestedQty > 0 && (!item.price || item.price <= 0)) {
+        const p = productMap.get(item.productId!);
+        message.error(`Укажите цену для "${p?.name || 'товар'}"`);
+        return;
+      }
+    }
+
     createMut.mutate({
       title: title || undefined,
       clientId,
@@ -88,6 +117,7 @@ export default function DealCreatePage() {
       items: validItems.map((i) => ({
         productId: i.productId!,
         requestedQty: i.requestedQty || undefined,
+        price: i.price || undefined,
         requestComment: i.requestComment || undefined,
       })),
     });
@@ -123,24 +153,31 @@ export default function DealCreatePage() {
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
-              <DealStatusTag status="NEW" />
+              <DealStatusTag status={previewStatus} />
             </div>
           </div>
         </Card>
 
-        <Card title={`Товары (${draftItems.filter((i) => i.productId).length})`} bordered={false}>
+        <Card
+          title={`Товары (${draftItems.filter((i) => i.productId).length})`}
+          extra={totalAmount > 0 ? <Typography.Text strong>Итого: {formatUZS(totalAmount)}</Typography.Text> : null}
+          bordered={false}
+        >
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Кол-во</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Комментарий</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Коммент</th>
                 <th style={{ width: 40 }} />
               </tr>
             </thead>
             <tbody>
               {draftItems.map((item) => {
                 const p = item.productId ? productMap.get(item.productId) : null;
+                const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
                 return (
                   <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={{ padding: '6px 8px' }}>
@@ -156,10 +193,22 @@ export default function DealCreatePage() {
                       {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {p.stock} {p.unit}</div>}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <InputNumber min={1} placeholder="Кол-во" style={{ width: '100%' }}
+                      <InputNumber min={0.01} step={0.1} placeholder="Кол-во" style={{ width: '100%' }}
                         value={item.requestedQty}
                         onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
                       />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
+                        formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
+                        value={item.price}
+                        onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <Typography.Text style={{ whiteSpace: 'nowrap' }}>
+                        {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
+                      </Typography.Text>
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <Input placeholder="Коммент" value={item.requestComment}
@@ -173,6 +222,19 @@ export default function DealCreatePage() {
                 );
               })}
             </tbody>
+            {totalAmount > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #d9d9d9' }}>
+                  <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
+                    <Typography.Text strong>Итого:</Typography.Text>
+                  </td>
+                  <td style={{ padding: '8px' }}>
+                    <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
 
           <Button type="dashed" block icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={addItemRow}>

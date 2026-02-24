@@ -16,7 +16,14 @@ export const createDealDto = z.object({
     price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
     requestComment: z.string().optional(),
   })).min(1, 'Добавьте хотя бы один товар'),
-});
+}).refine((data) => {
+  return data.items.every((item) => {
+    if (item.requestedQty && item.requestedQty > 0) {
+      return item.price != null && item.price > 0;
+    }
+    return true;
+  });
+}, { message: 'Если указано количество, цена обязательна и должна быть больше 0' });
 
 export const updateDealDto = z.object({
   title: z.string().min(1).optional(),

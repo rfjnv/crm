@@ -127,13 +127,27 @@ export class DealsService {
     // Auto-generate title
     const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU')}`;
 
+    // Compute total amount from items (source of truth)
+    const totalAmount = dto.items.reduce((sum, item) => {
+      if (item.requestedQty && item.price) {
+        return sum + item.requestedQty * item.price;
+      }
+      return sum;
+    }, 0);
+
+    // Smart status: if ALL items have qty > 0 → IN_PROGRESS (skip warehouse)
+    // Otherwise → WAITING_STOCK_CONFIRMATION
+    const allHaveQty = dto.items.every((i) => i.requestedQty && i.requestedQty > 0);
+    const initialStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
+
     // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
         data: {
           title,
-          amount: 0,
+          amount: totalAmount,
           discount: 0,
+          status: initialStatus as any,
           clientId: dto.clientId,
           managerId: user.userId,
           paymentType: 'FULL',
@@ -154,16 +168,6 @@ export class DealsService {
         });
       }
 
-      // Smart status: if ALL items have qty > 0 → IN_PROGRESS (skip warehouse)
-      // Otherwise → WAITING_STOCK_CONFIRMATION
-      const allHaveQty = dto.items.every((i) => i.requestedQty && i.requestedQty > 0);
-      const initialStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
-
-      const updated = await tx.deal.update({
-        where: { id: created.id },
-        data: { status: initialStatus as any },
-      });
-
       // Add initial comment if provided
       if (dto.comment) {
         await tx.dealComment.create({
@@ -175,7 +179,7 @@ export class DealsService {
         });
       }
 
-      return updated;
+      return created;
     });
 
     await auditLog({
@@ -185,7 +189,7 @@ export class DealsService {
       entityId: deal.id,
       after: {
         title: deal.title,
-        amount: 0,
+        amount: totalAmount,
         status: deal.status,
         clientId: deal.clientId,
         itemsCount: dto.items.length,

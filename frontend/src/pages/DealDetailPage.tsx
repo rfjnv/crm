@@ -9,15 +9,17 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, EditOutlined, DollarOutlined,
+  FileTextOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
+import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod } from '../types';
+import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem } from '../types';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -46,12 +48,15 @@ export default function DealDetailPage() {
   const [paymentRecordModal, setPaymentRecordModal] = useState(false);
   const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [createContractModal, setCreateContractModal] = useState(false);
+  const [attachContractModal, setAttachContractModal] = useState(false);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
   const [warehouseForm] = Form.useForm();
   const [quantitiesForm] = Form.useForm();
   const [shipmentForm] = Form.useForm();
+  const [contractForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const role = user?.role as UserRole | undefined;
@@ -90,6 +95,16 @@ export default function DealDetailPage() {
     queryKey: ['deal-payments', id],
     queryFn: () => dealsApi.getDealPayments(id!),
     enabled: !!id,
+  });
+
+  // Contracts for the deal's client (for attach modal)
+  const needsContract = dealData?.paymentMethod === 'QR' || dealData?.paymentMethod === 'INSTALLMENT';
+  const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
+
+  const { data: clientContracts } = useQuery({
+    queryKey: ['client-contracts', dealData?.clientId],
+    queryFn: () => contractsApi.list(dealData!.clientId),
+    enabled: !!dealData?.clientId && needsContract && canManageContract,
   });
 
   // ──── Mutations ────
@@ -239,6 +254,53 @@ export default function DealDetailPage() {
     onSuccess: () => { invalidate(); setPaymentRecordModal(false); paymentRecordForm.resetFields(); message.success('Платёж добавлен'); },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка добавления платежа';
+      message.error(msg);
+    },
+  });
+
+  // Contract: create new and attach to deal
+  const createContractMut = useMutation({
+    mutationFn: async (data: { contractNumber: string; amount?: number; startDate: string; endDate?: string; notes?: string }) => {
+      const contract = await contractsApi.create({ ...data, clientId: dealData!.clientId });
+      await dealsApi.update(id!, { contractId: contract.id });
+      return contract;
+    },
+    onSuccess: (contract) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['client-contracts'] });
+      setCreateContractModal(false);
+      contractForm.resetFields();
+      message.success(`Договор ${contract.contractNumber} создан и прикреплён`);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка создания договора';
+      message.error(msg);
+    },
+  });
+
+  // Contract: attach existing
+  const attachContractMut = useMutation({
+    mutationFn: (contractId: string) => dealsApi.update(id!, { contractId }),
+    onSuccess: () => {
+      invalidate();
+      setAttachContractModal(false);
+      message.success('Договор прикреплён к сделке');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка прикрепления договора';
+      message.error(msg);
+    },
+  });
+
+  // Contract: detach
+  const detachContractMut = useMutation({
+    mutationFn: () => dealsApi.update(id!, { contractId: null }),
+    onSuccess: () => {
+      invalidate();
+      message.success('Договор откреплён');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
       message.error(msg);
     },
   });
@@ -480,14 +542,45 @@ export default function DealDetailPage() {
 
       {renderWorkflowActions()}
 
-      {(deal.paymentMethod === 'QR' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
+      {needsContract && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
         <Alert
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
           message="Для QR/рассрочки необходим договор"
-          description="Привяжите договор к сделке перед финансовым одобрением."
+          description={canManageContract
+            ? 'Создайте новый или прикрепите существующий договор к сделке.'
+            : 'Привяжите договор к сделке перед финансовым одобрением.'}
+          action={canManageContract ? (
+            <Space>
+              <Button size="small" type="primary" icon={<FileTextOutlined />} onClick={() => {
+                contractForm.resetFields();
+                contractForm.setFieldsValue({ startDate: dayjs(), amount: Number(deal.amount) || 0 });
+                setCreateContractModal(true);
+              }}>Создать договор</Button>
+              <Button size="small" icon={<LinkOutlined />} onClick={() => setAttachContractModal(true)}>Прикрепить</Button>
+            </Space>
+          ) : undefined}
         />
+      )}
+
+      {needsContract && deal.contractId && deal.contract && canManageContract && (
+        <Card
+          size="small"
+          style={{ marginBottom: 16 }}
+          title={<><FileTextOutlined /> Договор: {deal.contract.contractNumber}</>}
+          extra={!isReadOnly && (
+            <Popconfirm title="Открепить договор от сделки?" onConfirm={() => detachContractMut.mutate()}>
+              <Button size="small" danger type="text">Открепить</Button>
+            </Popconfirm>
+          )}
+        >
+          <Descriptions size="small" column={3}>
+            <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
+            <Descriptions.Item label="Клиент">{deal.client?.companyName}</Descriptions.Item>
+            <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
+          </Descriptions>
+        </Card>
       )}
 
       <Tabs
@@ -1017,6 +1110,95 @@ export default function DealDetailPage() {
             <Input.TextArea rows={2} placeholder="Примечание к платежу..." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Create Contract Modal */}
+      <Modal
+        title="Создать договор"
+        open={createContractModal}
+        onCancel={() => setCreateContractModal(false)}
+        onOk={() => contractForm.submit()}
+        confirmLoading={createContractMut.isPending}
+        okText="Создать и прикрепить"
+        cancelText="Отмена"
+      >
+        <Form form={contractForm} layout="vertical" onFinish={(v) => createContractMut.mutate({
+          contractNumber: v.contractNumber,
+          amount: v.amount || 0,
+          startDate: v.startDate.format('YYYY-MM-DD'),
+          endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : undefined,
+          notes: v.notes || undefined,
+        })}>
+          <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
+            <Input placeholder="Например: Д-2026-001" />
+          </Form.Item>
+          <Form.Item name="amount" label="Сумма договора">
+            <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Form.Item name="startDate" label="Дата начала" rules={[{ required: true, message: 'Обязательно' }]}>
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+            <Form.Item name="endDate" label="Дата окончания">
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+          </div>
+          <Form.Item name="notes" label="Примечание">
+            <Input.TextArea rows={2} placeholder="Примечание к договору..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Attach Existing Contract Modal */}
+      <Modal
+        title="Прикрепить существующий договор"
+        open={attachContractModal}
+        onCancel={() => setAttachContractModal(false)}
+        footer={null}
+      >
+        {(clientContracts ?? []).length === 0 ? (
+          <Typography.Text type="secondary">
+            Нет доступных договоров для этого клиента. Создайте новый договор.
+          </Typography.Text>
+        ) : (
+          <List
+            dataSource={(clientContracts ?? []).filter((c: ContractListItem) => c.isActive)}
+            renderItem={(contract: ContractListItem) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="attach"
+                    type="primary"
+                    size="small"
+                    loading={attachContractMut.isPending}
+                    onClick={() => attachContractMut.mutate(contract.id)}
+                  >
+                    Прикрепить
+                  </Button>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={contract.contractNumber}
+                  description={`Сумма: ${formatUZS(contract.amount)} | Сделок: ${contract.dealsCount}`}
+                />
+              </List.Item>
+            )}
+          />
+        )}
+        <Button
+          type="dashed"
+          block
+          icon={<PlusOutlined />}
+          style={{ marginTop: 12 }}
+          onClick={() => {
+            setAttachContractModal(false);
+            contractForm.resetFields();
+            contractForm.setFieldsValue({ startDate: dayjs(), amount: Number(deal.amount) || 0 });
+            setCreateContractModal(true);
+          }}
+        >
+          Создать новый договор
+        </Button>
       </Modal>
     </div>
   );
