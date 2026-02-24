@@ -33,8 +33,8 @@ export default function ProductsPage() {
   const filtered = (products ?? []).filter((p) => {
     if (categoryFilter && p.category !== categoryFilter) return false;
     if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
-    if (stockFilter === 'zero' && p.stock !== 0) return false;
-    if (stockFilter === 'low' && !(p.stock > 0 && p.stock < p.minStock)) return false;
+    if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
+    if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
     return true;
   });
 
@@ -95,11 +95,15 @@ export default function ProductsPage() {
       dataIndex: 'stock',
       align: 'right' as const,
       width: 90,
-      render: (v: number, r: Product) => (
-        <span style={{ fontWeight: 600, color: v === 0 ? token.colorTextDisabled : v < (r.minStock || 10) ? token.colorError : token.colorSuccess }}>
-          {v}
-        </span>
-      ),
+      render: (v: number, r: Product) => {
+        const stock = Number(v);
+        const min = Number(r.minStock || 10);
+        return (
+          <span style={{ fontWeight: 600, color: stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess }}>
+            {stock}
+          </span>
+        );
+      },
     },
     { title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
     ...(isSuperAdmin ? [{

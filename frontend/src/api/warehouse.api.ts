@@ -13,6 +13,9 @@ export const inventoryApi = {
   deleteProduct: (id: string) =>
     client.delete(`/inventory/products/${id}`).then((r) => r.data),
 
+  correctStock: (id: string, data: { newStock: number; reason: string }) =>
+    client.post<Product>(`/inventory/products/${id}/correct-stock`, data).then((r) => r.data),
+
   getProductMovements: (id: string) =>
     client.get<InventoryMovement[]>(`/inventory/products/${id}/movements`).then((r) => r.data),
 

@@ -41,6 +41,12 @@ export const createMovementDto = z.object({
   note: z.string().optional(),
 });
 
+export const correctStockDto = z.object({
+  newStock: z.number().min(0, 'Остаток не может быть отрицательным'),
+  reason: z.string().min(1, 'Причина коррекции обязательна'),
+});
+
 export type CreateProductDto = z.infer<typeof createProductDto>;
 export type UpdateProductDto = z.infer<typeof updateProductDto>;
 export type CreateMovementDto = z.infer<typeof createMovementDto>;
+export type CorrectStockDto = z.infer<typeof correctStockDto>;

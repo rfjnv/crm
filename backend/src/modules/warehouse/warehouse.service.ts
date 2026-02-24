@@ -2,7 +2,7 @@ import prisma from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
-import { CreateProductDto, UpdateProductDto, CreateMovementDto } from './warehouse.dto';
+import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto } from './warehouse.dto';
 
 export class WarehouseService {
   // ==================== PRODUCTS ====================
@@ -102,6 +102,30 @@ export class WarehouseService {
     });
 
     return { success: true };
+  }
+
+  async correctStock(id: string, dto: CorrectStockDto, userId: string) {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      throw new AppError(404, 'Товар не найден');
+    }
+
+    const oldStock = Number(product.stock);
+    const updated = await prisma.product.update({
+      where: { id },
+      data: { stock: dto.newStock },
+    });
+
+    await auditLog({
+      userId,
+      action: 'UPDATE',
+      entityType: 'stock_correction',
+      entityId: id,
+      before: { stock: oldStock, name: product.name, sku: product.sku },
+      after: { stock: dto.newStock, reason: dto.reason },
+    });
+
+    return updated;
   }
 
   // ==================== MOVEMENTS ====================

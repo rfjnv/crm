@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space } from 'antd';
-import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import type { Product } from '../types';
@@ -14,13 +14,16 @@ export default function WarehousePage() {
   const [inModal, setInModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [movementsProduct, setMovementsProduct] = useState<Product | null>(null);
+  const [correctProduct, setCorrectProduct] = useState<Product | null>(null);
   const [searchText, setSearchText] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [unitFilter, setUnitFilter] = useState<string | undefined>(undefined);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active');
   const [form] = Form.useForm();
+  const [correctForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const canCorrectStock = user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_MANAGER';
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
@@ -43,6 +46,21 @@ export default function WarehousePage() {
       setInModal(false);
       setSelectedProduct(null);
       form.resetFields();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
+  const correctMut = useMutation({
+    mutationFn: (data: { id: string; newStock: number; reason: string }) =>
+      inventoryApi.correctStock(data.id, { newStock: data.newStock, reason: data.reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Остаток скорректирован');
+      setCorrectProduct(null);
+      correctForm.resetFields();
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
@@ -76,13 +94,13 @@ export default function WarehousePage() {
       );
     }
 
-    // Stock filter
+    // Stock filter (Number() for Decimal values from Prisma)
     if (stockFilter === 'zero') {
-      list = list.filter((p) => p.stock === 0);
+      list = list.filter((p) => Number(p.stock) === 0);
     } else if (stockFilter === 'low') {
-      list = list.filter((p) => p.stock > 0 && p.stock < p.minStock);
+      list = list.filter((p) => Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock));
     } else if (stockFilter === 'normal') {
-      list = list.filter((p) => p.stock >= p.minStock);
+      list = list.filter((p) => Number(p.stock) >= Number(p.minStock));
     }
 
     // Unit filter
@@ -103,17 +121,19 @@ export default function WarehousePage() {
       dataIndex: 'stock',
       align: 'right' as const,
       width: 100,
-      sorter: (a: Product, b: Product) => a.stock - b.stock,
+      sorter: (a: Product, b: Product) => Number(a.stock) - Number(b.stock),
       render: (v: number, r: Product) => {
+        const stock = Number(v);
+        const min = Number(r.minStock);
         let color = '#52c41a'; // green — normal
-        if (v === 0) {
+        if (stock === 0) {
           color = '#ff4d4f'; // red — zero stock
-        } else if (v < r.minStock) {
+        } else if (stock < min) {
           color = '#faad14'; // orange — low stock warning
         }
         return (
           <span style={{ fontWeight: 600, color }}>
-            {v}
+            {stock}
           </span>
         );
       },
@@ -129,14 +149,16 @@ export default function WarehousePage() {
       key: 'stockStatus',
       width: 120,
       render: (_: unknown, r: Product) => {
-        if (r.stock === 0) return <Tag color="red">Нет на складе</Tag>;
-        if (r.stock < r.minStock) return <Tag color="orange">Нужен приход</Tag>;
+        const stock = Number(r.stock);
+        const min = Number(r.minStock);
+        if (stock === 0) return <Tag color="red">Нет на складе</Tag>;
+        if (stock < min) return <Tag color="orange">Мало</Tag>;
         return <Tag color="green">В норме</Tag>;
       },
     },
     {
       title: '',
-      width: 160,
+      width: canCorrectStock ? 260 : 160,
       render: (_: unknown, r: Product) => (
         <Space>
           {['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'].includes(user?.role ?? '') && (
@@ -147,6 +169,15 @@ export default function WarehousePage() {
               onClick={() => { setSelectedProduct(r); form.setFieldsValue({ productId: r.id }); setInModal(true); }}
             >
               Приход
+            </Button>
+          )}
+          {canCorrectStock && (
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => { setCorrectProduct(r); correctForm.setFieldsValue({ newStock: Number(r.stock) }); }}
+            >
+              Коррекция
             </Button>
           )}
           <Button size="small" onClick={() => setMovementsProduct(r)}>История</Button>
@@ -230,7 +261,7 @@ export default function WarehousePage() {
           showTotal: (total) => `Всего: ${total}`,
         }}
         size="middle"
-        rowClassName={(r) => r.stock < r.minStock ? 'low-stock-row' : ''}
+        rowClassName={(r) => Number(r.stock) < Number(r.minStock) ? 'low-stock-row' : ''}
       />
 
       {/* Income Modal */}
@@ -281,6 +312,34 @@ export default function WarehousePage() {
           pagination={{ pageSize: 15 }}
           size="small"
         />
+      </Modal>
+
+      {/* Stock Correction Modal */}
+      <Modal
+        title={`Коррекция остатка: ${correctProduct?.name ?? ''}`}
+        open={!!correctProduct}
+        onCancel={() => { setCorrectProduct(null); correctForm.resetFields(); }}
+        onOk={() => correctForm.submit()}
+        confirmLoading={correctMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+      >
+        {correctProduct && (
+          <div style={{ marginBottom: 16, color: '#888' }}>
+            Текущий остаток: <strong>{Number(correctProduct.stock)}</strong> {correctProduct.unit}
+          </div>
+        )}
+        <Form form={correctForm} layout="vertical" onFinish={(v) => {
+          if (!correctProduct) return;
+          correctMut.mutate({ id: correctProduct.id, newStock: v.newStock, reason: v.reason });
+        }}>
+          <Form.Item name="newStock" label="Новый остаток" rules={[{ required: true, message: 'Обязательно' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={3} />
+          </Form.Item>
+          <Form.Item name="reason" label="Причина коррекции" rules={[{ required: true, message: 'Укажите причину' }]}>
+            <Input.TextArea rows={2} placeholder="Инвентаризация, ошибка учёта, брак..." />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

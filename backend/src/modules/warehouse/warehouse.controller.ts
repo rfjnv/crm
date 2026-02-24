@@ -23,6 +23,11 @@ export class WarehouseController {
     res.json(result);
   }
 
+  async correctStock(req: Request, res: Response): Promise<void> {
+    const product = await warehouseService.correctStock(req.params.id as string, req.body, req.user!.userId as string);
+    res.json(product);
+  }
+
   // Movements
   async createMovement(req: Request, res: Response): Promise<void> {
     const movement = await warehouseService.createMovement(req.body, req.user!.userId as string);
