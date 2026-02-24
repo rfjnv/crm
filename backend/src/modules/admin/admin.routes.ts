@@ -79,6 +79,65 @@ router.post(
   }),
 );
 
+// ──── CLEANUP BUSINESS DATA (preserve clients, products, users) ────
+router.post(
+  '/cleanup-data',
+  asyncHandler(async (req: Request, res: Response) => {
+    const role = req.user!.role as Role;
+
+    if (role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только SUPER_ADMIN может очищать данные');
+    }
+
+    const counts: Record<string, number> = {};
+
+    await prisma.$transaction(async (tx) => {
+      counts.taskAttachments = (await tx.taskAttachment.deleteMany()).count;
+      counts.tasks = (await tx.task.deleteMany()).count;
+
+      counts.expenses = (await tx.expense.deleteMany()).count;
+
+      counts.messageAttachments = (await tx.messageAttachment.deleteMany()).count;
+      counts.conversationReads = (await tx.conversationRead.deleteMany()).count;
+      counts.messages = (await tx.message.deleteMany()).count;
+
+      counts.notifications = (await tx.notification.deleteMany()).count;
+      counts.notificationBatches = (await tx.notificationBatch.deleteMany()).count;
+
+      counts.dealComments = (await tx.dealComment.deleteMany()).count;
+      counts.dealItems = (await tx.dealItem.deleteMany()).count;
+      counts.shipments = (await tx.shipment.deleteMany()).count;
+      counts.payments = (await tx.payment.deleteMany()).count;
+      counts.inventoryMovements = (await tx.inventoryMovement.deleteMany()).count;
+
+      await tx.deal.updateMany({ data: { dailyClosingId: null } });
+      counts.dailyClosings = (await tx.dailyClosing.deleteMany()).count;
+
+      counts.deals = (await tx.deal.deleteMany()).count;
+      counts.contracts = (await tx.contract.deleteMany()).count;
+
+      counts.auditLogs = (await tx.auditLog.deleteMany()).count;
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user!.userId,
+        action: 'DELETE',
+        entityType: 'system',
+        after: { operation: 'cleanup_business_data', counts },
+      },
+    });
+
+    const preserved = {
+      clients: await prisma.client.count(),
+      products: await prisma.product.count(),
+      users: await prisma.user.count(),
+    };
+
+    res.json({ success: true, message: 'Бизнес-данные очищены', deleted: counts, preserved });
+  }),
+);
+
 // ──── SUPER_ADMIN Deal Override ────
 router.patch(
   '/deals/:id/override',
