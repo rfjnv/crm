@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   Modal, Tabs, Form, Input, InputNumber, Select, DatePicker, Button, Alert,
-  Space, Typography, Popconfirm, message, Tag,
+  Typography, Popconfirm, message, Tag,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -201,7 +201,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
 
   const itemsTotal = useMemo(() =>
     items.reduce((s, i) => s + (i.requestedQty || 0) * (i.price || 0), 0),
-  [items]);
+    [items]);
 
   return (
     <Modal
