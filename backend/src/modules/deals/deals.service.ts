@@ -1,4 +1,4 @@
-import { DealStatus, PaymentStatus as PrismaPaymentStatus, Role } from '@prisma/client';
+import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -6,20 +6,21 @@ import { AuthUser, ownerScope } from '../../lib/scope';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
-  ShipmentDto, FinanceRejectDto,
+  ShipmentDto, FinanceRejectDto, SendToFinanceDto,
   CreatePaymentRecordDto, ShipmentHoldDto,
 } from './deals.dto';
 
 // ==================== STATUS WORKFLOW ====================
 
 const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
-  NEW: ['IN_PROGRESS', 'CANCELED'],
-  IN_PROGRESS: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'REJECTED', 'CANCELED'],
-  WAITING_STOCK_CONFIRMATION: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'CANCELED'],
-  STOCK_CONFIRMED: ['FINANCE_APPROVED', 'READY_FOR_SHIPMENT', 'REJECTED', 'CANCELED'],
-  FINANCE_APPROVED: ['ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'CANCELED'],
+  NEW: ['WAITING_STOCK_CONFIRMATION', 'CANCELED'],
+  WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'CANCELED'],
+  STOCK_CONFIRMED: ['IN_PROGRESS', 'CANCELED'],
+  IN_PROGRESS: ['WAITING_FINANCE', 'ADMIN_APPROVED', 'REJECTED', 'CANCELED'],
+  WAITING_FINANCE: ['ADMIN_APPROVED', 'REJECTED', 'CANCELED'],
+  FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'CANCELED'],
-  READY_FOR_SHIPMENT: ['SHIPPED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
+  READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
   SHIPPED: ['CLOSED'],
   CLOSED: [],
@@ -28,15 +29,16 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
 };
 
 const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
-  IN_PROGRESS: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   WAITING_STOCK_CONFIRMATION: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   STOCK_CONFIRMED: ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  IN_PROGRESS: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  WAITING_FINANCE: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   FINANCE_APPROVED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
-  ADMIN_APPROVED: ['ADMIN', 'SUPER_ADMIN'],
-  READY_FOR_SHIPMENT: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  ADMIN_APPROVED: ['ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT'],
+  READY_FOR_SHIPMENT: ['ADMIN', 'SUPER_ADMIN'],
   SHIPPED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   SHIPMENT_ON_HOLD: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
-  CLOSED: ['ADMIN', 'SUPER_ADMIN'],
+  CLOSED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   CANCELED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   REJECTED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
 };
@@ -111,7 +113,7 @@ export class DealsService {
     return deal;
   }
 
-  // ==================== CREATE (simplified — no amounts) ====================
+  // ==================== CREATE (simplified — client + items + comment only) ====================
 
   async create(dto: CreateDealDto, user: AuthUser) {
     // Verify client
@@ -125,36 +127,18 @@ export class DealsService {
     // Auto-generate title
     const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU')}`;
 
-    // Calculate amount from items if qty+price provided
-    const subtotal = dto.items.reduce(
-      (s, i) => s + (i.requestedQty ?? 0) * (i.price ?? 0),
-      0,
-    );
-    const discount = dto.discount || 0;
-    const finalAmount = Math.max(0, subtotal - discount);
-
-    // Payment info
-    const paymentType = dto.paymentType || 'FULL';
-    const paidAmount = paymentType === 'FULL' && finalAmount > 0 ? finalAmount : 0;
-
-    let paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID' = 'UNPAID';
-    if (paidAmount >= finalAmount && finalAmount > 0) paymentStatus = 'PAID';
-    else if (paidAmount > 0) paymentStatus = 'PARTIAL';
-
-    // Transaction: create deal + items
+    // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
         data: {
           title,
-          amount: finalAmount,
-          discount,
+          amount: 0,
+          discount: 0,
           clientId: dto.clientId,
           managerId: user.userId,
-          paymentType,
-          paidAmount,
-          paymentStatus,
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-          terms: dto.terms,
+          paymentType: 'FULL',
+          paidAmount: 0,
+          paymentStatus: 'UNPAID',
         },
       });
 
@@ -166,6 +150,17 @@ export class DealsService {
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
             requestComment: item.requestComment,
+          },
+        });
+      }
+
+      // Add initial comment if provided
+      if (dto.comment) {
+        await tx.dealComment.create({
+          data: {
+            dealId: created.id,
+            authorId: user.userId,
+            text: dto.comment,
           },
         });
       }
@@ -213,11 +208,12 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    // Block non-admin edits on CLOSED deals
+    // Block non-admin edits on CLOSED deals (check edit_closed_deal permission)
     if (deal.status === 'CLOSED') {
       const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
-      if (!isAdmin) {
-        throw new AppError(403, 'Только администратор может редактировать закрытые сделки');
+      const hasPermission = user.permissions.includes('edit_closed_deal');
+      if (!isAdmin && !hasPermission) {
+        throw new AppError(403, 'Недостаточно прав для редактирования закрытых сделок');
       }
     }
 
@@ -266,13 +262,6 @@ export class DealsService {
     // Status change handling with strict workflow enforcement
     if (dto.status !== undefined && dto.status !== deal.status) {
       validateStatusTransition(deal.status, dto.status as DealStatus, user.role);
-
-      // Require items for finance approval
-      if (dto.status === 'FINANCE_APPROVED') {
-        if (deal._count.items === 0) {
-          throw new AppError(400, 'Нельзя одобрить сделку без товаров');
-        }
-      }
 
       before.status = deal.status;
       data.status = dto.status;
@@ -327,6 +316,52 @@ export class DealsService {
     }
 
     return updated;
+  }
+
+  // ==================== SEND TO FINANCE (payment method selection) ====================
+
+  async sendToFinance(dealId: string, dto: SendToFinanceDto, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...ownerScope(user), isArchived: false },
+      include: { _count: { select: { items: true } } },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (deal.status !== 'IN_PROGRESS') {
+      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для отправки в финансы');
+    }
+
+    if (deal._count.items === 0) {
+      throw new AppError(400, 'Нельзя отправить сделку без товаров');
+    }
+
+    // Determine target status based on payment method
+    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'INSTALLMENT';
+    const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'ADMIN_APPROVED';
+
+    validateStatusTransition(deal.status, targetStatus, user.role);
+
+    await prisma.deal.update({
+      where: { id: dealId },
+      data: {
+        status: targetStatus,
+        paymentMethod: dto.paymentMethod as PaymentMethod,
+      },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'STATUS_CHANGE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: { status: deal.status },
+      after: { status: targetStatus, paymentMethod: dto.paymentMethod },
+    });
+
+    return this.findById(dealId, user);
   }
 
   // ==================== WAREHOUSE RESPONSE ====================
@@ -445,6 +480,9 @@ export class DealsService {
       paymentStatus = 'PARTIAL';
     }
 
+    // Move to IN_PROGRESS if currently STOCK_CONFIRMED
+    const newStatus: DealStatus = deal.status === 'STOCK_CONFIRMED' ? 'IN_PROGRESS' : deal.status;
+
     await prisma.$transaction(async (tx) => {
       // Update each DealItem with requestedQty and price
       for (const item of dto.items) {
@@ -461,6 +499,7 @@ export class DealsService {
       await tx.deal.update({
         where: { id: dealId },
         data: {
+          status: newStatus,
           amount: finalAmount,
           discount,
           paymentType: dto.paymentType || 'FULL',
@@ -477,8 +516,8 @@ export class DealsService {
       action: 'UPDATE',
       entityType: 'deal',
       entityId: dealId,
-      before: { amount: Number(deal.amount), paidAmount: Number(deal.paidAmount) },
-      after: { amount: finalAmount, paidAmount, paymentStatus, discount },
+      before: { amount: Number(deal.amount), paidAmount: Number(deal.paidAmount), status: deal.status },
+      after: { amount: finalAmount, paidAmount, paymentStatus, discount, status: newStatus },
     });
 
     return this.findById(dealId, user);
@@ -514,20 +553,22 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для финансового одобрения');
+    // Accept from WAITING_FINANCE (new flow) or legacy statuses
+    if (deal.status !== 'WAITING_FINANCE' && deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает финансы" для финансового одобрения');
     }
 
-    validateStatusTransition(deal.status, 'FINANCE_APPROVED', user.role);
+    // For WAITING_FINANCE → go to ADMIN_APPROVED (finance approved, now needs admin)
+    const targetStatus: DealStatus = 'ADMIN_APPROVED';
 
-    // INSTALLMENT deals require a contract
-    if (deal.paymentType === 'INSTALLMENT' && !deal.contractId) {
-      throw new AppError(400, 'Для рассрочки необходимо привязать договор к сделке');
+    // QR/INSTALLMENT deals require a contract
+    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
+      throw new AppError(400, 'Для QR/рассрочки необходимо привязать договор к сделке');
     }
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { status: 'FINANCE_APPROVED' },
+      data: { status: targetStatus },
     });
 
     await auditLog({
@@ -536,7 +577,7 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'FINANCE_APPROVED' },
+      after: { status: targetStatus },
     });
 
     return this.findById(dealId, user);
@@ -551,8 +592,8 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для отклонения');
+    if (deal.status !== 'WAITING_FINANCE' && deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает финансы" для отклонения');
     }
 
     validateStatusTransition(deal.status, 'REJECTED', user.role);
@@ -594,15 +635,18 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'FINANCE_APPROVED') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Финансы одобрены" для одобрения администратором');
+    // Accept from ADMIN_APPROVED (already at admin step from finance or direct)
+    // or from FINANCE_APPROVED (legacy), or from WAITING_FINANCE if admin
+    if (deal.status !== 'ADMIN_APPROVED' && deal.status !== 'FINANCE_APPROVED' && deal.status !== 'WAITING_FINANCE') {
+      throw new AppError(400, 'Сделка не готова для одобрения администратором');
     }
 
-    validateStatusTransition(deal.status, 'ADMIN_APPROVED', user.role);
+    // For deals already at ADMIN_APPROVED, move to READY_FOR_SHIPMENT
+    const targetStatus: DealStatus = 'READY_FOR_SHIPMENT';
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { status: 'ADMIN_APPROVED' },
+      data: { status: targetStatus },
     });
 
     await auditLog({
@@ -611,7 +655,7 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'ADMIN_APPROVED' },
+      after: { status: targetStatus },
     });
 
     return this.findById(dealId, user);
@@ -622,7 +666,7 @@ export class DealsService {
   async findForFinanceReview(user: AuthUser) {
     const deals = await prisma.deal.findMany({
       where: {
-        status: 'STOCK_CONFIRMED',
+        status: 'WAITING_FINANCE',
         isArchived: false,
       },
       include: {
@@ -638,7 +682,7 @@ export class DealsService {
 
     // Compute client debt for each deal
     const clientIds = [...new Set(deals.map((d) => d.clientId))];
-    const debtAgg = await prisma.deal.groupBy({
+    const debtAgg = clientIds.length > 0 ? await prisma.deal.groupBy({
       by: ['clientId'],
       where: {
         clientId: { in: clientIds },
@@ -646,7 +690,7 @@ export class DealsService {
         isArchived: false,
       },
       _sum: { amount: true, paidAmount: true },
-    });
+    }) : [];
 
     const debtMap = new Map<string, number>();
     for (const row of debtAgg) {
@@ -693,7 +737,7 @@ export class DealsService {
     }
 
     if (deal.status !== 'READY_FOR_SHIPMENT') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Оформить отгрузку" для приостановки');
+      throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка" для приостановки');
     }
 
     validateStatusTransition(deal.status, 'SHIPMENT_ON_HOLD', user.role);
@@ -767,10 +811,11 @@ export class DealsService {
     }
 
     if (deal.status !== 'READY_FOR_SHIPMENT') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Оформить отгрузку" для оформления отгрузки');
+      throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка" для оформления');
     }
 
-    validateStatusTransition(deal.status, 'SHIPPED', user.role);
+    // After shipment, deal goes directly to CLOSED (COMPLETED)
+    const targetStatus: DealStatus = 'CLOSED';
 
     const dealItems = await prisma.dealItem.findMany({
       where: { dealId },
@@ -821,10 +866,10 @@ export class DealsService {
         },
       });
 
-      // Update deal status
+      // Update deal status directly to CLOSED (completed)
       await tx.deal.update({
         where: { id: dealId },
-        data: { status: 'SHIPPED' },
+        data: { status: targetStatus },
       });
     });
 
@@ -835,7 +880,7 @@ export class DealsService {
       entityId: dealId,
       before: { status: deal.status },
       after: {
-        status: 'SHIPPED',
+        status: targetStatus,
         vehicleNumber: dto.vehicleNumber,
         driverName: dto.driverName,
         deliveryNoteNumber: dto.deliveryNoteNumber,

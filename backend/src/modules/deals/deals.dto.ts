@@ -2,17 +2,14 @@ import { z } from 'zod';
 
 const dealStatuses = [
   'NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED',
-  'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
+  'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
   'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED', 'CANCELED', 'REJECTED',
 ] as const;
 
 export const createDealDto = z.object({
   title: z.string().optional().default(''),
   clientId: z.string().uuid('Некорректный ID клиента'),
-  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).default('FULL'),
-  dueDate: z.string().optional(),
-  terms: z.string().optional(),
-  discount: z.number().min(0).default(0),
+  comment: z.string().optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),
@@ -66,6 +63,10 @@ export const setItemQuantitiesDto = z.object({
   terms: z.string().optional(),
 });
 
+export const sendToFinanceDto = z.object({
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'INSTALLMENT']),
+});
+
 export const shipmentDto = z.object({
   vehicleType: z.string().min(1, 'Укажите тип транспорта'),
   vehicleNumber: z.string().min(1, 'Укажите номер транспорта'),
@@ -97,6 +98,7 @@ export type CreateCommentDto = z.infer<typeof createCommentDto>;
 export type AddDealItemDto = z.infer<typeof addDealItemDto>;
 export type WarehouseResponseDto = z.infer<typeof warehouseResponseDto>;
 export type SetItemQuantitiesDto = z.infer<typeof setItemQuantitiesDto>;
+export type SendToFinanceDto = z.infer<typeof sendToFinanceDto>;
 export type ShipmentDto = z.infer<typeof shipmentDto>;
 export type FinanceRejectDto = z.infer<typeof financeRejectDto>;
 export type ShipmentHoldDto = z.infer<typeof shipmentHoldDto>;

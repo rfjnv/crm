@@ -25,6 +25,7 @@ enum DealStatus {
   IN_PROGRESS
   WAITING_STOCK_CONFIRMATION
   STOCK_CONFIRMED
+  WAITING_FINANCE
   FINANCE_APPROVED
   ADMIN_APPROVED
   READY_FOR_SHIPMENT
@@ -200,6 +201,7 @@ model Deal {
   clientId      String        @map("client_id")
   managerId     String        @map("manager_id")
   contractId    String?       @map("contract_id")
+  paymentMethod PaymentMethod? @map("payment_method")
   paymentType   PaymentType   @default(FULL) @map("payment_type")
   paidAmount    Decimal       @default(0) @db.Decimal(12, 2) @map("paid_amount")
   dueDate       DateTime?     @map("due_date")

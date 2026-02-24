@@ -13,6 +13,11 @@ export const PERMISSIONS = {
   MANAGE_PRODUCTS: 'manage_products',
   VIEW_ALL_CLIENTS: 'view_all_clients',
   CREATE_INVENTORY_IN: 'create_inventory_in',
+  EDIT_CLIENT: 'edit_client',
+  EDIT_CLOSED_DEAL: 'edit_closed_deal',
+  MANAGE_CONTRACT: 'manage_contract',
+  APPROVE_DEAL: 'approve_deal',
+  SHIPMENT_EXECUTE: 'shipment_execute',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -30,10 +35,12 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.MANAGE_DEALS,
     PERMISSIONS.MANAGE_INVENTORY,
     PERMISSIONS.VIEW_ALL_CLIENTS,
+    PERMISSIONS.EDIT_CLIENT,
   ],
   ACCOUNTANT: [
     PERMISSIONS.FINANCE_APPROVE,
     PERMISSIONS.VIEW_ALL_DEALS,
+    PERMISSIONS.MANAGE_CONTRACT,
   ],
   WAREHOUSE: [
     PERMISSIONS.STOCK_CONFIRM,
@@ -46,5 +53,6 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.MANAGE_INVENTORY,
     PERMISSIONS.VIEW_ALL_DEALS,
     PERMISSIONS.CREATE_INVENTORY_IN,
+    PERMISSIONS.SHIPMENT_EXECUTE,
   ],
 };
