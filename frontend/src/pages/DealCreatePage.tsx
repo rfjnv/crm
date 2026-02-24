@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Card, Typography, Space, Button, Select, Input, InputNumber,
-  message, Descriptions,
+  Card, Typography, Space, Button, Select, Input,
+  message,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
