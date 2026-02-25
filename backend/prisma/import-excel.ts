@@ -99,23 +99,6 @@ async function importProducts() {
               },
             });
           }
-
-          // Log to audit
-          await tx.auditLog.create({
-            data: {
-              userId: adminUserId,
-              action: 'IMPORT_PRODUCT',
-              entityType: 'Product',
-              entityId: created.id,
-              after: {
-                name: created.name,
-                sku: created.sku,
-                unit: created.unit,
-                format: created.format,
-                stock: product.stock,
-              },
-            },
-          });
         });
 
         successCount++;
