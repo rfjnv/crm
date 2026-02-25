@@ -455,23 +455,6 @@ export class WarehouseService {
               },
             });
           }
-
-          // Log to audit
-          await tx.auditLog.create({
-            data: {
-              userId,
-              action: 'IMPORT_PRODUCT',
-              entityType: 'Product',
-              entityId: product.id,
-              after: {
-                name: product.name,
-                sku: product.sku,
-                unit: product.unit,
-                format: product.format,
-                stock: stock,
-              },
-            },
-          });
         });
 
         result.successCount++;
