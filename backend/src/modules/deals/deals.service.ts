@@ -1209,9 +1209,13 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
+    if (deal.isArchived) {
+      throw new AppError(400, 'Сделка уже в архиве');
+    }
+
     const updated = await prisma.deal.update({
       where: { id },
-      data: { isArchived: true },
+      data: { isArchived: true, archivedAt: new Date(), archivedById: user.userId },
     });
 
     await auditLog({
@@ -1224,6 +1228,54 @@ export class DealsService {
     });
 
     return updated;
+  }
+
+  async unarchive(id: string, user: AuthUser) {
+    const canArchive = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+    if (!canArchive) {
+      throw new AppError(403, 'Только ADMIN и SUPER_ADMIN могут разархивировать сделки');
+    }
+
+    const deal = await prisma.deal.findUnique({ where: { id } });
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (!deal.isArchived) {
+      throw new AppError(400, 'Сделка не архивирована');
+    }
+
+    const updated = await prisma.deal.update({
+      where: { id },
+      data: { isArchived: false, archivedAt: null, archivedById: null },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'RESTORE',
+      entityType: 'deal',
+      entityId: id,
+      before: { isArchived: true },
+      after: { isArchived: false },
+    });
+
+    return updated;
+  }
+
+  async findArchived(user: AuthUser) {
+    return prisma.deal.findMany({
+      where: {
+        ...ownerScope(user),
+        isArchived: true,
+      },
+      include: {
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+        contract: { select: { id: true, contractNumber: true } },
+        archivedBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { archivedAt: 'desc' },
+    });
   }
 
   // ==================== HISTORY & LOGS & COMMENTS ====================

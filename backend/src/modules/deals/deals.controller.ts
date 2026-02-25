@@ -40,6 +40,16 @@ export class DealsController {
     res.json(deal);
   }
 
+  async unarchive(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.unarchive(req.params.id as string, getUser(req));
+    res.json(deal);
+  }
+
+  async findArchived(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findArchived(getUser(req));
+    res.json(deals);
+  }
+
   async getHistory(req: Request, res: Response): Promise<void> {
     const history = await dealsService.getHistory(req.params.id as string, getUser(req));
     res.json(history);

@@ -145,10 +145,23 @@ export interface ContractListItem extends Contract {
   remaining: number;
 }
 
+export interface ContractAttachment {
+  id: string;
+  contractId: string;
+  filename: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  createdAt: string;
+  uploader?: { id: string; fullName: string };
+}
+
 export interface ContractDetail extends Contract {
   totalAmount: number;
   totalPaid: number;
   remaining: number;
+  attachments?: ContractAttachment[];
   payments: {
     id: string;
     dealId: string;

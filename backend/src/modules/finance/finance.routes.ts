@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
+import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
@@ -10,6 +11,124 @@ import { auditLog } from '../../lib/logger';
 const router = Router();
 
 router.use(authenticate);
+
+// ──── КАССА (Payments Report) ────
+router.get(
+  '/cashbox',
+  authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const period = req.query.period as string || 'day';
+    const managerId = req.query.managerId as string | undefined;
+    const clientId = req.query.clientId as string | undefined;
+    const method = req.query.method as string | undefined;
+    const paymentStatus = req.query.paymentStatus as string | undefined;
+
+    // Calculate date range
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let fromDate: Date;
+
+    if (period === 'week') {
+      fromDate = new Date(startOfDay);
+      fromDate.setDate(fromDate.getDate() - 7);
+    } else if (period === 'month') {
+      fromDate = new Date(startOfDay);
+      fromDate.setMonth(fromDate.getMonth() - 1);
+    } else {
+      fromDate = startOfDay;
+    }
+
+    // Build where clause for payments
+    const where: Prisma.PaymentWhereInput = {
+      paidAt: { gte: fromDate },
+    };
+
+    if (managerId) {
+      where.deal = { managerId };
+    }
+    if (clientId) {
+      where.clientId = clientId;
+    }
+    if (method) {
+      where.method = method;
+    }
+
+    const payments = await prisma.payment.findMany({
+      where,
+      include: {
+        deal: {
+          select: {
+            id: true,
+            title: true,
+            managerId: true,
+            manager: { select: { id: true, fullName: true } },
+            paymentStatus: true,
+          },
+        },
+        client: { select: { id: true, companyName: true } },
+        creator: { select: { id: true, fullName: true } },
+        receivedBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { paidAt: 'desc' },
+    });
+
+    // Filter by deal paymentStatus if specified
+    let filteredPayments = payments;
+    if (paymentStatus === 'PAID' || paymentStatus === 'PARTIAL') {
+      filteredPayments = payments.filter((p) => p.deal?.paymentStatus === paymentStatus);
+    }
+
+    // Calculate totals
+    const totalAmount = filteredPayments.reduce((s, p) => s + Number(p.amount), 0);
+
+    // Breakdown by method
+    const byMethod: Record<string, number> = {};
+    for (const p of filteredPayments) {
+      const key = p.method || 'Не указан';
+      byMethod[key] = (byMethod[key] || 0) + Number(p.amount);
+    }
+
+    // Breakdown by day
+    const byDay: Record<string, number> = {};
+    for (const p of filteredPayments) {
+      const day = p.paidAt.toISOString().slice(0, 10);
+      byDay[day] = (byDay[day] || 0) + Number(p.amount);
+    }
+
+    // Daily total (today)
+    const todayStr = startOfDay.toISOString().slice(0, 10);
+    const todayTotal = byDay[todayStr] || 0;
+
+    res.json({
+      payments: filteredPayments.map((p) => ({
+        id: p.id,
+        dealId: p.dealId,
+        dealTitle: p.deal?.title,
+        clientId: p.clientId,
+        clientName: p.client?.companyName,
+        amount: Number(p.amount),
+        paidAt: p.paidAt,
+        method: p.method,
+        note: p.note,
+        createdBy: p.creator?.fullName,
+        receivedBy: p.receivedBy?.fullName || p.creator?.fullName,
+        manager: p.deal?.manager?.fullName,
+        dealPaymentStatus: p.deal?.paymentStatus,
+      })),
+      totals: {
+        totalAmount,
+        todayTotal,
+        count: filteredPayments.length,
+      },
+      byMethod: Object.entries(byMethod).map(([m, total]) => ({ method: m, total })),
+      byDay: Object.entries(byDay)
+        .map(([day, total]) => ({ day, total }))
+        .sort((a, b) => a.day.localeCompare(b.day)),
+      period,
+      fromDate: fromDate.toISOString(),
+    });
+  }),
+);
 
 // ──── DEBTS ────
 router.get(

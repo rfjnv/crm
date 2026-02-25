@@ -3,6 +3,8 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
 import { CreateContractDto, UpdateContractDto } from './contracts.dto';
+import path from 'path';
+import fs from 'fs';
 
 export class ContractsService {
   async findAll(clientId?: string) {
@@ -41,6 +43,10 @@ export class ContractsService {
             id: true, title: true, status: true, amount: true,
             paidAmount: true, paymentStatus: true, paymentType: true, createdAt: true,
           },
+          orderBy: { createdAt: 'desc' },
+        },
+        attachments: {
+          include: { uploader: { select: { id: true, fullName: true } } },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -180,6 +186,75 @@ export class ContractsService {
     });
 
     return updated;
+  }
+
+  // ==================== ATTACHMENTS ====================
+
+  async uploadAttachment(contractId: string, file: Express.Multer.File, user: AuthUser) {
+    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) {
+      throw new AppError(404, 'Договор не найден');
+    }
+
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'contracts');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const ext = path.extname(file.originalname);
+    const safeFilename = `${contractId}_${Date.now()}${ext}`;
+    const filePath = path.join(uploadsDir, safeFilename);
+
+    fs.writeFileSync(filePath, file.buffer);
+
+    const attachment = await prisma.contractAttachment.create({
+      data: {
+        contractId,
+        filename: file.originalname,
+        path: `uploads/contracts/${safeFilename}`,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedBy: user.userId,
+      },
+      include: { uploader: { select: { id: true, fullName: true } } },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'CREATE',
+      entityType: 'contract_attachment',
+      entityId: attachment.id,
+      after: { contractId, filename: file.originalname, size: file.size },
+    });
+
+    return attachment;
+  }
+
+  async deleteAttachment(attachmentId: string, user: AuthUser) {
+    const attachment = await prisma.contractAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+    if (!attachment) {
+      throw new AppError(404, 'Вложение не найдено');
+    }
+
+    // Delete physical file if exists
+    const fullPath = path.join(process.cwd(), attachment.path);
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+
+    await prisma.contractAttachment.delete({ where: { id: attachmentId } });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'DELETE',
+      entityType: 'contract_attachment',
+      entityId: attachmentId,
+      before: { contractId: attachment.contractId, filename: attachment.filename },
+    });
+
+    return { success: true };
   }
 }
 

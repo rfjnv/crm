@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Table, Select, Typography, Tag, Space } from 'antd';
-import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import dayjs from 'dayjs';
 
@@ -26,6 +26,8 @@ export default function MovementsPage() {
       render: (v: string) =>
         v === 'IN' ? (
           <Tag color="green" icon={<ArrowUpOutlined />}>Приход</Tag>
+        ) : v === 'CORRECTION' ? (
+          <Tag color="orange" icon={<EditOutlined />}>Коррекция</Tag>
         ) : (
           <Tag color="red" icon={<ArrowDownOutlined />}>Расход</Tag>
         ),

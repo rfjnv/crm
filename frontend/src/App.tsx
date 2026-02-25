@@ -32,6 +32,9 @@ import RevenueTodayPage from './pages/RevenueTodayPage';
 import ExpensesPage from './pages/ExpensesPage';
 import TasksPage from './pages/TasksPage';
 import ContractsPage from './pages/ContractsPage';
+import ArchivedDealsPage from './pages/ArchivedDealsPage';
+import CashboxPage from './pages/CashboxPage';
+import ContractDetailPage from './pages/ContractDetailPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import { useThemeStore } from './store/themeStore';
 
@@ -83,9 +86,11 @@ export default function App() {
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetailPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />
+                <Route path="/contracts/:id" element={<ContractDetailPage />} />
                 <Route path="/deals" element={<DealsPage />} />
                 <Route path="/deals/new" element={<DealCreatePage />} />
                 <Route path="/deals/closed" element={<ClosedDealsPage />} />
+                <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 <Route path="/deals/:id" element={<DealDetailPage />} />
                 <Route path="/inventory/products" element={<ProductsPage />} />
                 <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
@@ -99,6 +104,7 @@ export default function App() {
                 <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
+                <Route path="/finance/cashbox" element={<CashboxPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/finance/deal-closing" element={<DealClosingPage />} />
                 <Route path="/finance/day-closing" element={<DayClosingPage />} />

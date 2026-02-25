@@ -1,5 +1,5 @@
 import client from './client';
-import type { Contract, ContractListItem, ContractDetail } from '../types';
+import type { Contract, ContractListItem, ContractDetail, ContractAttachment } from '../types';
 
 export const contractsApi = {
   list: (clientId?: string) =>
@@ -12,4 +12,15 @@ export const contractsApi = {
 
   update: (id: string, data: Partial<{ contractNumber: string; amount: number; startDate: string; endDate: string | null; isActive: boolean; notes: string | null }>) =>
     client.patch<Contract>(`/contracts/${id}`, data).then((r) => r.data),
+
+  uploadAttachment: (contractId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post<ContractAttachment>(`/contracts/${contractId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data);
+  },
+
+  deleteAttachment: (contractId: string, attachmentId: string) =>
+    client.delete(`/contracts/${contractId}/attachments/${attachmentId}`).then((r) => r.data),
 };

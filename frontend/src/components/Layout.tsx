@@ -24,6 +24,7 @@ import {
   CheckSquareOutlined,
   MessageOutlined,
   WalletOutlined,
+  InboxOutlined,
   ProjectOutlined,
   SolutionOutlined,
 } from '@ant-design/icons';
@@ -184,6 +185,13 @@ export default function Layout() {
         },
       ]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
+      ? [{
+        key: '/finance/cashbox',
+        icon: <DollarOutlined />,
+        label: <Link to="/finance/cashbox">Касса</Link>,
+      }]
+      : []),
 
     // ── АРХИВ ──
     { type: 'divider' as const },
@@ -194,6 +202,11 @@ export default function Layout() {
       key: '/deals/closed',
       icon: <ContainerOutlined />,
       label: <Link to="/deals/closed">Закрытые сделки</Link>,
+    },
+    {
+      key: '/deals/archived',
+      icon: <InboxOutlined />,
+      label: <Link to="/deals/archived">Архив сделок</Link>,
     },
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{

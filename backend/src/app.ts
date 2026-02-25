@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { config } from './lib/config';
 import { errorHandler } from './middleware/errorHandler';
 import prisma from './lib/prisma';
@@ -38,6 +39,9 @@ app.use(cors({ origin: config.cors.origin, credentials: true }));
 
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
+
+// Static files (uploaded attachments)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Health check
 app.get('/api/health', async (_req, res) => {

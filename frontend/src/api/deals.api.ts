@@ -23,6 +23,10 @@ export const dealsApi = {
 
   archive: (id: string) => client.patch<Deal>(`/deals/${id}/archive`).then((r) => r.data),
 
+  unarchive: (id: string) => client.patch<Deal>(`/deals/${id}/unarchive`).then((r) => r.data),
+
+  listArchived: () => client.get<Deal[]>('/deals/archived').then((r) => r.data),
+
   getLogs: (id: string) => client.get<AuditLog[]>(`/deals/${id}/logs`).then((r) => r.data),
 
   getComments: (id: string) =>

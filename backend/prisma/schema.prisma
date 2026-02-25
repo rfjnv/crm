@@ -46,6 +46,7 @@ enum ConversationType {
 enum MovementType {
   IN
   OUT
+  CORRECTION
 }
 
 enum PaymentType {
@@ -107,6 +108,7 @@ model User {
   sessions           Session[]
   clients            Client[]           @relation("ClientManager")
   deals              Deal[]             @relation("DealManager")
+  archivedDeals      Deal[]             @relation("DealArchivedBy")
   comments           DealComment[]
   auditLogs          AuditLog[]
   dailyClosings      DailyClosing[]     @relation("DailyClosingClosedBy")
@@ -116,6 +118,7 @@ model User {
   notificationsSent      Notification[]      @relation("NotificationSender")
   notificationBatches    NotificationBatch[] @relation("BatchCreatedBy")
   paymentsMade           Payment[]           @relation("PaymentCreator")
+  paymentsReceived       Payment[]           @relation("PaymentReceiver")
   lastSeenAt         DateTime?        @map("last_seen_at")
   messagesSent       Message[]        @relation("MessageSender")
   conversationReads  ConversationRead[]
@@ -123,6 +126,7 @@ model User {
   tasksAssigned      Task[]           @relation("TaskAssignee")
   tasksCreated       Task[]           @relation("TaskCreator")
   tasksApproved      Task[]           @relation("TaskApprover")
+  contractAttachments ContractAttachment[] @relation("ContractAttachmentUploader")
 
   @@map("users")
 }
@@ -188,9 +192,27 @@ model Contract {
 
   client Client @relation(fields: [clientId], references: [id])
   deals  Deal[]
+  attachments ContractAttachment[]
 
   @@index([clientId])
   @@map("contracts")
+}
+
+model ContractAttachment {
+  id         String   @id @default(uuid())
+  contractId String   @map("contract_id")
+  filename   String
+  path       String
+  mimeType   String   @map("mime_type")
+  size       Int
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  uploader User     @relation("ContractAttachmentUploader", fields: [uploadedBy], references: [id])
+
+  @@index([contractId])
+  @@map("contract_attachments")
 }
 
 // ==================== DEALS ====================
@@ -211,6 +233,8 @@ model Deal {
   discount      Decimal       @default(0) @db.Decimal(12, 2)
   terms         String?
   isArchived    Boolean       @default(false) @map("is_archived")
+  archivedAt    DateTime?     @map("archived_at")
+  archivedById  String?       @map("archived_by_id")
   dailyClosingId String?      @map("daily_closing_id")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
@@ -218,6 +242,7 @@ model Deal {
   client             Client              @relation(fields: [clientId], references: [id])
   manager            User                @relation("DealManager", fields: [managerId], references: [id])
   contract           Contract?           @relation(fields: [contractId], references: [id])
+  archivedBy         User?               @relation("DealArchivedBy", fields: [archivedById], references: [id])
   dailyClosing       DailyClosing?       @relation(fields: [dailyClosingId], references: [id])
   comments           DealComment[]
   items              DealItem[]
@@ -429,14 +454,17 @@ model Payment {
   method    String?
   note      String?
   createdBy String   @map("created_by")
+  receivedById String? @map("received_by_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  deal    Deal   @relation(fields: [dealId], references: [id])
-  client  Client @relation(fields: [clientId], references: [id])
-  creator User   @relation("PaymentCreator", fields: [createdBy], references: [id])
+  deal       Deal   @relation(fields: [dealId], references: [id])
+  client     Client @relation(fields: [clientId], references: [id])
+  creator    User   @relation("PaymentCreator", fields: [createdBy], references: [id])
+  receivedBy User?  @relation("PaymentReceiver", fields: [receivedById], references: [id])
 
   @@index([dealId])
   @@index([clientId, paidAt])
+  @@index([paidAt])
   @@map("payments")
 }
 

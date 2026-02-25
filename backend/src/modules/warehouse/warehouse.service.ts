@@ -111,9 +111,27 @@ export class WarehouseService {
     }
 
     const oldStock = Number(product.stock);
-    const updated = await prisma.product.update({
-      where: { id },
-      data: { stock: dto.newStock },
+    const diff = dto.newStock - oldStock;
+
+    // Transactional: update stock + create CORRECTION movement
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedProduct = await tx.product.update({
+        where: { id },
+        data: { stock: dto.newStock },
+      });
+
+      // Create CORRECTION movement for history
+      await tx.inventoryMovement.create({
+        data: {
+          productId: id,
+          type: 'CORRECTION',
+          quantity: Math.abs(diff),
+          note: `Коррекция: ${dto.reason} (было ${oldStock}, стало ${dto.newStock})`,
+          createdBy: userId,
+        },
+      });
+
+      return updatedProduct;
     });
 
     await auditLog({
@@ -123,6 +141,7 @@ export class WarehouseService {
       entityId: id,
       before: { stock: oldStock, name: product.name, sku: product.sku },
       after: { stock: dto.newStock, reason: dto.reason },
+      reason: dto.reason,
     });
 
     return updated;

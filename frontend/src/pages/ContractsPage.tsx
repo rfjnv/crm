@@ -167,9 +167,9 @@ export default function ContractsPage() {
       title: 'Номер',
       dataIndex: 'contractNumber',
       render: (v: string, r: ContractListItem) => (
-        <Button type="link" style={{ padding: 0 }} onClick={() => setDetailId(r.id)}>
+        <Link to={`/contracts/${r.id}`}>
           <FileTextOutlined style={{ marginRight: 4 }} />{v}
-        </Button>
+        </Link>
       ),
     },
     {
@@ -230,7 +230,7 @@ export default function ContractsPage() {
       width: 80,
       render: (_: unknown, r: ContractListItem) => (
         <Space size={4}>
-          <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => setDetailId(r.id)} />
+          <Link to={`/contracts/${r.id}`}><Button type="text" size="small" icon={<EyeOutlined />} /></Link>
           {canManageContracts && <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />}
         </Space>
       ),

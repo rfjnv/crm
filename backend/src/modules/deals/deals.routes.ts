@@ -19,6 +19,7 @@ router.use(authenticate);
 router.get('/finance-queue', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForFinanceReview.bind(dealsController)));
 router.get('/shipment-queue', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForShipment.bind(dealsController)));
 router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
+router.get('/archived', asyncHandler(dealsController.findArchived.bind(dealsController)));
 
 router.get('/', asyncHandler(dealsController.findAll.bind(dealsController)));
 router.get('/:id', asyncHandler(dealsController.findById.bind(dealsController)));
@@ -26,6 +27,7 @@ router.post('/', validate(createDealDto), asyncHandler(dealsController.create.bi
 router.patch('/:id', validate(updateDealDto), asyncHandler(dealsController.update.bind(dealsController)));
 router.patch('/:id/payment', validate(paymentDto), asyncHandler(dealsController.updatePayment.bind(dealsController)));
 router.patch('/:id/archive', asyncHandler(dealsController.archive.bind(dealsController)));
+router.patch('/:id/unarchive', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(dealsController.unarchive.bind(dealsController)));
 router.get('/:id/logs', asyncHandler(dealsController.getLogs.bind(dealsController)));
 router.get('/:id/history', asyncHandler(dealsController.getHistory.bind(dealsController)));
 router.post('/:id/comments', validate(createCommentDto), asyncHandler(dealsController.addComment.bind(dealsController)));
