@@ -15,7 +15,6 @@ import DealDetailPage from './pages/DealDetailPage';
 import ClosedDealsPage from './pages/ClosedDealsPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 import ProductsPage from './pages/ProductsPage';
-import ProductImportPage from './pages/ProductImportPage';
 import WarehousePage from './pages/WarehousePage';
 import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
@@ -91,7 +90,6 @@ export default function App() {
                 <Route path="/inventory/products" element={<ProductsPage />} />
                 <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
                 <Route path="/inventory/warehouse" element={<WarehousePage />} />
-                <Route path="/inventory/products/import" element={<ProductImportPage />} />
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/users" element={<UsersPage />} />

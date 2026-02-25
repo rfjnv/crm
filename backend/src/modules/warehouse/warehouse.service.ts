@@ -317,15 +317,16 @@ export class WarehouseService {
   }
 
   /**
-   * Parse stock value from Excel format: "5(kg)" -> 5, "10.5" -> 10.5
+   * Parse stock value from Excel format: "5(171,4)" -> 5, "10.5" -> 10.5, "100" -> 100
+   * Takes only the first number before any parentheses or other characters
    */
   private parseStockValue(value: unknown): number {
     if (!value) return 0;
     const str = String(value).trim();
     if (!str) return 0;
 
-    // Extract number from format like "5(kg)", "10.5(m)", etc
-    const match = str.match(/^([\d.,]+)/);
+    // Extract first number: "5(171,4)" → "5", "10.5" → "10.5", "100" → "100"
+    const match = str.match(/^(\d+(?:[.,]\d+)?)/);
     if (!match) return 0;
 
     const num = parseFloat(match[1].replace(',', '.'));
