@@ -24,10 +24,12 @@ async function importProducts() {
       process.exit(0);
     }
 
-    // Check if products already imported (idempotency guard)
-    const existingCount = await prisma.product.count();
-    if (existingCount > 0) {
-      console.log(`Products already imported (${existingCount} products exist). Skipping import.`);
+    // Check if Excel products already imported (idempotency guard)
+    const existingImportCount = await prisma.product.count({
+      where: { sku: { startsWith: 'IMPORT-' } },
+    });
+    if (existingImportCount > 0) {
+      console.log(`Products already imported (${existingImportCount} IMPORT- products exist). Skipping import.`);
       process.exit(0);
     }
 

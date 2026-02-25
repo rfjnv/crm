@@ -19,9 +19,11 @@ export async function importProductsIfNeeded(): Promise<void> {
     return;
   }
 
-  const existingCount = await prisma.product.count();
-  if (existingCount > 0) {
-    console.log(`[startup-import] Already imported (${existingCount} products). Skipping.`);
+  const existingImportCount = await prisma.product.count({
+    where: { sku: { startsWith: 'IMPORT-' } },
+  });
+  if (existingImportCount > 0) {
+    console.log(`[startup-import] Excel products already imported (${existingImportCount} IMPORT- products exist). Skipping.`);
     return;
   }
 
