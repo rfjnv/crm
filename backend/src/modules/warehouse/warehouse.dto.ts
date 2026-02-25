@@ -50,3 +50,17 @@ export type CreateProductDto = z.infer<typeof createProductDto>;
 export type UpdateProductDto = z.infer<typeof updateProductDto>;
 export type CreateMovementDto = z.infer<typeof createMovementDto>;
 export type CorrectStockDto = z.infer<typeof correctStockDto>;
+
+export interface ImportedProduct {
+  name: string;
+  format?: string;
+  unit: string;
+  stock: number;
+}
+
+export interface ImportExcelResult {
+  successCount: number;
+  errorCount: number;
+  errors: Array<{ row: number; reason: string }>;
+  skipped: number;
+}

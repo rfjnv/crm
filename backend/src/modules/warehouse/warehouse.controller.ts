@@ -51,6 +51,21 @@ export class WarehouseController {
     res.json(data);
   }
 
+  async importProductsFromExcel(req: Request, res: Response): Promise<void> {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'Файл не загружен' });
+      return;
+    }
+
+    const result = await warehouseService.importProductsFromExcel(
+      file.buffer,
+      req.user!.userId as string,
+    );
+
+    res.json(result);
+  }
+
 }
 
 export const warehouseController = new WarehouseController();

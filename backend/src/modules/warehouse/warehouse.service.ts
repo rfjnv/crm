@@ -2,7 +2,7 @@ import prisma from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
-import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto } from './warehouse.dto';
+import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 
 export class WarehouseService {
   // ==================== PRODUCTS ====================
@@ -314,6 +314,177 @@ export class WarehouseService {
         totalQty: Number(r.total_qty),
       })),
     };
+  }
+
+  /**
+   * Parse stock value from Excel format: "5(kg)" -> 5, "10.5" -> 10.5
+   */
+  private parseStockValue(value: unknown): number {
+    if (!value) return 0;
+    const str = String(value).trim();
+    if (!str) return 0;
+
+    // Extract number from format like "5(kg)", "10.5(m)", etc
+    const match = str.match(/^([\d.,]+)/);
+    if (!match) return 0;
+
+    const num = parseFloat(match[1].replace(',', '.'));
+    return isNaN(num) ? 0 : num;
+  }
+
+  /**
+   * Parse Excel sheet into product rows
+   */
+  private parseExcelRows(buffer: Buffer): Array<Record<string, unknown>> {
+    const xlsx = require('xlsx');
+    const workbook = xlsx.read(buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    if (!sheet) throw new Error('Excel файл пуст');
+
+    // Convert to array of objects, starting from row 2 (skip header)
+    const rows: Array<Record<string, unknown>> = [];
+    let rowNum = 2;
+
+    for (let i = 2; i <= 1000; i++) {
+      const cellB = sheet[`B${i}`];
+      const cellC = sheet[`C${i}`];
+      const cellD = sheet[`D${i}`];
+      const cellH = sheet[`H${i}`];
+
+      // Stop if all cells empty
+      if (!cellB && !cellC && !cellD && !cellH) break;
+
+      if (cellB?.v) {
+        rows.push({
+          rowNum,
+          name: cellB.v,
+          format: cellC?.v || '',
+          unit: cellD?.v || 'шт',
+          stock: cellH?.v || 0,
+        });
+      }
+      rowNum++;
+    }
+
+    return rows;
+  }
+
+  /**
+   * Import products from Excel file
+   */
+  async importProductsFromExcel(
+    buffer: Buffer,
+    userId: string,
+  ): Promise<ImportExcelResult> {
+    const result: ImportExcelResult = {
+      successCount: 0,
+      errorCount: 0,
+      errors: [],
+      skipped: 0,
+    };
+
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = this.parseExcelRows(buffer);
+    } catch (err) {
+      throw new AppError(400, `Ошибка чтения Excel: ${(err as Error).message}`);
+    }
+
+    if (rows.length === 0) {
+      throw new AppError(400, 'В файле нет данных для импорта');
+    }
+
+    // Process each row
+    for (const row of rows) {
+      try {
+        const name = String(row.name).trim();
+        const format = row.format ? String(row.format).trim() : undefined;
+        const unit = String(row.unit).trim() || 'шт';
+        const stock = this.parseStockValue(row.stock);
+
+        // Validate
+        if (!name || name.length === 0) {
+          result.errors.push({
+            row: row.rowNum as number,
+            reason: 'Название товара пусто',
+          });
+          result.errorCount++;
+          continue;
+        }
+
+        if (stock < 0) {
+          result.errors.push({
+            row: row.rowNum as number,
+            reason: `Некорректный остаток: ${row.stock}`,
+          });
+          result.errorCount++;
+          continue;
+        }
+
+        // Generate unique SKU
+        const timestamp = Date.now();
+        const index = result.successCount + 1;
+        const sku = `IMPORT-${timestamp}-${index}`;
+
+        // Create product in transaction
+        await prisma.$transaction(async (tx) => {
+          // Create product
+          const product = await tx.product.create({
+            data: {
+              name,
+              sku,
+              unit,
+              format: format || null,
+              stock: stock,
+              minStock: 0,
+              isActive: true,
+            },
+          });
+
+          // Create initial stock movement (IN)
+          if (stock > 0) {
+            await tx.inventoryMovement.create({
+              data: {
+                productId: product.id,
+                type: 'IN',
+                quantity: stock,
+                note: `Начальный остаток при импорте из Excel`,
+                createdBy: userId,
+              },
+            });
+          }
+
+          // Log to audit
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'IMPORT_PRODUCT',
+              entityType: 'Product',
+              entityId: product.id,
+              after: {
+                name: product.name,
+                sku: product.sku,
+                unit: product.unit,
+                format: product.format,
+                stock: stock,
+              },
+            },
+          });
+        });
+
+        result.successCount++;
+      } catch (err) {
+        const reason = (err as Error).message || 'Неизвестная ошибка';
+        result.errors.push({
+          row: row.rowNum as number,
+          reason,
+        });
+        result.errorCount++;
+      }
+    }
+
+    return result;
   }
 
 }

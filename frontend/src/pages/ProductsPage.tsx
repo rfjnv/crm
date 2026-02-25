@@ -214,7 +214,10 @@ export default function ProductsPage() {
           />
         </Space>
         {canManageProducts && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+          <Space>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+            <Button onClick={() => navigate('/inventory/products/import')}>Импорт из Excel</Button>
+          </Space>
         )}
       </div>
 
