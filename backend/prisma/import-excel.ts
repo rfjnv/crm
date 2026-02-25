@@ -18,6 +18,19 @@ const parseStockValue = (value: unknown): number => {
 
 async function importProducts() {
   try {
+    // Check environment variable to skip import
+    if (process.env.SKIP_IMPORT === 'true') {
+      console.log('Import skipped (SKIP_IMPORT=true)');
+      process.exit(0);
+    }
+
+    // Check if products already imported (idempotency guard)
+    const existingCount = await prisma.product.count();
+    if (existingCount > 0) {
+      console.log(`Products already imported (${existingCount} products exist). Skipping import.`);
+      process.exit(0);
+    }
+
     // Read Excel file
     const filePath = path.resolve(__dirname, '../new.xlsx');
     if (!fs.existsSync(filePath)) {
