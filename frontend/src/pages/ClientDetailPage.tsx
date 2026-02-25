@@ -8,14 +8,16 @@ import {
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, WarningOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
+import { useAuthStore } from '../store/authStore';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, DealShort, PaymentStatus, AuditLog, PaymentRecord } from '../types';
+import type { CreateClientData } from '../api/clients.api';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -30,8 +32,11 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [contractModal, setContractModal] = useState(false);
   const [contractForm] = Form.useForm();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
+  const user = useAuthStore((s) => s.user);
 
   // Deal filters
   const [dealStatus, setDealStatus] = useState<DealStatus | undefined>();
@@ -94,8 +99,34 @@ export default function ClientDetailPage() {
     },
   });
 
+  const updateClientMut = useMutation({
+    mutationFn: (data: Partial<CreateClientData>) => clientsApi.update(id!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', id] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Клиент обновлён');
+      setEditOpen(false);
+    },
+    onError: () => message.error('Ошибка обновления клиента'),
+  });
+
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!client) return <Typography.Text>Клиент не найден</Typography.Text>;
+
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canEdit = isAdmin || user?.permissions?.includes('edit_client');
+
+  const openEdit = () => {
+    editForm.setFieldsValue({
+      companyName: client.companyName,
+      contactName: client.contactName,
+      phone: client.phone || '+998',
+      email: client.email || '',
+      address: client.address || '',
+      notes: client.notes || '',
+    });
+    setEditOpen(true);
+  };
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
 
@@ -143,7 +174,10 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <Typography.Title level={4}>{client.companyName}</Typography.Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>{client.companyName}</Typography.Title>
+        {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
+      </div>
 
       <Tabs
         defaultActiveKey="info"
@@ -399,6 +433,40 @@ export default function ClientDetailPage() {
             <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
           </Form.Item>
           <Form.Item name="notes" label="Примечание">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        title="Редактировать клиента"
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        onOk={() => editForm.submit()}
+        confirmLoading={updateClientMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+      >
+        <Form form={editForm} layout="vertical" onFinish={(v) => updateClientMut.mutate(v)}>
+          <Form.Item name="companyName" label="Компания" rules={[{ required: true, message: 'Обязательное поле' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contactName" label="Контактное лицо" rules={[{ required: true, message: 'Обязательное поле' }]}>
+            <Input />
+          </Form.Item>
+          <Space style={{ width: '100%' }} size="middle">
+            <Form.Item name="phone" label="Телефон" style={{ flex: 1 }}>
+              <Input placeholder="+998 99 999 99 99" />
+            </Form.Item>
+            <Form.Item name="email" label="Email" style={{ flex: 1 }}>
+              <Input />
+            </Form.Item>
+          </Space>
+          <Form.Item name="address" label="Адрес">
+            <Input />
+          </Form.Item>
+          <Form.Item name="notes" label="Заметки">
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>

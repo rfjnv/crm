@@ -127,12 +127,12 @@ export default function ClientsPage() {
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Email', dataIndex: 'email' },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
-    ...(isAdmin || user?.role === 'MANAGER'
+    ...(isAdmin || user?.permissions?.includes('edit_client')
       ? [{
         title: '',
         width: 100,
         render: (_: unknown, r: Client) => {
-          const canEdit = isAdmin || r.managerId === user?.id;
+          const canEdit = isAdmin || user?.permissions?.includes('edit_client');
           return (
             <Space>
               {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
