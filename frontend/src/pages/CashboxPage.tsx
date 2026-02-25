@@ -25,14 +25,13 @@ const paymentStatusLabels: Record<string, { color: string; label: string }> = {
 
 export default function CashboxPage() {
   const [period, setPeriod] = useState<string>('day');
-  const [managerId, setManagerId] = useState<string>();
   const [clientId, setClientId] = useState<string>();
   const [method, setMethod] = useState<string>();
   const [paymentStatus, setPaymentStatus] = useState<string>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cashbox', period, managerId, clientId, method, paymentStatus],
-    queryFn: () => financeApi.cashbox({ period, managerId, clientId, method, paymentStatus }),
+    queryKey: ['cashbox', period, clientId, method, paymentStatus],
+    queryFn: () => financeApi.cashbox({ period, clientId, method, paymentStatus }),
     refetchInterval: 15_000,
   });
 
@@ -45,18 +44,6 @@ export default function CashboxPage() {
     () => (clients ?? []).map((c) => ({ label: c.companyName, value: c.id })),
     [clients],
   );
-
-  // Extract unique managers from payment data
-  const managerOptions = useMemo(() => {
-    if (!data) return [];
-    const map = new Map<string, string>();
-    for (const p of data.payments) {
-      if (p.manager && !map.has(p.manager)) {
-        map.set(p.manager, p.manager);
-      }
-    }
-    return [...map.entries()].map(([name]) => ({ label: name, value: name }));
-  }, [data]);
 
   const columns = [
     {

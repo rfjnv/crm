@@ -95,7 +95,7 @@ export default function DayClosingPage() {
     },
   ];
 
-  const todayClosing = closings.find((c) => dayjs(c.date).isSame(dayjs(), 'day'));
+  const todayClosing = closings.find((c: DailyClosing) => dayjs(c.date).isSame(dayjs(), 'day'));
 
   return (
     <div>

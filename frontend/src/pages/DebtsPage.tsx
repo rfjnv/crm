@@ -38,7 +38,7 @@ export default function DebtsPage() {
   const deals = data?.deals ?? [];
   const totals = data?.totals;
 
-  const filtered = deals.filter((d) => {
+  const filtered = deals.filter((d: Deal) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return d.title.toLowerCase().includes(q) || d.client?.companyName?.toLowerCase().includes(q);

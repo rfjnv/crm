@@ -36,4 +36,16 @@ export const financeApi = {
     client
       .get<CashboxResponse>('/finance/cashbox', { params })
       .then((r) => r.data),
+
+  getDayClosings: () =>
+    client.get('/finance/day-closings').then((r) => r.data),
+
+  closeDay: () =>
+    client.post('/finance/day-closing', {}).then((r) => r.data),
+
+  getDebts: () =>
+    client.get('/finance/debts').then((r) => r.data),
+
+  clientDebtDetail: (clientId: string) =>
+    client.get(`/finance/debts/${clientId}`).then((r) => r.data),
 };

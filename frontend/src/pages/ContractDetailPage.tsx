@@ -8,7 +8,7 @@ import {
 import {
   PrinterOutlined, UploadOutlined, DeleteOutlined,
   FileTextOutlined, FilePdfOutlined, FileImageOutlined, FileZipOutlined,
-  DollarOutlined, ArrowLeftOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
