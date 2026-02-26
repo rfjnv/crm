@@ -5,7 +5,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { createContractDto, updateContractDto } from './contracts.dto';
+import { createContractDto, updateContractDto, deleteContractDto } from './contracts.dto';
 
 const router = Router();
 
@@ -36,5 +36,12 @@ router.patch('/:id', authorize('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), validate(u
 // Attachments
 router.post('/:id/attachments', authorize('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), upload.single('file'), asyncHandler(contractsController.uploadAttachment.bind(contractsController)));
 router.delete('/:id/attachments/:attachmentId', authorize('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), asyncHandler(contractsController.deleteAttachment.bind(contractsController)));
+
+// Print PDF
+router.get('/:id/print', asyncHandler(contractsController.printContract.bind(contractsController)));
+
+// Deletion
+router.delete('/:id/hard', authorize('SUPER_ADMIN'), asyncHandler(contractsController.hardDelete.bind(contractsController)));
+router.delete('/:id', authorize('SUPER_ADMIN', 'ADMIN'), validate(deleteContractDto), asyncHandler(contractsController.softDelete.bind(contractsController)));
 
 export default router;

@@ -2,6 +2,7 @@ import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
+import { pushService } from '../push/push.service';
 import type { BroadcastDto } from './notifications.dto';
 
 interface FindAllOptions {
@@ -233,6 +234,18 @@ export class NotificationsService {
 
       return batch;
     });
+
+    // Fire-and-forget push to all target users
+    Promise.allSettled(
+      targetUsers.map((u) =>
+        pushService.sendPushToUser(u.id, {
+          title: dto.title,
+          body: dto.body,
+          url: dto.link || undefined,
+          severity: dto.severity,
+        }),
+      ),
+    ).catch(() => {});
 
     await auditLog({
       userId,

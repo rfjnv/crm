@@ -27,6 +27,7 @@ import {
   InboxOutlined,
   ProjectOutlined,
   SolutionOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -248,6 +249,11 @@ export default function Layout() {
             key: '/notifications/broadcast',
             icon: <SendOutlined />,
             label: <Link to="/notifications/broadcast">Рассылка</Link>,
+          },
+          {
+            key: '/settings/company',
+            icon: <SettingOutlined />,
+            label: <Link to="/settings/company">Настройки</Link>,
           }]
           : []),
       ]

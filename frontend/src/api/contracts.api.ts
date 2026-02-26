@@ -23,4 +23,15 @@ export const contractsApi = {
 
   deleteAttachment: (contractId: string, attachmentId: string) =>
     client.delete(`/contracts/${contractId}/attachments/${attachmentId}`).then((r) => r.data),
+
+  softDelete: (id: string, reason: string) =>
+    client.delete(`/contracts/${id}`, { data: { reason } }).then((r) => r.data),
+
+  hardDelete: (id: string) =>
+    client.delete(`/contracts/${id}/hard`).then((r) => r.data),
+
+  getPrintUrl: (id: string) => {
+    const baseURL = client.defaults.baseURL || '';
+    return `${baseURL}/contracts/${id}/print`;
+  },
 };

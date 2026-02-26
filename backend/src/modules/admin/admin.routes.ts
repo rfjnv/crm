@@ -9,6 +9,8 @@ import { AppError } from '../../lib/errors';
 import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
 import { dealsService } from '../deals/deals.service';
 import { AuthUser } from '../../lib/scope';
+import { comparePassword } from '../../lib/password';
+import { auditLog } from '../../lib/logger';
 
 const router = Router();
 
@@ -27,6 +29,31 @@ router.post(
     if (role !== 'SUPER_ADMIN') {
       throw new AppError(403, 'Только SUPER_ADMIN может очищать данные');
     }
+
+    // Safety: require confirmation text + password
+    const { confirmText, password } = req.body || {};
+    if (confirmText !== 'DELETE ALL DATA') {
+      throw new AppError(400, 'Для подтверждения введите "DELETE ALL DATA"');
+    }
+    if (!password) {
+      throw new AppError(400, 'Необходимо ввести пароль для подтверждения');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) throw new AppError(401, 'Пользователь не найден');
+
+    const valid = await comparePassword(password, user.password);
+    if (!valid) {
+      throw new AppError(403, 'Неверный пароль');
+    }
+
+    // Audit BEFORE deletion so it's recorded even if something goes wrong
+    await auditLog({
+      userId: req.user!.userId,
+      action: 'DELETE',
+      entityType: 'system',
+      after: { operation: 'purge_all_data', confirmedAt: new Date().toISOString() },
+    });
 
     await prisma.$transaction(async (tx) => {
       // Task-related
@@ -56,23 +83,12 @@ router.post(
       await tx.deal.updateMany({ data: { dailyClosingId: null } });
       await tx.dailyClosing.deleteMany();
 
-      // Deals → Contracts → Clients → Products
+      // Deals -> Contracts -> Clients -> Products
       await tx.deal.deleteMany();
+      await tx.contractAttachment.deleteMany();
       await tx.contract.deleteMany();
       await tx.client.deleteMany();
       await tx.product.deleteMany();
-
-      await tx.auditLog.deleteMany();
-    });
-
-    // One final audit entry
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user!.userId,
-        action: 'DELETE',
-        entityType: 'system',
-        after: { operation: 'purge_all_data' },
-      },
     });
 
     res.json({ success: true, message: 'Все данные очищены' });
@@ -88,6 +104,30 @@ router.post(
     if (role !== 'SUPER_ADMIN') {
       throw new AppError(403, 'Только SUPER_ADMIN может очищать данные');
     }
+
+    // Safety: require confirmation text + password
+    const { confirmText, password } = req.body || {};
+    if (confirmText !== 'CLEANUP DATA') {
+      throw new AppError(400, 'Для подтверждения введите "CLEANUP DATA"');
+    }
+    if (!password) {
+      throw new AppError(400, 'Необходимо ввести пароль для подтверждения');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) throw new AppError(401, 'Пользователь не найден');
+
+    const valid = await comparePassword(password, user.password);
+    if (!valid) {
+      throw new AppError(403, 'Неверный пароль');
+    }
+
+    await auditLog({
+      userId: req.user!.userId,
+      action: 'DELETE',
+      entityType: 'system',
+      after: { operation: 'cleanup_business_data', confirmedAt: new Date().toISOString() },
+    });
 
     const counts: Record<string, number> = {};
 
@@ -117,15 +157,6 @@ router.post(
       counts.contracts = (await tx.contract.deleteMany()).count;
 
       counts.auditLogs = (await tx.auditLog.deleteMany()).count;
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user!.userId,
-        action: 'DELETE',
-        entityType: 'system',
-        after: { operation: 'cleanup_business_data', counts },
-      },
     });
 
     const preserved = {

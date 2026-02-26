@@ -4,6 +4,7 @@ import path from 'path';
 import { conversationsController } from './conversations.controller';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
+import { generateStorageName } from '../../lib/uploadSecurity';
 
 import { config } from '../../lib/config';
 
@@ -14,8 +15,7 @@ const uploadsDir = path.resolve(config.uploads.dir);
 const storage = multer.diskStorage({
   destination: uploadsDir,
   filename: (_req, file, cb) => {
-    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    cb(null, `${Date.now()}-${sanitized}`);
+    cb(null, generateStorageName(file.originalname));
   },
 });
 

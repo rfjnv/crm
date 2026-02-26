@@ -1,14 +1,14 @@
-import { useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography, Descriptions, Tag, Table, Card, Statistic, Row, Col, Space,
-  Timeline, Button, Upload, message, Popconfirm, Spin, Empty, Divider,
+  Timeline, Button, Upload, message, Popconfirm, Spin, Empty, Divider, Modal, Input,
 } from 'antd';
 import {
-  PrinterOutlined, UploadOutlined, DeleteOutlined,
-  FileTextOutlined, FilePdfOutlined, FileImageOutlined, FileZipOutlined,
-  ArrowLeftOutlined,
+  FilePdfOutlined, UploadOutlined, DeleteOutlined,
+  FileTextOutlined, FileImageOutlined, FileZipOutlined,
+  ArrowLeftOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
@@ -40,10 +40,15 @@ function canPreview(mimeType: string) {
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const printRef = useRef<HTMLDivElement>(null);
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
+  const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
 
   const { data: contract, isLoading } = useQuery({
     queryKey: ['contract-detail', id],
@@ -60,7 +65,7 @@ export default function ContractDetailPage() {
     onError: () => message.error('Ошибка загрузки файла'),
   });
 
-  const deleteMut = useMutation({
+  const deleteAttMut = useMutation({
     mutationFn: (attachmentId: string) => contractsApi.deleteAttachment(id!, attachmentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contract-detail', id] });
@@ -69,21 +74,74 @@ export default function ContractDetailPage() {
     onError: () => message.error('Ошибка удаления'),
   });
 
+  const softDeleteMut = useMutation({
+    mutationFn: ({ contractId, reason }: { contractId: string; reason: string }) =>
+      contractsApi.softDelete(contractId, reason),
+    onSuccess: () => {
+      message.success('Договор удалён');
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      navigate('/contracts');
+    },
+    onError: () => message.error('Ошибка удаления договора'),
+  });
+
+  const hardDeleteMut = useMutation({
+    mutationFn: (contractId: string) => contractsApi.hardDelete(contractId),
+    onSuccess: () => {
+      message.success('Договор удалён безвозвратно');
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      navigate('/contracts');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
+      message.error(msg);
+    },
+  });
+
   function handlePrint() {
-    window.print();
+    const printUrl = contractsApi.getPrintUrl(id!);
+    const token = useAuthStore.getState().accessToken;
+    // Open PDF in new tab with auth
+    fetch(printUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error('PDF generation failed');
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      })
+      .catch(() => message.error('Ошибка генерации PDF'));
+  }
+
+  function handleSoftDelete() {
+    if (!deleteReason.trim()) {
+      message.warning('Укажите причину удаления');
+      return;
+    }
+    softDeleteMut.mutate({ contractId: id!, reason: deleteReason.trim() });
   }
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!contract) return <Empty description="Договор не найден" />;
 
+  const dealsCount = contract.deals?.length || 0;
+
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Link to="/contracts"><Button icon={<ArrowLeftOutlined />}>Договоры</Button></Link>
-        <Button icon={<PrinterOutlined />} onClick={handlePrint}>Печать</Button>
+        <Button icon={<FilePdfOutlined />} onClick={handlePrint}>Скачать PDF</Button>
+        {canDelete && (
+          <Button danger onClick={() => setDeleteModalOpen(true)} icon={<DeleteOutlined />}>
+            Удалить
+          </Button>
+        )}
       </Space>
 
-      <div ref={printRef}>
+      <div>
         <Typography.Title level={4} style={{ marginBottom: 16 }}>
           Договор {contract.contractNumber}
         </Typography.Title>
@@ -124,7 +182,7 @@ export default function ContractDetailPage() {
         </Row>
 
         {/* Deals */}
-        <Typography.Title level={5}>Сделки ({contract.deals?.length || 0})</Typography.Title>
+        <Typography.Title level={5}>Сделки ({dealsCount})</Typography.Title>
         <Table
           dataSource={contract.deals || []}
           rowKey="id"
@@ -227,7 +285,7 @@ export default function ContractDetailPage() {
                   </div>
                 </Space>
                 {canManage && (
-                  <Popconfirm title="Удалить вложение?" onConfirm={() => deleteMut.mutate(att.id)}>
+                  <Popconfirm title="Удалить вложение?" onConfirm={() => deleteAttMut.mutate(att.id)}>
                     <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                   </Popconfirm>
                 )}
@@ -236,6 +294,63 @@ export default function ContractDetailPage() {
           ))}
         </div>
       )}
+
+      {/* Delete Contract Modal */}
+      <Modal
+        title={
+          <Space>
+            <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
+            Удаление договора
+          </Space>
+        }
+        open={deleteModalOpen}
+        onCancel={() => { setDeleteModalOpen(false); setDeleteReason(''); }}
+        footer={[
+          <Button key="cancel" onClick={() => { setDeleteModalOpen(false); setDeleteReason(''); }}>
+            Отмена
+          </Button>,
+          <Button
+            key="soft"
+            danger
+            loading={softDeleteMut.isPending}
+            onClick={handleSoftDelete}
+            disabled={!deleteReason.trim()}
+          >
+            Удалить (мягкое)
+          </Button>,
+          ...(isSuperAdmin && dealsCount === 0 ? [
+            <Popconfirm
+              key="hard"
+              title="Безвозвратное удаление. Вы уверены?"
+              onConfirm={() => hardDeleteMut.mutate(id!)}
+            >
+              <Button danger type="primary" loading={hardDeleteMut.isPending}>
+                Удалить навсегда
+              </Button>
+            </Popconfirm>,
+          ] : []),
+        ]}
+      >
+        <Typography.Paragraph>
+          Договор <strong>{contract.contractNumber}</strong> будет помечен как удалённый.
+        </Typography.Paragraph>
+        {isSuperAdmin && dealsCount === 0 && (
+          <Typography.Paragraph type="warning">
+            Как SUPER_ADMIN, вы также можете удалить договор безвозвратно (нет привязанных сделок).
+          </Typography.Paragraph>
+        )}
+        {dealsCount > 0 && (
+          <Typography.Paragraph type="secondary">
+            Безвозвратное удаление недоступно: привязано {dealsCount} сделок.
+          </Typography.Paragraph>
+        )}
+        <Input.TextArea
+          rows={3}
+          placeholder="Причина удаления (обязательно)"
+          value={deleteReason}
+          onChange={(e) => setDeleteReason(e.target.value)}
+        />
+      </Modal>
     </div>
   );
 }

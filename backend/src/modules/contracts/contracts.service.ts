@@ -2,14 +2,19 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
-import { CreateContractDto, UpdateContractDto } from './contracts.dto';
+import { CreateContractDto, UpdateContractDto, DeleteContractDto } from './contracts.dto';
+import { validateUploadedFile, generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
+import { generateContractPdf } from '../../lib/pdf-generator';
 import path from 'path';
 import fs from 'fs';
 
 export class ContractsService {
   async findAll(clientId?: string) {
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (clientId) where.clientId = clientId;
+
     const contracts = await prisma.contract.findMany({
-      where: clientId ? { clientId } : {},
+      where,
       include: {
         client: { select: { id: true, companyName: true } },
         deals: {
@@ -34,8 +39,8 @@ export class ContractsService {
   }
 
   async findById(id: string) {
-    const contract = await prisma.contract.findUnique({
-      where: { id },
+    const contract = await prisma.contract.findFirst({
+      where: { id, deletedAt: null },
       include: {
         client: { select: { id: true, companyName: true } },
         deals: {
@@ -196,22 +201,25 @@ export class ContractsService {
       throw new AppError(404, 'Договор не найден');
     }
 
+    // Validate magic bytes match declared MIME type
+    validateUploadedFile(file.buffer, file.mimetype, file.originalname);
+
     const uploadsDir = path.join(process.cwd(), 'uploads', 'contracts');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    const ext = path.extname(file.originalname);
-    const safeFilename = `${contractId}_${Date.now()}${ext}`;
-    const filePath = path.join(uploadsDir, safeFilename);
+    // Store on disk under UUID name, keep original name in DB
+    const storageName = generateStorageName(file.originalname);
+    const filePath = path.join(uploadsDir, storageName);
 
     fs.writeFileSync(filePath, file.buffer);
 
     const attachment = await prisma.contractAttachment.create({
       data: {
         contractId,
-        filename: file.originalname,
-        path: `uploads/contracts/${safeFilename}`,
+        filename: sanitizeFilename(file.originalname),
+        path: `uploads/contracts/${storageName}`,
         mimeType: file.mimetype,
         size: file.size,
         uploadedBy: user.userId,
@@ -224,7 +232,7 @@ export class ContractsService {
       action: 'CREATE',
       entityType: 'contract_attachment',
       entityId: attachment.id,
-      after: { contractId, filename: file.originalname, size: file.size },
+      after: { contractId, filename: sanitizeFilename(file.originalname), size: file.size },
     });
 
     return attachment;
@@ -255,6 +263,123 @@ export class ContractsService {
     });
 
     return { success: true };
+  }
+
+  // ==================== DELETION ====================
+
+  async softDelete(id: string, dto: DeleteContractDto, user: AuthUser) {
+    const contract = await prisma.contract.findFirst({
+      where: { id, deletedAt: null },
+      include: { deals: { select: { id: true } } },
+    });
+    if (!contract) {
+      throw new AppError(404, 'Договор не найден');
+    }
+
+    const before = {
+      contractNumber: contract.contractNumber,
+      clientId: contract.clientId,
+      amount: contract.amount,
+      isActive: contract.isActive,
+    };
+
+    const updated = await prisma.contract.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        deletedById: user.userId,
+        deleteReason: dto.reason,
+      },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'DELETE',
+      entityType: 'contract',
+      entityId: id,
+      before,
+      after: { deletedAt: updated.deletedAt, deleteReason: dto.reason },
+      reason: dto.reason,
+    });
+
+    return { success: true };
+  }
+
+  async hardDelete(id: string, user: AuthUser) {
+    const contract = await prisma.contract.findUnique({
+      where: { id },
+      include: {
+        deals: { select: { id: true } },
+        attachments: { select: { id: true, path: true } },
+      },
+    });
+    if (!contract) {
+      throw new AppError(404, 'Договор не найден');
+    }
+
+    if (contract.deals.length > 0) {
+      throw new AppError(400, `Невозможно удалить договор: привязано ${contract.deals.length} сделок`);
+    }
+
+    // Delete physical attachment files
+    for (const att of contract.attachments) {
+      const fullPath = path.join(process.cwd(), att.path);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    }
+
+    await auditLog({
+      userId: user.userId,
+      action: 'DELETE',
+      entityType: 'contract',
+      entityId: id,
+      before: {
+        contractNumber: contract.contractNumber,
+        clientId: contract.clientId,
+        amount: contract.amount,
+        hardDelete: true,
+      },
+    });
+
+    // Cascade deletes attachments due to onDelete: Cascade
+    await prisma.contract.delete({ where: { id } });
+
+    return { success: true };
+  }
+
+  // ==================== PDF GENERATION ====================
+
+  async generatePdf(id: string): Promise<Buffer> {
+    const contract = await prisma.contract.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true, phone: true, address: true } },
+        deals: {
+          select: {
+            id: true, title: true, status: true, amount: true,
+            paidAmount: true, paymentStatus: true, createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!contract) {
+      throw new AppError(404, 'Договор не найден');
+    }
+
+    const companySettings = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+    });
+
+    const totalAmount = contract.deals.reduce((s, d) => s + Number(d.amount), 0);
+    const totalPaid = contract.deals.reduce((s, d) => s + Number(d.paidAmount), 0);
+
+    return generateContractPdf(
+      { ...contract, totalAmount, totalPaid, remaining: totalAmount - totalPaid },
+      companySettings,
+    );
   }
 }
 

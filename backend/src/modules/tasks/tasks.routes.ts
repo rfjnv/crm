@@ -8,6 +8,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
 import { createTaskDto, updateTaskDto, moveTaskDto } from './tasks.dto';
+import { generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
 
 import { config } from '../../lib/config';
 
@@ -18,8 +19,7 @@ const uploadsDir = path.resolve(config.uploads.dir);
 const storage = multer.diskStorage({
   destination: uploadsDir,
   filename: (_req, file, cb) => {
-    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    cb(null, `${Date.now()}-${sanitized}`);
+    cb(null, generateStorageName(file.originalname));
   },
 });
 
@@ -207,7 +207,7 @@ router.post(
     const attachment = await prisma.taskAttachment.create({
       data: {
         taskId: id,
-        filename: req.file.originalname,
+        filename: sanitizeFilename(req.file.originalname),
         path: req.file.path,
         mimeType: req.file.mimetype,
         size: req.file.size,

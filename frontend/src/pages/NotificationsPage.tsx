@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Typography, Button, Segmented, List, Tag, Space, message } from 'antd';
 import { InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined, CheckOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
+import PushNotificationToggle from '../components/PushNotificationToggle';
 import type { AppNotification, NotificationSeverity } from '../types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -75,6 +76,8 @@ export default function NotificationsPage() {
           />
         </Space>
       </div>
+
+      <PushNotificationToggle />
 
       <List
         loading={isLoading}

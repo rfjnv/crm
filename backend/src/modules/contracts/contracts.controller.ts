@@ -46,6 +46,23 @@ export class ContractsController {
     const result = await contractsService.deleteAttachment(req.params.attachmentId as string, getUser(req));
     res.json(result);
   }
+
+  async softDelete(req: Request, res: Response): Promise<void> {
+    const result = await contractsService.softDelete(req.params.id as string, req.body, getUser(req));
+    res.json(result);
+  }
+
+  async hardDelete(req: Request, res: Response): Promise<void> {
+    const result = await contractsService.hardDelete(req.params.id as string, getUser(req));
+    res.json(result);
+  }
+
+  async printContract(req: Request, res: Response): Promise<void> {
+    const pdfBuffer = await contractsService.generatePdf(req.params.id as string);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="contract-${req.params.id}.pdf"`);
+    res.send(pdfBuffer);
+  }
 }
 
 export const contractsController = new ContractsController();

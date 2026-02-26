@@ -21,6 +21,8 @@ import conversationsRoutes from './modules/conversations/conversations.routes';
 import presenceRoutes from './modules/conversations/presence.routes';
 import expensesRoutes from './modules/expenses/expenses.routes';
 import tasksRoutes from './modules/tasks/tasks.routes';
+import settingsRoutes from './modules/settings/settings.routes';
+import pushRoutes from './modules/push/push.routes';
 
 const app = express();
 
@@ -72,6 +74,8 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/presence', presenceRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/push', pushRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

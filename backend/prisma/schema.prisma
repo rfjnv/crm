@@ -127,6 +127,8 @@ model User {
   tasksCreated       Task[]           @relation("TaskCreator")
   tasksApproved      Task[]           @relation("TaskApprover")
   contractAttachments ContractAttachment[] @relation("ContractAttachmentUploader")
+  contractsDeleted    Contract[]           @relation("ContractDeletedBy")
+  pushSubscriptions   PushSubscription[]
 
   @@map("users")
 }
@@ -134,7 +136,7 @@ model User {
 model Session {
   id                   String    @id @default(uuid())
   userId               String    @map("user_id")
-  refreshTokenHash     String    @map("refresh_token_hash")
+  refreshTokenHash     String    @unique @map("refresh_token_hash")
   expiresAt            DateTime  @map("expires_at")
   revokedAt            DateTime? @map("revoked_at")
   replacedBySessionId  String?   @map("replaced_by_session_id")
@@ -145,7 +147,6 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([refreshTokenHash])
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
@@ -187,14 +188,19 @@ model Contract {
   endDate        DateTime? @map("end_date")
   isActive       Boolean   @default(true) @map("is_active")
   notes          String?
+  deletedAt      DateTime? @map("deleted_at")
+  deletedById    String?   @map("deleted_by_id")
+  deleteReason   String?   @map("delete_reason")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  client Client @relation(fields: [clientId], references: [id])
-  deals  Deal[]
+  client    Client  @relation(fields: [clientId], references: [id])
+  deletedBy User?   @relation("ContractDeletedBy", fields: [deletedById], references: [id])
+  deals     Deal[]
   attachments ContractAttachment[]
 
   @@index([clientId])
+  @@index([deletedAt])
   @@map("contracts")
 }
 
@@ -237,6 +243,7 @@ model Deal {
   archivedById  String?       @map("archived_by_id")
   dailyClosingId String?      @map("daily_closing_id")
   createdAt     DateTime      @default(now()) @map("created_at")
+  version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
   client             Client              @relation(fields: [clientId], references: [id])
@@ -584,4 +591,41 @@ model TaskAttachment {
 
   @@index([taskId])
   @@map("task_attachments")
+}
+
+// ==================== COMPANY SETTINGS ====================
+
+model CompanySettings {
+  id           String   @id @default("singleton")
+  companyName  String   @default("") @map("company_name")
+  inn          String   @default("")
+  address      String   @default("")
+  phone        String   @default("")
+  email        String   @default("")
+  bankName     String   @default("") @map("bank_name")
+  bankAccount  String   @default("") @map("bank_account")
+  mfo          String   @default("")
+  director     String   @default("")
+  logoPath     String?  @map("logo_path")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("company_settings")
+}
+
+// ==================== PUSH SUBSCRIPTIONS ====================
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

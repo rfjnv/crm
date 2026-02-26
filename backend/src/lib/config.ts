@@ -49,4 +49,10 @@ export const config = {
   uploads: {
     dir: process.env.UPLOADS_DIR || 'uploads',
   },
+
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.VAPID_PRIVATE_KEY || '',
+    subject: process.env.VAPID_SUBJECT || 'mailto:admin@polygraph.uz',
+  },
 } as const;

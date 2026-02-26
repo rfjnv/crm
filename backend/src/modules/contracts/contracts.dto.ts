@@ -20,3 +20,9 @@ export const updateContractDto = z.object({
 
 export type CreateContractDto = z.infer<typeof createContractDto>;
 export type UpdateContractDto = z.infer<typeof updateContractDto>;
+
+export const deleteContractDto = z.object({
+  reason: z.string().min(1, 'Причина удаления обязательна'),
+});
+
+export type DeleteContractDto = z.infer<typeof deleteContractDto>;

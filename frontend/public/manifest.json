@@ -1,0 +1,17 @@
+{
+  "name": "Polygraph CRM",
+  "short_name": "CRM",
+  "description": "Polygraph Business CRM",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#22609A",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

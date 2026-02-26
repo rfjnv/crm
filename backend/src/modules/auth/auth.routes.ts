@@ -9,6 +9,7 @@ import { rateLimiter } from '../../middleware/rateLimiter';
 const router = Router();
 
 const loginLimiter = rateLimiter(15 * 60 * 1000, 10);
+const refreshLimiter = rateLimiter(15 * 60 * 1000, 30);
 
 router.post(
   '/login',
@@ -19,6 +20,7 @@ router.post(
 
 router.post(
   '/refresh',
+  refreshLimiter,
   validate(refreshDto),
   asyncHandler(authController.refresh.bind(authController)),
 );

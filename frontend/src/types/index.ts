@@ -132,6 +132,9 @@ export interface Contract {
   endDate?: string | null;
   isActive: boolean;
   notes?: string | null;
+  deletedAt?: string | null;
+  deletedById?: string | null;
+  deleteReason?: string | null;
   createdAt: string;
   updatedAt: string;
   client?: { id: string; companyName: string };
@@ -677,4 +680,19 @@ export interface ProductAnalytics {
     marginPercent: number;
   };
   topClients: { clientId: string; companyName: string; totalQty: number }[];
+}
+
+export interface CompanySettings {
+  id: string;
+  companyName: string;
+  inn: string;
+  address: string;
+  phone: string;
+  email: string;
+  bankName: string;
+  bankAccount: string;
+  mfo: string;
+  director: string;
+  logoPath: string | null;
+  updatedAt: string;
 }

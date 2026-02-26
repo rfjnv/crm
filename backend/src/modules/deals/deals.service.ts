@@ -3,6 +3,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
+import { pushService } from '../push/push.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
@@ -385,6 +386,35 @@ export class DealsService {
       after: { status: targetStatus, paymentMethod: dto.paymentMethod },
     });
 
+    // Notify accountants when deal needs finance review
+    if (targetStatus === 'WAITING_FINANCE') {
+      const accountants = await prisma.user.findMany({
+        where: { role: 'ACCOUNTANT', isActive: true },
+        select: { id: true },
+      });
+
+      if (accountants.length > 0) {
+        await prisma.notification.createMany({
+          data: accountants.map((acc) => ({
+            userId: acc.id,
+            title: 'Новая сделка на проверку',
+            body: `Сделка "${deal.title}" ожидает финансовой проверки`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId: user.userId,
+          })),
+        });
+
+        // Fire-and-forget push
+        pushService.sendPushToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${deal.title}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+
     return this.findById(dealId, user);
   }
 
@@ -604,6 +634,25 @@ export class DealsService {
       after: { status: targetStatus },
     });
 
+    // Notify deal manager about finance approval
+    await prisma.notification.create({
+      data: {
+        userId: deal.managerId,
+        title: 'Сделка одобрена бухгалтером',
+        body: `Сделка "${deal.title}" прошла финансовую проверку`,
+        severity: 'INFO',
+        link: `/deals/${dealId}`,
+        createdByUserId: user.userId,
+      },
+    });
+
+    pushService.sendPushToUser(deal.managerId, {
+      title: 'Сделка одобрена бухгалтером',
+      body: `Сделка "${deal.title}" прошла финансовую проверку`,
+      url: `/deals/${dealId}`,
+      severity: 'INFO',
+    }).catch(() => {});
+
     return this.findById(dealId, user);
   }
 
@@ -644,6 +693,25 @@ export class DealsService {
       before: { status: deal.status },
       after: { status: 'REJECTED', reason: dto.reason },
     });
+
+    // Notify deal manager about finance rejection (URGENT)
+    await prisma.notification.create({
+      data: {
+        userId: deal.managerId,
+        title: 'Сделка отклонена бухгалтером',
+        body: `Сделка "${deal.title}" отклонена: ${dto.reason}`,
+        severity: 'URGENT',
+        link: `/deals/${dealId}`,
+        createdByUserId: user.userId,
+      },
+    });
+
+    pushService.sendPushToUser(deal.managerId, {
+      title: 'Сделка отклонена бухгалтером',
+      body: `Сделка "${deal.title}" отклонена: ${dto.reason}`,
+      url: `/deals/${dealId}`,
+      severity: 'URGENT',
+    }).catch(() => {});
 
     return this.findById(dealId, user);
   }
@@ -984,6 +1052,7 @@ export class DealsService {
     const data: Record<string, unknown> = {
       paidAmount: dto.paidAmount,
       paymentStatus,
+      version: { increment: 1 },
     };
 
     if (dto.paymentType !== undefined) {
@@ -996,9 +1065,18 @@ export class DealsService {
       data.terms = dto.terms;
     }
 
-    const updated = await prisma.deal.update({
-      where: { id },
+    // Optimistic locking: update only if version matches
+    const result = await prisma.deal.updateMany({
+      where: { id, version: deal.version },
       data,
+    });
+
+    if (result.count === 0) {
+      throw new AppError(409, 'Данные сделки были изменены другим пользователем. Обновите страницу.');
+    }
+
+    const updated = await prisma.deal.findUnique({
+      where: { id },
       include: {
         client: { select: { id: true, companyName: true } },
         manager: { select: { id: true, fullName: true } },
@@ -1012,11 +1090,11 @@ export class DealsService {
       entityId: id,
       before,
       after: {
-        paidAmount: Number(updated.paidAmount),
-        paymentType: updated.paymentType,
-        paymentStatus: updated.paymentStatus,
-        dueDate: updated.dueDate,
-        terms: updated.terms,
+        paidAmount: Number(updated!.paidAmount),
+        paymentType: updated!.paymentType,
+        paymentStatus: updated!.paymentStatus,
+        dueDate: updated!.dueDate,
+        terms: updated!.terms,
       },
     });
 
@@ -1026,33 +1104,34 @@ export class DealsService {
   // ==================== PAYMENT RECORDS ====================
 
   async createPaymentRecord(dealId: string, dto: CreatePaymentRecordDto, user: AuthUser) {
-    const deal = await prisma.deal.findFirst({
-      where: { id: dealId, ...ownerScope(user), isArchived: false },
-    });
-
-    if (!deal) {
-      throw new AppError(404, 'Сделка не найдена');
-    }
-
-    const amount = Number(deal.amount);
-    const currentPaid = Number(deal.paidAmount);
-    const newTotal = currentPaid + dto.amount;
-
-    if (newTotal > amount) {
-      throw new AppError(400, `Сумма платежей (${newTotal}) превышает сумму сделки (${amount})`);
-    }
-
-    // Auto-compute paymentStatus
-    let paymentStatus: PrismaPaymentStatus;
-    if (newTotal === 0) {
-      paymentStatus = 'UNPAID';
-    } else if (newTotal >= amount) {
-      paymentStatus = 'PAID';
-    } else {
-      paymentStatus = 'PARTIAL';
-    }
-
+    // All reads and writes inside one transaction with optimistic locking
     const payment = await prisma.$transaction(async (tx) => {
+      const deal = await tx.deal.findFirst({
+        where: { id: dealId, ...ownerScope(user), isArchived: false },
+      });
+
+      if (!deal) {
+        throw new AppError(404, 'Сделка не найдена');
+      }
+
+      const amount = Number(deal.amount);
+      const currentPaid = Number(deal.paidAmount);
+      const newTotal = currentPaid + dto.amount;
+
+      if (newTotal > amount) {
+        throw new AppError(400, `Сумма платежей (${newTotal}) превышает сумму сделки (${amount})`);
+      }
+
+      // Auto-compute paymentStatus
+      let paymentStatus: PrismaPaymentStatus;
+      if (newTotal === 0) {
+        paymentStatus = 'UNPAID';
+      } else if (newTotal >= amount) {
+        paymentStatus = 'PAID';
+      } else {
+        paymentStatus = 'PARTIAL';
+      }
+
       const created = await tx.payment.create({
         data: {
           dealId,
@@ -1068,12 +1147,17 @@ export class DealsService {
         },
       });
 
-      await tx.deal.update({
-        where: { id: dealId },
-        data: { paidAmount: newTotal, paymentStatus },
+      // Optimistic locking: update deal only if version matches
+      const updated = await tx.deal.updateMany({
+        where: { id: dealId, version: deal.version },
+        data: { paidAmount: newTotal, paymentStatus, version: { increment: 1 } },
       });
 
-      return created;
+      if (updated.count === 0) {
+        throw new AppError(409, 'Данные сделки были изменены другим пользователем. Обновите страницу.');
+      }
+
+      return { created, newTotal, paymentStatus };
     });
 
     await auditLog({
@@ -1082,14 +1166,14 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       after: {
-        paymentId: payment.id,
+        paymentId: payment.created.id,
         amount: dto.amount,
-        newPaidAmount: newTotal,
-        paymentStatus,
+        newPaidAmount: payment.newTotal,
+        paymentStatus: payment.paymentStatus,
       },
     });
 
-    return payment;
+    return payment.created;
   }
 
   async getDealPayments(dealId: string, user: AuthUser) {
