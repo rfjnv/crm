@@ -66,7 +66,7 @@ export default function PushNotificationToggle() {
         const keyArray = urlBase64ToUint8Array(publicKey);
         const subscription = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: keyArray,
+          applicationServerKey: keyArray.buffer.slice(0) as ArrayBuffer,
         });
 
         const json = subscription.toJSON();
