@@ -1,5 +1,5 @@
 import client from './client';
-import type { Contract, ContractListItem, ContractDetail, ContractAttachment } from '../types';
+import type { Contract, ContractListItem, ContractDetail, ContractAttachment, ContractType } from '../types';
 
 export const contractsApi = {
   list: (clientId?: string) =>
@@ -7,10 +7,10 @@ export const contractsApi = {
 
   getById: (id: string) => client.get<ContractDetail>(`/contracts/${id}`).then((r) => r.data),
 
-  create: (data: { clientId: string; contractNumber: string; amount?: number; startDate: string; endDate?: string; notes?: string }) =>
+  create: (data: { clientId: string; contractNumber: string; contractType?: ContractType; amount?: number; startDate: string; endDate?: string; notes?: string }) =>
     client.post<Contract>('/contracts', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ contractNumber: string; amount: number; startDate: string; endDate: string | null; isActive: boolean; notes: string | null }>) =>
+  update: (id: string, data: Partial<{ contractNumber: string; contractType: ContractType; amount: number; startDate: string; endDate: string | null; isActive: boolean; notes: string | null }>) =>
     client.patch<Contract>(`/contracts/${id}`, data).then((r) => r.data),
 
   uploadAttachment: (contractId: string, file: File) => {
@@ -30,8 +30,9 @@ export const contractsApi = {
   hardDelete: (id: string) =>
     client.delete(`/contracts/${id}/hard`).then((r) => r.data),
 
-  getPrintUrl: (id: string) => {
+  getPrintUrl: (id: string, doc?: string) => {
     const baseURL = client.defaults.baseURL || '';
-    return `${baseURL}/contracts/${id}/print`;
+    const query = doc ? `?doc=${doc}` : '';
+    return `${baseURL}/contracts/${id}/print${query}`;
   },
 };

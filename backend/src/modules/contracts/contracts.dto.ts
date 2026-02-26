@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const createContractDto = z.object({
   clientId: z.string().uuid('Некорректный ID клиента'),
   contractNumber: z.string().min(1, 'Номер договора обязателен'),
+  contractType: z.enum(['ANNUAL', 'ONE_TIME']).optional().default('ONE_TIME'),
   amount: z.number().min(0).optional(),
   startDate: z.string().min(1, 'Дата начала обязательна'),
   endDate: z.string().optional(),
@@ -11,6 +12,7 @@ export const createContractDto = z.object({
 
 export const updateContractDto = z.object({
   contractNumber: z.string().min(1).optional(),
+  contractType: z.enum(['ANNUAL', 'ONE_TIME']).optional(),
   amount: z.number().min(0).optional(),
   startDate: z.string().optional(),
   endDate: z.string().nullable().optional(),

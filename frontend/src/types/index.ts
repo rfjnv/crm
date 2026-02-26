@@ -123,10 +123,13 @@ export type PaymentType = 'FULL' | 'PARTIAL' | 'INSTALLMENT';
 export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'INSTALLMENT';
 export type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
+export type ContractType = 'ANNUAL' | 'ONE_TIME';
+
 export interface Contract {
   id: string;
   clientId: string;
   contractNumber: string;
+  contractType: ContractType;
   amount: number;
   startDate: string;
   endDate?: string | null;

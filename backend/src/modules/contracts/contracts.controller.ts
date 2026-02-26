@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Role } from '@prisma/client';
 import { contractsService } from './contracts.service';
 import { AuthUser } from '../../lib/scope';
+import type { DocType } from '../../lib/pdf-generator';
 
 function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
@@ -58,10 +59,21 @@ export class ContractsController {
   }
 
   async printContract(req: Request, res: Response): Promise<void> {
-    const pdfBuffer = await contractsService.generatePdf(req.params.id as string);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="contract-${req.params.id}.pdf"`);
-    res.send(pdfBuffer);
+    try {
+      const validDocTypes = ['CONTRACT', 'SPECIFICATION', 'INVOICE', 'POWER_OF_ATTORNEY', 'PACKAGE'];
+      const docParam = (req.query.doc as string || 'CONTRACT').toUpperCase();
+      const docType: DocType = validDocTypes.includes(docParam) ? docParam as DocType : 'CONTRACT';
+
+      const pdfBuffer = await contractsService.generatePdf(req.params.id as string, docType);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="contract-${req.params.id}-${docType.toLowerCase()}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('PDF generation error:', error instanceof Error ? error.stack : error);
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      const status = (error as { statusCode?: number }).statusCode || 500;
+      res.status(status).json({ error: `Ошибка генерации PDF: ${message}` });
+    }
   }
 }
 

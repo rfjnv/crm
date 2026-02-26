@@ -92,6 +92,11 @@ enum NotificationSeverity {
   URGENT
 }
 
+enum ContractType {
+  ANNUAL
+  ONE_TIME
+}
+
 // ==================== USERS & AUTH ====================
 
 model User {
@@ -183,6 +188,7 @@ model Contract {
   id             String    @id @default(uuid())
   clientId       String    @map("client_id")
   contractNumber String    @unique @map("contract_number")
+  contractType   ContractType @default(ONE_TIME) @map("contract_type")
   amount         Decimal   @default(0) @db.Decimal(14, 2)
   startDate      DateTime  @map("start_date")
   endDate        DateTime? @map("end_date")

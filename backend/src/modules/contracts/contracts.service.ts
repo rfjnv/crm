@@ -4,7 +4,8 @@ import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
 import { CreateContractDto, UpdateContractDto, DeleteContractDto } from './contracts.dto';
 import { validateUploadedFile, generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
-import { generateContractPdf } from '../../lib/pdf-generator';
+import { generateContractPdf, buildContractHtml, buildSpecificationHtml, buildInvoiceHtml, buildPowerOfAttorneyHtml, generateDocumentPdf } from '../../lib/pdf-generator';
+import type { DocType, DealItemForPdf } from '../../lib/pdf-generator';
 import path from 'path';
 import fs from 'fs';
 
@@ -113,6 +114,7 @@ export class ContractsService {
       data: {
         clientId: dto.clientId,
         contractNumber: dto.contractNumber,
+        contractType: dto.contractType ?? 'ONE_TIME',
         amount: dto.amount ?? 0,
         startDate: new Date(dto.startDate),
         endDate: dto.endDate ? new Date(dto.endDate) : null,
@@ -160,6 +162,7 @@ export class ContractsService {
 
     const data: Record<string, unknown> = {};
     if (dto.contractNumber !== undefined) data.contractNumber = dto.contractNumber;
+    if (dto.contractType !== undefined) data.contractType = dto.contractType;
     if (dto.amount !== undefined) data.amount = dto.amount;
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = dto.endDate ? new Date(dto.endDate) : null;
@@ -350,7 +353,7 @@ export class ContractsService {
 
   // ==================== PDF GENERATION ====================
 
-  async generatePdf(id: string): Promise<Buffer> {
+  async generatePdf(id: string, docType: DocType = 'CONTRACT'): Promise<Buffer> {
     const contract = await prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
@@ -359,6 +362,13 @@ export class ContractsService {
           select: {
             id: true, title: true, status: true, amount: true,
             paidAmount: true, paymentStatus: true, createdAt: true,
+            items: {
+              select: {
+                requestedQty: true,
+                price: true,
+                product: { select: { name: true, sku: true, unit: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
         },
@@ -376,10 +386,54 @@ export class ContractsService {
     const totalAmount = contract.deals.reduce((s, d) => s + Number(d.amount), 0);
     const totalPaid = contract.deals.reduce((s, d) => s + Number(d.paidAmount), 0);
 
-    return generateContractPdf(
-      { ...contract, totalAmount, totalPaid, remaining: totalAmount - totalPaid },
-      companySettings,
+    const pdfContract = {
+      ...contract,
+      contractType: contract.contractType,
+      totalAmount,
+      totalPaid,
+      remaining: totalAmount - totalPaid,
+    };
+
+    // Collect all deal items across all deals
+    const allItems: DealItemForPdf[] = contract.deals.flatMap((d) =>
+      d.items.map((item) => ({
+        product: item.product,
+        requestedQty: item.requestedQty,
+        price: item.price,
+      })),
     );
+
+    const isAnnual = contract.contractType === 'ANNUAL';
+
+    // Build HTML pages based on docType
+    const htmlPages: string[] = [];
+
+    switch (docType) {
+      case 'CONTRACT':
+        htmlPages.push(buildContractHtml(pdfContract, companySettings));
+        break;
+      case 'SPECIFICATION':
+        htmlPages.push(buildSpecificationHtml(pdfContract, companySettings, allItems));
+        break;
+      case 'INVOICE':
+        htmlPages.push(buildInvoiceHtml(pdfContract, companySettings, allItems));
+        break;
+      case 'POWER_OF_ATTORNEY':
+        htmlPages.push(buildPowerOfAttorneyHtml(pdfContract, companySettings));
+        break;
+      case 'PACKAGE':
+        if (isAnnual) {
+          htmlPages.push(buildContractHtml(pdfContract, companySettings));
+          htmlPages.push(buildSpecificationHtml(pdfContract, companySettings, allItems));
+        }
+        htmlPages.push(buildInvoiceHtml(pdfContract, companySettings, allItems));
+        htmlPages.push(buildPowerOfAttorneyHtml(pdfContract, companySettings));
+        break;
+      default:
+        htmlPages.push(buildContractHtml(pdfContract, companySettings));
+    }
+
+    return generateDocumentPdf(htmlPages);
   }
 }
 

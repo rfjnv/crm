@@ -3,12 +3,12 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography, Descriptions, Tag, Table, Card, Statistic, Row, Col, Space,
-  Timeline, Button, Upload, message, Popconfirm, Spin, Empty, Divider, Modal, Input,
+  Timeline, Button, Upload, message, Popconfirm, Spin, Empty, Divider, Modal, Input, Dropdown,
 } from 'antd';
 import {
   FilePdfOutlined, UploadOutlined, DeleteOutlined,
   FileTextOutlined, FileImageOutlined, FileZipOutlined,
-  ArrowLeftOutlined, ExclamationCircleOutlined,
+  ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
@@ -98,8 +98,8 @@ export default function ContractDetailPage() {
     },
   });
 
-  function handlePrint() {
-    const printUrl = contractsApi.getPrintUrl(id!);
+  function handlePrint(docType?: string) {
+    const printUrl = contractsApi.getPrintUrl(id!, docType);
     const token = useAuthStore.getState().accessToken;
     // Open PDF in new tab with auth
     fetch(printUrl, {
@@ -128,12 +128,32 @@ export default function ContractDetailPage() {
   if (!contract) return <Empty description="Договор не найден" />;
 
   const dealsCount = contract.deals?.length || 0;
+  const isAnnual = contract.contractType === 'ANNUAL';
+
+  const pdfMenuItems = [
+    ...(isAnnual ? [{ key: 'CONTRACT', label: 'Договор' }] : []),
+    { key: 'SPECIFICATION', label: 'Спецификация' },
+    { key: 'INVOICE', label: 'Счёт-фактура' },
+    { key: 'POWER_OF_ATTORNEY', label: 'Доверенность' },
+    { type: 'divider' as const },
+    { key: 'PACKAGE', label: 'Полный комплект' },
+  ];
 
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
         <Link to="/contracts"><Button icon={<ArrowLeftOutlined />}>Договоры</Button></Link>
-        <Button icon={<FilePdfOutlined />} onClick={handlePrint}>Скачать PDF</Button>
+        <Dropdown.Button
+          icon={<DownOutlined />}
+          type="primary"
+          onClick={() => handlePrint('PACKAGE')}
+          menu={{
+            items: pdfMenuItems,
+            onClick: ({ key }) => handlePrint(key),
+          }}
+        >
+          <FilePdfOutlined /> Скачать комплект
+        </Dropdown.Button>
         {canDelete && (
           <Button danger onClick={() => setDeleteModalOpen(true)} icon={<DeleteOutlined />}>
             Удалить
@@ -152,6 +172,11 @@ export default function ContractDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Статус">
             <Tag color={contract.isActive ? 'green' : 'red'}>{contract.isActive ? 'Активен' : 'Закрыт'}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Тип договора">
+            <Tag color={contract.contractType === 'ANNUAL' ? 'blue' : 'default'}>
+              {contract.contractType === 'ANNUAL' ? 'Годовой' : 'Разовый'}
+            </Tag>
           </Descriptions.Item>
           <Descriptions.Item label="Дата начала">{dayjs(contract.startDate).format('DD.MM.YYYY')}</Descriptions.Item>
           <Descriptions.Item label="Дата окончания">{contract.endDate ? dayjs(contract.endDate).format('DD.MM.YYYY') : '—'}</Descriptions.Item>
