@@ -711,3 +711,93 @@ export interface CompanySettings {
   logoPath: string | null;
   updatedAt: string;
 }
+
+// ──── Intelligence Analytics ────
+
+export interface ClientSegmentRow {
+  segment: string;
+  count: number;
+}
+
+export interface ClientLTVRow {
+  clientId: string;
+  companyName: string;
+  ltv: number;
+  dealsCount: number;
+  avgDealAmount: number;
+  riskScore: number;
+  lastDealDate: string;
+  segment: string;
+}
+
+export interface ClientIntelligence {
+  repeatRate: number;
+  avgFrequencyDays: number;
+  totalClients: number;
+  repeatClients: number;
+  segments: ClientSegmentRow[];
+  topByLTV: ClientLTVRow[];
+}
+
+export interface CrossSellPair {
+  product1Id: string;
+  product1Name: string;
+  product2Id: string;
+  product2Name: string;
+  coOccurrences: number;
+}
+
+export interface DemandStabilityRow {
+  productId: string;
+  name: string;
+  avgMonthlySales: number;
+  coefficient: number;
+}
+
+export interface SeasonalityRow {
+  month: number;
+  totalQuantity: number;
+  totalRevenue: number;
+}
+
+export interface ProductIntelligence {
+  crossSellPairs: CrossSellPair[];
+  demandStability: DemandStabilityRow[];
+  seasonality: SeasonalityRow[];
+}
+
+export interface ManagerIntelligenceRow {
+  managerId: string;
+  fullName: string;
+  completedCount: number;
+  totalRevenue: number;
+  avgDealAmount: number;
+  conversionRate: number;
+  avgDealDays: number;
+  uniqueClients: number;
+  repeatClients: number;
+  retentionRate: number;
+}
+
+export interface ManagerIntelligence {
+  rows: ManagerIntelligenceRow[];
+}
+
+export interface RevenueByMethodRow {
+  method: string;
+  total: number;
+  count: number;
+}
+
+export interface FinancialIntelligence {
+  revenueByMethod: RevenueByMethodRow[];
+  avgPaymentDelayDays: number;
+  onTimePaymentRate: number;
+}
+
+export interface IntelligenceData {
+  clients: ClientIntelligence;
+  products: ProductIntelligence;
+  managers: ManagerIntelligence;
+  financial: FinancialIntelligence;
+}

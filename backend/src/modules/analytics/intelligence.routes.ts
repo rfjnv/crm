@@ -1,0 +1,386 @@
+import { Router, Request, Response } from 'express';
+import { Role, Prisma } from '@prisma/client';
+import prisma from '../../lib/prisma';
+import { authenticate } from '../../middleware/authenticate';
+import { asyncHandler } from '../../lib/asyncHandler';
+import { ownerScope } from '../../lib/scope';
+
+const router = Router();
+
+router.use(authenticate);
+
+function getPeriodRange(period: string): { start: Date; end: Date } {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  let start: Date;
+
+  switch (period) {
+    case 'week':
+      start = new Date(end);
+      start.setDate(start.getDate() - 7);
+      break;
+    case 'quarter':
+      start = new Date(end);
+      start.setMonth(start.getMonth() - 3);
+      break;
+    case 'year':
+      start = new Date(end);
+      start.setFullYear(start.getFullYear() - 1);
+      break;
+    case 'month':
+    default:
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+  }
+
+  return { start, end };
+}
+
+// ──── Segmentation logic ────
+
+interface ClientRow {
+  id: string;
+  company_name: string;
+  completed_deals: string;
+  ltv: string;
+  avg_deal: string;
+  last_deal_date: Date | null;
+  current_debt: string;
+}
+
+function computeSegment(row: ClientRow, ltvThreshold: number): string {
+  const completed = Number(row.completed_deals);
+  const ltv = Number(row.ltv);
+  const lastDeal = row.last_deal_date;
+  const debt = Number(row.current_debt);
+  const now = new Date();
+  const daysSince = lastDeal ? (now.getTime() - new Date(lastDeal).getTime()) / 86400000 : Infinity;
+
+  if (ltv >= ltvThreshold && completed >= 3) return 'VIP';
+  if (completed >= 2) return 'Regular';
+  if (completed >= 1 && daysSince <= 90) return 'New';
+  if (completed >= 1 && daysSince > 90 && debt > 0) return 'At-Risk';
+  if (daysSince > 180 || completed === 0) return 'Churned';
+  return 'New';
+}
+
+function computeRiskScore(row: ClientRow): number {
+  const completed = Number(row.completed_deals);
+  const ltv = Number(row.ltv);
+  const debt = Number(row.current_debt);
+  const lastDeal = row.last_deal_date;
+  const daysSince = lastDeal ? (new Date().getTime() - new Date(lastDeal).getTime()) / 86400000 : Infinity;
+
+  let score = 0;
+  // Debt ratio: 0-50 points
+  if (ltv > 0) {
+    score += Math.min(50, Math.round((debt / ltv) * 50));
+  }
+  // Inactivity: 0-25 points
+  if (daysSince > 180) score += 25;
+  else if (daysSince > 90) score += 10;
+  // No completed deals: 25 points
+  if (completed === 0) score += 25;
+
+  return Math.min(100, score);
+}
+
+router.get(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+    };
+    const dealScope = ownerScope(user);
+    const period = (req.query.period as string) || 'month';
+    const { start, end } = getPeriodRange(period);
+
+    // ════════════════════════════════════
+    // ──── CLIENT INTELLIGENCE ────
+    // ════════════════════════════════════
+
+    const clientRows = dealScope.managerId
+      ? await prisma.$queryRaw<ClientRow[]>(
+          Prisma.sql`SELECT c.id, c.company_name,
+            COUNT(d.id) FILTER (WHERE d.status IN ('SHIPPED','CLOSED'))::text as completed_deals,
+            COALESCE(SUM(d.paid_amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as ltv,
+            COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as avg_deal,
+            MAX(d.created_at) as last_deal_date,
+            COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
+          FROM clients c
+          LEFT JOIN deals d ON d.client_id = c.id AND d.is_archived = false
+          WHERE c.is_archived = false AND (d.manager_id = ${dealScope.managerId} OR d.id IS NULL)
+          GROUP BY c.id, c.company_name`,
+        )
+      : await prisma.$queryRaw<ClientRow[]>(
+          Prisma.sql`SELECT c.id, c.company_name,
+            COUNT(d.id) FILTER (WHERE d.status IN ('SHIPPED','CLOSED'))::text as completed_deals,
+            COALESCE(SUM(d.paid_amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as ltv,
+            COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as avg_deal,
+            MAX(d.created_at) as last_deal_date,
+            COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
+          FROM clients c
+          LEFT JOIN deals d ON d.client_id = c.id AND d.is_archived = false
+          WHERE c.is_archived = false
+          GROUP BY c.id, c.company_name`,
+        );
+
+    // Compute LTV threshold (top 10%)
+    const ltvValues = clientRows.map((r) => Number(r.ltv)).filter((v) => v > 0).sort((a, b) => b - a);
+    const ltvThreshold = ltvValues.length > 0 ? ltvValues[Math.floor(ltvValues.length * 0.1)] || 0 : 0;
+
+    // Segment each client
+    const segmented = clientRows.map((r) => ({
+      ...r,
+      segment: computeSegment(r, ltvThreshold),
+      riskScore: computeRiskScore(r),
+    }));
+
+    const totalClients = segmented.length;
+    const repeatClients = segmented.filter((r) => Number(r.completed_deals) >= 2).length;
+    const repeatRate = totalClients > 0 ? repeatClients / totalClients : 0;
+
+    // Segment counts
+    const segmentCounts: Record<string, number> = {};
+    for (const r of segmented) {
+      segmentCounts[r.segment] = (segmentCounts[r.segment] || 0) + 1;
+    }
+    const segments = Object.entries(segmentCounts).map(([segment, count]) => ({ segment, count }));
+
+    // Top 20 by LTV
+    const topByLTV = [...segmented]
+      .sort((a, b) => Number(b.ltv) - Number(a.ltv))
+      .slice(0, 20)
+      .map((r) => ({
+        clientId: r.id,
+        companyName: r.company_name,
+        ltv: Number(r.ltv),
+        dealsCount: Number(r.completed_deals),
+        avgDealAmount: Number(r.avg_deal),
+        riskScore: r.riskScore,
+        lastDealDate: r.last_deal_date ? new Date(r.last_deal_date).toISOString().slice(0, 10) : '',
+        segment: r.segment,
+      }));
+
+    // Avg purchase frequency (for repeat clients)
+    const freqRaw = await prisma.$queryRaw<{ avg_frequency_days: string | null }[]>(
+      Prisma.sql`SELECT AVG(sub.avg_days)::text as avg_frequency_days
+      FROM (
+        SELECT d.client_id,
+          AVG(EXTRACT(EPOCH FROM (d.created_at - LAG(d.created_at) OVER (PARTITION BY d.client_id ORDER BY d.created_at))) / 86400) as avg_days
+        FROM deals d
+        WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false
+        GROUP BY d.client_id
+        HAVING COUNT(*) >= 2
+      ) sub
+      WHERE sub.avg_days IS NOT NULL`,
+    );
+    const avgFrequencyDays = freqRaw[0]?.avg_frequency_days ? Number(freqRaw[0].avg_frequency_days) : 0;
+
+    const clients = {
+      repeatRate,
+      avgFrequencyDays: Math.round(avgFrequencyDays * 10) / 10,
+      totalClients,
+      repeatClients,
+      segments,
+      topByLTV,
+    };
+
+    // ════════════════════════════════════
+    // ──── PRODUCT INTELLIGENCE ────
+    // ════════════════════════════════════
+
+    // Cross-sell pairs
+    const crossSellRaw = await prisma.$queryRaw<{
+      p1: string; p1_name: string; p2: string; p2_name: string; co_occurrences: string;
+    }[]>(
+      Prisma.sql`SELECT
+        di1.product_id as p1, p1.name as p1_name,
+        di2.product_id as p2, p2.name as p2_name,
+        COUNT(DISTINCT di1.deal_id)::text as co_occurrences
+      FROM deal_items di1
+      JOIN deal_items di2 ON di1.deal_id = di2.deal_id AND di1.product_id < di2.product_id
+      JOIN products p1 ON p1.id = di1.product_id
+      JOIN products p2 ON p2.id = di2.product_id
+      JOIN deals d ON d.id = di1.deal_id AND d.is_archived = false
+      GROUP BY di1.product_id, p1.name, di2.product_id, p2.name
+      ORDER BY COUNT(DISTINCT di1.deal_id) DESC
+      LIMIT 10`,
+    );
+
+    const crossSellPairs = crossSellRaw.map((r) => ({
+      product1Id: r.p1,
+      product1Name: r.p1_name,
+      product2Id: r.p2,
+      product2Name: r.p2_name,
+      coOccurrences: Number(r.co_occurrences),
+    }));
+
+    // Demand stability (coefficient of variation)
+    const stabilityRaw = await prisma.$queryRaw<{
+      product_id: string; name: string; avg_monthly: string; cv: string | null;
+    }[]>(
+      Prisma.sql`SELECT sub.product_id, p.name,
+        AVG(sub.monthly_qty)::text as avg_monthly,
+        (STDDEV(sub.monthly_qty) / NULLIF(AVG(sub.monthly_qty), 0))::text as cv
+      FROM (
+        SELECT product_id, DATE_TRUNC('month', created_at) as month, SUM(quantity) as monthly_qty
+        FROM inventory_movements
+        WHERE type = 'OUT' AND created_at >= NOW() - INTERVAL '12 months'
+        GROUP BY product_id, DATE_TRUNC('month', created_at)
+      ) sub
+      JOIN products p ON p.id = sub.product_id
+      GROUP BY sub.product_id, p.name
+      HAVING COUNT(*) >= 3
+      ORDER BY STDDEV(sub.monthly_qty) / NULLIF(AVG(sub.monthly_qty), 0) ASC NULLS LAST
+      LIMIT 15`,
+    );
+
+    const demandStability = stabilityRaw.map((r) => ({
+      productId: r.product_id,
+      name: r.name,
+      avgMonthlySales: Math.round(Number(r.avg_monthly) * 10) / 10,
+      coefficient: r.cv ? Math.round(Number(r.cv) * 100) / 100 : 0,
+    }));
+
+    // Seasonality (monthly, last 12 months)
+    const seasonalityRaw = await prisma.$queryRaw<{
+      month: number; total_quantity: string; total_revenue: string;
+    }[]>(
+      Prisma.sql`SELECT EXTRACT(MONTH FROM m.created_at)::int as month,
+        SUM(m.quantity)::text as total_quantity,
+        COALESCE(SUM(di.price * di.requested_qty), 0)::text as total_revenue
+      FROM inventory_movements m
+      LEFT JOIN deal_items di ON di.deal_id = m.deal_id AND di.product_id = m.product_id
+      WHERE m.type = 'OUT' AND m.created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY EXTRACT(MONTH FROM m.created_at)
+      ORDER BY month`,
+    );
+
+    const seasonality = seasonalityRaw.map((r) => ({
+      month: r.month,
+      totalQuantity: Number(r.total_quantity),
+      totalRevenue: Number(r.total_revenue),
+    }));
+
+    const products = { crossSellPairs, demandStability, seasonality };
+
+    // ════════════════════════════════════
+    // ──── MANAGER INTELLIGENCE ────
+    // ════════════════════════════════════
+
+    const managerStatsRaw = await prisma.$queryRaw<{
+      manager_id: string; full_name: string;
+      completed_count: string; total_revenue: string; avg_deal_amount: string;
+      total_deals: string; unique_clients: string; repeat_clients: string;
+    }[]>(
+      Prisma.sql`SELECT
+        d.manager_id,
+        u.full_name,
+        COUNT(*) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED'))::text as completed_count,
+        COALESCE(SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as total_revenue,
+        COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as avg_deal_amount,
+        COUNT(*)::text as total_deals,
+        COUNT(DISTINCT d.client_id)::text as unique_clients,
+        (SELECT COUNT(*) FROM (
+          SELECT d2.client_id
+          FROM deals d2
+          WHERE d2.manager_id = d.manager_id
+            AND d2.status IN ('SHIPPED', 'CLOSED')
+            AND d2.is_archived = false
+          GROUP BY d2.client_id
+          HAVING COUNT(*) >= 2
+        ) rc)::text as repeat_clients
+      FROM deals d
+      JOIN users u ON u.id = d.manager_id
+      WHERE d.is_archived = false
+      GROUP BY d.manager_id, u.full_name
+      ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`,
+    );
+
+    const managerAvgDaysRaw = await prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
+      Prisma.sql`SELECT
+        d.manager_id,
+        AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
+      FROM deals d
+      WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+      GROUP BY d.manager_id`,
+    );
+
+    const avgDaysMap = new Map(managerAvgDaysRaw.map((m) => [m.manager_id, Number(m.avg_days)]));
+
+    const managersRows = managerStatsRaw.map((m) => {
+      const unique = Number(m.unique_clients);
+      const repeat = Number(m.repeat_clients);
+      return {
+        managerId: m.manager_id,
+        fullName: m.full_name,
+        completedCount: Number(m.completed_count),
+        totalRevenue: Number(m.total_revenue),
+        avgDealAmount: Number(m.avg_deal_amount),
+        conversionRate: Number(m.total_deals) > 0 ? Number(m.completed_count) / Number(m.total_deals) : 0,
+        avgDealDays: avgDaysMap.get(m.manager_id) ?? 0,
+        uniqueClients: unique,
+        repeatClients: repeat,
+        retentionRate: unique > 0 ? repeat / unique : 0,
+      };
+    });
+
+    const managers = { rows: managersRows };
+
+    // ════════════════════════════════════
+    // ──── FINANCIAL INTELLIGENCE ────
+    // ════════════════════════════════════
+
+    // Revenue by payment method
+    const revenueByMethodRaw = await prisma.$queryRaw<{
+      method: string; total: string; count: string;
+    }[]>(
+      Prisma.sql`SELECT COALESCE(method, 'Не указан') as method,
+        SUM(amount)::text as total,
+        COUNT(*)::text as count
+      FROM payments
+      WHERE paid_at >= ${start} AND paid_at < ${end}
+      GROUP BY COALESCE(method, 'Не указан')
+      ORDER BY SUM(amount) DESC`,
+    );
+
+    const revenueByMethod = revenueByMethodRaw.map((r) => ({
+      method: r.method,
+      total: Number(r.total),
+      count: Number(r.count),
+    }));
+
+    // Avg payment delay (days from deal creation to first payment)
+    const delayRaw = await prisma.$queryRaw<{ avg_delay: string | null }[]>(
+      Prisma.sql`SELECT AVG(EXTRACT(EPOCH FROM (p.min_paid - d.created_at)) / 86400)::text as avg_delay
+      FROM deals d
+      JOIN (SELECT deal_id, MIN(paid_at) as min_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+    );
+    const avgPaymentDelayDays = delayRaw[0]?.avg_delay ? Math.round(Number(delayRaw[0].avg_delay) * 10) / 10 : 0;
+
+    // On-time payment rate
+    const onTimeRaw = await prisma.$queryRaw<{ on_time_rate: string | null }[]>(
+      Prisma.sql`SELECT
+        (COUNT(*) FILTER (WHERE d.due_date IS NOT NULL AND p.min_paid <= d.due_date)::float /
+        NULLIF(COUNT(*) FILTER (WHERE d.due_date IS NOT NULL), 0))::text as on_time_rate
+      FROM deals d
+      JOIN (SELECT deal_id, MIN(paid_at) as min_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+    );
+    const onTimePaymentRate = onTimeRaw[0]?.on_time_rate ? Number(onTimeRaw[0].on_time_rate) : 0;
+
+    const financial = {
+      revenueByMethod,
+      avgPaymentDelayDays,
+      onTimePaymentRate,
+    };
+
+    res.json({ clients, products, managers, financial });
+  }),
+);
+
+export { router as intelligenceRoutes };
