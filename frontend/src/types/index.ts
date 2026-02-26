@@ -801,3 +801,72 @@ export interface IntelligenceData {
   managers: ManagerIntelligence;
   financial: FinancialIntelligence;
 }
+
+// ─── History Analytics ───
+
+export interface HistoryOverview {
+  totalDeals: number;
+  totalClients: number;
+  totalRevenue: number;
+  totalPaid: number;
+  totalDebt: number;
+  avgDeal: number;
+}
+
+export interface HistoryMonthlyTrend {
+  month: number;
+  revenue: number;
+  paid: number;
+  activeClients: number;
+}
+
+export interface HistoryTopClient {
+  id: string;
+  companyName: string;
+  dealsCount: number;
+  revenue: number;
+  paid: number;
+  debt: number;
+}
+
+export interface HistoryTopProduct {
+  id: string;
+  name: string;
+  unit: string;
+  totalQty: number;
+  totalRevenue: number;
+  uniqueBuyers: number;
+}
+
+export interface HistoryManager {
+  id: string;
+  fullName: string;
+  dealsCount: number;
+  revenue: number;
+  collected: number;
+  clients: number;
+}
+
+export interface HistoryPaymentMethod {
+  method: string;
+  total: number;
+  count: number;
+}
+
+export interface HistoryDebtor {
+  id: string;
+  companyName: string;
+  totalAmount: number;
+  totalPaid: number;
+  debt: number;
+}
+
+export interface HistoryData {
+  overview: HistoryOverview;
+  monthlyTrend: HistoryMonthlyTrend[];
+  topClients: HistoryTopClient[];
+  topProducts: HistoryTopProduct[];
+  managers: HistoryManager[];
+  paymentMethods: HistoryPaymentMethod[];
+  debtors: HistoryDebtor[];
+}

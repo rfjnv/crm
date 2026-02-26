@@ -37,6 +37,7 @@ import CashboxPage from './pages/CashboxPage';
 import ContractDetailPage from './pages/ContractDetailPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
+import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
@@ -101,6 +102,7 @@ export default function App() {
                 <Route path="/users" element={<UsersPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                 </Route>
                 <Route path="/finance/debts" element={<DebtsPage />} />

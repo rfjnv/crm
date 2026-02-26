@@ -15,6 +15,7 @@ import {
   ContainerOutlined,
   DollarOutlined,
   BarChartOutlined,
+  FieldTimeOutlined,
   AppstoreOutlined,
   CheckCircleOutlined,
   BellOutlined,
@@ -228,6 +229,11 @@ export default function Layout() {
           key: '/analytics',
           icon: <BarChartOutlined />,
           label: <Link to="/analytics">Аналитика</Link>,
+        },
+        {
+          key: '/history-analytics',
+          icon: <FieldTimeOutlined />,
+          label: <Link to="/history-analytics">Аналитика 2025</Link>,
         },
       ]
       : []),
