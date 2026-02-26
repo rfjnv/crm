@@ -105,6 +105,7 @@ export default function ContractsPage() {
     form.setFieldsValue({
       clientId: contract.clientId,
       contractNumber: contract.contractNumber,
+      contractType: contract.contractType || 'ONE_TIME',
       amount: Number(contract.amount) || 0,
       startDate: dayjs(contract.startDate),
       endDate: contract.endDate ? dayjs(contract.endDate) : null,
@@ -117,6 +118,7 @@ export default function ContractsPage() {
     createMut.mutate({
       clientId: values.clientId as string,
       contractNumber: values.contractNumber as string,
+      contractType: (values.contractType as 'ANNUAL' | 'ONE_TIME') || 'ONE_TIME',
       amount: (values.amount as number) || undefined,
       startDate: (values.startDate as dayjs.Dayjs).format('YYYY-MM-DD'),
       endDate: values.endDate ? (values.endDate as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
@@ -130,6 +132,7 @@ export default function ContractsPage() {
       id: editingContract.id,
       data: {
         contractNumber: values.contractNumber as string,
+        contractType: values.contractType as 'ANNUAL' | 'ONE_TIME',
         amount: (values.amount as number) || 0,
         startDate: (values.startDate as dayjs.Dayjs).format('YYYY-MM-DD'),
         endDate: values.endDate ? (values.endDate as dayjs.Dayjs).format('YYYY-MM-DD') : null,
@@ -188,6 +191,16 @@ export default function ContractsPage() {
       title: 'Дата окончания',
       dataIndex: 'endDate',
       render: (v: string | null) => v ? dayjs(v).format('DD.MM.YYYY') : '—',
+    },
+    {
+      title: 'Тип',
+      dataIndex: 'contractType',
+      width: 100,
+      render: (v: string) => (
+        <Tag color={v === 'ANNUAL' ? 'blue' : 'default'}>
+          {v === 'ANNUAL' ? 'Годовой' : 'Разовый'}
+        </Tag>
+      ),
     },
     {
       title: 'Сделки',
@@ -309,6 +322,12 @@ export default function ContractsPage() {
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="contractType" label="Тип договора" initialValue="ONE_TIME">
+            <Select options={[
+              { label: 'Разовый', value: 'ONE_TIME' },
+              { label: 'Годовой', value: 'ANNUAL' },
+            ]} />
+          </Form.Item>
           <Form.Item name="amount" label="Сумма договора">
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="0" />
           </Form.Item>
@@ -339,6 +358,12 @@ export default function ContractsPage() {
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="contractType" label="Тип договора">
+            <Select options={[
+              { label: 'Разовый', value: 'ONE_TIME' },
+              { label: 'Годовой', value: 'ANNUAL' },
+            ]} />
+          </Form.Item>
           <Form.Item name="amount" label="Сумма договора">
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
@@ -351,7 +376,7 @@ export default function ContractsPage() {
           <Form.Item name="notes" label="Примечание">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="isActive" label="Статус" valuePropName="checked">
+          <Form.Item name="isActive" label="Статус">
             <Select
               options={[
                 { label: 'Активен', value: true },

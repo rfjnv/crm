@@ -43,11 +43,19 @@ export class ContractsService {
     const contract = await prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, phone: true, address: true } },
         deals: {
           select: {
             id: true, title: true, status: true, amount: true,
             paidAmount: true, paymentStatus: true, paymentType: true, createdAt: true,
+            items: {
+              select: {
+                id: true,
+                requestedQty: true,
+                price: true,
+                product: { select: { id: true, name: true, sku: true, unit: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
         },

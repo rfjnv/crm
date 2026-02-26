@@ -140,7 +140,7 @@ export interface Contract {
   deleteReason?: string | null;
   createdAt: string;
   updatedAt: string;
-  client?: { id: string; companyName: string };
+  client?: { id: string; companyName: string; contactName?: string; phone?: string | null; address?: string | null };
   deals?: DealShort[];
 }
 
@@ -163,11 +163,23 @@ export interface ContractAttachment {
   uploader?: { id: string; fullName: string };
 }
 
+export interface ContractDealItem {
+  id: string;
+  requestedQty: number | null;
+  price: string | null;
+  product: { id: string; name: string; sku: string; unit: string };
+}
+
+export interface ContractDealWithItems extends DealShort {
+  items?: ContractDealItem[];
+}
+
 export interface ContractDetail extends Contract {
   totalAmount: number;
   totalPaid: number;
   remaining: number;
   attachments?: ContractAttachment[];
+  deals?: ContractDealWithItems[];
   payments: {
     id: string;
     dealId: string;

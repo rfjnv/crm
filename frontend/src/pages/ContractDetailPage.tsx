@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,6 +9,8 @@ import {
   FilePdfOutlined, UploadOutlined, DeleteOutlined,
   FileTextOutlined, FileImageOutlined, FileZipOutlined,
   ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
+  OrderedListOutlined, DollarOutlined, SolutionOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
@@ -49,6 +51,7 @@ export default function ContractDetailPage() {
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data: contract, isLoading } = useQuery({
     queryKey: ['contract-detail', id],
@@ -98,10 +101,29 @@ export default function ContractDetailPage() {
     },
   });
 
+  // Flatten all deal items for the items table
+  const allItems = useMemo(() => {
+    if (!contract?.deals) return [];
+    return contract.deals.flatMap((d) =>
+      (d.items ?? []).map((item) => ({
+        key: `${d.id}-${item.id}`,
+        dealTitle: d.title || d.id.slice(0, 8),
+        name: item.product.name,
+        sku: item.product.sku,
+        unit: item.product.unit,
+        qty: Number(item.requestedQty) || 0,
+        price: Number(item.price) || 0,
+        sum: (Number(item.requestedQty) || 0) * (Number(item.price) || 0),
+      }))
+    );
+  }, [contract?.deals]);
+
+  const itemsTotal = useMemo(() => allItems.reduce((s, i) => s + i.sum, 0), [allItems]);
+
   function handlePrint(docType?: string) {
+    setPdfLoading(true);
     const printUrl = contractsApi.getPrintUrl(id!, docType);
     const token = useAuthStore.getState().accessToken;
-    // Open PDF in new tab with auth
     fetch(printUrl, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -113,7 +135,8 @@ export default function ContractDetailPage() {
         const url = URL.createObjectURL(blob);
         window.open(url, '_blank');
       })
-      .catch(() => message.error('Ошибка генерации PDF'));
+      .catch(() => message.error('Ошибка генерации PDF'))
+      .finally(() => setPdfLoading(false));
   }
 
   function handleSoftDelete() {
@@ -139,6 +162,13 @@ export default function ContractDetailPage() {
     { key: 'PACKAGE', label: 'Полный комплект' },
   ];
 
+  const docCards = [
+    ...(isAnnual ? [{ key: 'CONTRACT', label: 'Договор', icon: <FileTextOutlined />, ready: true }] : []),
+    { key: 'SPECIFICATION', label: 'Спецификация', icon: <OrderedListOutlined />, ready: allItems.length > 0 },
+    { key: 'INVOICE', label: 'Счёт-фактура', icon: <DollarOutlined />, ready: allItems.length > 0 },
+    { key: 'POWER_OF_ATTORNEY', label: 'Доверенность', icon: <SolutionOutlined />, ready: true },
+  ];
+
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
@@ -146,6 +176,7 @@ export default function ContractDetailPage() {
         <Dropdown.Button
           icon={<DownOutlined />}
           type="primary"
+          loading={pdfLoading}
           onClick={() => handlePrint('PACKAGE')}
           menu={{
             items: pdfMenuItems,
@@ -232,6 +263,102 @@ export default function ContractDetailPage() {
             },
           ]}
         />
+
+        {/* Items / Products Table */}
+        <Typography.Title level={5}>Товары / услуги ({allItems.length})</Typography.Title>
+        {allItems.length === 0 ? (
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>Нет товаров в сделках</Typography.Text>
+        ) : (
+          <Table
+            dataSource={allItems}
+            rowKey="key"
+            size="small"
+            pagination={false}
+            style={{ marginBottom: 24 }}
+            columns={[
+              { title: '#', width: 50, render: (_: unknown, __: unknown, i: number) => i + 1 },
+              { title: 'Наименование', dataIndex: 'name' },
+              { title: 'Артикул', dataIndex: 'sku', width: 120 },
+              { title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
+              { title: 'Кол-во', dataIndex: 'qty', width: 80, align: 'right' as const },
+              { title: 'Цена', dataIndex: 'price', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              { title: 'Сумма', dataIndex: 'sum', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              { title: 'Сделка', dataIndex: 'dealTitle', width: 140, ellipsis: true },
+            ]}
+            summary={() => (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={6} align="right">
+                  <strong>Итого:</strong>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <strong>{formatUZS(itemsTotal)}</strong>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} />
+              </Table.Summary.Row>
+            )}
+          />
+        )}
+
+        {/* Documents Readiness */}
+        <Typography.Title level={5}>Документы</Typography.Title>
+        <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
+          {docCards.map((doc) => (
+            <Col key={doc.key} xs={12} sm={8} md={6}>
+              <Card
+                size="small"
+                style={{ textAlign: 'center', borderColor: doc.ready ? '#d9f7be' : '#fff1f0' }}
+                styles={{ body: { padding: '12px 8px' } }}
+              >
+                <div style={{ fontSize: 24, color: doc.ready ? '#52c41a' : '#ff4d4f', marginBottom: 4 }}>
+                  {doc.icon}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>{doc.label}</div>
+                <div style={{ marginBottom: 8 }}>
+                  {doc.ready ? (
+                    <Tag color="success" icon={<CheckCircleOutlined />}>Готов</Tag>
+                  ) : (
+                    <Tag color="error" icon={<CloseCircleOutlined />}>Нет данных</Tag>
+                  )}
+                </div>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  disabled={!doc.ready || pdfLoading}
+                  loading={pdfLoading}
+                  onClick={() => handlePrint(doc.key)}
+                >
+                  Скачать
+                </Button>
+              </Card>
+            </Col>
+          ))}
+          <Col xs={12} sm={8} md={6}>
+            <Card
+              size="small"
+              style={{ textAlign: 'center', borderColor: '#e6f7ff' }}
+              styles={{ body: { padding: '12px 8px' } }}
+            >
+              <div style={{ fontSize: 24, color: '#1890ff', marginBottom: 4 }}>
+                <FilePdfOutlined />
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Полный комплект</div>
+              <div style={{ marginBottom: 8 }}>
+                <Tag color="processing">{isAnnual ? '4 документа' : '2 документа'}</Tag>
+              </div>
+              <Button
+                type="link"
+                size="small"
+                icon={<DownloadOutlined />}
+                disabled={pdfLoading}
+                loading={pdfLoading}
+                onClick={() => handlePrint('PACKAGE')}
+              >
+                Скачать
+              </Button>
+            </Card>
+          </Col>
+        </Row>
 
         {/* Payments */}
         <Typography.Title level={5}>История платежей ({contract.payments?.length || 0})</Typography.Title>
