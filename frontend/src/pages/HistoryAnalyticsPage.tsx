@@ -290,13 +290,17 @@ export default function HistoryAnalyticsPage() {
           data={areaData}
           xField="month"
           yField="value"
-          seriesField="type"
+          colorField="type"
           height={300}
-          areaStyle={{ fillOpacity: 0.15 }}
-          color={[token.colorPrimary, token.colorSuccess]}
-          yAxis={{ label: { formatter: (v: string) => fmtNum(Number(v)) } }}
-          tooltip={{ formatter: (datum: { value?: number; type?: string }) => ({ name: datum.type || '', value: fmtNum(datum.value || 0) }) }}
-          theme={token.colorBgBase === '#ffffff' ? 'default' : 'dark'}
+          shapeField="smooth"
+          style={{ fillOpacity: 0.15 }}
+          axis={{
+            y: { labelFormatter: (v: number) => fmtNum(v) },
+            x: {},
+          }}
+          tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
+          legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
+          theme={token.colorBgBase === '#ffffff' ? 'classic' : 'classicDark'}
         />
       </Card>
 
@@ -304,13 +308,16 @@ export default function HistoryAnalyticsPage() {
       <Card title="Активные клиенты по месяцам" size="small" style={{ marginBottom: 24 }}>
         <Bar
           data={clientBarData}
-          xField="clients"
-          yField="month"
+          xField="month"
+          yField="clients"
           height={260}
-          color={token.colorPrimary}
-          barWidthRatio={0.5}
-          label={{ position: 'right' }}
-          theme={token.colorBgBase === '#ffffff' ? 'default' : 'dark'}
+          colorField="month"
+          axis={{
+            x: { labelFill: token.colorTextSecondary },
+            y: { labelFill: token.colorTextSecondary },
+          }}
+          tooltip={{ items: [{ field: 'clients', channel: 'y', name: 'Клиенты' }] }}
+          theme={token.colorBgBase === '#ffffff' ? 'classic' : 'classicDark'}
         />
       </Card>
 
@@ -334,12 +341,15 @@ export default function HistoryAnalyticsPage() {
               data={pieData}
               angleField="value"
               colorField="type"
-              radius={0.85}
-              innerRadius={0.55}
+              innerRadius={0.5}
               height={320}
-              label={{ type: 'outer', content: '{name}: {percentage}' }}
-              tooltip={{ formatter: (datum: { value?: number; type?: string }) => ({ name: datum.type || '', value: fmtNum(datum.value || 0) }) }}
-              theme={token.colorBgBase === '#ffffff' ? 'default' : 'dark'}
+              label={{
+                text: (d: { type: string; value: number }) => `${d.type}: ${fmtNum(d.value)}`,
+                position: 'outside',
+                style: { fontSize: 12 },
+              }}
+              tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
+              theme={token.colorBgBase === '#ffffff' ? 'classic' : 'classicDark'}
             />
           </Card>
         </Col>
