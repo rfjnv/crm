@@ -89,7 +89,7 @@ export default function DealsPage() {
 
   const { data: deals, isLoading } = useQuery({
     queryKey: ['deals', statusFilter],
-    queryFn: () => dealsApi.list(statusFilter),
+    queryFn: () => dealsApi.list(statusFilter, !statusFilter),
     refetchInterval: 10_000,
   });
 
