@@ -291,7 +291,6 @@ export default function HistoryAnalyticsPage() {
           xField="month"
           yField="value"
           seriesField="type"
-          smooth
           height={300}
           areaStyle={{ fillOpacity: 0.15 }}
           color={[token.colorPrimary, token.colorSuccess]}
