@@ -166,16 +166,19 @@ router.get(
 
     // Avg purchase frequency (for repeat clients)
     const freqRaw = await prisma.$queryRaw<{ avg_frequency_days: string | null }[]>(
-      Prisma.sql`SELECT AVG(sub.avg_days)::text as avg_frequency_days
+      Prisma.sql`SELECT AVG(per_client.avg_days)::text as avg_frequency_days
       FROM (
-        SELECT d.client_id,
-          AVG(EXTRACT(EPOCH FROM (d.created_at - LAG(d.created_at) OVER (PARTITION BY d.client_id ORDER BY d.created_at))) / 86400) as avg_days
-        FROM deals d
-        WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false
-        GROUP BY d.client_id
-        HAVING COUNT(*) >= 2
-      ) sub
-      WHERE sub.avg_days IS NOT NULL`,
+        SELECT gaps.client_id, AVG(gaps.day_diff) as avg_days
+        FROM (
+          SELECT client_id,
+            EXTRACT(EPOCH FROM (created_at - LAG(created_at) OVER (PARTITION BY client_id ORDER BY created_at))) / 86400 as day_diff
+          FROM deals
+          WHERE status IN ('SHIPPED','CLOSED') AND is_archived = false
+        ) gaps
+        WHERE gaps.day_diff IS NOT NULL
+        GROUP BY gaps.client_id
+        HAVING COUNT(*) >= 1
+      ) per_client`,
     );
     const avgFrequencyDays = freqRaw[0]?.avg_frequency_days ? Number(freqRaw[0].avg_frequency_days) : 0;
 
