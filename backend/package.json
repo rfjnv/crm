@@ -14,6 +14,7 @@
     "db:import-clients": "tsx prisma/import-clients.ts",
     "db:import-stock": "tsx prisma/import-stock.ts",
     "db:import-excel": "tsx prisma/import-excel.ts",
+    "db:import-history": "tsx prisma/import-history.ts",
     "db:cleanup": "tsx prisma/cleanup-test-data.ts"
   },
   "dependencies": {

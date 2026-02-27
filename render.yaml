@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install --include=dev && npx prisma generate && npx tsx prisma/migrate-debt.ts && npx prisma db push --skip-generate --accept-data-loss && npm run build && npm run db:import-excel
+    buildCommand: npm install --include=dev && npx prisma generate && npx tsx prisma/migrate-debt.ts && npx prisma db push --skip-generate --accept-data-loss && npm run build && npm run db:import-excel && npm run db:import-history
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:
