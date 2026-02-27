@@ -175,9 +175,9 @@ export default function HistoryAnalyticsPage() {
     return md ? md.revenue : 0;
   }
   function getRevenueColor(revenue: number): string {
-    if (revenue <= 0) return token.colorBgContainerDisabled || '#f0f0f0';
+    if (revenue <= 0) return isDark ? '#2a2a2a' : '#f5f5f5';
     const intensity = Math.min(revenue / maxMonthRevenue, 1);
-    return `rgba(82,196,26,${0.15 + intensity * 0.85})`;
+    return `rgba(56,218,17,${0.2 + intensity * 0.8})`;
   }
 
   // ── KPI cards config ──
@@ -261,7 +261,6 @@ export default function HistoryAnalyticsPage() {
               style={{
                 width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
                 cursor: isClickable ? 'pointer' : 'default',
-                border: !isClickable ? '1px solid #d9d9d9' : undefined,
                 color: intensity > 0.5 ? '#fff' : undefined,
               }}
               onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
@@ -448,10 +447,10 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(82,196,26,0.15)', border: '1px solid #d9d9d9' }} /> Мало</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(82,196,26,0.5)' }} /></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(82,196,26,1)' }} /> Много</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: token.colorBgContainerDisabled || '#f0f0f0', border: '1px solid #d9d9d9' }} /> Нет данных</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.6)' }} /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5' }} /> Нет данных</span>
         </div>
         <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
