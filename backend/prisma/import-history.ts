@@ -119,7 +119,7 @@ async function main() {
     if (existing) { productMap.set(key, existing.id); continue; }
     skuCounter++;
     const product = await prisma.product.create({
-      data: { name: info.name, sku: `IMPORT-${String(skuCounter).padStart(4, '0')}`, unit: info.unit, stock: 0, minStock: 0, isActive: true },
+      data: { name: info.name, sku: `IMPORT-${String(skuCounter).padStart(4, '0')}`, unit: info.unit, stock: 0, minStock: 0, isActive: false },
     });
     productMap.set(key, product.id);
   }

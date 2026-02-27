@@ -18,6 +18,7 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [countryFilter, setCountryFilter] = useState<string | undefined>();
   const [stockFilter, setStockFilter] = useState<string>('all');
+  const [activeFilter, setActiveFilter] = useState<string>('active');
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -31,6 +32,8 @@ export default function ProductsPage() {
   });
 
   const filtered = (products ?? []).filter((p) => {
+    if (activeFilter === 'active' && !p.isActive) return false;
+    if (activeFilter === 'inactive' && p.isActive) return false;
     if (categoryFilter && p.category !== categoryFilter) return false;
     if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
     if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
@@ -210,6 +213,16 @@ export default function ProductsPage() {
               { label: 'Все', value: 'all' },
               { label: 'Мало на складе', value: 'low' },
               { label: 'Нет на складе', value: 'zero' },
+            ]}
+          />
+          <Select
+            value={activeFilter}
+            onChange={setActiveFilter}
+            style={{ width: 150 }}
+            options={[
+              { label: 'Активные', value: 'active' },
+              { label: 'Неактивные', value: 'inactive' },
+              { label: 'Все товары', value: 'all' },
             ]}
           />
         </Space>

@@ -1,5 +1,6 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Statistic, Table, Typography, Spin, theme } from 'antd';
+import { Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select, Tooltip, Tag } from 'antd';
 import {
   DollarOutlined,
   TeamOutlined,
@@ -7,6 +8,7 @@ import {
   RiseOutlined,
   WarningOutlined,
   BarChartOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { Area, Pie, Bar } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
@@ -15,6 +17,7 @@ import type {
   HistoryTopProduct,
   HistoryManager,
   HistoryDebtor,
+  HistoryClientActivity,
 } from '../types';
 
 const { Title } = Typography;
@@ -66,8 +69,12 @@ export default function HistoryAnalyticsPage() {
     );
   }
 
-  const { overview, monthlyTrend, topClients, topProducts, managers, paymentMethods, debtors } =
+  const { overview, monthlyTrend, topClients, topProducts, managers, paymentMethods, debtors, clientActivity } =
     data;
+
+  // ── Activity matrix state ──
+  const [activitySearch, setActivitySearch] = useState('');
+  const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
   // ── Area chart data ──
   const areaData = monthlyTrend.flatMap((m) => [
@@ -86,6 +93,86 @@ export default function HistoryAnalyticsPage() {
     type: METHOD_LABELS[pm.method] || pm.method,
     value: pm.total,
   }));
+
+  // ── Activity matrix helpers ──
+  function getMonthStatus(activeMonths: number[], month: number): 'active' | 'inactive' | 'returned' {
+    if (!activeMonths.includes(month)) return 'inactive';
+    // Check if there's a gap before this active month
+    const firstActive = Math.min(...activeMonths);
+    if (month > firstActive) {
+      for (let m = firstActive; m < month; m++) {
+        if (!activeMonths.includes(m)) return 'returned';
+      }
+    }
+    return 'active';
+  }
+
+  const STATUS_COLORS = {
+    active: '#52c41a',
+    inactive: token.colorBgContainerDisabled || '#f0f0f0',
+    returned: '#1890ff',
+  };
+  const STATUS_LABELS = {
+    active: 'Активен',
+    inactive: 'Неактивен',
+    returned: 'Вернулся',
+  };
+
+  const filteredActivity = useMemo(() => {
+    let list = clientActivity || [];
+    if (selectedClients.length > 0) {
+      list = list.filter((c) => selectedClients.includes(c.clientId));
+    }
+    if (activitySearch.trim()) {
+      const lower = activitySearch.trim().toLowerCase();
+      list = list.filter((c) => c.companyName.toLowerCase().includes(lower));
+    }
+    return list;
+  }, [clientActivity, selectedClients, activitySearch]);
+
+  const activityCols = [
+    {
+      title: 'Компания',
+      dataIndex: 'companyName',
+      key: 'companyName',
+      fixed: 'left' as const,
+      width: 180,
+      ellipsis: true,
+    },
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => ({
+      title: MONTH_LABELS[m],
+      key: `m${m}`,
+      width: 50,
+      align: 'center' as const,
+      render: (_: unknown, record: HistoryClientActivity) => {
+        const status = getMonthStatus(record.activeMonths, m);
+        return (
+          <Tooltip title={`${MONTH_LABELS[m]}: ${STATUS_LABELS[status]}`}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 4,
+                backgroundColor: STATUS_COLORS[status],
+                margin: '0 auto',
+              }}
+            />
+          </Tooltip>
+        );
+      },
+    })),
+    {
+      title: 'Мес.',
+      key: 'total',
+      width: 55,
+      align: 'center' as const,
+      render: (_: unknown, record: HistoryClientActivity) => (
+        <Tag color="blue">{record.activeMonths.length}</Tag>
+      ),
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) =>
+        a.activeMonths.length - b.activeMonths.length,
+    },
+  ];
 
   // ── Table columns ──
   const clientCols = [
@@ -392,6 +479,60 @@ export default function HistoryAnalyticsPage() {
           size="small"
           pagination={{ pageSize: 10, size: 'small' }}
           scroll={{ x: 550 }}
+        />
+      </Card>
+
+      {/* ── Row 7: Client Activity Matrix ── */}
+      <Card
+        title={<><CalendarOutlined /> Матрица активности клиентов</>}
+        size="small"
+        style={{ marginBottom: 24 }}
+        extra={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Input.Search
+              placeholder="Поиск..."
+              allowClear
+              style={{ width: 200 }}
+              onSearch={setActivitySearch}
+              onChange={(e) => !e.target.value && setActivitySearch('')}
+            />
+            <Select
+              mode="multiple"
+              placeholder="Выбрать клиентов"
+              allowClear
+              style={{ minWidth: 200 }}
+              maxTagCount={2}
+              value={selectedClients}
+              onChange={setSelectedClients}
+              options={(clientActivity || []).map((c) => ({ label: c.companyName, value: c.clientId }))}
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.active }} />
+            Активен
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.returned }} />
+            Вернулся
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.inactive, border: '1px solid #d9d9d9' }} />
+            Неактивен
+          </span>
+        </div>
+        <Table
+          dataSource={filteredActivity}
+          columns={activityCols}
+          rowKey="clientId"
+          size="small"
+          pagination={{ pageSize: 20, size: 'small', showTotal: (t) => `${t} клиентов` }}
+          scroll={{ x: 900 }}
         />
       </Card>
     </div>

@@ -211,6 +211,35 @@ router.get(
       debt: Number(r.debt),
     }));
 
+    // ── 8. Client activity matrix ──
+    const clientActivityRaw = await prisma.$queryRaw<
+      { client_id: string; company_name: string; month: number }[]
+    >(
+      Prisma.sql`SELECT DISTINCT
+        c.id as client_id,
+        c.company_name,
+        EXTRACT(MONTH FROM d.created_at)::int as month
+      FROM deals d
+      JOIN clients c ON c.id = d.client_id
+      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      ORDER BY c.company_name, month`,
+    );
+    const activityMap = new Map<string, { clientId: string; companyName: string; activeMonths: number[] }>();
+    for (const row of clientActivityRaw) {
+      const existing = activityMap.get(row.client_id);
+      if (existing) {
+        existing.activeMonths.push(row.month);
+      } else {
+        activityMap.set(row.client_id, {
+          clientId: row.client_id,
+          companyName: row.company_name,
+          activeMonths: [row.month],
+        });
+      }
+    }
+    const clientActivity = Array.from(activityMap.values());
+
     res.json({
       overview,
       monthlyTrend,
@@ -219,6 +248,7 @@ router.get(
       managers,
       paymentMethods,
       debtors,
+      clientActivity,
     });
   }),
 );

@@ -861,6 +861,12 @@ export interface HistoryDebtor {
   debt: number;
 }
 
+export interface HistoryClientActivity {
+  clientId: string;
+  companyName: string;
+  activeMonths: number[];
+}
+
 export interface HistoryData {
   overview: HistoryOverview;
   monthlyTrend: HistoryMonthlyTrend[];
@@ -869,4 +875,5 @@ export interface HistoryData {
   managers: HistoryManager[];
   paymentMethods: HistoryPaymentMethod[];
   debtors: HistoryDebtor[];
+  clientActivity: HistoryClientActivity[];
 }
