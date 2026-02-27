@@ -61,6 +61,10 @@ export default function HistoryAnalyticsPage() {
     queryFn: analyticsApi.getHistory,
   });
 
+  // ── Activity matrix state (must be before any conditional returns) ──
+  const [activitySearch, setActivitySearch] = useState('');
+  const [selectedClients, setSelectedClients] = useState<string[]>([]);
+
   if (isLoading || !data) {
     return (
       <div style={{ textAlign: 'center', marginTop: 120 }}>
@@ -71,10 +75,6 @@ export default function HistoryAnalyticsPage() {
 
   const { overview, monthlyTrend, topClients, topProducts, managers, paymentMethods, debtors, clientActivity } =
     data;
-
-  // ── Activity matrix state ──
-  const [activitySearch, setActivitySearch] = useState('');
-  const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
   // ── Area chart data ──
   const areaData = monthlyTrend.flatMap((m) => [
