@@ -12,7 +12,7 @@ import { Area, Pie, Bar, Line } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
-  HistoryClientActivity, HistoryDealRow, HistoryClientSegment,
+  HistoryClientActivity, HistoryClientSegment,
 } from '../types';
 
 const { Title } = Typography;
