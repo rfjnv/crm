@@ -27,8 +27,11 @@ const METHOD_LABELS: Record<string, string> = {
   PAYME: 'Click', TERMINAL: 'Терминал', 'Не указан': 'Не указан',
 };
 
-const SEGMENT_COLORS: Record<string, string> = {
+const SEGMENT_COLORS_LIGHT: Record<string, string> = {
   VIP: '#722ed1', Regular: '#1677ff', New: '#52c41a', 'At-Risk': '#fa8c16', Churned: '#ff4d4f',
+};
+const SEGMENT_COLORS_DARK: Record<string, string> = {
+  VIP: '#9254de', Regular: '#4096ff', New: '#73d13d', 'At-Risk': '#ffc069', Churned: '#ff7875',
 };
 const SEGMENT_LABELS: Record<string, string> = {
   VIP: 'VIP', Regular: 'Постоянный', New: 'Новый', 'At-Risk': 'В зоне риска', Churned: 'Ушедший',
@@ -43,6 +46,8 @@ function fmtNum(n: number): string {
 
 export default function HistoryAnalyticsPage() {
   const { token } = theme.useToken();
+  const isDark = token.colorBgBase !== '#ffffff';
+  const SEGMENT_COLORS = isDark ? SEGMENT_COLORS_DARK : SEGMENT_COLORS_LIGHT;
 
   // ── All hooks before any conditional return ──
   const [activeTab, setActiveTab] = useState('overview');
@@ -540,7 +545,7 @@ export default function HistoryAnalyticsPage() {
         <BarChartOutlined /> Аналитика 2025 (Исторические данные)
       </Title>
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+      <Tabs activeKey={activeTab} onChange={setActiveTab} destroyInactiveTabPane items={[
         { key: 'overview', label: 'Обзор', children: overviewTab },
         { key: 'analytics', label: 'Аналитика', children: analyticsTab },
         { key: 'segments', label: 'Сегменты', children: segmentsTab },
