@@ -211,30 +211,34 @@ router.get(
       debt: Number(r.debt),
     }));
 
-    // ── 8. Client activity matrix ──
+    // ── 8. Client activity matrix (with revenue per month) ──
     const clientActivityRaw = await prisma.$queryRaw<
-      { client_id: string; company_name: string; month: number }[]
+      { client_id: string; company_name: string; month: number; revenue: string }[]
     >(
-      Prisma.sql`SELECT DISTINCT
+      Prisma.sql`SELECT
         c.id as client_id,
         c.company_name,
-        EXTRACT(MONTH FROM d.created_at)::int as month
+        EXTRACT(MONTH FROM d.created_at)::int as month,
+        COALESCE(SUM(d.amount), 0)::text as revenue
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
         AND d.is_archived = false
+      GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM d.created_at)
       ORDER BY c.company_name, month`,
     );
-    const activityMap = new Map<string, { clientId: string; companyName: string; activeMonths: number[] }>();
+    const activityMap = new Map<string, { clientId: string; companyName: string; activeMonths: number[]; monthlyData: { month: number; revenue: number }[] }>();
     for (const row of clientActivityRaw) {
       const existing = activityMap.get(row.client_id);
       if (existing) {
         existing.activeMonths.push(row.month);
+        existing.monthlyData.push({ month: row.month, revenue: Number(row.revenue) });
       } else {
         activityMap.set(row.client_id, {
           clientId: row.client_id,
           companyName: row.company_name,
           activeMonths: [row.month],
+          monthlyData: [{ month: row.month, revenue: Number(row.revenue) }],
         });
       }
     }
@@ -258,8 +262,11 @@ router.get(
   '/drilldown',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const type = req.query.type as string;
+    const managerId = req.query.managerId as string | undefined;
+    const method = req.query.method as string | undefined;
 
     if (type === 'deals') {
+      const managerFilter = managerId ? Prisma.sql` AND d.manager_id = ${managerId}` : Prisma.sql``;
       const dealsRaw = await prisma.$queryRaw<
         {
           id: string;
@@ -280,7 +287,7 @@ router.get(
         JOIN clients c ON c.id = d.client_id
         JOIN users u ON u.id = d.manager_id
         WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
-          AND d.is_archived = false
+          AND d.is_archived = false${managerFilter}
         ORDER BY d.amount DESC
         LIMIT 100`,
       );
@@ -301,6 +308,7 @@ router.get(
     }
 
     if (type === 'payments') {
+      const methodFilter = method ? Prisma.sql` AND COALESCE(p.method, 'Не указан') = ${method}` : Prisma.sql``;
       const paymentsRaw = await prisma.$queryRaw<
         {
           id: string;
@@ -317,7 +325,7 @@ router.get(
         FROM payments p
         JOIN deals d ON d.id = p.deal_id
         JOIN clients c ON c.id = p.client_id
-        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}${methodFilter}
         ORDER BY p.amount DESC
         LIMIT 100`,
       );
@@ -730,6 +738,105 @@ router.get(
       seasonality,
       clientSegments,
       segmentSummary,
+    });
+  }),
+);
+
+// ── Client-month purchases endpoint ──
+router.get(
+  '/client-month/:clientId/:month',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const clientId = req.params.clientId as string;
+    const month = parseInt(req.params.month as string, 10);
+    if (isNaN(month) || month < 1 || month > 12) {
+      res.status(400).json({ error: 'Invalid month' });
+      return;
+    }
+
+    const itemsRaw = await prisma.$queryRaw<
+      {
+        id: string;
+        product_name: string;
+        unit: string;
+        qty: string;
+        price: string;
+        total: string;
+        deal_title: string;
+        deal_id: string;
+      }[]
+    >(
+      Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
+        di.requested_qty::text as qty, di.price::text as price,
+        (di.requested_qty * di.price)::text as total,
+        d.title as deal_title, d.id as deal_id
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      WHERE d.client_id = ${clientId}
+        AND EXTRACT(MONTH FROM d.created_at) = ${month}
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      ORDER BY (di.requested_qty * di.price) DESC`,
+    );
+
+    const items = itemsRaw.map((r) => ({
+      id: r.id,
+      productName: r.product_name,
+      unit: r.unit,
+      qty: Math.round(Number(r.qty) * 100) / 100,
+      price: Number(r.price),
+      total: Number(r.total),
+      dealTitle: r.deal_title,
+      dealId: r.deal_id,
+    }));
+
+    res.json({
+      items,
+      totalRevenue: items.reduce((sum, i) => sum + i.total, 0),
+    });
+  }),
+);
+
+// ── Product buyers endpoint ──
+router.get(
+  '/product-buyers/:productId',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const productId = req.params.productId as string;
+
+    const productInfo = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
+
+    const buyersRaw = await prisma.$queryRaw<
+      {
+        id: string;
+        company_name: string;
+        total_qty: string;
+        total_revenue: string;
+        deals_count: string;
+      }[]
+    >(
+      Prisma.sql`SELECT c.id, c.company_name,
+        SUM(di.requested_qty)::text as total_qty,
+        SUM(di.requested_qty * di.price)::text as total_revenue,
+        COUNT(DISTINCT d.id)::text as deals_count
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN clients c ON c.id = d.client_id
+      WHERE di.product_id = ${productId}
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY c.id, c.company_name
+      ORDER BY SUM(di.requested_qty * di.price) DESC`,
+    );
+
+    res.json({
+      productName: productInfo?.name || 'Неизвестный товар',
+      buyers: buyersRaw.map((r) => ({
+        clientId: r.id,
+        companyName: r.company_name,
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+        totalRevenue: Number(r.total_revenue),
+        dealsCount: Number(r.deals_count),
+      })),
     });
   }),
 );

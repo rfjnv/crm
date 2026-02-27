@@ -865,6 +865,7 @@ export interface HistoryClientActivity {
   clientId: string;
   companyName: string;
   activeMonths: number[];
+  monthlyData: { month: number; revenue: number }[];
 }
 
 export interface HistoryData {
@@ -1007,4 +1008,37 @@ export interface HistoryExtendedData {
   seasonality: HistorySeasonalityRow[];
   clientSegments: HistoryClientSegment[];
   segmentSummary: HistorySegmentSummary[];
+}
+
+// ─── History Client-Month Purchases ───
+
+export interface HistoryClientMonthItem {
+  id: string;
+  productName: string;
+  unit: string;
+  qty: number;
+  price: number;
+  total: number;
+  dealTitle: string;
+  dealId: string;
+}
+
+export interface HistoryClientMonthData {
+  items: HistoryClientMonthItem[];
+  totalRevenue: number;
+}
+
+// ─── History Product Buyers ───
+
+export interface HistoryProductBuyer {
+  clientId: string;
+  companyName: string;
+  totalQty: number;
+  totalRevenue: number;
+  dealsCount: number;
+}
+
+export interface HistoryProductBuyersData {
+  productName: string;
+  buyers: HistoryProductBuyer[];
 }

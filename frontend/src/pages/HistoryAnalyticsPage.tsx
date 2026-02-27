@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select,
   Tooltip, Tag, Tabs, Drawer,
@@ -45,11 +46,16 @@ function fmtNum(n: number): string {
   return n.toLocaleString('ru-RU');
 }
 
+// Reverse-lookup: find original method key from its label
+const METHOD_LABEL_TO_KEY: Record<string, string> = {};
+for (const [k, v] of Object.entries(METHOD_LABELS)) METHOD_LABEL_TO_KEY[v] = k;
+
 export default function HistoryAnalyticsPage() {
   const { token } = theme.useToken();
   const mode = useThemeStore((s) => s.mode);
   const isDark = mode === 'dark';
   const SEGMENT_COLORS = isDark ? SEGMENT_COLORS_DARK : SEGMENT_COLORS_LIGHT;
+  const navigate = useNavigate();
 
   // ── All hooks before any conditional return ──
   const [activeTab, setActiveTab] = useState('overview');
@@ -58,6 +64,12 @@ export default function HistoryAnalyticsPage() {
   const [activitySearch, setActivitySearch] = useState('');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [segmentFilter, setSegmentFilter] = useState<string[]>([]);
+
+  // New drawer states
+  const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
+  const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
+  const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
+  const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['analytics-history'], queryFn: analyticsApi.getHistory });
 
@@ -82,6 +94,34 @@ export default function HistoryAnalyticsPage() {
     enabled: !!monthDrawer,
   });
 
+  // Client-month purchases drawer query
+  const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
+    queryKey: ['analytics-history-client-month', cellDrawer?.clientId, cellDrawer?.month],
+    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month),
+    enabled: !!cellDrawer,
+  });
+
+  // Product buyers drawer query
+  const { data: productBuyersData, isLoading: productBuyersLoading } = useQuery({
+    queryKey: ['analytics-history-product-buyers', productDrawer?.productId],
+    queryFn: () => analyticsApi.getHistoryProductBuyers(productDrawer!.productId),
+    enabled: !!productDrawer,
+  });
+
+  // Manager drilldown query
+  const { data: managerDrilldown, isLoading: managerDrillLoading } = useQuery({
+    queryKey: ['analytics-history-drilldown-manager', managerDrawer?.managerId],
+    queryFn: () => analyticsApi.getHistoryDrilldown('deals', { managerId: managerDrawer!.managerId }),
+    enabled: !!managerDrawer,
+  });
+
+  // Method drilldown query
+  const { data: methodDrilldown, isLoading: methodDrillLoading } = useQuery({
+    queryKey: ['analytics-history-drilldown-method', methodDrawer],
+    queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }),
+    enabled: !!methodDrawer,
+  });
+
   const filteredActivity = useMemo(() => {
     let list = data?.clientActivity || [];
     if (selectedClients.length > 0) list = list.filter((c) => selectedClients.includes(c.clientId));
@@ -98,6 +138,12 @@ export default function HistoryAnalyticsPage() {
     return list;
   }, [extended?.clientSegments, segmentFilter]);
 
+  // Compute max monthly revenue for activity matrix color gradient
+  const maxMonthRevenue = useMemo(() => {
+    const allRevenues = (data?.clientActivity || []).flatMap((c) => c.monthlyData.map((md) => md.revenue));
+    return Math.max(...allRevenues, 1);
+  }, [data?.clientActivity]);
+
   if (isLoading || !data) {
     return <div style={{ textAlign: 'center', marginTop: 120 }}><Spin size="large" /></div>;
   }
@@ -107,20 +153,25 @@ export default function HistoryAnalyticsPage() {
   const chartTheme = isDark ? 'classicDark' : 'classic';
   const axisStyle = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } };
   const axisStyleNoFmt = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText } };
+  const clickableRow = { cursor: 'pointer' };
 
   // ── Chart data ──
   const areaData = monthlyTrend.flatMap((m) => [
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.revenue, type: 'Выручка' },
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.paid, type: 'Оплачено' },
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.revenue, type: 'Выручка', _month: m.month },
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.paid, type: 'Оплачено', _month: m.month },
   ]);
   const clientBarData = monthlyTrend.map((m) => ({
     month: MONTH_LABELS[m.month] || `${m.month}`, clients: m.activeClients, _month: m.month,
   }));
   const pieData = paymentMethods.map((pm) => ({
-    type: METHOD_LABELS[pm.method] || pm.method, value: pm.total,
+    type: METHOD_LABELS[pm.method] || pm.method, value: pm.total, _method: pm.method,
   }));
 
   // ── Activity matrix helpers ──
+  function getMonthRevenue(record: HistoryClientActivity, month: number): number {
+    const md = record.monthlyData.find((d) => d.month === month);
+    return md ? md.revenue : 0;
+  }
   function getMonthStatus(activeMonths: number[], month: number): 'active' | 'inactive' | 'returned' {
     if (!activeMonths.includes(month)) return 'inactive';
     const firstActive = Math.min(...activeMonths);
@@ -131,7 +182,16 @@ export default function HistoryAnalyticsPage() {
     }
     return 'active';
   }
-  const STATUS_COLORS = { active: '#52c41a', inactive: token.colorBgContainerDisabled || '#f0f0f0', returned: '#1890ff' };
+  function getRevenueColor(revenue: number, status: 'active' | 'inactive' | 'returned'): string {
+    if (status === 'inactive') return token.colorBgContainerDisabled || '#f0f0f0';
+    const intensity = Math.min(revenue / maxMonthRevenue, 1);
+    if (status === 'returned') {
+      // Blue gradient for returned
+      return `rgba(24,144,255,${0.2 + intensity * 0.8})`;
+    }
+    // Green gradient for active
+    return `rgba(82,196,26,${0.2 + intensity * 0.8})`;
+  }
   const STATUS_LABELS_MAP = { active: 'Активен', inactive: 'Неактивен', returned: 'Вернулся' };
 
   // ── KPI cards config ──
@@ -199,16 +259,26 @@ export default function HistoryAnalyticsPage() {
     { title: 'Долг', dataIndex: 'debt', key: 'debt', width: 130, render: (v: number) => <span style={{ color: token.colorError, fontWeight: 600 }}>{fmtNum(v)}</span>, sorter: (a: HistoryDebtor, b: HistoryDebtor) => a.debt - b.debt, defaultSortOrder: 'descend' as const },
   ];
 
-  // ── Activity matrix columns ──
+  // ── Activity matrix columns (revenue gradient + clickable) ──
   const activityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
     ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => {
         const status = getMonthStatus(record.activeMonths, m);
+        const revenue = getMonthRevenue(record, m);
+        const bgColor = getRevenueColor(revenue, status);
+        const isClickable = status !== 'inactive';
         return (
-          <Tooltip title={`${MONTH_LABELS[m]}: ${STATUS_LABELS_MAP[status]}`}>
-            <div style={{ width: 28, height: 28, borderRadius: 4, backgroundColor: STATUS_COLORS[status], margin: '0 auto' }} />
+          <Tooltip title={`${MONTH_LABELS[m]}: ${STATUS_LABELS_MAP[status]}${revenue > 0 ? ` — ${fmtNum(revenue)}` : ''}`}>
+            <div
+              style={{
+                width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
+                cursor: isClickable ? 'pointer' : 'default',
+                border: status === 'returned' ? '2px solid #1890ff' : undefined,
+              }}
+              onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
+            />
           </Tooltip>
         );
       },
@@ -219,7 +289,7 @@ export default function HistoryAnalyticsPage() {
     },
   ];
 
-  // ── Segment activity columns (with segment tag) ──
+  // ── Segment activity columns (with segment tag + clickable) ──
   const segmentActivityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
     { title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 120,
@@ -246,10 +316,12 @@ export default function HistoryAnalyticsPage() {
   function renderKpiDrawerContent() {
     if (!kpiDrawer) return null;
     if (kpiDrawer === 'clients') {
-      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />;
+      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }}
+        onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (kpiDrawer === 'debt') {
-      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />;
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+        onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (drillType === 'deals' && drilldown?.deals) {
       return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />;
@@ -259,6 +331,24 @@ export default function HistoryAnalyticsPage() {
     }
     return <Spin />;
   }
+
+  // ── Client-month drawer columns ──
+  const clientMonthCols = [
+    { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
+    { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
+    { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 80, render: (v: number) => v.toLocaleString('ru-RU') },
+    { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => fmtNum(v) },
+    { title: 'Итого', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => fmtNum(v) },
+    { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
+  ];
+
+  // ── Product buyers drawer columns ──
+  const productBuyersCols = [
+    { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+    { title: 'Кол-во', dataIndex: 'totalQty', key: 'totalQty', width: 100, render: (v: number) => v.toLocaleString('ru-RU') },
+    { title: 'Выручка', dataIndex: 'totalRevenue', key: 'totalRevenue', width: 120, render: (v: number) => fmtNum(v) },
+    { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
+  ];
 
   // ── TAB 1: Overview ──
   const overviewTab = (
@@ -286,6 +376,12 @@ export default function HistoryAnalyticsPage() {
           tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
           legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
           theme={chartTheme}
+          onReady={({ chart }) => {
+            chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
+              const m = ev?.data?.data?._month;
+              if (m) setMonthDrawer(m);
+            });
+          }}
         />
       </Card>
 
@@ -306,7 +402,8 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }}
+              onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -317,6 +414,16 @@ export default function HistoryAnalyticsPage() {
               interaction={{ elementHighlight: { background: true } }}
               tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _method?: string; type?: string } } }) => {
+                  const method = ev?.data?.data?._method;
+                  if (method) setMethodDrawer(method);
+                  else {
+                    const label = ev?.data?.data?.type;
+                    if (label) setMethodDrawer(METHOD_LABEL_TO_KEY[label] || label);
+                  }
+                });
+              }}
             />
           </Card>
         </Col>
@@ -325,18 +432,21 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+              onRow={(record) => ({ onClick: () => setProductDrawer({ productId: record.id, productName: record.name }), style: clickableRow })} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
           <Card title="Менеджеры" size="small" style={{ height: '100%' }}>
-            <Table dataSource={managers} columns={managerCols} rowKey="id" size="small" pagination={false} scroll={{ x: 450 }} />
+            <Table dataSource={managers} columns={managerCols} rowKey="id" size="small" pagination={false} scroll={{ x: 450 }}
+              onRow={(record) => ({ onClick: () => setManagerDrawer({ managerId: record.id, managerName: record.fullName }), style: clickableRow })} />
           </Card>
         </Col>
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+          onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
       </Card>
 
       <Card title={<><CalendarOutlined /> Матрица активности клиентов</>} size="small"
@@ -350,10 +460,10 @@ export default function HistoryAnalyticsPage() {
           </div>
         }
       >
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.active }} /> Активен</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.returned }} /> Вернулся</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.inactive, border: '1px solid #d9d9d9' }} /> Неактивен</span>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, background: 'linear-gradient(135deg, rgba(82,196,26,0.3), rgba(82,196,26,1))' }} /> Активен (градиент по выручке)</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, background: 'linear-gradient(135deg, rgba(24,144,255,0.3), rgba(24,144,255,1))', border: '2px solid #1890ff' }} /> Вернулся</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: token.colorBgContainerDisabled || '#f0f0f0', border: '1px solid #d9d9d9' }} /> Неактивен</span>
         </div>
         <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
@@ -367,23 +477,35 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Удержание клиентов (MoM)" size="small">
             <Line
-              data={extended.retention.map((r) => ({ month: MONTH_LABELS[r.month], rate: Math.round(r.retentionRate * 100) }))}
+              data={extended.retention.map((r) => ({ month: MONTH_LABELS[r.month], rate: Math.round(r.retentionRate * 100), _month: r.month }))}
               xField="month" yField="rate" height={280}
               point={{ shapeField: 'circle', sizeField: 4 }}
               axis={{ x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
               tooltip={{ items: [{ field: 'rate', channel: 'y', name: 'Удержание', valueFormatter: (v: number) => `${v}%` }] }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
+                  const m = ev?.data?.data?._month;
+                  if (m) setMonthDrawer(m);
+                });
+              }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Концентрация выручки (топ-20 клиентов)" size="small">
             <Bar
-              data={extended.concentration.map((r) => ({ client: r.companyName.substring(0, 20), percent: r.cumulativePercent }))}
+              data={extended.concentration.map((r) => ({ client: r.companyName.substring(0, 20), percent: r.cumulativePercent, _clientId: r.clientId }))}
               xField="client" yField="percent" height={280}
               axis={{ x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
               tooltip={{ items: [{ field: 'percent', channel: 'y', name: 'Кумулятивно', valueFormatter: (v: number) => `${v}%` }] }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _clientId?: string } } }) => {
+                  const id = ev?.data?.data?._clientId;
+                  if (id) navigate(`/clients/${id}`);
+                });
+              }}
             />
           </Card>
         </Col>
@@ -393,24 +515,37 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Тренд менеджеров по месяцам" size="small">
             <Line
-              data={extended.managerTrend.map((r) => ({ month: MONTH_LABELS[r.month], revenue: r.revenue, manager: r.fullName }))}
+              data={extended.managerTrend.map((r) => ({ month: MONTH_LABELS[r.month], revenue: r.revenue, manager: r.fullName, _managerId: r.managerId, _managerName: r.fullName }))}
               xField="month" yField="revenue" colorField="manager" height={280}
               axis={axisStyle}
               tooltip={{ items: [{ field: 'revenue', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
               legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _managerId?: string; _managerName?: string } } }) => {
+                  const id = ev?.data?.data?._managerId;
+                  const name = ev?.data?.data?._managerName;
+                  if (id && name) setManagerDrawer({ managerId: id, managerName: name });
+                });
+              }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Сезонность" size="small">
             <Line
-              data={extended.seasonality.map((r) => ({ month: MONTH_LABELS[r.month], value: r.revenue }))}
+              data={extended.seasonality.map((r) => ({ month: MONTH_LABELS[r.month], value: r.revenue, _month: r.month }))}
               xField="month" yField="value" height={280}
               point={{ shapeField: 'circle', sizeField: 4 }}
               axis={axisStyle}
               tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
+                  const m = ev?.data?.data?._month;
+                  if (m) setMonthDrawer(m);
+                });
+              }}
             />
           </Card>
         </Col>
@@ -420,23 +555,36 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Повторные покупки товаров" size="small">
             <Bar
-              data={extended.productRecurring.slice(0, 15).map((r) => ({ product: r.name.substring(0, 25), rate: Math.round(r.recurringRate * 100) }))}
+              data={extended.productRecurring.slice(0, 15).map((r) => ({ product: r.name.substring(0, 25), rate: Math.round(r.recurringRate * 100), _productId: r.productId, _productName: r.name }))}
               xField="product" yField="rate" height={280}
               axis={{ x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
               tooltip={{ items: [{ field: 'rate', channel: 'y', name: 'Повторные', valueFormatter: (v: number) => `${v}%` }] }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _productId?: string; _productName?: string } } }) => {
+                  const id = ev?.data?.data?._productId;
+                  const name = ev?.data?.data?._productName;
+                  if (id && name) setProductDrawer({ productId: id, productName: name });
+                });
+              }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Долговой риск" size="small">
             <Bar
-              data={extended.debtRisk.slice(0, 15).map((r) => ({ client: r.companyName.substring(0, 20), debt: r.debt }))}
+              data={extended.debtRisk.slice(0, 15).map((r) => ({ client: r.companyName.substring(0, 20), debt: r.debt, _clientId: r.clientId }))}
               xField="client" yField="debt" height={280}
               axis={axisStyle}
               tooltip={{ items: [{ field: 'debt', channel: 'y', name: 'Долг', valueFormatter: (v: number) => fmtNum(v) }] }}
               style={{ fill: token.colorError }}
               theme={chartTheme}
+              onReady={({ chart }) => {
+                chart.on('element:click', (ev: { data?: { data?: { _clientId?: string } } }) => {
+                  const id = ev?.data?.data?._clientId;
+                  if (id) navigate(`/clients/${id}`);
+                });
+              }}
             />
           </Card>
         </Col>
@@ -482,7 +630,8 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {(extended.segmentSummary || []).map((seg) => (
           <Col xs={12} sm={8} lg={4} key={seg.segment}>
-            <Card size="small" style={{ borderLeft: `4px solid ${SEGMENT_COLORS[seg.segment] || '#ccc'}` }}>
+            <Card size="small" hoverable onClick={() => setSegmentFilter([seg.segment])}
+              style={{ borderLeft: `4px solid ${SEGMENT_COLORS[seg.segment] || '#ccc'}`, cursor: 'pointer' }}>
               <Statistic title={SEGMENT_LABELS[seg.segment] || seg.segment} value={seg.count} suffix="клиентов" />
               <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
                 Выручка: {fmtNum(seg.totalRevenue)}
@@ -548,7 +697,8 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"
-          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }} />
+          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
+          onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
       </Card>
     </>
   ) : (
@@ -602,6 +752,56 @@ export default function HistoryAnalyticsPage() {
             )},
           ]} />
         ) : <Spin />}
+      </Drawer>
+
+      {/* Client-Month Purchases Drawer */}
+      <Drawer
+        title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} 2025` : ''}
+        open={!!cellDrawer} onClose={() => setCellDrawer(null)} width={720}
+      >
+        {clientMonthLoading ? <Spin /> : clientMonthData ? (
+          <>
+            <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
+              Итого: {fmtNum(clientMonthData.totalRevenue)}
+            </div>
+            <Table dataSource={clientMonthData.items} columns={clientMonthCols} rowKey="id" size="small"
+              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
+          </>
+        ) : null}
+      </Drawer>
+
+      {/* Product Buyers Drawer */}
+      <Drawer
+        title={productDrawer ? `Покупатели: ${productDrawer.productName}` : ''}
+        open={!!productDrawer} onClose={() => setProductDrawer(null)} width={720}
+      >
+        {productBuyersLoading ? <Spin /> : productBuyersData ? (
+          <Table dataSource={productBuyersData.buyers} columns={productBuyersCols} rowKey="clientId" size="small"
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 500 }}
+            onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
+        ) : null}
+      </Drawer>
+
+      {/* Manager Deals Drawer */}
+      <Drawer
+        title={managerDrawer ? `Сделки: ${managerDrawer.managerName}` : ''}
+        open={!!managerDrawer} onClose={() => setManagerDrawer(null)} width={720}
+      >
+        {managerDrillLoading ? <Spin /> : managerDrilldown?.deals ? (
+          <Table dataSource={managerDrilldown.deals} columns={dealDrillCols} rowKey="id" size="small"
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />
+        ) : null}
+      </Drawer>
+
+      {/* Payment Method Drawer */}
+      <Drawer
+        title={methodDrawer ? `Платежи: ${METHOD_LABELS[methodDrawer] || methodDrawer}` : ''}
+        open={!!methodDrawer} onClose={() => setMethodDrawer(null)} width={720}
+      >
+        {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
+          <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
+        ) : null}
       </Drawer>
     </div>
   );
