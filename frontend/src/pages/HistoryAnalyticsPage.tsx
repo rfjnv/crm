@@ -239,16 +239,16 @@ export default function HistoryAnalyticsPage() {
   function renderKpiDrawerContent() {
     if (!kpiDrawer) return null;
     if (kpiDrawer === 'clients') {
-      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 15 }} scroll={{ x: 600 }} />;
+      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />;
     }
     if (kpiDrawer === 'debt') {
-      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 15 }} scroll={{ x: 550 }} />;
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />;
     }
     if (drillType === 'deals' && drilldown?.deals) {
-      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 15 }} scroll={{ x: 700 }} />;
+      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />;
     }
     if (drillType === 'payments' && drilldown?.payments) {
-      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ pageSize: 15 }} scroll={{ x: 600 }} />;
+      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />;
     }
     return <Spin />;
   }
@@ -299,7 +299,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small">
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small' }} scroll={{ x: 600 }} />
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -318,7 +318,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small">
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small' }} scroll={{ x: 550 }} />
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -329,7 +329,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small' }} scroll={{ x: 550 }} />
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />
       </Card>
 
       <Card title={<><CalendarOutlined /> Матрица активности клиентов</>} size="small"
@@ -348,7 +348,7 @@ export default function HistoryAnalyticsPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.returned }} /> Вернулся</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: STATUS_COLORS.inactive, border: '1px solid #d9d9d9' }} /> Неактивен</span>
         </div>
-        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
+        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
     </>
   );
@@ -527,7 +527,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"
-          pagination={{ pageSize: 20, size: 'small', showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }} />
+          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }} />
       </Card>
     </>
   ) : (
@@ -556,7 +556,7 @@ export default function HistoryAnalyticsPage() {
         {monthDetail ? (
           <Tabs items={[
             { key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
-              <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10 }} scroll={{ x: 700 }} />
+              <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />
             )},
             { key: 'products', label: `Товары (${monthDetail.products.length})`, children: (
               <Table dataSource={monthDetail.products} rowKey="name" size="small" pagination={false}
