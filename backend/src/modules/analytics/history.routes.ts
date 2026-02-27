@@ -117,6 +117,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 30`,
@@ -393,6 +394,7 @@ router.get(
       WHERE EXTRACT(MONTH FROM d.created_at) = ${month}
         AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
         AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY p.id, p.name
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 10`,
@@ -514,6 +516,7 @@ router.get(
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
         WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+          AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       ),
       product_stats AS (
         SELECT product_id, name,
@@ -827,6 +830,7 @@ router.get(
       WHERE di.product_id = ${productId}
         AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
         AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
       ORDER BY SUM(di.requested_qty * di.price) DESC`,
     );
