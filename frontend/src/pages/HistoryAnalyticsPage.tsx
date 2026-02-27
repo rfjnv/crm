@@ -61,9 +61,21 @@ export default function HistoryAnalyticsPage() {
     queryFn: analyticsApi.getHistory,
   });
 
-  // ── Activity matrix state (must be before any conditional returns) ──
+  // ── Activity matrix state (all hooks must be before any conditional returns) ──
   const [activitySearch, setActivitySearch] = useState('');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
+
+  const filteredActivity = useMemo(() => {
+    let list = data?.clientActivity || [];
+    if (selectedClients.length > 0) {
+      list = list.filter((c) => selectedClients.includes(c.clientId));
+    }
+    if (activitySearch.trim()) {
+      const lower = activitySearch.trim().toLowerCase();
+      list = list.filter((c) => c.companyName.toLowerCase().includes(lower));
+    }
+    return list;
+  }, [data?.clientActivity, selectedClients, activitySearch]);
 
   if (isLoading || !data) {
     return (
@@ -117,18 +129,6 @@ export default function HistoryAnalyticsPage() {
     inactive: 'Неактивен',
     returned: 'Вернулся',
   };
-
-  const filteredActivity = useMemo(() => {
-    let list = clientActivity || [];
-    if (selectedClients.length > 0) {
-      list = list.filter((c) => selectedClients.includes(c.clientId));
-    }
-    if (activitySearch.trim()) {
-      const lower = activitySearch.trim().toLowerCase();
-      list = list.filter((c) => c.companyName.toLowerCase().includes(lower));
-    }
-    return list;
-  }, [clientActivity, selectedClients, activitySearch]);
 
   const activityCols = [
     {
