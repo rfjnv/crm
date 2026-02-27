@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
+import { useThemeStore } from '../store/themeStore';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
@@ -46,7 +47,8 @@ function fmtNum(n: number): string {
 
 export default function HistoryAnalyticsPage() {
   const { token } = theme.useToken();
-  const isDark = token.colorBgBase !== '#ffffff';
+  const mode = useThemeStore((s) => s.mode);
+  const isDark = mode === 'dark';
   const SEGMENT_COLORS = isDark ? SEGMENT_COLORS_DARK : SEGMENT_COLORS_LIGHT;
 
   // ── All hooks before any conditional return ──
@@ -102,7 +104,7 @@ export default function HistoryAnalyticsPage() {
 
   const { overview, monthlyTrend, topClients, topProducts, managers, paymentMethods, debtors, clientActivity } = data;
 
-  const chartTheme = token.colorBgBase === '#ffffff' ? 'classic' : 'classicDark';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
   const axisStyle = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } };
   const axisStyleNoFmt = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText } };
 
@@ -493,33 +495,47 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={10}>
           <Card title="Распределение по сегментам" size="small">
-            <Pie
-              data={(extended.segmentSummary || []).map((s) => ({ type: SEGMENT_LABELS[s.segment] || s.segment, value: s.count }))}
-              angleField="value" colorField="type" innerRadius={0.5} height={300}
-              color={({ type }: { type: string }) => {
-                const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === type);
+            {(() => {
+              const segPieData = (extended.segmentSummary || []).map((s) => ({ type: SEGMENT_LABELS[s.segment] || s.segment, value: s.count }));
+              const segPieDomain = segPieData.map((d) => d.type);
+              const segPieRange = segPieData.map((d) => {
+                const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === d.type);
                 return seg ? SEGMENT_COLORS[seg[0]] : '#ccc';
-              }}
-              label={false}
-              legend={{ color: { position: 'right', itemLabelFill: token.colorText } }}
-              tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Клиентов' }] }}
-              theme={chartTheme}
-            />
+              });
+              return (
+                <Pie
+                  data={segPieData}
+                  angleField="value" colorField="type" innerRadius={0.5} height={300}
+                  scale={{ color: { domain: segPieDomain, range: segPieRange } }}
+                  label={false}
+                  legend={{ color: { position: 'right', itemLabelFill: token.colorText } }}
+                  tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Клиентов' }] }}
+                  theme={chartTheme}
+                />
+              );
+            })()}
           </Card>
         </Col>
         <Col xs={24} lg={14}>
           <Card title="Выручка по сегментам" size="small">
-            <Bar
-              data={(extended.segmentSummary || []).map((s) => ({ segment: SEGMENT_LABELS[s.segment] || s.segment, revenue: s.totalRevenue }))}
-              xField="segment" yField="revenue" height={300}
-              axis={axisStyle}
-              style={{ fill: ({ segment }: { segment: string }) => {
-                const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === segment);
+            {(() => {
+              const segBarData = (extended.segmentSummary || []).map((s) => ({ segment: SEGMENT_LABELS[s.segment] || s.segment, revenue: s.totalRevenue }));
+              const segBarDomain = segBarData.map((d) => d.segment);
+              const segBarRange = segBarData.map((d) => {
+                const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === d.segment);
                 return seg ? SEGMENT_COLORS[seg[0]] : '#ccc';
-              }}}
-              tooltip={{ items: [{ field: 'revenue', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
-              theme={chartTheme}
-            />
+              });
+              return (
+                <Bar
+                  data={segBarData}
+                  xField="segment" yField="revenue" colorField="segment" height={300}
+                  scale={{ color: { domain: segBarDomain, range: segBarRange } }}
+                  axis={axisStyle}
+                  tooltip={{ items: [{ field: 'revenue', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
+                  theme={chartTheme}
+                />
+              );
+            })()}
           </Card>
         </Col>
       </Row>
@@ -545,11 +561,14 @@ export default function HistoryAnalyticsPage() {
         <BarChartOutlined /> Аналитика 2025 (Исторические данные)
       </Title>
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab} destroyInactiveTabPane items={[
-        { key: 'overview', label: 'Обзор', children: overviewTab },
-        { key: 'analytics', label: 'Аналитика', children: analyticsTab },
-        { key: 'segments', label: 'Сегменты', children: segmentsTab },
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+        { key: 'overview', label: 'Обзор' },
+        { key: 'analytics', label: 'Аналитика' },
+        { key: 'segments', label: 'Сегменты' },
       ]} />
+      {activeTab === 'overview' && overviewTab}
+      {activeTab === 'analytics' && analyticsTab}
+      {activeTab === 'segments' && segmentsTab}
 
       {/* KPI Drill-down Drawer */}
       <Drawer title={kpiDrawerTitle[kpiDrawer || ''] || ''} open={!!kpiDrawer} onClose={() => setKpiDrawer(null)} width={720}>
