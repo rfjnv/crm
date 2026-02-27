@@ -172,27 +172,11 @@ export default function HistoryAnalyticsPage() {
     const md = record.monthlyData.find((d) => d.month === month);
     return md ? md.revenue : 0;
   }
-  function getMonthStatus(activeMonths: number[], month: number): 'active' | 'inactive' | 'returned' {
-    if (!activeMonths.includes(month)) return 'inactive';
-    const firstActive = Math.min(...activeMonths);
-    if (month > firstActive) {
-      for (let m = firstActive; m < month; m++) {
-        if (!activeMonths.includes(m)) return 'returned';
-      }
-    }
-    return 'active';
-  }
-  function getRevenueColor(revenue: number, status: 'active' | 'inactive' | 'returned'): string {
-    if (status === 'inactive') return token.colorBgContainerDisabled || '#f0f0f0';
+  function getRevenueColor(revenue: number): string {
+    if (revenue <= 0) return token.colorBgContainerDisabled || '#f0f0f0';
     const intensity = Math.min(revenue / maxMonthRevenue, 1);
-    if (status === 'returned') {
-      // Blue gradient for returned
-      return `rgba(24,144,255,${0.2 + intensity * 0.8})`;
-    }
-    // Green gradient for active
-    return `rgba(82,196,26,${0.2 + intensity * 0.8})`;
+    return `rgba(22,119,255,${0.15 + intensity * 0.85})`;
   }
-  const STATUS_LABELS_MAP = { active: 'Активен', inactive: 'Неактивен', returned: 'Вернулся' };
 
   // ── KPI cards config ──
   const kpiCards = [
@@ -265,17 +249,18 @@ export default function HistoryAnalyticsPage() {
     ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => {
-        const status = getMonthStatus(record.activeMonths, m);
         const revenue = getMonthRevenue(record, m);
-        const bgColor = getRevenueColor(revenue, status);
-        const isClickable = status !== 'inactive';
+        const bgColor = getRevenueColor(revenue);
+        const isClickable = revenue > 0;
+        const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
         return (
-          <Tooltip title={`${MONTH_LABELS[m]}: ${STATUS_LABELS_MAP[status]}${revenue > 0 ? ` — ${fmtNum(revenue)}` : ''}`}>
+          <Tooltip title={`${MONTH_LABELS[m]}: ${revenue > 0 ? fmtNum(revenue) : 'Нет данных'}`}>
             <div
               style={{
                 width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
                 cursor: isClickable ? 'pointer' : 'default',
-                border: status === 'returned' ? '2px solid #1890ff' : undefined,
+                border: !isClickable ? '1px solid #d9d9d9' : undefined,
+                color: intensity > 0.5 ? '#fff' : undefined,
               }}
               onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
             />
@@ -316,18 +301,18 @@ export default function HistoryAnalyticsPage() {
   function renderKpiDrawerContent() {
     if (!kpiDrawer) return null;
     if (kpiDrawer === 'clients') {
-      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }}
+      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 600 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (kpiDrawer === 'debt') {
-      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 550 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (drillType === 'deals' && drilldown?.deals) {
-      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />;
+      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 700 }} />;
     }
     if (drillType === 'payments' && drilldown?.payments) {
-      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />;
+      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 600 }} />;
     }
     return <Spin />;
   }
@@ -402,7 +387,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }}
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 600 }}
               onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
           </Card>
         </Col>
@@ -432,7 +417,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 550 }}
               onRow={(record) => ({ onClick: () => setProductDrawer({ productId: record.id, productName: record.name }), style: clickableRow })} />
           </Card>
         </Col>
@@ -445,7 +430,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }}
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 550 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
       </Card>
 
@@ -460,12 +445,13 @@ export default function HistoryAnalyticsPage() {
           </div>
         }
       >
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, background: 'linear-gradient(135deg, rgba(82,196,26,0.3), rgba(82,196,26,1))' }} /> Активен (градиент по выручке)</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, background: 'linear-gradient(135deg, rgba(24,144,255,0.3), rgba(24,144,255,1))', border: '2px solid #1890ff' }} /> Вернулся</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: token.colorBgContainerDisabled || '#f0f0f0', border: '1px solid #d9d9d9' }} /> Неактивен</span>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(22,119,255,0.15)', border: '1px solid #d9d9d9' }} /> Мало</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(22,119,255,0.5)' }} /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(22,119,255,1)' }} /> Много</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: token.colorBgContainerDisabled || '#f0f0f0', border: '1px solid #d9d9d9' }} /> Нет данных</span>
         </div>
-        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
+        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
     </>
   );
@@ -609,7 +595,10 @@ export default function HistoryAnalyticsPage() {
                 const intensity = maxCount > 0 ? count / maxCount : 0;
                 return (
                   <Tooltip title={`${MONTH_LABELS[record.cohort]} → ${MONTH_LABELS[am]}: ${count} клиентов`}>
-                    <div style={{ backgroundColor: `rgba(22,119,255,${0.1 + intensity * 0.8})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: intensity > 0.5 ? '#fff' : token.colorText }}>{count}</div>
+                    <div
+                      style={{ backgroundColor: `rgba(22,119,255,${0.1 + intensity * 0.8})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: intensity > 0.5 ? '#fff' : token.colorText, cursor: 'pointer' }}
+                      onClick={() => setMonthDrawer(am)}
+                    >{count}</div>
                   </Tooltip>
                 );
               },
@@ -697,7 +686,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"
-          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
+          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
       </Card>
     </>
@@ -730,7 +719,7 @@ export default function HistoryAnalyticsPage() {
         {monthDetail ? (
           <Tabs items={[
             { key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
-              <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />
+              <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 700 }} />
             )},
             { key: 'products', label: `Товары (${monthDetail.products.length})`, children: (
               <Table dataSource={monthDetail.products} rowKey="name" size="small" pagination={false}
@@ -765,7 +754,7 @@ export default function HistoryAnalyticsPage() {
               Итого: {fmtNum(clientMonthData.totalRevenue)}
             </div>
             <Table dataSource={clientMonthData.items} columns={clientMonthCols} rowKey="id" size="small"
-              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
+              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 600 }} />
           </>
         ) : null}
       </Drawer>
@@ -777,7 +766,7 @@ export default function HistoryAnalyticsPage() {
       >
         {productBuyersLoading ? <Spin /> : productBuyersData ? (
           <Table dataSource={productBuyersData.buyers} columns={productBuyersCols} rowKey="clientId" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 500 }}
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 500 }}
             onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
         ) : null}
       </Drawer>
@@ -789,7 +778,7 @@ export default function HistoryAnalyticsPage() {
       >
         {managerDrillLoading ? <Spin /> : managerDrilldown?.deals ? (
           <Table dataSource={managerDrilldown.deals} columns={dealDrillCols} rowKey="id" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 700 }} />
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 700 }} />
         ) : null}
       </Drawer>
 
@@ -800,7 +789,7 @@ export default function HistoryAnalyticsPage() {
       >
         {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
           <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
+            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }} scroll={{ x: 600 }} />
         ) : null}
       </Drawer>
     </div>
