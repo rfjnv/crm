@@ -382,9 +382,9 @@ router.get(
     );
 
     const productsRaw = await prisma.$queryRaw<
-      { name: string; qty: string; revenue: string }[]
+      { id: string; name: string; qty: string; revenue: string }[]
     >(
-      Prisma.sql`SELECT p.name,
+      Prisma.sql`SELECT p.id, p.name,
         SUM(di.requested_qty)::text as qty,
         SUM(di.price * di.requested_qty)::text as revenue
       FROM deal_items di
@@ -399,9 +399,9 @@ router.get(
     );
 
     const managersRaw = await prisma.$queryRaw<
-      { full_name: string; deals_count: string; revenue: string }[]
+      { id: string; full_name: string; deals_count: string; revenue: string }[]
     >(
-      Prisma.sql`SELECT u.full_name,
+      Prisma.sql`SELECT u.id, u.full_name,
         COUNT(d.id)::text as deals_count,
         SUM(d.amount)::text as revenue
       FROM deals d
@@ -426,11 +426,13 @@ router.get(
         managerName: d.manager_name,
       })),
       products: productsRaw.map((p) => ({
+        id: p.id,
         name: p.name,
         qty: Math.round(Number(p.qty) * 100) / 100,
         revenue: Number(p.revenue),
       })),
       managers: managersRaw.map((m) => ({
+        id: m.id,
         fullName: m.full_name,
         dealsCount: Number(m.deals_count),
         revenue: Number(m.revenue),
@@ -766,8 +768,8 @@ router.get(
       }[]
     >(
       Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
-        di.requested_qty::text as qty, di.price::text as price,
-        (di.requested_qty * di.price)::text as total,
+        COALESCE(di.requested_qty, 0)::text as qty, COALESCE(di.price, 0)::text as price,
+        (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
         d.title as deal_title, d.id as deal_id
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -776,7 +778,8 @@ router.get(
         AND EXTRACT(MONTH FROM d.created_at) = ${month}
         AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
         AND d.is_archived = false
-      ORDER BY (di.requested_qty * di.price) DESC`,
+        AND di.requested_qty IS NOT NULL AND di.price IS NOT NULL
+      ORDER BY (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0)) DESC`,
     );
 
     const items = itemsRaw.map((r) => ({

@@ -26,7 +26,7 @@ const MONTH_LABELS: Record<number, string> = {
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Наличные', TRANSFER: 'Перечисление', QR: 'QR',
-  PAYME: 'Click', TERMINAL: 'Терминал', 'Не указан': 'Не указан',
+  PAYME: 'Payme', INSTALLMENT: 'Рассрочка', 'Не указан': 'Не указан',
 };
 
 const SEGMENT_COLORS_LIGHT: Record<string, string> = {
@@ -40,9 +40,11 @@ const SEGMENT_LABELS: Record<string, string> = {
 };
 
 function fmtNum(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)} млрд`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} млн`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)} тыс`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)} млрд`;
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)} млн`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)} тыс`;
   return n.toLocaleString('ru-RU');
 }
 
@@ -141,7 +143,7 @@ export default function HistoryAnalyticsPage() {
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
     const allRevenues = (data?.clientActivity || []).flatMap((c) => c.monthlyData.map((md) => md.revenue));
-    return Math.max(...allRevenues, 1);
+    return allRevenues.reduce((a, b) => Math.max(a, b), 1);
   }, [data?.clientActivity]);
 
   if (isLoading || !data) {
@@ -722,7 +724,7 @@ export default function HistoryAnalyticsPage() {
               <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
             )},
             { key: 'products', label: `Товары (${monthDetail.products.length})`, children: (
-              <Table dataSource={monthDetail.products} rowKey="name" size="small" pagination={false}
+              <Table dataSource={monthDetail.products} rowKey="id" size="small" pagination={false}
                 columns={[
                   { title: 'Товар', dataIndex: 'name', key: 'name' },
                   { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 100 },
@@ -731,7 +733,7 @@ export default function HistoryAnalyticsPage() {
               />
             )},
             { key: 'managers', label: `Менеджеры (${monthDetail.managers.length})`, children: (
-              <Table dataSource={monthDetail.managers} rowKey="fullName" size="small" pagination={false}
+              <Table dataSource={monthDetail.managers} rowKey="id" size="small" pagination={false}
                 columns={[
                   { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName' },
                   { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },

@@ -908,12 +908,14 @@ export interface HistoryDrilldownData {
 }
 
 export interface HistoryMonthProduct {
+  id: string;
   name: string;
   qty: number;
   revenue: number;
 }
 
 export interface HistoryMonthManager {
+  id: string;
   fullName: string;
   dealsCount: number;
   revenue: number;
