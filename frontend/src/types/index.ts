@@ -877,3 +877,134 @@ export interface HistoryData {
   debtors: HistoryDebtor[];
   clientActivity: HistoryClientActivity[];
 }
+
+// ─── History Drilldown ───
+
+export interface HistoryDealRow {
+  id: string;
+  title: string;
+  amount: number;
+  paidAmount: number;
+  paymentStatus: string;
+  status: string;
+  createdAt: string;
+  companyName: string;
+  managerName: string;
+}
+
+export interface HistoryPaymentRow {
+  id: string;
+  amount: number;
+  paidAt: string;
+  method: string;
+  dealTitle: string;
+  companyName: string;
+}
+
+export interface HistoryDrilldownData {
+  deals?: HistoryDealRow[];
+  payments?: HistoryPaymentRow[];
+}
+
+export interface HistoryMonthProduct {
+  name: string;
+  qty: number;
+  revenue: number;
+}
+
+export interface HistoryMonthManager {
+  fullName: string;
+  dealsCount: number;
+  revenue: number;
+}
+
+export interface HistoryMonthDetail {
+  deals: HistoryDealRow[];
+  products: HistoryMonthProduct[];
+  managers: HistoryMonthManager[];
+}
+
+// ─── History Extended Analytics ───
+
+export interface HistoryRetentionRow {
+  month: number;
+  totalClients: number;
+  retainedClients: number;
+  retentionRate: number;
+}
+
+export interface HistoryConcentrationRow {
+  clientId: string;
+  companyName: string;
+  revenue: number;
+  cumulativePercent: number;
+  rank: number;
+}
+
+export interface HistoryProductRecurringRow {
+  productId: string;
+  name: string;
+  monthsActive: number;
+  totalBuyers: number;
+  recurringBuyers: number;
+  recurringRate: number;
+}
+
+export interface HistoryManagerTrendRow {
+  managerId: string;
+  fullName: string;
+  month: number;
+  revenue: number;
+  dealsCount: number;
+}
+
+export interface HistoryCohortRow {
+  cohortMonth: number;
+  activeMonth: number;
+  clientCount: number;
+  revenueTotal: number;
+}
+
+export interface HistoryDebtRiskRow {
+  clientId: string;
+  companyName: string;
+  debt: number;
+  revenue: number;
+  debtRatio: number;
+  lastDealMonth: number;
+}
+
+export interface HistorySeasonalityRow {
+  month: number;
+  revenue: number;
+  dealsCount: number;
+  avgDealSize: number;
+}
+
+export interface HistoryClientSegment {
+  clientId: string;
+  companyName: string;
+  segment: string;
+  totalRevenue: number;
+  dealsCount: number;
+  lastActiveMonth: number;
+  activeMonths: number[];
+}
+
+export interface HistorySegmentSummary {
+  segment: string;
+  count: number;
+  totalRevenue: number;
+}
+
+export interface HistoryExtendedData {
+  retention: HistoryRetentionRow[];
+  concentration: HistoryConcentrationRow[];
+  productRecurring: HistoryProductRecurringRow[];
+  managerTrend: HistoryManagerTrendRow[];
+  cohort: HistoryCohortRow[];
+  debtRisk: HistoryDebtRiskRow[];
+  seasonality: HistorySeasonalityRow[];
+  clientSegments: HistoryClientSegment[];
+  segmentSummary: HistorySegmentSummary[];
+}
