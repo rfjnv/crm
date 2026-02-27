@@ -283,7 +283,7 @@ export default function HistoryAnalyticsPage() {
       </Card>
 
       <Card title="Активные клиенты по месяцам" size="small" style={{ marginBottom: 24 }}>
-        <Bar data={clientBarData} xField="month" yField="clients" height={260} colorField="month"
+        <Bar data={clientBarData} xField="month" yField="clients" height={350} colorField="month"
           axis={axisStyleNoFmt}
           tooltip={{ items: [{ field: 'clients', channel: 'y', name: 'Клиенты' }] }}
           theme={chartTheme}
@@ -298,13 +298,13 @@ export default function HistoryAnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
-          <Card title="Топ-30 клиентов по выручке" size="small">
+          <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
             <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 600 }} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
-          <Card title="Способы оплаты" size="small">
-            <Pie data={pieData} angleField="value" colorField="type" innerRadius={0.5} height={320}
+          <Card title="Способы оплаты" size="small" style={{ height: '100%' }}>
+            <Pie data={pieData} angleField="value" colorField="type" innerRadius={0.5} height={420}
               label={false}
               legend={{ color: { position: 'right', itemLabelFill: token.colorText } }}
               interaction={{ elementHighlight: { background: true } }}
@@ -317,12 +317,12 @@ export default function HistoryAnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
-          <Card title="Топ-30 товаров по объёму" size="small">
+          <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
             <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }} scroll={{ x: 550 }} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
-          <Card title="Менеджеры" size="small">
+          <Card title="Менеджеры" size="small" style={{ height: '100%' }}>
             <Table dataSource={managers} columns={managerCols} rowKey="id" size="small" pagination={false} scroll={{ x: 450 }} />
           </Card>
         </Col>
