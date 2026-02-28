@@ -20,6 +20,8 @@ const paymentMethodLabels: Record<string, string> = {
   CASH: 'Наличные',
   PAYME: 'Payme',
   QR: 'QR',
+  CLICK: 'Click',
+  TERMINAL: 'Терминал',
   TRANSFER: 'Перечисление',
   INSTALLMENT: 'Рассрочка',
 };

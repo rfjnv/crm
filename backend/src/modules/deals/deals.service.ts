@@ -1114,6 +1114,12 @@ export class DealsService {
         throw new AppError(404, 'Сделка не найдена');
       }
 
+      // Оплата доступна только с момента отгрузки
+      const allowedForPayment: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED'];
+      if (!allowedForPayment.includes(deal.status)) {
+        throw new AppError(400, 'Оплата доступна только со статуса "Готов к отгрузке" и далее');
+      }
+
       const amount = Number(deal.amount);
       const currentPaid = Number(deal.paidAmount);
       const newTotal = currentPaid + dto.amount;

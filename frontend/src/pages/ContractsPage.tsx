@@ -419,6 +419,8 @@ export default function ContractsPage() {
               { label: 'Перечисление', value: 'TRANSFER' },
               { label: 'Payme', value: 'PAYME' },
               { label: 'QR', value: 'QR' },
+              { label: 'Click', value: 'CLICK' },
+              { label: 'Терминал', value: 'TERMINAL' },
               { label: 'Рассрочка', value: 'INSTALLMENT' },
             ]} />
           </Form.Item>

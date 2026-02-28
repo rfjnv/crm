@@ -26,7 +26,8 @@ const MONTH_LABELS: Record<number, string> = {
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Наличные', TRANSFER: 'Перечисление', QR: 'QR',
-  PAYME: 'Payme', INSTALLMENT: 'Рассрочка', 'Не указан': 'Не указан',
+  PAYME: 'Payme', CLICK: 'Click', TERMINAL: 'Терминал',
+  INSTALLMENT: 'Рассрочка', 'Не указан': 'Не указан',
 };
 
 const SEGMENT_COLORS_LIGHT: Record<string, string> = {

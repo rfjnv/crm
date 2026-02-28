@@ -36,6 +36,8 @@ const paymentMethodLabels: Record<string, string> = {
   CASH: 'Наличные',
   PAYME: 'Payme',
   QR: 'QR',
+  CLICK: 'Click',
+  TERMINAL: 'Терминал',
   TRANSFER: 'Перечисление',
   INSTALLMENT: 'Рассрочка',
 };
@@ -1128,6 +1130,14 @@ export default function DealDetailPage() {
               Payme
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
             </Radio.Button>
+            <Radio.Button value="CLICK" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Click
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
+            </Radio.Button>
+            <Radio.Button value="TERMINAL" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Терминал
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
+            </Radio.Button>
             <Radio.Button value="QR" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
               QR
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
@@ -1215,6 +1225,8 @@ export default function DealDetailPage() {
               { label: 'Перечисление', value: 'TRANSFER' },
               { label: 'Payme', value: 'PAYME' },
               { label: 'QR', value: 'QR' },
+              { label: 'Click', value: 'CLICK' },
+              { label: 'Терминал', value: 'TERMINAL' },
             ]} />
           </Form.Item>
           <Form.Item name="paidAt" label="Дата оплаты">

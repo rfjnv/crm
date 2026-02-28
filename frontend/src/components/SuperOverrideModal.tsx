@@ -375,6 +375,8 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                     { label: 'Наличные', value: 'CASH' },
                     { label: 'Payme', value: 'PAYME' },
                     { label: 'QR', value: 'QR' },
+                    { label: 'Click', value: 'CLICK' },
+                    { label: 'Терминал', value: 'TERMINAL' },
                     { label: 'Перечисление', value: 'TRANSFER' },
                   ]} />
                 </Form.Item>

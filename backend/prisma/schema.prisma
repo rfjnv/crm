@@ -60,6 +60,8 @@ enum PaymentMethod {
   TRANSFER
   PAYME
   QR
+  CLICK
+  TERMINAL
   INSTALLMENT
 }
 

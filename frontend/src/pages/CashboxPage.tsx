@@ -14,6 +14,8 @@ const methodLabels: Record<string, string> = {
   TRANSFER: 'Перечисление',
   PAYME: 'Payme',
   QR: 'QR',
+  CLICK: 'Click',
+  TERMINAL: 'Терминал',
   INSTALLMENT: 'Рассрочка',
 };
 
