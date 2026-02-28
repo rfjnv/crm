@@ -71,7 +71,7 @@ export const setItemQuantitiesDto = z.object({
 });
 
 export const sendToFinanceDto = z.object({
-  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER']),
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']),
 });
 
 export const shipmentDto = z.object({
@@ -93,7 +93,7 @@ export const shipmentHoldDto = z.object({
 
 export const createPaymentRecordDto = z.object({
   amount: z.number().positive('Сумма должна быть положительной'),
-  method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'INSTALLMENT']).optional(),
+  method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
   note: z.string().max(500).optional(),
   paidAt: z.string().datetime().optional(),
 });
@@ -120,7 +120,7 @@ export const superOverrideDealDto = z.object({
   clientId: z.string().uuid().optional(),
   managerId: z.string().uuid().optional(),
   contractId: z.string().uuid().nullable().optional(),
-  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'INSTALLMENT']).nullable().optional(),
+  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).nullable().optional(),
   paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   paidAmount: z.number().min(0).optional(),
   dueDate: z.string().nullable().optional(),
