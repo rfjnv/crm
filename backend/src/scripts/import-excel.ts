@@ -46,7 +46,12 @@ const COL_PRICE = 7;
 const COL_OP_TYPE = 9;    // Column J — тип операции (к, н, н/к, п, п/к, пп, обмен, ф)
 const COL_PAYMENT_DATE = 27;
 
-const MANAGERS = ['дилмурод', 'тимур', 'мадина', 'фотих', 'бону'];
+const MANAGERS = ['дилмурод', 'тимур', 'мадина', 'фотих', 'бону', 'фарход', 'дилноза', 'комила', 'хадича'];
+
+// Alias mapping: normalize manager names before lookup
+const MANAGER_ALIASES: Record<string, string> = {
+  'фотих ака': 'фотих',
+};
 
 // ───────── helpers ─────────
 
@@ -209,7 +214,7 @@ async function createClients(
       if (!clientName) continue;
       const key = normLower(row[COL_CLIENT]);
       if (!clientInfo.has(key)) {
-        const managerName = normLower(row[COL_MANAGER]);
+        const managerName = MANAGER_ALIASES[normLower(row[COL_MANAGER])] || normLower(row[COL_MANAGER]);
         clientInfo.set(key, {
           name: clientName,
           manager: managerName,
@@ -270,7 +275,7 @@ function groupRowsByClient(rows: Row[]): GroupedDeal[] {
       groups.set(key, {
         clientKey: key,
         clientName,
-        managerKey: normLower(row[COL_MANAGER]),
+        managerKey: MANAGER_ALIASES[normLower(row[COL_MANAGER])] || normLower(row[COL_MANAGER]),
         rows: [],
       });
     }
