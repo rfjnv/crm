@@ -282,6 +282,8 @@ model DealItem {
   productId        String          @map("product_id")
   requestedQty     Decimal?        @db.Decimal(12, 3) @map("requested_qty")
   price            Decimal?        @db.Decimal(12, 2)
+  sourceOpType     String?         @map("source_op_type")
+  isProblem        Boolean         @default(false) @map("is_problem")
   requestComment   String?         @map("request_comment")
   warehouseComment String?         @map("warehouse_comment")
   confirmedBy      String?         @map("confirmed_by")
@@ -293,6 +295,8 @@ model DealItem {
   confirmer User?   @relation("ItemConfirmedBy", fields: [confirmedBy], references: [id])
 
   @@index([dealId])
+  @@index([isProblem])
+  @@index([sourceOpType])
   @@map("deal_items")
 }
 

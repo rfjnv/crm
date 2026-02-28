@@ -200,6 +200,8 @@ export interface DealItem {
   productId: string;
   requestedQty?: number | null;
   price?: string | null;
+  sourceOpType?: string | null;
+  isProblem?: boolean;
   requestComment?: string | null;
   warehouseComment?: string | null;
   confirmedBy?: string | null;
@@ -1106,4 +1108,102 @@ export interface HistoryCashflowData {
   topClients: HistoryCashflowClient[];
   totalCollected: number;
   totalPayments: number;
+}
+
+// ─── Data Quality ───
+
+export interface DataQualityProblemByOpType {
+  opType: string;
+  count: number;
+}
+
+export interface DataQualityProduct {
+  id: string;
+  name: string;
+  unit: string;
+  totalQty: number;
+  problemCount: number;
+}
+
+export interface DataQualityClient {
+  id: string;
+  companyName: string;
+  problemCount: number;
+  totalQty: number;
+}
+
+export interface DataQualityProblemRow {
+  id: string;
+  productName: string;
+  unit: string;
+  qty: number;
+  opType: string;
+  dealTitle: string;
+  companyName: string;
+  managerName: string;
+  createdAt: string;
+}
+
+export interface DataQualityData {
+  totalProblemRows: number;
+  totalQtyInProblem: number;
+  problemByOpType: DataQualityProblemByOpType[];
+  topProducts: DataQualityProduct[];
+  topClients: DataQualityClient[];
+  problemRows: DataQualityProblemRow[];
+}
+
+// ─── Exchange ───
+
+export interface ExchangeByMonth {
+  month: number;
+  count: number;
+  totalQty: number;
+}
+
+export interface ExchangeProduct {
+  id: string;
+  name: string;
+  unit: string;
+  totalQty: number;
+  uniqueClients: number;
+}
+
+export interface ExchangeClient {
+  id: string;
+  companyName: string;
+  exchangeCount: number;
+  totalQty: number;
+}
+
+export interface ExchangeData {
+  totalExchanges: number;
+  totalQty: number;
+  uniqueClients: number;
+  uniqueProducts: number;
+  byMonth: ExchangeByMonth[];
+  products: ExchangeProduct[];
+  clients: ExchangeClient[];
+}
+
+// ─── Prepayments ───
+
+export interface PrepaymentByMonth {
+  month: number;
+  count: number;
+  amount: number;
+}
+
+export interface PrepaymentClient {
+  id: string;
+  companyName: string;
+  ppCount: number;
+  totalAmount: number;
+}
+
+export interface PrepaymentData {
+  totalRows: number;
+  totalAmount: number;
+  byMonth: PrepaymentByMonth[];
+  topClients: PrepaymentClient[];
 }

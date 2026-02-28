@@ -1,5 +1,5 @@
 import client from './client';
-import type { AnalyticsData, IntelligenceData, HistoryData, HistoryExtendedData, HistoryDrilldownData, HistoryMonthDetail, HistoryClientMonthData, HistoryProductBuyersData, HistoryCashflowData } from '../types';
+import type { AnalyticsData, IntelligenceData, HistoryData, HistoryExtendedData, HistoryDrilldownData, HistoryMonthDetail, HistoryClientMonthData, HistoryProductBuyersData, HistoryCashflowData, DataQualityData, ExchangeData, PrepaymentData } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
@@ -22,4 +22,10 @@ export const analyticsApi = {
     client.get<HistoryProductBuyersData>(`/analytics/history/product-buyers/${productId}`).then((r) => r.data),
   getHistoryCashflow: () =>
     client.get<HistoryCashflowData>('/analytics/history/cashflow').then((r) => r.data),
+  getHistoryDataQuality: () =>
+    client.get<DataQualityData>('/analytics/history/data-quality').then((r) => r.data),
+  getHistoryExchange: () =>
+    client.get<ExchangeData>('/analytics/history/exchange').then((r) => r.data),
+  getHistoryPrepayments: () =>
+    client.get<PrepaymentData>('/analytics/history/prepayments').then((r) => r.data),
 };

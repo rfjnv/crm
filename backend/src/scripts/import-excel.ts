@@ -40,6 +40,7 @@ const COL_PRODUCT = 4;
 const COL_QTY = 5;
 const COL_UNIT = 6;
 const COL_PRICE = 7;
+const COL_OP_TYPE = 9;    // Column J — тип операции (к, н, н/к, п, п/к, пп, обмен, ф)
 const COL_PAYMENT_DATE = 27;
 
 const MANAGERS = ['дилмурод', 'тимур', 'мадина', 'фотих', 'бону'];
@@ -76,6 +77,17 @@ function toDate(v: unknown): Date | null {
 }
 
 type Row = unknown[];
+
+function mapOpType(value: unknown): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim().toLowerCase();
+  if (!raw) return null;
+  const mapping: Record<string, string> = {
+    'к': 'K', 'н': 'N', 'н/к': 'NK', 'п': 'P', 'п/к': 'PK',
+    'пп': 'PP', 'обмен': 'EXCHANGE', 'ф': 'F',
+  };
+  return mapping[raw] ?? 'UNKNOWN';
+}
 
 // ───────── step 1: managers ─────────
 
@@ -289,7 +301,7 @@ async function processMonth(
     // Compute deal totals from items
     let dealAmount = 0;
     let totalPaid = 0;
-    const itemsData: { productId: string; qty: number; price: number }[] = [];
+    const itemsData: { productId: string; qty: number; price: number; sourceOpType: string | null; isProblem: boolean }[] = [];
     const paymentsData: { amount: number; method: string; paidAt: Date }[] = [];
 
     for (const row of group.rows) {
@@ -297,24 +309,35 @@ async function processMonth(
       const productName = norm(row[COL_PRODUCT]);
       const qty = numVal(row[COL_QTY]);
       const price = numVal(row[COL_PRICE]);
+      const sourceOpType = mapOpType(row[COL_OP_TYPE]);
 
       if (productName && qty > 0) {
         const productId = productMap.get(normLower(row[COL_PRODUCT]));
         if (productId) {
           const lineTotal = qty * price;
-          dealAmount += lineTotal;
-          itemsData.push({ productId, qty, price });
+          const isProblem = price === 0;
+          const isExchange = sourceOpType === 'EXCHANGE';
+
+          // EXCHANGE items don't contribute to deal amount
+          if (!isExchange) {
+            dealAmount += lineTotal;
+          }
+
+          itemsData.push({ productId, qty, price, sourceOpType, isProblem });
         }
       }
 
-      // Payments
-      const paymentDate = toDate(row[COL_PAYMENT_DATE]) || monthMid;
+      // Payments — skip for EXCHANGE rows
+      const isExchangeRow = sourceOpType === 'EXCHANGE';
+      if (!isExchangeRow) {
+        const paymentDate = toDate(row[COL_PAYMENT_DATE]) || monthMid;
 
-      for (const pc of PAYMENT_COLS) {
-        const amt = numVal(row[pc.index]);
-        if (amt > 0) {
-          totalPaid += amt;
-          paymentsData.push({ amount: amt, method: pc.method, paidAt: paymentDate });
+        for (const pc of PAYMENT_COLS) {
+          const amt = numVal(row[pc.index]);
+          if (amt > 0) {
+            totalPaid += amt;
+            paymentsData.push({ amount: amt, method: pc.method, paidAt: paymentDate });
+          }
         }
       }
     }
@@ -357,6 +380,8 @@ async function processMonth(
           productId: item.productId,
           requestedQty: item.qty,
           price: item.price,
+          sourceOpType: item.sourceOpType,
+          isProblem: item.isProblem,
         },
       });
       itemCount++;

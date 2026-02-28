@@ -204,6 +204,8 @@ router.get(
       JOIN products p ON p.id = di.product_id
       WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
+        AND di.is_problem = false
+        AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 30`,
@@ -487,6 +489,8 @@ router.get(
         AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
+        AND di.is_problem = false
+        AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
       GROUP BY p.id, p.name
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 10`,
@@ -1088,6 +1092,304 @@ router.get(
       })),
       totalCollected: Number(totalsRaw[0].total_collected),
       totalPayments: Number(totalsRaw[0].total_payments),
+    });
+  }),
+);
+
+// ── Data Quality endpoint ──
+router.get(
+  '/data-quality',
+  asyncHandler(async (_req: Request, res: Response) => {
+    // 1. KPI totals
+    const kpiRaw = await prisma.$queryRaw<
+      { total_rows: string; total_qty: string }[]
+    >(
+      Prisma.sql`SELECT COUNT(*)::text as total_rows,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.is_problem = true
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false`,
+    );
+
+    // 2. By operation type
+    const byOpTypeRaw = await prisma.$queryRaw<
+      { op_type: string; count: string }[]
+    >(
+      Prisma.sql`SELECT COALESCE(di.source_op_type, 'НЕ УКАЗАН') as op_type,
+        COUNT(*)::text as count
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.is_problem = true
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY COALESCE(di.source_op_type, 'НЕ УКАЗАН')
+      ORDER BY COUNT(*) DESC`,
+    );
+
+    // 3. Top products by problem qty
+    const topProductsRaw = await prisma.$queryRaw<
+      { id: string; name: string; unit: string; total_qty: string; problem_count: string }[]
+    >(
+      Prisma.sql`SELECT p.id, p.name, p.unit,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
+        COUNT(*)::text as problem_count
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      WHERE di.is_problem = true
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY p.id, p.name, p.unit
+      ORDER BY SUM(di.requested_qty) DESC
+      LIMIT 20`,
+    );
+
+    // 4. Top clients by problem rows
+    const topClientsRaw = await prisma.$queryRaw<
+      { id: string; company_name: string; problem_count: string; total_qty: string }[]
+    >(
+      Prisma.sql`SELECT c.id, c.company_name,
+        COUNT(*)::text as problem_count,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN clients c ON c.id = d.client_id
+      WHERE di.is_problem = true
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY c.id, c.company_name
+      ORDER BY COUNT(*) DESC
+      LIMIT 20`,
+    );
+
+    // 5. Problem rows detail
+    const problemRowsRaw = await prisma.$queryRaw<
+      {
+        id: string; product_name: string; unit: string; qty: string;
+        op_type: string; deal_title: string; company_name: string;
+        manager_name: string; created_at: Date;
+      }[]
+    >(
+      Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
+        COALESCE(di.requested_qty, 0)::text as qty,
+        COALESCE(di.source_op_type, 'НЕ УКАЗАН') as op_type,
+        d.title as deal_title, c.company_name, u.full_name as manager_name,
+        d.created_at
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      JOIN clients c ON c.id = d.client_id
+      JOIN users u ON u.id = d.manager_id
+      WHERE di.is_problem = true
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      ORDER BY di.requested_qty DESC
+      LIMIT 500`,
+    );
+
+    res.json({
+      totalProblemRows: Number(kpiRaw[0]?.total_rows ?? 0),
+      totalQtyInProblem: Math.round(Number(kpiRaw[0]?.total_qty ?? 0) * 100) / 100,
+      problemByOpType: byOpTypeRaw.map((r) => ({
+        opType: r.op_type,
+        count: Number(r.count),
+      })),
+      topProducts: topProductsRaw.map((r) => ({
+        id: r.id,
+        name: r.name,
+        unit: r.unit,
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+        problemCount: Number(r.problem_count),
+      })),
+      topClients: topClientsRaw.map((r) => ({
+        id: r.id,
+        companyName: r.company_name,
+        problemCount: Number(r.problem_count),
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+      })),
+      problemRows: problemRowsRaw.map((r) => ({
+        id: r.id,
+        productName: r.product_name,
+        unit: r.unit,
+        qty: Math.round(Number(r.qty) * 100) / 100,
+        opType: r.op_type,
+        dealTitle: r.deal_title,
+        companyName: r.company_name,
+        managerName: r.manager_name,
+        createdAt: r.created_at,
+      })),
+    });
+  }),
+);
+
+// ── Exchange analytics endpoint ──
+router.get(
+  '/exchange',
+  asyncHandler(async (_req: Request, res: Response) => {
+    // 1. KPI totals
+    const kpiRaw = await prisma.$queryRaw<
+      { total_exchanges: string; total_qty: string; unique_clients: string; unique_products: string }[]
+    >(
+      Prisma.sql`SELECT COUNT(*)::text as total_exchanges,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
+        COUNT(DISTINCT d.client_id)::text as unique_clients,
+        COUNT(DISTINCT di.product_id)::text as unique_products
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.source_op_type = 'EXCHANGE'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false`,
+    );
+
+    // 2. By month
+    const byMonthRaw = await prisma.$queryRaw<
+      { month: number; count: string; total_qty: string }[]
+    >(
+      Prisma.sql`SELECT EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})::int as month,
+        COUNT(*)::text as count,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.source_op_type = 'EXCHANGE'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
+      ORDER BY month`,
+    );
+
+    // 3. Top products
+    const productsRaw = await prisma.$queryRaw<
+      { id: string; name: string; unit: string; total_qty: string; unique_clients: string }[]
+    >(
+      Prisma.sql`SELECT p.id, p.name, p.unit,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
+        COUNT(DISTINCT d.client_id)::text as unique_clients
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      WHERE di.source_op_type = 'EXCHANGE'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY p.id, p.name, p.unit
+      ORDER BY SUM(di.requested_qty) DESC
+      LIMIT 20`,
+    );
+
+    // 4. Top clients
+    const clientsRaw = await prisma.$queryRaw<
+      { id: string; company_name: string; exchange_count: string; total_qty: string }[]
+    >(
+      Prisma.sql`SELECT c.id, c.company_name,
+        COUNT(*)::text as exchange_count,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_qty
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN clients c ON c.id = d.client_id
+      WHERE di.source_op_type = 'EXCHANGE'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+      GROUP BY c.id, c.company_name
+      ORDER BY COUNT(*) DESC
+      LIMIT 20`,
+    );
+
+    res.json({
+      totalExchanges: Number(kpiRaw[0]?.total_exchanges ?? 0),
+      totalQty: Math.round(Number(kpiRaw[0]?.total_qty ?? 0) * 100) / 100,
+      uniqueClients: Number(kpiRaw[0]?.unique_clients ?? 0),
+      uniqueProducts: Number(kpiRaw[0]?.unique_products ?? 0),
+      byMonth: byMonthRaw.map((r) => ({
+        month: r.month,
+        count: Number(r.count),
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+      })),
+      products: productsRaw.map((r) => ({
+        id: r.id,
+        name: r.name,
+        unit: r.unit,
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+        uniqueClients: Number(r.unique_clients),
+      })),
+      clients: clientsRaw.map((r) => ({
+        id: r.id,
+        companyName: r.company_name,
+        exchangeCount: Number(r.exchange_count),
+        totalQty: Math.round(Number(r.total_qty) * 100) / 100,
+      })),
+    });
+  }),
+);
+
+// ── Prepayments analytics endpoint ──
+router.get(
+  '/prepayments',
+  asyncHandler(async (_req: Request, res: Response) => {
+    // 1. KPI totals
+    const kpiRaw = await prisma.$queryRaw<
+      { total_rows: string; total_amount: string }[]
+    >(
+      Prisma.sql`SELECT COUNT(*)::text as total_rows,
+        COALESCE(SUM(di.requested_qty * di.price), 0)::text as total_amount
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.source_op_type = 'PP'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL`,
+    );
+
+    // 2. By month
+    const byMonthRaw = await prisma.$queryRaw<
+      { month: number; count: string; amount: string }[]
+    >(
+      Prisma.sql`SELECT EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})::int as month,
+        COUNT(*)::text as count,
+        COALESCE(SUM(di.requested_qty * di.price), 0)::text as amount
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE di.source_op_type = 'PP'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
+      GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
+      ORDER BY month`,
+    );
+
+    // 3. Top clients
+    const topClientsRaw = await prisma.$queryRaw<
+      { id: string; company_name: string; pp_count: string; total_amount: string }[]
+    >(
+      Prisma.sql`SELECT c.id, c.company_name,
+        COUNT(*)::text as pp_count,
+        COALESCE(SUM(di.requested_qty * di.price), 0)::text as total_amount
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN clients c ON c.id = d.client_id
+      WHERE di.source_op_type = 'PP'
+        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.is_archived = false
+        AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
+      GROUP BY c.id, c.company_name
+      ORDER BY SUM(di.requested_qty * di.price) DESC
+      LIMIT 20`,
+    );
+
+    res.json({
+      totalRows: Number(kpiRaw[0]?.total_rows ?? 0),
+      totalAmount: Number(kpiRaw[0]?.total_amount ?? 0),
+      byMonth: byMonthRaw.map((r) => ({
+        month: r.month,
+        count: Number(r.count),
+        amount: Number(r.amount),
+      })),
+      topClients: topClientsRaw.map((r) => ({
+        id: r.id,
+        companyName: r.company_name,
+        ppCount: Number(r.pp_count),
+        totalAmount: Number(r.total_amount),
+      })),
     });
   }),
 );

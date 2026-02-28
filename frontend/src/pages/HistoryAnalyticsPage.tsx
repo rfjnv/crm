@@ -7,7 +7,8 @@ import {
 } from 'antd';
 import {
   DollarOutlined, TeamOutlined, ShoppingOutlined, RiseOutlined,
-  WarningOutlined, BarChartOutlined, CalendarOutlined,
+  WarningOutlined, BarChartOutlined, CalendarOutlined, SwapOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
@@ -15,6 +16,7 @@ import { useThemeStore } from '../store/themeStore';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
+  DataQualityProblemRow, ExchangeProduct, ExchangeClient, PrepaymentClient,
 } from '../types';
 
 const { Title } = Typography;
@@ -38,6 +40,12 @@ const SEGMENT_COLORS_DARK: Record<string, string> = {
 };
 const SEGMENT_LABELS: Record<string, string> = {
   VIP: 'VIP', Regular: 'Постоянный', New: 'Новый', 'At-Risk': 'В зоне риска', Churned: 'Ушедший',
+};
+
+const OP_TYPE_LABELS: Record<string, string> = {
+  K: 'Карз (к)', N: 'Наличные (н)', NK: 'Н/К', P: 'Перечисление (п)',
+  PK: 'П/К', PP: 'Предоплата (пп)', EXCHANGE: 'Обмен', F: 'Фактура (ф)',
+  UNKNOWN: 'Неизвестно', 'НЕ УКАЗАН': 'Не указан',
 };
 
 function fmtNum(n: number): string {
@@ -67,6 +75,8 @@ export default function HistoryAnalyticsPage() {
   const [activitySearch, setActivitySearch] = useState('');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [segmentFilter, setSegmentFilter] = useState<string[]>([]);
+  const [dqSearch, setDqSearch] = useState('');
+  const [dqOpTypeFilter, setDqOpTypeFilter] = useState<string[]>([]);
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -125,6 +135,24 @@ export default function HistoryAnalyticsPage() {
     enabled: !!methodDrawer,
   });
 
+  // Data quality queries (loaded only when tab is active)
+  const needDataQuality = activeTab === 'dataQuality';
+  const { data: dataQuality } = useQuery({
+    queryKey: ['analytics-history-data-quality'],
+    queryFn: analyticsApi.getHistoryDataQuality,
+    enabled: needDataQuality,
+  });
+  const { data: exchangeData } = useQuery({
+    queryKey: ['analytics-history-exchange'],
+    queryFn: analyticsApi.getHistoryExchange,
+    enabled: needDataQuality,
+  });
+  const { data: prepaymentData } = useQuery({
+    queryKey: ['analytics-history-prepayments'],
+    queryFn: analyticsApi.getHistoryPrepayments,
+    enabled: needDataQuality,
+  });
+
   const filteredActivity = useMemo(() => {
     let list = data?.clientActivity || [];
     if (selectedClients.length > 0) list = list.filter((c) => selectedClients.includes(c.clientId));
@@ -140,6 +168,20 @@ export default function HistoryAnalyticsPage() {
     if (segmentFilter.length > 0) list = list.filter((c) => segmentFilter.includes(c.segment));
     return list;
   }, [extended?.clientSegments, segmentFilter]);
+
+  const filteredProblemRows = useMemo(() => {
+    let list = dataQuality?.problemRows || [];
+    if (dqOpTypeFilter.length > 0) list = list.filter((r) => dqOpTypeFilter.includes(r.opType));
+    if (dqSearch.trim()) {
+      const lower = dqSearch.trim().toLowerCase();
+      list = list.filter((r) =>
+        r.productName.toLowerCase().includes(lower) ||
+        r.companyName.toLowerCase().includes(lower) ||
+        r.managerName.toLowerCase().includes(lower)
+      );
+    }
+    return list;
+  }, [dataQuality?.problemRows, dqOpTypeFilter, dqSearch]);
 
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
@@ -700,6 +742,163 @@ export default function HistoryAnalyticsPage() {
     <div style={{ textAlign: 'center', marginTop: 60 }}><Spin size="large" /></div>
   );
 
+  // ── TAB 4: Data Quality ──
+  const dataQualityTab = dataQuality ? (
+    <>
+      {/* KPI cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={8} lg={6}>
+          <Card size="small">
+            <Statistic title="Проблемных строк" value={dataQuality.totalProblemRows} prefix={<ExclamationCircleOutlined />} valueStyle={{ color: token.colorError }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} lg={6}>
+          <Card size="small">
+            <Statistic title="Объём без цены" value={dataQuality.totalQtyInProblem} formatter={(val) => Number(val).toLocaleString('ru-RU')} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8} lg={12}>
+          <Card size="small" title="По типу операции">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {dataQuality.problemByOpType.map((item) => (
+                <Tag key={item.opType} color="orange">{OP_TYPE_LABELS[item.opType] || item.opType}: {item.count}</Tag>
+              ))}
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Exchange block */}
+      {exchangeData && exchangeData.totalExchanges > 0 && (
+        <Card title={<><SwapOutlined /> Обменные операции</>} size="small" style={{ marginBottom: 24 }}>
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}><Statistic title="Операций" value={exchangeData.totalExchanges} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Объём (ед.)" value={exchangeData.totalQty} formatter={(val) => Number(val).toLocaleString('ru-RU')} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Клиентов" value={exchangeData.uniqueClients} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Товаров" value={exchangeData.uniqueProducts} /></Col>
+          </Row>
+          {exchangeData.byMonth.length > 0 && (
+            <Bar
+              data={exchangeData.byMonth.map((m) => ({ month: MONTH_LABELS[m.month] || `${m.month}`, qty: m.totalQty }))}
+              xField="month" yField="qty" height={200}
+              axis={axisStyleNoFmt}
+              tooltip={{ items: [{ field: 'qty', channel: 'y', name: 'Объём' }] }}
+              theme={chartTheme}
+            />
+          )}
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col xs={24} lg={12}>
+              <Table dataSource={exchangeData.products} rowKey="id" size="small" pagination={false}
+                columns={[
+                  { title: 'Товар', dataIndex: 'name', key: 'name', ellipsis: true },
+                  { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
+                  { title: 'Объём', dataIndex: 'totalQty', key: 'totalQty', width: 100, render: (v: number) => v.toLocaleString('ru-RU'), sorter: (a: ExchangeProduct, b: ExchangeProduct) => a.totalQty - b.totalQty },
+                  { title: 'Клиентов', dataIndex: 'uniqueClients', key: 'uniqueClients', width: 90 },
+                ]}
+              />
+            </Col>
+            <Col xs={24} lg={12}>
+              <Table dataSource={exchangeData.clients} rowKey="id" size="small" pagination={false}
+                columns={[
+                  { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+                  { title: 'Кол-во', dataIndex: 'exchangeCount', key: 'exchangeCount', width: 80, sorter: (a: ExchangeClient, b: ExchangeClient) => a.exchangeCount - b.exchangeCount },
+                  { title: 'Объём', dataIndex: 'totalQty', key: 'totalQty', width: 100, render: (v: number) => v.toLocaleString('ru-RU') },
+                ]}
+                onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })}
+              />
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* Prepayment block */}
+      {prepaymentData && prepaymentData.totalRows > 0 && (
+        <Card title={<><DollarOutlined /> Предоплаты (ПП)</>} size="small" style={{ marginBottom: 24 }}>
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={8}><Statistic title="Позиций" value={prepaymentData.totalRows} /></Col>
+            <Col xs={12} sm={8}><Statistic title="Сумма" value={prepaymentData.totalAmount} formatter={(val) => fmtNum(Number(val))} /></Col>
+          </Row>
+          {prepaymentData.byMonth.length > 0 && (
+            <Bar
+              data={prepaymentData.byMonth.map((m) => ({ month: MONTH_LABELS[m.month] || `${m.month}`, amount: m.amount }))}
+              xField="month" yField="amount" height={200}
+              axis={axisStyle}
+              tooltip={{ items: [{ field: 'amount', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
+              theme={chartTheme}
+            />
+          )}
+          <Table dataSource={prepaymentData.topClients} rowKey="id" size="small" pagination={false} style={{ marginTop: 16 }}
+            columns={[
+              { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+              { title: 'Позиций', dataIndex: 'ppCount', key: 'ppCount', width: 80, sorter: (a: PrepaymentClient, b: PrepaymentClient) => a.ppCount - b.ppCount },
+              { title: 'Сумма', dataIndex: 'totalAmount', key: 'totalAmount', width: 120, render: (v: number) => fmtNum(v), sorter: (a: PrepaymentClient, b: PrepaymentClient) => a.totalAmount - b.totalAmount },
+            ]}
+            onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })}
+          />
+        </Card>
+      )}
+
+      {/* Top products by problem qty + Top clients */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={12}>
+          <Card title="Топ-20 товаров (без цены)" size="small">
+            <Table dataSource={dataQuality.topProducts} rowKey="id" size="small" pagination={false}
+              columns={[
+                { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
+                { title: 'Товар', dataIndex: 'name', key: 'name', ellipsis: true },
+                { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
+                { title: 'Объём', dataIndex: 'totalQty', key: 'totalQty', width: 100, render: (v: number) => v.toLocaleString('ru-RU') },
+                { title: 'Строк', dataIndex: 'problemCount', key: 'problemCount', width: 70 },
+              ]}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Топ клиентов по проблемным строкам" size="small">
+            <Table dataSource={dataQuality.topClients} rowKey="id" size="small" pagination={false}
+              columns={[
+                { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
+                { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+                { title: 'Строк', dataIndex: 'problemCount', key: 'problemCount', width: 70 },
+                { title: 'Объём', dataIndex: 'totalQty', key: 'totalQty', width: 100, render: (v: number) => v.toLocaleString('ru-RU') },
+              ]}
+              onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Problem rows table */}
+      <Card title="Проблемные строки (qty > 0, цена = 0)" size="small"
+        extra={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Input.Search placeholder="Поиск..." allowClear style={{ width: 200 }} onSearch={setDqSearch} onChange={(e) => !e.target.value && setDqSearch('')} />
+            <Select mode="multiple" placeholder="Тип операции" allowClear style={{ minWidth: 160 }} maxTagCount={2}
+              value={dqOpTypeFilter} onChange={setDqOpTypeFilter}
+              options={Object.entries(OP_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
+          </div>
+        }
+      >
+        <Table dataSource={filteredProblemRows} rowKey="id" size="small"
+          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} строк` }}
+          scroll={{ x: 900 }}
+          columns={[
+            { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
+            { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
+            { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 80, render: (v: number) => v.toLocaleString('ru-RU') },
+            { title: 'Тип', dataIndex: 'opType', key: 'opType', width: 100, render: (v: string) => <Tag>{OP_TYPE_LABELS[v] || v}</Tag> },
+            { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+            { title: 'Менеджер', dataIndex: 'managerName', key: 'managerName', width: 120 },
+            { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
+            { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => new Date(v).toLocaleDateString('ru-RU') },
+          ]}
+        />
+      </Card>
+    </>
+  ) : (
+    <div style={{ textAlign: 'center', marginTop: 60 }}><Spin size="large" /></div>
+  );
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 24 }}>
@@ -710,10 +909,12 @@ export default function HistoryAnalyticsPage() {
         { key: 'overview', label: 'Обзор' },
         { key: 'analytics', label: 'Аналитика' },
         { key: 'segments', label: 'Сегменты' },
+        { key: 'dataQuality', label: 'Качество данных' },
       ]} />
       {activeTab === 'overview' && overviewTab}
       {activeTab === 'analytics' && analyticsTab}
       {activeTab === 'segments' && segmentsTab}
+      {activeTab === 'dataQuality' && dataQualityTab}
 
       {/* KPI Drill-down Drawer */}
       <Drawer title={kpiDrawerTitle[kpiDrawer || ''] || ''} open={!!kpiDrawer} onClose={() => setKpiDrawer(null)} width={720}>
