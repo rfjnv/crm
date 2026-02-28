@@ -301,6 +301,7 @@ async function processMonth(
   let paymentCount = 0;
 
   for (const group of groups) {
+   try {
     const clientId = clientMap.get(group.clientKey);
     if (!clientId) continue;
 
@@ -423,6 +424,9 @@ async function processMonth(
       });
       paymentCount++;
     }
+   } catch (err) {
+    console.error(`  ⚠ Error processing client "${group.clientName}":`, (err as Error).message);
+   }
   }
 
   return { deals: dealCount, items: itemCount, payments: paymentCount };
