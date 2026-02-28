@@ -1535,6 +1535,76 @@ export class DealsService {
 
       // Items full replacement
       if (dto.items !== undefined) {
+        // Check if deal has been shipped (has OUT movements) — adjust stock accordingly
+        const existingMovements = await tx.inventoryMovement.findMany({
+          where: { dealId: id, type: 'OUT' },
+        });
+
+        if (existingMovements.length > 0) {
+          // Build map of how much was shipped per product
+          const shippedQtyMap = new Map<string, number>();
+          for (const mov of existingMovements) {
+            const prev = shippedQtyMap.get(mov.productId) ?? 0;
+            shippedQtyMap.set(mov.productId, prev + Number(mov.quantity));
+          }
+
+          // Build map of new quantities per product
+          const newQtyMap = new Map<string, number>();
+          for (const item of dto.items) {
+            const prev = newQtyMap.get(item.productId) ?? 0;
+            newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
+          }
+
+          // Process all products that were shipped
+          const allProductIds = new Set([...shippedQtyMap.keys(), ...newQtyMap.keys()]);
+          for (const productId of allProductIds) {
+            const shipped = shippedQtyMap.get(productId) ?? 0;
+            const newQty = newQtyMap.get(productId) ?? 0;
+            const diff = shipped - newQty;
+
+            if (diff > 0) {
+              // Quantity decreased — return to stock
+              await tx.product.update({
+                where: { id: productId },
+                data: { stock: { increment: diff } },
+              });
+              await tx.inventoryMovement.create({
+                data: {
+                  productId,
+                  type: 'IN',
+                  quantity: diff,
+                  dealId: id,
+                  note: `Возврат на склад: коррекция при изменении сделки (супер-оверрайд)`,
+                  createdBy: user.userId,
+                },
+              });
+            } else if (diff < 0) {
+              // Quantity increased — deduct from stock
+              const absDiff = Math.abs(diff);
+              const result = await tx.product.updateMany({
+                where: { id: productId, stock: { gte: absDiff } },
+                data: { stock: { decrement: absDiff } },
+              });
+              if (result.count === 0) {
+                const product = await tx.product.findUnique({ where: { id: productId } });
+                throw new AppError(400,
+                  `Недостаточно товара "${product?.name}" на складе для увеличения количества`,
+                );
+              }
+              await tx.inventoryMovement.create({
+                data: {
+                  productId,
+                  type: 'OUT',
+                  quantity: absDiff,
+                  dealId: id,
+                  note: `Доп. списание: коррекция при изменении сделки (супер-оверрайд)`,
+                  createdBy: user.userId,
+                },
+              });
+            }
+          }
+        }
+
         await tx.dealItem.deleteMany({ where: { dealId: id } });
         for (const item of dto.items) {
           const product = await tx.product.findUnique({ where: { id: item.productId } });
@@ -1663,12 +1733,6 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.movements.length > 0) {
-      throw new AppError(409,
-        `Невозможно удалить: ${deal.movements.length} складских движений. Архивируйте сделку или удалите движения.`,
-      );
-    }
-
     const snapshot: Record<string, unknown> = {
       id: deal.id,
       title: deal.title,
@@ -1681,11 +1745,30 @@ export class DealsService {
       itemsCount: deal.items.length,
       commentsCount: deal.comments.length,
       paymentsCount: deal.payments.length,
+      movementsCount: deal.movements.length,
       totalPaid: Number(deal.paidAmount),
       createdAt: deal.createdAt,
     };
 
     await prisma.$transaction(async (tx) => {
+      // Reverse inventory movements: return stock for OUT, deduct for IN
+      if (deal.movements.length > 0) {
+        for (const mov of deal.movements) {
+          if (mov.type === 'OUT') {
+            await tx.product.update({
+              where: { id: mov.productId },
+              data: { stock: { increment: Number(mov.quantity) } },
+            });
+          } else if (mov.type === 'IN') {
+            await tx.product.update({
+              where: { id: mov.productId },
+              data: { stock: { decrement: Number(mov.quantity) } },
+            });
+          }
+        }
+        await tx.inventoryMovement.deleteMany({ where: { dealId: id } });
+      }
+
       await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
       await tx.payment.deleteMany({ where: { dealId: id } });
       await tx.deal.delete({ where: { id } });
