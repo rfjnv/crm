@@ -1,7 +1,10 @@
 /**
- * Import historical data from 29.12.2025.xlsx into the CRM database.
+ * Import historical data from Excel into the CRM database.
  *
- * Run: cd backend && npx tsx src/scripts/import-excel.ts
+ * Run: cd backend && npx tsx src/scripts/import-excel.ts [file] [year]
+ * Examples:
+ *   npx tsx src/scripts/import-excel.ts                                  # 29.12.2025.xlsx, 2025
+ *   npx tsx src/scripts/import-excel.ts ../frontend/27.02.2026.xlsx 2026 # 2026 data
  */
 
 import * as XLSX from 'xlsx';
@@ -68,12 +71,16 @@ function toDate(v: unknown): Date | null {
   if (typeof v === 'number') {
     // Excel serial date
     const d = XLSX.SSF.parse_date_code(v);
-    if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d));
+    if (d && d.y >= 1900 && d.y <= 2100) return new Date(Date.UTC(d.y, d.m - 1, d.d));
+    return null;
   }
   const s = String(v).trim();
   if (!s) return null;
   const parsed = new Date(s);
-  return isNaN(parsed.getTime()) ? null : parsed;
+  if (isNaN(parsed.getTime())) return null;
+  // Reject dates outside reasonable range
+  if (parsed.getFullYear() < 1900 || parsed.getFullYear() > 2100) return null;
+  return parsed;
 }
 
 type Row = unknown[];
@@ -127,7 +134,7 @@ async function createManagers(): Promise<Map<string, string>> {
 async function createProducts(wb: XLSX.WorkBook): Promise<Map<string, string>> {
   const productSet = new Map<string, { name: string; unit: string }>();
 
-  for (let m = 0; m < 12; m++) {
+  for (let m = 0; m < wb.SheetNames.length && m < 12; m++) {
     const sheet = wb.Sheets[wb.SheetNames[m]];
     const rows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
 
@@ -193,7 +200,7 @@ async function createClients(
   // Collect all unique clients with their first-seen manager
   const clientInfo = new Map<string, { name: string; manager: string }>();
 
-  for (let m = 0; m < 12; m++) {
+  for (let m = 0; m < wb.SheetNames.length && m < 12; m++) {
     const sheet = wb.Sheets[wb.SheetNames[m]];
     const rows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
 
@@ -279,14 +286,15 @@ async function processMonth(
   clientMap: Map<string, string>,
   productMap: Map<string, string>,
   managerMap: Map<string, string>,
+  year: number,
 ): Promise<{ deals: number; items: number; payments: number }> {
   const sheet = wb.Sheets[wb.SheetNames[monthIndex]];
   const rows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
   const groups = groupRowsByClient(rows);
 
   const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
-  const monthDate = new Date(Date.UTC(2025, monthIndex, 1));
-  const monthMid = new Date(Date.UTC(2025, monthIndex, 15));
+  const monthDate = new Date(Date.UTC(year, monthIndex, 1));
+  const monthMid = new Date(Date.UTC(year, monthIndex, 15));
 
   let dealCount = 0;
   let itemCount = 0;
@@ -358,7 +366,7 @@ async function processMonth(
     // Create deal
     const deal = await prisma.deal.create({
       data: {
-        title: `${group.clientName} — ${MONTH_NAMES_RU[monthIndex]} 2025`,
+        title: `${group.clientName} — ${MONTH_NAMES_RU[monthIndex]} ${year}`,
         status: 'CLOSED',
         amount: dealAmount,
         paidAmount: totalPaid,
@@ -393,7 +401,7 @@ async function processMonth(
           type: 'OUT',
           quantity: item.qty,
           dealId: deal.id,
-          note: `Импорт: ${MONTH_NAMES_RU[monthIndex]} 2025`,
+          note: `Импорт: ${MONTH_NAMES_RU[monthIndex]} ${year}`,
           createdBy: managerId,
           createdAt: monthDate,
         },
@@ -427,8 +435,16 @@ async function main() {
   console.log('  Excel → CRM Import');
   console.log('═══════════════════════════════════════\n');
 
-  const filePath = path.resolve(process.cwd(), '..', '29.12.2025.xlsx');
+  const fileArg = process.argv[2] || '29.12.2025.xlsx';
+  const year = parseInt(process.argv[3] || '2025', 10);
+  if (isNaN(year) || year < 2020 || year > 2030) {
+    console.error('Invalid year. Usage: npx tsx src/scripts/import-excel.ts <file> <year>');
+    process.exit(1);
+  }
+
+  const filePath = path.resolve(process.cwd(), '..', fileArg);
   console.log(`Reading: ${filePath}`);
+  console.log(`Year: ${year}`);
   const wb = XLSX.readFile(filePath);
   console.log(`Sheets: ${wb.SheetNames.length}\n`);
 
@@ -453,8 +469,9 @@ async function main() {
   let totalItems = 0;
   let totalPayments = 0;
 
-  for (let m = 0; m < 12; m++) {
-    const result = await processMonth(m, wb, clientMap, productMap, managerMap);
+  const sheetCount = Math.min(12, wb.SheetNames.length);
+  for (let m = 0; m < sheetCount; m++) {
+    const result = await processMonth(m, wb, clientMap, productMap, managerMap, year);
     totalDeals += result.deals;
     totalItems += result.items;
     totalPayments += result.payments;

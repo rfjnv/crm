@@ -8,14 +8,29 @@ const router = Router();
 
 router.use(authenticate);
 
-// 00:00 Asia/Tashkent = 19:00 UTC previous day  (UTC+5)
-const YEAR_START = new Date('2024-12-31T19:00:00Z'); // 2025-01-01 00:00 Tashkent
-const YEAR_END = new Date('2025-12-31T19:00:00Z');   // 2026-01-01 00:00 Tashkent
 const TZ = Prisma.sql`'Asia/Tashkent'`;
+
+// 00:00 Asia/Tashkent = 19:00 UTC previous day  (UTC+5)
+function getYearBounds(year: number) {
+  const yearStart = new Date(`${year - 1}-12-31T19:00:00Z`); // Jan 1 00:00 Tashkent
+  const yearEnd   = new Date(`${year}-12-31T19:00:00Z`);     // Next Jan 1 00:00 Tashkent
+  return { yearStart, yearEnd };
+}
+
+function parseYear(req: Request): number {
+  const raw = req.query.year;
+  if (!raw) return 2025;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 2020 || n > 2099) return 2025;
+  return n;
+}
 
 router.get(
   '/',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // ── 1. Overview KPIs ──
     const overviewRaw = await prisma.$queryRaw<
       {
@@ -31,13 +46,13 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as total_revenue,
         COALESCE(AVG(d.amount), 0)::text as avg_deal
       FROM deals d
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false`,
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false`,
     );
 
     // Total collected in 2025 (from payments table by paid_at)
     const collectedRaw = await prisma.$queryRaw<{ total_paid: string }[]>(
       Prisma.sql`SELECT COALESCE(SUM(amount), 0)::text as total_paid
-      FROM payments WHERE paid_at >= ${YEAR_START} AND paid_at < ${YEAR_END}`,
+      FROM payments WHERE paid_at >= ${yearStart} AND paid_at < ${yearEnd}`,
     );
 
     // Outstanding debt across ALL years — computed from payments table (source of truth)
@@ -68,7 +83,7 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as revenue,
         COUNT(DISTINCT d.client_id)::text as active_clients
       FROM deals d
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -81,7 +96,7 @@ router.get(
         EXTRACT(MONTH FROM p.paid_at AT TIME ZONE ${TZ})::int as month,
         COALESCE(SUM(p.amount), 0)::text as collected
       FROM payments p
-      WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
       GROUP BY EXTRACT(MONTH FROM p.paid_at AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -96,10 +111,10 @@ router.get(
         SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
           m.month,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(2025, m.month, 1, 0, 0, 0, ${TZ})
+            WHERE p.paid_at < make_timestamptz(${year}, m.month, 1, 0, 0, 0, ${TZ})
           ), 0) as paid_before_open,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(2025, m.month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+            WHERE p.paid_at < make_timestamptz(${year}, m.month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
           ), 0) as paid_before_close
         FROM deals d
         CROSS JOIN generate_series(1, 12) as m(month)
@@ -109,10 +124,10 @@ router.get(
       )
       SELECT month,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
-          WHERE created_at < make_timestamptz(2025, month, 1, 0, 0, 0, ${TZ})
+          WHERE created_at < make_timestamptz(${year}, month, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
-          WHERE created_at < make_timestamptz(2025, month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          WHERE created_at < make_timestamptz(${year}, month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM deal_paid
       GROUP BY month
@@ -130,7 +145,7 @@ router.get(
       FROM shipments s
       JOIN deals d ON d.id = s.deal_id
       WHERE d.is_archived = false
-        AND s.shipped_at >= ${YEAR_START} AND s.shipped_at < ${YEAR_END}
+        AND s.shipped_at >= ${yearStart} AND s.shipped_at < ${yearEnd}
       GROUP BY EXTRACT(MONTH FROM s.shipped_at AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -167,10 +182,10 @@ router.get(
       LEFT JOIN (
         SELECT p.client_id, SUM(p.amount) as total_paid
         FROM payments p
-        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
         GROUP BY p.client_id
       ) pc ON pc.client_id = c.id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY c.id, c.company_name, pc.total_paid
       ORDER BY SUM(d.amount) DESC
       LIMIT 30`,
@@ -202,7 +217,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -241,10 +256,10 @@ router.get(
         SELECT d2.manager_id, SUM(p.amount) as total_collected
         FROM payments p
         JOIN deals d2 ON d2.id = p.deal_id
-        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
         GROUP BY d2.manager_id
       ) mc ON mc.manager_id = u.id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY u.id, u.full_name, mc.total_collected
       ORDER BY SUM(d.amount) DESC`,
     );
@@ -265,7 +280,7 @@ router.get(
         SUM(amount)::text as total,
         COUNT(*)::text as count
       FROM payments
-      WHERE paid_at >= ${YEAR_START} AND paid_at < ${YEAR_END}
+      WHERE paid_at >= ${yearStart} AND paid_at < ${yearEnd}
       GROUP BY COALESCE(method, 'Не указан')
       ORDER BY SUM(amount) DESC`,
     );
@@ -317,7 +332,7 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as revenue
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       ORDER BY c.company_name, month`,
@@ -356,6 +371,9 @@ router.get(
 router.get(
   '/drilldown',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     const type = req.query.type as string;
     const managerId = req.query.managerId as string | undefined;
     const method = req.query.method as string | undefined;
@@ -381,7 +399,7 @@ router.get(
         FROM deals d
         JOIN clients c ON c.id = d.client_id
         JOIN users u ON u.id = d.manager_id
-        WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
           AND d.is_archived = false${managerFilter}
         ORDER BY d.amount DESC
         LIMIT 100`,
@@ -420,7 +438,7 @@ router.get(
         FROM payments p
         JOIN deals d ON d.id = p.deal_id
         JOIN clients c ON c.id = p.client_id
-        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}${methodFilter}
+        WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}${methodFilter}
         ORDER BY p.amount DESC
         LIMIT 100`,
       );
@@ -445,6 +463,9 @@ router.get(
 router.get(
   '/month/:month',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     const month = parseInt(req.params.month as string, 10);
     if (isNaN(month) || month < 1 || month > 12) {
       res.status(400).json({ error: 'Invalid month' });
@@ -471,7 +492,7 @@ router.get(
       JOIN clients c ON c.id = d.client_id
       JOIN users u ON u.id = d.manager_id
       WHERE EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       ORDER BY d.amount DESC`,
     );
@@ -486,7 +507,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
@@ -505,7 +526,7 @@ router.get(
       FROM deals d
       JOIN users u ON u.id = d.manager_id
       WHERE EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY u.id, u.full_name
       ORDER BY SUM(d.amount) DESC`,
@@ -529,7 +550,7 @@ router.get(
       JOIN deals d ON d.id = p.deal_id
       JOIN clients c ON c.id = p.client_id
       WHERE EXTRACT(MONTH FROM p.paid_at AT TIME ZONE ${TZ}) = ${month}
-        AND p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        AND p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
       ORDER BY p.amount DESC`,
     );
 
@@ -540,10 +561,10 @@ router.get(
       Prisma.sql`WITH deal_paid AS (
         SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ})
+            WHERE p.paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ})
           ), 0) as paid_before_open,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+            WHERE p.paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
           ), 0) as paid_before_close
         FROM deals d
         LEFT JOIN payments p ON p.deal_id = d.id
@@ -552,10 +573,10 @@ router.get(
       )
       SELECT
         COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
-          WHERE created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ})
+          WHERE created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
-          WHERE created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          WHERE created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM deal_paid`,
     );
@@ -572,11 +593,11 @@ router.get(
       LEFT JOIN (
         SELECT deal_id, SUM(amount) as total_paid
         FROM payments
-        WHERE paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        WHERE paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         GROUP BY deal_id
       ) p_paid ON p_paid.deal_id = d.id
       WHERE d.is_archived = false
-        AND d.created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        AND d.created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
       GROUP BY c.id, c.company_name
       HAVING SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) > 0
       ORDER BY SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) DESC
@@ -633,7 +654,10 @@ router.get(
 // ── Extended analytics endpoint ──
 router.get(
   '/extended',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // 1. Retention (month-over-month)
     const retentionRaw = await prisma.$queryRaw<
       { month: number; total_clients: string; retained_clients: string }[]
@@ -641,7 +665,7 @@ router.get(
       Prisma.sql`WITH monthly_clients AS (
         SELECT DISTINCT client_id, EXTRACT(MONTH FROM created_at AT TIME ZONE ${TZ})::int as month
         FROM deals
-        WHERE created_at >= ${YEAR_START} AND created_at < ${YEAR_END} AND is_archived = false
+        WHERE created_at >= ${yearStart} AND created_at < ${yearEnd} AND is_archived = false
       )
       SELECT a.month,
         COUNT(DISTINCT a.client_id)::text as total_clients,
@@ -670,7 +694,7 @@ router.get(
       Prisma.sql`WITH client_revenue AS (
         SELECT c.id, c.company_name, COALESCE(SUM(d.amount), 0) as revenue
         FROM deals d JOIN clients c ON c.id = d.client_id
-        WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         GROUP BY c.id, c.company_name
         ORDER BY SUM(d.amount) DESC
       )
@@ -702,7 +726,7 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
-        WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
           AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       ),
       product_stats AS (
@@ -753,7 +777,7 @@ router.get(
         COUNT(d.id)::text as deals_count
       FROM deals d
       JOIN users u ON u.id = d.manager_id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       ORDER BY u.full_name, month`,
     );
@@ -772,7 +796,7 @@ router.get(
       Prisma.sql`WITH first_deal AS (
         SELECT client_id, MIN(EXTRACT(MONTH FROM created_at AT TIME ZONE ${TZ}))::int as cohort_month
         FROM deals
-        WHERE created_at >= ${YEAR_START} AND created_at < ${YEAR_END} AND is_archived = false
+        WHERE created_at >= ${yearStart} AND created_at < ${yearEnd} AND is_archived = false
         GROUP BY client_id
       ),
       monthly_activity AS (
@@ -780,7 +804,7 @@ router.get(
           EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})::int as active_month,
           SUM(d.amount) as revenue
         FROM deals d
-        WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         GROUP BY d.client_id, EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       )
       SELECT f.cohort_month, ma.active_month,
@@ -837,7 +861,7 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(AVG(d.amount), 0)::text as avg_deal_size
       FROM deals d
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -858,7 +882,7 @@ router.get(
         MAX(EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ}))::int as last_active_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
       GROUP BY c.id, c.company_name`,
     );
 
@@ -868,7 +892,7 @@ router.get(
     >(
       Prisma.sql`SELECT DISTINCT client_id, EXTRACT(MONTH FROM created_at AT TIME ZONE ${TZ})::int as month
       FROM deals
-      WHERE created_at >= ${YEAR_START} AND created_at < ${YEAR_END} AND is_archived = false`,
+      WHERE created_at >= ${yearStart} AND created_at < ${yearEnd} AND is_archived = false`,
     );
     const clientMonthsMap = new Map<string, number[]>();
     for (const row of activeMonthsRaw) {
@@ -937,6 +961,9 @@ router.get(
 router.get(
   '/client-month/:clientId/:month',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     const clientId = req.params.clientId as string;
     const month = parseInt(req.params.month as string, 10);
     if (isNaN(month) || month < 1 || month > 12) {
@@ -965,7 +992,7 @@ router.get(
       JOIN products p ON p.id = di.product_id
       WHERE d.client_id = ${clientId}
         AND EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.requested_qty IS NOT NULL AND di.price IS NOT NULL
       ORDER BY (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0)) DESC`,
@@ -993,6 +1020,9 @@ router.get(
 router.get(
   '/product-buyers/:productId',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     const productId = req.params.productId as string;
 
     const productInfo = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
@@ -1014,7 +1044,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.product_id = ${productId}
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
@@ -1037,7 +1067,10 @@ router.get(
 // ── Cashflow endpoint ──
 router.get(
   '/cashflow',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // Monthly collected (by payment date, not deal creation)
     const monthlyRaw = await prisma.$queryRaw<
       { month: number; collected: string; payments_count: string }[]
@@ -1047,7 +1080,7 @@ router.get(
         COALESCE(SUM(p.amount), 0)::text as collected,
         COUNT(*)::text as payments_count
       FROM payments p
-      WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
       GROUP BY EXTRACT(MONTH FROM p.paid_at AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -1061,7 +1094,7 @@ router.get(
         COUNT(*)::text as payments_count
       FROM payments p
       JOIN clients c ON c.id = p.client_id
-      WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
       GROUP BY c.id, c.company_name
       ORDER BY SUM(p.amount) DESC
       LIMIT 20`,
@@ -1075,7 +1108,7 @@ router.get(
         COALESCE(SUM(amount), 0)::text as total_collected,
         COUNT(*)::text as total_payments
       FROM payments
-      WHERE paid_at >= ${YEAR_START} AND paid_at < ${YEAR_END}`,
+      WHERE paid_at >= ${yearStart} AND paid_at < ${yearEnd}`,
     );
 
     res.json({
@@ -1099,7 +1132,10 @@ router.get(
 // ── Data Quality endpoint ──
 router.get(
   '/data-quality',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // 1. KPI totals
     const kpiRaw = await prisma.$queryRaw<
       { total_rows: string; total_qty: string }[]
@@ -1109,7 +1145,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.is_problem = true
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false`,
     );
 
@@ -1122,7 +1158,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.is_problem = true
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY COALESCE(di.source_op_type, 'НЕ УКАЗАН')
       ORDER BY COUNT(*) DESC`,
@@ -1139,7 +1175,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE di.is_problem = true
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
@@ -1157,7 +1193,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.is_problem = true
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY c.id, c.company_name
       ORDER BY COUNT(*) DESC
@@ -1183,7 +1219,7 @@ router.get(
       JOIN clients c ON c.id = d.client_id
       JOIN users u ON u.id = d.manager_id
       WHERE di.is_problem = true
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       ORDER BY di.requested_qty DESC
       LIMIT 500`,
@@ -1227,7 +1263,10 @@ router.get(
 // ── Exchange analytics endpoint ──
 router.get(
   '/exchange',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // 1. KPI totals
     const kpiRaw = await prisma.$queryRaw<
       { total_exchanges: string; total_qty: string; unique_clients: string; unique_products: string }[]
@@ -1239,7 +1278,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'EXCHANGE'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false`,
     );
 
@@ -1253,7 +1292,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'EXCHANGE'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
       ORDER BY month`,
@@ -1270,7 +1309,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE di.source_op_type = 'EXCHANGE'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
@@ -1288,7 +1327,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.source_op_type = 'EXCHANGE'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
       GROUP BY c.id, c.company_name
       ORDER BY COUNT(*) DESC
@@ -1325,7 +1364,10 @@ router.get(
 // ── Prepayments analytics endpoint ──
 router.get(
   '/prepayments',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const { yearStart, yearEnd } = getYearBounds(year);
+
     // 1. KPI totals
     const kpiRaw = await prisma.$queryRaw<
       { total_rows: string; total_amount: string }[]
@@ -1335,7 +1377,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL`,
     );
@@ -1350,7 +1392,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY EXTRACT(MONTH FROM d.created_at AT TIME ZONE ${TZ})
@@ -1368,7 +1410,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.source_op_type = 'PP'
-        AND d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name

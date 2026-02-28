@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select,
+  Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select, Segmented,
   Tooltip, Tag, Tabs, Drawer,
 } from 'antd';
 import {
@@ -77,6 +77,7 @@ export default function HistoryAnalyticsPage() {
   const [segmentFilter, setSegmentFilter] = useState<string[]>([]);
   const [dqSearch, setDqSearch] = useState('');
   const [dqOpTypeFilter, setDqOpTypeFilter] = useState<string[]>([]);
+  const [year, setYear] = useState(2025);
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -84,72 +85,72 @@ export default function HistoryAnalyticsPage() {
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({ queryKey: ['analytics-history'], queryFn: analyticsApi.getHistory });
+  const { data, isLoading } = useQuery({ queryKey: ['analytics-history', year], queryFn: () => analyticsApi.getHistory(year) });
 
   const needExtended = activeTab === 'analytics' || activeTab === 'segments';
   const { data: extended } = useQuery({
-    queryKey: ['analytics-history-extended'],
-    queryFn: analyticsApi.getHistoryExtended,
+    queryKey: ['analytics-history-extended', year],
+    queryFn: () => analyticsApi.getHistoryExtended(year),
     enabled: needExtended,
   });
 
   const drillType = kpiDrawer === 'deals' || kpiDrawer === 'revenue' || kpiDrawer === 'avg'
     ? 'deals' : kpiDrawer === 'paid' ? 'payments' : null;
   const { data: drilldown } = useQuery({
-    queryKey: ['analytics-history-drilldown', drillType],
-    queryFn: () => analyticsApi.getHistoryDrilldown(drillType!),
+    queryKey: ['analytics-history-drilldown', drillType, year],
+    queryFn: () => analyticsApi.getHistoryDrilldown(drillType!, undefined, year),
     enabled: !!drillType,
   });
 
   const { data: monthDetail } = useQuery({
-    queryKey: ['analytics-history-month', monthDrawer],
-    queryFn: () => analyticsApi.getHistoryMonth(monthDrawer!),
+    queryKey: ['analytics-history-month', monthDrawer, year],
+    queryFn: () => analyticsApi.getHistoryMonth(monthDrawer!, year),
     enabled: !!monthDrawer,
   });
 
   // Client-month purchases drawer query
   const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
-    queryKey: ['analytics-history-client-month', cellDrawer?.clientId, cellDrawer?.month],
-    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month),
+    queryKey: ['analytics-history-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
+    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, year),
     enabled: !!cellDrawer,
   });
 
   // Product buyers drawer query
   const { data: productBuyersData, isLoading: productBuyersLoading } = useQuery({
-    queryKey: ['analytics-history-product-buyers', productDrawer?.productId],
-    queryFn: () => analyticsApi.getHistoryProductBuyers(productDrawer!.productId),
+    queryKey: ['analytics-history-product-buyers', productDrawer?.productId, year],
+    queryFn: () => analyticsApi.getHistoryProductBuyers(productDrawer!.productId, year),
     enabled: !!productDrawer,
   });
 
   // Manager drilldown query
   const { data: managerDrilldown, isLoading: managerDrillLoading } = useQuery({
-    queryKey: ['analytics-history-drilldown-manager', managerDrawer?.managerId],
-    queryFn: () => analyticsApi.getHistoryDrilldown('deals', { managerId: managerDrawer!.managerId }),
+    queryKey: ['analytics-history-drilldown-manager', managerDrawer?.managerId, year],
+    queryFn: () => analyticsApi.getHistoryDrilldown('deals', { managerId: managerDrawer!.managerId }, year),
     enabled: !!managerDrawer,
   });
 
   // Method drilldown query
   const { data: methodDrilldown, isLoading: methodDrillLoading } = useQuery({
-    queryKey: ['analytics-history-drilldown-method', methodDrawer],
-    queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }),
+    queryKey: ['analytics-history-drilldown-method', methodDrawer, year],
+    queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }, year),
     enabled: !!methodDrawer,
   });
 
   // Data quality queries (loaded only when tab is active)
   const needDataQuality = activeTab === 'dataQuality';
   const { data: dataQuality } = useQuery({
-    queryKey: ['analytics-history-data-quality'],
-    queryFn: analyticsApi.getHistoryDataQuality,
+    queryKey: ['analytics-history-data-quality', year],
+    queryFn: () => analyticsApi.getHistoryDataQuality(year),
     enabled: needDataQuality,
   });
   const { data: exchangeData } = useQuery({
-    queryKey: ['analytics-history-exchange'],
-    queryFn: analyticsApi.getHistoryExchange,
+    queryKey: ['analytics-history-exchange', year],
+    queryFn: () => analyticsApi.getHistoryExchange(year),
     enabled: needDataQuality,
   });
   const { data: prepaymentData } = useQuery({
-    queryKey: ['analytics-history-prepayments'],
-    queryFn: analyticsApi.getHistoryPrepayments,
+    queryKey: ['analytics-history-prepayments', year],
+    queryFn: () => analyticsApi.getHistoryPrepayments(year),
     enabled: needDataQuality,
   });
 
@@ -236,8 +237,8 @@ export default function HistoryAnalyticsPage() {
 
   // ── Drawer KPI title ──
   const kpiDrawerTitle: Record<string, string> = {
-    deals: 'Все сделки 2025', clients: 'Топ клиенты', revenue: 'Сделки по сумме',
-    paid: 'Платежи 2025', debt: 'Должники', avg: 'Сделки по сумме',
+    deals: `Все сделки ${year}`, clients: 'Топ клиенты', revenue: 'Сделки по сумме',
+    paid: `Платежи ${year}`, debt: 'Должники', avg: 'Сделки по сумме',
   };
 
   // ── Drill-down table columns ──
@@ -901,9 +902,19 @@ export default function HistoryAnalyticsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 24 }}>
-        <BarChartOutlined /> Аналитика 2025 (Исторические данные)
-      </Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          <BarChartOutlined /> Аналитика {year} (Исторические данные)
+        </Title>
+        <Segmented
+          value={year}
+          onChange={(val) => setYear(val as number)}
+          options={[
+            { label: '2025', value: 2025 },
+            { label: '2026', value: 2026 },
+          ]}
+        />
+      </div>
 
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
         { key: 'overview', label: 'Обзор' },
@@ -922,7 +933,7 @@ export default function HistoryAnalyticsPage() {
       </Drawer>
 
       {/* Month Detail Drawer */}
-      <Drawer title={`${MONTH_LABELS[monthDrawer || 0] || ''} 2025 — Детализация`} open={!!monthDrawer} onClose={() => setMonthDrawer(null)} width={720}>
+      <Drawer title={`${MONTH_LABELS[monthDrawer || 0] || ''} ${year} — Детализация`} open={!!monthDrawer} onClose={() => setMonthDrawer(null)} width={720}>
         {monthDetail ? (
           <Tabs items={[
             {
@@ -995,7 +1006,7 @@ export default function HistoryAnalyticsPage() {
 
       {/* Client-Month Purchases Drawer */}
       <Drawer
-        title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} 2025` : ''}
+        title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
         open={!!cellDrawer} onClose={() => setCellDrawer(null)} width={720}
       >
         {clientMonthLoading ? <Spin /> : clientMonthData ? (

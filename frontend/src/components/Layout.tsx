@@ -233,7 +233,7 @@ export default function Layout() {
         {
           key: '/history-analytics',
           icon: <FieldTimeOutlined />,
-          label: <Link to="/history-analytics">Аналитика 2025</Link>,
+          label: <Link to="/history-analytics">Аналитика (история)</Link>,
         },
       ]
       : []),
