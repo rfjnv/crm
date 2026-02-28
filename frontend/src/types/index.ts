@@ -789,10 +789,23 @@ export interface RevenueByMethodRow {
   count: number;
 }
 
+export interface AgingBucket {
+  label: string;
+  count: number;
+  amount: number;
+}
+
+export interface AgingData {
+  buckets: AgingBucket[];
+  noDueDateCount: number;
+  noDueDateAmount: number;
+}
+
 export interface FinancialIntelligence {
   revenueByMethod: RevenueByMethodRow[];
   avgPaymentDelayDays: number;
   onTimePaymentRate: number;
+  aging: AgingData;
 }
 
 export interface IntelligenceData {
@@ -817,6 +830,7 @@ export interface HistoryMonthlyTrend {
   month: number;
   revenue: number;
   collected: number;
+  shipped: number;
   activeClients: number;
   openingBalance: number;
   closingBalance: number;
@@ -923,10 +937,35 @@ export interface HistoryMonthManager {
   revenue: number;
 }
 
+export interface HistoryMonthPayment {
+  id: string;
+  amount: number;
+  paidAt: string;
+  method: string;
+  dealTitle: string;
+  companyName: string;
+}
+
+export interface HistoryMonthDebtor {
+  id: string;
+  companyName: string;
+  totalAmount: number;
+  totalPaid: number;
+  debt: number;
+}
+
+export interface HistoryMonthDebtSnapshot {
+  openingBalance: number;
+  closingBalance: number;
+  debtors: HistoryMonthDebtor[];
+}
+
 export interface HistoryMonthDetail {
   deals: HistoryDealRow[];
   products: HistoryMonthProduct[];
   managers: HistoryMonthManager[];
+  payments: HistoryMonthPayment[];
+  debtSnapshot: HistoryMonthDebtSnapshot;
 }
 
 // ─── History Extended Analytics ───

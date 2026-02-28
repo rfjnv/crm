@@ -376,25 +376,31 @@ router.get(
     );
     const onTimePaymentRate = onTimeRaw[0]?.on_time_rate ? Number(onTimeRaw[0].on_time_rate) : 0;
 
-    // Aging buckets for outstanding debt
+    // Aging buckets for outstanding debt — only deals WITH due_date go into age buckets
     const agingRaw = await prisma.$queryRaw<{
       bucket_0_30: string; amount_0_30: string;
       bucket_31_60: string; amount_31_60: string;
       bucket_61_90: string; amount_61_90: string;
       bucket_90_plus: string; amount_90_plus: string;
+      no_due_date_count: string; no_due_date_amount: string;
     }[]>(
       Prisma.sql`SELECT
-        COUNT(*) FILTER (WHERE age_days BETWEEN 0 AND 30)::text as bucket_0_30,
-        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 0 AND 30), 0)::text as amount_0_30,
-        COUNT(*) FILTER (WHERE age_days BETWEEN 31 AND 60)::text as bucket_31_60,
-        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 31 AND 60), 0)::text as amount_31_60,
-        COUNT(*) FILTER (WHERE age_days BETWEEN 61 AND 90)::text as bucket_61_90,
-        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 61 AND 90), 0)::text as amount_61_90,
-        COUNT(*) FILTER (WHERE age_days > 90)::text as bucket_90_plus,
-        COALESCE(SUM(debt) FILTER (WHERE age_days > 90), 0)::text as amount_90_plus
+        COUNT(*) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 0 AND 30)::text as bucket_0_30,
+        COALESCE(SUM(debt) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 0 AND 30), 0)::text as amount_0_30,
+        COUNT(*) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 31 AND 60)::text as bucket_31_60,
+        COALESCE(SUM(debt) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 31 AND 60), 0)::text as amount_31_60,
+        COUNT(*) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 61 AND 90)::text as bucket_61_90,
+        COALESCE(SUM(debt) FILTER (WHERE due_date IS NOT NULL AND age_days BETWEEN 61 AND 90), 0)::text as amount_61_90,
+        COUNT(*) FILTER (WHERE due_date IS NOT NULL AND age_days > 90)::text as bucket_90_plus,
+        COALESCE(SUM(debt) FILTER (WHERE due_date IS NOT NULL AND age_days > 90), 0)::text as amount_90_plus,
+        COUNT(*) FILTER (WHERE due_date IS NULL)::text as no_due_date_count,
+        COALESCE(SUM(debt) FILTER (WHERE due_date IS NULL), 0)::text as no_due_date_amount
       FROM (
-        SELECT d.id, (d.amount - d.paid_amount) as debt,
-          EXTRACT(DAY FROM NOW() - COALESCE(d.due_date, d.created_at))::int as age_days
+        SELECT d.id, d.due_date, (d.amount - d.paid_amount) as debt,
+          CASE WHEN d.due_date IS NOT NULL
+            THEN EXTRACT(DAY FROM NOW() - d.due_date)::int
+            ELSE NULL
+          END as age_days
         FROM deals d
         WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.is_archived = false
           AND (d.amount - d.paid_amount) > 0
@@ -407,7 +413,9 @@ router.get(
         { label: '61-90', count: Number(agingRaw[0].bucket_61_90), amount: Number(agingRaw[0].amount_61_90) },
         { label: '90+', count: Number(agingRaw[0].bucket_90_plus), amount: Number(agingRaw[0].amount_90_plus) },
       ],
-    } : { buckets: [] };
+      noDueDateCount: Number(agingRaw[0].no_due_date_count),
+      noDueDateAmount: Number(agingRaw[0].no_due_date_amount),
+    } : { buckets: [], noDueDateCount: 0, noDueDateAmount: 0 };
 
     const financial = {
       revenueByMethod,

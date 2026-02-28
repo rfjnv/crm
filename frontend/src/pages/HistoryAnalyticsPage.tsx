@@ -162,6 +162,7 @@ export default function HistoryAnalyticsPage() {
   const areaData = monthlyTrend.flatMap((m) => [
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.revenue, type: 'Выручка', _month: m.month },
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: 'Оплачено', _month: m.month },
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.shipped, type: 'Отгружено', _month: m.month },
   ]);
   const clientBarData = monthlyTrend.map((m) => ({
     month: MONTH_LABELS[m.month] || `${m.month}`, clients: m.activeClients, _month: m.month,
@@ -249,7 +250,7 @@ export default function HistoryAnalyticsPage() {
   // ── Activity matrix columns (revenue gradient + clickable) ──
   const activityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
-    ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => {
         const revenue = getMonthRevenue(record, m);
@@ -270,7 +271,8 @@ export default function HistoryAnalyticsPage() {
         );
       },
     })),
-    { title: 'Мес.', key: 'total', width: 55, align: 'center' as const,
+    {
+      title: 'Мес.', key: 'total', width: 55, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => <Tag color="blue">{record.activeMonths.length}</Tag>,
       sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => a.activeMonths.length - b.activeMonths.length,
     },
@@ -279,10 +281,11 @@ export default function HistoryAnalyticsPage() {
   // ── Segment activity columns (with segment tag + clickable) ──
   const segmentActivityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
-    { title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 120,
+    {
+      title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 120,
       render: (v: string) => <Tag color={SEGMENT_COLORS[v]}>{SEGMENT_LABELS[v] || v}</Tag>,
     },
-    ...[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => ({
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientSegment) => {
         const isActive = record.activeMonths.includes(m);
@@ -293,7 +296,8 @@ export default function HistoryAnalyticsPage() {
         );
       },
     })),
-    { title: 'Мес.', key: 'total', width: 55, align: 'center' as const,
+    {
+      title: 'Мес.', key: 'total', width: 55, align: 'center' as const,
       render: (_: unknown, record: HistoryClientSegment) => <Tag color="blue">{record.activeMonths.length}</Tag>,
       sorter: (a: HistoryClientSegment, b: HistoryClientSegment) => a.activeMonths.length - b.activeMonths.length,
     },
@@ -720,27 +724,70 @@ export default function HistoryAnalyticsPage() {
       <Drawer title={`${MONTH_LABELS[monthDrawer || 0] || ''} 2025 — Детализация`} open={!!monthDrawer} onClose={() => setMonthDrawer(null)} width={720}>
         {monthDetail ? (
           <Tabs items={[
-            { key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
-              <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
-            )},
-            { key: 'products', label: `Товары (${monthDetail.products.length})`, children: (
-              <Table dataSource={monthDetail.products} rowKey="id" size="small" pagination={false}
-                columns={[
-                  { title: 'Товар', dataIndex: 'name', key: 'name' },
-                  { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 100 },
-                  { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v) },
-                ]}
-              />
-            )},
-            { key: 'managers', label: `Менеджеры (${monthDetail.managers.length})`, children: (
-              <Table dataSource={monthDetail.managers} rowKey="id" size="small" pagination={false}
-                columns={[
-                  { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName' },
-                  { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
-                  { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v) },
-                ]}
-              />
-            )},
+            {
+              key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
+                <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
+              )
+            },
+            {
+              key: 'products', label: `Товары (${monthDetail.products.length})`, children: (
+                <Table dataSource={monthDetail.products} rowKey="id" size="small" pagination={false}
+                  columns={[
+                    { title: 'Товар', dataIndex: 'name', key: 'name' },
+                    { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 100 },
+                    { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v) },
+                  ]}
+                />
+              )
+            },
+            {
+              key: 'managers', label: `Менеджеры (${monthDetail.managers.length})`, children: (
+                <Table dataSource={monthDetail.managers} rowKey="id" size="small" pagination={false}
+                  columns={[
+                    { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName' },
+                    { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
+                    { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v) },
+                  ]}
+                />
+              )
+            },
+            {
+              key: 'payments', label: `Поступления (${monthDetail.payments?.length || 0})`, children: (
+                <Table dataSource={monthDetail.payments || []} columns={paymentDrillCols} rowKey="id" size="small"
+                  pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+              )
+            },
+            {
+              key: 'debt', label: 'Долг', children: (
+                <>
+                  <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+                    <Col span={12}>
+                      <Card size="small">
+                        <Statistic title="Входящий остаток" value={monthDetail.debtSnapshot?.openingBalance || 0}
+                          formatter={(val) => fmtNum(Number(val))} />
+                      </Card>
+                    </Col>
+                    <Col span={12}>
+                      <Card size="small">
+                        <Statistic title="Исходящий остаток" value={monthDetail.debtSnapshot?.closingBalance || 0}
+                          formatter={(val) => fmtNum(Number(val))} />
+                      </Card>
+                    </Col>
+                  </Row>
+                  <Table dataSource={monthDetail.debtSnapshot?.debtors || []} rowKey="id" size="small"
+                    pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+                    columns={[
+                      { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
+                      { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+                      { title: 'Сумма', dataIndex: 'totalAmount', key: 'totalAmount', width: 120, render: (v: number) => fmtNum(v) },
+                      { title: 'Оплачено', dataIndex: 'totalPaid', key: 'totalPaid', width: 120, render: (v: number) => fmtNum(v) },
+                      { title: 'Долг', dataIndex: 'debt', key: 'debt', width: 120, render: (v: number) => <span style={{ color: token.colorError, fontWeight: 600 }}>{fmtNum(v)}</span> },
+                    ]}
+                    onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })}
+                  />
+                </>
+              )
+            },
           ]} />
         ) : <Spin />}
       </Drawer>

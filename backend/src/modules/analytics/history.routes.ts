@@ -40,11 +40,12 @@ router.get(
       FROM payments WHERE paid_at >= ${YEAR_START} AND paid_at < ${YEAR_END}`,
     );
 
-    // Outstanding debt across ALL years (not just 2025)
+    // Outstanding debt across ALL years — computed from payments table (source of truth)
     const debtRaw = await prisma.$queryRaw<{ total_debt: string }[]>(
-      Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as total_debt
+      Prisma.sql`SELECT COALESCE(SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)), 0)::text as total_debt
       FROM deals d
-      WHERE d.is_archived = false AND d.payment_status IN ('UNPAID', 'PARTIAL')`,
+      LEFT JOIN (SELECT deal_id, SUM(amount) as total_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.is_archived = false AND (d.amount - COALESCE(p.total_paid, 0)) > 0`,
     );
 
     const ov = overviewRaw[0];
@@ -87,42 +88,65 @@ router.get(
     const collectedMap = new Map(collectedByMonthRaw.map((r) => [r.month, Number(r.collected)]));
 
     // Opening/closing balance per month — snapshot of total outstanding debt
-    // Uses payments table for accurate point-in-time calculation (ALL deals, any year)
+    // Uses materialized CTE: pre-aggregate payments per deal, then CROSS JOIN with months
     const balanceRaw = await prisma.$queryRaw<
       { month: number; opening_balance: string; closing_balance: string }[]
     >(
-      Prisma.sql`SELECT m as month,
-        (SELECT COALESCE(SUM(GREATEST(d.amount - COALESCE(
-          (SELECT SUM(p.amount) FROM payments p WHERE p.deal_id = d.id
-           AND p.paid_at < make_timestamptz(2025, m, 1, 0, 0, 0, ${TZ})),
-          0), 0)), 0)
-         FROM deals d
-         WHERE d.is_archived = false
-           AND d.created_at < make_timestamptz(2025, m, 1, 0, 0, 0, ${TZ})
-        )::text as opening_balance,
-        (SELECT COALESCE(SUM(GREATEST(d.amount - COALESCE(
-          (SELECT SUM(p.amount) FROM payments p WHERE p.deal_id = d.id
-           AND p.paid_at < make_timestamptz(2025, m, 1, 0, 0, 0, ${TZ}) + interval '1 month'),
-          0), 0)), 0)
-         FROM deals d
-         WHERE d.is_archived = false
-           AND d.created_at < make_timestamptz(2025, m, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-        )::text as closing_balance
-      FROM generate_series(1, 12) as m
-      ORDER BY m`,
+      Prisma.sql`WITH deal_paid AS (
+        SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
+          m.month,
+          COALESCE(SUM(p.amount) FILTER (
+            WHERE p.paid_at < make_timestamptz(2025, m.month, 1, 0, 0, 0, ${TZ})
+          ), 0) as paid_before_open,
+          COALESCE(SUM(p.amount) FILTER (
+            WHERE p.paid_at < make_timestamptz(2025, m.month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          ), 0) as paid_before_close
+        FROM deals d
+        CROSS JOIN generate_series(1, 12) as m(month)
+        LEFT JOIN payments p ON p.deal_id = d.id
+        WHERE d.is_archived = false
+        GROUP BY d.id, d.amount, d.created_at, m.month
+      )
+      SELECT month,
+        COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
+          WHERE created_at < make_timestamptz(2025, month, 1, 0, 0, 0, ${TZ})
+        ), 0)::text as opening_balance,
+        COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
+          WHERE created_at < make_timestamptz(2025, month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        ), 0)::text as closing_balance
+      FROM deal_paid
+      GROUP BY month
+      ORDER BY month`,
     );
     const balanceMap = new Map(balanceRaw.map((r) => [r.month, { opening: Number(r.opening_balance), closing: Number(r.closing_balance) }]));
+
+    // Shipped per month — deals that were actually shipped (from shipments table)
+    const shippedByMonthRaw = await prisma.$queryRaw<
+      { month: number; shipped: string }[]
+    >(
+      Prisma.sql`SELECT
+        EXTRACT(MONTH FROM s.shipped_at AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(d.amount), 0)::text as shipped
+      FROM shipments s
+      JOIN deals d ON d.id = s.deal_id
+      WHERE d.is_archived = false
+        AND s.shipped_at >= ${YEAR_START} AND s.shipped_at < ${YEAR_END}
+      GROUP BY EXTRACT(MONTH FROM s.shipped_at AT TIME ZONE ${TZ})
+      ORDER BY month`,
+    );
+    const shippedMap = new Map(shippedByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
 
     const monthlyTrend = revenueByMonthRaw.map((r) => ({
       month: r.month,
       revenue: Number(r.revenue),
       collected: collectedMap.get(r.month) ?? 0,
+      shipped: shippedMap.get(r.month) ?? 0,
       activeClients: Number(r.active_clients),
       openingBalance: balanceMap.get(r.month)?.opening ?? 0,
       closingBalance: balanceMap.get(r.month)?.closing ?? 0,
     }));
 
-    // ── 3. Top clients ──
+    // ── 3. Top clients — paid from payments table (source of truth) ──
     const topClientsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -136,12 +160,18 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as revenue,
-        COALESCE(SUM(d.paid_amount), 0)::text as paid,
-        COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+        COALESCE(pc.total_paid, 0)::text as paid,
+        (COALESCE(SUM(d.amount), 0) - COALESCE(pc.total_paid, 0))::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (
+        SELECT p.client_id, SUM(p.amount) as total_paid
+        FROM payments p
+        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        GROUP BY p.client_id
+      ) pc ON pc.client_id = c.id
       WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
-      GROUP BY c.id, c.company_name
+      GROUP BY c.id, c.company_name, pc.total_paid
       ORDER BY SUM(d.amount) DESC
       LIMIT 30`,
     );
@@ -187,7 +217,7 @@ router.get(
       uniqueBuyers: Number(r.unique_buyers),
     }));
 
-    // ── 5. Manager stats ──
+    // ── 5. Manager stats — collected from payments table (source of truth) ──
     const managersRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -201,12 +231,19 @@ router.get(
       Prisma.sql`SELECT u.id, u.full_name,
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as revenue,
-        COALESCE(SUM(d.paid_amount), 0)::text as collected,
+        COALESCE(mc.total_collected, 0)::text as collected,
         COUNT(DISTINCT d.client_id)::text as clients
       FROM deals d
       JOIN users u ON u.id = d.manager_id
+      LEFT JOIN (
+        SELECT d2.manager_id, SUM(p.amount) as total_collected
+        FROM payments p
+        JOIN deals d2 ON d2.id = p.deal_id
+        WHERE p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+        GROUP BY d2.manager_id
+      ) mc ON mc.manager_id = u.id
       WHERE d.created_at >= ${YEAR_START} AND d.created_at < ${YEAR_END} AND d.is_archived = false
-      GROUP BY u.id, u.full_name
+      GROUP BY u.id, u.full_name, mc.total_collected
       ORDER BY SUM(d.amount) DESC`,
     );
     const managers = managersRaw.map((r) => ({
@@ -236,7 +273,7 @@ router.get(
       count: Number(r.count),
     }));
 
-    // ── 7. Debtors ──
+    // ── 7. Debtors — computed from payments table (source of truth) ──
     const debtorsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -248,15 +285,15 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         COALESCE(SUM(d.amount), 0)::text as total_amount,
-        COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+        COALESCE(SUM(COALESCE(p.total_paid, 0)), 0)::text as total_paid,
+        COALESCE(SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)), 0)::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (SELECT deal_id, SUM(amount) as total_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
       WHERE d.is_archived = false
-        AND d.payment_status IN ('UNPAID', 'PARTIAL')
       GROUP BY c.id, c.company_name
-      HAVING SUM(d.amount - d.paid_amount) > 0
-      ORDER BY SUM(d.amount - d.paid_amount) DESC
+      HAVING SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)) > 0
+      ORDER BY SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)) DESC
       LIMIT 30`,
     );
     const debtors = debtorsRaw.map((r) => ({
@@ -470,6 +507,78 @@ router.get(
       ORDER BY SUM(d.amount) DESC`,
     );
 
+    // Payments in this month (by paid_at — cashflow)
+    const paymentsRaw = await prisma.$queryRaw<
+      {
+        id: string;
+        amount: string;
+        paid_at: Date;
+        method: string;
+        deal_title: string;
+        company_name: string;
+      }[]
+    >(
+      Prisma.sql`SELECT p.id, p.amount::text, p.paid_at,
+        COALESCE(p.method, 'Не указан') as method,
+        d.title as deal_title, c.company_name
+      FROM payments p
+      JOIN deals d ON d.id = p.deal_id
+      JOIN clients c ON c.id = p.client_id
+      WHERE EXTRACT(MONTH FROM p.paid_at AT TIME ZONE ${TZ}) = ${month}
+        AND p.paid_at >= ${YEAR_START} AND p.paid_at < ${YEAR_END}
+      ORDER BY p.amount DESC`,
+    );
+
+    // Debt snapshot at end of month — opening/closing balance + top debtors
+    const monthBalanceRaw = await prisma.$queryRaw<
+      { opening_balance: string; closing_balance: string }[]
+    >(
+      Prisma.sql`WITH deal_paid AS (
+        SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
+          COALESCE(SUM(p.amount) FILTER (
+            WHERE p.paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ})
+          ), 0) as paid_before_open,
+          COALESCE(SUM(p.amount) FILTER (
+            WHERE p.paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          ), 0) as paid_before_close
+        FROM deals d
+        LEFT JOIN payments p ON p.deal_id = d.id
+        WHERE d.is_archived = false
+        GROUP BY d.id, d.amount, d.created_at
+      )
+      SELECT
+        COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
+          WHERE created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ})
+        ), 0)::text as opening_balance,
+        COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
+          WHERE created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        ), 0)::text as closing_balance
+      FROM deal_paid`,
+    );
+
+    const debtSnapshotDebtorsRaw = await prisma.$queryRaw<
+      { id: string; company_name: string; total_amount: string; total_paid: string; debt: string }[]
+    >(
+      Prisma.sql`SELECT c.id, c.company_name,
+        SUM(d.amount)::text as total_amount,
+        COALESCE(SUM(p_paid.total_paid), 0)::text as total_paid,
+        (SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0))::text as debt
+      FROM deals d
+      JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (
+        SELECT deal_id, SUM(amount) as total_paid
+        FROM payments
+        WHERE paid_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        GROUP BY deal_id
+      ) p_paid ON p_paid.deal_id = d.id
+      WHERE d.is_archived = false
+        AND d.created_at < make_timestamptz(2025, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+      GROUP BY c.id, c.company_name
+      HAVING SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) > 0
+      ORDER BY SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) DESC
+      LIMIT 30`,
+    );
+
     res.json({
       deals: dealsRaw.map((d) => ({
         id: d.id,
@@ -494,6 +603,25 @@ router.get(
         dealsCount: Number(m.deals_count),
         revenue: Number(m.revenue),
       })),
+      payments: paymentsRaw.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        paidAt: p.paid_at,
+        method: p.method,
+        dealTitle: p.deal_title,
+        companyName: p.company_name,
+      })),
+      debtSnapshot: {
+        openingBalance: Number(monthBalanceRaw[0]?.opening_balance ?? 0),
+        closingBalance: Number(monthBalanceRaw[0]?.closing_balance ?? 0),
+        debtors: debtSnapshotDebtorsRaw.map((r) => ({
+          id: r.id,
+          companyName: r.company_name,
+          totalAmount: Number(r.total_amount),
+          totalPaid: Number(r.total_paid),
+          debt: Number(r.debt),
+        })),
+      },
     });
   }),
 );
