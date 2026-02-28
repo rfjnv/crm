@@ -1751,22 +1751,40 @@ export class DealsService {
     };
 
     await prisma.$transaction(async (tx) => {
-      // Reverse inventory movements: return stock for OUT, deduct for IN
+      // Reverse inventory movements: keep history, unlink from deal, create reverse entries
       if (deal.movements.length > 0) {
+        const dealLabel = deal.title || id.slice(0, 8);
         for (const mov of deal.movements) {
           if (mov.type === 'OUT') {
+            // Return stock to warehouse
             await tx.product.update({
               where: { id: mov.productId },
               data: { stock: { increment: Number(mov.quantity) } },
             });
+            // Create reverse IN movement for audit trail
+            await tx.inventoryMovement.create({
+              data: {
+                productId: mov.productId,
+                type: 'IN',
+                quantity: Number(mov.quantity),
+                dealId: null,
+                note: `Возврат на склад: сделка "${dealLabel}" удалена`,
+                createdBy: user.userId,
+              },
+            });
           } else if (mov.type === 'IN') {
+            // Reverse previous returns
             await tx.product.update({
               where: { id: mov.productId },
               data: { stock: { decrement: Number(mov.quantity) } },
             });
           }
         }
-        await tx.inventoryMovement.deleteMany({ where: { dealId: id } });
+        // Unlink original movements from deal (keep history)
+        await tx.inventoryMovement.updateMany({
+          where: { dealId: id },
+          data: { dealId: null, note: `[Сделка "${dealLabel}" удалена] ` },
+        });
       }
 
       await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
