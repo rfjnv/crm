@@ -356,30 +356,64 @@ router.get(
       count: Number(r.count),
     }));
 
-    // Avg payment delay (days from deal creation to first payment)
-    const delayRaw = await prisma.$queryRaw<{ avg_delay: string | null }[]>(
-      Prisma.sql`SELECT AVG(EXTRACT(EPOCH FROM (p.min_paid - d.created_at)) / 86400)::text as avg_delay
+    // Avg payment delay (days late relative to due_date, using last payment)
+    const delayRaw = await prisma.$queryRaw<{ avg_days_late: string | null }[]>(
+      Prisma.sql`SELECT AVG(GREATEST(0, EXTRACT(EPOCH FROM (p.last_paid - d.due_date)) / 86400))::text as avg_days_late
       FROM deals d
-      JOIN (SELECT deal_id, MIN(paid_at) as min_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
-      WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+      JOIN (SELECT deal_id, MAX(paid_at) as last_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.due_date IS NOT NULL AND d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
     );
-    const avgPaymentDelayDays = delayRaw[0]?.avg_delay ? Math.round(Number(delayRaw[0].avg_delay) * 10) / 10 : 0;
+    const avgPaymentDelayDays = delayRaw[0]?.avg_days_late ? Math.round(Number(delayRaw[0].avg_days_late) * 10) / 10 : 0;
 
-    // On-time payment rate
+    // On-time payment rate (last payment before or on due_date)
     const onTimeRaw = await prisma.$queryRaw<{ on_time_rate: string | null }[]>(
       Prisma.sql`SELECT
-        (COUNT(*) FILTER (WHERE d.due_date IS NOT NULL AND p.min_paid <= d.due_date)::float /
-        NULLIF(COUNT(*) FILTER (WHERE d.due_date IS NOT NULL), 0))::text as on_time_rate
+        (COUNT(*) FILTER (WHERE p.last_paid <= d.due_date)::float /
+        NULLIF(COUNT(*), 0))::text as on_time_rate
       FROM deals d
-      JOIN (SELECT deal_id, MIN(paid_at) as min_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
-      WHERE d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+      JOIN (SELECT deal_id, MAX(paid_at) as last_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.due_date IS NOT NULL AND d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
     );
     const onTimePaymentRate = onTimeRaw[0]?.on_time_rate ? Number(onTimeRaw[0].on_time_rate) : 0;
+
+    // Aging buckets for outstanding debt
+    const agingRaw = await prisma.$queryRaw<{
+      bucket_0_30: string; amount_0_30: string;
+      bucket_31_60: string; amount_31_60: string;
+      bucket_61_90: string; amount_61_90: string;
+      bucket_90_plus: string; amount_90_plus: string;
+    }[]>(
+      Prisma.sql`SELECT
+        COUNT(*) FILTER (WHERE age_days BETWEEN 0 AND 30)::text as bucket_0_30,
+        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 0 AND 30), 0)::text as amount_0_30,
+        COUNT(*) FILTER (WHERE age_days BETWEEN 31 AND 60)::text as bucket_31_60,
+        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 31 AND 60), 0)::text as amount_31_60,
+        COUNT(*) FILTER (WHERE age_days BETWEEN 61 AND 90)::text as bucket_61_90,
+        COALESCE(SUM(debt) FILTER (WHERE age_days BETWEEN 61 AND 90), 0)::text as amount_61_90,
+        COUNT(*) FILTER (WHERE age_days > 90)::text as bucket_90_plus,
+        COALESCE(SUM(debt) FILTER (WHERE age_days > 90), 0)::text as amount_90_plus
+      FROM (
+        SELECT d.id, (d.amount - d.paid_amount) as debt,
+          EXTRACT(DAY FROM NOW() - COALESCE(d.due_date, d.created_at))::int as age_days
+        FROM deals d
+        WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.is_archived = false
+          AND (d.amount - d.paid_amount) > 0
+      ) sub`,
+    );
+    const aging = agingRaw[0] ? {
+      buckets: [
+        { label: '0-30', count: Number(agingRaw[0].bucket_0_30), amount: Number(agingRaw[0].amount_0_30) },
+        { label: '31-60', count: Number(agingRaw[0].bucket_31_60), amount: Number(agingRaw[0].amount_31_60) },
+        { label: '61-90', count: Number(agingRaw[0].bucket_61_90), amount: Number(agingRaw[0].amount_61_90) },
+        { label: '90+', count: Number(agingRaw[0].bucket_90_plus), amount: Number(agingRaw[0].amount_90_plus) },
+      ],
+    } : { buckets: [] };
 
     const financial = {
       revenueByMethod,
       avgPaymentDelayDays,
       onTimePaymentRate,
+      aging,
     };
 
     res.json({ clients, products, managers, financial });

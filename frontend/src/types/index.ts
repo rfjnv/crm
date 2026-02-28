@@ -816,8 +816,10 @@ export interface HistoryOverview {
 export interface HistoryMonthlyTrend {
   month: number;
   revenue: number;
-  paid: number;
+  collected: number;
   activeClients: number;
+  openingBalance: number;
+  closingBalance: number;
 }
 
 export interface HistoryTopClient {
@@ -1043,4 +1045,26 @@ export interface HistoryProductBuyer {
 export interface HistoryProductBuyersData {
   productName: string;
   buyers: HistoryProductBuyer[];
+}
+
+// ─── History Cashflow ───
+
+export interface HistoryCashflowMonthly {
+  month: number;
+  collected: number;
+  paymentsCount: number;
+}
+
+export interface HistoryCashflowClient {
+  id: string;
+  companyName: string;
+  collected: number;
+  paymentsCount: number;
+}
+
+export interface HistoryCashflowData {
+  monthly: HistoryCashflowMonthly[];
+  topClients: HistoryCashflowClient[];
+  totalCollected: number;
+  totalPayments: number;
 }

@@ -161,7 +161,7 @@ export default function HistoryAnalyticsPage() {
   // ── Chart data ──
   const areaData = monthlyTrend.flatMap((m) => [
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.revenue, type: 'Выручка', _month: m.month },
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.paid, type: 'Оплачено', _month: m.month },
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: 'Оплачено', _month: m.month },
   ]);
   const clientBarData = monthlyTrend.map((m) => ({
     month: MONTH_LABELS[m.month] || `${m.month}`, clients: m.activeClients, _month: m.month,
@@ -592,7 +592,7 @@ export default function HistoryAnalyticsPage() {
               title: MONTH_LABELS[am], key: `a${am}`, width: 60, align: 'center' as const,
               render: (_: unknown, record: { cohort: number }) => {
                 const count = cohortMap.get(`${record.cohort}-${am}`) || 0;
-                if (!count) return <span style={{ color: '#ccc' }}>—</span>;
+                if (!count) return <span style={{ color: token.colorTextDisabled }}>—</span>;
                 const maxCount = Math.max(...Array.from(cohortMap.values()));
                 const intensity = maxCount > 0 ? count / maxCount : 0;
                 return (
@@ -622,7 +622,7 @@ export default function HistoryAnalyticsPage() {
         {(extended.segmentSummary || []).map((seg) => (
           <Col xs={12} sm={8} lg={4} key={seg.segment}>
             <Card size="small" hoverable onClick={() => setSegmentFilter([seg.segment])}
-              style={{ borderLeft: `4px solid ${SEGMENT_COLORS[seg.segment] || '#ccc'}`, cursor: 'pointer' }}>
+              style={{ borderLeft: `4px solid ${SEGMENT_COLORS[seg.segment] || token.colorBorder}`, cursor: 'pointer' }}>
               <Statistic title={SEGMENT_LABELS[seg.segment] || seg.segment} value={seg.count} suffix="клиентов" />
               <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
                 Выручка: {fmtNum(seg.totalRevenue)}
@@ -640,7 +640,7 @@ export default function HistoryAnalyticsPage() {
               const segPieDomain = segPieData.map((d) => d.type);
               const segPieRange = segPieData.map((d) => {
                 const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === d.type);
-                return seg ? SEGMENT_COLORS[seg[0]] : '#ccc';
+                return seg ? SEGMENT_COLORS[seg[0]] : token.colorBorder;
               });
               return (
                 <Pie
@@ -663,7 +663,7 @@ export default function HistoryAnalyticsPage() {
               const segBarDomain = segBarData.map((d) => d.segment);
               const segBarRange = segBarData.map((d) => {
                 const seg = Object.entries(SEGMENT_LABELS).find(([, v]) => v === d.segment);
-                return seg ? SEGMENT_COLORS[seg[0]] : '#ccc';
+                return seg ? SEGMENT_COLORS[seg[0]] : token.colorBorder;
               });
               return (
                 <Bar
