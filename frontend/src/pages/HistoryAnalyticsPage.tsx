@@ -16,7 +16,7 @@ import { useThemeStore } from '../store/themeStore';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
-  DataQualityProblemRow, ExchangeProduct, ExchangeClient, PrepaymentClient,
+  ExchangeProduct, ExchangeClient, PrepaymentClient,
 } from '../types';
 
 const { Title } = Typography;
