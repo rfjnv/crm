@@ -641,3 +641,20 @@ model PushSubscription {
   @@index([userId])
   @@map("push_subscriptions")
 }
+
+// ==================== ANALYTICS SNAPSHOTS ====================
+
+model MonthlySnapshot {
+  id        String   @id @default(uuid())
+  year      Int
+  month     Int      // 0 = full-year snapshot, 1-12 = per-month
+  scope     String   @default("admin")
+  type      String   // 'overview' | 'extended' | 'data-quality' | 'exchange' | 'prepayments' | 'cashflow' | 'month-detail'
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month, scope, type])
+  @@index([year, month])
+  @@map("monthly_snapshots")
+}

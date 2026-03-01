@@ -1138,6 +1138,7 @@ export interface DataQualityProblemRow {
   unit: string;
   qty: number;
   opType: string;
+  dealId: string;
   dealTitle: string;
   companyName: string;
   managerName: string;

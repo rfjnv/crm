@@ -16,7 +16,8 @@
     "db:import-excel": "tsx prisma/import-excel.ts",
     "db:import-history": "tsx prisma/import-history.ts",
     "db:deactivate-imports": "tsx prisma/deactivate-imports.ts",
-    "db:cleanup": "tsx prisma/cleanup-test-data.ts"
+    "db:cleanup": "tsx prisma/cleanup-test-data.ts",
+    "db:snapshots": "tsx src/scripts/generate-snapshots.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",

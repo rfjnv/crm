@@ -44,7 +44,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 
 const OP_TYPE_LABELS: Record<string, string> = {
   K: 'Карз (к)', N: 'Наличные (н)', NK: 'Н/К', P: 'Перечисление (п)',
-  PK: 'П/К', PP: 'Предоплата (пп)', EXCHANGE: 'Обмен', F: 'Фактура (ф)',
+  PK: 'П/К', PP: 'Предоплата (пп)', EXCHANGE: 'Обмен', F: 'Фотих (ф)',
   UNKNOWN: 'Неизвестно', 'НЕ УКАЗАН': 'Не указан',
 };
 
@@ -889,17 +889,18 @@ export default function HistoryAnalyticsPage() {
       >
         <Table dataSource={filteredProblemRows} rowKey="id" size="small"
           pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} строк` }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1050 }}
           columns={[
             { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
             { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
             { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 80, render: (v: number) => v.toLocaleString('ru-RU') },
-            { title: 'Тип', dataIndex: 'opType', key: 'opType', width: 100, render: (v: string) => <Tag>{OP_TYPE_LABELS[v] || v}</Tag> },
-            { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+            { title: 'Тип', dataIndex: 'opType', key: 'opType', width: 150, render: (v: string) => <Tag>{OP_TYPE_LABELS[v] || v}</Tag> },
+            { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', width: 180, ellipsis: true },
             { title: 'Менеджер', dataIndex: 'managerName', key: 'managerName', width: 120 },
             { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
             { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => new Date(v).toLocaleDateString('ru-RU') },
           ]}
+          onRow={(record) => ({ onClick: () => navigate(`/deals/${record.dealId}`), style: clickableRow })}
         />
       </Card>
     </>
