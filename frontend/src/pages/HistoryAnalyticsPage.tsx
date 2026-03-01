@@ -190,6 +190,13 @@ export default function HistoryAnalyticsPage() {
     return allRevenues.reduce((a, b) => Math.max(a, b), 1);
   }, [data?.clientActivity]);
 
+  // Only show months that have data (e.g. for 2026 with Jan+Feb only → [1, 2])
+  const visibleMonths = useMemo(() => {
+    if (!data?.monthlyTrend?.length) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const maxMonth = Math.max(...data.monthlyTrend.map((m) => m.month));
+    return Array.from({ length: maxMonth }, (_, i) => i + 1);
+  }, [data?.monthlyTrend]);
+
   if (isLoading || !data) {
     return <div style={{ textAlign: 'center', marginTop: 120 }}><Spin size="large" /></div>;
   }
@@ -293,7 +300,7 @@ export default function HistoryAnalyticsPage() {
   // ── Activity matrix columns (revenue gradient + clickable) ──
   const activityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => ({
+    ...visibleMonths.map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => {
         const revenue = getMonthRevenue(record, m);
@@ -328,7 +335,7 @@ export default function HistoryAnalyticsPage() {
       title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 120,
       render: (v: string) => <Tag color={SEGMENT_COLORS[v]}>{SEGMENT_LABELS[v] || v}</Tag>,
     },
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => ({
+    ...visibleMonths.map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientSegment) => {
         const isActive = record.activeMonths.includes(m);
