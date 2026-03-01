@@ -203,6 +203,8 @@ export default function HistoryAnalyticsPage() {
 
   const { overview, monthlyTrend, topClients, topProducts, managers, paymentMethods, debtors, clientActivity } = data;
 
+  console.log('monthlyTrend from API', monthlyTrend);
+
   const chartTheme = isDark ? 'classicDark' : 'classic';
   const axisStyle = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } };
   const axisStyleNoFmt = { x: { labelFill: token.colorText }, y: { labelFill: token.colorText } };
@@ -214,6 +216,7 @@ export default function HistoryAnalyticsPage() {
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: 'Оплачено', _month: m.month },
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.shipped, type: 'Отгружено', _month: m.month },
   ]);
+  console.log('chartData used by chart', areaData);
   const clientBarData = monthlyTrend.map((m) => ({
     month: MONTH_LABELS[m.month] || `${m.month}`, clients: m.activeClients, _month: m.month,
   }));
