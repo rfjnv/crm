@@ -19,9 +19,9 @@ function getYearBounds(year: number) {
 
 function parseYear(req: Request): number {
   const raw = req.query.year;
-  if (!raw) return 2025;
+  if (!raw) return new Date().getFullYear();
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 2020 || n > 2099) return 2025;
+  if (!Number.isInteger(n) || n < 2020 || n > 2099) return new Date().getFullYear();
   return n;
 }
 

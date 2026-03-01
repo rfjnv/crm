@@ -77,7 +77,7 @@ export default function HistoryAnalyticsPage() {
   const [segmentFilter, setSegmentFilter] = useState<string[]>([]);
   const [dqSearch, setDqSearch] = useState('');
   const [dqOpTypeFilter, setDqOpTypeFilter] = useState<string[]>([]);
-  const [year, setYear] = useState(2025);
+  const [year, setYear] = useState(new Date().getFullYear());
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -916,10 +916,10 @@ export default function HistoryAnalyticsPage() {
         <Segmented
           value={year}
           onChange={(val) => setYear(val as number)}
-          options={[
-            { label: '2025', value: 2025 },
-            { label: '2026', value: 2026 },
-          ]}
+          options={Array.from({ length: new Date().getFullYear() - 2025 + 1 }, (_, i) => ({
+            label: String(2025 + i),
+            value: 2025 + i,
+          }))}
         />
       </div>
 
