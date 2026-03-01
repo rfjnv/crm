@@ -111,10 +111,10 @@ router.get(
         SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
           m.month,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}, m.month, 1, 0, 0, 0, ${TZ})
+            WHERE p.paid_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ})
           ), 0) as paid_before_open,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}, m.month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+            WHERE p.paid_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
           ), 0) as paid_before_close
         FROM deals d
         CROSS JOIN generate_series(1, 12) as m(month)
@@ -124,10 +124,10 @@ router.get(
       )
       SELECT month,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
-          WHERE created_at < make_timestamptz(${year}, month, 1, 0, 0, 0, ${TZ})
+          WHERE created_at < make_timestamptz(${year}::int, month::int, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
-          WHERE created_at < make_timestamptz(${year}, month, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          WHERE created_at < make_timestamptz(${year}::int, month::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM deal_paid
       GROUP BY month
@@ -561,10 +561,10 @@ router.get(
       Prisma.sql`WITH deal_paid AS (
         SELECT d.id as deal_id, d.amount as deal_amount, d.created_at,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ})
+            WHERE p.paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ})
           ), 0) as paid_before_open,
           COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+            WHERE p.paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
           ), 0) as paid_before_close
         FROM deals d
         LEFT JOIN payments p ON p.deal_id = d.id
@@ -573,10 +573,10 @@ router.get(
       )
       SELECT
         COALESCE(SUM(GREATEST(deal_amount - paid_before_open, 0)) FILTER (
-          WHERE created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ})
+          WHERE created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
         COALESCE(SUM(GREATEST(deal_amount - paid_before_close, 0)) FILTER (
-          WHERE created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+          WHERE created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM deal_paid`,
     );
@@ -593,11 +593,11 @@ router.get(
       LEFT JOIN (
         SELECT deal_id, SUM(amount) as total_paid
         FROM payments
-        WHERE paid_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        WHERE paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         GROUP BY deal_id
       ) p_paid ON p_paid.deal_id = d.id
       WHERE d.is_archived = false
-        AND d.created_at < make_timestamptz(${year}, ${month}, 1, 0, 0, 0, ${TZ}) + interval '1 month'
+        AND d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
       GROUP BY c.id, c.company_name
       HAVING SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) > 0
       ORDER BY SUM(d.amount) - COALESCE(SUM(p_paid.total_paid), 0) DESC
