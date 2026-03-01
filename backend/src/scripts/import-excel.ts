@@ -46,7 +46,20 @@ const COL_PRICE = 7;
 const COL_OP_TYPE = 9;    // Column J — тип операции (к, н, н/к, п, п/к, пп, обмен, ф)
 const COL_PAYMENT_DATE = 27;
 
-const MANAGERS = ['дилмурод', 'тимур', 'мадина', 'фотих', 'бону', 'фарход', 'дилноза', 'комила', 'хадича'];
+// Mapping: Excel manager name (lowercase Cyrillic) → real login
+const MANAGER_LOGIN_MAP: Record<string, string> = {
+  'дилмурод': 'dilmurod',
+  'тимур': 'timur',
+  'мадина': 'madina',
+  'фотих': 'fotix',
+  'бону': 'bonu',
+  'фарход': 'admin',
+  'дилноза': 'dilnoza',
+  'комила': 'komila',
+  'хадича': 'xadicha',
+};
+
+const MANAGERS = Object.keys(MANAGER_LOGIN_MAP);
 
 // Alias mapping: normalize manager names before lookup
 const MANAGER_ALIASES: Record<string, string> = {
@@ -105,19 +118,24 @@ function mapOpType(value: unknown): string | null {
 
 async function createManagers(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const hashed = await hashPassword('import2025');
 
   for (const name of MANAGERS) {
-    const fullName = name.charAt(0).toUpperCase() + name.slice(1);
-    const login = `${name}_import`;
+    const login = MANAGER_LOGIN_MAP[name];
+    if (!login) {
+      console.log(`  WARNING: No login mapped for "${name}" — skipping`);
+      continue;
+    }
 
     const existing = await prisma.user.findFirst({ where: { login } });
     if (existing) {
       map.set(name, existing.id);
-      console.log(`  Manager exists: ${fullName} → ${existing.id}`);
+      console.log(`  Manager found: ${login} (${existing.fullName}) → ${existing.id}`);
       continue;
     }
 
+    // Create the account if it doesn't exist
+    const hashed = await hashPassword('changeme2026');
+    const fullName = name.charAt(0).toUpperCase() + name.slice(1);
     const user = await prisma.user.create({
       data: {
         login,
@@ -128,7 +146,7 @@ async function createManagers(): Promise<Map<string, string>> {
       },
     });
     map.set(name, user.id);
-    console.log(`  Created manager: ${fullName} → ${user.id}`);
+    console.log(`  Created manager: ${login} (${fullName}) → ${user.id}`);
   }
 
   return map;
