@@ -10,7 +10,6 @@
 import * as XLSX from 'xlsx';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
-import { hashPassword } from '../lib/password';
 
 const prisma = new PrismaClient();
 
@@ -133,20 +132,9 @@ async function createManagers(): Promise<Map<string, string>> {
       continue;
     }
 
-    // Create the account if it doesn't exist
-    const hashed = await hashPassword('changeme2026');
-    const fullName = name.charAt(0).toUpperCase() + name.slice(1);
-    const user = await prisma.user.create({
-      data: {
-        login,
-        password: hashed,
-        fullName,
-        role: 'MANAGER',
-        permissions: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
-      },
-    });
-    map.set(name, user.id);
-    console.log(`  Created manager: ${login} (${fullName}) → ${user.id}`);
+    // Do NOT create new users automatically - require manual creation
+    console.error('  WARNING: Manager "' + login + '" (from "' + name + '") not found. Skipping.');
+    console.error('           Create the user manually before running import.');
   }
 
   return map;
