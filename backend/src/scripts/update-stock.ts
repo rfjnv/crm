@@ -1,16 +1,23 @@
 /**
- * Update product stock from warehouse Excel file.
- * Run: cd backend && npx tsx src/scripts/update-stock.ts [file]
+ * Reconcile product stock from warehouse Excel file.
+ * Run: cd backend && npx tsx src/scripts/update-stock.ts [file] [--dry-run]
  * Default file: ../остаток 02 (3).xlsx
  *
  * Strategy: DB products have SHORT informal names from deal history.
  * Excel has LONG formal names with format column. We match using multiple
  * heuristics: format-based, category-specific, and manual overrides.
+ *
+ * This script:
+ * 1. Creates a JSON backup of products & movements before any changes.
+ * 2. For every matched product whose stock differs, creates a CORRECTION
+ *    InventoryMovement (proper adjustment) inside a transaction.
+ * 3. Prints a full reconciliation report.
  */
 
 import { PrismaClient } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import path from 'path';
+import fs from 'fs';
 
 const prisma = new PrismaClient();
 
@@ -589,14 +596,19 @@ function matchDbToExcel(
 
 // ─── Main ───
 
+const SYSTEM_USER_ID = 'SYSTEM-STOCK-RECONCILIATION';
+
 async function main() {
   const DRY_RUN = process.argv.includes('--dry-run');
 
-  console.log('='.repeat(60));
-  console.log('  STOCK UPDATE FROM EXCEL' + (DRY_RUN ? ' (DRY RUN)' : ''));
-  console.log('='.repeat(60));
+  console.log('='.repeat(80));
+  console.log('  STOCK RECONCILIATION' + (DRY_RUN ? ' (DRY RUN)' : ''));
+  console.log('='.repeat(80));
 
-  const fileArg = process.argv[2] || '../остаток 02 (3).xlsx';
+  // ── 1. Read Excel ──
+
+  const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
+  const fileArg = args[0] || '../остаток 02 (3).xlsx';
   const filePath = path.resolve(process.cwd(), fileArg);
   console.log('\nFile:', filePath);
 
@@ -604,7 +616,6 @@ async function main() {
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const data: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  // Parse Excel products (last occurrence wins for stock)
   const excelMap = new Map<string, ExcelProduct>();
   for (let i = 3; i < data.length; i++) {
     const row = data[i] as unknown[];
@@ -624,7 +635,8 @@ async function main() {
 
   const index = buildExcelIndex(excelProducts);
 
-  // Load DB products (only IMPORT- ones, skip manually created)
+  // ── 2. Load DB products ──
+
   const dbProducts: DbProduct[] = (await prisma.product.findMany({
     where: { isActive: true },
     select: { id: true, name: true, format: true, unit: true, stock: true, sku: true },
@@ -637,13 +649,38 @@ async function main() {
 
   console.log('Active DB products:', dbProducts.length);
 
-  // Match
+  // ── 3. Backup before changes ──
+
+  if (!DRY_RUN) {
+    const backupDir = path.resolve(__dirname, '../../backups');
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+
+    const allProducts = await prisma.product.findMany({ orderBy: { name: 'asc' } });
+    fs.writeFileSync(
+      path.join(backupDir, `products-backup-${ts}.json`),
+      JSON.stringify(allProducts, null, 2),
+    );
+
+    const allMovements = await prisma.inventoryMovement.findMany({ orderBy: { createdAt: 'desc' } });
+    fs.writeFileSync(
+      path.join(backupDir, `movements-backup-${ts}.json`),
+      JSON.stringify(allMovements, null, 2),
+    );
+
+    console.log(`\nBackup saved to: ${backupDir}/`);
+    console.log(`  products-backup-${ts}.json  (${allProducts.length} records)`);
+    console.log(`  movements-backup-${ts}.json (${allMovements.length} records)`);
+  }
+
+  // ── 4. Match ──
+
   const matches: MatchResult[] = [];
-  const unmatched: DbProduct[] = [];
+  const unmatchedDb: DbProduct[] = [];
   const matchedExcelKeys = new Set<string>();
 
   for (const dbp of dbProducts) {
-    // Skip non-import products (manually created ones like Визитки, Баннеры, test)
     if (!dbp.sku.startsWith('IMPORT-')) continue;
 
     const result = matchDbToExcel(dbp, excelProducts, index);
@@ -651,55 +688,158 @@ async function main() {
       matches.push({ dbProduct: dbp, excelProduct: result.excel, method: result.method });
       matchedExcelKeys.add(result.excel.key);
     } else {
-      unmatched.push(dbp);
+      unmatchedDb.push(dbp);
     }
   }
 
-  // Report matches
-  console.log('\n--- MATCHED PRODUCTS ---');
-  let updated = 0;
+  const unmatchedExcel = excelProducts.filter(p => !matchedExcelKeys.has(p.key));
+
+  // ── 5. Reconcile with CORRECTION movements ──
+
+  interface CorrectionRecord {
+    productId: string;
+    productName: string;
+    oldStock: number;
+    newStock: number;
+    diff: number;
+    method: string;
+    excelName: string;
+  }
+
+  const corrections: CorrectionRecord[] = [];
   let unchanged = 0;
+
+  console.log('\n─── RECONCILIATION ───\n');
 
   for (const m of matches) {
     const oldStock = m.dbProduct.stock;
     const newStock = m.excelProduct.stock;
-    const changed = Math.abs(oldStock - newStock) > 0.001;
+    const diff = newStock - oldStock;
+    const changed = Math.abs(diff) > 0;
 
     if (changed) {
-      console.log(`  ✓ [${m.method}] "${m.dbProduct.name}" → ${oldStock} → ${newStock} (${m.excelProduct.name.substring(0, 40)})`);
+      corrections.push({
+        productId: m.dbProduct.id,
+        productName: m.dbProduct.name,
+        oldStock,
+        newStock,
+        diff,
+        method: m.method,
+        excelName: m.excelProduct.name,
+      });
+
+      console.log(
+        `  КОРР  "${m.dbProduct.name}": ${oldStock} → ${newStock} (${diff >= 0 ? '+' : ''}${diff}) [${m.method}]`,
+      );
+
       if (!DRY_RUN) {
-        await prisma.product.update({
-          where: { id: m.dbProduct.id },
-          data: { stock: newStock },
+        await prisma.$transaction(async (tx) => {
+          // Update product stock
+          await tx.product.update({
+            where: { id: m.dbProduct.id },
+            data: { stock: newStock },
+          });
+
+          // Create CORRECTION movement for audit trail
+          await tx.inventoryMovement.create({
+            data: {
+              productId: m.dbProduct.id,
+              type: 'CORRECTION',
+              quantity: Math.abs(diff),
+              note: `Сверка остатков по Excel: было ${oldStock}, стало ${newStock} (${diff >= 0 ? '+' : ''}${diff})`,
+              createdBy: SYSTEM_USER_ID,
+            },
+          });
         });
       }
-      updated++;
     } else {
       unchanged++;
     }
   }
 
-  // Report unmatched DB products
-  console.log(`\n--- UNMATCHED DB PRODUCTS (${unmatched.length}) ---`);
-  for (const u of unmatched) {
-    console.log(`  ✗ "${u.name}" (${u.sku})`);
+  if (corrections.length === 0) {
+    console.log('  Все остатки совпадают, корректировок не требуется.');
   }
 
-  // Report unmatched Excel products (not mapped to any DB product)
-  const unmatchedExcel = excelProducts.filter(p => !matchedExcelKeys.has(p.key));
-  console.log(`\n--- UNMATCHED EXCEL PRODUCTS (${unmatchedExcel.length}) ---`);
+  // ── 6. Report: Unmatched DB products ──
+
+  console.log(`\n─── НЕ НАЙДЕНЫ В EXCEL (${unmatchedDb.length} продуктов из БД) ───\n`);
+  for (const u of unmatchedDb) {
+    console.log(`  ✗ "${u.name}" (${u.sku}) — остаток в БД: ${u.stock}`);
+  }
+
+  // ── 7. Report: Unmatched Excel products ──
+
+  console.log(`\n─── НЕ НАЙДЕНЫ В БД (${unmatchedExcel.length} продуктов из Excel) ───\n`);
   for (const ue of unmatchedExcel) {
-    console.log(`  ✗ "${ue.name.substring(0, 50)}" fmt="${ue.format}" stock=${ue.stock}`);
+    console.log(`  ✗ "${ue.name.substring(0, 55)}" fmt="${ue.format}" stock=${ue.stock}`);
   }
 
-  // Summary
-  console.log('\n' + '='.repeat(60));
-  console.log(`  Matched: ${matches.length} / ${dbProducts.filter(p => p.sku.startsWith('IMPORT-')).length} DB products`);
-  console.log(`  Updated: ${updated}`);
-  console.log(`  Unchanged: ${unchanged}`);
-  console.log(`  Unmatched DB: ${unmatched.length}`);
-  console.log(`  Unmatched Excel: ${unmatchedExcel.length}`);
-  console.log('='.repeat(60));
+  // ── 8. Verification: re-read DB and compare ──
+
+  if (!DRY_RUN && corrections.length > 0) {
+    console.log('\n─── ВЕРИФИКАЦИЯ (после корректировки) ───\n');
+
+    let verifyOk = 0;
+    let verifyFail = 0;
+
+    for (const m of matches) {
+      const fresh = await prisma.product.findUnique({
+        where: { id: m.dbProduct.id },
+        select: { stock: true },
+      });
+      const freshStock = Number(fresh!.stock);
+      const excelStock = m.excelProduct.stock;
+      const ok = Math.abs(freshStock - excelStock) === 0;
+
+      if (!ok) {
+        console.log(`  ❌ "${m.dbProduct.name}": БД=${freshStock}, Excel=${excelStock}, Δ=${freshStock - excelStock}`);
+        verifyFail++;
+      } else {
+        verifyOk++;
+      }
+    }
+
+    console.log(`\n  Проверено: ${verifyOk + verifyFail}`);
+    console.log(`  Совпадает: ${verifyOk}`);
+    console.log(`  Расхождений: ${verifyFail}`);
+
+    if (verifyFail === 0) {
+      console.log('  ✅ Все остатки совпадают на 100%. Расхождений нет.');
+    }
+  }
+
+  // ── 9. Summary ──
+
+  const totalImport = dbProducts.filter(p => p.sku.startsWith('IMPORT-')).length;
+  const totalDiscrepancy = corrections.reduce((sum, c) => sum + Math.abs(c.diff), 0);
+
+  console.log('\n' + '='.repeat(80));
+  console.log('  ИТОГО:');
+  console.log(`    Совпало (matched):           ${matches.length} / ${totalImport} продуктов из БД`);
+  console.log(`    Без изменений:               ${unchanged}`);
+  console.log(`    Скорректировано:             ${corrections.length}`);
+  console.log(`    Суммарное расхождение:       ${totalDiscrepancy}${DRY_RUN ? ' (не применено, dry-run)' : ' → 0 (применено)'}`);
+  console.log(`    Не найдены в Excel:          ${unmatchedDb.length} (все с остатком ${unmatchedDb.every(u => u.stock === 0) ? '0' : 'см. отчёт'})`);
+  console.log(`    Не найдены в БД:             ${unmatchedExcel.length}`);
+  console.log('='.repeat(80));
+
+  if (corrections.length > 0 && !DRY_RUN) {
+    console.log('\n  Детальный отчёт корректировок:');
+    console.log('  ' + '#'.padEnd(5) + 'Продукт'.padEnd(28) + 'Было'.padStart(12) + 'Стало'.padStart(12) + 'Разница'.padStart(12));
+    console.log('  ' + '-'.repeat(69));
+    corrections.forEach((c, i) => {
+      console.log(
+        '  ' +
+        String(i + 1).padEnd(5) +
+        c.productName.substring(0, 26).padEnd(28) +
+        c.oldStock.toString().padStart(12) +
+        c.newStock.toString().padStart(12) +
+        ((c.diff >= 0 ? '+' : '') + c.diff).padStart(12),
+      );
+    });
+    console.log('  ' + '-'.repeat(69));
+  }
 }
 
 main()
