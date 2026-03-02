@@ -28,4 +28,18 @@ export const analyticsApi = {
     client.get<ExchangeData>('/analytics/history/exchange', { params: { year } }).then((r) => r.data),
   getHistoryPrepayments: (year: number = 2025) =>
     client.get<PrepaymentData>('/analytics/history/prepayments', { params: { year } }).then((r) => r.data),
+  exportDebtBreakdown: (year: number = 2025) =>
+    client.get('/analytics/history/export/debt-breakdown', {
+      params: { year },
+      responseType: 'blob',
+    }).then((r) => {
+      const url = window.URL.createObjectURL(new Blob([r.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `debt-breakdown-${year}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }),
 };

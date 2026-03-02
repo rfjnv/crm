@@ -825,6 +825,9 @@ export interface HistoryOverview {
   totalRevenue: number;
   totalPaid: number;
   totalDebt: number;
+  totalDebtPositive: number;
+  totalOverpayments: number;
+  netBalance: number;
   avgDeal: number;
 }
 

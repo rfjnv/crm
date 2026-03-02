@@ -88,20 +88,27 @@ router.get(
     );
 
     // Outstanding debt across ALL years — computed from payments table (source of truth)
-    const debtRaw = await prisma.$queryRaw<{ total_debt: string }[]>(
-      Prisma.sql`SELECT COALESCE(SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)), 0)::text as total_debt
+    const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string }[]>(
+      Prisma.sql`SELECT
+        COALESCE(SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)), 0)::text as total_debt,
+        COALESCE(SUM(GREATEST(COALESCE(p.total_paid, 0) - d.amount, 0)), 0)::text as total_overpayments
       FROM deals d
       LEFT JOIN (SELECT deal_id, SUM(amount) as total_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
-      WHERE d.is_archived = false AND (d.amount - COALESCE(p.total_paid, 0)) > 0${dealFilter}`,
+      WHERE d.is_archived = false${dealFilter}`,
     );
 
     const ov = overviewRaw[0];
+    const debtPositive = Number(debtRaw[0].total_debt);
+    const totalOverpayments = Number(debtRaw[0].total_overpayments);
     const overview = {
       totalDeals: Number(ov.total_deals),
       totalClients: Number(ov.total_clients),
       totalRevenue: Number(ov.total_revenue),
       totalPaid: Number(collectedRaw[0].total_paid),
-      totalDebt: Number(debtRaw[0].total_debt),
+      totalDebt: debtPositive,
+      totalDebtPositive: debtPositive,
+      totalOverpayments,
+      netBalance: debtPositive - totalOverpayments,
       avgDeal: Math.round(Number(ov.avg_deal)),
     };
 
@@ -1584,6 +1591,55 @@ router.get(
     }
 
     res.json(responseData);
+  }),
+);
+
+// ── CSV export: debt breakdown by client ──
+router.get(
+  '/export/debt-breakdown',
+  asyncHandler(async (req: Request, res: Response) => {
+    const year = parseYear(req);
+    const dealScope = extractDealScope(req);
+    const { dealFilter } = buildAclFragments(dealScope);
+
+    const rows = await prisma.$queryRaw<
+      {
+        company_name: string;
+        deals_count: string;
+        total_amount: string;
+        total_paid: string;
+        debt: string;
+        overpayment: string;
+      }[]
+    >(
+      Prisma.sql`SELECT c.company_name,
+        COUNT(d.id)::text as deals_count,
+        COALESCE(SUM(d.amount), 0)::text as total_amount,
+        COALESCE(SUM(COALESCE(p.total_paid, 0)), 0)::text as total_paid,
+        COALESCE(SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)), 0)::text as debt,
+        COALESCE(SUM(GREATEST(COALESCE(p.total_paid, 0) - d.amount, 0)), 0)::text as overpayment
+      FROM deals d
+      JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (SELECT deal_id, SUM(amount) as total_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
+      WHERE d.is_archived = false${dealFilter}
+      GROUP BY c.id, c.company_name
+      HAVING SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)) > 0
+        OR SUM(GREATEST(COALESCE(p.total_paid, 0) - d.amount, 0)) > 0
+      ORDER BY SUM(GREATEST(d.amount - COALESCE(p.total_paid, 0), 0)) DESC`,
+    );
+
+    const BOM = '\uFEFF';
+    const header = 'Клиент,Сделок,Сумма сделок,Оплачено,Долг,Переплата';
+    const csvRows = rows.map((r) => {
+      const name = r.company_name.replace(/"/g, '""');
+      return `"${name}",${r.deals_count},${r.total_amount},${r.total_paid},${r.debt},${r.overpayment}`;
+    });
+
+    const csv = BOM + header + '\n' + csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="debt-breakdown-${year}.csv"`);
+    res.send(csv);
   }),
 );
 

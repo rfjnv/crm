@@ -3,12 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select, Segmented,
-  Tooltip, Tag, Tabs, Drawer,
+  Tooltip, Tag, Tabs, Drawer, Button, message,
 } from 'antd';
 import {
   DollarOutlined, TeamOutlined, ShoppingOutlined, RiseOutlined,
   WarningOutlined, BarChartOutlined, CalendarOutlined, SwapOutlined,
-  ExclamationCircleOutlined,
+  ExclamationCircleOutlined, DownloadOutlined, InfoCircleOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
@@ -238,7 +239,9 @@ export default function HistoryAnalyticsPage() {
     { key: 'clients', title: 'Клиентов', value: overview.totalClients, prefix: <TeamOutlined />, style: {} },
     { key: 'revenue', title: 'Выручка', value: overview.totalRevenue, prefix: <DollarOutlined />, style: {}, fmt: true },
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
-    { key: 'debt', title: 'Долг', value: overview.totalDebt, prefix: <WarningOutlined />, style: { color: overview.totalDebt > 0 ? token.colorError : token.colorSuccess }, fmt: true },
+    { key: 'debt', title: <span>Долг <Tooltip title="SUM(amount - paid) по сделкам где долг > 0. Кумулятивно за все годы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalDebt, prefix: <WarningOutlined />, style: { color: overview.totalDebt > 0 ? token.colorError : token.colorSuccess }, fmt: true },
+    { key: 'overpayments', title: <span>Переплаты <Tooltip title="SUM(paid - amount) по сделкам где paid > amount. Предоплаты и авансы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalOverpayments ?? 0, prefix: <WalletOutlined />, style: { color: token.colorSuccess }, fmt: true },
+    { key: 'netBalance', title: <span>Чистый баланс <Tooltip title="Долг минус переплаты = реальная дебиторка. Формула: SUM(amount) - SUM(paid)."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.netBalance ?? 0, prefix: <DollarOutlined />, style: { color: (overview.netBalance ?? 0) > 0 ? token.colorError : token.colorSuccess }, fmt: true },
     { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
   ];
 
@@ -409,6 +412,19 @@ export default function HistoryAnalyticsPage() {
           </Col>
         ))}
       </Row>
+
+      <div style={{ marginBottom: 16, textAlign: 'right' }}>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => {
+            analyticsApi.exportDebtBreakdown(year)
+              .then(() => message.success('CSV скачан'))
+              .catch(() => message.error('Ошибка экспорта'));
+          }}
+        >
+          Экспорт разборки долга (CSV)
+        </Button>
+      </div>
 
       <Card title="Динамика по месяцам" size="small" style={{ marginBottom: 24 }}>
         <Area data={areaData} xField="month" yField="value" colorField="type" height={300}
