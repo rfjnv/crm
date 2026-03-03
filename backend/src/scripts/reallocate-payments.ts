@@ -12,13 +12,7 @@
 
 import { PrismaClient, Prisma } from '@prisma/client';
 
-const prisma = new PrismaClient({
-  transactionOptions: {
-    maxWait: 30000,
-    timeout: 120000,
-  },
-  datasourceUrl: process.env.DATABASE_URL,
-});
+const prisma = new PrismaClient();
 
 interface DealInfo {
   id: string;
@@ -215,7 +209,7 @@ async function executeReallocation(results: ReallocationResult[]): Promise<void>
         }
 
         // Execute all operations in a single batch transaction
-        await prisma.$transaction(ops, { timeout: 120000 });
+        await prisma.$transaction(ops);
 
         totalMoves += r.paymentMoves.length;
         totalDealUpdates += r.dealUpdates.length;
@@ -306,7 +300,7 @@ async function main() {
                 data: { paidAmount: du.newPaid, paymentStatus: du.newStatus as any },
               }));
             }
-            await prisma.$transaction(ops, { timeout: 120000 });
+            await prisma.$transaction(ops);
             executedCount++;
             success = true;
           } catch (err) {
