@@ -25,15 +25,41 @@ const MONTH_NAMES_RU = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
-const PAYMENT_COLS: { index: number; method: string }[] = [
-  { index: 12, method: 'CASH' },
-  { index: 15, method: 'TRANSFER' },
-  { index: 18, method: 'QR' },
-  { index: 21, method: 'PAYME' },
-  { index: 24, method: 'TERMINAL' },
-];
+/**
+ * Payment column offsets relative to the first payment column.
+ * Each payment type has 3 sub-columns: total, this-month, prior.
+ * We read the "this-month" column (offset +1 from group start).
+ */
+const PAYMENT_METHODS = ['CASH', 'TRANSFER', 'QR', 'PAYME', 'TERMINAL'] as const;
 
-// Column indices
+/**
+ * Detect column layout dynamically per sheet.
+ *
+ * 2025 + Jan 2026 sheets: 28 columns (A–AB)
+ *   - Payments start at col 11 (L), payment date at col 27 (AB)
+ *
+ * Feb/Mar 2026 sheets: 29 columns (A–AC) — extra column at K
+ *   - Payments start at col 12 (M), payment date at col 28 (AC)
+ *
+ * Rule: payment date = last column; payments start = total_columns - 17
+ */
+function getSheetLayout(ws: XLSX.WorkSheet) {
+  const ref = ws['!ref'];
+  const totalCols = ref ? XLSX.utils.decode_range(ref).e.c + 1 : 28;
+  // Payment date is always the last column
+  const paymentDateCol = totalCols - 1;
+  // First payment group "total" column = totalCols - 17
+  // (28 cols: 28-17=11=L; 29 cols: 29-17=12=M)
+  const paymentStartCol = totalCols - 17;
+  // Each payment type occupies 3 columns; "this-month" is at offset +1
+  const paymentCols = PAYMENT_METHODS.map((method, i) => ({
+    index: paymentStartCol + i * 3 + 1,
+    method,
+  }));
+  return { paymentCols, paymentDateCol, totalCols };
+}
+
+// Column indices (stable across all layouts — columns A through J don't shift)
 const COL_DATE = 0;
 const COL_CLIENT = 1;
 const COL_BALANCE = 2;
@@ -43,7 +69,6 @@ const COL_QTY = 5;
 const COL_UNIT = 6;
 const COL_PRICE = 7;
 const COL_OP_TYPE = 9;    // Column J — тип операции (к, н, н/к, п, п/к, пп, обмен, ф)
-const COL_PAYMENT_DATE = 27;
 
 // Mapping: Excel manager name (lowercase Cyrillic) → real login
 const MANAGER_LOGIN_MAP: Record<string, string> = {
@@ -302,6 +327,7 @@ async function processMonth(
   const sheet = wb.Sheets[wb.SheetNames[monthIndex]];
   const rows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
   const groups = groupRowsByClient(rows);
+  const layout = getSheetLayout(sheet);
 
   const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
   const monthDate = new Date(Date.UTC(year, monthIndex, 1));
@@ -350,9 +376,9 @@ async function processMonth(
       // Payments — skip for EXCHANGE rows
       const isExchangeRow = sourceOpType === 'EXCHANGE';
       if (!isExchangeRow) {
-        const paymentDate = toDate(row[COL_PAYMENT_DATE]) || monthMid;
+        const paymentDate = toDate(row[layout.paymentDateCol]) || monthMid;
 
-        for (const pc of PAYMENT_COLS) {
+        for (const pc of layout.paymentCols) {
           const amt = numVal(row[pc.index]);
           if (amt > 0) {
             totalPaid += amt;
@@ -486,6 +512,9 @@ async function main() {
 
   const sheetCount = Math.min(12, wb.SheetNames.length);
   for (let m = 0; m < sheetCount; m++) {
+    const sheetForLog = wb.Sheets[wb.SheetNames[m]];
+    const layoutForLog = getSheetLayout(sheetForLog);
+    console.log(`  [${wb.SheetNames[m]}] cols=${layoutForLog.totalCols}, payStart=${layoutForLog.paymentCols[0].index}, dateCol=${layoutForLog.paymentDateCol}`);
     const result = await processMonth(m, wb, clientMap, productMap, managerMap, year);
     totalDeals += result.deals;
     totalItems += result.items;
