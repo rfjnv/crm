@@ -479,7 +479,15 @@ async function main() {
   const fileArg = process.argv[2] || '29.12.2025.xlsx';
   const year = parseInt(process.argv[3] || '2025', 10);
   if (isNaN(year) || year < 2020 || year > 2030) {
-    console.error('Invalid year. Usage: npx tsx src/scripts/import-excel.ts <file> <year>');
+    console.error('Invalid year. Usage: npx tsx src/scripts/import-excel.ts <file> <year> [--month N]');
+    process.exit(1);
+  }
+
+  // Optional: import only a specific month (1-based: 1=Jan, 3=Mar, etc.)
+  const monthFlagIdx = process.argv.indexOf('--month');
+  const onlyMonth = monthFlagIdx !== -1 ? parseInt(process.argv[monthFlagIdx + 1], 10) : null;
+  if (onlyMonth !== null && (isNaN(onlyMonth) || onlyMonth < 1 || onlyMonth > 12)) {
+    console.error('Invalid --month value. Must be 1-12.');
     process.exit(1);
   }
 
@@ -506,12 +514,20 @@ async function main() {
 
   // Step 4: Deals per month
   console.log('[4/4] Processing monthly data...');
+  if (onlyMonth) {
+    console.log(`  ** Only importing month ${onlyMonth} (${MONTH_NAMES_RU[onlyMonth - 1]}) **`);
+  }
   let totalDeals = 0;
   let totalItems = 0;
   let totalPayments = 0;
 
   const sheetCount = Math.min(12, wb.SheetNames.length);
   for (let m = 0; m < sheetCount; m++) {
+    // Skip months not matching --month filter (m is 0-based, onlyMonth is 1-based)
+    if (onlyMonth && m !== onlyMonth - 1) {
+      console.log(`  [${wb.SheetNames[m]}] SKIPPED (--month ${onlyMonth})`);
+      continue;
+    }
     const sheetForLog = wb.Sheets[wb.SheetNames[m]];
     const layoutForLog = getSheetLayout(sheetForLog);
     console.log(`  [${wb.SheetNames[m]}] cols=${layoutForLog.totalCols}, payStart=${layoutForLog.paymentCols[0].index}, dateCol=${layoutForLog.paymentDateCol}`);
