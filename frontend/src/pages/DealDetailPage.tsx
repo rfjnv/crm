@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
   List, Table, message, InputNumber, Form, Modal, Popconfirm, DatePicker, Tabs,
-  Select, Alert, Radio,
+  Select, Alert, Radio, Tooltip,
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
@@ -442,12 +442,19 @@ export default function DealDetailPage() {
 
     // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
     if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT')) {
+      const contractMissing = needsContract && !deal.contractId;
       actions.push(
-        <Popconfirm key="fin-approve" title="Одобрить финансы?" onConfirm={() => financeApproveMut.mutate()}>
-          <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
-            Одобрить финансы
-          </Button>
-        </Popconfirm>,
+        contractMissing
+          ? <Tooltip key="fin-approve" title="Сначала прикрепите договор">
+              <Button type="primary" icon={<CheckCircleOutlined />} disabled>
+                Одобрить финансы
+              </Button>
+            </Tooltip>
+          : <Popconfirm key="fin-approve" title="Одобрить финансы?" onConfirm={() => financeApproveMut.mutate()}>
+              <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
+                Одобрить финансы
+              </Button>
+            </Popconfirm>,
         <Button key="fin-reject" danger icon={<CloseCircleOutlined />} onClick={() => setRejectModal(true)}>
           Отклонить
         </Button>,
@@ -1131,7 +1138,7 @@ export default function DealDetailPage() {
         cancelText="Отмена"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Выберите способ оплаты. Наличные и Payme не требуют проверки финансов и пойдут сразу на одобрение админа. QR и Перечисление направляются на проверку бухгалтера.
+          Выберите способ оплаты. Наличные, Payme, Click и Терминал не требуют проверки финансов. QR, Перечисление и Рассрочка направляются на проверку бухгалтера (требуется договор).
         </Typography.Paragraph>
         <Radio.Group
           value={selectedPaymentMethod}
@@ -1161,6 +1168,10 @@ export default function DealDetailPage() {
             </Radio.Button>
             <Radio.Button value="TRANSFER" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
               Перечисление
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
+            </Radio.Button>
+            <Radio.Button value="INSTALLMENT" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+              Рассрочка
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
             </Radio.Button>
           </Space>

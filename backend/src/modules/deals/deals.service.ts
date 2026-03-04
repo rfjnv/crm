@@ -364,7 +364,7 @@ export class DealsService {
     }
 
     // Determine target status based on payment method
-    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'TRANSFER';
+    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'TRANSFER' || dto.paymentMethod === 'INSTALLMENT';
     const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'ADMIN_APPROVED';
 
     validateStatusTransition(deal.status, targetStatus, user.role);
@@ -731,6 +731,11 @@ export class DealsService {
     // or from FINANCE_APPROVED (legacy), or from WAITING_FINANCE if admin
     if (deal.status !== 'ADMIN_APPROVED' && deal.status !== 'FINANCE_APPROVED' && deal.status !== 'WAITING_FINANCE') {
       throw new AppError(400, 'Сделка не готова для одобрения администратором');
+    }
+
+    // Contract check for QR/TRANSFER/INSTALLMENT
+    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
+      throw new AppError(400, 'Для QR/перечисления/рассрочки необходимо привязать договор к сделке');
     }
 
     // For deals already at ADMIN_APPROVED, move to READY_FOR_SHIPMENT
