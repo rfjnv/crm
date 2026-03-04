@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { normalizeClientName } from '../src/lib/normalize-client';
 
 const prisma = new PrismaClient();
 
@@ -48,6 +49,15 @@ async function main() {
 
   console.log(`Found ${clientsData.length} clients to import...`);
 
+  // Pre-load all existing clients and build normalized lookup
+  const allCrmClients = await prisma.client.findMany({
+    select: { id: true, companyName: true },
+  });
+  const existingByNormalized = new Set<string>();
+  for (const c of allCrmClients) {
+    existingByNormalized.add(normalizeClientName(c.companyName));
+  }
+
   let created = 0;
   let skipped = 0;
 
@@ -64,12 +74,9 @@ async function main() {
       continue;
     }
 
-    // Check if client already exists by companyName
-    const existing = await prisma.client.findFirst({
-      where: { companyName: { equals: companyName, mode: 'insensitive' } },
-    });
-
-    if (existing) {
+    // Check if client already exists by normalized (token-sorted) name
+    const normKey = normalizeClientName(companyName);
+    if (existingByNormalized.has(normKey)) {
       skipped++;
       continue;
     }
@@ -84,6 +91,7 @@ async function main() {
         managerId: manager.id,
       },
     });
+    existingByNormalized.add(normKey);
     created++;
   }
 

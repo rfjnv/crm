@@ -10,6 +10,7 @@
 import * as XLSX from 'xlsx';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
+import { normalizeClientName } from '../lib/normalize-client';
 
 const prisma = new PrismaClient();
 
@@ -243,7 +244,7 @@ async function createClients(
     for (const row of rows) {
       const clientName = norm(row[COL_CLIENT]);
       if (!clientName) continue;
-      const key = normLower(row[COL_CLIENT]);
+      const key = normalizeClientName(row[COL_CLIENT]);
       if (!clientInfo.has(key)) {
         const managerName = MANAGER_ALIASES[normLower(row[COL_MANAGER])] || normLower(row[COL_MANAGER]);
         clientInfo.set(key, {
@@ -257,14 +258,21 @@ async function createClients(
   const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
   const map = new Map<string, string>();
 
-  for (const [key, info] of clientInfo) {
-    // Check existing by company name
-    const existing = await prisma.client.findFirst({
-      where: { companyName: { equals: info.name, mode: 'insensitive' } },
-    });
+  // Build normalized CRM lookup to match token-sorted names
+  const allCrmClients = await prisma.client.findMany({
+    select: { id: true, companyName: true },
+  });
+  const crmByNormalized = new Map<string, string>();
+  for (const c of allCrmClients) {
+    crmByNormalized.set(normalizeClientName(c.companyName), c.id);
+  }
 
-    if (existing) {
-      map.set(key, existing.id);
+  for (const [key, info] of clientInfo) {
+    // Check existing by normalized (token-sorted) name
+    const existingId = crmByNormalized.get(key);
+
+    if (existingId) {
+      map.set(key, existingId);
       continue;
     }
 
@@ -279,6 +287,7 @@ async function createClients(
       },
     });
     map.set(key, client.id);
+    crmByNormalized.set(key, client.id);
   }
 
   console.log(`  Clients: ${clientInfo.size} unique, ${map.size} mapped`);
@@ -300,7 +309,7 @@ function groupRowsByClient(rows: Row[]): GroupedDeal[] {
   for (const row of rows) {
     const clientName = norm(row[COL_CLIENT]);
     if (!clientName) continue;
-    const key = normLower(row[COL_CLIENT]);
+    const key = normalizeClientName(row[COL_CLIENT]);
 
     if (!groups.has(key)) {
       groups.set(key, {

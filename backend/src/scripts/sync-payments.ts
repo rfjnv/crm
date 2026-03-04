@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import path from 'path';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { normalizeClientName } from '../lib/normalize-client';
 
 const prisma = new PrismaClient();
 
@@ -166,7 +167,7 @@ function parseExcelClosingBalances(): Map<string, ClientExcelBalance> {
       for (let i = 3; i < data.length; i++) {
         const row = data[i] as Row;
         if (!row) continue;
-        const clientName = normLower(row[1]);
+        const clientName = normalizeClientName(row[1]);
         if (!clientName) continue;
 
         const closing = numVal(row[closingCol]);
@@ -209,10 +210,10 @@ async function matchClients(
     select: { id: true, companyName: true },
   });
 
-  // Build normalized CRM lookup
+  // Build normalized CRM lookup (token-sorted)
   const crmNorm = new Map<string, { id: string; name: string }>();
   for (const c of allCrmClients) {
-    crmNorm.set(normLower(c.companyName), { id: c.id, name: c.companyName });
+    crmNorm.set(normalizeClientName(c.companyName), { id: c.id, name: c.companyName });
   }
 
   const matched = new Map<string, { clientId: string; crmName: string; excelBalance: ClientExcelBalance }>();
