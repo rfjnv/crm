@@ -15,7 +15,7 @@ router.use(authenticate);
 // ──── КАССА (Payments Report) ────
 router.get(
   '/cashbox',
-  authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'),
   asyncHandler(async (req: Request, res: Response) => {
     const period = req.query.period as string || 'day';
     const managerId = req.query.managerId as string | undefined;
