@@ -48,12 +48,14 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
              WHERE p.paid_at >= ${startOfToday} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
-             WHERE p.paid_at >= ${startOfToday} AND p.paid_at < ${startOfTomorrow}`
+             WHERE p.paid_at >= ${startOfToday} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
           ),
 
       // 2. Revenue yesterday (for delta)
@@ -62,12 +64,14 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
              WHERE p.paid_at >= ${startOfYesterday} AND p.paid_at < ${startOfToday}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
-             WHERE p.paid_at >= ${startOfYesterday} AND p.paid_at < ${startOfToday}`
+             WHERE p.paid_at >= ${startOfYesterday} AND p.paid_at < ${startOfToday}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
           ),
 
       // 3. Revenue this month (from payments, consistent with daily)
@@ -76,12 +80,14 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
              WHERE p.paid_at >= ${startOfMonth} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
-             WHERE p.paid_at >= ${startOfMonth} AND p.paid_at < ${startOfTomorrow}`
+             WHERE p.paid_at >= ${startOfMonth} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
           ),
 
       // 4. Active deals count
@@ -152,6 +158,7 @@ router.get(
             Prisma.sql`SELECT DATE(p.paid_at) as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})
              GROUP BY DATE(p.paid_at)
              ORDER BY day ASC`
@@ -160,6 +167,7 @@ router.get(
             Prisma.sql`SELECT DATE(p.paid_at) as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
+             AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              GROUP BY DATE(p.paid_at)
              ORDER BY day ASC`
           ),

@@ -84,7 +84,8 @@ router.get(
     const collectedRaw = await prisma.$queryRaw<{ total_paid: string }[]>(
       Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total_paid
       FROM payments p ${paymentDealJoin}
-      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}`,
+      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`,
     );
 
     // Outstanding debt across ALL years — from deal.paid_amount (unified with Dashboard)
@@ -136,6 +137,7 @@ router.get(
         COALESCE(SUM(p.amount), 0)::text as collected
       FROM payments p ${paymentDealJoin}
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
       GROUP BY EXTRACT(MONTH FROM (p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -307,6 +309,7 @@ router.get(
         COUNT(*)::text as count
       FROM payments p ${paymentDealJoin}
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
       GROUP BY COALESCE(p.method, 'Не указан')
       ORDER BY SUM(p.amount) DESC`,
     );
@@ -1158,6 +1161,7 @@ router.get(
         COUNT(*)::text as payments_count
       FROM payments p ${paymentDealJoin}
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
       GROUP BY EXTRACT(MONTH FROM (p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -1172,6 +1176,7 @@ router.get(
       FROM payments p ${paymentDealJoin}
       JOIN clients c ON c.id = p.client_id
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
       GROUP BY c.id, c.company_name
       ORDER BY SUM(p.amount) DESC
       LIMIT 20`,
@@ -1185,7 +1190,8 @@ router.get(
         COALESCE(SUM(p.amount), 0)::text as total_collected,
         COUNT(*)::text as total_payments
       FROM payments p ${paymentDealJoin}
-      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}`,
+      WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
+      AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`,
     );
 
     const responseData = {
