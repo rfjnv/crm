@@ -933,9 +933,9 @@ export default function HistoryAnalyticsPage() {
         <Segmented
           value={year}
           onChange={(val) => setYear(val as number)}
-          options={Array.from({ length: new Date().getFullYear() - 2025 + 1 }, (_, i) => ({
-            label: String(2025 + i),
-            value: 2025 + i,
+          options={Array.from({ length: new Date().getFullYear() - 2024 + 1 }, (_, i) => ({
+            label: String(2024 + i),
+            value: 2024 + i,
           }))}
         />
       </div>
