@@ -753,9 +753,9 @@ export default function DealDetailPage() {
                         <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="Оплачено">{formatUZS(deal.paidAmount)} / {formatUZS(deal.amount)}</Descriptions.Item>
-                      {Number(deal.amount) - Number(deal.discount || 0) - Number(deal.paidAmount) > 0 && (
+                      {Number(deal.amount) - Number(deal.paidAmount) > 0 && (
                         <Descriptions.Item label="Долг">
-                          <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.discount || 0) - Number(deal.paidAmount))}</Typography.Text>
+                          <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
                         </Descriptions.Item>
                       )}
                       {deal.dueDate && (
@@ -796,13 +796,30 @@ export default function DealDetailPage() {
                     bordered={false}
                     summary={() => {
                       if (!hasQuantities) return null;
-                      const total = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
-                      return total > 0 ? (
-                        <Table.Summary.Row>
-                          <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
-                          <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(total)}</Typography.Text></Table.Summary.Cell>
-                        </Table.Summary.Row>
-                      ) : null;
+                      const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
+                      if (subtotal <= 0) return null;
+                      const discount = Number(deal.discount || 0);
+                      const hasDiscount = discount > 0;
+                      return (
+                        <>
+                          {hasDiscount && (
+                            <>
+                              <Table.Summary.Row>
+                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Подытог</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS(subtotal)}</Typography.Text></Table.Summary.Cell>
+                              </Table.Summary.Row>
+                              <Table.Summary.Row>
+                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(discount)}</Typography.Text></Table.Summary.Cell>
+                              </Table.Summary.Row>
+                            </>
+                          )}
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
+                            <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(hasDiscount ? subtotal - discount : subtotal)}</Typography.Text></Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        </>
+                      );
                     }}
                   />
                 </Card>
