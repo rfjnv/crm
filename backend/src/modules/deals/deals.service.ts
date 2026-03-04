@@ -1124,10 +1124,6 @@ export class DealsService {
       const currentPaid = Number(deal.paidAmount);
       const newTotal = currentPaid + dto.amount;
 
-      if (newTotal > amount) {
-        throw new AppError(400, `Сумма платежей (${newTotal}) превышает сумму сделки (${amount})`);
-      }
-
       // Auto-compute paymentStatus
       let paymentStatus: PrismaPaymentStatus;
       if (newTotal === 0) {
