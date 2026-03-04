@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Timeline, Tag, Space, Button,
-  Modal, Form, Input, DatePicker, Select, Tabs, Row, Col, Statistic, Segmented,
+  Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
   message, theme,
 } from 'antd';
 import {
@@ -14,19 +14,34 @@ import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
-import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
+import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, DealShort, PaymentStatus, AuditLog, PaymentRecord } from '../types';
 import type { CreateClientData } from '../api/clients.api';
 import dayjs from 'dayjs';
-
-const { RangePicker } = DatePicker;
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
   PARTIAL: { color: 'orange', label: 'Частично' },
   PAID: { color: 'green', label: 'Оплачено' },
 };
+
+type PaymentFilter = 'ALL' | 'DEBT' | 'PAID' | 'PARTIAL';
+
+const paymentFilterOptions: { label: string; value: PaymentFilter }[] = [
+  { label: 'Все', value: 'ALL' },
+  { label: 'Долг', value: 'DEBT' },
+  { label: 'Оплачено', value: 'PAID' },
+  { label: 'Частично', value: 'PARTIAL' },
+];
+
+function getPaymentCategory(deal: DealShort): PaymentFilter {
+  const amount = Number(deal.amount);
+  const paid = Number(deal.paidAmount ?? 0);
+  if (paid >= amount) return 'PAID';
+  if (paid > 0) return 'PARTIAL';
+  return 'DEBT';
+}
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,25 +53,15 @@ export default function ClientDetailPage() {
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
 
-  // Deal filters
-  const [dealStatus, setDealStatus] = useState<DealStatus | undefined>();
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().subtract(30, 'day'),
-    dayjs(),
-  ]);
+  // Client-side payment status filter (no API call on change)
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL');
 
   // Analytics period
   const [analyticsPeriod, setAnalyticsPeriod] = useState<number>(30);
 
-  const filterParams = {
-    dealStatus: dealStatus,
-    from: dateRange[0].format('YYYY-MM-DD'),
-    to: dateRange[1].format('YYYY-MM-DD'),
-  };
-
   const { data: client, isLoading } = useQuery({
-    queryKey: ['client', id, filterParams],
-    queryFn: () => clientsApi.getById(id!, filterParams),
+    queryKey: ['client', id],
+    queryFn: () => clientsApi.getById(id!),
     enabled: !!id,
   });
 
@@ -110,6 +115,13 @@ export default function ClientDetailPage() {
     onError: () => message.error('Ошибка обновления клиента'),
   });
 
+  // Client-side filtering of deals by payment status
+  const filteredDeals = useMemo(() => {
+    const deals = client?.deals ?? [];
+    if (paymentFilter === 'ALL') return deals;
+    return deals.filter((d) => getPaymentCategory(d) === paymentFilter);
+  }, [client?.deals, paymentFilter]);
+
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!client) return <Typography.Text>Клиент не найден</Typography.Text>;
 
@@ -142,6 +154,19 @@ export default function ClientDetailPage() {
     { title: 'Сделка', dataIndex: 'title', render: (v: string, r: DealShort) => <Link to={`/deals/${r.id}`}>{v}</Link> },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
+    { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string | undefined) => formatUZS(v ?? 0) },
+    {
+      title: 'Остаток', key: 'remaining', align: 'right' as const,
+      render: (_: unknown, r: DealShort) => {
+        const remaining = Math.max(Number(r.amount) - Number(r.paidAmount ?? 0), 0);
+        return (
+          <Typography.Text type={remaining > 0 ? 'danger' : 'success'}>
+            {formatUZS(remaining)}
+          </Typography.Text>
+        );
+      },
+    },
+    { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
     {
       title: 'Оплата', dataIndex: 'paymentStatus', render: (s: PaymentStatus | undefined) => {
         if (!s) return '—';
@@ -149,7 +174,6 @@ export default function ClientDetailPage() {
         return <Tag color={cfg?.color}>{cfg?.label ?? s}</Tag>;
       },
     },
-    { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
   ];
 
   const paymentColumns = [
@@ -219,45 +243,42 @@ export default function ClientDetailPage() {
               <Card
                 bordered={false}
                 extra={
-                  <Space>
-                    <Select
-                      allowClear
-                      placeholder="Все статусы"
-                      style={{ width: 180 }}
-                      value={dealStatus}
-                      onChange={setDealStatus}
-                      options={Object.entries(statusConfig).map(([k, v]) => ({ label: v.label, value: k }))}
-                    />
-                    <RangePicker
-                      value={dateRange}
-                      onChange={(dates) => {
-                        if (dates && dates[0] && dates[1]) {
-                          setDateRange([dates[0], dates[1]]);
-                        }
-                      }}
-                      format="DD.MM.YYYY"
-                      allowClear={false}
-                    />
-                  </Space>
+                  <Segmented
+                    value={paymentFilter}
+                    onChange={(v) => setPaymentFilter(v as PaymentFilter)}
+                    options={paymentFilterOptions}
+                  />
                 }
               >
                 <Table
-                  dataSource={client.deals ?? []}
+                  dataSource={filteredDeals}
                   rowKey="id"
                   pagination={false}
                   size="small"
                   bordered={false}
                   columns={dealColumns}
-                  locale={{ emptyText: 'Нет сделок за период' }}
+                  locale={{ emptyText: 'Нет сделок' }}
                   summary={() => {
-                    const deals = (client.deals ?? []).filter((d) => d.status !== 'CANCELED');
+                    const deals = filteredDeals.filter((d) => d.status !== 'CANCELED');
                     if (deals.length === 0) return null;
                     const totalAmount = deals.reduce((s, d) => s + Number(d.amount), 0);
+                    const totalPaid = deals.reduce((s, d) => s + Number(d.paidAmount ?? 0), 0);
+                    const totalRemaining = Math.max(totalAmount - totalPaid, 0);
                     return (
                       <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}><Typography.Text strong>Итого (без отмен): {deals.length} сделок</Typography.Text></Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right"><Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text></Table.Summary.Cell>
-                        <Table.Summary.Cell index={3} colSpan={2} />
+                        <Table.Summary.Cell index={0} colSpan={2}>
+                          <Typography.Text strong>Итого (без отмен): {deals.length} сделок</Typography.Text>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={2} align="right">
+                          <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={3} align="right">
+                          <Typography.Text strong>{formatUZS(totalPaid)}</Typography.Text>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={4} align="right">
+                          <Typography.Text strong type={totalRemaining > 0 ? 'danger' : 'success'}>{formatUZS(totalRemaining)}</Typography.Text>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={5} colSpan={2} />
                       </Table.Summary.Row>
                     );
                   }}

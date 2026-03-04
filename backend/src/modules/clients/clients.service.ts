@@ -28,17 +28,17 @@ export class ClientsService {
       dealsWhere.status = filters.dealStatus;
     }
 
-    // Date range filter (default: last 30 days)
-    const now = new Date();
-    const defaultFrom = new Date(now);
-    defaultFrom.setDate(defaultFrom.getDate() - 30);
-
-    const fromDate = filters?.from ? new Date(filters.from) : defaultFrom;
-    const toDate = filters?.to ? new Date(filters.to) : now;
-    // Shift toDate to end of day
-    toDate.setHours(23, 59, 59, 999);
-
-    dealsWhere.createdAt = { gte: fromDate, lte: toDate };
+    // Date range filter — only apply when explicitly provided
+    if (filters?.from || filters?.to) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.from) dateFilter.gte = new Date(filters.from);
+      if (filters.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        dateFilter.lte = toDate;
+      }
+      dealsWhere.createdAt = dateFilter;
+    }
 
     const client = await prisma.client.findFirst({
       where: { id, ...clientOwnerScope(user) },
