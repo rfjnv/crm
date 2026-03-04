@@ -1115,9 +1115,9 @@ export class DealsService {
       }
 
       // Оплата доступна только с момента отгрузки
-      const allowedForPayment: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED'];
+      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED'];
       if (!allowedForPayment.includes(deal.status)) {
-        throw new AppError(400, 'Оплата доступна только со статуса "Готов к отгрузке" и далее');
+        throw new AppError(400, 'Оплата доступна только со статуса "В работе" и далее');
       }
 
       const amount = Number(deal.amount);
