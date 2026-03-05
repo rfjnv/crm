@@ -115,9 +115,11 @@ export type DealStatus =
   | 'READY_FOR_SHIPMENT'
   | 'SHIPMENT_ON_HOLD'
   | 'SHIPPED'
+  | 'PENDING_APPROVAL'
   | 'CLOSED'
   | 'CANCELED'
-  | 'REJECTED';
+  | 'REJECTED'
+  | 'REOPENED';
 
 export type PaymentType = 'FULL' | 'PARTIAL' | 'INSTALLMENT';
 export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'CLICK' | 'TERMINAL' | 'INSTALLMENT';
@@ -417,12 +419,25 @@ export interface DayClosingListResponse {
 
 // ──── Finance ────
 
+export interface ClientDebtRow {
+  clientId: string;
+  clientName: string;
+  totalDebt: number;
+  totalAmount: number;
+  totalPaid: number;
+  dealsCount: number;
+  lastPaymentDate: string | null;
+  manager: { id: string; fullName: string } | null;
+  newestDealDate: string;
+  oldestUnpaidDueDate: string | null;
+  paymentStatus: 'UNPAID' | 'PARTIAL';
+}
+
 export interface DebtsResponse {
-  deals: Deal[];
+  clients: ClientDebtRow[];
   totals: {
-    count: number;
-    totalAmount: number;
-    totalPaid: number;
+    clientCount: number;
+    dealsCount: number;
     totalDebt: number;
   };
 }

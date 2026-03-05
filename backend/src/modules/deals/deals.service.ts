@@ -22,12 +22,14 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   WAITING_FINANCE: ['ADMIN_APPROVED', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
   FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
-  READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
+  READY_FOR_SHIPMENT: ['PENDING_APPROVAL', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
   SHIPPED: ['CLOSED'],
+  PENDING_APPROVAL: ['CLOSED', 'REOPENED'],
   CLOSED: [],
   CANCELED: [],
   REJECTED: ['IN_PROGRESS'],
+  REOPENED: ['READY_FOR_SHIPMENT', 'CANCELED'],
 };
 
 const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
@@ -41,9 +43,11 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   READY_FOR_SHIPMENT: ['ADMIN', 'SUPER_ADMIN'],
   SHIPPED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   SHIPMENT_ON_HOLD: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
-  CLOSED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  PENDING_APPROVAL: ['ADMIN', 'SUPER_ADMIN'],
+  CLOSED: ['ADMIN', 'SUPER_ADMIN'],
   CANCELED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   REJECTED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
+  REOPENED: ['ADMIN', 'SUPER_ADMIN'],
 };
 
 function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Role): void {
@@ -70,7 +74,7 @@ export class DealsService {
     if (filters?.status) {
       where.status = filters.status;
     } else if (!filters?.includeClosed) {
-      where.status = { not: 'CLOSED' as DealStatus };
+      where.status = { notIn: ['CLOSED'] as DealStatus[] };
     }
 
     return prisma.deal.findMany({
@@ -911,8 +915,8 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка" для оформления');
     }
 
-    // After shipment, deal goes directly to CLOSED (COMPLETED)
-    const targetStatus: DealStatus = 'CLOSED';
+    // After shipment, deal goes to PENDING_APPROVAL for admin review
+    const targetStatus: DealStatus = 'PENDING_APPROVAL';
 
     const dealItems = await prisma.dealItem.findMany({
       where: { dealId },
@@ -963,7 +967,7 @@ export class DealsService {
         },
       });
 
-      // Update deal status directly to CLOSED (completed)
+      // Update deal status to PENDING_APPROVAL (awaits admin review)
       await tx.deal.update({
         where: { id: dealId },
         data: { status: targetStatus },
@@ -997,6 +1001,134 @@ export class DealsService {
         })),
       },
     });
+
+    return this.findById(dealId, user);
+  }
+
+  // ==================== DEAL APPROVAL (Admin approves/rejects after shipment) ====================
+
+  async findForDealApproval(user: AuthUser) {
+    return prisma.deal.findMany({
+      where: {
+        status: 'PENDING_APPROVAL',
+        isArchived: false,
+      },
+      include: {
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+        contract: { select: { id: true, contractNumber: true } },
+        shipment: {
+          include: { user: { select: { id: true, fullName: true } } },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async approveDeal(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, isArchived: false },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (deal.status !== 'PENDING_APPROVAL') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает одобрения"');
+    }
+
+    validateStatusTransition(deal.status, 'CLOSED', user.role);
+
+    await prisma.deal.update({
+      where: { id: dealId },
+      data: { status: 'CLOSED' },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'STATUS_CHANGE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: { status: deal.status },
+      after: { status: 'CLOSED' },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: deal.managerId,
+        title: 'Сделка одобрена',
+        body: `Сделка "${deal.title}" одобрена и закрыта`,
+        severity: 'INFO',
+        link: `/deals/${dealId}`,
+        createdByUserId: user.userId,
+      },
+    });
+
+    pushService.sendPushToUser(deal.managerId, {
+      title: 'Сделка одобрена',
+      body: `Сделка "${deal.title}" одобрена и закрыта`,
+      url: `/deals/${dealId}`,
+      severity: 'INFO',
+    }).catch(() => {});
+
+    return this.findById(dealId, user);
+  }
+
+  async rejectDeal(dealId: string, reason: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, isArchived: false },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (deal.status !== 'PENDING_APPROVAL') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает одобрения"');
+    }
+
+    validateStatusTransition(deal.status, 'REOPENED', user.role);
+
+    await prisma.deal.update({
+      where: { id: dealId },
+      data: { status: 'REOPENED' },
+    });
+
+    await prisma.dealComment.create({
+      data: {
+        dealId,
+        authorId: user.userId,
+        text: `Отклонено администратором: ${reason}`,
+      },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'STATUS_CHANGE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: { status: deal.status },
+      after: { status: 'REOPENED', reason },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: deal.managerId,
+        title: 'Сделка отклонена',
+        body: `Сделка "${deal.title}" отклонена: ${reason}`,
+        severity: 'URGENT',
+        link: `/deals/${dealId}`,
+        createdByUserId: user.userId,
+      },
+    });
+
+    pushService.sendPushToUser(deal.managerId, {
+      title: 'Сделка отклонена',
+      body: `Сделка "${deal.title}" отклонена: ${reason}`,
+      url: `/deals/${dealId}`,
+      severity: 'URGENT',
+    }).catch(() => {});
 
     return this.findById(dealId, user);
   }
@@ -1120,7 +1252,7 @@ export class DealsService {
       }
 
       // Оплата доступна только с момента отгрузки
-      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED'];
+      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'PENDING_APPROVAL', 'REOPENED', 'CLOSED'];
       if (!allowedForPayment.includes(deal.status)) {
         throw new AppError(400, 'Оплата доступна только со статуса "В работе" и далее');
       }
@@ -1139,12 +1271,17 @@ export class DealsService {
         paymentStatus = 'PARTIAL';
       }
 
+      const paymentDate = dto.paidAt ? new Date(dto.paidAt) : new Date();
+      if (paymentDate > new Date()) {
+        throw new AppError(400, 'Дата оплаты не может быть в будущем');
+      }
+
       const created = await tx.payment.create({
         data: {
           dealId,
           clientId: deal.clientId,
           amount: dto.amount,
-          paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+          paidAt: paymentDate,
           method: dto.method,
           note: dto.note,
           createdBy: user.userId,

@@ -112,6 +112,15 @@ export const dealsApi = {
   shipmentQueue: () =>
     client.get<Deal[]>('/deals/shipment-queue').then((r) => r.data),
 
+  dealApprovalQueue: () =>
+    client.get<Deal[]>('/deals/deal-approval-queue').then((r) => r.data),
+
+  approveDeal: (dealId: string) =>
+    client.post<Deal>(`/deals/${dealId}/deal-approve`).then((r) => r.data),
+
+  rejectDeal: (dealId: string, reason: string) =>
+    client.post<Deal>(`/deals/${dealId}/deal-reject`, { reason }).then((r) => r.data),
+
   holdShipment: (dealId: string, reason: string) =>
     client.post<Deal>(`/deals/${dealId}/shipment-hold`, { reason }).then((r) => r.data),
 

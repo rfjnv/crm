@@ -744,10 +744,10 @@ export default function DealDetailPage() {
                     title="Оплата"
                     extra={
                       <Space>
-                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT') && (
+                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                           <Button size="small" icon={<PlusOutlined />} onClick={() => setPaymentRecordModal(true)}>Добавить платёж</Button>
                         )}
-                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT') && (
+                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                           <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
                         )}
                       </Space>
@@ -1258,7 +1258,7 @@ export default function DealDetailPage() {
             ]} />
           </Form.Item>
           <Form.Item name="paidAt" label="Дата оплаты">
-            <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+            <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" disabledDate={(current) => current && current.isAfter(dayjs())} />
           </Form.Item>
           <Form.Item name="note" label="Примечание">
             <Input.TextArea rows={2} placeholder="Примечание к платежу..." />

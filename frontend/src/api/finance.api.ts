@@ -43,9 +43,13 @@ export const financeApi = {
   closeDay: () =>
     client.post('/finance/day-closing', {}).then((r) => r.data),
 
-  getDebts: () =>
-    client.get('/finance/debts').then((r) => r.data),
+  getDebts: (params?: {
+    minDebt?: number;
+    managerId?: string;
+    paymentStatus?: string;
+  }) =>
+    client.get('/finance/debts', { params }).then((r) => r.data),
 
   clientDebtDetail: (clientId: string) =>
-    client.get(`/finance/debts/${clientId}`).then((r) => r.data),
+    client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),
 };

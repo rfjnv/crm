@@ -29,6 +29,7 @@ import {
   ProjectOutlined,
   SolutionOutlined,
   SettingOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -154,6 +155,13 @@ export default function Layout() {
         label: <Link to="/stock-confirmation">Подтв. склада</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/deals/approval',
+        icon: <SafetyCertificateOutlined />,
+        label: <Link to="/deals/approval">Одобрение сделок</Link>,
+      }]
+      : []),
 
     // ── ЗАДАЧИ ──
     { type: 'divider' as const },
@@ -200,11 +208,13 @@ export default function Layout() {
     ...(collapsed
       ? []
       : [{ type: 'group' as const, label: 'АРХИВ' }]),
-    {
-      key: '/deals/closed',
-      icon: <ContainerOutlined />,
-      label: <Link to="/deals/closed">Закрытые сделки</Link>,
-    },
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/deals/closed',
+        icon: <ContainerOutlined />,
+        label: <Link to="/deals/closed">Архив закрытых сделок</Link>,
+      }]
+      : []),
     {
       key: '/deals/archived',
       icon: <InboxOutlined />,

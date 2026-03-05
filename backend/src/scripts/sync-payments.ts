@@ -498,11 +498,14 @@ async function main() {
     }
 
     // Gap > 0: CRM shows more debt than Excel -> need to import payment
-    const paidAt = new Date(Date.UTC(
+    // Use last day of the month; cap at current date to prevent future dates
+    const lastDayOfMonth = new Date(Date.UTC(
       matchData.excelBalance.latestYear,
-      matchData.excelBalance.latestMonth,
-      28,
+      matchData.excelBalance.latestMonth + 1,
+      0,
     ));
+    const now = new Date();
+    const paidAt = lastDayOfMonth > now ? now : lastDayOfMonth;
     const monthName = MONTH_NAMES_RU[matchData.excelBalance.latestMonth];
     const note = `Сверка CRM-Excel: ${monthName} ${matchData.excelBalance.latestYear}`;
 

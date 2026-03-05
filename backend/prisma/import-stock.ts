@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
  * import-stock.ts
  *
  * Stock import script for the CRM warehouse module.
- * Data source: "остаток 02.xlsx" (inventory balance as of 23.02.2026).
+ * Data source: "остаток 02 (3).xlsx" (inventory balance, last section).
  *
  * All 219 products are hardcoded below so the script can run
  * on production (Render) without needing the Excel file.
@@ -32,12 +32,12 @@ interface StockProduct {
 
 const PRODUCTS: StockProduct[] = [
   // ==================== САМОКЛЕЮЩАЯСЯ БУМАГА (Китай, белая) ====================
-  { name: 'Самоклеющаяся бумага Ф:70*100 белая (Китай)', sku: 'SK-CN-70x100', unit: 'лист', format: '70*100', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 109330 },
-  { name: 'Самоклеющаяся бумага Ф:50*70 белая (Китай)', sku: 'SK-CN-50x70', unit: 'лист', format: '50*70', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 319450 },
+  { name: 'Самоклеющаяся бумага Ф:70*100 белая (Китай)', sku: 'SK-CN-70x100', unit: 'лист', format: '70*100', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 108930 },
+  { name: 'Самоклеющаяся бумага Ф:50*70 белая (Китай)', sku: 'SK-CN-50x70', unit: 'лист', format: '50*70', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 299250 },
   { name: 'Самоклеющаяся бумага Ф:70*100 белая б/н (Китай)', sku: 'SK-CN-70x100-BN', unit: 'лист', format: '70*100 б/н', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 78200 },
   { name: 'Самоклеющаяся бумага Ф:50*70 белая б/н (Китай)', sku: 'SK-CN-50x70-BN', unit: 'лист', format: '50*70 б/н', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 195600 },
   { name: 'Самоклеющаяся бумага Ф:50*35 белая (Китай)', sku: 'SK-CN-50x35', unit: 'лист', format: '50*35', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 158600 },
-  { name: 'Самоклеющаяся бумага Ф:50*35 белая б/н (Китай)', sku: 'SK-CN-50x35-BN', unit: 'лист', format: '50*35 б/н', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 374000 },
+  { name: 'Самоклеющаяся бумага Ф:50*35 белая б/н (Китай)', sku: 'SK-CN-50x35-BN', unit: 'лист', format: '50*35 б/н', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 373400 },
 
   // ==================== САМОКЛЕЮЩАЯСЯ БУМАГА (Китай, красная) ====================
   { name: 'Самоклеющаяся бумага Ф:70*100 красная (Китай)', sku: 'SK-CN-RED-70x100', unit: 'лист', format: '70*100', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Китай', stock: 655 },
@@ -47,7 +47,7 @@ const PRODUCTS: StockProduct[] = [
 
   // ==================== САМОКЛЕЮЩАЯСЯ БУМАГА (Турция) ====================
   { name: 'Самоклеющаяся бумага Ф:70*100 (Турция)', sku: 'SK-TR-70x100', unit: 'лист', format: '70*100', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Турция', stock: 23600 },
-  { name: 'Самоклеющаяся бумага Ф:50*70 (Турция)', sku: 'SK-TR-50x70', unit: 'лист', format: '50*70', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Турция', stock: 64497 },
+  { name: 'Самоклеющаяся бумага Ф:50*70 (Турция)', sku: 'SK-TR-50x70', unit: 'лист', format: '50*70', category: 'Самоклеющаяся бумага', countryOfOrigin: 'Турция', stock: 64297 },
 
   // ==================== САМОКЛЕЮЩАЯСЯ БУМАГА В РУЛОНАХ ====================
   { name: 'Самоклеющаяся бумага в рулонах 1м*2000м (акриловый клей)', sku: 'SK-RUL-FASSON-A', unit: 'рул', format: 'BJ 993', category: 'Самоклеющаяся бумага', countryOfOrigin: null, stock: 16 },
@@ -71,14 +71,14 @@ const PRODUCTS: StockProduct[] = [
 
   // ==================== ФОЛЬГА ДЛЯ ТИСНЕНИЯ (золото / серебро) ====================
   { name: 'Фольга для тиснения 64см*120м золото', sku: 'FOIL-GOLD-120', unit: 'рул', format: 'золото', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 689 },
-  { name: 'Фольга для тиснения 64см*240м золото', sku: 'FOIL-GOLD-240', unit: 'рул', format: 'золото', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 348 },
+  { name: 'Фольга для тиснения 64см*240м золото', sku: 'FOIL-GOLD-240', unit: 'рул', format: 'золото', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 345 },
   { name: 'Фольга для тиснения 64см*360м золото', sku: 'FOIL-GOLD-360', unit: 'рул', format: 'золото', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 253 },
-  { name: 'Фольга для тиснения 64см*120м серебро', sku: 'FOIL-SILVER-120', unit: 'рул', format: 'серебро', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 1294 },
+  { name: 'Фольга для тиснения 64см*120м серебро', sku: 'FOIL-SILVER-120', unit: 'рул', format: 'серебро', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 1292 },
   { name: 'Фольга для тиснения 64см*240м серебро', sku: 'FOIL-SILVER-240', unit: 'рул', format: 'серебро', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 579 },
   { name: 'Фольга для тиснения 64см*360м серебро', sku: 'FOIL-SILVER-360', unit: 'рул', format: 'серебро', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 476 },
 
   // ==================== ФОЛЬГА (золото / серебро, жёлтая спина) ====================
-  { name: 'Фольга для тиснения 64см*120м золото (сарик)', sku: 'FOIL-GOLD-Y-120', unit: 'рул', format: 'золото (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 1971 },
+  { name: 'Фольга для тиснения 64см*120м золото (сарик)', sku: 'FOIL-GOLD-Y-120', unit: 'рул', format: 'золото (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 1958 },
   { name: 'Фольга для тиснения 64см*240м золото (сарик)', sku: 'FOIL-GOLD-Y-240', unit: 'рул', format: 'золото (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 599 },
   { name: 'Фольга для тиснения 64см*360м золото (сарик)', sku: 'FOIL-GOLD-Y-360', unit: 'рул', format: 'золото (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 300 },
   { name: 'Фольга для тиснения 64см*120м серебро (сарик)', sku: 'FOIL-SILVER-Y-120', unit: 'рул', format: 'серебро (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 500 },
@@ -86,7 +86,7 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Фольга для тиснения 64см*360м серебро (сарик)', sku: 'FOIL-SILVER-Y-360', unit: 'рул', format: 'серебро (сарик)', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 200 },
 
   // ==================== ФОЛЬГА (цветная) ====================
-  { name: 'Фольга для тиснения цветная 64см*120м зелёная', sku: 'FOIL-GREEN-120', unit: 'рул', format: 'яшил', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 25 },
+  { name: 'Фольга для тиснения цветная 64см*120м зелёная', sku: 'FOIL-GREEN-120', unit: 'рул', format: 'яшил', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 24 },
   { name: 'Фольга для тиснения переливающаяся 64см*120м серебро', sku: 'FOIL-HOLO-120', unit: 'рул', format: 'переливающий сер', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 116 },
   { name: 'Фольга галаграмма песочная зелёная', sku: 'FOIL-HOLO-SAND', unit: 'рул', format: 'песочный яшил', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 3 },
   { name: 'Фольга для тиснения цветная 64см*120м чёрная', sku: 'FOIL-BLACK-120', unit: 'рул', format: 'кора', category: 'Фольга для тиснения', countryOfOrigin: null, stock: 85 },
@@ -102,69 +102,69 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Фотополимерная печатная пластина 610*860 ММ', sku: 'PHOTO-PLATE-610x860', unit: 'шт', format: '610*860', category: 'Фотополимерная пластина', countryOfOrigin: null, stock: 12 },
 
   // ==================== UV ЛАК (ПОЛИГР. БЕСЦВЕТНАЯ КРАСКА) ====================
-  { name: 'Полигр. бесцв. краска PI-50', sku: 'UV-PI50', unit: 'кг', format: 'PI 50', category: 'UV лак', countryOfOrigin: 'Турция', stock: 1050 },
-  { name: 'Полигр. бесцв. краска PI-125', sku: 'UV-PI125', unit: 'кг', format: 'PI 125', category: 'UV лак', countryOfOrigin: 'Турция', stock: 1000 },
-  { name: 'Полигр. бесцв. краска PI-180', sku: 'UV-PI180', unit: 'кг', format: 'PI 180', category: 'UV лак', countryOfOrigin: 'Турция', stock: 4089 },
+  { name: 'Полигр. бесцв. краска PI-50', sku: 'UV-PI50', unit: 'кг', format: 'PI 50', category: 'UV лак', countryOfOrigin: 'Турция', stock: 750 },
+  { name: 'Полигр. бесцв. краска PI-125', sku: 'UV-PI125', unit: 'кг', format: 'PI 125', category: 'UV лак', countryOfOrigin: 'Турция', stock: 1025 },
+  { name: 'Полигр. бесцв. краска PI-180', sku: 'UV-PI180', unit: 'кг', format: 'PI 180', category: 'UV лак', countryOfOrigin: 'Турция', stock: 4064 },
   { name: 'Полигр. бесцв. краска PI-180 Бельгия', sku: 'UV-PI180-BE', unit: 'кг', format: 'PI 180 Белгия', category: 'UV лак', countryOfOrigin: 'Бельгия', stock: 114 },
   { name: 'Полигр. бесцв. краска PI-250', sku: 'UV-PI250', unit: 'кг', format: 'PI 250', category: 'UV лак', countryOfOrigin: 'Турция', stock: 3575 },
   { name: 'Полигр. бесцв. краска PI-250 Бельгия', sku: 'UV-PI250-BE', unit: 'кг', format: 'PI 250 Белгия', category: 'UV лак', countryOfOrigin: 'Бельгия', stock: 12 },
-  { name: 'Полигр. бесцв. краска PI-400А', sku: 'UV-PI400A', unit: 'кг', format: 'PI 400А', category: 'UV лак', countryOfOrigin: 'Турция', stock: 2675 },
+  { name: 'Полигр. бесцв. краска PI-400А', sku: 'UV-PI400A', unit: 'кг', format: 'PI 400А', category: 'UV лак', countryOfOrigin: 'Турция', stock: 2650 },
   { name: 'Полигр. бесцв. краска PI-400А Бельгия', sku: 'UV-PI400A-BE', unit: 'кг', format: 'PI 400А Белгия', category: 'UV лак', countryOfOrigin: 'Бельгия', stock: 25 },
-  { name: 'Полигр. бесцв. краска PI-500 (emboss)', sku: 'UV-PI500', unit: 'кг', format: 'emboss', category: 'UV лак', countryOfOrigin: 'Турция', stock: 160 },
+  { name: 'Полигр. бесцв. краска PI-500 (emboss)', sku: 'UV-PI500', unit: 'кг', format: 'emboss', category: 'UV лак', countryOfOrigin: 'Турция', stock: 170 },
 
   // ==================== ЛАМИНАЦИОННАЯ ПЛЕНКА (ГЛЯНЦЕВАЯ) ====================
-  { name: 'Ламинационная пленка ф:3000м глянцевая 84см', sku: 'LAM-GL-84', unit: 'рул', format: '84', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 2230.5 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 78см', sku: 'LAM-GL-78', unit: 'рул', format: '78', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1016 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 74см', sku: 'LAM-GL-74', unit: 'рул', format: '74', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1213.1 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 84см', sku: 'LAM-GL-84', unit: 'рул', format: '84', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 56 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 78см', sku: 'LAM-GL-78', unit: 'рул', format: '78', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 26 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 74см', sku: 'LAM-GL-74', unit: 'рул', format: '74', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 34 },
   { name: 'Ламинационная пленка ф:3000м глянцевая 72см', sku: 'LAM-GL-72', unit: 'рул', format: '72', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
   { name: 'Ламинационная пленка ф:3000м глянцевая 70см', sku: 'LAM-GL-70', unit: 'рул', format: '70', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 68см', sku: 'LAM-GL-68', unit: 'рул', format: '68', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 694.6 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 65см', sku: 'LAM-GL-65', unit: 'рул', format: '65', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 534.9 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 68см', sku: 'LAM-GL-68', unit: 'рул', format: '68', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 20 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 65см', sku: 'LAM-GL-65', unit: 'рул', format: '65', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 16 },
   { name: 'Ламинационная пленка ф:3000м глянцевая 62см', sku: 'LAM-GL-62', unit: 'рул', format: '62', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 60см', sku: 'LAM-GL-60', unit: 'рул', format: '60', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1278.7 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 58см', sku: 'LAM-GL-58', unit: 'рул', format: '58', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1379.4 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 55см', sku: 'LAM-GL-55', unit: 'рул', format: '55', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 832.9 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 50см', sku: 'LAM-GL-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 2023.1 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 48см', sku: 'LAM-GL-48', unit: 'рул', format: '48', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1450 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 60см', sku: 'LAM-GL-60', unit: 'рул', format: '60', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 44 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 58см', sku: 'LAM-GL-58', unit: 'рул', format: '58', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 46 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 55см', sku: 'LAM-GL-55', unit: 'рул', format: '55', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 18 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 50см', sku: 'LAM-GL-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 79 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 48см', sku: 'LAM-GL-48', unit: 'рул', format: '48', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 59 },
   { name: 'Ламинационная пленка ф:3000м глянцевая 42см', sku: 'LAM-GL-42', unit: 'рул', format: '42', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 35см', sku: 'LAM-GL-35', unit: 'рул', format: '35', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 17.1 },
-  { name: 'Ламинационная пленка ф:3000м глянцевая 30см', sku: 'LAM-GL-30', unit: 'рул', format: '30', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 72.8 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 35см', sku: 'LAM-GL-35', unit: 'рул', format: '35', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
+  { name: 'Ламинационная пленка ф:3000м глянцевая 30см', sku: 'LAM-GL-30', unit: 'рул', format: '30', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 3 },
 
   // ==================== ЛАМИНАЦИОННАЯ ПЛЕНКА (МАТОВАЯ) ====================
-  { name: 'Ламинационная пленка ф:3000м матовая 84см', sku: 'LAM-MT-84', unit: 'рул', format: '84мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 259 },
-  { name: 'Ламинационная пленка ф:3000м матовая 70см', sku: 'LAM-MT-70', unit: 'рул', format: '70мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 171.4 },
-  { name: 'Ламинационная пленка ф:3000м матовая 72см', sku: 'LAM-MT-72', unit: 'рул', format: '72мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 623.4 },
-  { name: 'Ламинационная пленка ф:3000м матовая 68см', sku: 'LAM-MT-68', unit: 'рул', format: '68мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1003.2 },
-  { name: 'Ламинационная пленка ф:3000м матовая 62см', sku: 'LAM-MT-62', unit: 'рул', format: '62мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1632.4 },
-  { name: 'Ламинационная пленка ф:3000м матовая 60см', sku: 'LAM-MT-60', unit: 'рул', format: '60мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1934.2 },
-  { name: 'Ламинационная пленка ф:3000м матовая 58см', sku: 'LAM-MT-58', unit: 'рул', format: '58мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1004.7 },
-  { name: 'Ламинационная пленка ф:3000м матовая 50см', sku: 'LAM-MT-50', unit: 'рул', format: '50мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 294 },
-  { name: 'Ламинационная пленка ф:3000м матовая 42см', sku: 'LAM-MT-42', unit: 'рул', format: '42мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 20.6 },
+  { name: 'Ламинационная пленка ф:3000м матовая 84см', sku: 'LAM-MT-84', unit: 'рул', format: '84мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 7 },
+  { name: 'Ламинационная пленка ф:3000м матовая 70см', sku: 'LAM-MT-70', unit: 'рул', format: '70мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 5 },
+  { name: 'Ламинационная пленка ф:3000м матовая 72см', sku: 'LAM-MT-72', unit: 'рул', format: '72мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 18 },
+  { name: 'Ламинационная пленка ф:3000м матовая 68см', sku: 'LAM-MT-68', unit: 'рул', format: '68мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 28 },
+  { name: 'Ламинационная пленка ф:3000м матовая 62см', sku: 'LAM-MT-62', unit: 'рул', format: '62мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 54 },
+  { name: 'Ламинационная пленка ф:3000м матовая 60см', sku: 'LAM-MT-60', unit: 'рул', format: '60мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 66 },
+  { name: 'Ламинационная пленка ф:3000м матовая 58см', sku: 'LAM-MT-58', unit: 'рул', format: '58мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 37 },
+  { name: 'Ламинационная пленка ф:3000м матовая 50см', sku: 'LAM-MT-50', unit: 'рул', format: '50мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 4 },
+  { name: 'Ламинационная пленка ф:3000м матовая 42см', sku: 'LAM-MT-42', unit: 'рул', format: '42мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1 },
   { name: 'Ламинационная пленка ф:3000м матовая 35см', sku: 'LAM-MT-35', unit: 'рул', format: '35мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка ф:3000м матовая 30см', sku: 'LAM-MT-30', unit: 'рул', format: '30мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 14.8 },
+  { name: 'Ламинационная пленка ф:3000м матовая 30см', sku: 'LAM-MT-30', unit: 'рул', format: '30мат', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1 },
 
   // ==================== ЛАМИНАЦИОННАЯ ПЛЕНКА (МЕТАЛЛИЧЕСКАЯ - GOLD) ====================
-  { name: 'Ламинационная пленка металлическая ф:3000м золото 75см', sku: 'LAM-GOLD-75', unit: 'рул', format: '75 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 835.1 },
+  { name: 'Ламинационная пленка металлическая ф:3000м золото 75см', sku: 'LAM-GOLD-75', unit: 'рул', format: '75 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 15 },
   { name: 'Ламинационная пленка металлическая ф:3000м золото 70см', sku: 'LAM-GOLD-70', unit: 'рул', format: '70 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка металлическая ф:3000м золото 62см', sku: 'LAM-GOLD-62', unit: 'рул', format: '62 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 580.7 },
+  { name: 'Ламинационная пленка металлическая ф:3000м золото 62см', sku: 'LAM-GOLD-62', unit: 'рул', format: '62 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 9 },
   { name: 'Ламинационная пленка металлическая ф:3000м золото 60см', sku: 'LAM-GOLD-60', unit: 'рул', format: '60 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка металлическая ф:3000м золото 50см', sku: 'LAM-GOLD-50', unit: 'рул', format: '50 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 403.9 },
+  { name: 'Ламинационная пленка металлическая ф:3000м золото 50см', sku: 'LAM-GOLD-50', unit: 'рул', format: '50 Gold', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 10 },
 
   // ==================== ЛАМИНАЦИОННАЯ ПЛЕНКА (МЕТАЛЛИЧЕСКАЯ - SILVER) ====================
   { name: 'Ламинационная пленка металлическая ф:3000м серебро 70см', sku: 'LAM-SILVER-70', unit: 'рул', format: '70 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 0 },
-  { name: 'Ламинационная пленка металлическая ф:3000м серебро 62см', sku: 'LAM-SILVER-62', unit: 'рул', format: '62 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 337.4 },
-  { name: 'Ламинационная пленка металлическая ф:3000м серебро 60см', sku: 'LAM-SILVER-60', unit: 'рул', format: '60 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 309.8 },
-  { name: 'Ламинационная пленка металлическая ф:3000м серебро 50см', sku: 'LAM-SILVER-50', unit: 'рул', format: '50 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 106.6 },
+  { name: 'Ламинационная пленка металлическая ф:3000м серебро 62см', sku: 'LAM-SILVER-62', unit: 'рул', format: '62 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 8 },
+  { name: 'Ламинационная пленка металлическая ф:3000м серебро 60см', sku: 'LAM-SILVER-60', unit: 'рул', format: '60 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 7 },
+  { name: 'Ламинационная пленка металлическая ф:3000м серебро 50см', sku: 'LAM-SILVER-50', unit: 'рул', format: '50 Silver', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 1 },
 
   // ==================== ЛАМИНАЦИОННАЯ ПЛЕНКА (СПЕЦ) ====================
-  { name: 'Ламинационная пленка Soft touch 50см', sku: 'LAM-SOFT-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 116.3 },
-  { name: 'Ламинационная пленка голографик 50см', sku: 'LAM-HOLO-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 63 },
-  { name: 'Ламинационная пленка голографик 70см', sku: 'LAM-HOLO-70', unit: 'рул', format: '70', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 89 },
+  { name: 'Ламинационная пленка Soft touch 50см', sku: 'LAM-SOFT-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 9 },
+  { name: 'Ламинационная пленка голографик 50см', sku: 'LAM-HOLO-50', unit: 'рул', format: '50', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 6 },
+  { name: 'Ламинационная пленка голографик 70см', sku: 'LAM-HOLO-70', unit: 'рул', format: '70', category: 'Ламинационная пленка', countryOfOrigin: null, stock: 6 },
 
   // ==================== ОФСЕТНАЯ ПЛАСТИНА UV СТР ====================
   { name: 'Офсетная пластина UV СТР 1280*1060', sku: 'PLATE-UV-1280x1060', unit: 'шт', format: '1280*1060', category: 'Офсетные пластины', countryOfOrigin: null, stock: 450 },
   { name: 'Офсетная пластина UV СТР 1050*820', sku: 'PLATE-UV-1050x820', unit: 'шт', format: '1050*820', category: 'Офсетные пластины', countryOfOrigin: null, stock: 0 },
-  { name: 'Офсетная пластина UV СТР 1050*795', sku: 'PLATE-UV-1050x795', unit: 'шт', format: '1050*795', category: 'Офсетные пластины', countryOfOrigin: null, stock: 1500 },
+  { name: 'Офсетная пластина UV СТР 1050*795', sku: 'PLATE-UV-1050x795', unit: 'шт', format: '1050*795', category: 'Офсетные пластины', countryOfOrigin: null, stock: 1000 },
   { name: 'Офсетная пластина UV СТР 1030*820', sku: 'PLATE-UV-1030x820', unit: 'шт', format: '1030*820', category: 'Офсетные пластины', countryOfOrigin: null, stock: 0 },
   { name: 'Офсетная пластина UV СТР 1030*790', sku: 'PLATE-UV-1030x790', unit: 'шт', format: '1030*790', category: 'Офсетные пластины', countryOfOrigin: null, stock: 1000 },
   { name: 'Офсетная пластина UV СТР 1030*770', sku: 'PLATE-UV-1030x770', unit: 'шт', format: '1030*770', category: 'Офсетные пластины', countryOfOrigin: null, stock: 0 },
@@ -193,26 +193,26 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Офсетная пластина СТР 1050*795', sku: 'PLATE-CTP-1050x795', unit: 'шт', format: '1050*795', category: 'Офсетные пластины', countryOfOrigin: null, stock: 800 },
   { name: 'Офсетная пластина СТР 1030*790', sku: 'PLATE-CTP-1030x790', unit: 'шт', format: '1030*790', category: 'Офсетные пластины', countryOfOrigin: null, stock: 1000 },
   { name: 'Офсетная пластина СТР 890*608', sku: 'PLATE-CTP-890x608', unit: 'шт', format: '890*608', category: 'Офсетные пластины', countryOfOrigin: null, stock: 2000 },
-  { name: 'Офсетная пластина СТР 745*605', sku: 'PLATE-CTP-745x605', unit: 'шт', format: '745*605', category: 'Офсетные пластины', countryOfOrigin: null, stock: 950 },
+  { name: 'Офсетная пластина СТР 745*605', sku: 'PLATE-CTP-745x605', unit: 'шт', format: '745*605', category: 'Офсетные пластины', countryOfOrigin: null, stock: 350 },
   { name: 'Офсетная пластина СТР 510*400 (0,15)', sku: 'PLATE-CTP-510x400-015', unit: 'шт', format: '510*400 (0,15)', category: 'Офсетные пластины', countryOfOrigin: null, stock: 1000 },
 
   // ==================== МАРЗАН ====================
   { name: 'Марзан 25*25*720мм', sku: 'MARZ-720-25x25', unit: 'шт', format: '25*25*720мм', category: 'Марзан', countryOfOrigin: null, stock: 0 },
-  { name: 'Марзан 10*5*1380мм', sku: 'MARZ-138-10x5', unit: 'шт', format: '10*5*1380мм', category: 'Марзан', countryOfOrigin: null, stock: 337 },
+  { name: 'Марзан 10*5*1380мм', sku: 'MARZ-138-10x5', unit: 'шт', format: '10*5*1380мм', category: 'Марзан', countryOfOrigin: null, stock: 331 },
   { name: 'Марзан 10*5*950мм', sku: 'MARZ-95-10x5-950', unit: 'шт', format: '10*5*950мм', category: 'Марзан', countryOfOrigin: null, stock: 0 },
   { name: 'Марзан 95см (0,3мм)', sku: 'MARZ-95-03', unit: 'шт', format: '95*0,3', category: 'Марзан', countryOfOrigin: null, stock: 34 },
   { name: 'Марзан 95см (0,5мм)', sku: 'MARZ-95-05', unit: 'шт', format: '95*0,5', category: 'Марзан', countryOfOrigin: null, stock: 20 },
 
   // ==================== ХИМИЯ И РАСХОДНИКИ ====================
-  { name: 'Смывка для валов Turquoise 60 WM', sku: 'CHEM-WASH60', unit: 'литр', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 2620 },
-  { name: 'Добавка к увлажнению Alfa plus 3300', sku: 'CHEM-ALFA', unit: 'кг', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 1040 },
+  { name: 'Смывка для валов Turquoise 60 WM', sku: 'CHEM-WASH60', unit: 'литр', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 2600 },
+  { name: 'Добавка к увлажнению Alfa plus 3300', sku: 'CHEM-ALFA', unit: 'кг', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 1030 },
   { name: 'Смывка для валов Nova roll up', sku: 'CHEM-NOVA-ROLL', unit: 'литр', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 10 },
-  { name: 'Очиститель для пластин Novafix', sku: 'CHEM-NOVAFIX', unit: 'литр', format: 'Novafix', category: 'Химия и расходники', countryOfOrigin: null, stock: 2440 },
+  { name: 'Очиститель для пластин Novafix', sku: 'CHEM-NOVAFIX', unit: 'литр', format: 'Novafix', category: 'Химия и расходники', countryOfOrigin: null, stock: 2364 },
   { name: 'Нова плюс', sku: 'CHEM-NOVAPLUS', unit: 'литр', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 1450 },
 
   // ==================== ВОДНО-ДИСПЕРСИОННЫЙ ЛАК ====================
   { name: 'Водно-дисперсионный лак глянцевый', sku: 'CHEM-VDL-GL', unit: 'кг', format: '30кг/20кг', category: 'Химия и расходники', countryOfOrigin: null, stock: 3270 },
-  { name: 'Водно-дисперсионный лак матт', sku: 'CHEM-VDL-MT', unit: 'кг', format: '20кг', category: 'Химия и расходники', countryOfOrigin: null, stock: 220 },
+  { name: 'Водно-дисперсионный лак матт', sku: 'CHEM-VDL-MT', unit: 'кг', format: '20кг', category: 'Химия и расходники', countryOfOrigin: null, stock: 0 },
   { name: 'Водно-дисперсионный лак высоко глянцевый', sku: 'CHEM-VDL-HG', unit: 'кг', format: '20кг', category: 'Химия и расходники', countryOfOrigin: null, stock: 40 },
 
   // ==================== ТЕРМОКЛЕЙ ====================
@@ -221,17 +221,17 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Термоклей в гранулах', sku: 'GLUE-GRAN', unit: 'кг', format: null, category: 'Термоклей', countryOfOrigin: null, stock: 645 },
 
   // ==================== ПРОЧИЕ РАСХОДНИКИ ====================
-  { name: 'Противоотмарывающий порошок Spray Powder', sku: 'CHEM-TALK', unit: 'кг', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 430 },
+  { name: 'Противоотмарывающий порошок Spray Powder', sku: 'CHEM-TALK', unit: 'кг', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 420 },
   { name: 'Вискозная губка', sku: 'CHEM-GUBKA', unit: 'шт', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 516 },
   { name: 'Пробойник 0.5', sku: 'MISC-PUNCH-05', unit: 'шт', format: '0.5', category: 'Расходники', countryOfOrigin: null, stock: 1118 },
-  { name: 'Копировальная бумага А3', sku: 'MISC-COPY-A3', unit: 'пач', format: 'А3', category: 'Расходники', countryOfOrigin: null, stock: 30 },
+  { name: 'Копировальная бумага А3', sku: 'MISC-COPY-A3', unit: 'пач', format: 'А3', category: 'Расходники', countryOfOrigin: null, stock: 26 },
 
   // ==================== КАЛИБРОВОЧНЫЙ КАРТОН ====================
   { name: 'Калибровочный картон 1000*1400 (0.1мм)', sku: 'KALIB-01', unit: 'шт', format: '0.1', category: 'Калибровочный картон', countryOfOrigin: null, stock: 304 },
   { name: 'Калибровочный картон 1000*1400 (0.15мм)', sku: 'KALIB-015', unit: 'шт', format: '0.15', category: 'Калибровочный картон', countryOfOrigin: null, stock: 0 },
   { name: 'Калибровочный картон 1000*1400 (0.2мм)', sku: 'KALIB-02', unit: 'шт', format: '0.2', category: 'Калибровочный картон', countryOfOrigin: null, stock: 861 },
-  { name: 'Калибровочный картон 1000*1400 (0.3мм)', sku: 'KALIB-03', unit: 'шт', format: '0.3', category: 'Калибровочный картон', countryOfOrigin: null, stock: 658 },
-  { name: 'Калибровочный картон 1000*1400 (0.4мм)', sku: 'KALIB-04', unit: 'шт', format: '0.4', category: 'Калибровочный картон', countryOfOrigin: null, stock: 441 },
+  { name: 'Калибровочный картон 1000*1400 (0.3мм)', sku: 'KALIB-03', unit: 'шт', format: '0.3', category: 'Калибровочный картон', countryOfOrigin: null, stock: 653 },
+  { name: 'Калибровочный картон 1000*1400 (0.4мм)', sku: 'KALIB-04', unit: 'шт', format: '0.4', category: 'Калибровочный картон', countryOfOrigin: null, stock: 436 },
   { name: 'Калибровочный картон 1000*1400 (0.5мм)', sku: 'KALIB-05', unit: 'шт', format: '0.5', category: 'Калибровочный картон', countryOfOrigin: null, stock: 230 },
 
   // ==================== КУРСОР И РИГЕЛЬ (ДЛЯ КАЛЕНДАРЕЙ) ====================
@@ -242,7 +242,7 @@ const PRODUCTS: StockProduct[] = [
 
   // ==================== ОФСЕТНЫЙ ЛАК И КРАСКИ ====================
   { name: 'Офсетный лак глянцевый', sku: 'INK-LAK-GL', unit: 'кг', format: 'глянц', category: 'Офсетные краски', countryOfOrigin: null, stock: 232.5 },
-  { name: 'Офсетная краска Power Process красная', sku: 'INK-POWER-RED', unit: 'кг', format: 'кизил', category: 'Офсетные краски', countryOfOrigin: null, stock: 95 },
+  { name: 'Офсетная краска Power Process красная', sku: 'INK-POWER-RED', unit: 'кг', format: 'кизил', category: 'Офсетные краски', countryOfOrigin: null, stock: 92.5 },
   { name: 'Офсетная краска Focus Process красная', sku: 'INK-FOCUS-RED', unit: 'кг', format: 'кизил', category: 'Офсетные краски', countryOfOrigin: null, stock: 77.5 },
   { name: 'Офсетная краска INNOVATION красная', sku: 'INK-INNOV-RED', unit: 'кг', format: 'кизил', category: 'Офсетные краски', countryOfOrigin: null, stock: 15 },
   { name: 'Офсетная краска INNOVATION чёрная', sku: 'INK-INNOV-BLACK', unit: 'кг', format: 'кора', category: 'Офсетные краски', countryOfOrigin: null, stock: 2.5 },
@@ -257,13 +257,13 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Пантон Violet', sku: 'PNT-VIOLET', unit: 'кг', format: 'Violet', category: 'Пантонные краски', countryOfOrigin: null, stock: 0 },
   { name: 'Пантон Blue 072', sku: 'PNT-BLUE072', unit: 'кг', format: 'Blue 072', category: 'Пантонные краски', countryOfOrigin: null, stock: 61 },
   { name: 'Пантон Process blue', sku: 'PNT-PROC-BLUE', unit: 'кг', format: 'Process blue', category: 'Пантонные краски', countryOfOrigin: null, stock: 10 },
-  { name: 'Пантон Rubin red', sku: 'PNT-RUBINE', unit: 'кг', format: 'Rubin red', category: 'Пантонные краски', countryOfOrigin: null, stock: 6 },
+  { name: 'Пантон Rubin red', sku: 'PNT-RUBINE', unit: 'кг', format: 'Rubin red', category: 'Пантонные краски', countryOfOrigin: null, stock: 7 },
   { name: 'Пантон Yellow', sku: 'PNT-YELLOW', unit: 'кг', format: 'Yellow', category: 'Пантонные краски', countryOfOrigin: null, stock: 40 },
   { name: 'Пантон Purple', sku: 'PNT-PURPLE', unit: 'кг', format: 'Purple', category: 'Пантонные краски', countryOfOrigin: null, stock: 37 },
   { name: 'Пантон Reflex blue', sku: 'PNT-REFLEX-BLUE', unit: 'кг', format: 'Reflex blue', category: 'Пантонные краски', countryOfOrigin: null, stock: 0 },
   { name: 'Пантон Red 032', sku: 'PNT-RED032', unit: 'кг', format: 'Red 032', category: 'Пантонные краски', countryOfOrigin: null, stock: 0 },
   { name: 'Пантон Green', sku: 'PNT-GREEN', unit: 'кг', format: 'Green', category: 'Пантонные краски', countryOfOrigin: null, stock: 57 },
-  { name: 'Пантон Silver 877', sku: 'PNT-SILVER877', unit: 'кг', format: 'Silver 877', category: 'Пантонные краски', countryOfOrigin: null, stock: 21 },
+  { name: 'Пантон Silver 877', sku: 'PNT-SILVER877', unit: 'кг', format: 'Silver 877', category: 'Пантонные краски', countryOfOrigin: null, stock: 20 },
   { name: 'Пантон Gold 871', sku: 'PNT-GOLD871', unit: 'кг', format: 'Gold 871', category: 'Пантонные краски', countryOfOrigin: null, stock: 247 },
   { name: 'Пантон Gold 873', sku: 'PNT-GOLD873', unit: 'кг', format: 'Gold 873', category: 'Пантонные краски', countryOfOrigin: null, stock: 0 },
   { name: 'Пантон Gold 875', sku: 'PNT-GOLD875', unit: 'кг', format: 'Gold 875', category: 'Пантонные краски', countryOfOrigin: null, stock: 169 },
@@ -272,25 +272,25 @@ const PRODUCTS: StockProduct[] = [
   { name: 'Проявитель Hammond 1+9', sku: 'CHEM-PROY-HAM-19', unit: 'литр', format: 'Hammond 1+9', category: 'Химия и расходники', countryOfOrigin: null, stock: 0 },
   { name: 'Проявитель Hammond СТР', sku: 'CHEM-PROY-HAM', unit: 'литр', format: 'Hammond СТР', category: 'Химия и расходники', countryOfOrigin: null, stock: 1000 },
   { name: 'Проявитель Нова 1+9 UV', sku: 'CHEM-PROY-UV', unit: 'литр', format: 'Нова 1+9 UV', category: 'Химия и расходники', countryOfOrigin: null, stock: 260 },
-  { name: 'Проявитель СТР (teknova)', sku: 'CHEM-PROY-CTP', unit: 'литр', format: 'СТР(teknova)', category: 'Химия и расходники', countryOfOrigin: null, stock: 2300 },
+  { name: 'Проявитель СТР (teknova)', sku: 'CHEM-PROY-CTP', unit: 'литр', format: 'СТР(teknova)', category: 'Химия и расходники', countryOfOrigin: null, stock: 2260 },
   { name: 'Проявитель для пластин (порошок, 200гр)', sku: 'CHEM-PROY-POWDER', unit: 'пач', format: null, category: 'Химия и расходники', countryOfOrigin: null, stock: 1082 },
 
   // ==================== БИГОВАЛЬНЫЙ КАНАЛ ====================
   { name: 'Биговальный канал 0,3*1,3', sku: 'BIG-03x13', unit: 'пач', format: '0,3*1,3', category: 'Биговальный канал', countryOfOrigin: null, stock: 462 },
   { name: 'Биговальный канал 0,4*1,2', sku: 'BIG-04x12', unit: 'пач', format: '0,4*1,2', category: 'Биговальный канал', countryOfOrigin: null, stock: 0 },
-  { name: 'Биговальный канал 0,4*1,4', sku: 'BIG-04x14', unit: 'пач', format: '0,4*1,4', category: 'Биговальный канал', countryOfOrigin: null, stock: 289 },
-  { name: 'Биговальный канал 0,5*1,5', sku: 'BIG-05x15', unit: 'пач', format: '0,5*1,5', category: 'Биговальный канал', countryOfOrigin: null, stock: 321 },
-  { name: 'Биговальный канал 0,4*1,3', sku: 'BIG-04x13', unit: 'пач', format: '0,4*1,3', category: 'Биговальный канал', countryOfOrigin: null, stock: 192 },
+  { name: 'Биговальный канал 0,4*1,4', sku: 'BIG-04x14', unit: 'пач', format: '0,4*1,4', category: 'Биговальный канал', countryOfOrigin: null, stock: 280 },
+  { name: 'Биговальный канал 0,5*1,5', sku: 'BIG-05x15', unit: 'пач', format: '0,5*1,5', category: 'Биговальный канал', countryOfOrigin: null, stock: 320 },
+  { name: 'Биговальный канал 0,4*1,3', sku: 'BIG-04x13', unit: 'пач', format: '0,4*1,3', category: 'Биговальный канал', countryOfOrigin: null, stock: 189 },
   { name: 'Биговальный канал 0,7*2,3', sku: 'BIG-07x23', unit: 'пач', format: '0,7*2,3', category: 'Биговальный канал', countryOfOrigin: null, stock: 494 },
   { name: 'Биговальный канал 0,8*2,5', sku: 'BIG-08x25', unit: 'пач', format: '0,8*2,5', category: 'Биговальный канал', countryOfOrigin: null, stock: 39 },
 
   // ==================== ОФСЕТНОЕ ПОЛОТНО (РЕЗИНА) ====================
-  { name: 'Офсетное полотно 520*440', sku: 'RUBBER-520x440', unit: 'шт', format: '520*440', category: 'Офсетная резина', countryOfOrigin: null, stock: 157 },
+  { name: 'Офсетное полотно 520*440', sku: 'RUBBER-520x440', unit: 'шт', format: '520*440', category: 'Офсетная резина', countryOfOrigin: null, stock: 154 },
   { name: 'Офсетное полотно 772*627', sku: 'RUBBER-772x627', unit: 'шт', format: '772*627', category: 'Офсетная резина', countryOfOrigin: null, stock: 52 },
   { name: 'Офсетное полотно 791*665', sku: 'RUBBER-791x665', unit: 'шт', format: '791*665', category: 'Офсетная резина', countryOfOrigin: null, stock: 45 },
   { name: 'Офсетное полотно 1052*840', sku: 'RUBBER-1052x840', unit: 'шт', format: '1052*840', category: 'Офсетная резина', countryOfOrigin: null, stock: 133 },
   { name: 'Офсетное полотно 1060*860', sku: 'RUBBER-1060x860', unit: 'шт', format: '1060*860', category: 'Офсетная резина', countryOfOrigin: null, stock: 43 },
-  { name: 'Офсетное полотно 490*415 (листовое)', sku: 'RUBBER-490x415', unit: 'шт', format: '49', category: 'Офсетная резина', countryOfOrigin: null, stock: 124 },
+  { name: 'Офсетное полотно 490*415 (листовое)', sku: 'RUBBER-490x415', unit: 'шт', format: '49', category: 'Офсетная резина', countryOfOrigin: null, stock: 123 },
   { name: 'Офсетное полотно рулонное 1450мм', sku: 'RUBBER-RUL-1450', unit: 'м', format: '1450', category: 'Офсетная резина', countryOfOrigin: null, stock: 41.17 },
   { name: 'Офсетное полотно рулонное 1350мм', sku: 'RUBBER-RUL-1350', unit: 'м', format: '1350', category: 'Офсетная резина', countryOfOrigin: null, stock: 27.59 },
   { name: 'Офсетное полотно рулонное 1060мм', sku: 'RUBBER-RUL-106', unit: 'м', format: '106', category: 'Офсетная резина', countryOfOrigin: null, stock: 118.29 },
@@ -305,7 +305,7 @@ const PRODUCTS: StockProduct[] = [
 
   // ==================== МЕТАЛЛИЧЕСКАЯ ГРЕБЁНКА ====================
   { name: 'Металлическая гребёнка 1/4 (6,4мм) белая', sku: 'GREB-1-4-W', unit: 'бабина', format: '1*4(ок)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 1 },
-  { name: 'Металлическая гребёнка 3/8 (9,5мм) белая', sku: 'GREB-3-8-W', unit: 'бабина', format: '3*8(ок)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 137 },
+  { name: 'Металлическая гребёнка 3/8 (9,5мм) белая', sku: 'GREB-3-8-W', unit: 'бабина', format: '3*8(ок)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 134 },
   { name: 'Металлическая гребёнка 3/8 (9,5мм) чёрная', sku: 'GREB-3-8-B', unit: 'бабина', format: '3*8(кора)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 0 },
   { name: 'Металлическая гребёнка 5/16 (7,9мм) белая', sku: 'GREB-5-16-W', unit: 'бабина', format: '5*16(ок)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 170 },
   { name: 'Металлическая гребёнка 5/8 (16мм) белая', sku: 'GREB-5-8', unit: 'бабина', format: '5*8(ок)', category: 'Расходники для календарей', countryOfOrigin: null, stock: 0 },

@@ -56,7 +56,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'overview' });
+      const cached = await getSnapshot({ year, month: 0, type: 'overview-v2' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -88,14 +88,15 @@ router.get(
       AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`,
     );
 
-    // Outstanding debt across ALL years — from deal.paid_amount (unified with Dashboard)
+    // Outstanding debt — from deal.paid_amount, scoped to deals created up to yearEnd
     const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string }[]>(
       Prisma.sql`SELECT
         COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as total_debt,
         COALESCE(SUM(GREATEST(d.paid_amount - d.amount, 0)), 0)::text as total_overpayments
       FROM deals d
       WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
+        AND d.status NOT IN ('CANCELED','REJECTED')
+        AND d.created_at < ${yearEnd}${dealFilter}`,
     );
 
     const ov = overviewRaw[0];
@@ -143,7 +144,7 @@ router.get(
     );
     const collectedMap = new Map(collectedByMonthRaw.map((r) => [r.month, Number(r.collected)]));
 
-    // Opening/closing balance per month — from deal.paid_amount (unified with Dashboard)
+    // Opening/closing balance per month — from deal.paid_amount, scoped to year
     const balanceRaw = await prisma.$queryRaw<
       { month: number; opening_balance: string; closing_balance: string }[]
     >(
@@ -157,7 +158,8 @@ router.get(
       FROM generate_series(1, 12) as m(month)
       CROSS JOIN deals d
       WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        AND d.status NOT IN ('CANCELED','REJECTED')
+        AND d.created_at < ${yearEnd}${dealFilter}
       GROUP BY m.month
       ORDER BY m.month`,
     );
@@ -189,7 +191,7 @@ router.get(
       closingBalance: balanceMap.get(r.month)?.closing ?? 0,
     }));
 
-    // ── 3. Top clients — paid from payments table (source of truth) ──
+    // ── 3. Top clients — per-deal paid_amount with GREATEST (no negative debt) ──
     const topClientsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -203,18 +205,13 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as revenue,
-        COALESCE(pc.total_paid, 0)::text as paid,
-        (COALESCE(SUM(d.amount), 0) - COALESCE(pc.total_paid, 0))::text as debt
+        COALESCE(SUM(d.paid_amount), 0)::text as paid,
+        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      LEFT JOIN (
-        SELECT p.client_id, SUM(p.amount) as total_paid
-        FROM payments p
-        WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
-        GROUP BY p.client_id
-      ) pc ON pc.client_id = c.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
-      GROUP BY c.id, c.company_name, pc.total_paid
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
+        AND d.is_archived = false${dealFilter}
+      GROUP BY c.id, c.company_name
       ORDER BY SUM(d.amount) DESC
       LIMIT 30`,
     );
@@ -319,7 +316,7 @@ router.get(
       count: Number(r.count),
     }));
 
-    // ── 7. Debtors — from deal.paid_amount (unified with Dashboard) ──
+    // ── 7. Debtors — from deal.paid_amount, scoped to deals created up to yearEnd ──
     const debtorsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -336,7 +333,8 @@ router.get(
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        AND d.status NOT IN ('CANCELED','REJECTED')
+        AND d.created_at < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name
       HAVING SUM(GREATEST(d.amount - d.paid_amount, 0)) > 0
       ORDER BY SUM(GREATEST(d.amount - d.paid_amount, 0)) DESC
@@ -395,7 +393,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'overview' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'overview-v2' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -513,7 +511,7 @@ router.get(
 
     // Snapshot: admin-only, past months
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      const cached = await getSnapshot({ year, month, type: 'month-detail' });
+      const cached = await getSnapshot({ year, month, type: 'month-detail-v2' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -601,7 +599,7 @@ router.get(
       ORDER BY p.amount DESC`,
     );
 
-    // Debt snapshot at end of month — from deal.paid_amount (unified with Dashboard)
+    // Debt snapshot at end of month — from deal.paid_amount, scoped to year
     const monthBalanceRaw = await prisma.$queryRaw<
       { opening_balance: string; closing_balance: string }[]
     >(
@@ -614,7 +612,8 @@ router.get(
         ), 0)::text as closing_balance
       FROM deals d
       WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
+        AND d.status NOT IN ('CANCELED','REJECTED')
+        AND d.created_at < ${yearEnd}${dealFilter}`,
     );
 
     const debtSnapshotDebtorsRaw = await prisma.$queryRaw<
@@ -681,7 +680,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      saveSnapshot({ year, month, type: 'month-detail' }, responseData).catch(() => {});
+      saveSnapshot({ year, month, type: 'month-detail-v2' }, responseData).catch(() => {});
     }
 
     res.json(responseData);

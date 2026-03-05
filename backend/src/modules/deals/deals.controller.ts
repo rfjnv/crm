@@ -131,6 +131,22 @@ export class DealsController {
     res.json(deal);
   }
 
+  // Workflow: Deal Approval (after shipment)
+  async findForDealApproval(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findForDealApproval(getUser(req));
+    res.json(deals);
+  }
+
+  async approveDeal(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.approveDeal(req.params.id as string, getUser(req));
+    res.json(deal);
+  }
+
+  async rejectDeal(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.rejectDeal(req.params.id as string, req.body.reason, getUser(req));
+    res.json(deal);
+  }
+
   // Workflow: Shipment
   async findForShipment(req: Request, res: Response): Promise<void> {
     const deals = await dealsService.findForShipment(getUser(req));

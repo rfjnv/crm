@@ -13,6 +13,7 @@ import DealsPage from './pages/DealsPage';
 import DealCreatePage from './pages/DealCreatePage';
 import DealDetailPage from './pages/DealDetailPage';
 import ClosedDealsPage from './pages/ClosedDealsPage';
+import DealApprovalPage from './pages/DealApprovalPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 import ProductsPage from './pages/ProductsPage';
 import WarehousePage from './pages/WarehousePage';
@@ -91,7 +92,7 @@ export default function App() {
                 <Route path="/contracts/:id" element={<ContractDetailPage />} />
                 <Route path="/deals" element={<DealsPage />} />
                 <Route path="/deals/new" element={<DealCreatePage />} />
-                <Route path="/deals/closed" element={<ClosedDealsPage />} />
+                <Route path="/deals/approval" element={<DealApprovalPage />} />
                 <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 <Route path="/deals/:id" element={<DealDetailPage />} />
                 <Route path="/inventory/products" element={<ProductsPage />} />
@@ -104,6 +105,7 @@ export default function App() {
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
+                  <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 </Route>
                 <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />

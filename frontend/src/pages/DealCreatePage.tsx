@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
-  message,
+  message, Alert,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
@@ -43,6 +43,40 @@ function formatQty(value: number | string | null | undefined): string {
   return parseFloat(n.toFixed(3)).toString();
 }
 
+const DRAFT_STORAGE_KEY = 'deal_create_draft';
+
+interface DraftData {
+  clientId?: string;
+  title: string;
+  commentText: string;
+  items: Omit<DraftItem, 'key'>[];
+  savedAt: number;
+}
+
+function saveDraft(data: DraftData) {
+  try { localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(data)); } catch { /* quota exceeded — ignore */ }
+}
+
+function loadDraft(): DraftData | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as DraftData;
+  } catch { return null; }
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_STORAGE_KEY);
+}
+
+function isDraftEmpty(d: DraftData): boolean {
+  if (d.clientId) return false;
+  if (d.title) return false;
+  if (d.commentText) return false;
+  if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
+  return true;
+}
+
 export default function DealCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -52,6 +86,56 @@ export default function DealCreatePage() {
   const [title, setTitle] = useState('');
   const [commentText, setCommentText] = useState('');
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
+  const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
+
+  // On mount: check for existing draft
+  const initRef = useRef(false);
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    const saved = loadDraft();
+    if (saved && !isDraftEmpty(saved)) {
+      setDraftBanner(saved);
+    }
+  }, []);
+
+  const restoreDraft = useCallback((draft: DraftData) => {
+    setClientId(draft.clientId);
+    setTitle(draft.title);
+    setCommentText(draft.commentText);
+    setDraftItems(
+      draft.items.length > 0
+        ? draft.items.map((i) => ({ ...i, key: makeKey() }))
+        : [{ key: makeKey(), requestComment: '' }],
+    );
+    setDraftBanner(null);
+    message.success('Черновик восстановлен');
+  }, []);
+
+  const discardDraft = useCallback(() => {
+    clearDraft();
+    setDraftBanner(null);
+    message.info('Черновик удалён');
+  }, []);
+
+  // Auto-save draft on every field change (skip during banner display)
+  const skipSaveRef = useRef(false);
+  useEffect(() => {
+    if (draftBanner) return; // don't overwrite while banner is shown
+    if (skipSaveRef.current) { skipSaveRef.current = false; return; }
+    const data: DraftData = {
+      clientId,
+      title,
+      commentText,
+      items: draftItems.map(({ key: _key, ...rest }) => rest),
+      savedAt: Date.now(),
+    };
+    if (isDraftEmpty(data)) {
+      clearDraft();
+    } else {
+      saveDraft(data);
+    }
+  }, [clientId, title, commentText, draftItems, draftBanner]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -59,6 +143,7 @@ export default function DealCreatePage() {
   const createMut = useMutation({
     mutationFn: (data: Parameters<typeof dealsApi.create>[0]) => dealsApi.create(data),
     onSuccess: (result) => {
+      clearDraft();
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       message.success('Сделка создана');
       navigate(`/deals/${result.id}`);
@@ -156,6 +241,22 @@ export default function DealCreatePage() {
           <Button type="primary" loading={createMut.isPending} onClick={handleSubmit}>Сохранить сделку</Button>
         </Space>
       </div>
+
+      {draftBanner && (
+        <Alert
+          type="info"
+          showIcon
+          message="Найден незавершённый черновик сделки"
+          description={`Сохранён ${dayjs(draftBanner.savedAt).format('DD.MM.YYYY HH:mm')}`}
+          action={
+            <Space>
+              <Button size="small" type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
+              <Button size="small" danger onClick={discardDraft}>Удалить</Button>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Card title="Основное" bordered={false}>

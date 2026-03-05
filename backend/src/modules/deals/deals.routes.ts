@@ -19,6 +19,7 @@ router.use(authenticate);
 router.get('/finance-queue', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForFinanceReview.bind(dealsController)));
 router.get('/shipment-queue', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForShipment.bind(dealsController)));
 router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
+router.get('/deal-approval-queue', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDealApproval.bind(dealsController)));
 router.get('/archived', asyncHandler(dealsController.findArchived.bind(dealsController)));
 
 router.get('/', asyncHandler(dealsController.findAll.bind(dealsController)));
@@ -53,6 +54,10 @@ router.post('/:id/finance-reject', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN
 
 // Workflow: Admin Approve
 router.post('/:id/admin-approve', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveAdmin.bind(dealsController)));
+
+// Workflow: Deal Approval (after shipment)
+router.post('/:id/deal-approve', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveDeal.bind(dealsController)));
+router.post('/:id/deal-reject', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.rejectDeal.bind(dealsController)));
 
 // Workflow: Shipment
 router.post('/:id/shipment', validate(shipmentDto), asyncHandler(dealsController.submitShipment.bind(dealsController)));

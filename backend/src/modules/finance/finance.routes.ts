@@ -141,42 +141,141 @@ router.get(
     };
     const dealScope = ownerScope(user);
 
-    const [deals, totals] = await Promise.all([
-      prisma.deal.findMany({
-        where: {
-          ...dealScope,
-          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-          status: { notIn: ['CANCELED', 'REJECTED'] },
-          isArchived: false,
-        },
-        include: {
-          client: { select: { id: true, companyName: true } },
-          manager: { select: { id: true, fullName: true } },
-        },
-        orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
-      }),
-      prisma.deal.aggregate({
-        where: {
-          ...dealScope,
-          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-          status: { notIn: ['CANCELED', 'REJECTED'] },
-          isArchived: false,
-        },
-        _sum: { amount: true, paidAmount: true },
-        _count: true,
-      }),
-    ]);
+    const minDebt = req.query.minDebt ? Number(req.query.minDebt) : undefined;
+    const managerId = req.query.managerId as string | undefined;
+    const paymentStatus = req.query.paymentStatus as string | undefined;
 
-    const totalAmount = totals._sum.amount ? Number(totals._sum.amount) : 0;
-    const totalPaid = totals._sum.paidAmount ? Number(totals._sum.paidAmount) : 0;
+    const where: Prisma.DealWhereInput = {
+      ...dealScope,
+      paymentStatus: paymentStatus
+        ? { equals: paymentStatus as 'UNPAID' | 'PARTIAL' }
+        : { in: ['UNPAID', 'PARTIAL'] },
+      status: { notIn: ['CANCELED', 'REJECTED'] },
+      isArchived: false,
+    };
+    if (managerId) where.managerId = managerId;
+
+    const deals = await prisma.deal.findMany({
+      where,
+      include: {
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+        payments: {
+          select: { paidAt: true },
+          orderBy: { paidAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+    });
+
+    // Aggregate by client
+    const clientMap = new Map<string, {
+      clientId: string;
+      clientName: string;
+      totalDebt: number;
+      totalAmount: number;
+      totalPaid: number;
+      dealsCount: number;
+      lastPaymentDate: string | null;
+      managers: Map<string, { id: string; fullName: string; count: number }>;
+      newestDealDate: string;
+      oldestUnpaidDueDate: string | null;
+      hasPartial: boolean;
+      hasPaid: boolean;
+    }>();
+
+    for (const deal of deals) {
+      const cid = deal.clientId;
+      const debt = Number(deal.amount) - Number(deal.paidAmount);
+
+      if (!clientMap.has(cid)) {
+        clientMap.set(cid, {
+          clientId: cid,
+          clientName: deal.client?.companyName || '',
+          totalDebt: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          dealsCount: 0,
+          lastPaymentDate: null,
+          managers: new Map(),
+          newestDealDate: deal.createdAt.toISOString(),
+          oldestUnpaidDueDate: null,
+          hasPartial: false,
+          hasPaid: false,
+        });
+      }
+
+      const entry = clientMap.get(cid)!;
+      entry.totalDebt += debt;
+      entry.totalAmount += Number(deal.amount);
+      entry.totalPaid += Number(deal.paidAmount);
+      entry.dealsCount++;
+
+      if (deal.paymentStatus === 'PARTIAL') entry.hasPartial = true;
+      if (Number(deal.paidAmount) > 0) entry.hasPaid = true;
+
+      const pDate = deal.payments?.[0]?.paidAt;
+      if (pDate) {
+        const ps = pDate.toISOString();
+        if (!entry.lastPaymentDate || ps > entry.lastPaymentDate) {
+          entry.lastPaymentDate = ps;
+        }
+      }
+
+      const mgr = deal.manager;
+      if (mgr) {
+        const existing = entry.managers.get(mgr.id);
+        if (existing) existing.count++;
+        else entry.managers.set(mgr.id, { id: mgr.id, fullName: mgr.fullName, count: 1 });
+      }
+
+      const dealDate = deal.createdAt.toISOString();
+      if (dealDate > entry.newestDealDate) entry.newestDealDate = dealDate;
+
+      if (deal.dueDate) {
+        const ds = deal.dueDate.toISOString();
+        if (!entry.oldestUnpaidDueDate || ds < entry.oldestUnpaidDueDate) {
+          entry.oldestUnpaidDueDate = ds;
+        }
+      }
+    }
+
+    let clients = [...clientMap.values()].map((c) => {
+      let primaryManager: { id: string; fullName: string } | null = null;
+      let maxCount = 0;
+      for (const [, mgr] of c.managers) {
+        if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
+      }
+
+      return {
+        clientId: c.clientId,
+        clientName: c.clientName,
+        totalDebt: c.totalDebt,
+        totalAmount: c.totalAmount,
+        totalPaid: c.totalPaid,
+        dealsCount: c.dealsCount,
+        lastPaymentDate: c.lastPaymentDate,
+        manager: primaryManager,
+        newestDealDate: c.newestDealDate,
+        oldestUnpaidDueDate: c.oldestUnpaidDueDate,
+        paymentStatus: (c.hasPartial || c.hasPaid ? 'PARTIAL' : 'UNPAID') as 'UNPAID' | 'PARTIAL',
+      };
+    });
+
+    if (minDebt) {
+      clients = clients.filter((c) => c.totalDebt >= minDebt);
+    }
+
+    const totalDebt = clients.reduce((s, c) => s + c.totalDebt, 0);
+    const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
     res.json({
-      deals,
+      clients,
       totals: {
-        count: totals._count,
-        totalAmount,
-        totalPaid,
-        totalDebt: totalAmount - totalPaid,
+        clientCount: clients.length,
+        dealsCount: totalDealsCount,
+        totalDebt,
       },
     });
   }),

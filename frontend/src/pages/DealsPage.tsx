@@ -18,7 +18,8 @@ const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string 
 
 const kanbanStatuses: DealStatus[] = [
   'NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS',
-  'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REJECTED',
+  'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD',
+  'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
 ];
 
 function DealCard({ deal }: { deal: Deal }) {
@@ -89,7 +90,7 @@ export default function DealsPage() {
 
   const { data: deals, isLoading } = useQuery({
     queryKey: ['deals', statusFilter],
-    queryFn: () => dealsApi.list(statusFilter, !statusFilter),
+    queryFn: () => dealsApi.list(statusFilter),
     refetchInterval: 10_000,
   });
 
@@ -150,7 +151,9 @@ export default function DealsPage() {
               style={{ width: 200 }}
               value={statusFilter}
               onChange={(v) => setStatusFilter(v)}
-              options={Object.entries(statusConfig).map(([k, v]) => ({ label: v.label, value: k }))}
+              options={Object.entries(statusConfig)
+                .filter(([k]) => k !== 'CLOSED')
+                .map(([k, v]) => ({ label: v.label, value: k }))}
             />
           )}
         </Space>

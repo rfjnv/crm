@@ -46,7 +46,7 @@ export default function ClosedDealsPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Закрытые сделки</Typography.Title>
+        <Typography.Title level={4} style={{ margin: 0 }}>Архив закрытых сделок</Typography.Title>
         <Input.Search
           placeholder="Поиск по названию или клиенту..."
           style={{ width: 300 }}

@@ -129,7 +129,10 @@ function parseAllExcelPayments(): Map<string, ClientExcelData> {
       const isShifted = h1 ? normLower(h1[11]).includes('договор') : false;
       const paymentCols = isShifted ? PAYMENT_COLS_SHIFTED : PAYMENT_COLS_STANDARD;
 
-      const paidAt = new Date(Date.UTC(year, monthIdx, 15));
+      // Use mid-month date; cap at current date to prevent future dates
+      const midMonth = new Date(Date.UTC(year, monthIdx, 15));
+      const now = new Date();
+      const paidAt = midMonth > now ? now : midMonth;
 
       let sheetPayments = 0;
       let sheetTotal = 0;

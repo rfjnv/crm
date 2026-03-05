@@ -1,142 +1,143 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Input, Tag, Modal, Spin, Descriptions } from 'antd';
+import { Table, Typography, Input, Tag, Select, Space, InputNumber } from 'antd';
 import { financeApi } from '../api/finance.api';
+import { usersApi } from '../api/users.api';
 import { formatUZS } from '../utils/currency';
-import type { Deal, PaymentStatus } from '../types';
+import type { ClientDebtRow } from '../types';
 import dayjs from 'dayjs';
 
-const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
-  UNPAID: { color: 'default', label: 'Не оплачено' },
-  PARTIAL: { color: 'orange', label: 'Частично' },
-  PAID: { color: 'green', label: 'Оплачено' },
-};
-
-const disciplineConfig: Record<string, { color: string; label: string }> = {
-  good: { color: 'green', label: 'Надёжный' },
-  pays_late: { color: 'orange', label: 'Задерживает' },
-  chronic: { color: 'red', label: 'Хронический' },
-};
+type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
+type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
+type SortOption = 'debt_desc' | 'newest' | 'oldest_unpaid';
 
 export default function DebtsPage() {
   const [search, setSearch] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [debtRange, setDebtRange] = useState<DebtRange>('all');
+  const [customMin, setCustomMin] = useState<number | null>(null);
+  const [debtStatus, setDebtStatus] = useState<DebtStatus>('all');
+  const [managerId, setManagerId] = useState<string | undefined>(undefined);
+  const [sortBy, setSortBy] = useState<SortOption>('debt_desc');
+
+  const params = useMemo(() => {
+    const p: { minDebt?: number; managerId?: string; paymentStatus?: string } = {};
+    if (managerId) p.managerId = managerId;
+    if (debtStatus !== 'all') p.paymentStatus = debtStatus;
+
+    let minDebt = 0;
+    if (debtRange === '1m') minDebt = 1_000_000;
+    else if (debtRange === '5m') minDebt = 5_000_000;
+    else if (debtRange === '10m') minDebt = 10_000_000;
+    else if (debtRange === 'custom' && customMin) minDebt = customMin;
+    if (minDebt > 0) p.minDebt = minDebt;
+
+    return p;
+  }, [managerId, debtStatus, debtRange, customMin]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['finance-debts'],
-    queryFn: financeApi.getDebts,
+    queryKey: ['finance-debts', params],
+    queryFn: () => financeApi.getDebts(params),
   });
 
-  const { data: clientDetail, isLoading: detailLoading } = useQuery({
-    queryKey: ['client-debt-detail', selectedClientId],
-    queryFn: () => financeApi.clientDebtDetail(selectedClientId!),
-    enabled: !!selectedClientId,
+  const { data: users } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: usersApi.list,
   });
 
-  const deals = data?.deals ?? [];
+  const clients: ClientDebtRow[] = data?.clients ?? [];
   const totals = data?.totals;
 
-  const filtered = deals.filter((d: Deal) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return d.title.toLowerCase().includes(q) || d.client?.companyName?.toLowerCase().includes(q);
-  });
+  const managers = useMemo(() => {
+    if (!users) return [];
+    return users
+      .filter((u: { role: string; isActive: boolean }) =>
+        ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
+      )
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+  }, [users]);
 
-  const now = dayjs();
+  const filtered = useMemo(() => {
+    let result = clients;
 
-  const handleClientClick = (clientId: string) => {
-    setSelectedClientId(clientId);
-    setModalOpen(true);
-  };
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.clientName.toLowerCase().includes(q) ||
+          c.manager?.fullName.toLowerCase().includes(q),
+      );
+    }
 
-  const handleModalClose = () => {
-    setModalOpen(false);
-    setSelectedClientId(null);
-  };
+    result = [...result].sort((a, b) => {
+      if (sortBy === 'debt_desc') return b.totalDebt - a.totalDebt;
+      if (sortBy === 'newest') return (b.newestDealDate || '').localeCompare(a.newestDealDate || '');
+      if (sortBy === 'oldest_unpaid') {
+        const aDate = a.oldestUnpaidDueDate || '9999';
+        const bDate = b.oldestUnpaidDueDate || '9999';
+        return aDate.localeCompare(bDate);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [clients, search, sortBy]);
 
   const columns = [
-    { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
-      render: (v: string, r: Deal) => (
-        <a onClick={() => r.client?.id && handleClientClick(r.client.id)} style={{ cursor: 'pointer' }}>
+      dataIndex: 'clientName',
+      key: 'clientName',
+      render: (v: string, r: ClientDebtRow) => (
+        <Link to={`/clients/${r.clientId}`} style={{ fontWeight: 500 }}>
           {v}
-        </a>
+        </Link>
       ),
     },
-    { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-    { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
-      title: 'Остаток',
-      key: 'debt',
+      title: 'Общий долг',
+      dataIndex: 'totalDebt',
+      key: 'totalDebt',
       align: 'right' as const,
-      render: (_: unknown, r: Deal) => (
-        <span style={{ color: '#ff4d4f', fontWeight: 600 }}>
-          {formatUZS(Number(r.amount) - Number(r.paidAmount))}
-        </span>
+      render: (v: number) => (
+        <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(v)}</span>
       ),
     },
     {
-      title: 'Оплата',
+      title: 'Сделок',
+      dataIndex: 'dealsCount',
+      key: 'dealsCount',
+      align: 'center' as const,
+    },
+    {
+      title: 'Последний платёж',
+      dataIndex: 'lastPaymentDate',
+      key: 'lastPaymentDate',
+      render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '\u2014'),
+    },
+    {
+      title: 'Менеджер',
+      dataIndex: ['manager', 'fullName'],
+      key: 'manager',
+      render: (v: string | null) => v || '\u2014',
+    },
+    {
+      title: 'Статус',
       dataIndex: 'paymentStatus',
-      render: (s: PaymentStatus) => {
-        const cfg = paymentStatusLabels[s] || { color: 'default', label: s };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      key: 'paymentStatus',
+      render: (s: string) => {
+        if (s === 'PARTIAL') return <Tag color="orange">Частично</Tag>;
+        return <Tag color="default">Не оплачено</Tag>;
       },
     },
-    {
-      title: 'Срок оплаты',
-      dataIndex: 'dueDate',
-      render: (v: string | null) => {
-        if (!v) return '\u2014';
-        const date = dayjs(v);
-        const overdue = date.isBefore(now, 'day');
-        return <span style={overdue ? { color: '#ff4d4f', fontWeight: 600 } : {}}>{date.format('DD.MM.YYYY')}</span>;
-      },
-    },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
-  ];
-
-  const detailDealsColumns = [
-    { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-    { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-    {
-      title: 'Остаток',
-      key: 'debt',
-      align: 'right' as const,
-      render: (_: unknown, r: Deal) => (
-        <span style={{ color: '#ff4d4f', fontWeight: 600 }}>
-          {formatUZS(Number(r.amount) - Number(r.paidAmount))}
-        </span>
-      ),
-    },
-    {
-      title: 'Оплата',
-      dataIndex: 'paymentStatus',
-      render: (s: PaymentStatus) => {
-        const cfg = paymentStatusLabels[s] || { color: 'default', label: s };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
-    },
-  ];
-
-  const detailPaymentsColumns = [
-    { title: 'Дата', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
-    { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-    { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '\u2014' },
-    { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '\u2014' },
   ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Долги</Typography.Title>
         <Input.Search
-          placeholder="Поиск по названию или клиенту..."
+          placeholder="Поиск по клиенту или менеджеру..."
           style={{ width: 300 }}
           allowClear
           value={search}
@@ -144,10 +145,68 @@ export default function DebtsPage() {
         />
       </div>
 
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Select
+          value={debtRange}
+          onChange={(v) => setDebtRange(v)}
+          style={{ width: 180 }}
+          options={[
+            { value: 'all', label: 'Сумма долга: все' },
+            { value: '1m', label: '> 1 000 000' },
+            { value: '5m', label: '> 5 000 000' },
+            { value: '10m', label: '> 10 000 000' },
+            { value: 'custom', label: 'Свой диапазон' },
+          ]}
+        />
+        {debtRange === 'custom' && (
+          <InputNumber
+            placeholder="Мин. сумма"
+            style={{ width: 160 }}
+            min={0}
+            step={100000}
+            value={customMin}
+            onChange={(v) => setCustomMin(v)}
+            formatter={(v) => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : ''}
+            parser={(v) => Number((v || '').replace(/\s/g, ''))}
+          />
+        )}
+        <Select
+          value={debtStatus}
+          onChange={(v) => setDebtStatus(v)}
+          style={{ width: 180 }}
+          options={[
+            { value: 'all', label: 'Статус: все' },
+            { value: 'PARTIAL', label: 'Частичная оплата' },
+            { value: 'UNPAID', label: 'Без оплаты' },
+          ]}
+        />
+        <Select
+          value={managerId}
+          onChange={(v) => setManagerId(v)}
+          allowClear
+          placeholder="Менеджер"
+          style={{ width: 200 }}
+          options={managers}
+        />
+        <Select
+          value={sortBy}
+          onChange={(v) => setSortBy(v)}
+          style={{ width: 220 }}
+          options={[
+            { value: 'debt_desc', label: 'Сортировка: наибольший долг' },
+            { value: 'newest', label: 'Сортировка: новые сделки' },
+            { value: 'oldest_unpaid', label: 'Сортировка: старые неоплаты' },
+          ]}
+        />
+      </Space>
+
       {totals && (
         <div style={{ marginBottom: 16, display: 'flex', gap: 24 }}>
           <Typography.Text type="secondary">
-            Всего: <strong>{totals.count}</strong> сделок
+            Клиентов: <strong>{totals.clientCount}</strong>
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            Сделок: <strong>{totals.dealsCount}</strong>
           </Typography.Text>
           <Typography.Text type="secondary">
             Общий долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</strong>
@@ -158,75 +217,16 @@ export default function DebtsPage() {
       <Table
         dataSource={filtered}
         columns={columns}
-        rowKey="id"
+        rowKey="clientId"
         loading={isLoading}
         pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
         locale={{ emptyText: 'Нет задолженностей' }}
-        rowClassName={(r: Deal) => {
-          if (r.dueDate && dayjs(r.dueDate).isBefore(now, 'day')) return 'ant-table-row-overdue';
-          return '';
-        }}
+        onRow={(record) => ({
+          style: { cursor: 'pointer' },
+        })}
       />
-
-      <Modal
-        title={clientDetail ? `Клиент: ${clientDetail.client.companyName}` : 'Детали клиента'}
-        open={modalOpen}
-        onCancel={handleModalClose}
-        footer={null}
-        width={800}
-      >
-        {detailLoading ? (
-          <Spin size="large" style={{ display: 'block', margin: '40px auto' }} />
-        ) : clientDetail ? (
-          <div>
-            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Компания">{clientDetail.client.companyName}</Descriptions.Item>
-              <Descriptions.Item label="Контакт">{clientDetail.client.contactName}</Descriptions.Item>
-              <Descriptions.Item label="Телефон">{clientDetail.client.phone || '\u2014'}</Descriptions.Item>
-              <Descriptions.Item label="Общий долг">
-                <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(clientDetail.totalDebt)}</span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Дисциплина">
-                {(() => {
-                  const cfg = disciplineConfig[clientDetail.discipline.tag] || { color: 'default', label: clientDetail.discipline.tag };
-                  return <Tag color={cfg.color}>{cfg.label}</Tag>;
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label="Оплата вовремя">
-                {(clientDetail.discipline.onTimeRate * 100).toFixed(0)}%
-              </Descriptions.Item>
-              <Descriptions.Item label="Ср. задержка (дн.)">
-                {clientDetail.discipline.avgPaymentDelay.toFixed(1)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Закрытых сделок">
-                {clientDetail.discipline.totalClosedDeals}
-              </Descriptions.Item>
-            </Descriptions>
-
-            <Typography.Title level={5} style={{ marginTop: 16 }}>Сделки</Typography.Title>
-            <Table
-              dataSource={clientDetail.deals}
-              columns={detailDealsColumns}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              locale={{ emptyText: 'Нет сделок' }}
-            />
-
-            <Typography.Title level={5} style={{ marginTop: 16 }}>Платежи</Typography.Title>
-            <Table
-              dataSource={clientDetail.payments}
-              columns={detailPaymentsColumns}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              locale={{ emptyText: 'Нет платежей' }}
-            />
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }
