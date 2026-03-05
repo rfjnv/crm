@@ -6,3 +6,13 @@ build/
 uploads/
 tmpclaude-*
 .DS_Store
+*.xlsx
+*.csv
+*.pdf
+backups/
+backend/backups/
+backend/nul
+backend/tsconfig.tsbuildinfo
+nul
+backend/reports/
+backend/src/scripts/_*.ts
