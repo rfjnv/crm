@@ -223,7 +223,7 @@ export default function DebtsPage() {
         size="middle"
         bordered={false}
         locale={{ emptyText: 'Нет задолженностей' }}
-        onRow={(record) => ({
+        onRow={(_record) => ({
           style: { cursor: 'pointer' },
         })}
       />
