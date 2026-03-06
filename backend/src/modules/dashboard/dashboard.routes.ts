@@ -19,15 +19,18 @@ router.get(
     };
     const dealScope = ownerScope(user);
 
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-    const startOfYesterday = new Date(startOfToday);
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thirtyDaysAgo = new Date(startOfToday);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const TASHKENT_OFFSET = 5 * 60 * 60 * 1000; // UTC+5
+    const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+    const y = nowTashkent.getUTCFullYear();
+    const mo = nowTashkent.getUTCMonth();
+    const dy = nowTashkent.getUTCDate();
+
+    // Midnight Tashkent in UTC
+    const startOfToday = new Date(Date.UTC(y, mo, dy) - TASHKENT_OFFSET);
+    const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
+    const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+    const startOfMonth = new Date(Date.UTC(y, mo, 1) - TASHKENT_OFFSET);
+    const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
 
     const [
       revenueTodayAgg,
@@ -155,20 +158,20 @@ router.get(
       // 10. Revenue last 30 days (from payments)
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE(p.paid_at) as day, SUM(p.amount)::text as total
+            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
              AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})
-             GROUP BY DATE(p.paid_at)
+             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE(p.paid_at) as day, SUM(p.amount)::text as total
+            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
              AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
-             GROUP BY DATE(p.paid_at)
+             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           ),
 
@@ -218,10 +221,13 @@ router.get(
 router.get(
   '/revenue-today',
   asyncHandler(async (req: Request, res: Response) => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+    const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+    const y = nowTashkent.getUTCFullYear();
+    const mo = nowTashkent.getUTCMonth();
+    const dy = nowTashkent.getUTCDate();
+    const startOfToday = new Date(Date.UTC(y, mo, dy) - TASHKENT_OFFSET);
+    const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
 
     const payments = await prisma.payment.findMany({
       where: {

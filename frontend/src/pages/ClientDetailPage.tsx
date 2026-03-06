@@ -158,12 +158,14 @@ export default function ClientDetailPage() {
     {
       title: 'Остаток', key: 'remaining', align: 'right' as const,
       render: (_: unknown, r: DealShort) => {
-        const remaining = Math.max(Number(r.amount) - Number(r.paidAmount ?? 0), 0);
-        return (
-          <Typography.Text type={remaining > 0 ? 'danger' : 'success'}>
-            {formatUZS(remaining)}
-          </Typography.Text>
-        );
+        const diff = Number(r.amount) - Number(r.paidAmount ?? 0);
+        if (diff > 0) {
+          return <Typography.Text type="danger">{formatUZS(diff)}</Typography.Text>;
+        }
+        if (diff < 0) {
+          return <Typography.Text type="success">Переплата: {formatUZS(Math.abs(diff))}</Typography.Text>;
+        }
+        return <Typography.Text type="success">{formatUZS(0)}</Typography.Text>;
       },
     },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
@@ -263,7 +265,7 @@ export default function ClientDetailPage() {
                     if (deals.length === 0) return null;
                     const totalAmount = deals.reduce((s, d) => s + Number(d.amount), 0);
                     const totalPaid = deals.reduce((s, d) => s + Number(d.paidAmount ?? 0), 0);
-                    const totalRemaining = Math.max(totalAmount - totalPaid, 0);
+                    const totalDiff = totalAmount - totalPaid;
                     return (
                       <Table.Summary.Row>
                         <Table.Summary.Cell index={0} colSpan={2}>
@@ -276,7 +278,9 @@ export default function ClientDetailPage() {
                           <Typography.Text strong>{formatUZS(totalPaid)}</Typography.Text>
                         </Table.Summary.Cell>
                         <Table.Summary.Cell index={4} align="right">
-                          <Typography.Text strong type={totalRemaining > 0 ? 'danger' : 'success'}>{formatUZS(totalRemaining)}</Typography.Text>
+                          <Typography.Text strong type={totalDiff > 0 ? 'danger' : 'success'}>
+                            {totalDiff < 0 ? `Переплата: ${formatUZS(Math.abs(totalDiff))}` : formatUZS(Math.max(totalDiff, 0))}
+                          </Typography.Text>
                         </Table.Summary.Cell>
                         <Table.Summary.Cell index={5} colSpan={2} />
                       </Table.Summary.Row>

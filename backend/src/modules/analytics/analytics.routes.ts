@@ -9,27 +9,34 @@ const router = Router();
 
 router.use(authenticate);
 
+// Tashkent = UTC+5
+const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+
 function getPeriodRange(period: string): { start: Date; end: Date } {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  // Compute "now" in Tashkent timezone
+  const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+  const y = nowTashkent.getUTCFullYear();
+  const m = nowTashkent.getUTCMonth();
+  const d = nowTashkent.getUTCDate();
+
+  // Midnight Tashkent in UTC = Date.UTC(y,m,d) - offset
+  const startOfTodayUtc = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
+  const end = new Date(startOfTodayUtc.getTime() + 86400000); // tomorrow midnight Tashkent
   let start: Date;
 
   switch (period) {
     case 'week':
-      start = new Date(end);
-      start.setDate(start.getDate() - 7);
+      start = new Date(end.getTime() - 7 * 86400000);
       break;
     case 'quarter':
-      start = new Date(end);
-      start.setMonth(start.getMonth() - 3);
+      start = new Date(Date.UTC(y, m - 3, d) - TASHKENT_OFFSET);
       break;
     case 'year':
-      start = new Date(end);
-      start.setFullYear(start.getFullYear() - 1);
+      start = new Date(Date.UTC(y - 1, m, d) - TASHKENT_OFFSET);
       break;
     case 'month':
     default:
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = new Date(Date.UTC(y, m, 1) - TASHKENT_OFFSET);
       break;
   }
 
@@ -62,12 +69,12 @@ router.get(
     ] = await Promise.all([
       // Total revenue in period (COMPLETED + APPROVED + CLOSED deals)
       prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, updatedAt: { gte: start, lt: end } },
+        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
         _sum: { amount: true },
       }),
       // Avg deal amount in period
       prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, updatedAt: { gte: start, lt: end } },
+        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
         _avg: { amount: true },
       }),
       // COMPLETED + CLOSED count (for conversion)
@@ -82,25 +89,25 @@ router.get(
       prisma.deal.count({
         where: { ...dealScope, status: 'CANCELED', isArchived: false, createdAt: { gte: start, lt: end } },
       }),
-      // Revenue by day
+      // Revenue by day (grouped by deal creation date in Tashkent TZ)
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE(d.updated_at) as day, SUM(d.amount)::text as total
+            Prisma.sql`SELECT DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(d.amount)::text as total
              FROM deals d
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
-               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+               AND d.created_at >= ${start} AND d.created_at < ${end}
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY DATE(d.updated_at)
+             GROUP BY DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE(d.updated_at) as day, SUM(d.amount)::text as total
+            Prisma.sql`SELECT DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(d.amount)::text as total
              FROM deals d
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
-               AND d.updated_at >= ${start} AND d.updated_at < ${end}
-             GROUP BY DATE(d.updated_at)
+               AND d.created_at >= ${start} AND d.created_at < ${end}
+             GROUP BY DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           ),
       // Deals by status
@@ -117,7 +124,7 @@ router.get(
              JOIN clients c ON c.id = d.client_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
-               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+               AND d.created_at >= ${start} AND d.created_at < ${end}
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY c.id, c.company_name
              ORDER BY SUM(d.amount) DESC
@@ -129,7 +136,7 @@ router.get(
              JOIN clients c ON c.id = d.client_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
-               AND d.updated_at >= ${start} AND d.updated_at < ${end}
+               AND d.created_at >= ${start} AND d.created_at < ${end}
              GROUP BY c.id, c.company_name
              ORDER BY SUM(d.amount) DESC
              LIMIT 5`
@@ -357,7 +364,7 @@ router.get(
          JOIN products pr ON pr.id = di.product_id
          WHERE d.status IN ('SHIPPED', 'CLOSED')
            AND d.is_archived = false
-           AND d.updated_at >= ${start} AND d.updated_at < ${end}
+           AND d.created_at >= ${start} AND d.created_at < ${end}
            AND di.requested_qty IS NOT NULL
            AND pr.purchase_price IS NOT NULL`
       ),
