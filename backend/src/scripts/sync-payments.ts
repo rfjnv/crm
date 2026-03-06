@@ -36,7 +36,7 @@ const MONTH_NAMES_RU = [
 
 const EXCEL_FILES = [
   { name: '29.12.2025.xlsx', defaultYear: 2025 },
-  { name: '03.03.2026.xlsx', defaultYear: 2026 },
+  { name: 'frontend/05.03.2026.xlsx', defaultYear: 2026 },
 ];
 
 /**
