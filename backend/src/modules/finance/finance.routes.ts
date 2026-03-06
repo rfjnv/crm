@@ -10,6 +10,11 @@ import { auditLog } from '../../lib/logger';
 
 const router = Router();
 
+// Only these sourceOpType values represent real customer debt (from Excel column J)
+// к=K, н/к=NK, п/к=PK, ф=F
+// ПП (PP=prepayment), Н (N=cash), П (P=transfer), EXCHANGE are NOT debt
+const DEBT_SOURCE_OP_TYPES = new Set(['K', 'NK', 'PK', 'F']);
+
 router.use(authenticate);
 
 // ──── КАССА (Payments Report) ────
@@ -165,6 +170,9 @@ router.get(
           orderBy: { paidAt: 'desc' },
           take: 1,
         },
+        items: {
+          select: { requestedQty: true, price: true, sourceOpType: true },
+        },
       },
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
     });
@@ -187,7 +195,22 @@ router.get(
 
     for (const deal of deals) {
       const cid = deal.clientId;
-      const debt = Number(deal.amount) - Number(deal.paidAmount);
+
+      // Calculate debt-worthy amount: only items with debt-type sourceOpType
+      // For deals without sourceOpType on items (created via CRM UI), use full deal.amount
+      const hasSourceOpType = deal.items.some((it) => it.sourceOpType != null);
+      let effectiveAmount: number;
+      if (hasSourceOpType) {
+        effectiveAmount = deal.items.reduce((sum, it) => {
+          if (it.sourceOpType && DEBT_SOURCE_OP_TYPES.has(it.sourceOpType)) {
+            return sum + Number(it.requestedQty ?? 0) * Number(it.price ?? 0);
+          }
+          return sum;
+        }, 0);
+      } else {
+        effectiveAmount = Number(deal.amount);
+      }
+      const debt = Math.max(0, effectiveAmount - Number(deal.paidAmount));
 
       if (!clientMap.has(cid)) {
         clientMap.set(cid, {
@@ -208,7 +231,7 @@ router.get(
 
       const entry = clientMap.get(cid)!;
       entry.totalDebt += debt;
-      entry.totalAmount += Number(deal.amount);
+      entry.totalAmount += effectiveAmount;
       entry.totalPaid += Number(deal.paidAmount);
       entry.dealsCount++;
 
@@ -502,6 +525,9 @@ router.get(
       },
       include: {
         manager: { select: { id: true, fullName: true } },
+        items: {
+          select: { requestedQty: true, price: true, sourceOpType: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -516,7 +542,21 @@ router.get(
       take: 50,
     });
 
-    const totalDebt = deals.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0);
+    const totalDebt = deals.reduce((sum, d) => {
+      const hasSourceOpType = d.items.some((it) => it.sourceOpType != null);
+      let effectiveAmount: number;
+      if (hasSourceOpType) {
+        effectiveAmount = d.items.reduce((s, it) => {
+          if (it.sourceOpType && DEBT_SOURCE_OP_TYPES.has(it.sourceOpType)) {
+            return s + Number(it.requestedQty ?? 0) * Number(it.price ?? 0);
+          }
+          return s;
+        }, 0);
+      } else {
+        effectiveAmount = Number(d.amount);
+      }
+      return sum + Math.max(0, effectiveAmount - Number(d.paidAmount));
+    }, 0);
 
     // Discipline metrics
     const allClientDeals = await prisma.deal.findMany({

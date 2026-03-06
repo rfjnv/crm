@@ -88,11 +88,17 @@ router.get(
       AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`,
     );
 
-    // Outstanding debt — historical calculation from payments table, scoped to deals created up to yearEnd
+    // Outstanding debt — use effective debt amount (only debt-type items from J column)
     const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string }[]>(
       Prisma.sql`SELECT
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)), 0)::text as total_debt,
-        COALESCE(SUM(GREATEST(COALESCE(hp.paid, 0) - d.amount, 0)), 0)::text as total_overpayments
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - COALESCE(hp.paid, 0), 0)), 0)::text as total_debt,
+        COALESCE(SUM(GREATEST(COALESCE(hp.paid, 0) -
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        , 0)), 0)::text as total_overpayments
       FROM deals d
       LEFT JOIN (
         SELECT p.deal_id, SUM(p.amount) as paid
@@ -100,6 +106,13 @@ router.get(
         WHERE p.paid_at < ${yearEnd}
         GROUP BY p.deal_id
       ) hp ON hp.deal_id = d.id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')
         AND d.created_at < ${yearEnd}${dealFilter}`,
@@ -123,11 +136,20 @@ router.get(
         }[]
       >(
         Prisma.sql`SELECT
-          COALESCE(SUM(d.amount), 0)::text as total_deals_amount,
+          COALESCE(SUM(
+            CASE WHEN COALESCE(da.has_typed_items, false)
+              THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          ), 0)::text as total_deals_amount,
           COALESCE(SUM(COALESCE(hp.paid, 0)), 0)::text as total_historical_payments,
           COUNT(d.id)::text as deal_count,
-          COUNT(d.id) FILTER (WHERE d.amount > COALESCE(hp.paid, 0))::text as deals_with_debt,
-          COUNT(d.id) FILTER (WHERE COALESCE(hp.paid, 0) > d.amount)::text as deals_overpaid
+          COUNT(d.id) FILTER (WHERE
+            CASE WHEN COALESCE(da.has_typed_items, false)
+              THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+            > COALESCE(hp.paid, 0))::text as deals_with_debt,
+          COUNT(d.id) FILTER (WHERE COALESCE(hp.paid, 0) >
+            CASE WHEN COALESCE(da.has_typed_items, false)
+              THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          )::text as deals_overpaid
         FROM deals d
         LEFT JOIN (
           SELECT p.deal_id, SUM(p.amount) as paid
@@ -135,6 +157,13 @@ router.get(
           WHERE p.paid_at < ${yearEnd}
           GROUP BY p.deal_id
         ) hp ON hp.deal_id = d.id
+        LEFT JOIN (
+          SELECT di.deal_id,
+            SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+              THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+            bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+          FROM deal_items di GROUP BY di.deal_id
+        ) da ON da.deal_id = d.id
         WHERE d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')
           AND d.created_at < ${yearEnd}${dealFilter}`,
@@ -196,7 +225,7 @@ router.get(
     );
     const collectedMap = new Map(collectedByMonthRaw.map((r) => [r.month, Number(r.collected)]));
 
-    // Opening/closing balance per month — historical calculation from payments table
+    // Opening/closing balance per month — uses effective debt amount from deal_items
     const balanceRaw = await prisma.$queryRaw<
       { month: number; opening_balance: string; closing_balance: string }[]
     >(
@@ -211,17 +240,29 @@ router.get(
         FROM payments p
         CROSS JOIN generate_series(1, 12) as ms(month)
         GROUP BY p.deal_id, ms.month
+      ),
+      deal_debt_amounts AS (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
       )
       SELECT m.month,
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid_at_open, 0), 0)) FILTER (
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false) THEN COALESCE(da.debt_amount,0) ELSE d.amount END
+          - COALESCE(hp.paid_at_open, 0), 0)) FILTER (
           WHERE d.created_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid_at_close, 0), 0)) FILTER (
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false) THEN COALESCE(da.debt_amount,0) ELSE d.amount END
+          - COALESCE(hp.paid_at_close, 0), 0)) FILTER (
           WHERE d.created_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM generate_series(1, 12) as m(month)
       CROSS JOIN deals d
       LEFT JOIN historical_paid hp ON hp.deal_id = d.id AND hp.month = m.month
+      LEFT JOIN deal_debt_amounts da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')
         AND d.created_at < ${yearEnd}${dealFilter}
@@ -256,7 +297,7 @@ router.get(
       closingBalance: balanceMap.get(r.month)?.closing ?? 0,
     }));
 
-    // ── 3. Top clients — historical payment data with GREATEST (no negative debt) ──
+    // ── 3. Top clients — historical payment data with effective debt amount ──
     const topClientsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -271,7 +312,10 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as revenue,
         COALESCE(SUM(COALESCE(hp.paid, 0)), 0)::text as paid,
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)), 0)::text as debt
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - COALESCE(hp.paid, 0), 0)), 0)::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       LEFT JOIN (
@@ -280,6 +324,13 @@ router.get(
         WHERE p.paid_at < ${yearEnd}
         GROUP BY p.deal_id
       ) hp ON hp.deal_id = d.id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false${dealFilter}
       GROUP BY c.id, c.company_name
@@ -387,7 +438,7 @@ router.get(
       count: Number(r.count),
     }));
 
-    // ── 7. Debtors — historical calculation from payments table, scoped to deals created up to yearEnd ──
+    // ── 7. Debtors — uses effective debt amount from deal_items ──
     const debtorsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -400,7 +451,10 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         COALESCE(SUM(d.amount), 0)::text as total_amount,
         COALESCE(SUM(COALESCE(hp.paid, 0)), 0)::text as total_paid,
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)), 0)::text as debt
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - COALESCE(hp.paid, 0), 0)), 0)::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       LEFT JOIN (
@@ -409,12 +463,25 @@ router.get(
         WHERE p.paid_at < ${yearEnd}
         GROUP BY p.deal_id
       ) hp ON hp.deal_id = d.id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')
         AND d.created_at < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)) DESC
+      HAVING SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - COALESCE(hp.paid, 0), 0)) > 0
+      ORDER BY SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - COALESCE(hp.paid, 0), 0)) DESC
       LIMIT 30`,
     );
     const debtors = debtorsRaw.map((r) => ({
@@ -677,15 +744,19 @@ router.get(
       ORDER BY p.amount DESC`,
     );
 
-    // Debt snapshot at end of month — historical calculation from payments table
+    // Debt snapshot at end of month — uses effective debt amount from deal_items
     const monthBalanceRaw = await prisma.$queryRaw<
       { opening_balance: string; closing_balance: string }[]
     >(
       Prisma.sql`SELECT
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid_open, 0), 0)) FILTER (
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false) THEN COALESCE(da.debt_amount,0) ELSE d.amount END
+          - COALESCE(hp.paid_open, 0), 0)) FILTER (
           WHERE d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ})
         ), 0)::text as opening_balance,
-        COALESCE(SUM(GREATEST(d.amount - COALESCE(hp.paid_close, 0), 0)) FILTER (
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false) THEN COALESCE(da.debt_amount,0) ELSE d.amount END
+          - COALESCE(hp.paid_close, 0), 0)) FILTER (
           WHERE d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         ), 0)::text as closing_balance
       FROM deals d
@@ -700,6 +771,13 @@ router.get(
         FROM payments p
         GROUP BY p.deal_id
       ) hp ON hp.deal_id = d.id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')
         AND d.created_at < ${yearEnd}${dealFilter}`,
@@ -711,7 +789,10 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         SUM(d.amount)::text as total_amount,
         COALESCE(SUM(COALESCE(hp.paid, 0)), 0)::text as total_paid,
-        SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0))::text as debt
+        SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - COALESCE(hp.paid, 0), 0))::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       LEFT JOIN (
@@ -720,12 +801,25 @@ router.get(
         WHERE p.paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
         GROUP BY p.deal_id
       ) hp ON hp.deal_id = d.id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - COALESCE(hp.paid, 0), 0)) DESC
+      HAVING SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - COALESCE(hp.paid, 0), 0)) > 0
+      ORDER BY SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - COALESCE(hp.paid, 0), 0)) DESC
       LIMIT 30`,
     );
 
@@ -962,25 +1056,44 @@ router.get(
       revenueTotal: Number(r.revenue_total),
     }));
 
-    // 6. Debt risk
+    // 6. Debt risk — uses effective debt amount from deal_items
     const debtRiskRaw = await prisma.$queryRaw<
       { id: string; company_name: string; debt: string; revenue: string; debt_ratio: string; last_deal_month: number }[]
     >(
       Prisma.sql`SELECT c.id, c.company_name,
-        COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt,
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - d.paid_amount, 0)), 0)::text as debt,
         COALESCE(SUM(d.amount), 0)::text as revenue,
         CASE WHEN SUM(d.amount) > 0
-          THEN (SUM(d.amount - d.paid_amount)::numeric / SUM(d.amount)::numeric)::text
+          THEN (SUM(GREATEST(
+            CASE WHEN COALESCE(da.has_typed_items, false)
+              THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+            - d.paid_amount, 0))::numeric / SUM(d.amount)::numeric)::text
           ELSE '0'
         END as debt_ratio,
         MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_deal_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false${dealFilter}
         AND d.payment_status IN ('UNPAID', 'PARTIAL')
       GROUP BY c.id, c.company_name
-      HAVING SUM(d.amount - d.paid_amount) > 0
-      ORDER BY SUM(d.amount - d.paid_amount) DESC
+      HAVING SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - d.paid_amount, 0)) > 0
+      ORDER BY SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - d.paid_amount, 0)) DESC
       LIMIT 30`,
     );
     const debtRisk = debtRiskRaw.map((r) => ({
@@ -1687,16 +1800,38 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as total_amount,
         COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt,
-        COALESCE(SUM(GREATEST(d.paid_amount - d.amount, 0)), 0)::text as overpayment
+        COALESCE(SUM(GREATEST(
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+          - d.paid_amount, 0)), 0)::text as debt,
+        COALESCE(SUM(GREATEST(d.paid_amount -
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        , 0)), 0)::text as overpayment
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (
+        SELECT di.deal_id,
+          SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+            THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
+          bool_or(di.source_op_type IS NOT NULL) as has_typed_items
+        FROM deal_items di GROUP BY di.deal_id
+      ) da ON da.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - d.paid_amount, 0)) > 0
-        OR SUM(GREATEST(d.paid_amount - d.amount, 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - d.paid_amount, 0)) DESC`,
+      HAVING SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - d.paid_amount, 0)) > 0
+        OR SUM(GREATEST(d.paid_amount -
+          CASE WHEN COALESCE(da.has_typed_items, false)
+            THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        , 0)) > 0
+      ORDER BY SUM(GREATEST(
+        CASE WHEN COALESCE(da.has_typed_items, false)
+          THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
+        - d.paid_amount, 0)) DESC`,
     );
 
     const BOM = '\uFEFF';
