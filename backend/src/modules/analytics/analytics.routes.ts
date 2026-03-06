@@ -185,39 +185,15 @@ router.get(
     const [totalDebtRaw, overdueDeals, topDebtorsRaw, realTurnoverAgg, paperTurnoverAgg] = await Promise.all([
       dealScope.managerId
         ? prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            ), 0)::text as debt
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            ), 0)::text as debt
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false`
           ),
@@ -228,63 +204,30 @@ router.get(
           dueDate: { lt: new Date() },
           isArchived: false,
         },
-        include: {
-          client: { select: { id: true, companyName: true } },
-          items: { select: { requestedQty: true, price: true, sourceOpType: true } },
-        },
+        include: { client: { select: { id: true, companyName: true } } },
         orderBy: { dueDate: 'asc' },
         take: 20,
       }),
       dealScope.managerId
         ? prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            )::text as total_debt
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY c.id, c.company_name
-             ORDER BY SUM(GREATEST(
-               CASE WHEN COALESCE(da.has_typed_items, false)
-                 THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-               - d.paid_amount, 0)) DESC
+             ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
           )
         : prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            )::text as total_debt
+            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false
              GROUP BY c.id, c.company_name
-             ORDER BY SUM(GREATEST(
-               CASE WHEN COALESCE(da.has_typed_items, false)
-                 THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-               - d.paid_amount, 0)) DESC
+             ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
           ),
       prisma.deal.aggregate({
@@ -297,31 +240,15 @@ router.get(
       }),
     ]);
 
-    const DEBT_OP_TYPES = new Set(['K', 'NK', 'PK', 'F']);
-
     const finance = {
       totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
-      overdueDebts: overdueDeals.map((d) => {
-        const hasSourceOpType = d.items.some((it) => it.sourceOpType != null);
-        let effectiveAmount: number;
-        if (hasSourceOpType) {
-          effectiveAmount = d.items.reduce((sum, it) => {
-            if (it.sourceOpType && DEBT_OP_TYPES.has(it.sourceOpType)) {
-              return sum + Number(it.requestedQty ?? 0) * Number(it.price ?? 0);
-            }
-            return sum;
-          }, 0);
-        } else {
-          effectiveAmount = Number(d.amount);
-        }
-        return {
-          dealId: d.id,
-          title: d.title,
-          clientName: d.client.companyName,
-          debt: Math.max(0, effectiveAmount - Number(d.paidAmount)),
-          dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
-        };
-      }),
+      overdueDebts: overdueDeals.map((d) => ({
+        dealId: d.id,
+        title: d.title,
+        clientName: d.client.companyName,
+        debt: Number(d.amount) - Number(d.paidAmount),
+        dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
+      })),
       topDebtors: topDebtorsRaw.map((d) => ({
         clientId: d.client_id,
         companyName: d.company_name,

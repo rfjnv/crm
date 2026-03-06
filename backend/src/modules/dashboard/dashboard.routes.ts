@@ -102,43 +102,19 @@ router.get(
         },
       }),
 
-      // 5. Total debt (exclude CANCELED/REJECTED, use only debt-type items from J column)
+      // 5. Total debt (exclude CANCELED/REJECTED)
       dealScope.managerId
         ? prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            ), 0)::text as debt
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false
                AND d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(
-              GREATEST(
-                CASE WHEN COALESCE(da.has_typed_items, false)
-                  THEN COALESCE(da.debt_amount, 0) ELSE d.amount END
-                - d.paid_amount, 0)
-            ), 0)::text as debt
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             LEFT JOIN (
-               SELECT di.deal_id,
-                 SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                   THEN COALESCE(di.requested_qty,0) * COALESCE(di.price,0) ELSE 0 END) as debt_amount,
-                 bool_or(di.source_op_type IS NOT NULL) as has_typed_items
-               FROM deal_items di GROUP BY di.deal_id
-             ) da ON da.deal_id = d.id
              WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
                AND d.is_archived = false
                AND d.status NOT IN ('CANCELED', 'REJECTED')`
