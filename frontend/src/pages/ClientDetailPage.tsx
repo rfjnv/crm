@@ -346,8 +346,6 @@ export default function ClientDetailPage() {
                     {(() => {
                       const allDeals = client?.deals ?? [];
                       const activeDeals = allDeals.filter((d) => d.status !== 'CANCELED' && d.status !== 'REJECTED');
-                      const totalAmt = activeDeals.reduce((s, d) => s + Number(d.amount), 0);
-                      const totalPaid = activeDeals.reduce((s, d) => s + Number(d.paidAmount ?? 0), 0);
                       const unpaidDeals = activeDeals.filter((d) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL'));
                       const debtFromUnpaid = unpaidDeals.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount ?? 0)), 0);
                       const overpaid = activeDeals.reduce((s, d) => {
