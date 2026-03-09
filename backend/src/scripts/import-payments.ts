@@ -48,7 +48,7 @@ const PAYMENT_COLS_SHIFTED = [
 
 const EXCEL_FILES = [
   { name: '29.12.2025.xlsx', defaultYear: 2025 },
-  { name: '28.02.2026.xlsx', defaultYear: 2026 },
+  { name: '07.03.2026.xlsx', defaultYear: 2026 },
 ];
 
 // ───────── helpers ─────────

@@ -225,7 +225,7 @@ export default function DebtsPage() {
       </Space>
 
       {totals && (
-        <div style={{ marginBottom: 16, display: 'flex', gap: 24 }}>
+        <div style={{ marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <Typography.Text type="secondary">
             Клиентов: <strong>{totals.clientCount}</strong>
           </Typography.Text>
@@ -233,7 +233,13 @@ export default function DebtsPage() {
             Сделок: <strong>{totals.dealsCount}</strong>
           </Typography.Text>
           <Typography.Text type="secondary">
-            Общий долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</strong>
+            Валовой долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.grossDebt ?? 0)}</strong>
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            Предоплаты: <strong style={{ color: '#52c41a' }}>{formatUZS(totals.prepayments ?? 0)}</strong>
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            Чистый долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</strong>
           </Typography.Text>
         </div>
       )}

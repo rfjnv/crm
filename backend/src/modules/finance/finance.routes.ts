@@ -267,7 +267,12 @@ router.get(
       clients = clients.filter((c) => c.totalDebt >= minDebt);
     }
 
-    const totalDebt = clients.reduce((s, c) => s + c.totalDebt, 0);
+    // Gross debt = sum of only positive client debts (clients that owe us)
+    const grossDebt = clients.reduce((s, c) => s + Math.max(0, c.totalDebt), 0);
+    // Prepayments = sum of negative client balances
+    const prepayments = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
+    // Net debt = gross - prepayments (matches Excel closing balance logic)
+    const netDebt = grossDebt + prepayments;
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
     res.json({
@@ -275,7 +280,9 @@ router.get(
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        totalDebt,
+        grossDebt,
+        prepayments,
+        totalDebt: netDebt,
       },
     });
   }),
