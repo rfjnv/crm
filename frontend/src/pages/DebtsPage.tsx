@@ -104,6 +104,30 @@ export default function DebtsPage() {
       ),
     },
     {
+      title: 'Сумма сделок',
+      dataIndex: 'totalAmount',
+      key: 'totalAmount',
+      align: 'right' as const,
+      render: (v: number) => (
+        <Typography.Text type="secondary">{formatUZS(v)}</Typography.Text>
+      ),
+    },
+    {
+      title: 'Оплачено',
+      dataIndex: 'totalPaid',
+      key: 'totalPaid',
+      align: 'right' as const,
+      render: (v: number, r: ClientDebtRow) => {
+        const pct = r.totalAmount > 0 ? Math.round((v / r.totalAmount) * 100) : 0;
+        return (
+          <span>
+            <Typography.Text type="secondary">{formatUZS(v)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>({pct}%)</Typography.Text>
+          </span>
+        );
+      },
+    },
+    {
       title: 'Сделок',
       dataIndex: 'dealsCount',
       key: 'dealsCount',

@@ -184,6 +184,11 @@ export default function Layout() {
           label: <Link to="/finance/debts">Долги</Link>,
         },
         {
+          key: '/finance/day-closing',
+          icon: <CheckCircleOutlined />,
+          label: <Link to="/finance/day-closing">Закрытие дня</Link>,
+        },
+        {
           key: '/finance/review',
           icon: <AuditOutlined />,
           label: <Link to="/finance/review">На проверке</Link>,

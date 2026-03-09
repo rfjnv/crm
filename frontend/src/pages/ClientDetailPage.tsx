@@ -342,6 +342,44 @@ export default function ClientDetailPage() {
                       </Col>
                     </Row>
 
+                    {/* Debt breakdown: total amount, total paid, overpayment info */}
+                    {(() => {
+                      const allDeals = client?.deals ?? [];
+                      const activeDeals = allDeals.filter((d) => d.status !== 'CANCELED' && d.status !== 'REJECTED');
+                      const totalAmt = activeDeals.reduce((s, d) => s + Number(d.amount), 0);
+                      const totalPaid = activeDeals.reduce((s, d) => s + Number(d.paidAmount ?? 0), 0);
+                      const unpaidDeals = activeDeals.filter((d) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL'));
+                      const debtFromUnpaid = unpaidDeals.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount ?? 0)), 0);
+                      const overpaid = activeDeals.reduce((s, d) => {
+                        const diff = Number(d.paidAmount ?? 0) - Number(d.amount);
+                        return diff > 0 ? s + diff : s;
+                      }, 0);
+                      const netDebt = debtFromUnpaid - overpaid;
+                      if (unpaidDeals.length === 0 && overpaid === 0) return null;
+                      return (
+                        <Card bordered={false} size="small" style={{ marginTop: 8 }}>
+                          <Row gutter={[16, 8]}>
+                            <Col xs={24} sm={8}>
+                              <Typography.Text type="secondary">Чистый долг: </Typography.Text>
+                              <Typography.Text strong style={{ color: netDebt > 0 ? '#ff4d4f' : netDebt < 0 ? '#52c41a' : undefined }}>
+                                {netDebt > 0 ? formatUZS(netDebt) : netDebt < 0 ? `Переплата: ${formatUZS(Math.abs(netDebt))}` : formatUZS(0)}
+                              </Typography.Text>
+                            </Col>
+                            <Col xs={24} sm={8}>
+                              <Typography.Text type="secondary">Неопл. сделок: </Typography.Text>
+                              <Typography.Text strong>{unpaidDeals.length}</Typography.Text>
+                              <Typography.Text type="secondary"> на {formatUZS(debtFromUnpaid)}</Typography.Text>
+                            </Col>
+                            {overpaid > 0 && (
+                              <Col xs={24} sm={8}>
+                                <Tag color="green">Переплата: {formatUZS(overpaid)}</Tag>
+                              </Col>
+                            )}
+                          </Row>
+                        </Card>
+                      );
+                    })()}
+
                     <Row gutter={[16, 16]}>
                       <Col xs={24} lg={14}>
                         <Card title="Выручка по дням" bordered={false}>
