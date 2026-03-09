@@ -46,8 +46,8 @@ async function main() {
     console.log(`Cleanup done. Preserved: ${clients} clients, ${products} products, ${users} users`);
   }
 
-  app.listen(config.port, () => {
-    console.log(`Server running on port ${config.port} [${config.nodeEnv}]`);
+  app.listen(config.port, '0.0.0.0', () => {
+    console.log(`Server running on 0.0.0.0:${config.port} [${config.nodeEnv}]`);
   });
 }
 
