@@ -169,6 +169,43 @@ router.get(
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
     });
 
+    // Also fetch overpaid deals (PAID deals where paidAmount > amount)
+    // These are excluded by the UNPAID/PARTIAL filter above but represent
+    // client prepayments that should offset total debt.
+    const overpaidWhere: Prisma.DealWhereInput = {
+      ...dealScope,
+      paymentStatus: 'PAID',
+      status: { notIn: ['CANCELED', 'REJECTED'] },
+      isArchived: false,
+    };
+    if (managerId) overpaidWhere.managerId = managerId;
+
+    const overpaidDealsList = await prisma.deal.findMany({
+      where: overpaidWhere,
+      select: {
+        clientId: true,
+        amount: true,
+        paidAmount: true,
+        client: { select: { id: true, companyName: true } },
+      },
+    });
+
+    // Build a map of overpayments by client (only where paidAmount > amount)
+    const overpaymentMap = new Map<string, { amount: number; companyName: string }>();
+    for (const d of overpaidDealsList) {
+      const overpay = Number(d.paidAmount) - Number(d.amount);
+      if (overpay <= 0) continue;
+      const existing = overpaymentMap.get(d.clientId);
+      if (existing) {
+        existing.amount += overpay;
+      } else {
+        overpaymentMap.set(d.clientId, {
+          amount: overpay,
+          companyName: d.client?.companyName || '',
+        });
+      }
+    }
+
     // Aggregate by client
     const clientMap = new Map<string, {
       clientId: string;
@@ -269,9 +306,13 @@ router.get(
 
     // Gross debt = sum of only positive client debts (clients that owe us)
     const grossDebt = clients.reduce((s, c) => s + Math.max(0, c.totalDebt), 0);
-    // Prepayments = sum of negative client balances
-    const prepayments = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
-    // Net debt = gross - prepayments (matches Excel closing balance logic)
+    // Prepayments from UNPAID/PARTIAL deals (negative client balances)
+    const prepayFromUnpaid = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
+    // Prepayments from PAID deals (where paidAmount > amount)
+    const prepayFromPaid = Array.from(overpaymentMap.values()).reduce((s, v) => s + v.amount, 0);
+    // Total prepayments (negative number to keep sign convention)
+    const prepayments = prepayFromUnpaid - prepayFromPaid;
+    // Net debt = gross + prepayments (prepayments is negative)
     const netDebt = grossDebt + prepayments;
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
