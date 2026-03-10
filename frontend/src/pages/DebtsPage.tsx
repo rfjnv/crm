@@ -100,7 +100,9 @@ export default function DebtsPage() {
       key: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(v)}</span>
+        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
+          {v < 0 ? `−${formatUZS(Math.abs(v))} (переплата)` : formatUZS(v)}
+        </span>
       ),
     },
     {

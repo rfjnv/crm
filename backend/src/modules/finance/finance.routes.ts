@@ -241,32 +241,6 @@ router.get(
       }
     }
 
-    let clients = [...clientMap.values()].map((c) => {
-      let primaryManager: { id: string; fullName: string } | null = null;
-      let maxCount = 0;
-      for (const [, mgr] of c.managers) {
-        if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
-      }
-
-      return {
-        clientId: c.clientId,
-        clientName: c.clientName,
-        totalDebt: c.totalDebt,
-        totalAmount: c.totalAmount,
-        totalPaid: c.totalPaid,
-        dealsCount: c.dealsCount,
-        lastPaymentDate: c.lastPaymentDate,
-        manager: primaryManager,
-        newestDealDate: c.newestDealDate,
-        oldestUnpaidDueDate: c.oldestUnpaidDueDate,
-        paymentStatus: (c.hasPartial || c.hasPaid ? 'PARTIAL' : 'UNPAID') as 'UNPAID' | 'PARTIAL',
-      };
-    });
-
-    if (minDebt) {
-      clients = clients.filter((c) => c.totalDebt >= minDebt);
-    }
-
     // Compute totals across ALL deals (not just UNPAID/PARTIAL) per client,
     // so that prepayments on PAID deals offset gross debt — matching Excel logic.
     const allDealsWhere: Prisma.DealWhereInput = {
@@ -282,14 +256,49 @@ router.get(
       _sum: { amount: true, paidAmount: true },
     });
 
+    // Build a map of per-client ALL-deals net balance
+    const allDealsBalanceMap = new Map<string, number>();
     let grossDebt = 0;
     let prepayments = 0;
     for (const row of allDealsAgg) {
       const balance = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
+      allDealsBalanceMap.set(row.clientId, balance);
       if (balance > 0) grossDebt += balance;
       else prepayments += balance;
     }
     const netDebt = grossDebt + prepayments;
+
+    let clients = [...clientMap.values()].map((c) => {
+      let primaryManager: { id: string; fullName: string } | null = null;
+      let maxCount = 0;
+      for (const [, mgr] of c.managers) {
+        if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
+      }
+
+      // Use ALL-deals net balance instead of just UNPAID/PARTIAL sum,
+      // so overpayments on PAID deals offset debt correctly (e.g. тимур дилшод).
+      const allDealsBalance = allDealsBalanceMap.get(c.clientId);
+      const effectiveDebt = allDealsBalance !== undefined ? allDealsBalance : c.totalDebt;
+
+      return {
+        clientId: c.clientId,
+        clientName: c.clientName,
+        totalDebt: effectiveDebt,
+        totalAmount: c.totalAmount,
+        totalPaid: c.totalPaid,
+        dealsCount: c.dealsCount,
+        lastPaymentDate: c.lastPaymentDate,
+        manager: primaryManager,
+        newestDealDate: c.newestDealDate,
+        oldestUnpaidDueDate: c.oldestUnpaidDueDate,
+        paymentStatus: (c.hasPartial || c.hasPaid ? 'PARTIAL' : 'UNPAID') as 'UNPAID' | 'PARTIAL',
+      };
+    });
+
+    if (minDebt) {
+      clients = clients.filter((c) => c.totalDebt >= minDebt);
+    }
+
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
     res.json({
@@ -542,6 +551,19 @@ router.get(
 
     const totalDebt = deals.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0);
 
+    // Also compute ALL-deals net balance so overpayments on PAID deals are reflected
+    const allDealsForClient = await prisma.deal.findMany({
+      where: {
+        clientId,
+        isArchived: false,
+        status: { notIn: ['CANCELED', 'REJECTED'] },
+      },
+      select: { amount: true, paidAmount: true },
+    });
+    const allDealsNetBalance = allDealsForClient.reduce(
+      (sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0,
+    );
+
     // Discipline metrics
     const allClientDeals = await prisma.deal.findMany({
       where: { clientId, status: 'CLOSED', isArchived: false },
@@ -584,7 +606,7 @@ router.get(
       client,
       deals,
       payments,
-      totalDebt,
+      totalDebt: allDealsNetBalance,
       discipline: {
         onTimeRate,
         avgPaymentDelay: Math.round(avgPaymentDelay),
