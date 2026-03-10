@@ -258,15 +258,10 @@ router.get(
 
     // Build a map of per-client ALL-deals net balance
     const allDealsBalanceMap = new Map<string, number>();
-    let grossDebt = 0;
-    let prepayments = 0;
     for (const row of allDealsAgg) {
       const balance = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
       allDealsBalanceMap.set(row.clientId, balance);
-      if (balance > 0) grossDebt += balance;
-      else prepayments += balance;
     }
-    const netDebt = grossDebt + prepayments;
 
     // Also find clients with prepayments (negative balance) who have NO UNPAID/PARTIAL deals,
     // so they wouldn't be in clientMap. We need to add them to the list.
@@ -362,6 +357,15 @@ router.get(
     }
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
+
+    // Compute totals from the displayed client list (after all filters)
+    let grossDebt = 0;
+    let prepayments = 0;
+    for (const c of clients) {
+      if (c.totalDebt > 0) grossDebt += c.totalDebt;
+      else prepayments += c.totalDebt;
+    }
+    const netDebt = grossDebt + prepayments;
 
     res.json({
       clients,
