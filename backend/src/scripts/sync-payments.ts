@@ -367,6 +367,46 @@ async function fifoAllocate(
   return { payments, dealUpdates };
 }
 
+// ─────────── Step 4b: LIFO reduce paidAmount (for EXCEL>CRM) ───────────
+
+async function lifoReducePaid(
+  clientId: string,
+  excessAmount: number, // positive number: how much to reduce total paidAmount
+): Promise<{ dealUpdates: DealUpdate[] }> {
+  // Get all non-archived deals for this client, NEWEST first (LIFO)
+  const deals = await prisma.deal.findMany({
+    where: { clientId, isArchived: false },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, amount: true, paidAmount: true },
+  });
+
+  if (deals.length === 0) return { dealUpdates: [] };
+
+  let remaining = excessAmount;
+  const dealUpdates: DealUpdate[] = [];
+
+  for (const deal of deals) {
+    if (remaining <= 0.01) break;
+
+    const currentPaid = Number(deal.paidAmount);
+    if (currentPaid <= 0) continue;
+
+    // How much can we reduce on this deal?
+    const canReduce = Math.min(remaining, currentPaid);
+    const newPaid = Math.round((currentPaid - canReduce) * 100) / 100;
+
+    dealUpdates.push({
+      dealId: deal.id,
+      newPaidAmount: newPaid,
+      newStatus: computePaymentStatus(newPaid, Number(deal.amount)),
+    });
+
+    remaining -= canReduce;
+  }
+
+  return { dealUpdates };
+}
+
 // ─────────── Step 5: Execute single-client import ───────────
 
 async function executeClientImport(
@@ -392,6 +432,22 @@ async function executeClientImport(
     }
 
     // Update Deal.paidAmount and paymentStatus
+    for (const du of dealUpdates) {
+      await tx.deal.updateMany({
+        where: { id: du.dealId },
+        data: {
+          paidAmount: du.newPaidAmount,
+          paymentStatus: du.newStatus as any,
+        },
+      });
+    }
+  }, { maxWait: 30000, timeout: 60000 });
+}
+
+async function executeClientReducePaid(
+  dealUpdates: DealUpdate[],
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
     for (const du of dealUpdates) {
       await tx.deal.updateMany({
         where: { id: du.dealId },
@@ -481,8 +537,8 @@ async function main() {
     const excelClosing = matchData.excelBalance.closingBalance;
     const gap = crmDebt - excelClosing;
 
-    // Skip if no meaningful gap (CRM debt <= Excel closing)
-    if (gap < 1) {
+    // Skip if no meaningful gap
+    if (Math.abs(gap) < 1) {
       reconciliation.push({
         clientName: matchData.crmName,
         clientId: matchData.clientId,
@@ -492,8 +548,78 @@ async function main() {
         paymentTotal: 0,
         paymentsCreated: 0,
         dealsUpdated: 0,
-        status: Math.abs(gap) < 1 ? 'OK' : 'EXCEL>CRM',
+        status: 'OK',
       });
+      continue;
+    }
+
+    // Gap < -1: CRM has MORE payments than Excel -> reduce paidAmount (LIFO)
+    if (gap < -1) {
+      const excessAmount = Math.abs(gap);
+      const { dealUpdates } = await lifoReducePaid(matchData.clientId, excessAmount);
+
+      if (dealUpdates.length === 0) {
+        reconciliation.push({
+          clientName: matchData.crmName,
+          clientId: matchData.clientId,
+          crmDebt,
+          excelClosing,
+          gap,
+          paymentTotal: 0,
+          paymentsCreated: 0,
+          dealsUpdated: 0,
+          status: 'EXCESS_NO_DEALS',
+        });
+        continue;
+      }
+
+      totalGap += gap;
+      clientsToImport++;
+
+      if (isExecute) {
+        try {
+          await executeClientReducePaid(dealUpdates);
+          clientsImported++;
+
+          reconciliation.push({
+            clientName: matchData.crmName,
+            clientId: matchData.clientId,
+            crmDebt,
+            excelClosing,
+            gap,
+            paymentTotal: gap,
+            paymentsCreated: 0,
+            dealsUpdated: dealUpdates.length,
+            status: 'REDUCED',
+          });
+        } catch (err) {
+          clientErrors++;
+          console.error(`  ERROR [${matchData.crmName}]: ${(err as Error).message.slice(0, 100)}`);
+          reconciliation.push({
+            clientName: matchData.crmName,
+            clientId: matchData.clientId,
+            crmDebt,
+            excelClosing,
+            gap,
+            paymentTotal: 0,
+            paymentsCreated: 0,
+            dealsUpdated: 0,
+            status: 'ERROR',
+          });
+        }
+      } else {
+        reconciliation.push({
+          clientName: matchData.crmName,
+          clientId: matchData.clientId,
+          crmDebt,
+          excelClosing,
+          gap,
+          paymentTotal: gap,
+          paymentsCreated: 0,
+          dealsUpdated: dealUpdates.length,
+          status: 'WILL_REDUCE',
+        });
+      }
       continue;
     }
 

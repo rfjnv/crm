@@ -267,9 +267,28 @@ router.get(
       clients = clients.filter((c) => c.totalDebt >= minDebt);
     }
 
-    // Compute totals from the client list (UNPAID/PARTIAL deals only)
-    const grossDebt = clients.reduce((s, c) => s + Math.max(0, c.totalDebt), 0);
-    const prepayments = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
+    // Compute totals across ALL deals (not just UNPAID/PARTIAL) per client,
+    // so that prepayments on PAID deals offset gross debt — matching Excel logic.
+    const allDealsWhere: Prisma.DealWhereInput = {
+      ...dealScope,
+      status: { notIn: ['CANCELED', 'REJECTED'] },
+      isArchived: false,
+    };
+    if (managerId) (allDealsWhere as Record<string, unknown>).managerId = managerId;
+
+    const allDealsAgg = await prisma.deal.groupBy({
+      by: ['clientId'],
+      where: allDealsWhere,
+      _sum: { amount: true, paidAmount: true },
+    });
+
+    let grossDebt = 0;
+    let prepayments = 0;
+    for (const row of allDealsAgg) {
+      const balance = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
+      if (balance > 0) grossDebt += balance;
+      else prepayments += balance;
+    }
     const netDebt = grossDebt + prepayments;
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
