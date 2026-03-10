@@ -16,7 +16,8 @@ export interface ExcelDebtTotals {
   totalDebt: number;
 }
 
-const JSON_PATH = path.resolve(__dirname, '../data/debt-totals.json');
+// process.cwd() = backend/, works both in dev (tsx) and prod (node dist/)
+const JSON_PATH = path.resolve(process.cwd(), 'src', 'data', 'debt-totals.json');
 
 let cached: { mtime: number; totals: ExcelDebtTotals } | null = null;
 
