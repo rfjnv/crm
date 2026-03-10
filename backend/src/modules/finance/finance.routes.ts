@@ -7,6 +7,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
+import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -358,14 +359,26 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    // Compute totals from the displayed client list (after all filters)
-    let grossDebt = 0;
-    let prepayments = 0;
-    for (const c of clients) {
-      if (c.totalDebt > 0) grossDebt += c.totalDebt;
-      else prepayments += c.totalDebt;
+    // Use Excel-based totals (matches Excel exactly); fall back to CRM computation
+    const excelTotals = getExcelDebtTotals();
+    let grossDebt: number;
+    let prepayments: number;
+    let netDebt: number;
+
+    if (excelTotals && !managerId && !paymentStatus && !minDebt) {
+      // Excel totals are global — use only when no filters applied
+      grossDebt = excelTotals.grossDebt;
+      prepayments = -excelTotals.prepayments; // store as negative for consistency
+      netDebt = excelTotals.totalDebt;
+    } else {
+      grossDebt = 0;
+      prepayments = 0;
+      for (const c of clients) {
+        if (c.totalDebt > 0) grossDebt += c.totalDebt;
+        else prepayments += c.totalDebt;
+      }
+      netDebt = grossDebt + prepayments;
     }
-    const netDebt = grossDebt + prepayments;
 
     res.json({
       clients,
