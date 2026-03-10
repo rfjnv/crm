@@ -1163,11 +1163,6 @@ export class DealsService {
 
     const amount = Number(deal.amount);
 
-    // Validate paidAmount doesn't exceed deal amount
-    if (dto.paidAmount > amount) {
-      throw new AppError(400, 'Оплата не может превышать сумму сделки');
-    }
-
     const before = {
       paidAmount: Number(deal.paidAmount),
       paymentType: deal.paymentType,
