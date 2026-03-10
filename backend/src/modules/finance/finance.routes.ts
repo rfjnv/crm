@@ -285,10 +285,14 @@ router.get(
         if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
       }
 
+      // Subtract overpayments from PAID deals for this client
+      const overpay = overpaymentMap.get(c.clientId);
+      const netDebtForClient = c.totalDebt - (overpay ? overpay.amount : 0);
+
       return {
         clientId: c.clientId,
         clientName: c.clientName,
-        totalDebt: c.totalDebt,
+        totalDebt: netDebtForClient,
         totalAmount: c.totalAmount,
         totalPaid: c.totalPaid,
         dealsCount: c.dealsCount,
@@ -300,18 +304,33 @@ router.get(
       };
     });
 
+    // Also include clients that have overpayments but NO unpaid/partial deals
+    for (const [clientId, overpay] of overpaymentMap) {
+      if (!clientMap.has(clientId)) {
+        clients.push({
+          clientId,
+          clientName: overpay.companyName,
+          totalDebt: -overpay.amount,
+          totalAmount: 0,
+          totalPaid: 0,
+          dealsCount: 0,
+          lastPaymentDate: null,
+          manager: null,
+          newestDealDate: '',
+          oldestUnpaidDueDate: null,
+          paymentStatus: 'PARTIAL' as 'UNPAID' | 'PARTIAL',
+        });
+      }
+    }
+
     if (minDebt) {
       clients = clients.filter((c) => c.totalDebt >= minDebt);
     }
 
     // Gross debt = sum of only positive client debts (clients that owe us)
     const grossDebt = clients.reduce((s, c) => s + Math.max(0, c.totalDebt), 0);
-    // Prepayments from UNPAID/PARTIAL deals (negative client balances)
-    const prepayFromUnpaid = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
-    // Prepayments from PAID deals (where paidAmount > amount)
-    const prepayFromPaid = Array.from(overpaymentMap.values()).reduce((s, v) => s + v.amount, 0);
-    // Total prepayments (negative number to keep sign convention)
-    const prepayments = prepayFromUnpaid - prepayFromPaid;
+    // Prepayments = sum of negative client balances (overpaid clients)
+    const prepayments = clients.reduce((s, c) => s + Math.min(0, c.totalDebt), 0);
     // Net debt = gross + prepayments (prepayments is negative)
     const netDebt = grossDebt + prepayments;
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
