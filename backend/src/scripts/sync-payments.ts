@@ -706,10 +706,81 @@ async function main() {
     }
   }
 
-  // Report CRM-only clients (in CRM with debt but not in Excel)
+  // Process CRM-only clients (in CRM but not in Excel)
+  // If they have negative net debt (excess payments), reduce paidAmount
   const processedIds = new Set(reconciliation.map(r => r.clientId));
   for (const [clientId, crm] of crmDebts) {
-    if (!processedIds.has(clientId) && Math.abs(crm.net) > 1) {
+    if (processedIds.has(clientId)) continue;
+    if (Math.abs(crm.net) < 1) continue;
+
+    // CRM-only client with negative balance -> reduce excess paidAmount
+    if (crm.net < -1) {
+      const excessAmount = Math.abs(crm.net);
+      const { dealUpdates } = await lifoReducePaid(clientId, excessAmount);
+
+      if (dealUpdates.length === 0) {
+        reconciliation.push({
+          clientName: crm.name,
+          clientId,
+          crmDebt: crm.net,
+          excelClosing: 0,
+          gap: crm.net,
+          paymentTotal: 0,
+          paymentsCreated: 0,
+          dealsUpdated: 0,
+          status: 'CRM_ONLY',
+        });
+        continue;
+      }
+
+      totalGap += crm.net;
+      clientsToImport++;
+
+      if (isExecute) {
+        try {
+          await executeClientReducePaid(dealUpdates);
+          clientsImported++;
+          reconciliation.push({
+            clientName: crm.name,
+            clientId,
+            crmDebt: crm.net,
+            excelClosing: 0,
+            gap: crm.net,
+            paymentTotal: crm.net,
+            paymentsCreated: 0,
+            dealsUpdated: dealUpdates.length,
+            status: 'CRM_ONLY_REDUCED',
+          });
+        } catch (err) {
+          clientErrors++;
+          console.error(`  ERROR [${crm.name}]: ${(err as Error).message.slice(0, 100)}`);
+          reconciliation.push({
+            clientName: crm.name,
+            clientId,
+            crmDebt: crm.net,
+            excelClosing: 0,
+            gap: crm.net,
+            paymentTotal: 0,
+            paymentsCreated: 0,
+            dealsUpdated: 0,
+            status: 'ERROR',
+          });
+        }
+      } else {
+        reconciliation.push({
+          clientName: crm.name,
+          clientId,
+          crmDebt: crm.net,
+          excelClosing: 0,
+          gap: crm.net,
+          paymentTotal: crm.net,
+          paymentsCreated: 0,
+          dealsUpdated: dealUpdates.length,
+          status: 'CRM_ONLY_WILL_REDUCE',
+        });
+      }
+    } else {
+      // CRM-only with positive debt — just report
       reconciliation.push({
         clientName: crm.name,
         clientId,
