@@ -268,6 +268,65 @@ router.get(
     }
     const netDebt = grossDebt + prepayments;
 
+    // Also find clients with prepayments (negative balance) who have NO UNPAID/PARTIAL deals,
+    // so they wouldn't be in clientMap. We need to add them to the list.
+    const prepaymentClientIds: string[] = [];
+    for (const [clientId, balance] of allDealsBalanceMap) {
+      if (balance < 0 && !clientMap.has(clientId)) {
+        prepaymentClientIds.push(clientId);
+      }
+    }
+
+    // Fetch client info for prepayment-only clients
+    if (prepaymentClientIds.length > 0) {
+      const prepClients = await prisma.client.findMany({
+        where: { id: { in: prepaymentClientIds } },
+        select: { id: true, companyName: true },
+      });
+
+      // Get last payment date for these clients
+      for (const pc of prepClients) {
+        const lastPayment = await prisma.payment.findFirst({
+          where: { clientId: pc.id },
+          orderBy: { paidAt: 'desc' },
+          select: { paidAt: true },
+        });
+
+        // Get primary manager from their deals
+        const managerAgg = await prisma.deal.groupBy({
+          by: ['managerId'],
+          where: { clientId: pc.id, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
+          _count: true,
+          orderBy: { _count: { managerId: 'desc' } },
+          take: 1,
+        });
+
+        let manager: { id: string; fullName: string } | null = null;
+        if (managerAgg.length > 0) {
+          const mgr = await prisma.user.findUnique({
+            where: { id: managerAgg[0].managerId },
+            select: { id: true, fullName: true },
+          });
+          if (mgr) manager = mgr;
+        }
+
+        clientMap.set(pc.id, {
+          clientId: pc.id,
+          clientName: pc.companyName || '',
+          totalDebt: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          dealsCount: 0,
+          lastPaymentDate: lastPayment?.paidAt?.toISOString() || null,
+          managers: new Map(),
+          newestDealDate: '',
+          oldestUnpaidDueDate: null,
+          hasPartial: false,
+          hasPaid: true,
+        });
+      }
+    }
+
     let clients = [...clientMap.values()].map((c) => {
       let primaryManager: { id: string; fullName: string } | null = null;
       let maxCount = 0;
@@ -276,7 +335,7 @@ router.get(
       }
 
       // Use ALL-deals net balance instead of just UNPAID/PARTIAL sum,
-      // so overpayments on PAID deals offset debt correctly (e.g. тимур дилшод).
+      // so overpayments on PAID deals offset debt correctly.
       const allDealsBalance = allDealsBalanceMap.get(c.clientId);
       const effectiveDebt = allDealsBalance !== undefined ? allDealsBalance : c.totalDebt;
 
@@ -294,6 +353,9 @@ router.get(
         paymentStatus: (c.hasPartial || c.hasPaid ? 'PARTIAL' : 'UNPAID') as 'UNPAID' | 'PARTIAL',
       };
     });
+
+    // Remove clients with zero debt (fully settled)
+    clients = clients.filter((c) => c.totalDebt !== 0);
 
     if (minDebt) {
       clients = clients.filter((c) => c.totalDebt >= minDebt);
