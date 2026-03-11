@@ -6,6 +6,7 @@ import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
+import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -393,14 +394,18 @@ router.get(
     prepayments += Number(ppAgg[0]?.balance ?? 0);
     const netDebt = grossDebt + prepayments;
 
+    // Use Excel debt-totals.json for header totals (more accurate than SQL)
+    // Fall back to SQL-computed values if JSON not available or manager-filtered
+    const excelTotals = !managerId ? getExcelDebtTotals() : null;
+
     res.json({
       clients,
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        grossDebt,
-        prepayments,
-        totalDebt: netDebt,
+        grossDebt: excelTotals?.grossDebt ?? grossDebt,
+        prepayments: excelTotals ? -excelTotals.prepayments : prepayments,
+        totalDebt: excelTotals?.totalDebt ?? netDebt,
       },
     });
   }),

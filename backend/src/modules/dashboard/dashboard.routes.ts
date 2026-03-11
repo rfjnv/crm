@@ -4,6 +4,7 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
+import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -194,7 +195,7 @@ router.get(
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
+      totalDebt: (!dealScope.managerId && getExcelDebtTotals()?.totalDebt) || (totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0),
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
