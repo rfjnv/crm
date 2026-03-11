@@ -4,7 +4,6 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
-import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -241,12 +240,8 @@ router.get(
       }),
     ]);
 
-    // For global admin view, use Excel gross debt (per-row by mark).
-    const sqlDebt = totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0;
-    const excelTotals = !dealScope.managerId ? getExcelDebtTotals() : null;
-
     const finance = {
-      totalDebt: excelTotals ? excelTotals.grossDebt : sqlDebt,
+      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
       overdueDebts: overdueDeals.map((d) => ({
         dealId: d.id,
         title: d.title,

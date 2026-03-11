@@ -7,7 +7,6 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
-import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -359,20 +358,12 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    // Compute totals: use Excel per-row totals for global view (no manager filter),
-    // because Excel calculates gross/prepay per-row by mark (к,п/к,н/к,ф vs пп),
-    // while CRM aggregates per-client which nets out differently.
+    // Compute totals from live CRM data (per-client aggregation)
     let grossDebt = 0;
     let prepayments = 0;
-    const excelTotals = !managerId && !dealScope.managerId ? getExcelDebtTotals() : null;
-    if (excelTotals) {
-      grossDebt = excelTotals.grossDebt;
-      prepayments = -excelTotals.prepayments; // stored as positive, display as negative
-    } else {
-      for (const c of clients) {
-        if (c.totalDebt > 0) grossDebt += c.totalDebt;
-        else prepayments += c.totalDebt;
-      }
+    for (const c of clients) {
+      if (c.totalDebt > 0) grossDebt += c.totalDebt;
+      else prepayments += c.totalDebt;
     }
     const netDebt = grossDebt + prepayments;
 
