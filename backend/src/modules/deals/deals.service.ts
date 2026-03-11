@@ -129,8 +129,8 @@ export class DealsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
-    // Auto-generate title
-    const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU')}`;
+    // Auto-generate title (use Tashkent timezone for date consistency with analytics)
+    const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' })}`;
 
     // Compute total amount from items (source of truth)
     const totalAmount = dto.items.reduce((sum, item) => {

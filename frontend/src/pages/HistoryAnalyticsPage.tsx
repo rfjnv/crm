@@ -384,6 +384,7 @@ export default function HistoryAnalyticsPage() {
     { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => fmtNum(v) },
     { title: 'Итого', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => fmtNum(v) },
     { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
+    { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU') : '—' },
   ];
 
   // ── Product buyers drawer columns ──

@@ -1047,6 +1047,7 @@ export interface HistoryClientMonthItem {
   total: number;
   dealTitle: string;
   dealId: string;
+  createdAt?: string;
 }
 
 export interface HistoryClientMonthData {

@@ -56,7 +56,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'overview-v4' });
+      const cached = await getSnapshot({ year, month: 0, type: 'overview-v5' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -242,16 +242,30 @@ router.get(
       ORDER BY month`,
     );
     const shippedMap = new Map(shippedByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
+    const revenueMap = new Map(revenueByMonthRaw.map((r) => [r.month, { revenue: Number(r.revenue), activeClients: Number(r.active_clients) }]));
 
-    const monthlyTrend = revenueByMonthRaw.map((r) => ({
-      month: r.month,
-      revenue: Number(r.revenue),
-      collected: collectedMap.get(r.month) ?? 0,
-      shipped: shippedMap.get(r.month) ?? 0,
-      activeClients: Number(r.active_clients),
-      openingBalance: balanceMap.get(r.month)?.opening ?? 0,
-      closingBalance: balanceMap.get(r.month)?.closing ?? 0,
-    }));
+    // Build trend for all months 1–12 so months with only payments/shipments aren't lost
+    const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12;
+    const monthlyTrend: {
+      month: number; revenue: number; collected: number; shipped: number;
+      activeClients: number; openingBalance: number; closingBalance: number;
+    }[] = [];
+    for (let m = 1; m <= currentMonth; m++) {
+      const rev = revenueMap.get(m);
+      const collected = collectedMap.get(m) ?? 0;
+      const shipped = shippedMap.get(m) ?? 0;
+      if (rev || collected || shipped) {
+        monthlyTrend.push({
+          month: m,
+          revenue: rev?.revenue ?? 0,
+          collected,
+          shipped,
+          activeClients: rev?.activeClients ?? 0,
+          openingBalance: balanceMap.get(m)?.opening ?? 0,
+          closingBalance: balanceMap.get(m)?.closing ?? 0,
+        });
+      }
+    }
 
     // ── 3. Top clients — use paid_amount for debt calculation ──
     const topClientsRaw = await prisma.$queryRaw<
@@ -456,7 +470,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'overview-v4' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'overview-v5' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -1131,12 +1145,13 @@ router.get(
         total: string;
         deal_title: string;
         deal_id: string;
+        created_at: Date;
       }[]
     >(
       Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
         COALESCE(di.requested_qty, 0)::text as qty, COALESCE(di.price, 0)::text as price,
         (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
-        d.title as deal_title, d.id as deal_id
+        d.title as deal_title, d.id as deal_id, d.created_at
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
@@ -1157,6 +1172,7 @@ router.get(
       total: Number(r.total),
       dealTitle: r.deal_title,
       dealId: r.deal_id,
+      createdAt: r.created_at,
     }));
 
     res.json({
