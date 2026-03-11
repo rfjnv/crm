@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, Input, Select, Typography, message, Tag, Popconfirm, Checkbox, Tooltip, Card, Row, Col, Statistic, Segmented, Spin } from 'antd';
+import { Table, Button, Modal, Form, Input, Select, Typography, message, Tag, Popconfirm, Checkbox, Tooltip, Card, Row, Col, Statistic, Segmented, Spin, theme } from 'antd';
 import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, BarChartOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
 import { usersApi } from '../api/users.api';
 import { adminApi } from '../api/admin.api';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
 import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
@@ -33,6 +34,9 @@ export default function UsersPage() {
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [kpiUser, setKpiUser] = useState<User | null>(null);
+  const { token: tk } = theme.useToken();
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
   const [kpiPeriod, setKpiPeriod] = useState<string>('month');
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
@@ -381,6 +385,11 @@ export default function UsersPage() {
                   xField="day"
                   yField="count"
                   height={200}
+                  theme={chartTheme}
+                  axis={{
+                    x: { labelFill: tk.colorText },
+                    y: { labelFill: tk.colorText },
+                  }}
                 />
               </div>
             )}

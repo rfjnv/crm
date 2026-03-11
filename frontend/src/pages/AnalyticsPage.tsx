@@ -96,6 +96,7 @@ export default function AnalyticsPage() {
   });
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
 
   if (isLoading || !data) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
@@ -250,7 +251,7 @@ export default function AnalyticsPage() {
                   },
                 }}
                 tooltip={{ items: [{ field: 'total', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
-                theme={isDark ? 'classicDark' : 'classic'}
+                theme={chartTheme}
               />
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
@@ -270,7 +271,7 @@ export default function AnalyticsPage() {
                 label={{ text: (d: { type: string; value: number }) => `${d.type}: ${d.value}`, position: 'outside', style: { fill: token.colorText, fontSize: 12 } }}
                 legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
                 tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сделок', valueFormatter: (v: number) => `${v}` }] }}
-                theme={isDark ? 'classicDark' : 'classic'}
+                theme={chartTheme}
               />
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
@@ -295,7 +296,7 @@ export default function AnalyticsPage() {
                     y: { labelFormatter: (v: number) => formatUZS(v), labelFill: token.colorTextSecondary },
                   }}
                   tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
-                  theme={isDark ? 'classicDark' : 'classic'}
+                  theme={chartTheme}
                   onReady={(plot) => {
                     plot.chart.on('element:click', (evt: { data?: { data?: { clientId?: string } } }) => {
                       const id = evt?.data?.data?.clientId;
@@ -327,7 +328,7 @@ export default function AnalyticsPage() {
                     y: { labelFill: token.colorTextSecondary },
                   }}
                   tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
-                  theme={isDark ? 'classicDark' : 'classic'}
+                  theme={chartTheme}
                   onReady={(plot) => {
                     plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
                       const id = evt?.data?.data?.productId;
@@ -485,7 +486,7 @@ export default function AnalyticsPage() {
                     }}
                     legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
                     tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => formatUZS(v) }] }}
-                    theme={isDark ? 'classicDark' : 'classic'}
+                    theme={chartTheme}
                   />
                 ) : (
                   <Typography.Text type="secondary">Нет данных</Typography.Text>
@@ -578,7 +579,7 @@ export default function AnalyticsPage() {
                 }}
                 legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
                 tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Клиентов', valueFormatter: (v: number) => `${v}` }] }}
-                theme={isDark ? 'classicDark' : 'classic'}
+                theme={chartTheme}
               />
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
@@ -694,7 +695,7 @@ export default function AnalyticsPage() {
                       { field: 'value', channel: 'y', name: 'Ср. в месяц', valueFormatter: (v: number) => `${v.toFixed(1)}` },
                     ],
                   }}
-                  theme={isDark ? 'classicDark' : 'classic'}
+                  theme={chartTheme}
                   onReady={(plot) => {
                     plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
                       const id = evt?.data?.data?.productId;
@@ -755,7 +756,7 @@ export default function AnalyticsPage() {
                   ],
                 }}
                 legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
-                theme={isDark ? 'classicDark' : 'classic'}
+                theme={chartTheme}
               />
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>
@@ -856,7 +857,7 @@ export default function AnalyticsPage() {
                 y: { labelFill: token.colorTextSecondary },
               }}
               tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
-              theme={isDark ? 'classicDark' : 'classic'}
+              theme={chartTheme}
               onReady={(plot) => {
                 plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
                   const id = evt?.data?.data?.productId;
@@ -1057,7 +1058,7 @@ export default function AnalyticsPage() {
                     },
                   ],
                 }}
-                theme={isDark ? 'classicDark' : 'classic'}
+                theme={chartTheme}
               />
             ) : (
               <Typography.Text type="secondary">Нет данных</Typography.Text>

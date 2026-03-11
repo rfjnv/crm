@@ -12,6 +12,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import type { UserRole, DealStatus } from '../types';
@@ -25,6 +26,8 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const { token: themeToken } = theme.useToken();
   const navigate = useNavigate();
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
 
   const role = user?.role as UserRole | undefined;
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -150,11 +153,12 @@ export default function DashboardPage() {
                 yField="total"
                 shapeField="smooth"
                 height={280}
+                theme={chartTheme}
                 style={{ fill: 'linear-gradient(-90deg, rgba(82, 196, 26, 0.15) 0%, rgba(82, 196, 26, 0.6) 100%)' }}
                 line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
                 axis={{
-                  y: { labelFormatter: (v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}K` : String(v) },
-                  x: { labelFormatter: (v: string) => v.slice(5) },
+                  y: { labelFormatter: (v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}K` : String(v), labelFill: themeToken.colorText },
+                  x: { labelFormatter: (v: string) => v.slice(5), labelFill: themeToken.colorText },
                 }}
                 tooltip={{ items: [{ channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
               />

@@ -141,6 +141,7 @@ export default function ClientDetailPage() {
   };
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
 
   const contractColumns = [
     { title: 'Номер', dataIndex: 'contractNumber', render: (v: string) => <Tag>{v}</Tag> },
@@ -390,7 +391,11 @@ export default function ClientDetailPage() {
                               smooth
                               point={{ size: 3, shape: 'circle' }}
                               yAxis={{ label: { formatter: (v: string) => formatUZS(Number(v)) } }}
-                              theme={isDark ? 'classicDark' : 'classic'}
+                              theme={chartTheme}
+                              axis={{
+                                x: { labelFill: token.colorText },
+                                y: { labelFill: token.colorText },
+                              }}
                             />
                           ) : (
                             <Typography.Text type="secondary">Нет данных за период</Typography.Text>
@@ -405,7 +410,11 @@ export default function ClientDetailPage() {
                               xField="name"
                               yField="value"
                               height={280}
-                              theme={isDark ? 'classicDark' : 'classic'}
+                              theme={chartTheme}
+                              axis={{
+                                x: { labelFill: token.colorText },
+                                y: { labelFill: token.colorText },
+                              }}
                             />
                           ) : (
                             <Typography.Text type="secondary">Нет данных</Typography.Text>

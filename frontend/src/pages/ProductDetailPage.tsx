@@ -3,13 +3,14 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Typography, Card, Descriptions, Tag, Segmented, Spin, Row, Col,
-  Statistic, Table, Space, Button,
+  Statistic, Table, Space, Button, theme,
 } from 'antd';
 import { ArrowLeftOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Column } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { formatUZS, moneyFormatter } from '../utils/currency';
 
 const PERIODS = [
@@ -21,6 +22,9 @@ const PERIODS = [
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { token: tk } = theme.useToken();
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -163,6 +167,11 @@ export default function ProductDetailPage() {
               color={['#52c41a', '#ff4d4f']}
               legend={{ position: 'top-right' }}
               xAxis={{ label: { formatter: (v: string) => dayjs(v).format('DD.MM') } }}
+              theme={chartTheme}
+              axis={{
+                x: { labelFill: tk.colorText },
+                y: { labelFill: tk.colorText },
+              }}
             />
             <Row gutter={12} style={{ marginTop: 12 }}>
               <Col span={12}>
