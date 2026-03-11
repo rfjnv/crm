@@ -358,13 +358,40 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    // Compute totals from live CRM data (per-client aggregation)
+    // Compute gross/prepay using tagged "ПП:" deals for correct Excel-matching split.
+    // Regular deals (no "ПП:" prefix): per-client positive → gross, negative → prepay.
+    // "ПП:" deals: always go to prepayments (regardless of sign).
+    const [regularAgg, ppAgg] = await Promise.all([
+      prisma.$queryRaw<{ client_id: string; balance: string }[]>(
+        managerId
+          ? Prisma.sql`SELECT client_id, SUM(amount - paid_amount)::text as balance
+             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
+               AND (title IS NULL OR title NOT LIKE 'ПП:%') AND manager_id = ${managerId}
+             GROUP BY client_id`
+          : Prisma.sql`SELECT client_id, SUM(amount - paid_amount)::text as balance
+             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
+               AND (title IS NULL OR title NOT LIKE 'ПП:%')
+             GROUP BY client_id`
+      ),
+      prisma.$queryRaw<{ balance: string }[]>(
+        managerId
+          ? Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as balance
+             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
+               AND title LIKE 'ПП:%' AND manager_id = ${managerId}`
+          : Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as balance
+             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
+               AND title LIKE 'ПП:%'`
+      ),
+    ]);
+
     let grossDebt = 0;
     let prepayments = 0;
-    for (const c of clients) {
-      if (c.totalDebt > 0) grossDebt += c.totalDebt;
-      else prepayments += c.totalDebt;
+    for (const row of regularAgg) {
+      const bal = Number(row.balance);
+      if (bal > 0) grossDebt += bal;
+      else prepayments += bal;
     }
+    prepayments += Number(ppAgg[0]?.balance ?? 0);
     const netDebt = grossDebt + prepayments;
 
     res.json({
