@@ -6,7 +6,6 @@ import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
-import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -394,19 +393,13 @@ router.get(
     prepayments += Number(ppAgg[0]?.balance ?? 0);
     const netDebt = grossDebt + prepayments;
 
-    // Use Excel prepayments for accurate gross/prepay split.
-    // Net comes from SQL (auto-updates on payments), gross = net + excelPrepay.
-    const excelTotals = !managerId ? getExcelDebtTotals() : null;
-    const displayPrepay = excelTotals ? -excelTotals.prepayments : prepayments;
-    const displayGross = excelTotals ? netDebt + excelTotals.prepayments : grossDebt;
-
     res.json({
       clients,
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        grossDebt: displayGross,
-        prepayments: displayPrepay,
+        grossDebt,
+        prepayments,
         totalDebt: netDebt,
       },
     });
