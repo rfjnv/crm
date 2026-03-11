@@ -4,6 +4,7 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
+import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -189,12 +190,18 @@ router.get(
       minStock: Number(p.min_stock),
     }));
 
+    // For global admin view, use Excel gross debt (per-row by mark: к,п/к,н/к,ф).
+    // For manager-scoped view, fall back to SQL net.
+    const sqlDebt = totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0;
+    const excelTotals = !dealScope.managerId ? getExcelDebtTotals() : null;
+    const totalDebt = excelTotals ? excelTotals.grossDebt : sqlDebt;
+
     res.json({
       revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
+      totalDebt,
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
