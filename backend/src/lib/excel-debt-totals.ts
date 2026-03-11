@@ -16,28 +16,46 @@ export interface ExcelDebtTotals {
   totalDebt: number;
 }
 
-// process.cwd() = backend/, works both in dev (tsx) and prod (node dist/)
-const JSON_PATH = path.resolve(process.cwd(), 'src', 'data', 'debt-totals.json');
+// Try multiple paths: dev (process.cwd()=backend/) and prod (process.cwd()=/app)
+const CANDIDATE_PATHS = [
+  path.resolve(process.cwd(), 'src', 'data', 'debt-totals.json'),
+  path.resolve(__dirname, '..', '..', 'data', 'debt-totals.json'),  // dist/lib/ -> dist/data/
+  path.resolve(__dirname, '..', 'data', 'debt-totals.json'),        // dist/lib/ -> data/
+];
 
-let cached: { mtime: number; totals: ExcelDebtTotals } | null = null;
+function findJsonPath(): string | null {
+  for (const p of CANDIDATE_PATHS) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+let cached: { mtime: number; totals: ExcelDebtTotals; path: string } | null = null;
 
 export function getExcelDebtTotals(): ExcelDebtTotals | null {
   try {
-    const stat = fs.statSync(JSON_PATH);
-    if (cached && cached.mtime === stat.mtimeMs) {
+    const jsonPath = cached?.path || findJsonPath();
+    if (!jsonPath) {
+      console.warn('[excel-debt-totals] debt-totals.json not found. Tried:', CANDIDATE_PATHS);
+      return null;
+    }
+
+    const stat = fs.statSync(jsonPath);
+    if (cached && cached.mtime === stat.mtimeMs && cached.path === jsonPath) {
       return cached.totals;
     }
 
-    const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     const totals: ExcelDebtTotals = {
       grossDebt: Number(raw.grossDebt) || 0,
       prepayments: Number(raw.prepayments) || 0,
       totalDebt: Number(raw.totalDebt) || 0,
     };
 
-    cached = { mtime: stat.mtimeMs, totals };
+    cached = { mtime: stat.mtimeMs, totals, path: jsonPath };
     return totals;
-  } catch {
+  } catch (err) {
+    console.warn('[excel-debt-totals] Error reading debt-totals.json:', err);
     return null;
   }
 }
