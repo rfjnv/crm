@@ -4,7 +4,6 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
-import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -188,12 +187,16 @@ router.get(
         ? prisma.$queryRaw<{ debt: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
-               AND d.is_archived = false
+             WHERE d.is_archived = false
                AND d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.manager_id = ${dealScope.managerId}`
           )
-        : Promise.resolve([{ debt: '0' }] as { debt: string }[]),
+        : prisma.$queryRaw<{ debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+             FROM deals d
+             WHERE d.is_archived = false
+               AND d.status NOT IN ('CANCELED', 'REJECTED')`
+          ),
       prisma.deal.findMany({
         where: {
           ...dealScope,
@@ -237,17 +240,8 @@ router.get(
       }),
     ]);
 
-    // Use Excel-based totals for global debt (admin), SQL for manager-scoped
-    const excelTotals = getExcelDebtTotals();
-    let analyticsTotalDebt: number;
-    if (!dealScope.managerId && excelTotals) {
-      analyticsTotalDebt = excelTotals.totalDebt;
-    } else {
-      analyticsTotalDebt = totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0;
-    }
-
     const finance = {
-      totalDebt: analyticsTotalDebt,
+      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
       overdueDebts: overdueDeals.map((d) => ({
         dealId: d.id,
         title: d.title,

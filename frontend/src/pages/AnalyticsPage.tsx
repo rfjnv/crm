@@ -364,7 +364,7 @@ export default function AnalyticsPage() {
           <Link to="/finance/debts" style={{ display: 'block' }}>
             <Card bordered={false} hoverable>
               <Statistic
-                title={<span>Общий долг<FormulaHint text="Чистый долг из Excel-сверки (общий долг минус предоплаты)" /></span>}
+                title={<span>Общий долг<FormulaHint text="SUM(amount − paidAmount) по всем активным сделкам" /></span>}
                 value={finance.totalDebt}
                 formatter={(v) => formatUZS(v as number)}
                 prefix={<WarningOutlined />}

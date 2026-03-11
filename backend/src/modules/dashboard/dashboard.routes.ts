@@ -4,7 +4,6 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
-import { getExcelDebtTotals } from '../../lib/excel-debt-totals';
 
 const router = Router();
 
@@ -103,17 +102,21 @@ router.get(
         },
       }),
 
-      // 5. Total debt — manager-scoped falls back to SQL, global uses Excel totals
+      // 5. Total debt (net = gross debt - prepayments)
       dealScope.managerId
         ? prisma.$queryRaw<{ debt: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
              FROM deals d
-             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
-               AND d.is_archived = false
+             WHERE d.is_archived = false
                AND d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.manager_id = ${dealScope.managerId}`
           )
-        : Promise.resolve([{ debt: '0' }] as { debt: string }[]),
+        : prisma.$queryRaw<{ debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
+             FROM deals d
+             WHERE d.is_archived = false
+               AND d.status NOT IN ('CANCELED', 'REJECTED')`
+          ),
 
       // 6. Zero stock products
       prisma.product.findMany({
@@ -186,21 +189,12 @@ router.get(
       minStock: Number(p.min_stock),
     }));
 
-    // Use Excel-based totals for global debt (admin), SQL for manager-scoped
-    const excelTotals = getExcelDebtTotals();
-    let totalDebt: number;
-    if (!dealScope.managerId && excelTotals) {
-      totalDebt = excelTotals.totalDebt;
-    } else {
-      totalDebt = totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0;
-    }
-
     res.json({
       revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt,
+      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
