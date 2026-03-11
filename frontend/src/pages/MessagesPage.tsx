@@ -342,7 +342,7 @@ export default function MessagesPage() {
                   fontSize: 12,
                   opacity: 0.8,
                   borderRadius: 2,
-                  background: isOwn ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)',
+                  background: isOwn ? 'rgba(255,255,255,0.1)' : tk.colorFillQuaternary,
                 }}
               >
                 <div style={{ fontWeight: 600 }}>{msg.replyTo.sender?.fullName}</div>
@@ -552,7 +552,7 @@ export default function MessagesPage() {
               <div
                 style={{
                   padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
-                  background: tk.colorWarningBg || '#fff8e1', margin: '0 12px', borderRadius: 4,
+                  background: tk.colorWarningBg || tk.colorFillSecondary, margin: '0 12px', borderRadius: 4,
                 }}
               >
                 <div style={{ flex: 1, fontSize: 12 }}>

@@ -34,8 +34,6 @@ async function main() {
       await tx.shipment.deleteMany();
       await tx.payment.deleteMany();
       await tx.inventoryMovement.deleteMany();
-      await tx.deal.updateMany({ data: { dailyClosingId: null } });
-      await tx.dailyClosing.deleteMany();
       await tx.deal.deleteMany();
       await tx.contract.deleteMany();
       await tx.auditLog.deleteMany();

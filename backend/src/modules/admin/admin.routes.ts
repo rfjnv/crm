@@ -79,10 +79,6 @@ router.post(
       await tx.payment.deleteMany();
       await tx.inventoryMovement.deleteMany();
 
-      // Unlink daily closings
-      await tx.deal.updateMany({ data: { dailyClosingId: null } });
-      await tx.dailyClosing.deleteMany();
-
       // Deals -> Contracts -> Clients -> Products
       await tx.deal.deleteMany();
       await tx.contractAttachment.deleteMany();
@@ -149,9 +145,6 @@ router.post(
       counts.shipments = (await tx.shipment.deleteMany()).count;
       counts.payments = (await tx.payment.deleteMany()).count;
       counts.inventoryMovements = (await tx.inventoryMovement.deleteMany()).count;
-
-      await tx.deal.updateMany({ data: { dailyClosingId: null } });
-      counts.dailyClosings = (await tx.dailyClosing.deleteMany()).count;
 
       counts.deals = (await tx.deal.deleteMany()).count;
       counts.contracts = (await tx.contract.deleteMany()).count;

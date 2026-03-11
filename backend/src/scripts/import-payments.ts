@@ -47,8 +47,9 @@ const PAYMENT_COLS_SHIFTED = [
 ];
 
 const EXCEL_FILES = [
-  { name: '29.12.2025.xlsx', defaultYear: 2025 },
-  { name: '07.03.2026.xlsx', defaultYear: 2026 },
+  { name: '29.12.2025.xlsx', defaultYear: 2025, snapshotDate: new Date(Date.UTC(2025, 11, 29)) },
+  { name: '07.03.2026.xlsx', defaultYear: 2026, snapshotDate: new Date(Date.UTC(2026, 2, 7)) },
+  { name: '10.03.2026.xlsx', defaultYear: 2026, snapshotDate: new Date(Date.UTC(2026, 2, 10)) },
 ];
 
 // ───────── helpers ─────────
@@ -129,10 +130,13 @@ function parseAllExcelPayments(): Map<string, ClientExcelData> {
       const isShifted = h1 ? normLower(h1[11]).includes('договор') : false;
       const paymentCols = isShifted ? PAYMENT_COLS_SHIFTED : PAYMENT_COLS_STANDARD;
 
-      // Use mid-month date; cap at current date to prevent future dates
+      // Use mid-month date for past months; for current/future months use
+      // the snapshot date from the Excel filename (when data was recorded).
       const midMonth = new Date(Date.UTC(year, monthIdx, 15));
       const now = new Date();
-      const paidAt = midMonth > now ? now : midMonth;
+      const snapshotDate = file.snapshotDate;
+      // Past months: mid-month. Current/future: snapshot date.
+      const paidAt = midMonth <= now ? midMonth : snapshotDate;
 
       let sheetPayments = 0;
       let sheetTotal = 0;

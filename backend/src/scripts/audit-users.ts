@@ -17,7 +17,6 @@ async function main() {
       (SELECT COUNT(*)::int FROM notifications WHERE user_id = u.id) as notifications,
       (SELECT COUNT(*)::int FROM deal_items WHERE confirmed_by = u.id) as confirmed_items,
       (SELECT COUNT(*)::int FROM expenses WHERE created_by = u.id) as expenses,
-      (SELECT COUNT(*)::int FROM daily_closings WHERE closed_by_id = u.id) as closings,
       (SELECT COUNT(*)::int FROM deals WHERE archived_by_id = u.id) as archived_deals
     FROM users u
     ORDER BY u.login

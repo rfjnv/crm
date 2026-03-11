@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Timeline, Typography, Tag, Spin, Collapse, Empty } from 'antd';
+import { Timeline, Typography, Tag, Spin, Collapse, Empty, theme } from 'antd';
 import { WarningOutlined } from '@ant-design/icons';
 import { adminApi } from '../api/admin.api';
 import DealStatusTag from './DealStatusTag';
@@ -17,14 +17,14 @@ const actionLabels: Record<string, { label: string; color: string }> = {
   OVERRIDE_DELETE: { label: 'УДАЛЕНИЕ', color: 'red' },
 };
 
-function renderJsonDiff(label: string, data: Record<string, unknown> | null | undefined) {
+function renderJsonDiff(label: string, data: Record<string, unknown> | null | undefined, bgColor: string) {
   if (!data) return null;
   return (
     <div style={{ marginTop: 4 }}>
       <Typography.Text type="secondary" style={{ fontSize: 11 }}>{label}:</Typography.Text>
       <pre style={{
         fontSize: 11,
-        background: '#fafafa',
+        background: bgColor,
         padding: 6,
         borderRadius: 4,
         maxHeight: 200,
@@ -38,6 +38,7 @@ function renderJsonDiff(label: string, data: Record<string, unknown> | null | un
 }
 
 export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
+  const { token: tk } = theme.useToken();
   const { data: auditLogs, isLoading } = useQuery({
     queryKey: ['deal-audit', dealId],
     queryFn: () => adminApi.getDealAudit(dealId),
@@ -57,7 +58,7 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
           color: cfg.color,
           dot: isOverride ? <WarningOutlined style={{ color: '#ff4d4f' }} /> : undefined,
           children: (
-            <div style={isOverride ? { background: '#fff2f0', padding: 8, borderRadius: 6, border: '1px solid #ffccc7' } : undefined}>
+            <div style={isOverride ? { background: tk.colorErrorBg, padding: 8, borderRadius: 6, border: `1px solid ${tk.colorErrorBorder}` } : undefined}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Typography.Text strong>{entry.user?.fullName || '—'}</Typography.Text>
                 {entry.user?.role && <Tag>{entry.user.role}</Tag>}
@@ -93,8 +94,8 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
                     label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Показать before/after</Typography.Text>,
                     children: (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        {renderJsonDiff('До', entry.before)}
-                        {renderJsonDiff('После', entry.after)}
+                        {renderJsonDiff('До', entry.before, tk.colorFillTertiary)}
+                        {renderJsonDiff('После', entry.after, tk.colorFillTertiary)}
                       </div>
                     ),
                   }]}
@@ -109,7 +110,7 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
                   items={[{
                     key: 'details',
                     label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Детали</Typography.Text>,
-                    children: renderJsonDiff('Данные', entry.after),
+                    children: renderJsonDiff('Данные', entry.after, tk.colorFillTertiary),
                   }]}
                 />
               )}

@@ -1,7 +1,7 @@
 {
-  "grossDebt": 1182473663,
-  "prepayments": 241842500,
-  "totalDebt": 940631163,
+  "grossDebt": 1230203163,
+  "prepayments": 241058500,
+  "totalDebt": 989144663,
   "updatedAt": "2026-03-11",
-  "source": "07.03.2026.xlsx / март 2026 — per-row method: gross=SUM(к,п/к,н/к,ф positive), prepay=ABS(SUM(пп negative))"
+  "source": "10.03.2026.xlsx / март 2026 — per-row method: gross=SUM(к,п/к,н/к,ф positive), prepay=ABS(SUM(пп negative))"
 }

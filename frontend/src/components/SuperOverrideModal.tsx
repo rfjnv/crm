@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   Modal, Tabs, Form, Input, InputNumber, Select, DatePicker, Button, Alert,
-  Typography, Popconfirm, message, Tag,
+  Typography, Popconfirm, message, Tag, theme,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +46,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
   const [editItems, setEditItems] = useState(false);
   const [editShipment, setEditShipment] = useState(false);
   const queryClient = useQueryClient();
+  const { token: tk } = theme.useToken();
 
   // Pre-populate on open
   useEffect(() => {
@@ -293,7 +294,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                 <>
                   <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
                     <thead>
-                      <tr style={{ textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}>
+                      <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                         <th style={{ padding: '4px 6px', fontSize: 12 }}>Товар</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 90 }}>Кол-во</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 120 }}>Цена</th>
@@ -305,7 +306,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                       {items.map((item) => {
                         const lineTotal = (item.requestedQty || 0) * (item.price || 0);
                         return (
-                          <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                          <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                             <td style={{ padding: '4px 6px' }}>
                               <Select
                                 showSearch optionFilterProp="label"

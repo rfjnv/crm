@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Switch, Button, Space, Typography, Alert, message } from 'antd';
+import { Switch, Button, Space, Typography, Alert, message, theme } from 'antd';
 import { BellOutlined, ExperimentOutlined } from '@ant-design/icons';
 import { pushApi } from '../api/push.api';
 import { useAuthStore } from '../store/authStore';
@@ -22,6 +22,7 @@ export default function PushNotificationToggle() {
   const [testLoading, setTestLoading] = useState(false);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const { token: tk } = theme.useToken();
 
   const checkSubscription = useCallback(async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -125,7 +126,7 @@ export default function PushNotificationToggle() {
   return (
     <div style={{
       padding: '12px 16px',
-      background: 'rgba(34, 96, 154, 0.04)',
+      background: tk.colorFillQuaternary,
       borderRadius: 8,
       marginBottom: 16,
       display: 'flex',

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Button, Segmented, List, Tag, Space, message } from 'antd';
+import { Typography, Button, Segmented, List, Tag, Space, message, theme } from 'antd';
 import { InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined, CheckOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
 import PushNotificationToggle from '../components/PushNotificationToggle';
@@ -23,6 +23,7 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { token: tk } = theme.useToken();
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', filter],
@@ -90,7 +91,7 @@ export default function NotificationsPage() {
               onClick={() => handleClick(item)}
               style={{
                 cursor: item.link ? 'pointer' : 'default',
-                background: item.isRead ? 'transparent' : 'rgba(22, 119, 255, 0.04)',
+                background: item.isRead ? 'transparent' : tk.colorPrimaryBg,
                 borderRadius: 8,
                 marginBottom: 4,
                 padding: '12px 16px',

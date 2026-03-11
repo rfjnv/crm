@@ -44,11 +44,6 @@ async function main() {
     const invMovements = await tx.inventoryMovement.deleteMany();
     console.log(`  Deleted inventoryMovements: ${invMovements.count}`);
 
-    // Unlink daily closings from deals
-    await tx.deal.updateMany({ data: { dailyClosingId: null } });
-    const dailyClosings = await tx.dailyClosing.deleteMany();
-    console.log(`  Deleted dailyClosings: ${dailyClosings.count}`);
-
     // Deals and contracts
     const deals = await tx.deal.deleteMany();
     console.log(`  Deleted deals: ${deals.count}`);

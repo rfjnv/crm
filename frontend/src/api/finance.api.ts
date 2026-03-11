@@ -37,12 +37,6 @@ export const financeApi = {
       .get<CashboxResponse>('/finance/cashbox', { params })
       .then((r) => r.data),
 
-  getDayClosings: () =>
-    client.get('/finance/day-closings').then((r) => r.data),
-
-  closeDay: () =>
-    client.post('/finance/day-closing', {}).then((r) => r.data),
-
   getDebts: (params?: {
     minDebt?: number;
     managerId?: string;

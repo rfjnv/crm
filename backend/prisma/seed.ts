@@ -28,7 +28,6 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.deal.deleteMany();
-  await prisma.dailyClosing.deleteMany();
   await prisma.contract.deleteMany();
   await prisma.client.deleteMany();
   await prisma.product.deleteMany();

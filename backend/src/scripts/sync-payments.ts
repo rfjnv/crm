@@ -34,9 +34,18 @@ const MONTH_NAMES_RU = [
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
+/** Column J marks that indicate a debt row */
+const DEBT_MARKS = new Set(['к', 'н/к', 'п/к', 'ф']);
+/** Column J marks that indicate a prepayment row */
+const PREPAY_MARKS = new Set(['пп']);
+/** Marks that qualify a client for sync (debt or prepayment) */
+const SYNC_MARKS = new Set([...DEBT_MARKS, ...PREPAY_MARKS]);
+const NKP_COL = 9; // Column J (0-based)
+
 const EXCEL_FILES = [
-  { name: '29.12.2025.xlsx', defaultYear: 2025 },
-  { name: '07.03.2026.xlsx', defaultYear: 2026 },
+  { name: '29.12.2025.xlsx', defaultYear: 2025, snapshotDate: new Date(Date.UTC(2025, 11, 29)) },
+  { name: '07.03.2026.xlsx', defaultYear: 2026, snapshotDate: new Date(Date.UTC(2026, 2, 7)) },
+  { name: '10.03.2026.xlsx', defaultYear: 2026, snapshotDate: new Date(Date.UTC(2026, 2, 10)) },
 ];
 
 /**
@@ -90,6 +99,7 @@ interface ClientExcelBalance {
   latestYear: number;
   latestMonth: number; // 0-based
   sheetName: string;
+  snapshotDate: Date; // date from the Excel filename (e.g. 07.03.2026)
 }
 
 interface PaymentToCreate {
@@ -119,81 +129,88 @@ interface ReconciliationRow {
 }
 
 // ─────────── Step 1: Parse Excel closing balances ───────────
+// Uses ONLY the latest sheet (last sheet of last Excel file).
+// A client is included if they have at least one row with a debt mark (к, н/к, п/к, ф)
+// or prepayment mark (пп). The closing balance sums ALL rows for that client
+// (including н, п, т etc.) because all rows contribute to the client's total balance.
 
 function parseExcelClosingBalances(): Map<string, ClientExcelBalance> {
   const clientMap = new Map<string, ClientExcelBalance>();
 
-  for (const file of EXCEL_FILES) {
-    const fpath = path.resolve(process.cwd(), '..', file.name);
-    let wb: XLSX.WorkBook;
-    try {
-      wb = XLSX.readFile(fpath);
-    } catch {
-      console.log(`  WARNING: Cannot open ${file.name}, skipping`);
-      continue;
-    }
+  // Use only the last Excel file
+  const file = EXCEL_FILES[EXCEL_FILES.length - 1];
+  const fpath = path.resolve(process.cwd(), '..', file.name);
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.readFile(fpath);
+  } catch {
+    console.log(`  WARNING: Cannot open ${file.name}`);
+    return clientMap;
+  }
 
-    console.log(`  Reading ${file.name} (${wb.SheetNames.length} sheets)`);
+  console.log(`  Reading ${file.name} (${wb.SheetNames.length} sheets)`);
 
-    for (const sheetName of wb.SheetNames) {
-      const sn = sheetName.toLowerCase().trim();
-      if (sn === 'лист1' || sn === 'лист2') continue;
+  // Use only the last sheet (март 2026)
+  const sheetName = wb.SheetNames[wb.SheetNames.length - 1];
+  const sn = sheetName.toLowerCase().trim();
 
-      // Detect month from sheet name
-      let monthIdx = -1;
-      for (let m = 0; m < MONTH_NAMES.length; m++) {
-        if (sn.startsWith(MONTH_NAMES[m])) {
-          monthIdx = m;
-          break;
-        }
-      }
-      if (monthIdx < 0) {
-        console.log(`    Skipping sheet "${sheetName}" — can't detect month`);
-        continue;
-      }
-
-      // Detect year
-      const yearMatch = sheetName.match(/(\d{4})/);
-      const year = yearMatch ? parseInt(yearMatch[1], 10) : file.defaultYear;
-      const monthKey = year * 12 + monthIdx;
-
-      const ws = wb.Sheets[sheetName];
-      const closingCol = getClosingBalanceCol(ws);
-      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as Row[];
-
-      // Sum closing balance per client within this sheet
-      const sheetBalances = new Map<string, number>();
-
-      for (let i = 3; i < data.length; i++) {
-        const row = data[i] as Row;
-        if (!row) continue;
-        const clientName = normalizeClientName(row[1]);
-        if (!clientName) continue;
-
-        const closing = numVal(row[closingCol]);
-        sheetBalances.set(clientName, (sheetBalances.get(clientName) || 0) + closing);
-      }
-
-      // Update client map: keep only the LATEST month per client
-      let sheetUpdated = 0;
-      for (const [clientName, balance] of sheetBalances) {
-        const existing = clientMap.get(clientName);
-        const existingKey = existing ? existing.latestYear * 12 + existing.latestMonth : -1;
-
-        if (!existing || monthKey > existingKey) {
-          clientMap.set(clientName, {
-            closingBalance: balance,
-            latestYear: year,
-            latestMonth: monthIdx,
-            sheetName,
-          });
-          sheetUpdated++;
-        }
-      }
-
-      console.log(`    ${sheetName}: ${sheetBalances.size} clients, ${sheetUpdated} set as latest (balanceCol=${closingCol})`);
+  // Detect month from sheet name
+  let monthIdx = -1;
+  for (let m = 0; m < MONTH_NAMES.length; m++) {
+    if (sn.startsWith(MONTH_NAMES[m])) {
+      monthIdx = m;
+      break;
     }
   }
+  if (monthIdx < 0) {
+    console.log(`    Cannot detect month from sheet "${sheetName}"`);
+    return clientMap;
+  }
+
+  const yearMatch = sheetName.match(/(\d{4})/);
+  const year = yearMatch ? parseInt(yearMatch[1], 10) : file.defaultYear;
+
+  const ws = wb.Sheets[sheetName];
+  const closingCol = getClosingBalanceCol(ws);
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as Row[];
+
+  // Pass 1: collect ALL rows per client (AB totals + which marks they have)
+  const clientRows = new Map<string, { total: number; hasSyncMark: boolean }>();
+  let totalRows = 0;
+
+  for (let i = 3; i < data.length; i++) {
+    const row = data[i] as Row;
+    if (!row) continue;
+    const clientName = normalizeClientName(row[1]);
+    if (!clientName) continue;
+    totalRows++;
+
+    const nkpRaw = norm(row[NKP_COL]).toLowerCase();
+    const closing = numVal(row[closingCol]);
+
+    const entry = clientRows.get(clientName) || { total: 0, hasSyncMark: false };
+    entry.total += closing;
+    if (SYNC_MARKS.has(nkpRaw)) {
+      entry.hasSyncMark = true;
+    }
+    clientRows.set(clientName, entry);
+  }
+
+  // Pass 2: only include clients that have at least one debt/prepayment mark
+  let syncClients = 0;
+  for (const [clientName, entry] of clientRows) {
+    if (!entry.hasSyncMark) continue;
+    syncClients++;
+    clientMap.set(clientName, {
+      closingBalance: entry.total,
+      latestYear: year,
+      latestMonth: monthIdx,
+      sheetName,
+      snapshotDate: file.snapshotDate,
+    });
+  }
+
+  console.log(`    ${sheetName}: ${totalRows} total rows, ${syncClients} sync clients (with marks к,н/к,п/к,ф,пп), ${clientMap.size} in map (balanceCol=${closingCol})`);
 
   return clientMap;
 }
@@ -279,6 +296,7 @@ async function getCrmClientDebts(): Promise<
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.is_archived = false
+        AND d.status NOT IN ('CANCELED', 'REJECTED')
       GROUP BY c.id, c.company_name
     `
   );
@@ -300,17 +318,31 @@ async function getCrmClientDebts(): Promise<
 async function fifoAllocate(
   clientId: string,
   totalPayment: number,
-  paidAt: Date,
+  fallbackPaidAt: Date,
   note: string,
 ): Promise<{ payments: PaymentToCreate[]; dealUpdates: DealUpdate[] }> {
-  // Get all non-archived deals, oldest first
+  // Get all non-archived, non-canceled deals, oldest first
   const deals = await prisma.deal.findMany({
-    where: { clientId, isArchived: false },
+    where: { clientId, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, amount: true, paidAmount: true },
+    select: { id: true, amount: true, paidAmount: true, createdAt: true },
   });
 
   if (deals.length === 0) return { payments: [], dealUpdates: [] };
+
+  // For each deal, compute a proper payment date based on the deal's month.
+  // Past deals: last day of the deal's month.  Current/future: use fallbackPaidAt
+  // (which is the Excel snapshot date — when the data was actually recorded).
+  const now = new Date();
+  function dealPaidAt(dealCreatedAt: Date): Date {
+    const lastDayOfDealMonth = new Date(Date.UTC(
+      dealCreatedAt.getUTCFullYear(),
+      dealCreatedAt.getUTCMonth() + 1,
+      0,
+    ));
+    if (lastDayOfDealMonth <= now) return lastDayOfDealMonth;
+    return fallbackPaidAt;
+  }
 
   const dealSlots = deals.map(d => ({
     dealId: d.id,
@@ -318,6 +350,7 @@ async function fifoAllocate(
     currentPaid: Number(d.paidAmount),
     remaining: Math.max(Number(d.amount) - Number(d.paidAmount), 0),
     added: 0,
+    paidAt: dealPaidAt(d.createdAt),
   }));
 
   let remaining = totalPayment;
@@ -335,7 +368,7 @@ async function fifoAllocate(
       // All deals fully paid — assign remainder to last deal (overpayment)
       const lastDeal = dealSlots[dealSlots.length - 1];
       const amt = Math.round(remaining * 100) / 100;
-      payments.push({ dealId: lastDeal.dealId, clientId, amount: amt, paidAt, note });
+      payments.push({ dealId: lastDeal.dealId, clientId, amount: amt, paidAt: lastDeal.paidAt, note });
       lastDeal.added += amt;
       remaining = 0;
       break;
@@ -344,7 +377,7 @@ async function fifoAllocate(
     const deal = dealSlots[dealIdx];
     const allocate = Math.round(Math.min(remaining, deal.remaining) * 100) / 100;
 
-    payments.push({ dealId: deal.dealId, clientId, amount: allocate, paidAt, note });
+    payments.push({ dealId: deal.dealId, clientId, amount: allocate, paidAt: deal.paidAt, note });
 
     deal.added += allocate;
     deal.remaining -= allocate;
@@ -373,9 +406,9 @@ async function lifoReducePaid(
   clientId: string,
   excessAmount: number, // positive number: how much to reduce total paidAmount
 ): Promise<{ dealUpdates: DealUpdate[] }> {
-  // Get all non-archived deals for this client, NEWEST first (LIFO)
+  // Get all non-archived, non-canceled deals for this client, NEWEST first (LIFO)
   const deals = await prisma.deal.findMany({
-    where: { clientId, isArchived: false },
+    where: { clientId, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, amount: true, paidAmount: true },
   });
@@ -624,14 +657,17 @@ async function main() {
     }
 
     // Gap > 0: CRM shows more debt than Excel -> need to import payment
-    // Use last day of the month; cap at current date to prevent future dates
+    // Use last day of the month for past months; for current/future months use the
+    // Excel snapshot date (from the filename) — that's when the data was actually recorded.
     const lastDayOfMonth = new Date(Date.UTC(
       matchData.excelBalance.latestYear,
       matchData.excelBalance.latestMonth + 1,
       0,
     ));
+    const snapshotDate = matchData.excelBalance.snapshotDate;
     const now = new Date();
-    const paidAt = lastDayOfMonth > now ? now : lastDayOfMonth;
+    // For past months: last day of month. For current/future: snapshot date (not today).
+    const paidAt = lastDayOfMonth <= now ? lastDayOfMonth : snapshotDate;
     const monthName = MONTH_NAMES_RU[matchData.excelBalance.latestMonth];
     const note = `Сверка CRM-Excel: ${monthName} ${matchData.excelBalance.latestYear}`;
 
@@ -706,94 +742,7 @@ async function main() {
     }
   }
 
-  // Process CRM-only clients (in CRM but not in Excel)
-  // If they have negative net debt (excess payments), reduce paidAmount
-  const processedIds = new Set(reconciliation.map(r => r.clientId));
-  for (const [clientId, crm] of crmDebts) {
-    if (processedIds.has(clientId)) continue;
-    if (Math.abs(crm.net) < 1) continue;
-
-    // CRM-only client with negative balance -> reduce excess paidAmount
-    if (crm.net < -1) {
-      const excessAmount = Math.abs(crm.net);
-      const { dealUpdates } = await lifoReducePaid(clientId, excessAmount);
-
-      if (dealUpdates.length === 0) {
-        reconciliation.push({
-          clientName: crm.name,
-          clientId,
-          crmDebt: crm.net,
-          excelClosing: 0,
-          gap: crm.net,
-          paymentTotal: 0,
-          paymentsCreated: 0,
-          dealsUpdated: 0,
-          status: 'CRM_ONLY',
-        });
-        continue;
-      }
-
-      totalGap += crm.net;
-      clientsToImport++;
-
-      if (isExecute) {
-        try {
-          await executeClientReducePaid(dealUpdates);
-          clientsImported++;
-          reconciliation.push({
-            clientName: crm.name,
-            clientId,
-            crmDebt: crm.net,
-            excelClosing: 0,
-            gap: crm.net,
-            paymentTotal: crm.net,
-            paymentsCreated: 0,
-            dealsUpdated: dealUpdates.length,
-            status: 'CRM_ONLY_REDUCED',
-          });
-        } catch (err) {
-          clientErrors++;
-          console.error(`  ERROR [${crm.name}]: ${(err as Error).message.slice(0, 100)}`);
-          reconciliation.push({
-            clientName: crm.name,
-            clientId,
-            crmDebt: crm.net,
-            excelClosing: 0,
-            gap: crm.net,
-            paymentTotal: 0,
-            paymentsCreated: 0,
-            dealsUpdated: 0,
-            status: 'ERROR',
-          });
-        }
-      } else {
-        reconciliation.push({
-          clientName: crm.name,
-          clientId,
-          crmDebt: crm.net,
-          excelClosing: 0,
-          gap: crm.net,
-          paymentTotal: crm.net,
-          paymentsCreated: 0,
-          dealsUpdated: dealUpdates.length,
-          status: 'CRM_ONLY_WILL_REDUCE',
-        });
-      }
-    } else {
-      // CRM-only with positive debt — just report
-      reconciliation.push({
-        clientName: crm.name,
-        clientId,
-        crmDebt: crm.net,
-        excelClosing: 0,
-        gap: crm.net,
-        paymentTotal: 0,
-        paymentsCreated: 0,
-        dealsUpdated: 0,
-        status: 'CRM_ONLY',
-      });
-    }
-  }
+  // Note: CRM-only clients (not in Excel) are NOT touched — only Excel-matched clients are synced.
 
   // Sort: biggest gap first
   reconciliation.sort((a, b) => b.gap - a.gap);
@@ -839,6 +788,7 @@ async function main() {
         COALESCE(SUM(d.amount - d.paid_amount), 0)::text as net
       FROM deals d
       WHERE d.is_archived = false
+        AND d.status NOT IN ('CANCELED', 'REJECTED')
     `
   );
   const currentGross = Number(currentDebtResult[0].gross);
@@ -883,6 +833,7 @@ async function main() {
           COALESCE(SUM(d.amount - d.paid_amount), 0)::text as net
         FROM deals d
         WHERE d.is_archived = false
+          AND d.status NOT IN ('CANCELED', 'REJECTED')
       `
     );
     console.log(`  Post-import gross debt: ${fmtNum(Number(postDebt[0].gross))}`);

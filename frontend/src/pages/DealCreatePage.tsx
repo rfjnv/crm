@@ -6,6 +6,7 @@ import {
   message, Alert,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
 import { inventoryApi } from '../api/warehouse.api';
@@ -81,6 +82,7 @@ export default function DealCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const { token: tk } = theme.useToken();
 
   const [clientId, setClientId] = useState<string>();
   const [title, setTitle] = useState('');
@@ -290,7 +292,7 @@ export default function DealCreatePage() {
         >
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}>
+              <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
                 <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
@@ -305,7 +307,7 @@ export default function DealCreatePage() {
                 const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
                 const intUnit = isIntegerUnit(p?.unit);
                 return (
-                  <tr key={item.key} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                     <td style={{ padding: '6px 8px' }}>
                       <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
                         value={item.productId}
@@ -316,7 +318,7 @@ export default function DealCreatePage() {
                           disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
                         }))}
                       />
-                      {p && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
+                      {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <InputNumber
@@ -359,7 +361,7 @@ export default function DealCreatePage() {
             </tbody>
             {totalAmount > 0 && (
               <tfoot>
-                <tr style={{ borderTop: '2px solid #d9d9d9' }}>
+                <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
                   <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
                     <Typography.Text strong>Итого:</Typography.Text>
                   </td>

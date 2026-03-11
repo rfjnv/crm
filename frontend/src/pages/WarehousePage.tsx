@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space } from 'antd';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space, theme } from 'antd';
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
@@ -24,6 +24,7 @@ export default function WarehousePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const canCorrectStock = user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_MANAGER';
+  const { token: tk } = theme.useToken();
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
@@ -325,7 +326,7 @@ export default function WarehousePage() {
         cancelText="Отмена"
       >
         {correctProduct && (
-          <div style={{ marginBottom: 16, color: '#888' }}>
+          <div style={{ marginBottom: 16, color: tk.colorTextSecondary }}>
             Текущий остаток: <strong>{Number(correctProduct.stock)}</strong> {correctProduct.unit}
           </div>
         )}

@@ -259,7 +259,6 @@ async function main() {
   await prisma.inventoryMovement.deleteMany({});
   await prisma.dealItem.deleteMany({});
   await prisma.deal.deleteMany({});
-  await prisma.dailyClosing.deleteMany({});
   await prisma.contract.deleteMany({});
   await prisma.client.deleteMany({});
   await prisma.product.deleteMany({});
@@ -788,37 +787,6 @@ async function main() {
     }
   }
   console.log(`  ✓ ${commentCount} comments`);
-
-  // ── 10. Daily Closings (for CLOSED deals) ──
-  console.log('📅 Creating daily closings...');
-  const closedDeals = deals.filter(d => d.status === 'CLOSED');
-  const closingsByDay = new Map<string, typeof closedDeals>();
-  for (const d of closedDeals) {
-    const dayKey = d.updatedAt.toISOString().slice(0, 10);
-    if (!closingsByDay.has(dayKey)) closingsByDay.set(dayKey, []);
-    closingsByDay.get(dayKey)!.push(d);
-  }
-
-  let closingCount = 0;
-  for (const [dateStr, dayDeals] of closingsByDay) {
-    const totalAmount = dayDeals.reduce((s, d) => s + d.amount, 0);
-    const dateOnly = new Date(dateStr + 'T00:00:00.000Z');
-    const closing = await prisma.dailyClosing.create({
-      data: {
-        date: dateOnly,
-        totalAmount,
-        closedDealsCount: dayDeals.length,
-        closedById: ADMIN_ID,
-        createdAt: new Date(dateOnly.getTime() + 17 * 3600000),
-      },
-    });
-    await prisma.deal.updateMany({
-      where: { id: { in: dayDeals.map(d => d.id) } },
-      data: { dailyClosingId: closing.id },
-    });
-    closingCount++;
-  }
-  console.log(`  ✓ ${closingCount} daily closings`);
 
   // ── 11. Audit Logs ──
   console.log('📝 Creating audit logs...');

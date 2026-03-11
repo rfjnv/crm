@@ -6,6 +6,7 @@ import {
   Tabs, Input, Button, Modal, Form, InputNumber, message, Spin,
 } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
+import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { financeApi, type CashboxPayment } from '../api/finance.api';
 import { dealsApi } from '../api/deals.api';
@@ -35,6 +36,7 @@ export default function CashboxPage() {
   const [clientId, setClientId] = useState<string>();
   const [method, setMethod] = useState<string>();
   const [paymentStatus, setPaymentStatus] = useState<string>();
+  const { token: tk } = theme.useToken();
 
   // Debtors tab state
   const [debtSearch, setDebtSearch] = useState('');
@@ -438,11 +440,11 @@ export default function CashboxPage() {
                     onClick={() => setSelectedDealId(deal.id)}
                     style={{
                       padding: '8px 12px',
-                      border: `1px solid ${isSelected ? '#1890ff' : '#f0f0f0'}`,
+                      border: `1px solid ${isSelected ? tk.colorPrimary : tk.colorBorderSecondary}`,
                       borderRadius: 6,
                       marginBottom: 8,
                       cursor: 'pointer',
-                      background: isSelected ? '#e6f7ff' : '#fff',
+                      background: isSelected ? tk.colorPrimaryBg : tk.colorBgContainer,
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -451,7 +453,7 @@ export default function CashboxPage() {
                         Долг: {formatUZS(debt)}
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: '#888' }}>
+                    <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                       Сумма: {formatUZS(Number(deal.amount))} · Оплачено: {formatUZS(Number(deal.paidAmount))}
                       {deal.manager?.fullName && ` · ${deal.manager.fullName}`}
                     </div>

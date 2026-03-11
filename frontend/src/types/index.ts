@@ -400,23 +400,6 @@ export interface AnalyticsData {
   profitability: AnalyticsProfitability;
 }
 
-// ──── Daily Closing ────
-
-export interface DailyClosing {
-  id: string;
-  date: string;
-  totalAmount: string;
-  closedDealsCount: number;
-  closedById: string;
-  createdAt: string;
-  closedBy?: { id: string; fullName: string };
-  deals?: Deal[];
-}
-
-export interface DayClosingListResponse {
-  closings: DailyClosing[];
-}
-
 // ──── Finance ────
 
 export interface ClientDebtRow {
@@ -440,24 +423,6 @@ export interface DebtsResponse {
     dealsCount: number;
     totalDebt: number;
   };
-}
-
-export interface DayClosingResponse {
-  date: string;
-  summary: {
-    totalDeals: number;
-    totalAmount: number;
-    byManager: { managerId: string; fullName: string; count: number; amount: number }[];
-  };
-  deals: {
-    id: string;
-    title: string;
-    client: { id: string; companyName: string };
-    amount: string;
-    paymentStatus: PaymentStatus;
-    manager: { id: string; fullName: string };
-    closedAt: string;
-  }[];
 }
 
 // ──── Deal History ────

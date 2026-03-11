@@ -120,7 +120,6 @@ model User {
   archivedDeals      Deal[]             @relation("DealArchivedBy")
   comments           DealComment[]
   auditLogs          AuditLog[]
-  dailyClosings      DailyClosing[]     @relation("DailyClosingClosedBy")
   confirmedItems     DealItem[]         @relation("ItemConfirmedBy")
   shipments          Shipment[]         @relation("ShippedBy")
   notificationsReceived  Notification[]      @relation("NotificationRecipient")
@@ -251,7 +250,6 @@ model Deal {
   isArchived    Boolean       @default(false) @map("is_archived")
   archivedAt    DateTime?     @map("archived_at")
   archivedById  String?       @map("archived_by_id")
-  dailyClosingId String?      @map("daily_closing_id")
   createdAt     DateTime      @default(now()) @map("created_at")
   version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
@@ -260,7 +258,6 @@ model Deal {
   manager            User                @relation("DealManager", fields: [managerId], references: [id])
   contract           Contract?           @relation(fields: [contractId], references: [id])
   archivedBy         User?               @relation("DealArchivedBy", fields: [archivedById], references: [id])
-  dailyClosing       DailyClosing?       @relation(fields: [dailyClosingId], references: [id])
   comments           DealComment[]
   items              DealItem[]
   movements          InventoryMovement[]
@@ -274,7 +271,6 @@ model Deal {
   @@index([status])
   @@index([isArchived])
   @@index([paymentStatus])
-  @@index([dailyClosingId])
   @@map("deals")
 }
 
@@ -384,22 +380,6 @@ model InventoryMovement {
   @@index([dealId])
   @@index([createdAt])
   @@map("inventory_movements")
-}
-
-// ==================== DAILY CLOSINGS ====================
-
-model DailyClosing {
-  id               String   @id @default(uuid())
-  date             DateTime @unique @db.Date
-  totalAmount      Decimal  @default(0) @db.Decimal(14, 2) @map("total_amount")
-  closedDealsCount Int      @default(0) @map("closed_deals_count")
-  closedById       String   @map("closed_by_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  closedBy User   @relation("DailyClosingClosedBy", fields: [closedById], references: [id])
-  deals    Deal[]
-
-  @@map("daily_closings")
 }
 
 // ==================== AUDIT ====================

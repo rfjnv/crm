@@ -12,6 +12,7 @@ import {
   OrderedListOutlined, DollarOutlined, SolutionOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
 } from '@ant-design/icons';
+import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
 import { formatUZS, moneyFormatter } from '../utils/currency';
@@ -48,6 +49,7 @@ export default function ContractDetailPage() {
   const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const { token: tk } = theme.useToken();
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
@@ -306,7 +308,7 @@ export default function ContractDetailPage() {
             <Col key={doc.key} xs={12} sm={8} md={6}>
               <Card
                 size="small"
-                style={{ textAlign: 'center', borderColor: doc.ready ? '#d9f7be' : '#fff1f0' }}
+                style={{ textAlign: 'center', borderColor: doc.ready ? tk.colorSuccessBorder : tk.colorErrorBorder }}
                 styles={{ body: { padding: '12px 8px' } }}
               >
                 <div style={{ fontSize: 24, color: doc.ready ? '#52c41a' : '#ff4d4f', marginBottom: 4 }}>
@@ -336,10 +338,10 @@ export default function ContractDetailPage() {
           <Col xs={12} sm={8} md={6}>
             <Card
               size="small"
-              style={{ textAlign: 'center', borderColor: '#e6f7ff' }}
+              style={{ textAlign: 'center', borderColor: tk.colorInfoBorder }}
               styles={{ body: { padding: '12px 8px' } }}
             >
-              <div style={{ fontSize: 24, color: '#1890ff', marginBottom: 4 }}>
+              <div style={{ fontSize: 24, color: tk.colorPrimary, marginBottom: 4 }}>
                 <FilePdfOutlined />
               </div>
               <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Полный комплект</div>
@@ -377,12 +379,12 @@ export default function ContractDetailPage() {
                       {dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
                   </div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                     <span>Сделка: {p.deal?.title || p.dealId}</span>
                     {p.method && <span> · {p.method}</span>}
                     <span> · {p.creator?.fullName}</span>
                   </div>
-                  {p.note && <div style={{ fontSize: 12, color: '#999' }}>{p.note}</div>}
+                  {p.note && <div style={{ fontSize: 12, color: tk.colorTextTertiary }}>{p.note}</div>}
                 </div>
               ),
             }))}

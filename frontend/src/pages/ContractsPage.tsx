@@ -8,6 +8,7 @@ import {
   PlusOutlined, EditOutlined, FileTextOutlined,
   DollarOutlined, EyeOutlined,
 } from '@ant-design/icons';
+import { theme } from 'antd';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
@@ -434,6 +435,7 @@ export default function ContractsPage() {
 }
 
 function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: (dealId: string) => void }) {
+  const { token: tk } = theme.useToken();
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Descriptions column={2} bordered size="small">
@@ -526,12 +528,12 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
                       {dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
                   </div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                     <span>Сделка: {p.deal?.title || p.dealId}</span>
                     {p.method && <span> · {p.method}</span>}
                     <span> · {p.creator?.fullName}</span>
                   </div>
-                  {p.note && <div style={{ fontSize: 12, color: '#999' }}>{p.note}</div>}
+                  {p.note && <div style={{ fontSize: 12, color: tk.colorTextTertiary }}>{p.note}</div>}
                 </div>
               ),
             }))}
