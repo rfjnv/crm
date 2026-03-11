@@ -87,7 +87,7 @@ function statusLabel(status: string): string {
     WAITING_STOCK_CONFIRMATION: 'Ожид. склад', STOCK_CONFIRMED: 'Склад подтв.',
     WAITING_FINANCE: 'Ожид. финансы', FINANCE_APPROVED: 'Финансы ок',
     ADMIN_APPROVED: 'Одобрена', READY_FOR_SHIPMENT: 'К отгрузке',
-    SHIPMENT_ON_HOLD: 'Отгр. задержка', SHIPPED: 'Отгружена',
+    SHIPMENT_ON_HOLD: 'Отгр. задержка',
     CLOSED: 'Закрыта', CANCELED: 'Отменена', REJECTED: 'Отклонена',
   };
   return map[status] || status;

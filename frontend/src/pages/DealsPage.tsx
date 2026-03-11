@@ -19,7 +19,7 @@ const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string 
 const kanbanStatuses: DealStatus[] = [
   'NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS',
   'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD',
-  'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
+  'REJECTED', 'REOPENED',
 ];
 
 function DealCard({ deal }: { deal: Deal }) {
@@ -94,6 +94,16 @@ export default function DealsPage() {
     refetchInterval: 10_000,
   });
 
+  // Fetch all deals (unfiltered) to know which statuses have deals
+  const { data: allDeals } = useQuery({
+    queryKey: ['deals', undefined],
+    queryFn: () => dealsApi.list(undefined),
+    refetchInterval: 10_000,
+  });
+
+  const hideIfEmpty: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED'];
+  const statusesWithDeals = new Set((allDeals ?? []).map((d) => d.status));
+
   const archiveMut = useMutation({
     mutationFn: (id: string) => dealsApi.archive(id),
     onSuccess: () => {
@@ -153,6 +163,7 @@ export default function DealsPage() {
               onChange={(v) => setStatusFilter(v)}
               options={Object.entries(statusConfig)
                 .filter(([k]) => k !== 'CLOSED')
+                .filter(([k]) => !hideIfEmpty.includes(k as DealStatus) || statusesWithDeals.has(k as DealStatus))
                 .map(([k, v]) => ({ label: v.label, value: k }))}
             />
           )}

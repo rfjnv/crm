@@ -17,7 +17,7 @@ import {
   BarChartOutlined,
   FieldTimeOutlined,
   AppstoreOutlined,
-  CheckCircleOutlined,
+
   BellOutlined,
   SendOutlined,
   AuditOutlined,
@@ -118,13 +118,6 @@ export default function Layout() {
         key: '/deals',
         icon: <FundProjectionScreenOutlined />,
         label: <Link to="/deals">Сделки</Link>,
-      }]
-      : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
-      ? [{
-        key: '/finance/deal-closing',
-        icon: <CheckCircleOutlined />,
-        label: <Link to="/finance/deal-closing">Закрытие сделок</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')

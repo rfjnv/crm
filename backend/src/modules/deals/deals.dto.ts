@@ -3,7 +3,7 @@ import { z } from 'zod';
 const dealStatuses = [
   'NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED',
   'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
-  'SHIPMENT_ON_HOLD', 'SHIPPED', 'CLOSED', 'CANCELED', 'REJECTED',
+  'SHIPMENT_ON_HOLD', 'CLOSED', 'CANCELED', 'REJECTED',
 ] as const;
 
 export const createDealDto = z.object({

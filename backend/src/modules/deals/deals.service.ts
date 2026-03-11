@@ -22,10 +22,10 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   WAITING_FINANCE: ['ADMIN_APPROVED', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
   FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
-  READY_FOR_SHIPMENT: ['PENDING_APPROVAL', 'SHIPMENT_ON_HOLD', 'CANCELED'],
+  READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
-  SHIPPED: ['CLOSED'],
-  PENDING_APPROVAL: ['CLOSED', 'REOPENED'],
+  SHIPPED: [],      // deprecated
+  PENDING_APPROVAL: [], // deprecated
   CLOSED: [],
   CANCELED: [],
   REJECTED: ['IN_PROGRESS'],
@@ -41,10 +41,8 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   FINANCE_APPROVED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
   ADMIN_APPROVED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT'],
   READY_FOR_SHIPMENT: ['ADMIN', 'SUPER_ADMIN'],
-  SHIPPED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   SHIPMENT_ON_HOLD: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
-  PENDING_APPROVAL: ['ADMIN', 'SUPER_ADMIN'],
-  CLOSED: ['ADMIN', 'SUPER_ADMIN'],
+  CLOSED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   CANCELED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   REJECTED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
   REOPENED: ['ADMIN', 'SUPER_ADMIN'],
@@ -915,8 +913,8 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка" для оформления');
     }
 
-    // After shipment, deal goes to PENDING_APPROVAL for admin review
-    const targetStatus: DealStatus = 'PENDING_APPROVAL';
+    // After shipment, deal goes directly to CLOSED
+    const targetStatus: DealStatus = 'CLOSED';
 
     const dealItems = await prisma.dealItem.findMany({
       where: { dealId },
@@ -967,7 +965,7 @@ export class DealsService {
         },
       });
 
-      // Update deal status to PENDING_APPROVAL (awaits admin review)
+      // Update deal status to CLOSED
       await tx.deal.update({
         where: { id: dealId },
         data: { status: targetStatus },
@@ -1010,7 +1008,7 @@ export class DealsService {
   async findForDealApproval(user: AuthUser) {
     return prisma.deal.findMany({
       where: {
-        status: 'PENDING_APPROVAL',
+        status: 'ADMIN_APPROVED',
         isArchived: false,
       },
       include: {
@@ -1034,15 +1032,15 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'PENDING_APPROVAL') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает одобрения"');
+    if (deal.status !== 'ADMIN_APPROVED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает потв. Админа"');
     }
 
-    validateStatusTransition(deal.status, 'CLOSED', user.role);
+    validateStatusTransition(deal.status, 'READY_FOR_SHIPMENT', user.role);
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { status: 'CLOSED' },
+      data: { status: 'READY_FOR_SHIPMENT' },
     });
 
     await auditLog({
@@ -1051,14 +1049,14 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'CLOSED' },
+      after: { status: 'READY_FOR_SHIPMENT' },
     });
 
     await prisma.notification.create({
       data: {
         userId: deal.managerId,
         title: 'Сделка одобрена',
-        body: `Сделка "${deal.title}" одобрена и закрыта`,
+        body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
         severity: 'INFO',
         link: `/deals/${dealId}`,
         createdByUserId: user.userId,
@@ -1067,7 +1065,7 @@ export class DealsService {
 
     pushService.sendPushToUser(deal.managerId, {
       title: 'Сделка одобрена',
-      body: `Сделка "${deal.title}" одобрена и закрыта`,
+      body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
       url: `/deals/${dealId}`,
       severity: 'INFO',
     }).catch(() => {});
@@ -1084,15 +1082,15 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'PENDING_APPROVAL') {
-      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает одобрения"');
+    if (deal.status !== 'ADMIN_APPROVED') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает потв. Админа"');
     }
 
-    validateStatusTransition(deal.status, 'REOPENED', user.role);
+    validateStatusTransition(deal.status, 'IN_PROGRESS', user.role);
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { status: 'REOPENED' },
+      data: { status: 'IN_PROGRESS' },
     });
 
     await prisma.dealComment.create({
@@ -1109,7 +1107,7 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'REOPENED', reason },
+      after: { status: 'IN_PROGRESS', reason },
     });
 
     await prisma.notification.create({
@@ -1247,7 +1245,7 @@ export class DealsService {
       }
 
       // Оплата доступна только с момента отгрузки
-      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED', 'PENDING_APPROVAL', 'REOPENED', 'CLOSED'];
+      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED', 'CLOSED'];
       if (!allowedForPayment.includes(deal.status)) {
         throw new AppError(400, 'Оплата доступна только со статуса "В работе" и далее');
       }

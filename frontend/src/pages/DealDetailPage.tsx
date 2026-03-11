@@ -518,7 +518,7 @@ export default function DealDetailPage() {
     }
 
     // Cancel button (available on most statuses)
-    if (!isReadOnly && deal.status !== 'REJECTED' && deal.status !== 'SHIPPED' && (isAdmin || role === 'MANAGER')) {
+    if (!isReadOnly && deal.status !== 'REJECTED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Popconfirm key="cancel" title="Отменить сделку?" onConfirm={() => statusMut.mutate('CANCELED')}>
           <Button danger icon={<CloseCircleOutlined />} loading={statusMut.isPending}>

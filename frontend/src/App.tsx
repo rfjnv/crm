@@ -21,7 +21,6 @@ import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import DebtsPage from './pages/DebtsPage';
-import DealClosingPage from './pages/DealClosingPage';
 import NotificationsPage from './pages/NotificationsPage';
 import BroadcastPage from './pages/BroadcastPage';
 import FinanceReviewPage from './pages/FinanceReviewPage';
@@ -111,7 +110,6 @@ export default function App() {
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
                 <Route path="/finance/cashbox" element={<CashboxPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
-                <Route path="/finance/deal-closing" element={<DealClosingPage />} />
                 <Route path="/shipment" element={<ShipmentPage />} />
                 <Route path="/stock-confirmation" element={<StockConfirmationPage />} />
                 <Route path="/messages" element={<MessagesPage />} />

@@ -30,7 +30,6 @@ const statusColorMap: Record<string, string> = {
   FINANCE_APPROVED: '#a0d911',
   ADMIN_APPROVED: '#722ed1',
   READY_FOR_SHIPMENT: '#eb2f96',
-  SHIPPED: '#fa8c16',
   CLOSED: '#389e0d',
   CANCELED: '#ff4d4f',
   REJECTED: '#f5222d',

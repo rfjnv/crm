@@ -114,8 +114,6 @@ export type DealStatus =
   | 'ADMIN_APPROVED'
   | 'READY_FOR_SHIPMENT'
   | 'SHIPMENT_ON_HOLD'
-  | 'SHIPPED'
-  | 'PENDING_APPROVAL'
   | 'CLOSED'
   | 'CANCELED'
   | 'REJECTED'

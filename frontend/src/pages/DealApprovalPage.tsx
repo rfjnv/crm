@@ -28,7 +28,7 @@ export default function DealApprovalPage() {
   const approveMutation = useMutation({
     mutationFn: (dealId: string) => dealsApi.approveDeal(dealId),
     onSuccess: () => {
-      message.success('Сделка одобрена и закрыта');
+      message.success('Сделка одобрена и готова к отгрузке');
       queryClient.invalidateQueries({ queryKey: ['deals'] });
     },
     onError: () => {
@@ -40,7 +40,7 @@ export default function DealApprovalPage() {
     mutationFn: ({ dealId, reason }: { dealId: string; reason: string }) =>
       dealsApi.rejectDeal(dealId, reason),
     onSuccess: () => {
-      message.success('Сделка отклонена и возвращена');
+      message.success('Сделка отклонена и возвращена в работу');
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       setRejectModalOpen(false);
       setRejectDealId(null);
