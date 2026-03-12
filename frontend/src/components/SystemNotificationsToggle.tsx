@@ -169,7 +169,6 @@ export default function SystemNotificationsToggle() {
       {permission === 'denied' && (
         <Alert
           type="info"
-          size="small"
           message="Уведомления заблокированы"
           description={
             <div>
@@ -187,7 +186,6 @@ export default function SystemNotificationsToggle() {
       {isEnabled && canShow && (
         <Alert
           type="success"
-          size="small"
           message="✅ Системные уведомления активны"
           description="Вы будете получать уведомления поверх других программ"
         />
