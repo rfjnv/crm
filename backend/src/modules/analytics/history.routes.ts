@@ -434,7 +434,8 @@ router.get(
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY c.company_name, month`,
     );
