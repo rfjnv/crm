@@ -27,8 +27,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: body || '',
-    icon: '/logo-icon.svg',
-    badge: '/logo-icon.svg',
+    icon: '/logo-icon.png',
+    badge: '/logo-icon.png',
     tag: url || 'crm-notification',
     data: { url: url || '/notifications' },
     requireInteraction: severity === 'URGENT',

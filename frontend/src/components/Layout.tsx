@@ -40,8 +40,8 @@ import { authApi } from '../api/auth.api';
 import { conversationsApi } from '../api/conversations.api';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
-import logo from '../assets/logo.svg';
-import miniLogo from '../assets/mini-logo.svg';
+import logo from '../assets/logo.png';
+import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission } from '../types';
 
 const { Header, Sider, Content } = AntLayout;

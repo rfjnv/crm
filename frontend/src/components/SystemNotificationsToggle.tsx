@@ -92,8 +92,8 @@ export default function SystemNotificationsToggle() {
       // Отправляем уведомление через Service Worker
       await reg.showNotification('Тест CRM уведомления', {
         body: 'Это системное уведомление! Если вы видите это - все работает как Telegram!',
-        icon: '/logo-icon.svg',
-        badge: '/logo-icon.svg',
+        icon: '/logo-icon.png',
+        badge: '/logo-icon.png',
         tag: 'test-crm',
         requireInteraction: true,
         data: { url: '/notifications' }
