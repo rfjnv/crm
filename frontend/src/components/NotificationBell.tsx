@@ -7,6 +7,7 @@ import {
   CheckOutlined, RightOutlined,
 } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
+import { useSystemNotifications } from '../hooks/useSystemNotifications';
 import type { AppNotification, NotificationSeverity } from '../types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -27,6 +28,7 @@ export default function NotificationBell() {
   const queryClient = useQueryClient();
   const { token: themeToken } = theme.useToken();
   const prevUrgentIdsRef = useRef<Set<string>>(new Set());
+  const { show: showSystemNotification, canShow: canShowSystem } = useSystemNotifications();
 
   const { data: countData } = useQuery({
     queryKey: ['notifications-unread-count'],
@@ -40,17 +42,37 @@ export default function NotificationBell() {
     refetchInterval: 10_000,
   });
 
-  // Show modal for new URGENT notifications
+  // Show notifications for new URGENT items
   useEffect(() => {
     if (!recentData?.items) return;
+
     const urgentUnread = recentData.items.filter(
       (n: AppNotification) => n.severity === 'URGENT' && !n.isRead,
     );
     const newUrgent = urgentUnread.filter(
       (n: AppNotification) => !prevUrgentIdsRef.current.has(n.id),
     );
+
     if (newUrgent.length > 0) {
       const latest = newUrgent[0];
+
+      // Check if system notifications are enabled
+      const systemNotificationsEnabled = localStorage.getItem('system-notifications-enabled') === 'true';
+
+      if (systemNotificationsEnabled && canShowSystem) {
+        // Show system notification (appears on top of other programs)
+        showSystemNotification({
+          title: `🚨 ${latest.title}`,
+          body: latest.body,
+          onclick: () => {
+            window.focus();
+            if (latest.link) navigate(latest.link);
+            markReadMut.mutate(latest.id);
+          }
+        });
+      }
+
+      // Also show modal inside browser (for users who have browser active)
       Modal.warning({
         title: latest.title,
         content: latest.body,
@@ -62,9 +84,10 @@ export default function NotificationBell() {
         centered: true,
       });
     }
+
     prevUrgentIdsRef.current = new Set(urgentUnread.map((n: AppNotification) => n.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recentData]);
+  }, [recentData, canShowSystem, showSystemNotification]);
 
   const markReadMut = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),

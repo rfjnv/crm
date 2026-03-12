@@ -5,6 +5,7 @@ import { Typography, Button, Segmented, List, Tag, Space, message, theme } from 
 import { InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined, CheckOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
 import PushNotificationToggle from '../components/PushNotificationToggle';
+import SystemNotificationsToggle from '../components/SystemNotificationsToggle';
 import type { AppNotification, NotificationSeverity } from '../types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -78,6 +79,7 @@ export default function NotificationsPage() {
         </Space>
       </div>
 
+      <SystemNotificationsToggle />
       <PushNotificationToggle />
 
       <List
