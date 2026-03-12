@@ -8,7 +8,7 @@ import {
 import { EyeOutlined, TruckOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
-import type { Deal, Shipment, DealItem } from '../types';
+import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
 export default function WarehouseShipmentsPage() {
