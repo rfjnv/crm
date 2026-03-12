@@ -65,9 +65,8 @@ export default function NotificationBell() {
             badge: '/vite.svg',
             tag: `urgent-${latest.id}`,
             requireInteraction: true,
-            vibrate: [200, 100, 200, 100, 200],
             data: { url: latest.link || '/notifications' }
-          });
+          } as NotificationOptions);
         });
       }
 

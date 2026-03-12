@@ -45,9 +45,8 @@ export default function SystemNotificationsToggle() {
       badge: '/vite.svg',
       tag: tag || 'crm-notification',
       requireInteraction: true,
-      vibrate: [200, 100, 200],
       data: { url: '/notifications' }
-    });
+    } as NotificationOptions);
   };
 
   const handleToggle = async (checked: boolean) => {
