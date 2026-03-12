@@ -15,8 +15,7 @@ export default function SystemNotificationsToggle() {
     isSupported,
     canShow,
     requestPermission,
-    show,
-    showUrgent
+    show
   } = useSystemNotifications();
 
   const [isEnabled, setIsEnabled] = useState(false);
