@@ -334,19 +334,21 @@ export default function Layout() {
             height: 64,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
+            justifyContent: 'center',
             borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
             textDecoration: 'none',
-            padding: collapsed ? '0' : '0 20px',
+            padding: collapsed ? '0' : '0 16px',
+            overflow: 'hidden',
           }}
         >
           <img
             src={collapsed ? miniLogo : logo}
             alt="Polygraph Business"
             style={{
-              height: collapsed ? 36 : 78,
-              marginTop: collapsed ? 0 : 28,
-              transition: 'height 0.3s',
+              height: collapsed ? 32 : 36,
+              maxWidth: collapsed ? 40 : 180,
+              objectFit: 'contain',
+              transition: 'all 0.3s',
             }}
           />
         </Link>
