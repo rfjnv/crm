@@ -345,8 +345,8 @@ export default function Layout() {
             src={collapsed ? miniLogo : logo}
             alt="Polygraph Business"
             style={{
-              height: collapsed ? 32 : 36,
-              maxWidth: collapsed ? 40 : 180,
+              height: collapsed ? 34 : 44,
+              maxWidth: collapsed ? 42 : 188,
               objectFit: 'contain',
               transition: 'all 0.3s',
             }}
