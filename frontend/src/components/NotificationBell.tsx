@@ -61,8 +61,8 @@ export default function NotificationBell() {
         navigator.serviceWorker.ready.then((reg) => {
           reg.showNotification(`🚨 ${latest.title}`, {
             body: latest.body,
-            icon: '/vite.svg',
-            badge: '/vite.svg',
+            icon: '/logo-icon.svg',
+            badge: '/logo-icon.svg',
             tag: `urgent-${latest.id}`,
             requireInteraction: true,
             data: { url: latest.link || '/notifications' }

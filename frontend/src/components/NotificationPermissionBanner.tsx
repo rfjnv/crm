@@ -37,8 +37,8 @@ export default function NotificationPermissionBanner() {
           const reg = await navigator.serviceWorker.ready;
           await reg.showNotification('Уведомления включены!', {
             body: 'Теперь вы будете получать уведомления как в Telegram',
-            icon: '/vite.svg',
-            badge: '/vite.svg',
+            icon: '/logo-icon.svg',
+            badge: '/logo-icon.svg',
             tag: 'welcome',
           } as NotificationOptions);
         }
