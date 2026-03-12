@@ -124,7 +124,7 @@ export default function SystemNotificationsToggle() {
 
     } catch (error) {
       console.error('Test notification error:', error);
-      message.error(`Ошибка: ${error.message}`);
+      message.error(`Ошибка: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setTestLoading(false);
     }
   };
