@@ -39,6 +39,7 @@ import { useThemeStore } from '../store/themeStore';
 import { authApi } from '../api/auth.api';
 import { conversationsApi } from '../api/conversations.api';
 import NotificationBell from './NotificationBell';
+import NotificationPermissionBanner from './NotificationPermissionBanner';
 import logo from '../assets/logo.svg';
 import miniLogo from '../assets/mini-logo.svg';
 import type { UserRole, Permission } from '../types';
@@ -396,6 +397,7 @@ export default function Layout() {
         <Content style={{ margin: 24 }}>
           <Outlet />
         </Content>
+        <NotificationPermissionBanner />
       </AntLayout>
     </AntLayout>
   );
