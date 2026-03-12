@@ -75,10 +75,22 @@ export default function SystemNotificationsToggle() {
       isEnabled
     });
 
+    // Запрашиваем разрешение, если его нет
     if (!canShow) {
-      message.warning('Сначала разрешите системные уведомления');
-      console.log('Cannot show: permission denied or not supported');
-      return;
+      console.log('Permission not granted, requesting...');
+      const granted = await requestPermission();
+      console.log('Permission request result:', granted);
+
+      if (!granted) {
+        message.warning('Разрешение на системные уведомления отклонено. Без разрешения тест невозможен.');
+        console.log('Cannot proceed: permission was denied');
+        return;
+      }
+
+      // Включаем уведомления после получения разрешения
+      setIsEnabled(true);
+      localStorage.setItem('system-notifications-enabled', 'true');
+      message.success('Разрешение получено! Теперь тестируем уведомления...');
     }
 
     setTestLoading(true);
@@ -172,7 +184,7 @@ export default function SystemNotificationsToggle() {
         </Typography.Paragraph>
         {isSupported && (
           <Typography.Paragraph style={{ margin: '4px 0 0 0', color: tk.colorTextTertiary, fontSize: 11 }}>
-            💡 Совет: Нажмите "Тест" чтобы проверить работу уведомлений. Должно появиться уведомление на рабочем столе.
+            💡 Совет: Нажмите "Тест" - браузер запросит разрешение и покажет тестовое уведомление на рабочем столе.
           </Typography.Paragraph>
         )}
       </div>
@@ -187,7 +199,7 @@ export default function SystemNotificationsToggle() {
           </Typography.Text>
           {permission !== 'granted' && (
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              (Нажмите "Тест" для запроса разрешений)
+              (Нажмите "Тест" чтобы браузер запросил разрешение)
             </Typography.Text>
           )}
         </Space>
