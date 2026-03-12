@@ -115,6 +115,10 @@ export const dealsApi = {
   getShipments: (page = 1, limit = 50) =>
     client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/deals/shipments?page=${page}&limit=${limit}`).then((r) => r.data),
 
+  // Debug endpoint to see all deals
+  getAllDealsDebug: (page = 1, limit = 50) =>
+    client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number }; debug: any }>(`/deals/all-deals-debug?page=${page}&limit=${limit}`).then((r) => r.data),
+
   dealApprovalQueue: () =>
     client.get<Deal[]>('/deals/deal-approval-queue').then((r) => r.data),
 

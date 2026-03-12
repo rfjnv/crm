@@ -828,6 +828,7 @@ export class DealsService {
     const { page, limit } = options;
     const skip = (page - 1) * limit;
 
+    // Find deals with shipment records (delivered deals)
     const where = {
       isArchived: false,
       shipment: { isNot: null },
@@ -851,7 +852,7 @@ export class DealsService {
             },
           },
         },
-        orderBy: [{ shipment: { shippedAt: 'desc' } }],
+        orderBy: [{ createdAt: 'desc' }], // Use createdAt instead of shipment.shippedAt for more reliable ordering
         skip,
         take: limit,
       }),
@@ -865,6 +866,57 @@ export class DealsService {
         limit,
         total,
         pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getAllDealsWithShipmentInfo(user: AuthUser, options: { page: number; limit: number }) {
+    const { page, limit } = options;
+    const skip = (page - 1) * limit;
+
+    // Find ALL deals (for debugging) to see what's in the database
+    const where = {
+      isArchived: false,
+      // Don't filter by shipment - get all deals to see the data structure
+    };
+
+    const [deals, total] = await Promise.all([
+      prisma.deal.findMany({
+        where,
+        include: {
+          client: { select: { id: true, companyName: true } },
+          manager: { select: { id: true, fullName: true } },
+          shipment: {
+            include: {
+              user: { select: { id: true, fullName: true } },
+            },
+          },
+          items: {
+            select: { id: true, requestedQty: true },
+            include: {
+              product: { select: { name: true, sku: true } },
+            },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.deal.count({ where }),
+    ]);
+
+    return {
+      data: deals,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      debug: {
+        totalDeals: total,
+        dealsWithShipment: deals.filter(d => d.shipment !== null).length,
+        message: 'This endpoint shows all deals for debugging purposes'
       },
     };
   }
