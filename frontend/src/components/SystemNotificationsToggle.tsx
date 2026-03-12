@@ -30,66 +30,101 @@ export default function SystemNotificationsToggle() {
   }, [canShow]);
 
   const handleToggle = async (checked: boolean) => {
+    console.log('Toggle clicked. Current state:', { checked, canShow, permission });
+
     if (checked && !canShow) {
+      console.log('Requesting notification permission...');
       const granted = await requestPermission();
+      console.log('Permission result:', granted);
+
       if (!granted) {
         message.warning('Разрешение на системные уведомления отклонено');
+        console.log('Permission was denied by user');
         return;
       }
     }
 
     setIsEnabled(checked);
     localStorage.setItem('system-notifications-enabled', checked.toString());
+    console.log('Saved setting to localStorage:', checked);
 
     if (checked) {
       message.success('Системные уведомления включены');
       // Показываем тестовое уведомление
-      show({
+      console.log('Showing welcome notification...');
+      const notification = show({
         title: '🎉 Системные уведомления включены!',
         body: 'Теперь вы будете получать уведомления поверх других программ',
         onclick: () => {
+          console.log('Welcome notification clicked');
           window.focus();
         }
       });
+      console.log('Welcome notification result:', notification);
     } else {
       message.success('Системные уведомления отключены');
+      console.log('System notifications disabled');
     }
   };
 
   const handleTest = async () => {
+    console.log('Test button clicked. Current state:', {
+      permission,
+      canShow,
+      isSupported,
+      isEnabled
+    });
+
     if (!canShow) {
       message.warning('Сначала разрешите системные уведомления');
+      console.log('Cannot show: permission denied or not supported');
       return;
     }
 
     setTestLoading(true);
 
     try {
-      // Тест обычного уведомления
-      show({
-        title: '✅ Тест системного уведомления',
-        body: 'Это обычное уведомление CRM системы',
+      console.log('Sending test notification...');
+
+      // Простой тест уведомления
+      const notification = show({
+        title: '🔔 Тест уведомления',
+        body: 'Если вы видите это - системные уведомления работают!',
         onclick: () => {
-          message.info('Уведомление работает!');
+          console.log('Notification clicked!');
+          window.focus();
+          message.success('✅ Уведомление работает отлично!');
         }
       });
 
-      // Через 2 секунды тест срочного уведомления
+      console.log('Notification result:', notification);
+
+      if (notification) {
+        message.success('Тестовое уведомление отправлено! Проверьте рабочий стол.');
+      } else {
+        message.error('Не удалось создать уведомление. Проверьте разрешения браузера.');
+        console.error('Notification creation failed');
+      }
+
+      // Через 3 секунды отправляем срочное
       setTimeout(() => {
-        showUrgent({
-          title: '🚨 СРОЧНОЕ уведомление!',
-          body: 'Это срочное уведомление с высоким приоритетом',
+        console.log('Sending urgent notification...');
+        const urgentNotif = showUrgent({
+          title: '🚨 Срочное уведомление',
+          body: 'Это тест срочного уведомления с приоритетом',
           onclick: () => {
-            message.warning('Срочное уведомление работает!');
+            console.log('Urgent notification clicked!');
+            window.focus();
+            message.warning('🚨 Срочное уведомление сработало!');
           }
         });
+        console.log('Urgent notification result:', urgentNotif);
         setTestLoading(false);
-      }, 2000);
+      }, 3000);
 
-      message.success('Тестовые уведомления отправлены');
     } catch (error) {
       console.error('Test notification error:', error);
-      message.error('Ошибка отправки тестового уведомления');
+      message.error(`Ошибка: ${error.message}`);
       setTestLoading(false);
     }
   };
@@ -135,6 +170,11 @@ export default function SystemNotificationsToggle() {
         <Typography.Paragraph style={{ margin: 0, color: tk.colorTextSecondary }}>
           Показывает уведомления поверх других программ, даже когда браузер свернут или неактивен.
         </Typography.Paragraph>
+        {isSupported && (
+          <Typography.Paragraph style={{ margin: '4px 0 0 0', color: tk.colorTextTertiary, fontSize: 11 }}>
+            💡 Совет: Нажмите "Тест" чтобы проверить работу уведомлений. Должно появиться уведомление на рабочем столе.
+          </Typography.Paragraph>
+        )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -145,19 +185,22 @@ export default function SystemNotificationsToggle() {
           <Typography.Text type={status.color as any}>
             {status.icon} {status.text}
           </Typography.Text>
+          {permission !== 'granted' && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              (Нажмите "Тест" для запроса разрешений)
+            </Typography.Text>
+          )}
         </Space>
 
         <Space>
-          {canShow && (
-            <Button
-              size="small"
-              icon={<ExperimentOutlined />}
-              onClick={handleTest}
-              loading={testLoading}
-            >
-              Тест
-            </Button>
-          )}
+          <Button
+            size="small"
+            icon={<ExperimentOutlined />}
+            onClick={handleTest}
+            loading={testLoading}
+          >
+            Тест
+          </Button>
           <Switch
             checked={isEnabled && canShow}
             onChange={handleToggle}

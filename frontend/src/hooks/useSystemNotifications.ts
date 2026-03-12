@@ -47,23 +47,39 @@ class SystemNotificationManager {
   }
 
   show(options: SystemNotificationOptions): Notification | null {
+    console.log('SystemNotificationManager.show called with:', options);
+    console.log('Current permission:', this.permission);
+    console.log('Can show notifications:', this.canShowNotifications());
+
     if (!this.canShowNotifications()) {
+      console.warn('Cannot show notification: permission not granted or not supported');
       return null;
     }
 
     try {
+      console.log('Creating Notification with options:', {
+        title: options.title,
+        body: options.body,
+        icon: options.icon || '/favicon.ico',
+        requireInteraction: true,
+        silent: false
+      });
+
       const notification = new Notification(options.title, {
         body: options.body,
-        icon: options.icon || '/favicon.ico', // Используем иконку сайта по умолчанию
+        icon: options.icon || '/favicon.ico',
         badge: options.badge,
         tag: options.tag,
         requireInteraction: true, // Уведомление не исчезнет автоматически
         silent: false, // Звук уведомления
       });
 
+      console.log('Notification created:', notification);
+
       // Обработчик клика
       if (options.onclick) {
         notification.onclick = () => {
+          console.log('Notification clicked');
           window.focus(); // Фокус на окне браузера
           options.onclick?.();
           notification.close();
@@ -72,12 +88,13 @@ class SystemNotificationManager {
 
       // Автозакрытие через 10 секунд если не взаимодействовали
       setTimeout(() => {
+        console.log('Auto-closing notification after 10 seconds');
         notification.close();
       }, 10000);
 
       return notification;
     } catch (error) {
-      console.error('Ошибка показа уведомления:', error);
+      console.error('Error creating notification:', error);
       return null;
     }
   }
