@@ -174,7 +174,7 @@ export default function WarehouseShipmentsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           <TruckOutlined style={{ marginRight: 8 }} />
-          Отгрузки
+          Накладные
           {pagination?.total ? (
             <Tag style={{ marginLeft: 8, fontSize: 14 }}>{pagination.total}</Tag>
           ) : null}
@@ -208,7 +208,7 @@ export default function WarehouseShipmentsPage() {
         }}
         size="middle"
         bordered={false}
-        locale={{ emptyText: 'Нет отгрузок' }}
+        locale={{ emptyText: 'Нет накладных' }}
         onRow={(record) => ({
           style: { cursor: 'pointer' },
           onClick: () => openDetail(record),
@@ -220,7 +220,7 @@ export default function WarehouseShipmentsPage() {
         title={
           <Space>
             <TruckOutlined />
-            {selectedDeal?.shipment?.deliveryNoteNumber ? `Накладная ${selectedDeal.shipment.deliveryNoteNumber}` : 'Детали отгрузки'}
+            {selectedDeal?.shipment?.deliveryNoteNumber ? `Накладная ${selectedDeal.shipment.deliveryNoteNumber}` : 'Детали накладной'}
           </Space>
         }
         open={drawerOpen}
@@ -251,7 +251,7 @@ export default function WarehouseShipmentsPage() {
             </Card>
 
             {dealDetail.shipment && (
-              <Card title="Информация об отгрузке" size="small" style={{ marginBottom: 16 }}>
+              <Card title="Данные накладной" size="small" style={{ marginBottom: 16 }}>
                 <Descriptions size="small" column={1}>
                   <Descriptions.Item label="Номер накладной">
                     <Tag color="blue">{dealDetail.shipment.deliveryNoteNumber}</Tag>

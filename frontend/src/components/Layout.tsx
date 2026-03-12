@@ -153,7 +153,7 @@ export default function Layout() {
       ? [{
         key: '/warehouse/shipments',
         icon: <TruckOutlined />,
-        label: <Link to="/warehouse/shipments">Отгрузки</Link>,
+        label: <Link to="/warehouse/shipments">Накладные</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
