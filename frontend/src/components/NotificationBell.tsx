@@ -44,46 +44,52 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!recentData?.items) return;
 
-    const urgentUnread = recentData.items.filter(
-      (n: AppNotification) => n.severity === 'URGENT' && !n.isRead,
+    // All unread notifications (not just URGENT)
+    const allUnread = recentData.items.filter(
+      (n: AppNotification) => !n.isRead,
     );
-    const newUrgent = urgentUnread.filter(
+    const newUnread = allUnread.filter(
       (n: AppNotification) => !prevUrgentIdsRef.current.has(n.id),
     );
 
-    if (newUrgent.length > 0) {
-      const latest = newUrgent[0];
+    if (newUnread.length > 0) {
+      const latest = newUnread[0];
+
+      // Emoji based on severity
+      const severityEmoji = latest.severity === 'URGENT' ? '🚨' : latest.severity === 'WARNING' ? '⚠️' : '🔔';
 
       // Show system notification via Service Worker (like Telegram/Instagram)
       const systemNotificationsEnabled = localStorage.getItem('system-notifications-enabled') === 'true';
 
       if (systemNotificationsEnabled && 'serviceWorker' in navigator && Notification.permission === 'granted') {
         navigator.serviceWorker.ready.then((reg) => {
-          reg.showNotification(`🚨 ${latest.title}`, {
+          reg.showNotification(`${severityEmoji} ${latest.title}`, {
             body: latest.body,
             icon: '/logo-icon.svg',
             badge: '/logo-icon.svg',
-            tag: `urgent-${latest.id}`,
-            requireInteraction: true,
+            tag: `notification-${latest.id}`,
+            requireInteraction: latest.severity === 'URGENT',
             data: { url: latest.link || '/notifications' }
           } as NotificationOptions);
         });
       }
 
-      // Also show modal inside browser (for users who have browser active)
-      Modal.warning({
-        title: latest.title,
-        content: latest.body,
-        okText: latest.link ? 'Перейти' : 'OK',
-        onOk: () => {
-          if (latest.link) navigate(latest.link);
-          markReadMut.mutate(latest.id);
-        },
-        centered: true,
-      });
+      // Show modal inside browser only for URGENT
+      if (latest.severity === 'URGENT') {
+        Modal.warning({
+          title: latest.title,
+          content: latest.body,
+          okText: latest.link ? 'Перейти' : 'OK',
+          onOk: () => {
+            if (latest.link) navigate(latest.link);
+            markReadMut.mutate(latest.id);
+          },
+          centered: true,
+        });
+      }
     }
 
-    prevUrgentIdsRef.current = new Set(urgentUnread.map((n: AppNotification) => n.id));
+    prevUrgentIdsRef.current = new Set(allUnread.map((n: AppNotification) => n.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentData]);
 
