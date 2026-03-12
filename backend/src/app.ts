@@ -39,7 +39,16 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors({ origin: config.cors.origin, credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || config.cors.origins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 
 // Body parsing
 app.use(express.json({ limit: '1mb' }));

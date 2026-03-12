@@ -331,22 +331,26 @@ export default function Layout() {
         <Link
           to="/dashboard"
           style={{
-            height: 64,
+            height: 72,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: collapsed ? 'center' : 'flex-start',
             borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
             textDecoration: 'none',
-            padding: collapsed ? '0' : '0 16px',
+            padding: collapsed ? '0' : '0 14px',
             overflow: 'hidden',
+            position: 'sticky',
+            top: 0,
+            zIndex: 101,
+            background: themeToken.colorBgContainer,
           }}
         >
           <img
             src={collapsed ? miniLogo : logo}
             alt="Polygraph Business"
             style={{
-              height: collapsed ? 34 : 44,
-              maxWidth: collapsed ? 42 : 188,
+              height: collapsed ? 40 : 52,
+              maxWidth: collapsed ? 48 : 192,
               objectFit: 'contain',
               transition: 'all 0.3s',
             }}
