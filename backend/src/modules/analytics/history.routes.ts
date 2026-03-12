@@ -77,10 +77,11 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as total_revenue,
         COALESCE(AVG(d.amount), 0)::text as avg_deal
       FROM deals d
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}`,
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
     );
 
-    // Total collected in 2025 (from payments table by paid_at)
+    // Total collected (from payments table by paid_at)
     const collectedRaw = await prisma.$queryRaw<{ total_paid: string }[]>(
       Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total_paid
       FROM payments p ${paymentDealJoin}
@@ -164,7 +165,8 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as revenue,
         COUNT(DISTINCT d.client_id)::text as active_clients
       FROM deals d
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -236,7 +238,8 @@ router.get(
         COALESCE(SUM(d.amount), 0)::text as shipped
       FROM shipments s
       JOIN deals d ON d.id = s.deal_id
-      WHERE d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND s.shipped_at >= ${yearStart} AND s.shipped_at < ${yearEnd}
       GROUP BY EXTRACT(MONTH FROM (s.shipped_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
@@ -284,7 +287,8 @@ router.get(
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name
       ORDER BY SUM(d.amount) DESC
       LIMIT 30`,
@@ -316,7 +320,8 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -358,7 +363,8 @@ router.get(
         WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
         GROUP BY d2.manager_id
       ) mc ON mc.manager_id = u.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY u.id, u.full_name, mc.total_collected
       ORDER BY SUM(d.amount) DESC`,
     );
@@ -629,7 +635,8 @@ router.get(
       JOIN products p ON p.id = di.product_id
       WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -648,7 +655,8 @@ router.get(
       JOIN users u ON u.id = d.manager_id
       WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY u.id, u.full_name
       ORDER BY SUM(d.amount) DESC`,
     );
@@ -805,7 +813,8 @@ router.get(
       Prisma.sql`WITH monthly_clients AS (
         SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
         FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       )
       SELECT a.month,
         COUNT(DISTINCT a.client_id)::text as total_clients,
@@ -834,7 +843,8 @@ router.get(
       Prisma.sql`WITH client_revenue AS (
         SELECT c.id, c.company_name, COALESCE(SUM(d.amount), 0) as revenue
         FROM deals d JOIN clients c ON c.id = d.client_id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         GROUP BY c.id, c.company_name
         ORDER BY SUM(d.amount) DESC
       )
@@ -866,7 +876,8 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
           AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       ),
       product_stats AS (
@@ -917,7 +928,8 @@ router.get(
         COUNT(d.id)::text as deals_count
       FROM deals d
       JOIN users u ON u.id = d.manager_id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY u.full_name, month`,
     );
@@ -936,7 +948,8 @@ router.get(
       Prisma.sql`WITH first_deal AS (
         SELECT d.client_id, MIN(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
         FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         GROUP BY d.client_id
       ),
       monthly_activity AS (
@@ -944,7 +957,8 @@ router.get(
           EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
           SUM(d.amount) as revenue
         FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         GROUP BY d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       )
       SELECT f.cohort_month, ma.active_month,
@@ -976,7 +990,8 @@ router.get(
         MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_deal_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      WHERE d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND d.payment_status IN ('UNPAID', 'PARTIAL')
       GROUP BY c.id, c.company_name
       HAVING SUM(d.amount - d.paid_amount) > 0
@@ -1001,7 +1016,8 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(AVG(d.amount), 0)::text as avg_deal_size
       FROM deals d
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -1022,7 +1038,8 @@ router.get(
         MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_active_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name`,
     );
 
@@ -1032,7 +1049,8 @@ router.get(
     >(
       Prisma.sql`SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
       FROM deals d
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false${dealFilter}`,
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
     );
     const clientMonthsMap = new Map<string, number[]>();
     for (const row of activeMonthsRaw) {
@@ -1157,7 +1175,8 @@ router.get(
       WHERE d.client_id = ${clientId}
         AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.requested_qty IS NOT NULL AND di.price IS NOT NULL
       ORDER BY (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0)) DESC`,
     );
@@ -1212,7 +1231,8 @@ router.get(
       JOIN clients c ON c.id = d.client_id
       WHERE di.product_id = ${productId}
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
       ORDER BY SUM(di.requested_qty * di.price) DESC`,
@@ -1489,7 +1509,8 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'EXCHANGE'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}`,
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
     );
 
     // 2. By month
@@ -1503,7 +1524,8 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'EXCHANGE'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
@@ -1520,7 +1542,8 @@ router.get(
       JOIN products p ON p.id = di.product_id
       WHERE di.source_op_type = 'EXCHANGE'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 20`,
@@ -1538,7 +1561,8 @@ router.get(
       JOIN clients c ON c.id = d.client_id
       WHERE di.source_op_type = 'EXCHANGE'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name
       ORDER BY COUNT(*) DESC
       LIMIT 20`,
@@ -1603,7 +1627,8 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL`,
     );
 
@@ -1618,7 +1643,8 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
@@ -1636,7 +1662,8 @@ router.get(
       JOIN clients c ON c.id = d.client_id
       WHERE di.source_op_type = 'PP'
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
       ORDER BY SUM(di.requested_qty * di.price) DESC
