@@ -89,7 +89,7 @@ export default function DebtsPage() {
       dataIndex: 'clientName',
       key: 'clientName',
       render: (v: string, r: ClientDebtRow) => (
-        <Link to={`/clients/${r.clientId}`} style={{ fontWeight: 500 }}>
+        <Link to={`/clients/${r.clientId}`}>
           {v}
         </Link>
       ),
@@ -100,7 +100,7 @@ export default function DebtsPage() {
       key: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
+        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f' }}>
           {v < 0 ? `−${formatUZS(Math.abs(v))} (переплата)` : formatUZS(v)}
         </span>
       ),
@@ -229,19 +229,19 @@ export default function DebtsPage() {
       {totals && (
         <div style={{ marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <Typography.Text type="secondary">
-            Клиентов: <strong>{totals.clientCount}</strong>
+            Клиентов: {totals.clientCount}
           </Typography.Text>
           <Typography.Text type="secondary">
-            Сделок: <strong>{totals.dealsCount}</strong>
+            Сделок: {totals.dealsCount}
           </Typography.Text>
           <Typography.Text type="secondary">
-            Общий долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.grossDebt ?? 0)}</strong>
+            Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(totals.grossDebt ?? 0)}</span>
           </Typography.Text>
           <Typography.Text type="secondary">
-            Предоплаты: <strong style={{ color: '#52c41a' }}>{formatUZS(Math.abs(totals.prepayments ?? 0))}</strong>
+            Предоплаты: <span style={{ color: '#52c41a' }}>{formatUZS(Math.abs(totals.prepayments ?? 0))}</span>
           </Typography.Text>
           <Typography.Text type="secondary">
-            Чистый долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</strong>
+            Чистый долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</span>
           </Typography.Text>
         </div>
       )}

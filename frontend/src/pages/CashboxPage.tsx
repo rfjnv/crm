@@ -11,8 +11,13 @@ import dayjs from 'dayjs';
 import { financeApi, type CashboxPayment } from '../api/finance.api';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
+import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ClientDebtRow } from '../types';
+
+type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
+type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
+type SortOption = 'debt_desc' | 'newest' | 'oldest_unpaid';
 
 const methodLabels: Record<string, string> = {
   CASH: 'Наличные',
@@ -40,6 +45,11 @@ export default function CashboxPage() {
 
   // Debtors tab state
   const [debtSearch, setDebtSearch] = useState('');
+  const [debtRange, setDebtRange] = useState<DebtRange>('all');
+  const [customMin, setCustomMin] = useState<number | null>(null);
+  const [debtStatus, setDebtStatus] = useState<DebtStatus>('all');
+  const [managerId, setManagerId] = useState<string | undefined>(undefined);
+  const [sortBy, setSortBy] = useState<SortOption>('debt_desc');
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
@@ -57,9 +67,29 @@ export default function CashboxPage() {
     queryFn: clientsApi.list,
   });
 
+  const { data: users } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: usersApi.list,
+  });
+
+  const debtParams = useMemo(() => {
+    const p: { minDebt?: number; managerId?: string; paymentStatus?: string } = {};
+    if (managerId) p.managerId = managerId;
+    if (debtStatus !== 'all') p.paymentStatus = debtStatus;
+
+    let minDebt = 0;
+    if (debtRange === '1m') minDebt = 1_000_000;
+    else if (debtRange === '5m') minDebt = 5_000_000;
+    else if (debtRange === '10m') minDebt = 10_000_000;
+    else if (debtRange === 'custom' && customMin) minDebt = customMin;
+    if (minDebt > 0) p.minDebt = minDebt;
+
+    return p;
+  }, [managerId, debtStatus, debtRange, customMin]);
+
   const { data: debtsData, isLoading: debtsLoading } = useQuery({
-    queryKey: ['finance-debts'],
-    queryFn: () => financeApi.getDebts(),
+    queryKey: ['finance-debts', debtParams],
+    queryFn: () => financeApi.getDebts(debtParams),
     enabled: activeTab === 'debtors',
   });
 
@@ -92,17 +122,42 @@ export default function CashboxPage() {
     [clients],
   );
 
+  const managers = useMemo(() => {
+    if (!users) return [];
+    return users
+      .filter((u: { role: string; isActive: boolean }) =>
+        ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
+      )
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+  }, [users]);
+
   const debtorClients: ClientDebtRow[] = debtsData?.clients ?? [];
 
   const filteredDebtors = useMemo(() => {
-    if (!debtSearch) return debtorClients;
-    const q = debtSearch.toLowerCase();
-    return debtorClients.filter(
-      (c) =>
-        c.clientName.toLowerCase().includes(q) ||
-        c.manager?.fullName.toLowerCase().includes(q),
-    );
-  }, [debtorClients, debtSearch]);
+    let result = debtorClients;
+
+    if (debtSearch) {
+      const q = debtSearch.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.clientName.toLowerCase().includes(q) ||
+          c.manager?.fullName.toLowerCase().includes(q),
+      );
+    }
+
+    result = [...result].sort((a, b) => {
+      if (sortBy === 'debt_desc') return b.totalDebt - a.totalDebt;
+      if (sortBy === 'newest') return (b.newestDealDate || '').localeCompare(a.newestDealDate || '');
+      if (sortBy === 'oldest_unpaid') {
+        const aDate = a.oldestUnpaidDueDate || '9999';
+        const bDate = b.oldestUnpaidDueDate || '9999';
+        return aDate.localeCompare(bDate);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [debtorClients, debtSearch, sortBy]);
 
   const openPayModal = (row: ClientDebtRow) => {
     setSelectedClient({ clientId: row.clientId, clientName: row.clientName });
@@ -148,7 +203,7 @@ export default function CashboxPage() {
       title: 'Сумма',
       dataIndex: 'amount',
       align: 'right' as const,
-      render: (v: number) => <strong>{formatUZS(v)}</strong>,
+      render: (v: number) => formatUZS(v),
     },
     {
       title: 'Метод',
@@ -188,7 +243,7 @@ export default function CashboxPage() {
       title: 'Клиент',
       dataIndex: 'clientName',
       render: (v: string, r: ClientDebtRow) => (
-        <Link to={`/clients/${r.clientId}`} style={{ fontWeight: 500 }}>{v}</Link>
+        <Link to={`/clients/${r.clientId}`}>{v}</Link>
       ),
     },
     {
@@ -196,7 +251,7 @@ export default function CashboxPage() {
       dataIndex: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
+        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f' }}>
           {v < 0 ? `−${formatUZS(Math.abs(v))} (переплата)` : formatUZS(v)}
         </span>
       ),
@@ -337,7 +392,7 @@ export default function CashboxPage() {
                     {data?.byMethod.map((m) => (
                       <div key={m.method} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                         <span>{methodLabels[m.method] || m.method}</span>
-                        <strong>{formatUZS(m.total)}</strong>
+                        <span>{formatUZS(m.total)}</span>
                       </div>
                     ))}
                     {(!data?.byMethod || data.byMethod.length === 0) && (
@@ -357,9 +412,9 @@ export default function CashboxPage() {
                 bordered={false}
                 summary={() => data?.payments && data.payments.length > 0 ? (
                   <Table.Summary.Row>
-                    <Table.Summary.Cell index={0} colSpan={3}><strong>Итого</strong></Table.Summary.Cell>
+                    <Table.Summary.Cell index={0} colSpan={3}>Итого</Table.Summary.Cell>
                     <Table.Summary.Cell index={3} align="right">
-                      <strong>{formatUZS(data.totals.totalAmount)}</strong>
+                      {formatUZS(data.totals.totalAmount)}
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={4} colSpan={5} />
                   </Table.Summary.Row>
@@ -384,14 +439,69 @@ export default function CashboxPage() {
                 {debtsData?.totals && (
                   <Space size="large">
                     <Typography.Text type="secondary">
-                      Клиентов: <strong>{debtsData.totals.clientCount}</strong>
+                      Клиентов: {debtsData.totals.clientCount}
                     </Typography.Text>
                     <Typography.Text type="secondary">
-                      Общий долг: <strong style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebt)}</strong>
+                      Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebt)}</span>
                     </Typography.Text>
                   </Space>
                 )}
               </div>
+
+              <Space wrap style={{ marginBottom: 16 }}>
+                <Select
+                  value={debtRange}
+                  onChange={(v) => setDebtRange(v)}
+                  style={{ width: 180 }}
+                  options={[
+                    { value: 'all', label: 'Сумма долга: все' },
+                    { value: '1m', label: '> 1 000 000' },
+                    { value: '5m', label: '> 5 000 000' },
+                    { value: '10m', label: '> 10 000 000' },
+                    { value: 'custom', label: 'Свой диапазон' },
+                  ]}
+                />
+                {debtRange === 'custom' && (
+                  <InputNumber
+                    placeholder="Мин. сумма"
+                    style={{ width: 160 }}
+                    min={0}
+                    step={100000}
+                    value={customMin}
+                    onChange={(v) => setCustomMin(v)}
+                    formatter={(v) => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : ''}
+                    parser={(v) => Number((v || '').replace(/\s/g, ''))}
+                  />
+                )}
+                <Select
+                  value={debtStatus}
+                  onChange={(v) => setDebtStatus(v)}
+                  style={{ width: 180 }}
+                  options={[
+                    { value: 'all', label: 'Статус: все' },
+                    { value: 'PARTIAL', label: 'Частичная оплата' },
+                    { value: 'UNPAID', label: 'Без оплаты' },
+                  ]}
+                />
+                <Select
+                  value={managerId}
+                  onChange={(v) => setManagerId(v)}
+                  allowClear
+                  placeholder="Менеджер"
+                  style={{ width: 200 }}
+                  options={managers}
+                />
+                <Select
+                  value={sortBy}
+                  onChange={(v) => setSortBy(v)}
+                  style={{ width: 220 }}
+                  options={[
+                    { value: 'debt_desc', label: 'Сортировка: наибольший долг' },
+                    { value: 'newest', label: 'Сортировка: новые сделки' },
+                    { value: 'oldest_unpaid', label: 'Сортировка: старые неоплаты' },
+                  ]}
+                />
+              </Space>
 
               <Table
                 dataSource={filteredDebtors}
@@ -448,8 +558,8 @@ export default function CashboxPage() {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <strong>{deal.title || deal.id.slice(0, 8)}</strong>
-                      <span style={{ color: '#ff4d4f', fontWeight: 600 }}>
+                      <span>{deal.title || deal.id.slice(0, 8)}</span>
+                      <span style={{ color: '#ff4d4f' }}>
                         Долг: {formatUZS(debt)}
                       </span>
                     </div>
