@@ -212,7 +212,7 @@ export default function SystemNotificationsToggle() {
         </Typography.Paragraph>
         {isSupported && (
           <Typography.Paragraph style={{ margin: '4px 0 0 0', color: tk.colorTextTertiary, fontSize: 11 }}>
-            💡 Совет: Нажмите "Тест" - браузер запросит разрешение и покажет тестовое уведомление на рабочем столе.
+            💡 Совет: Нажмите "Тест" - браузер запросит разрешение и покажет настоящее системное уведомление на рабочем столе.
           </Typography.Paragraph>
         )}
       </div>
