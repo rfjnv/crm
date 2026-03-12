@@ -17,7 +17,6 @@ import {
   BarChartOutlined,
   FieldTimeOutlined,
   AppstoreOutlined,
-  CheckCircleOutlined,
   BellOutlined,
   SendOutlined,
   AuditOutlined,
@@ -122,13 +121,6 @@ export default function Layout() {
         label: <Link to="/deals">Сделки</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
-      ? [{
-        key: '/finance/deal-closing',
-        icon: <CheckCircleOutlined />,
-        label: <Link to="/finance/deal-closing">Закрытие сделок</Link>,
-      }]
-      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/inventory/products',
@@ -191,11 +183,6 @@ export default function Layout() {
           key: '/finance/debts',
           icon: <DollarOutlined />,
           label: <Link to="/finance/debts">Долги</Link>,
-        },
-        {
-          key: '/finance/day-closing',
-          icon: <CheckCircleOutlined />,
-          label: <Link to="/finance/day-closing">Закрытие дня</Link>,
         },
         {
           key: '/finance/review',
