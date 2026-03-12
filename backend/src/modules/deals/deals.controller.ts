@@ -153,6 +153,13 @@ export class DealsController {
     res.json(deals);
   }
 
+  async findShipments(req: Request, res: Response): Promise<void> {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const shipments = await dealsService.findShipments(getUser(req), { page, limit });
+    res.json(shipments);
+  }
+
   async submitShipment(req: Request, res: Response): Promise<void> {
     const deal = await dealsService.submitShipment(req.params.id as string, req.body, getUser(req));
     res.json(deal);

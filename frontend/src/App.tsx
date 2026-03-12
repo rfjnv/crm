@@ -25,6 +25,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import BroadcastPage from './pages/BroadcastPage';
 import FinanceReviewPage from './pages/FinanceReviewPage';
 import ShipmentPage from './pages/ShipmentPage';
+import WarehouseShipmentsPage from './pages/WarehouseShipmentsPage';
 import StockConfirmationPage from './pages/StockConfirmationPage';
 import MessagesPage from './pages/MessagesPage';
 import RevenueTodayPage from './pages/RevenueTodayPage';
@@ -111,6 +112,7 @@ export default function App() {
                 <Route path="/finance/cashbox" element={<CashboxPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/shipment" element={<ShipmentPage />} />
+                <Route path="/warehouse/shipments" element={<WarehouseShipmentsPage />} />
                 <Route path="/stock-confirmation" element={<StockConfirmationPage />} />
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />

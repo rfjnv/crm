@@ -22,6 +22,7 @@ import {
   SendOutlined,
   AuditOutlined,
   CarOutlined,
+  TruckOutlined,
   CheckSquareOutlined,
   MessageOutlined,
   WalletOutlined,
@@ -146,6 +147,13 @@ export default function Layout() {
         key: '/shipment',
         icon: <CarOutlined />,
         label: <Link to="/shipment">Отгрузка</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+      ? [{
+        key: '/warehouse/shipments',
+        icon: <TruckOutlined />,
+        label: <Link to="/warehouse/shipments">Отгрузки</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')

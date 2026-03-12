@@ -824,6 +824,51 @@ export class DealsService {
     });
   }
 
+  async findShipments(user: AuthUser, options: { page: number; limit: number }) {
+    const { page, limit } = options;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      isArchived: false,
+      shipment: { isNot: null },
+    };
+
+    const [shipments, total] = await Promise.all([
+      prisma.deal.findMany({
+        where,
+        include: {
+          client: { select: { id: true, companyName: true } },
+          manager: { select: { id: true, fullName: true } },
+          shipment: {
+            include: {
+              user: { select: { id: true, fullName: true } },
+            },
+          },
+          items: {
+            select: { id: true, requestedQty: true },
+            include: {
+              product: { select: { name: true, sku: true } },
+            },
+          },
+        },
+        orderBy: [{ shipment: { shippedAt: 'desc' } }],
+        skip,
+        take: limit,
+      }),
+      prisma.deal.count({ where }),
+    ]);
+
+    return {
+      data: shipments,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   // ==================== SHIPMENT HOLD ====================
 
   async holdShipment(dealId: string, dto: ShipmentHoldDto, user: AuthUser) {
