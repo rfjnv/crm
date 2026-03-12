@@ -417,6 +417,34 @@ export class DealsService {
       }
     }
 
+    // Notify admins when deal goes directly to ADMIN_APPROVED (cash payments)
+    if (targetStatus === 'ADMIN_APPROVED') {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true },
+        select: { id: true },
+      });
+
+      if (admins.length > 0) {
+        await prisma.notification.createMany({
+          data: admins.map((admin) => ({
+            userId: admin.id,
+            title: 'Сделка ожидает проверки',
+            body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId: user.userId,
+          })),
+        });
+
+        pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
+          title: 'Сделка ожидает проверки',
+          body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+
     return this.findById(dealId, user);
   }
 
@@ -654,6 +682,32 @@ export class DealsService {
       url: `/deals/${dealId}`,
       severity: 'INFO',
     }).catch(() => {});
+
+    // Notify admins that deal needs their approval after finance review
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true },
+      select: { id: true },
+    });
+
+    if (admins.length > 0) {
+      await prisma.notification.createMany({
+        data: admins.map((admin) => ({
+          userId: admin.id,
+          title: 'Сделка прошла финансовую проверку',
+          body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+          severity: 'WARNING' as const,
+          link: `/deals/${dealId}`,
+          createdByUserId: user.userId,
+        })),
+      });
+
+      pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
+        title: 'Сделка прошла финансовую проверку',
+        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+    }
 
     return this.findById(dealId, user);
   }
@@ -1167,6 +1221,58 @@ export class DealsService {
       severity: 'INFO',
     }).catch(() => {});
 
+    // Notify warehouse managers that deal is ready for shipment
+    const warehouseManagers = await prisma.user.findMany({
+      where: { role: { in: ['WAREHOUSE_MANAGER'] }, isActive: true },
+      select: { id: true },
+    });
+
+    if (warehouseManagers.length > 0) {
+      await prisma.notification.createMany({
+        data: warehouseManagers.map((wm) => ({
+          userId: wm.id,
+          title: 'Новая сделка на отгрузку',
+          body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
+          severity: 'WARNING' as const,
+          link: `/deals/${dealId}`,
+          createdByUserId: user.userId,
+        })),
+      });
+
+      pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+        title: 'Новая сделка на отгрузку',
+        body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+    }
+
+    // Notify accountants about admin approval
+    const accountants = await prisma.user.findMany({
+      where: { role: 'ACCOUNTANT', isActive: true },
+      select: { id: true },
+    });
+
+    if (accountants.length > 0) {
+      await prisma.notification.createMany({
+        data: accountants.map((acc) => ({
+          userId: acc.id,
+          title: 'Сделка одобрена админом',
+          body: `Сделка "${deal.title}" одобрена и передана на отгрузку`,
+          severity: 'INFO' as const,
+          link: `/deals/${dealId}`,
+          createdByUserId: user.userId,
+        })),
+      });
+
+      pushService.sendPushToRoles(['ACCOUNTANT'], {
+        title: 'Сделка одобрена админом',
+        body: `Сделка "${deal.title}" одобрена и передана на отгрузку`,
+        url: `/deals/${dealId}`,
+        severity: 'INFO',
+      }).catch(() => {});
+    }
+
     return this.findById(dealId, user);
   }
 
@@ -1224,6 +1330,32 @@ export class DealsService {
       url: `/deals/${dealId}`,
       severity: 'URGENT',
     }).catch(() => {});
+
+    // Notify accountants about admin rejection
+    const accountants = await prisma.user.findMany({
+      where: { role: 'ACCOUNTANT', isActive: true },
+      select: { id: true },
+    });
+
+    if (accountants.length > 0) {
+      await prisma.notification.createMany({
+        data: accountants.map((acc) => ({
+          userId: acc.id,
+          title: 'Сделка отклонена админом',
+          body: `Сделка "${deal.title}" отклонена: ${reason}`,
+          severity: 'WARNING' as const,
+          link: `/deals/${dealId}`,
+          createdByUserId: user.userId,
+        })),
+      });
+
+      pushService.sendPushToRoles(['ACCOUNTANT'], {
+        title: 'Сделка отклонена админом',
+        body: `Сделка "${deal.title}" отклонена: ${reason}`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+    }
 
     return this.findById(dealId, user);
   }
