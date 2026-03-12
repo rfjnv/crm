@@ -4,7 +4,6 @@ import {
   DesktopOutlined,
   ExperimentOutlined,
   CheckOutlined,
-  ExclamationCircleOutlined,
   BellOutlined
 } from '@ant-design/icons';
 
@@ -73,9 +72,11 @@ export default function SystemNotificationsToggle() {
   // Тест уведомления через Service Worker
   const handleTest = async () => {
     // Если нет разрешения - сначала запросить
-    if (Notification.permission !== 'granted') {
+    const perm = Notification.permission;
+    if (perm !== 'granted') {
       await handleRequestPermission();
-      if (Notification.permission !== 'granted') return;
+      // Перечитываем после запроса
+      if (Notification.permission as string !== 'granted') return;
     }
 
     if (!swReady) {
@@ -110,9 +111,10 @@ export default function SystemNotificationsToggle() {
 
   const handleToggle = async (checked: boolean) => {
     if (checked) {
-      if (Notification.permission !== 'granted') {
+      const perm = Notification.permission;
+      if (perm !== 'granted') {
         await handleRequestPermission();
-        if (Notification.permission !== 'granted') return;
+        if (Notification.permission as string !== 'granted') return;
       }
       setIsEnabled(true);
       localStorage.setItem('system-notifications-enabled', 'true');
