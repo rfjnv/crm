@@ -323,6 +323,7 @@ router.get(
          FROM deals d
          JOIN users u ON u.id = d.manager_id
          WHERE d.is_archived = false
+           AND d.created_at >= ${start} AND d.created_at < ${end}
          GROUP BY d.manager_id, u.full_name
          ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`
       ),
@@ -332,6 +333,7 @@ router.get(
            AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
          FROM deals d
          WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+           AND d.created_at >= ${start} AND d.created_at < ${end}
          GROUP BY d.manager_id`
       ),
     ]);
@@ -355,7 +357,8 @@ router.get(
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
          FROM payments p
-         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}`
+         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
+           AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
       ),
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * pr.purchase_price), 0)::text as total

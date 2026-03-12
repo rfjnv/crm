@@ -244,7 +244,7 @@ router.get(
     const shippedMap = new Map(shippedByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
     const revenueMap = new Map(revenueByMonthRaw.map((r) => [r.month, { revenue: Number(r.revenue), activeClients: Number(r.active_clients) }]));
 
-    // Build trend for all months 1–12 so months with only payments/shipments aren't lost
+    // Build trend for all months 1–currentMonth (always include zero-data months for correct charts)
     const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12;
     const monthlyTrend: {
       month: number; revenue: number; collected: number; shipped: number;
@@ -254,17 +254,15 @@ router.get(
       const rev = revenueMap.get(m);
       const collected = collectedMap.get(m) ?? 0;
       const shipped = shippedMap.get(m) ?? 0;
-      if (rev || collected || shipped) {
-        monthlyTrend.push({
-          month: m,
-          revenue: rev?.revenue ?? 0,
-          collected,
-          shipped,
-          activeClients: rev?.activeClients ?? 0,
-          openingBalance: balanceMap.get(m)?.opening ?? 0,
-          closingBalance: balanceMap.get(m)?.closing ?? 0,
-        });
-      }
+      monthlyTrend.push({
+        month: m,
+        revenue: rev?.revenue ?? 0,
+        collected,
+        shipped,
+        activeClients: rev?.activeClients ?? 0,
+        openingBalance: balanceMap.get(m)?.opening ?? 0,
+        closingBalance: balanceMap.get(m)?.closing ?? 0,
+      });
     }
 
     // ── 3. Top clients — use paid_amount for debt calculation ──

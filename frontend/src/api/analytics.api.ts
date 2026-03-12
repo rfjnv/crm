@@ -8,27 +8,27 @@ export const analyticsApi = {
     client.get<AnalyticsData>('/analytics', { params: { period } }).then((r) => r.data),
   getIntelligence: (period: AnalyticsPeriod = 'month') =>
     client.get<IntelligenceData>('/analytics/intelligence', { params: { period } }).then((r) => r.data),
-  getHistory: (year: number = 2025) =>
+  getHistory: (year: number = new Date().getFullYear()) =>
     client.get<HistoryData>('/analytics/history', { params: { year } }).then((r) => r.data),
-  getHistoryExtended: (year: number = 2025) =>
+  getHistoryExtended: (year: number = new Date().getFullYear()) =>
     client.get<HistoryExtendedData>('/analytics/history/extended', { params: { year } }).then((r) => r.data),
-  getHistoryDrilldown: (type: string, filters?: { managerId?: string; method?: string }, year: number = 2025) =>
+  getHistoryDrilldown: (type: string, filters?: { managerId?: string; method?: string }, year: number = new Date().getFullYear()) =>
     client.get<HistoryDrilldownData>('/analytics/history/drilldown', { params: { type, ...filters, year } }).then((r) => r.data),
-  getHistoryMonth: (month: number, year: number = 2025) =>
+  getHistoryMonth: (month: number, year: number = new Date().getFullYear()) =>
     client.get<HistoryMonthDetail>(`/analytics/history/month/${month}`, { params: { year } }).then((r) => r.data),
-  getHistoryClientMonth: (clientId: string, month: number, year: number = 2025) =>
+  getHistoryClientMonth: (clientId: string, month: number, year: number = new Date().getFullYear()) =>
     client.get<HistoryClientMonthData>(`/analytics/history/client-month/${clientId}/${month}`, { params: { year } }).then((r) => r.data),
-  getHistoryProductBuyers: (productId: string, year: number = 2025) =>
+  getHistoryProductBuyers: (productId: string, year: number = new Date().getFullYear()) =>
     client.get<HistoryProductBuyersData>(`/analytics/history/product-buyers/${productId}`, { params: { year } }).then((r) => r.data),
-  getHistoryCashflow: (year: number = 2025) =>
+  getHistoryCashflow: (year: number = new Date().getFullYear()) =>
     client.get<HistoryCashflowData>('/analytics/history/cashflow', { params: { year } }).then((r) => r.data),
-  getHistoryDataQuality: (year: number = 2025) =>
+  getHistoryDataQuality: (year: number = new Date().getFullYear()) =>
     client.get<DataQualityData>('/analytics/history/data-quality', { params: { year } }).then((r) => r.data),
-  getHistoryExchange: (year: number = 2025) =>
+  getHistoryExchange: (year: number = new Date().getFullYear()) =>
     client.get<ExchangeData>('/analytics/history/exchange', { params: { year } }).then((r) => r.data),
-  getHistoryPrepayments: (year: number = 2025) =>
+  getHistoryPrepayments: (year: number = new Date().getFullYear()) =>
     client.get<PrepaymentData>('/analytics/history/prepayments', { params: { year } }).then((r) => r.data),
-  exportDebtBreakdown: (year: number = 2025) =>
+  exportDebtBreakdown: (year: number = new Date().getFullYear()) =>
     client.get('/analytics/history/export/debt-breakdown', {
       params: { year },
       responseType: 'blob',

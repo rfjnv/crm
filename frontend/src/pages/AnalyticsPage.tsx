@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title="Выручка по дням" bordered={false}>
+          <Card title={<span>Выручка по дням <span style={{ fontSize: 12, fontWeight: 'normal', opacity: 0.5 }}>(скользящее среднее)</span></span>} bordered={false}>
             {lineData.length > 0 ? (
               <Area
                 data={lineData}

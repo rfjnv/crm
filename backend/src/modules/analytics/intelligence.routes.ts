@@ -9,27 +9,34 @@ const router = Router();
 
 router.use(authenticate);
 
+// Tashkent = UTC+5
+const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+
 function getPeriodRange(period: string): { start: Date; end: Date } {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  // Compute "now" in Tashkent timezone
+  const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+  const y = nowTashkent.getUTCFullYear();
+  const m = nowTashkent.getUTCMonth();
+  const d = nowTashkent.getUTCDate();
+
+  // Midnight Tashkent in UTC = Date.UTC(y,m,d) - offset
+  const startOfTodayUtc = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
+  const end = new Date(startOfTodayUtc.getTime() + 86400000); // tomorrow midnight Tashkent
   let start: Date;
 
   switch (period) {
     case 'week':
-      start = new Date(end);
-      start.setDate(start.getDate() - 7);
+      start = new Date(end.getTime() - 7 * 86400000);
       break;
     case 'quarter':
-      start = new Date(end);
-      start.setMonth(start.getMonth() - 3);
+      start = new Date(Date.UTC(y, m - 3, d) - TASHKENT_OFFSET);
       break;
     case 'year':
-      start = new Date(end);
-      start.setFullYear(start.getFullYear() - 1);
+      start = new Date(Date.UTC(y - 1, m, d) - TASHKENT_OFFSET);
       break;
     case 'month':
     default:
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = new Date(Date.UTC(y, m, 1) - TASHKENT_OFFSET);
       break;
   }
 

@@ -22,9 +22,13 @@ router.get(
     const method = req.query.method as string | undefined;
     const paymentStatus = req.query.paymentStatus as string | undefined;
 
-    // Calculate date range
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Calculate date range (Tashkent = UTC+5)
+    const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+    const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+    const y = nowTashkent.getUTCFullYear();
+    const m = nowTashkent.getUTCMonth();
+    const d = nowTashkent.getUTCDate();
+    const startOfDay = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
     let fromDate: Date;
 
     if (period === 'week') {
@@ -87,15 +91,16 @@ router.get(
       byMethod[key] = (byMethod[key] || 0) + Number(p.amount);
     }
 
-    // Breakdown by day
+    // Breakdown by day (Tashkent timezone)
     const byDay: Record<string, number> = {};
     for (const p of filteredPayments) {
-      const day = p.paidAt.toISOString().slice(0, 10);
+      const tashkentDate = new Date(p.paidAt.getTime() + TASHKENT_OFFSET);
+      const day = tashkentDate.toISOString().slice(0, 10);
       byDay[day] = (byDay[day] || 0) + Number(p.amount);
     }
 
-    // Daily total (today)
-    const todayStr = startOfDay.toISOString().slice(0, 10);
+    // Daily total (today in Tashkent)
+    const todayStr = nowTashkent.toISOString().slice(0, 10);
     const todayTotal = byDay[todayStr] || 0;
 
     res.json({
