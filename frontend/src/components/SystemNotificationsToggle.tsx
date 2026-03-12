@@ -72,71 +72,99 @@ export default function SystemNotificationsToggle() {
       permission,
       canShow,
       isSupported,
-      isEnabled
+      isEnabled,
+      'Notification.permission': 'Notification' in window ? Notification.permission : 'not supported'
     });
 
-    // Запрашиваем разрешение, если его нет
-    if (!canShow) {
-      console.log('Permission not granted, requesting...');
-      const granted = await requestPermission();
-      console.log('Permission request result:', granted);
+    // Проверяем поддержку уведомлений
+    if (!('Notification' in window)) {
+      message.error('Ваш браузер не поддерживает системные уведомления');
+      return;
+    }
 
-      if (!granted) {
-        message.warning('Разрешение на системные уведомления отклонено. Без разрешения тест невозможен.');
-        console.log('Cannot proceed: permission was denied');
+    console.log('Current Notification.permission:', Notification.permission);
+
+    // Запрашиваем разрешение, если его нет
+    if (Notification.permission === 'default') {
+      console.log('Permission is default, requesting...');
+      try {
+        const permission = await Notification.requestPermission();
+        console.log('Permission request result:', permission);
+
+        if (permission === 'granted') {
+          message.success('Разрешение получено! Тестируем системное уведомление...');
+          setIsEnabled(true);
+          localStorage.setItem('system-notifications-enabled', 'true');
+        } else {
+          message.error('Разрешение отклонено. Системные уведомления работать не будут.');
+          return;
+        }
+      } catch (error) {
+        console.error('Error requesting permission:', error);
+        message.error('Ошибка при запросе разрешения');
         return;
       }
-
-      // Включаем уведомления после получения разрешения
-      setIsEnabled(true);
-      localStorage.setItem('system-notifications-enabled', 'true');
-      message.success('Разрешение получено! Теперь тестируем уведомления...');
+    } else if (Notification.permission === 'denied') {
+      message.error('Системные уведомления заблокированы в браузере');
+      console.log('Permission denied by user earlier');
+      return;
     }
 
     setTestLoading(true);
 
     try {
-      console.log('Sending test notification...');
+      console.log('Creating system notification...');
 
-      // Простой тест уведомления
-      const notification = show({
-        title: '🔔 Тест уведомления',
-        body: 'Если вы видите это - системные уведомления работают!',
-        onclick: () => {
-          console.log('Notification clicked!');
-          window.focus();
-          message.success('✅ Уведомление работает отлично!');
-        }
+      // Создаем НАСТОЯЩЕЕ системное уведомление
+      const notification = new Notification('🔔 Тест системного уведомления', {
+        body: 'Это настоящее системное уведомление как у Telegram! Оно должно появиться поверх всех программ.',
+        icon: '/favicon.ico',
+        requireInteraction: true, // Не исчезает автоматически
+        silent: false, // Со звуком
+        tag: 'test-notification' // Для группировки
       });
 
-      console.log('Notification result:', notification);
+      console.log('Notification object created:', notification);
 
-      if (notification) {
-        message.success('Тестовое уведомление отправлено! Проверьте рабочий стол.');
-      } else {
-        message.error('Не удалось создать уведомление. Проверьте разрешения браузера.');
-        console.error('Notification creation failed');
-      }
+      notification.onclick = () => {
+        console.log('System notification clicked!');
+        window.focus();
+        message.success('✅ Системное уведомление сработало!');
+        notification.close();
+      };
 
-      // Через 3 секунды отправляем срочное
+      notification.onshow = () => {
+        console.log('System notification shown successfully');
+      };
+
+      notification.onerror = (error) => {
+        console.error('System notification error:', error);
+        message.error('Ошибка показа системного уведомления');
+      };
+
+      // Через 5 секунд - второе тестовое уведомление
       setTimeout(() => {
-        console.log('Sending urgent notification...');
-        const urgentNotif = showUrgent({
-          title: '🚨 Срочное уведомление',
-          body: 'Это тест срочного уведомления с приоритетом',
-          onclick: () => {
-            console.log('Urgent notification clicked!');
-            window.focus();
-            message.warning('🚨 Срочное уведомление сработало!');
-          }
+        console.log('Creating second test notification...');
+        const notification2 = new Notification('🚨 Второй тест', {
+          body: 'Если вы видите это уведомление на рабочем столе - все работает правильно!',
+          icon: '/favicon.ico',
+          requireInteraction: false,
+          tag: 'test-2'
         });
-        console.log('Urgent notification result:', urgentNotif);
+
+        notification2.onclick = () => {
+          window.focus();
+          notification2.close();
+        };
+
         setTestLoading(false);
-      }, 3000);
+      }, 5000);
+
+      message.info('Системные уведомления отправлены! Проверьте рабочий стол.');
 
     } catch (error) {
-      console.error('Test notification error:', error);
-      message.error(`Ошибка: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error creating notification:', error);
+      message.error(`Ошибка создания уведомления: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setTestLoading(false);
     }
   };
