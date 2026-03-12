@@ -258,6 +258,7 @@ export default function HistoryAnalyticsPage() {
     { title: 'Менеджер', dataIndex: 'managerName', key: 'managerName', width: 130 },
     { title: 'Сумма', dataIndex: 'amount', key: 'amount', width: 110, render: (v: number) => fmtNum(v) },
     { title: 'Оплачено', dataIndex: 'paidAmount', key: 'paidAmount', width: 110, render: (v: number) => fmtNum(v) },
+    { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—' },
     { title: 'Статус', dataIndex: 'status', key: 'status', width: 100 },
   ];
   const paymentDrillCols = [
@@ -265,7 +266,7 @@ export default function HistoryAnalyticsPage() {
     { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
     { title: 'Сумма', dataIndex: 'amount', key: 'amount', width: 120, render: (v: number) => fmtNum(v) },
     { title: 'Метод', dataIndex: 'method', key: 'method', width: 120, render: (v: string) => METHOD_LABELS[v] || v },
-    { title: 'Дата', dataIndex: 'paidAt', key: 'paidAt', width: 110, render: (v: string) => new Date(v).toLocaleDateString('ru-RU') },
+    { title: 'Дата', dataIndex: 'paidAt', key: 'paidAt', width: 110, render: (v: string) => new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) },
   ];
 
   // ── Standard table columns ──
@@ -384,7 +385,7 @@ export default function HistoryAnalyticsPage() {
     { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => fmtNum(v) },
     { title: 'Итого', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => fmtNum(v) },
     { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
-    { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU') : '—' },
+    { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—' },
   ];
 
   // ── Product buyers drawer columns ──
@@ -915,7 +916,7 @@ export default function HistoryAnalyticsPage() {
             { title: 'Клиент', dataIndex: 'companyName', key: 'companyName', width: 180, ellipsis: true },
             { title: 'Менеджер', dataIndex: 'managerName', key: 'managerName', width: 120 },
             { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
-            { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => new Date(v).toLocaleDateString('ru-RU') },
+            { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) },
           ]}
           onRow={(record) => ({ onClick: () => navigate(`/deals/${record.dealId}`), style: clickableRow })}
         />
