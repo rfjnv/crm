@@ -40,6 +40,7 @@ export default function NotificationPermissionBanner() {
             icon: '/logo-icon.png',
             badge: '/logo-icon.png',
             tag: 'welcome',
+            requireInteraction: true,
           } as NotificationOptions);
         }
       }

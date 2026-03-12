@@ -68,7 +68,7 @@ export default function NotificationBell() {
             icon: '/logo-icon.png',
             badge: '/logo-icon.png',
             tag: `notification-${latest.id}`,
-            requireInteraction: latest.severity === 'URGENT',
+            requireInteraction: true,
             data: { url: latest.link || '/notifications' }
           } as NotificationOptions);
         });

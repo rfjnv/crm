@@ -31,7 +31,7 @@ self.addEventListener('push', (event) => {
     badge: '/logo-icon.png',
     tag: url || 'crm-notification',
     data: { url: url || '/notifications' },
-    requireInteraction: severity === 'URGENT',
+    requireInteraction: true,
     vibrate: severity === 'URGENT' ? [200, 100, 200, 100, 200] : [200, 100, 200],
   };
 
