@@ -7,163 +7,124 @@ import {
   CheckOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
-import { useSystemNotifications } from '../hooks/useSystemNotifications';
 
 export default function SystemNotificationsToggle() {
-  const {
-    permission,
-    isSupported,
-    canShow,
-    requestPermission,
-    show
-  } = useSystemNotifications();
-
+  const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isEnabled, setIsEnabled] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
+  const [swReady, setSwReady] = useState(false);
   const { token: tk } = theme.useToken();
 
+  const isSupported = 'Notification' in window && 'serviceWorker' in navigator;
+  const canShow = permission === 'granted' && swReady;
+
   useEffect(() => {
-    // Проверяем сохраненную настройку пользователя
-    const savedSetting = localStorage.getItem('system-notifications-enabled');
-    setIsEnabled(savedSetting === 'true' && canShow);
-  }, [canShow]);
-
-  const handleToggle = async (checked: boolean) => {
-    console.log('Toggle clicked. Current state:', { checked, canShow, permission });
-
-    if (checked && !canShow) {
-      console.log('Requesting notification permission...');
-      const granted = await requestPermission();
-      console.log('Permission result:', granted);
-
-      if (!granted) {
-        message.warning('Разрешение на системные уведомления отклонено');
-        console.log('Permission was denied by user');
-        return;
-      }
+    if ('Notification' in window) {
+      setPermission(Notification.permission);
     }
 
-    setIsEnabled(checked);
-    localStorage.setItem('system-notifications-enabled', checked.toString());
-    console.log('Saved setting to localStorage:', checked);
-
-    if (checked) {
-      message.success('Системные уведомления включены');
-      // Показываем тестовое уведомление
-      console.log('Showing welcome notification...');
-      const notification = show({
-        title: '🎉 Системные уведомления включены!',
-        body: 'Теперь вы будете получать уведомления поверх других программ',
-        onclick: () => {
-          console.log('Welcome notification clicked');
-          window.focus();
-        }
+    // Проверяем Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(() => {
+        setSwReady(true);
       });
-      console.log('Welcome notification result:', notification);
+    }
+
+    const savedSetting = localStorage.getItem('system-notifications-enabled');
+    if (savedSetting === 'true' && Notification.permission === 'granted') {
+      setIsEnabled(true);
+    }
+  }, []);
+
+  // Показать уведомление через Service Worker (как Telegram/Instagram)
+  const showViaServiceWorker = async (title: string, body: string, tag?: string) => {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, {
+      body,
+      icon: '/vite.svg',
+      badge: '/vite.svg',
+      tag: tag || 'crm-notification',
+      requireInteraction: true,
+      vibrate: [200, 100, 200],
+      data: { url: '/notifications' }
+    });
+  };
+
+  const handleToggle = async (checked: boolean) => {
+    if (checked) {
+      // Запрашиваем разрешение
+      if (Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission();
+        setPermission(perm);
+        if (perm !== 'granted') {
+          message.warning('Разрешение на уведомления отклонено');
+          return;
+        }
+      }
+
+      setIsEnabled(true);
+      localStorage.setItem('system-notifications-enabled', 'true');
+      message.success('Системные уведомления включены');
+
+      // Тестовое уведомление через Service Worker
+      try {
+        await showViaServiceWorker(
+          'Системные уведомления включены!',
+          'Теперь вы будете получать уведомления поверх других программ, как в Telegram'
+        );
+      } catch (err) {
+        console.error('SW notification error:', err);
+      }
     } else {
+      setIsEnabled(false);
+      localStorage.setItem('system-notifications-enabled', 'false');
       message.success('Системные уведомления отключены');
-      console.log('System notifications disabled');
     }
   };
 
   const handleTest = async () => {
-    console.log('Test button clicked. Current state:', {
-      permission,
-      canShow,
-      isSupported,
-      isEnabled,
-      'Notification.permission': 'Notification' in window ? Notification.permission : 'not supported'
-    });
-
-    // Проверяем поддержку уведомлений
-    if (!('Notification' in window)) {
-      message.error('Ваш браузер не поддерживает системные уведомления');
-      return;
-    }
-
-    console.log('Current Notification.permission:', Notification.permission);
-
-    // Запрашиваем разрешение, если его нет
+    // Запрашиваем разрешение если нет
     if (Notification.permission === 'default') {
-      console.log('Permission is default, requesting...');
-      try {
-        const permission = await Notification.requestPermission();
-        console.log('Permission request result:', permission);
-
-        if (permission === 'granted') {
-          message.success('Разрешение получено! Тестируем системное уведомление...');
-          setIsEnabled(true);
-          localStorage.setItem('system-notifications-enabled', 'true');
-        } else {
-          message.error('Разрешение отклонено. Системные уведомления работать не будут.');
-          return;
-        }
-      } catch (error) {
-        console.error('Error requesting permission:', error);
-        message.error('Ошибка при запросе разрешения');
+      const perm = await Notification.requestPermission();
+      setPermission(perm);
+      if (perm !== 'granted') {
+        message.error('Разрешение отклонено. Без разрешения уведомления не работают.');
         return;
       }
+      setIsEnabled(true);
+      localStorage.setItem('system-notifications-enabled', 'true');
     } else if (Notification.permission === 'denied') {
-      message.error('Системные уведомления заблокированы в браузере');
-      console.log('Permission denied by user earlier');
+      message.error('Уведомления заблокированы в настройках браузера');
       return;
     }
 
     setTestLoading(true);
 
     try {
-      console.log('Creating system notification...');
+      // Уведомление через Service Worker - как Telegram и Instagram
+      await showViaServiceWorker(
+        'Тест системного уведомления',
+        'Это настоящее системное уведомление! Оно появляется поверх всех программ, как в Telegram.',
+        'test-1'
+      );
 
-      // Создаем НАСТОЯЩЕЕ системное уведомление
-      const notification = new Notification('🔔 Тест системного уведомления', {
-        body: 'Это настоящее системное уведомление как у Telegram! Оно должно появиться поверх всех программ.',
-        icon: '/favicon.ico',
-        requireInteraction: true, // Не исчезает автоматически
-        silent: false, // Со звуком
-        tag: 'test-notification' // Для группировки
-      });
-
-      console.log('Notification object created:', notification);
-
-      notification.onclick = () => {
-        console.log('System notification clicked!');
-        window.focus();
-        message.success('✅ Системное уведомление сработало!');
-        notification.close();
-      };
-
-      notification.onshow = () => {
-        console.log('System notification shown successfully');
-      };
-
-      notification.onerror = (error) => {
-        console.error('System notification error:', error);
-        message.error('Ошибка показа системного уведомления');
-      };
-
-      // Через 5 секунд - второе тестовое уведомление
-      setTimeout(() => {
-        console.log('Creating second test notification...');
-        const notification2 = new Notification('🚨 Второй тест', {
-          body: 'Если вы видите это уведомление на рабочем столе - все работает правильно!',
-          icon: '/favicon.ico',
-          requireInteraction: false,
-          tag: 'test-2'
-        });
-
-        notification2.onclick = () => {
-          window.focus();
-          notification2.close();
-        };
-
+      // Второе через 3 секунды
+      setTimeout(async () => {
+        try {
+          await showViaServiceWorker(
+            'Второй тест',
+            'Если вы видите это на рабочем столе - все работает!',
+            'test-2'
+          );
+        } catch (err) {
+          console.error('Second notification error:', err);
+        }
         setTestLoading(false);
-      }, 5000);
+      }, 3000);
 
-      message.info('Системные уведомления отправлены! Проверьте рабочий стол.');
-
-    } catch (error) {
-      console.error('Error creating notification:', error);
-      message.error(`Ошибка создания уведомления: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (err) {
+      console.error('Test notification error:', err);
+      message.error('Ошибка: Service Worker не готов. Обновите страницу и попробуйте снова.');
       setTestLoading(false);
     }
   };
@@ -207,28 +168,18 @@ export default function SystemNotificationsToggle() {
     >
       <div style={{ marginBottom: 16 }}>
         <Typography.Paragraph style={{ margin: 0, color: tk.colorTextSecondary }}>
-          Показывает уведомления поверх других программ, даже когда браузер свернут или неактивен.
+          Уведомления поверх других программ через Service Worker (как в Telegram и Instagram).
         </Typography.Paragraph>
-        {isSupported && (
-          <Typography.Paragraph style={{ margin: '4px 0 0 0', color: tk.colorTextTertiary, fontSize: 11 }}>
-            💡 Совет: Нажмите "Тест" - браузер запросит разрешение и покажет настоящее системное уведомление на рабочем столе.
-          </Typography.Paragraph>
-        )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Space>
           <Typography.Text>
-            Статус разрешений:
+            Статус:
           </Typography.Text>
-          <Typography.Text type={status.color as any}>
+          <Typography.Text type={status.color as 'success' | 'warning' | 'danger'}>
             {status.icon} {status.text}
           </Typography.Text>
-          {permission !== 'granted' && (
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              (Нажмите "Тест" чтобы браузер запросил разрешение)
-            </Typography.Text>
-          )}
         </Space>
 
         <Space>
@@ -254,10 +205,10 @@ export default function SystemNotificationsToggle() {
           message="Уведомления заблокированы"
           description={
             <div>
-              <p>Чтобы включить уведомления:</p>
+              <p>Чтобы включить:</p>
               <ol style={{ paddingLeft: 16, margin: 0 }}>
-                <li>Нажмите на иконку 🔒 (замок) в адресной строке</li>
-                <li>Выберите "Разрешить" для уведомлений</li>
+                <li>Нажмите на замок в адресной строке</li>
+                <li>Разрешите уведомления</li>
                 <li>Обновите страницу</li>
               </ol>
             </div>
@@ -268,8 +219,8 @@ export default function SystemNotificationsToggle() {
       {isEnabled && canShow && (
         <Alert
           type="success"
-          message="✅ Системные уведомления активны"
-          description="Вы будете получать уведомления поверх других программ"
+          message="Системные уведомления активны"
+          description="Уведомления будут показываться поверх других программ через Service Worker"
         />
       )}
     </Card>
