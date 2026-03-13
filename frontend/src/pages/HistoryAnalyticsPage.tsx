@@ -236,7 +236,7 @@ export default function HistoryAnalyticsPage() {
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
     { key: 'debt', title: <span>Долг <Tooltip title="SUM(amount - paid) по сделкам где долг > 0. Кумулятивно за все годы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalDebt, prefix: <WarningOutlined />, style: { color: overview.totalDebt > 0 ? token.colorError : token.colorSuccess }, fmt: true },
     { key: 'overpayments', title: <span>Переплаты <Tooltip title="SUM(paid - amount) по сделкам где paid > amount. Предоплаты и авансы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalOverpayments ?? 0, prefix: <WalletOutlined />, style: { color: token.colorSuccess }, fmt: true },
-    { key: 'netBalance', title: <span>Чистый баланс <Tooltip title="Долг минус переплаты = реальная дебиторка. Формула: SUM(amount) - SUM(paid)."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.netBalance ?? 0, prefix: <DollarOutlined />, style: { color: (overview.netBalance ?? 0) > 0 ? token.colorError : token.colorSuccess }, fmt: true },
+    { key: 'netBalance', title: <span>Чистый долг <Tooltip title="Долг минус переплаты = реальная дебиторка. Формула: SUM(amount) - SUM(paid)."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.netBalance ?? 0, prefix: <DollarOutlined />, style: { color: (overview.netBalance ?? 0) > 0 ? token.colorError : token.colorSuccess }, fmt: true },
     { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
   ];
 
@@ -244,6 +244,7 @@ export default function HistoryAnalyticsPage() {
   const kpiDrawerTitle: Record<string, string> = {
     deals: `Все сделки ${year}`, clients: 'Топ клиенты', revenue: 'Сделки по сумме',
     paid: `Платежи ${year}`, debt: 'Должники', avg: 'Сделки по сумме',
+    overpayments: 'Переплаты (paid > amount)', netBalance: 'Должники (чистый долг)',
   };
 
   // ── Drill-down table columns ──
@@ -356,18 +357,36 @@ export default function HistoryAnalyticsPage() {
   function renderKpiDrawerContent() {
     if (!kpiDrawer) return null;
     if (kpiDrawer === 'clients') {
-      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
+      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (kpiDrawer === 'debt') {
-      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 550 }}
+        onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
+    }
+    if (kpiDrawer === 'overpayments') {
+      const overpaid = topClients.filter((c) => c.paid > c.revenue).map((c) => ({
+        ...c, overpayment: c.paid - c.revenue,
+      })).sort((a, b) => b.overpayment - a.overpayment);
+      const overCols = [
+        { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
+        { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+        { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 130, render: (v: number) => fmtNum(v) },
+        { title: 'Оплачено', dataIndex: 'paid', key: 'paid', width: 130, render: (v: number) => fmtNum(v) },
+        { title: 'Переплата', dataIndex: 'overpayment', key: 'overpayment', width: 130, render: (v: number) => <span style={{ color: token.colorSuccess, fontWeight: 600 }}>{fmtNum(v)}</span> },
+      ];
+      return <Table dataSource={overpaid} columns={overCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 550 }}
+        onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
+    }
+    if (kpiDrawer === 'netBalance') {
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 550 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (drillType === 'deals' && drilldown?.deals) {
-      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />;
+      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 700 }} />;
     }
     if (drillType === 'payments' && drilldown?.payments) {
-      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />;
+      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }} />;
     }
     return <Spin />;
   }
@@ -456,7 +475,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: false }} scroll={{ x: 600 }}
               onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
           </Card>
         </Col>
@@ -486,7 +505,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: false }} scroll={{ x: 550 }}
               onRow={(record) => ({ onClick: () => setProductDrawer({ productId: record.id, productName: record.name }), style: clickableRow })} />
           </Card>
         </Col>
@@ -499,7 +518,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: false }} scroll={{ x: 550 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
       </Card>
 
@@ -520,7 +539,7 @@ export default function HistoryAnalyticsPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5' }} /> Нет данных</span>
         </div>
-        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
+        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: false, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
     </>
   );
@@ -755,7 +774,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"
-          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
+          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: false, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
       </Card>
     </>
@@ -901,7 +920,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredProblemRows} rowKey="id" size="small"
-          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} строк` }}
+          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: false, showTotal: (t) => `${t} строк` }}
           scroll={{ x: 1050 }}
           columns={[
             { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
@@ -949,17 +968,17 @@ export default function HistoryAnalyticsPage() {
       {activeTab === 'dataQuality' && dataQualityTab}
 
       {/* KPI Drill-down Drawer */}
-      <Drawer title={kpiDrawerTitle[kpiDrawer || ''] || ''} open={!!kpiDrawer} onClose={() => setKpiDrawer(null)} width={720}>
+      <Drawer title={kpiDrawerTitle[kpiDrawer || ''] || ''} open={!!kpiDrawer} onClose={() => setKpiDrawer(null)} width="100%">
         {renderKpiDrawerContent()}
       </Drawer>
 
       {/* Month Detail Drawer */}
-      <Drawer title={`${MONTH_LABELS[monthDrawer || 0] || ''} ${year} — Детализация`} open={!!monthDrawer} onClose={() => setMonthDrawer(null)} width={720}>
+      <Drawer title={`${MONTH_LABELS[monthDrawer || 0] || ''} ${year} — Детализация`} open={!!monthDrawer} onClose={() => setMonthDrawer(null)} width="100%">
         {monthDetail ? (
           <Tabs items={[
             {
               key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
-                <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
+                <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 700 }} />
               )
             },
             {
@@ -987,7 +1006,7 @@ export default function HistoryAnalyticsPage() {
             {
               key: 'payments', label: `Поступления (${monthDetail.payments?.length || 0})`, children: (
                 <Table dataSource={monthDetail.payments || []} columns={paymentDrillCols} rowKey="id" size="small"
-                  pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+                  pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }} />
               )
             },
             {
@@ -1008,7 +1027,7 @@ export default function HistoryAnalyticsPage() {
                     </Col>
                   </Row>
                   <Table dataSource={monthDetail.debtSnapshot?.debtors || []} rowKey="id" size="small"
-                    pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+                    pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 550 }}
                     columns={[
                       { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
                       { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
@@ -1028,7 +1047,7 @@ export default function HistoryAnalyticsPage() {
       {/* Client-Month Purchases Drawer */}
       <Drawer
         title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
-        open={!!cellDrawer} onClose={() => setCellDrawer(null)} width={720}
+        open={!!cellDrawer} onClose={() => setCellDrawer(null)} width="100%"
       >
         {clientMonthLoading ? <Spin /> : clientMonthData ? (
           <>
@@ -1036,7 +1055,7 @@ export default function HistoryAnalyticsPage() {
               Итого: {clientMonthData.totalRevenue.toLocaleString('ru-RU')}
             </div>
             <Table dataSource={clientMonthData.items} columns={clientMonthCols} rowKey="id" size="small"
-              pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+              pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }} />
           </>
         ) : null}
       </Drawer>
@@ -1044,11 +1063,11 @@ export default function HistoryAnalyticsPage() {
       {/* Product Buyers Drawer */}
       <Drawer
         title={productDrawer ? `Покупатели: ${productDrawer.productName}` : ''}
-        open={!!productDrawer} onClose={() => setProductDrawer(null)} width={720}
+        open={!!productDrawer} onClose={() => setProductDrawer(null)} width="100%"
       >
         {productBuyersLoading ? <Spin /> : productBuyersData ? (
           <Table dataSource={productBuyersData.buyers} columns={productBuyersCols} rowKey="clientId" size="small"
-            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 500 }}
+            pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 500 }}
             onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
         ) : null}
       </Drawer>
@@ -1056,22 +1075,22 @@ export default function HistoryAnalyticsPage() {
       {/* Manager Deals Drawer */}
       <Drawer
         title={managerDrawer ? `Сделки: ${managerDrawer.managerName}` : ''}
-        open={!!managerDrawer} onClose={() => setManagerDrawer(null)} width={720}
+        open={!!managerDrawer} onClose={() => setManagerDrawer(null)} width="100%"
       >
         {managerDrillLoading ? <Spin /> : managerDrilldown?.deals ? (
           <Table dataSource={managerDrilldown.deals} columns={dealDrillCols} rowKey="id" size="small"
-            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
+            pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 700 }} />
         ) : null}
       </Drawer>
 
       {/* Payment Method Drawer */}
       <Drawer
         title={methodDrawer ? `Платежи: ${METHOD_LABELS[methodDrawer] || methodDrawer}` : ''}
-        open={!!methodDrawer} onClose={() => setMethodDrawer(null)} width={720}
+        open={!!methodDrawer} onClose={() => setMethodDrawer(null)} width="100%"
       >
         {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
           <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
-            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+            pagination={{ defaultPageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }} />
         ) : null}
       </Drawer>
     </div>
