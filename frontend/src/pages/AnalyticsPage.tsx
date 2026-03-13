@@ -112,9 +112,11 @@ export default function AnalyticsPage() {
   const pieColorDomain = pieData.map((d) => d.type);
   const pieColorRange = pieData.map((d) => d.color);
 
+  const pieTotal = pieData.reduce((s, d) => s + d.value, 0) || 1;
+
   const buildRevenueChartData = (
     raw: { day: string; total: number }[],
-    p: AnalyticsPeriod,
+    _p: AnalyticsPeriod,
   ): { day: string; total: number }[] => {
     if (raw.length === 0) return [];
     const map = new Map(raw.map((d) => [d.day, d.total]));
@@ -126,17 +128,7 @@ export default function AnalyticsPage() {
       const key = dt.toISOString().slice(0, 10);
       filled.push({ day: key, total: map.get(key) ?? 0 });
     }
-    const windowMap: Record<string, number> = { week: 1, month: 3, quarter: 5, year: 7 };
-    const win = windowMap[p] || 3;
-    const smoothed = filled.map((item, i) => {
-      const half = Math.floor(win / 2);
-      const from = Math.max(0, i - half);
-      const to = Math.min(filled.length, i + half + 1);
-      const slice = filled.slice(from, to);
-      const avg = slice.reduce((s, d) => s + d.total, 0) / slice.length;
-      return { ...item, total: Math.round(avg) };
-    });
-    return smoothed.map((d) => {
+    return filled.map((d) => {
       const parts = d.day.split('-');
       const dayNum = parseInt(parts[2]);
       const monthIdx = parseInt(parts[1]) - 1;
@@ -223,19 +215,14 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title={<span>Выручка по дням <span style={{ fontSize: 12, fontWeight: 'normal', opacity: 0.5 }}>(скользящее среднее)</span></span>} bordered={false}>
+          <Card title="Выручка по дням" bordered={false}>
             {lineData.length > 0 ? (
-              <Area
+              <Bar
                 data={lineData}
                 xField="day"
                 yField="total"
                 height={340}
-                shapeField="smooth"
-                style={{
-                  fill: 'linear-gradient(-90deg, rgba(82, 196, 26, 0.25) 0%, rgba(82, 196, 26, 0.02) 100%)',
-                  stroke: '#52c41a',
-                  lineWidth: 2.5,
-                }}
+                style={{ fill: '#52c41a', fillOpacity: 0.8 }}
                 axis={{
                   y: {
                     labelFormatter: (v: number) => formatUZS(v),
@@ -267,7 +254,11 @@ export default function AnalyticsPage() {
                 innerRadius={0.5}
                 height={300}
                 scale={{ color: { domain: pieColorDomain, range: pieColorRange } }}
-                label={{ text: (d: { type: string; value: number }) => `${d.type}: ${d.value}`, position: 'outside', style: { fill: token.colorText, fontSize: 12 } }}
+                label={{
+                  text: (d: { type: string; value: number }) => (d.value / pieTotal) >= 0.03 ? `${d.type}: ${d.value}` : '',
+                  position: 'outside',
+                  style: { fill: token.colorText, fontSize: 12 },
+                }}
                 legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
                 tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сделок', valueFormatter: (v: number) => `${v}` }] }}
                 theme={chartTheme}
