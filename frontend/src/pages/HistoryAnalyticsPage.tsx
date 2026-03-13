@@ -475,7 +475,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={false} scroll={{ x: 600 }}
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10 }} scroll={{ x: 600 }}
               onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
           </Card>
         </Col>
@@ -505,7 +505,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={false} scroll={{ x: 550 }}
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10 }} scroll={{ x: 550 }}
               onRow={(record) => ({ onClick: () => setProductDrawer({ productId: record.id, productName: record.name }), style: clickableRow })} />
           </Card>
         </Col>
@@ -518,7 +518,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={false} scroll={{ x: 550 }}
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10 }} scroll={{ x: 550 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
       </Card>
 
