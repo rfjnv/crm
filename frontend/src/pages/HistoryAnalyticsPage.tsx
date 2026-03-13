@@ -312,7 +312,7 @@ export default function HistoryAnalyticsPage() {
         const isClickable = revenue > 0;
         const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
         return (
-          <Tooltip title={`${MONTH_LABELS[m]}: ${revenue > 0 ? fmtNum(revenue) : 'Нет данных'}`}>
+          <Tooltip title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
             <div
               style={{
                 width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
@@ -382,8 +382,8 @@ export default function HistoryAnalyticsPage() {
     { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
     { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
     { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 80, render: (v: number) => v.toLocaleString('ru-RU') },
-    { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => fmtNum(v) },
-    { title: 'Итого', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => fmtNum(v) },
+    { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => v.toLocaleString('ru-RU') },
+    { title: 'Итого', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => v.toLocaleString('ru-RU') },
     { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
     { title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—' },
   ];
@@ -1038,7 +1038,7 @@ export default function HistoryAnalyticsPage() {
         {clientMonthLoading ? <Spin /> : clientMonthData ? (
           <>
             <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
-              Итого: {fmtNum(clientMonthData.totalRevenue)}
+              Итого: {clientMonthData.totalRevenue.toLocaleString('ru-RU')}
             </div>
             <Table dataSource={clientMonthData.items} columns={clientMonthCols} rowKey="id" size="small"
               pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />

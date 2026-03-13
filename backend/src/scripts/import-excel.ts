@@ -334,13 +334,22 @@ async function processMonth(
   year: number,
 ): Promise<{ deals: number; items: number; payments: number }> {
   const sheet = wb.Sheets[wb.SheetNames[monthIndex]];
-  const rows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
-  const groups = groupRowsByClient(rows);
+  const allRows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
   const layout = getSheetLayout(sheet);
 
   const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
   const monthDate = new Date(Date.UTC(year, monthIndex, 1));
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 1));
   const monthMid = new Date(Date.UTC(year, monthIndex, 15));
+
+  // Filter out carry-forward rows: only include rows whose date falls within [monthStart, monthEnd)
+  const rows = allRows.filter((row) => {
+    const rowDate = toDate(row[COL_DATE]);
+    if (!rowDate) return true; // keep rows without a date (fallback)
+    return rowDate >= monthDate && rowDate < monthEnd;
+  });
+
+  const groups = groupRowsByClient(rows);
 
   let dealCount = 0;
   let itemCount = 0;
@@ -539,12 +548,13 @@ async function main() {
     }
     const sheetForLog = wb.Sheets[wb.SheetNames[m]];
     const layoutForLog = getSheetLayout(sheetForLog);
+    const allRowCount = (XLSX.utils.sheet_to_json(sheetForLog, { header: 1, range: 3 }) as unknown[]).length;
     console.log(`  [${wb.SheetNames[m]}] cols=${layoutForLog.totalCols}, payStart=${layoutForLog.paymentCols[0].index}, dateCol=${layoutForLog.paymentDateCol}`);
     const result = await processMonth(m, wb, clientMap, productMap, managerMap, year);
     totalDeals += result.deals;
     totalItems += result.items;
     totalPayments += result.payments;
-    console.log(`  ${MONTH_NAMES_RU[m]}: ${result.deals} deals, ${result.items} items, ${result.payments} payments`);
+    console.log(`  ${MONTH_NAMES_RU[m]}: ${result.deals} deals, ${result.items} items, ${result.payments} payments (filtered ${allRowCount - result.deals} carry-forward rows)`);
   }
 
   console.log(`\n═══════════════════════════════════════`);
