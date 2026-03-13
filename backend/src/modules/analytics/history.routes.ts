@@ -1193,9 +1193,20 @@ router.get(
       createdAt: r.created_at,
     }));
 
+    // Total revenue from deal amounts (matches matrix hover which uses SUM(d.amount))
+    const totalRevenueRaw = await prisma.$queryRaw<{ total: string }[]>(
+      Prisma.sql`SELECT COALESCE(SUM(d.amount), 0)::text as total
+      FROM deals d
+      WHERE d.client_id = ${clientId}
+        AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
+        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
+    );
+
     res.json({
       items,
-      totalRevenue: items.reduce((sum, i) => sum + i.total, 0),
+      totalRevenue: Number(totalRevenueRaw[0].total),
     });
   }),
 );
