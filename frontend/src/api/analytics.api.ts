@@ -1,5 +1,5 @@
 import client from './client';
-import type { AnalyticsData, IntelligenceData, HistoryData, HistoryExtendedData, HistoryDrilldownData, HistoryMonthDetail, HistoryClientMonthData, HistoryProductBuyersData, HistoryCashflowData, DataQualityData, ExchangeData, PrepaymentData } from '../types';
+import type { AnalyticsData, IntelligenceData, HistoryData, HistoryExtendedData, HistoryDrilldownData, HistoryMonthDetail, HistoryClientMonthData, HistoryProductBuyersData, HistoryCashflowData, DataQualityData, ExchangeData, PrepaymentData, HistoryCohortClientsData } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
@@ -18,6 +18,8 @@ export const analyticsApi = {
     client.get<HistoryMonthDetail>(`/analytics/history/month/${month}`, { params: { year } }).then((r) => r.data),
   getHistoryClientMonth: (clientId: string, month: number, year: number = new Date().getFullYear()) =>
     client.get<HistoryClientMonthData>(`/analytics/history/client-month/${clientId}/${month}`, { params: { year } }).then((r) => r.data),
+  getHistoryCohortClients: (cohortMonth: number, activeMonth: number, year: number = new Date().getFullYear()) =>
+    client.get<HistoryCohortClientsData>(`/analytics/history/cohort-clients/${cohortMonth}/${activeMonth}`, { params: { year } }).then((r) => r.data),
   getHistoryProductBuyers: (productId: string, year: number = new Date().getFullYear()) =>
     client.get<HistoryProductBuyersData>(`/analytics/history/product-buyers/${productId}`, { params: { year } }).then((r) => r.data),
   getHistoryCashflow: (year: number = new Date().getFullYear()) =>

@@ -1055,6 +1055,21 @@ export interface HistoryClientMonthData {
   totalRevenue: number;
 }
 
+// ─── History Cohort Clients ───
+
+export interface HistoryCohortClient {
+  clientId: string;
+  companyName: string;
+  revenue: number;
+  dealsCount: number;
+}
+
+export interface HistoryCohortClientsData {
+  cohortMonth: number;
+  activeMonth: number;
+  clients: HistoryCohortClient[];
+}
+
 // ─── History Product Buyers ───
 
 export interface HistoryProductBuyer {

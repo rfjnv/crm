@@ -80,6 +80,7 @@ export default function HistoryAnalyticsPage() {
   const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
+  const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number } | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['analytics-history', year], queryFn: () => analyticsApi.getHistory(year) });
 
@@ -130,6 +131,13 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-drilldown-method', methodDrawer, year],
     queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }, year),
     enabled: !!methodDrawer,
+  });
+
+  // Cohort clients query
+  const { data: cohortClientsData, isLoading: cohortClientsLoading } = useQuery({
+    queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, year],
+    queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year),
+    enabled: !!cohortDrawer,
   });
 
   // Data quality queries (loaded only when tab is active)
@@ -570,12 +578,17 @@ export default function HistoryAnalyticsPage() {
           <Card title="Концентрация выручки (топ-20 клиентов)" size="small">
             {(() => {
               const totalRev = extended.concentration.reduce((s, r) => s + r.revenue, 0) || 1;
-              const paretoData = extended.concentration.map((r) => ({
-                client: r.companyName.substring(0, 15),
-                share: Math.round((r.revenue / totalRev) * 10000) / 100,
-                cumulative: r.cumulativePercent,
-                _clientId: r.clientId,
-              }));
+              let cumSum = 0;
+              const paretoData = extended.concentration.map((r) => {
+                const share = Math.round((r.revenue / totalRev) * 10000) / 100;
+                cumSum += share;
+                return {
+                  client: r.companyName.substring(0, 15),
+                  share,
+                  cumulative: Math.round(cumSum * 100) / 100,
+                  _clientId: r.clientId,
+                };
+              });
               return (
                 <DualAxes
                   data={paretoData}
@@ -713,7 +726,7 @@ export default function HistoryAnalyticsPage() {
                   <Tooltip title={`${MONTH_LABELS[record.cohort]} → ${MONTH_LABELS[am]}: ${count} клиентов`}>
                     <div
                       style={{ backgroundColor: `rgba(22,119,255,${0.1 + intensity * 0.8})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: intensity > 0.5 ? '#fff' : token.colorText, cursor: 'pointer' }}
-                      onClick={() => setMonthDrawer(am)}
+                      onClick={() => setCohortDrawer({ cohortMonth: record.cohort, activeMonth: am })}
                     >{count}</div>
                   </Tooltip>
                 );
@@ -1119,6 +1132,25 @@ export default function HistoryAnalyticsPage() {
         {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
           <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
             pagination={false} scroll={{ x: 600 }} />
+        ) : null}
+      </Drawer>
+
+      {/* Cohort Clients Drawer */}
+      <Drawer
+        title={cohortDrawer ? `Когорта ${MONTH_LABELS[cohortDrawer.cohortMonth]} → ${MONTH_LABELS[cohortDrawer.activeMonth]} ${year}` : ''}
+        open={!!cohortDrawer} onClose={() => setCohortDrawer(null)} width="100%"
+      >
+        {cohortClientsLoading ? <Spin /> : cohortClientsData?.clients ? (
+          <Table dataSource={cohortClientsData.clients} rowKey="clientId" size="small"
+            pagination={false} scroll={{ x: 500 }}
+            columns={[
+              { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
+              { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
+              { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
+              { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 140, render: (v: number) => fmtNum(v) },
+            ]}
+            onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })}
+          />
         ) : null}
       </Drawer>
     </div>

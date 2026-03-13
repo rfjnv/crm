@@ -1765,4 +1765,54 @@ router.get(
   }),
 );
 
+// ── Cohort drill-down: clients who first bought in cohortMonth and were active in activeMonth ──
+router.get(
+  '/cohort-clients/:cohortMonth/:activeMonth',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const year = parseYear(req);
+    const dealScope = extractDealScope(req);
+    const { dealFilter } = buildAclFragments(dealScope);
+    const { yearStart, yearEnd } = getYearBounds(year);
+    const cohortMonth = Number(req.params.cohortMonth);
+    const activeMonth = Number(req.params.activeMonth);
+
+    const rows = await prisma.$queryRaw<
+      { client_id: string; company_name: string; revenue: string; deals_count: string }[]
+    >(
+      Prisma.sql`WITH first_deal AS (
+        SELECT d.client_id,
+          MIN(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
+        FROM deals d
+        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
+          AND d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        GROUP BY d.client_id
+      )
+      SELECT c.id as client_id, c.company_name,
+        COALESCE(SUM(d.amount), 0)::text as revenue,
+        COUNT(d.id)::text as deals_count
+      FROM deals d
+      JOIN clients c ON c.id = d.client_id
+      JOIN first_deal f ON f.client_id = d.client_id AND f.cohort_month = ${cohortMonth}
+      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
+        AND d.is_archived = false
+        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int = ${activeMonth}
+      GROUP BY c.id, c.company_name
+      ORDER BY SUM(d.amount) DESC`,
+    );
+
+    res.json({
+      cohortMonth,
+      activeMonth,
+      clients: rows.map((r) => ({
+        clientId: r.client_id,
+        companyName: r.company_name,
+        revenue: Number(r.revenue),
+        dealsCount: Number(r.deals_count),
+      })),
+    });
+  }),
+);
+
 export { router as historyRoutes };
