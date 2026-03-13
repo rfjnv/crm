@@ -144,23 +144,30 @@ function mapOpType(value: unknown): string | null {
 async function createManagers(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
 
+  // Match by fullName (case insensitive) — more reliable than login
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, fullName: true },
+  });
+  const userByName = new Map(allUsers.map((u) => [u.fullName.toLowerCase(), u.id]));
+
   for (const name of MANAGERS) {
-    const login = MANAGER_LOGIN_MAP[name];
-    if (!login) {
-      console.log(`  WARNING: No login mapped for "${name}" — skipping`);
-      continue;
+    const userId = userByName.get(name);
+    if (userId) {
+      map.set(name, userId);
+      console.log(`  Manager found: "${name}" → ${userId}`);
+    } else {
+      // Fallback to login-based lookup
+      const login = MANAGER_LOGIN_MAP[name];
+      if (login) {
+        const existing = await prisma.user.findFirst({ where: { login } });
+        if (existing) {
+          map.set(name, existing.id);
+          console.log(`  Manager found by login: ${login} (${existing.fullName}) → ${existing.id}`);
+          continue;
+        }
+      }
+      console.error(`  WARNING: Manager "${name}" not found by name or login. Skipping.`);
     }
-
-    const existing = await prisma.user.findFirst({ where: { login } });
-    if (existing) {
-      map.set(name, existing.id);
-      console.log(`  Manager found: ${login} (${existing.fullName}) → ${existing.id}`);
-      continue;
-    }
-
-    // Do NOT create new users automatically - require manual creation
-    console.error('  WARNING: Manager "' + login + '" (from "' + name + '") not found. Skipping.');
-    console.error('           Create the user manually before running import.');
   }
 
   return map;
