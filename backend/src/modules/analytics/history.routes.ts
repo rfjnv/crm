@@ -934,13 +934,34 @@ router.get(
       GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY u.full_name, month`,
     );
-    const managerTrend = managerTrendRaw.map((r) => ({
+    const managerTrendRaw2 = managerTrendRaw.map((r) => ({
       managerId: r.manager_id,
       fullName: r.full_name,
       month: r.month,
       revenue: Number(r.revenue),
       dealsCount: Number(r.deals_count),
     }));
+
+    // Fill missing months with zeros so every manager has a data point for every month
+    const allManagerIds = [...new Set(managerTrendRaw2.map((r) => r.managerId))];
+    const allMonths = [...new Set(managerTrendRaw2.map((r) => r.month))].sort((a, b) => a - b);
+    const managerNameMap = new Map(managerTrendRaw2.map((r) => [r.managerId, r.fullName]));
+    const existingKeys = new Set(managerTrendRaw2.map((r) => `${r.managerId}-${r.month}`));
+    const managerTrend = [...managerTrendRaw2];
+    for (const mid of allManagerIds) {
+      for (const m of allMonths) {
+        if (!existingKeys.has(`${mid}-${m}`)) {
+          managerTrend.push({
+            managerId: mid,
+            fullName: managerNameMap.get(mid) || '',
+            month: m,
+            revenue: 0,
+            dealsCount: 0,
+          });
+        }
+      }
+    }
+    managerTrend.sort((a, b) => a.fullName.localeCompare(b.fullName) || a.month - b.month);
 
     // 5. Cohort analysis
     const cohortRaw = await prisma.$queryRaw<
