@@ -232,11 +232,11 @@ export default function AnalyticsPage() {
                 xField="day"
                 yField="total"
                 height={340}
-                smooth
                 style={{
                   fill: 'linear-gradient(-90deg, rgba(82,196,26,0.3) 0%, rgba(82,196,26,0.01) 100%)',
                   stroke: '#52c41a',
                   strokeWidth: 2,
+                  shape: 'smooth',
                 }}
                 axis={{
                   y: {
