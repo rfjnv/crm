@@ -835,13 +835,6 @@ router.get(
         retainedClients: retained,
         retentionRate: total > 0 ? Math.round((retained / total) * 100) / 100 : 0,
       };
-    }).filter((r) => {
-      // Exclude last data point if current year — it looks at next month which is incomplete
-      if (year === new Date().getFullYear()) {
-        const currentMonth = new Date().getMonth() + 1;
-        return r.month < currentMonth - 1;
-      }
-      return true;
     });
 
     // 2. Revenue concentration
@@ -947,13 +940,7 @@ router.get(
       month: r.month,
       revenue: Number(r.revenue),
       dealsCount: Number(r.deals_count),
-    })).filter((r) => {
-      // Exclude current incomplete month — it would show misleadingly low values
-      if (year === new Date().getFullYear()) {
-        return r.month < new Date().getMonth() + 1;
-      }
-      return true;
-    });
+    }));
 
     // 5. Cohort analysis
     const cohortRaw = await prisma.$queryRaw<
@@ -1040,13 +1027,7 @@ router.get(
       revenue: Number(r.revenue),
       dealsCount: Number(r.deals_count),
       avgDealSize: Math.round(Number(r.avg_deal_size)),
-    })).filter((r) => {
-      // Exclude current incomplete month
-      if (year === new Date().getFullYear()) {
-        return r.month < new Date().getMonth() + 1;
-      }
-      return true;
-    });
+    }));
 
     // 8. Client segments (RFM-style)
     const segmentRaw = await prisma.$queryRaw<
