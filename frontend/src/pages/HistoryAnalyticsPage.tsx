@@ -11,7 +11,7 @@ import {
   ExclamationCircleOutlined, DownloadOutlined, InfoCircleOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { Area, Pie, Bar, Line } from '@ant-design/charts';
+import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import { useThemeStore } from '../store/themeStore';
 import type {
@@ -568,19 +568,47 @@ export default function HistoryAnalyticsPage() {
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Концентрация выручки (топ-20 клиентов)" size="small">
-            <Bar
-              data={extended.concentration.map((r) => ({ client: r.companyName.substring(0, 20), percent: r.cumulativePercent, _clientId: r.clientId }))}
-              xField="client" yField="percent" height={280}
-              axis={{ x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
-              tooltip={{ items: [{ field: 'percent', channel: 'y', name: 'Кумулятивно', valueFormatter: (v: number) => `${v}%` }] }}
-              theme={chartTheme}
-              onReady={({ chart }) => {
-                chart.on('element:click', (ev: { data?: { data?: { _clientId?: string } } }) => {
-                  const id = ev?.data?.data?._clientId;
-                  if (id) navigate(`/clients/${id}`);
-                });
-              }}
-            />
+            {(() => {
+              const totalRev = extended.concentration.reduce((s, r) => s + r.revenue, 0) || 1;
+              const paretoData = extended.concentration.map((r) => ({
+                client: r.companyName.substring(0, 15),
+                share: Math.round((r.revenue / totalRev) * 10000) / 100,
+                cumulative: r.cumulativePercent,
+                _clientId: r.clientId,
+              }));
+              return (
+                <DualAxes
+                  data={paretoData}
+                  xField="client"
+                  height={280}
+                  theme={chartTheme}
+                  children={[
+                    {
+                      type: 'interval',
+                      yField: 'share',
+                      axis: { y: { title: 'Доля %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
+                      style: { fill: token.colorPrimary, fillOpacity: 0.8 },
+                      tooltip: { items: [{ field: 'share', name: 'Доля', valueFormatter: (v: number) => `${v}%` }] },
+                    },
+                    {
+                      type: 'line',
+                      yField: 'cumulative',
+                      axis: { y: { position: 'right', title: 'Кумулятивно %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
+                      style: { stroke: token.colorError, lineWidth: 2 },
+                      point: { shapeField: 'circle', sizeField: 3, style: { fill: token.colorError } },
+                      tooltip: { items: [{ field: 'cumulative', name: 'Кумулятивно', valueFormatter: (v: number) => `${v}%` }] },
+                    },
+                  ]}
+                  axis={{ x: { labelFill: token.colorText, labelAutoRotate: true } }}
+                  onReady={({ chart }) => {
+                    chart.on('element:click', (ev: { data?: { data?: { _clientId?: string } } }) => {
+                      const id = ev?.data?.data?._clientId;
+                      if (id) navigate(`/clients/${id}`);
+                    });
+                  }}
+                />
+              );
+            })()}
           </Card>
         </Col>
       </Row>
