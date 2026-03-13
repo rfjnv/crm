@@ -233,11 +233,11 @@ export default function HistoryAnalyticsPage() {
     { key: 'deals', title: 'Сделок', value: overview.totalDeals, prefix: <ShoppingOutlined />, style: {} },
     { key: 'clients', title: 'Клиентов', value: overview.totalClients, prefix: <TeamOutlined />, style: {} },
     { key: 'revenue', title: 'Выручка', value: overview.totalRevenue, prefix: <DollarOutlined />, style: {}, fmt: true },
+    { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
     { key: 'debt', title: <span>Долг <Tooltip title="SUM(amount - paid) по сделкам где долг > 0. Кумулятивно за все годы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalDebt, prefix: <WarningOutlined />, style: { color: overview.totalDebt > 0 ? token.colorError : token.colorSuccess }, fmt: true },
     { key: 'overpayments', title: <span>Переплаты <Tooltip title="SUM(paid - amount) по сделкам где paid > amount. Предоплаты и авансы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalOverpayments ?? 0, prefix: <WalletOutlined />, style: { color: token.colorSuccess }, fmt: true },
     { key: 'netBalance', title: <span>Чистый долг <Tooltip title="Долг минус переплаты = реальная дебиторка. Формула: SUM(amount) - SUM(paid)."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.netBalance ?? 0, prefix: <DollarOutlined />, style: { color: (overview.netBalance ?? 0) > 0 ? token.colorError : token.colorSuccess }, fmt: true },
-    { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
   ];
 
   // ── Drawer KPI title ──
@@ -415,7 +415,7 @@ export default function HistoryAnalyticsPage() {
     <>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {kpiCards.map((kpi) => (
-          <Col xs={12} sm={8} lg={4} key={kpi.key}>
+          <Col xs={12} sm={8} lg={6} key={kpi.key}>
             <Card size="small" hoverable onClick={() => setKpiDrawer(kpi.key)} style={{ cursor: 'pointer' }}>
               <Statistic
                 title={kpi.title}
