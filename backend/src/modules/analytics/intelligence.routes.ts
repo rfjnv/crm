@@ -300,12 +300,14 @@ router.get(
           WHERE d2.manager_id = d.manager_id
             AND d2.status IN ('SHIPPED', 'CLOSED')
             AND d2.is_archived = false
+            AND d2.created_at >= ${start} AND d2.created_at < ${end}
           GROUP BY d2.client_id
           HAVING COUNT(*) >= 2
         ) rc)::text as repeat_clients
       FROM deals d
       JOIN users u ON u.id = d.manager_id
       WHERE d.is_archived = false
+        AND d.created_at >= ${start} AND d.created_at < ${end}
       GROUP BY d.manager_id, u.full_name
       ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`,
     );
@@ -316,6 +318,7 @@ router.get(
         AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
       FROM deals d
       WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+        AND d.created_at >= ${start} AND d.created_at < ${end}
       GROUP BY d.manager_id`,
     );
 

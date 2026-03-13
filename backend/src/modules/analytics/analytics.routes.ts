@@ -231,11 +231,11 @@ router.get(
              LIMIT 10`
           ),
       prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false },
+        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
         _sum: { paidAmount: true },
       }),
       prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false },
+        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
         _sum: { amount: true },
       }),
     ]);
