@@ -33,6 +33,17 @@ const METHOD_LABELS: Record<string, string> = {
   INSTALLMENT: 'Рассрочка', 'Не указан': 'Не указан',
 };
 
+const METHOD_COLORS: Record<string, string> = {
+  'Наличные': '#7eb8da',
+  'Перечисление': '#a3b8ef',
+  'QR': '#b8c9e0',
+  'Payme': '#c4b1d4',
+  'Click': '#e0b8b8',
+  'Терминал': '#a8d5ba',
+  'Рассрочка': '#d4c7a3',
+  'Не указан': '#c8c8c8',
+};
+
 const SEGMENT_COLORS_LIGHT: Record<string, string> = {
   VIP: '#722ed1', Regular: '#1677ff', New: '#52c41a', 'At-Risk': '#fa8c16', Churned: '#ff4d4f',
 };
@@ -491,6 +502,7 @@ export default function HistoryAnalyticsPage() {
           <Card title="Способы оплаты" size="small" style={{ height: '100%' }}>
             <Pie data={pieData} angleField="value" colorField="type" innerRadius={0.5} height={420}
               label={false}
+              scale={{ color: { domain: pieData.map((d) => d.type), range: pieData.map((d) => METHOD_COLORS[d.type] || '#c8c8c8') } }}
               legend={{ color: { position: 'right', itemLabelFill: token.colorText } }}
               interaction={{ elementHighlight: { background: true } }}
               tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}

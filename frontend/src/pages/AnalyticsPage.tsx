@@ -23,16 +23,16 @@ import { formatUZS } from '../utils/currency';
 import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow } from '../types';
 
 const statusColorMap: Record<string, string> = {
-  NEW: '#1677ff',
-  IN_PROGRESS: '#1677ff',
-  WAITING_STOCK_CONFIRMATION: '#fa8c16',
-  STOCK_CONFIRMED: '#13c2c2',
-  FINANCE_APPROVED: '#a0d911',
-  ADMIN_APPROVED: '#722ed1',
-  READY_FOR_SHIPMENT: '#eb2f96',
-  CLOSED: '#389e0d',
-  CANCELED: '#ff4d4f',
-  REJECTED: '#f5222d',
+  NEW: '#6b9bd2',
+  IN_PROGRESS: '#7ba7d7',
+  WAITING_STOCK_CONFIRMATION: '#d4b896',
+  STOCK_CONFIRMED: '#8cbcb5',
+  FINANCE_APPROVED: '#b5c9a0',
+  ADMIN_APPROVED: '#a89bc4',
+  READY_FOR_SHIPMENT: '#c9a0b5',
+  CLOSED: '#7db88a',
+  CANCELED: '#d4918f',
+  REJECTED: '#c98a8a',
 };
 
 const segmentColorMap: Record<string, string> = {
@@ -234,8 +234,8 @@ export default function AnalyticsPage() {
                 height={340}
                 shapeField="smooth"
                 style={{
-                  fill: 'linear-gradient(-90deg, rgba(82, 196, 26, 0.25) 0%, rgba(82, 196, 26, 0.02) 100%)',
-                  stroke: '#52c41a',
+                  fill: 'linear-gradient(-90deg, rgba(99, 150, 210, 0.25) 0%, rgba(99, 150, 210, 0.02) 100%)',
+                  stroke: '#5b8db8',
                   lineWidth: 2.5,
                 }}
                 axis={{
