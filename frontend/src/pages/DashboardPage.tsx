@@ -157,7 +157,7 @@ export default function DashboardPage() {
                 style={{ fill: 'linear-gradient(-90deg, rgba(82, 196, 26, 0.15) 0%, rgba(82, 196, 26, 0.6) 100%)' }}
                 line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
                 axis={{
-                  y: { labelFormatter: (v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}K` : String(v), labelFill: themeToken.colorText },
+                  y: { labelFormatter: (v: number) => Math.round(v).toLocaleString('ru-RU'), labelFill: themeToken.colorText },
                   x: { labelFormatter: (v: string) => v.slice(5), labelFill: themeToken.colorText },
                 }}
                 tooltip={{ items: [{ channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}

@@ -50,12 +50,7 @@ const OP_TYPE_LABELS: Record<string, string> = {
 };
 
 function fmtNum(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)} млрд`;
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)} млн`;
-  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)} тыс`;
-  return n.toLocaleString('ru-RU');
+  return Math.round(n).toLocaleString('ru-RU');
 }
 
 // Reverse-lookup: find original method key from its label
