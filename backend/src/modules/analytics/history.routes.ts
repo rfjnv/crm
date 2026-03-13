@@ -835,6 +835,13 @@ router.get(
         retainedClients: retained,
         retentionRate: total > 0 ? Math.round((retained / total) * 100) / 100 : 0,
       };
+    }).filter((r) => {
+      // Exclude last data point if current year — it looks at next month which is incomplete
+      if (year === new Date().getFullYear()) {
+        const currentMonth = new Date().getMonth() + 1;
+        return r.month < currentMonth - 1;
+      }
+      return true;
     });
 
     // 2. Revenue concentration
