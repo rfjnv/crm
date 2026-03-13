@@ -116,7 +116,7 @@ export default function AnalyticsPage() {
 
   const buildRevenueChartData = (
     raw: { day: string; total: number }[],
-    _p: AnalyticsPeriod,
+    p: AnalyticsPeriod,
   ): { day: string; total: number }[] => {
     if (raw.length === 0) return [];
     const map = new Map(raw.map((d) => [d.day, d.total]));
@@ -128,7 +128,17 @@ export default function AnalyticsPage() {
       const key = dt.toISOString().slice(0, 10);
       filled.push({ day: key, total: map.get(key) ?? 0 });
     }
-    return filled.map((d) => {
+    const windowMap: Record<string, number> = { week: 1, month: 3, quarter: 5, year: 7 };
+    const win = windowMap[p] || 3;
+    const smoothed = filled.map((item, i) => {
+      const half = Math.floor(win / 2);
+      const from = Math.max(0, i - half);
+      const to = Math.min(filled.length, i + half + 1);
+      const slice = filled.slice(from, to);
+      const avg = slice.reduce((s, d) => s + d.total, 0) / slice.length;
+      return { ...item, total: Math.round(avg) };
+    });
+    return smoothed.map((d) => {
       const parts = d.day.split('-');
       const dayNum = parseInt(parts[2]);
       const monthIdx = parseInt(parts[1]) - 1;
@@ -215,14 +225,19 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title="Выручка по дням" bordered={false}>
+          <Card title="Выручка по дням (скользящее среднее)" bordered={false}>
             {lineData.length > 0 ? (
-              <Bar
+              <Area
                 data={lineData}
                 xField="day"
                 yField="total"
                 height={340}
-                style={{ fill: '#52c41a', fillOpacity: 0.8 }}
+                smooth
+                style={{
+                  fill: 'linear-gradient(-90deg, rgba(82,196,26,0.3) 0%, rgba(82,196,26,0.01) 100%)',
+                  stroke: '#52c41a',
+                  strokeWidth: 2,
+                }}
                 axis={{
                   y: {
                     labelFormatter: (v: number) => formatUZS(v),

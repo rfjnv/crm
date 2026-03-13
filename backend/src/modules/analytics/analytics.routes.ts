@@ -57,7 +57,7 @@ router.get(
 
     // ──── SALES ────
     const [
-      salesRevenueAgg,
+      salesRevenueRaw,
       salesAvgAgg,
       completedCount,
       totalDealsCount,
@@ -67,11 +67,13 @@ router.get(
       topClientsRaw,
       topProductsRaw,
     ] = await Promise.all([
-      // Total revenue in period (COMPLETED + APPROVED + CLOSED deals)
-      prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
-        _sum: { amount: true },
-      }),
+      // Total revenue in period (from payments, same as Dashboard)
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
+         FROM payments p
+         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
+           AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
+      ),
       // Avg deal amount in period
       prisma.deal.aggregate({
         where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
@@ -89,27 +91,15 @@ router.get(
       prisma.deal.count({
         where: { ...dealScope, status: 'CANCELED', isArchived: false, createdAt: { gte: start, lt: end } },
       }),
-      // Revenue by day (grouped by deal creation date in Tashkent TZ)
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(d.amount)::text as total
-             FROM deals d
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
-               AND d.is_archived = false
-               AND d.created_at >= ${start} AND d.created_at < ${end}
-               AND d.manager_id = ${dealScope.managerId}
-             GROUP BY DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
-             ORDER BY day ASC`
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(d.amount)::text as total
-             FROM deals d
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
-               AND d.is_archived = false
-               AND d.created_at >= ${start} AND d.created_at < ${end}
-             GROUP BY DATE((d.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
-             ORDER BY day ASC`
-          ),
+      // Revenue by day (from payments, same as Dashboard)
+      prisma.$queryRaw<{ day: Date; total: string }[]>(
+        Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
+         FROM payments p
+         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
+           AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
+         GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+         ORDER BY day ASC`
+      ),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -160,7 +150,7 @@ router.get(
     });
 
     const sales = {
-      totalRevenue: salesRevenueAgg._sum.amount ? Number(salesRevenueAgg._sum.amount) : 0,
+      totalRevenue: salesRevenueRaw[0] ? Number(salesRevenueRaw[0].total) : 0,
       avgDealAmount: salesAvgAgg._avg.amount ? Number(salesAvgAgg._avg.amount) : 0,
       conversionNewToCompleted: totalDealsCount > 0 ? completedCount / totalDealsCount : null,
       cancellationRate: totalDealsCount > 0 ? canceledCount / totalDealsCount : null,
