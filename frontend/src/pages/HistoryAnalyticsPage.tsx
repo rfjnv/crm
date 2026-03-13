@@ -551,10 +551,10 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Удержание клиентов (MoM)" size="small">
             <Line
-              data={extended.retention.map((r) => ({ month: MONTH_LABELS[r.month], rate: Math.round(r.retentionRate * 100), _month: r.month }))}
+              data={extended.retention.map((r) => ({ month: r.month, rate: Math.round(r.retentionRate * 100), _month: r.month }))}
               xField="month" yField="rate" height={280}
               point={{ shapeField: 'circle', sizeField: 4 }}
-              axis={{ x: { labelFill: token.colorText }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
+              axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
               tooltip={{ items: [{ field: 'rate', channel: 'y', name: 'Удержание', valueFormatter: (v: number) => `${v}%` }] }}
               theme={chartTheme}
               onReady={({ chart }) => {
@@ -617,9 +617,9 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Тренд менеджеров по месяцам" size="small">
             <Line
-              data={extended.managerTrend.map((r) => ({ month: MONTH_LABELS[r.month], revenue: r.revenue, manager: r.fullName, _managerId: r.managerId, _managerName: r.fullName }))}
+              data={extended.managerTrend.map((r) => ({ month: r.month, revenue: r.revenue, manager: r.fullName, _managerId: r.managerId, _managerName: r.fullName }))}
               xField="month" yField="revenue" colorField="manager" height={280}
-              axis={axisStyle}
+              axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } }}
               tooltip={{ items: [{ field: 'revenue', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
               legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
               theme={chartTheme}
@@ -636,10 +636,10 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Сезонность" size="small">
             <Line
-              data={extended.seasonality.map((r) => ({ month: MONTH_LABELS[r.month], value: r.revenue, _month: r.month }))}
+              data={extended.seasonality.map((r) => ({ month: r.month, value: r.revenue, _month: r.month }))}
               xField="month" yField="value" height={280}
               point={{ shapeField: 'circle', sizeField: 4 }}
-              axis={axisStyle}
+              axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } }}
               tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
               theme={chartTheme}
               onReady={({ chart }) => {
