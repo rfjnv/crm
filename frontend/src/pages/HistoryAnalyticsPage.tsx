@@ -356,18 +356,18 @@ export default function HistoryAnalyticsPage() {
   function renderKpiDrawerContent() {
     if (!kpiDrawer) return null;
     if (kpiDrawer === 'clients') {
-      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
+      return <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (kpiDrawer === 'debt') {
-      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+      return <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
         onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />;
     }
     if (drillType === 'deals' && drilldown?.deals) {
-      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />;
+      return <Table dataSource={drilldown.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />;
     }
     if (drillType === 'payments' && drilldown?.payments) {
-      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />;
+      return <Table dataSource={drilldown.payments} columns={paymentDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />;
     }
     return <Spin />;
   }
@@ -456,7 +456,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 клиентов по выручке" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
+            <Table dataSource={topClients} columns={clientCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }}
               onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
           </Card>
         </Col>
@@ -486,7 +486,7 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={14}>
           <Card title="Топ-30 товаров по объёму" size="small" style={{ height: '100%' }}>
-            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+            <Table dataSource={topProducts} columns={productCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
               onRow={(record) => ({ onClick: () => setProductDrawer({ productId: record.id, productName: record.name }), style: clickableRow })} />
           </Card>
         </Col>
@@ -499,7 +499,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       <Card title="Должники" size="small" style={{ marginBottom: 24 }}>
-        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ pageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+        <Table dataSource={debtors} columns={debtorCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.id}`), style: clickableRow })} />
       </Card>
 
@@ -520,7 +520,7 @@ export default function HistoryAnalyticsPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5' }} /> Нет данных</span>
         </div>
-        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
+        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 900 }} />
       </Card>
     </>
   );
@@ -755,7 +755,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"
-          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
+          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} клиентов` }} scroll={{ x: 1000 }}
           onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
       </Card>
     </>
@@ -901,7 +901,7 @@ export default function HistoryAnalyticsPage() {
         }
       >
         <Table dataSource={filteredProblemRows} rowKey="id" size="small"
-          pagination={{ pageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} строк` }}
+          pagination={{ defaultPageSize: 20, size: 'small', showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0, showTotal: (t) => `${t} строк` }}
           scroll={{ x: 1050 }}
           columns={[
             { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
@@ -959,7 +959,7 @@ export default function HistoryAnalyticsPage() {
           <Tabs items={[
             {
               key: 'deals', label: `Сделки (${monthDetail.deals.length})`, children: (
-                <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
+                <Table dataSource={monthDetail.deals} columns={dealDrillCols} rowKey="id" size="small" pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
               )
             },
             {
@@ -987,7 +987,7 @@ export default function HistoryAnalyticsPage() {
             {
               key: 'payments', label: `Поступления (${monthDetail.payments?.length || 0})`, children: (
                 <Table dataSource={monthDetail.payments || []} columns={paymentDrillCols} rowKey="id" size="small"
-                  pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+                  pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
               )
             },
             {
@@ -1008,7 +1008,7 @@ export default function HistoryAnalyticsPage() {
                     </Col>
                   </Row>
                   <Table dataSource={monthDetail.debtSnapshot?.debtors || []} rowKey="id" size="small"
-                    pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
+                    pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 550 }}
                     columns={[
                       { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
                       { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
@@ -1036,7 +1036,7 @@ export default function HistoryAnalyticsPage() {
               Итого: {clientMonthData.totalRevenue.toLocaleString('ru-RU')}
             </div>
             <Table dataSource={clientMonthData.items} columns={clientMonthCols} rowKey="id" size="small"
-              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+              pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
           </>
         ) : null}
       </Drawer>
@@ -1048,7 +1048,7 @@ export default function HistoryAnalyticsPage() {
       >
         {productBuyersLoading ? <Spin /> : productBuyersData ? (
           <Table dataSource={productBuyersData.buyers} columns={productBuyersCols} rowKey="clientId" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 500 }}
+            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 500 }}
             onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })} />
         ) : null}
       </Drawer>
@@ -1060,7 +1060,7 @@ export default function HistoryAnalyticsPage() {
       >
         {managerDrillLoading ? <Spin /> : managerDrilldown?.deals ? (
           <Table dataSource={managerDrilldown.deals} columns={dealDrillCols} rowKey="id" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
+            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 700 }} />
         ) : null}
       </Drawer>
 
@@ -1071,7 +1071,7 @@ export default function HistoryAnalyticsPage() {
       >
         {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
           <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
-            pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
+            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], totalBoundaryShowSizeChanger: 0 }} scroll={{ x: 600 }} />
         ) : null}
       </Drawer>
     </div>
