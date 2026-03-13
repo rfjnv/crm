@@ -16,7 +16,7 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-import { Pie, Bar, Area } from '@ant-design/charts';
+import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
 import { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
@@ -111,8 +111,6 @@ export default function AnalyticsPage() {
   }));
   const pieColorDomain = pieData.map((d) => d.type);
   const pieColorRange = pieData.map((d) => d.color);
-
-  const pieTotal = pieData.reduce((s, d) => s + d.value, 0) || 1;
 
   const buildRevenueChartData = (
     raw: { day: string; total: number }[],
@@ -227,17 +225,17 @@ export default function AnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title={<span>Выручка по дням <span style={{ fontSize: 12, fontWeight: 'normal', opacity: 0.5 }}>(скользящее среднее)</span></span>} bordered={false}>
             {lineData.length > 0 ? (
-              <Area
+              <Line
                 data={lineData}
                 xField="day"
                 yField="total"
                 height={340}
                 shapeField="smooth"
                 style={{
-                  fill: 'linear-gradient(-90deg, rgba(99, 150, 210, 0.25) 0%, rgba(99, 150, 210, 0.02) 100%)',
                   stroke: '#5b8db8',
                   lineWidth: 2.5,
                 }}
+                point={{ size: 3, style: { fill: '#fff', stroke: '#5b8db8', lineWidth: 1.5 } }}
                 axis={{
                   y: {
                     labelFormatter: (v: number) => formatUZS(v),
@@ -269,12 +267,9 @@ export default function AnalyticsPage() {
                 innerRadius={0.5}
                 height={300}
                 scale={{ color: { domain: pieColorDomain, range: pieColorRange } }}
-                label={{
-                  text: (d: { type: string; value: number }) => (d.value / pieTotal) >= 0.03 ? `${d.type}: ${d.value}` : '',
-                  position: 'outside',
-                  style: { fill: token.colorText, fontSize: 12 },
-                }}
-                legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
+                label={false}
+                legend={{ color: { position: 'right', itemLabelFill: token.colorText } }}
+                interaction={{ elementHighlight: { background: true } }}
                 tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сделок', valueFormatter: (v: number) => `${v}` }] }}
                 theme={chartTheme}
               />
