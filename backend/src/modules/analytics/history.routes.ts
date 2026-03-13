@@ -436,9 +436,10 @@ router.get(
         c.id as client_id,
         c.company_name,
         EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(d.amount), 0)::text as revenue
+        COALESCE(SUM(di.requested_qty * di.price), 0)::text as revenue
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN deal_items di ON di.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
@@ -1193,20 +1194,9 @@ router.get(
       createdAt: r.created_at,
     }));
 
-    // Total revenue from deal amounts (matches matrix hover which uses SUM(d.amount))
-    const totalRevenueRaw = await prisma.$queryRaw<{ total: string }[]>(
-      Prisma.sql`SELECT COALESCE(SUM(d.amount), 0)::text as total
-      FROM deals d
-      WHERE d.client_id = ${clientId}
-        AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
-    );
-
     res.json({
       items,
-      totalRevenue: Number(totalRevenueRaw[0].total),
+      totalRevenue: items.reduce((sum, i) => sum + i.total, 0),
     });
   }),
 );
