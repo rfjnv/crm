@@ -114,7 +114,6 @@ export default function AnalyticsPage() {
 
   const buildRevenueChartData = (
     raw: { day: string; total: number }[],
-    p: AnalyticsPeriod,
   ): { day: string; total: number }[] => {
     if (raw.length === 0) return [];
     const map = new Map(raw.map((d) => [d.day, d.total]));
@@ -126,17 +125,7 @@ export default function AnalyticsPage() {
       const key = dt.toISOString().slice(0, 10);
       filled.push({ day: key, total: map.get(key) ?? 0 });
     }
-    const windowMap: Record<string, number> = { week: 1, month: 3, quarter: 5, year: 7 };
-    const win = windowMap[p] || 3;
-    const smoothed = filled.map((item, i) => {
-      const half = Math.floor(win / 2);
-      const from = Math.max(0, i - half);
-      const to = Math.min(filled.length, i + half + 1);
-      const slice = filled.slice(from, to);
-      const avg = slice.reduce((s, d) => s + d.total, 0) / slice.length;
-      return { ...item, total: Math.round(avg) };
-    });
-    return smoothed.map((d) => {
+    return filled.map((d) => {
       const parts = d.day.split('-');
       const dayNum = parseInt(parts[2]);
       const monthIdx = parseInt(parts[1]) - 1;
@@ -144,7 +133,7 @@ export default function AnalyticsPage() {
     });
   };
 
-  const lineData = buildRevenueChartData(sales.revenueByDay, period);
+  const lineData = buildRevenueChartData(sales.revenueByDay);
 
   const clientBarData = sales.topClients.map((c) => ({
     name: c.companyName,
@@ -223,7 +212,7 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title={<span>Выручка по дням <span style={{ fontSize: 12, fontWeight: 'normal', opacity: 0.5 }}>(скользящее среднее)</span></span>} bordered={false}>
+          <Card title="Выручка по дням" bordered={false}>
             {lineData.length > 0 ? (
               <Line
                 data={lineData}
