@@ -73,14 +73,12 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
              WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
                AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
              FROM payments p
-             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
+             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}`
           ),
       // Avg deal amount in period
       prisma.deal.aggregate({
@@ -105,7 +103,6 @@ router.get(
             Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
                AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})
              GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
@@ -114,7 +111,6 @@ router.get(
             Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
              FROM payments p
              WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')
              GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           ),
@@ -365,8 +361,7 @@ router.get(
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
          FROM payments p
-         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-           AND (p.note IS NULL OR p.note NOT LIKE 'Сверка%')`
+         WHERE p.paid_at >= ${start} AND p.paid_at < ${end}`
       ),
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * pr.purchase_price), 0)::text as total
