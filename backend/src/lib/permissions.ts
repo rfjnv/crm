@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   SUPER_DEAL_OVERRIDE: 'super_deal_override',
   DELETE_ANY_DEAL: 'delete_any_deal',
   VIEW_AUDIT_HISTORY: 'view_audit_history',
+  MANAGE_EXPENSES: 'manage_expenses',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -51,6 +52,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.FINANCE_APPROVE,
     PERMISSIONS.VIEW_ALL_DEALS,
     PERMISSIONS.MANAGE_CONTRACT,
+    PERMISSIONS.MANAGE_EXPENSES,
   ],
   WAREHOUSE: [
     PERMISSIONS.STOCK_CONFIRM,
@@ -65,5 +67,6 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.VIEW_ALL_DEALS,
     PERMISSIONS.CREATE_INVENTORY_IN,
     PERMISSIONS.SHIPMENT_EXECUTE,
+    PERMISSIONS.MANAGE_EXPENSES,
   ],
 };
