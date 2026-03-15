@@ -1,26 +1,7 @@
 import { z } from 'zod';
+import { ALL_PERMISSIONS } from '../../lib/permissions';
 
-const permissionValues = [
-  'manage_users',
-  'view_all_deals',
-  'manage_deals',
-  'manage_leads',
-  'close_deals',
-  'archive_deals',
-  'stock_confirm',
-  'finance_approve',
-  'admin_approve',
-  'confirm_shipment',
-  'manage_inventory',
-  'manage_products',
-  'view_all_clients',
-  'create_inventory_in',
-  'edit_client',
-  'edit_closed_deal',
-  'manage_contract',
-  'approve_deal',
-  'shipment_execute',
-] as const;
+const permissionValues = ALL_PERMISSIONS as unknown as readonly [string, ...string[]];
 
 const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER'] as const;
 
