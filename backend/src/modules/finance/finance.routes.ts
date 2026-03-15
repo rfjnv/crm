@@ -245,41 +245,50 @@ router.get(
       }
     }
 
-    // Compute totals across ALL deals (not just UNPAID/PARTIAL) per client,
-    // so that prepayments on PAID deals offset gross debt — matching Excel logic.
-    const allDealsWhere: Prisma.DealWhereInput = {
-      ...dealScope,
-      status: { notIn: ['CANCELED', 'REJECTED'] },
-      isArchived: false,
-    };
-    if (managerId) (allDealsWhere as Record<string, unknown>).managerId = managerId;
+    // Compute per-client debt from closingBalance (Excel AB column).
+    // This replaces the old deal.amount - deal.paidAmount approach.
+    const perClientDebt = await prisma.$queryRaw<{ client_id: string; total_debt: string }[]>(
+      managerId
+        ? Prisma.sql`
+          SELECT d.client_id,
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+            AND d.manager_id = ${managerId}
+            AND di.closing_balance IS NOT NULL
+          GROUP BY d.client_id`
+        : Prisma.sql`
+          SELECT d.client_id,
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+            AND di.closing_balance IS NOT NULL
+          GROUP BY d.client_id`
+    );
 
-    const allDealsAgg = await prisma.deal.groupBy({
-      by: ['clientId'],
-      where: allDealsWhere,
-      _sum: { amount: true, paidAmount: true },
-    });
-
-    // Build a map of per-client ALL-deals net balance
+    // Build a map of per-client debt from closingBalance
     const allDealsBalanceMap = new Map<string, number>();
-    for (const row of allDealsAgg) {
-      const balance = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
-      allDealsBalanceMap.set(row.clientId, balance);
+    for (const row of perClientDebt) {
+      allDealsBalanceMap.set(row.client_id, Number(row.total_debt));
     }
 
-    // Also find clients with prepayments (negative balance) who have NO UNPAID/PARTIAL deals,
+    // Also find clients with closingBalance debt/prepayment who have NO UNPAID/PARTIAL deals,
     // so they wouldn't be in clientMap. We need to add them to the list.
-    const prepaymentClientIds: string[] = [];
+    const missingClientIds: string[] = [];
     for (const [clientId, balance] of allDealsBalanceMap) {
-      if (balance < 0 && !clientMap.has(clientId)) {
-        prepaymentClientIds.push(clientId);
+      if (balance !== 0 && !clientMap.has(clientId)) {
+        missingClientIds.push(clientId);
       }
     }
 
-    // Fetch client info for prepayment-only clients
-    if (prepaymentClientIds.length > 0) {
+    // Fetch client info for clients with closingBalance but no UNPAID/PARTIAL deals
+    if (missingClientIds.length > 0) {
       const prepClients = await prisma.client.findMany({
-        where: { id: { in: prepaymentClientIds } },
+        where: { id: { in: missingClientIds } },
         select: { id: true, companyName: true },
       });
 
