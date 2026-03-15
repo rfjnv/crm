@@ -19,7 +19,6 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
-import { useIsMobile } from '../hooks/useIsMobile';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
   ? new URL(import.meta.env.VITE_API_URL).origin
@@ -43,7 +42,6 @@ function canPreview(mimeType: string) {
 }
 
 export default function ContractDetailPage() {
-  const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

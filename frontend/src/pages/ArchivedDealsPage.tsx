@@ -101,7 +101,7 @@ export default function ArchivedDealsPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{deal.archivedAt ? dayjs(deal.archivedAt).format('DD.MM.YYYY') : ''}</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{deal.updatedAt ? dayjs(deal.updatedAt).format('DD.MM.YYYY') : ''}</Typography.Text>
                 {canUnarchive && (
                   <Popconfirm title="Разархивировать?" onConfirm={() => unarchiveMut.mutate(deal.id)}>
                     <Button type="text" icon={<UndoOutlined />} size="small" />
