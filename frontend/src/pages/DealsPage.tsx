@@ -7,6 +7,8 @@ import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -148,17 +150,18 @@ export default function DealsPage() {
   ];
 
   const canCreate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const isMobile = useIsMobile();
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Space>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
+        <Space wrap>
           <Typography.Title level={4} style={{ margin: 0 }}>Сделки</Typography.Title>
           {viewMode === 'table' && (
             <Select
               allowClear
               placeholder="Фильтр по статусу"
-              style={{ width: 200 }}
+              style={{ width: isMobile ? '100%' : 200 }}
               value={statusFilter}
               onChange={(v) => setStatusFilter(v)}
               options={Object.entries(statusConfig)
@@ -178,13 +181,21 @@ export default function DealsPage() {
             ]}
           />
           {canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deals/new')}>Создать</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deals/new')}>{isMobile ? '' : 'Создать'}</Button>
           )}
         </Space>
       </div>
 
       {viewMode === 'table' ? (
-        <Table
+        isMobile ? (
+          <MobileCardList
+            data={deals ?? []}
+            rowKey="id"
+            loading={isLoading}
+            renderCard={(deal) => <DealCard deal={deal} />}
+          />
+        ) : (
+          <Table
           dataSource={deals}
           columns={columns}
           rowKey="id"
@@ -193,12 +204,32 @@ export default function DealsPage() {
           size="middle"
           bordered={false}
         />
+        )
       ) : (
+        isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {kanbanStatuses.map((status) => {
+              const statusDeals = dealsByStatus[status] ?? [];
+              if (statusDeals.length === 0) return null;
+              return (
+                <div key={status}>
+                  <div style={{ padding: '6px 12px', marginBottom: 8, background: 'rgba(0,0,0,0.03)', borderRadius: 6, fontWeight: 600, fontSize: 13 }}>
+                    <DealStatusTag status={status} /> ({statusDeals.length})
+                  </div>
+                  {statusDeals.map((deal) => (
+                    <DealCard key={deal.id} deal={deal} />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
           {kanbanStatuses.map((status) => (
             <KanbanColumn key={status} status={status} deals={dealsByStatus[status] ?? []} />
           ))}
         </div>
+        )
       )}
     </div>
   );

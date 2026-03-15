@@ -8,8 +8,10 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { Product } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function ProductsPage() {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -193,7 +195,7 @@ export default function ProductsPage() {
           <Select
             allowClear
             placeholder="Категория"
-            style={{ width: 160 }}
+            style={{ width: isMobile ? '100%' : 160 }}
             value={categoryFilter}
             onChange={setCategoryFilter}
             options={categories.map((c) => ({ label: c, value: c }))}
@@ -201,7 +203,7 @@ export default function ProductsPage() {
           <Select
             allowClear
             placeholder="Страна"
-            style={{ width: 160 }}
+            style={{ width: isMobile ? '100%' : 160 }}
             value={countryFilter}
             onChange={setCountryFilter}
             options={countries.map((c) => ({ label: c, value: c }))}
@@ -218,7 +220,7 @@ export default function ProductsPage() {
           <Select
             value={activeFilter}
             onChange={setActiveFilter}
-            style={{ width: 150 }}
+            style={{ width: isMobile ? '100%' : 150 }}
             options={[
               { label: 'Активные', value: 'active' },
               { label: 'Неактивные', value: 'inactive' },
@@ -239,6 +241,7 @@ export default function ProductsPage() {
         pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
       />
 
       {/* Create Modal */}
@@ -250,7 +253,7 @@ export default function ProductsPage() {
         confirmLoading={createMut.isPending}
         okText="Создать"
         cancelText="Отмена"
-        width={560}
+        width={isMobile ? '100%' : 560}
       >
         <Form form={form} layout="vertical" onFinish={(v) => {
           const data = {
@@ -327,7 +330,7 @@ export default function ProductsPage() {
         confirmLoading={updateMut.isPending}
         okText="Сохранить"
         cancelText="Отмена"
-        width={560}
+        width={isMobile ? '100%' : 560}
       >
         <Form form={editForm} layout="vertical" onFinish={(v) => {
           if (!editProduct) return;

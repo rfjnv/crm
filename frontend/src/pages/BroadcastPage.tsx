@@ -8,6 +8,7 @@ import { SendOutlined, EyeOutlined, LinkOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
 import { usersApi } from '../api/users.api';
 import { dealsApi } from '../api/deals.api';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { BroadcastTargets, UserRole } from '../types';
 
 const roleLabels: Record<string, string> = {
@@ -32,6 +33,7 @@ export default function BroadcastPage() {
   const [targetType, setTargetType] = useState<BroadcastTargets['type']>('ALL');
   const [previewData, setPreviewData] = useState<{ count: number; users: { id: string; fullName: string; role: string }[] } | null>(null);
   const [lastSendResult, setLastSendResult] = useState<{ recipientCount: number; title: string; dealTitle?: string; recipients: { id: string; fullName: string; role: string }[] } | null>(null);
+  const isMobile = useIsMobile();
 
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -117,7 +119,7 @@ export default function BroadcastPage() {
     <div>
       <Typography.Title level={4} style={{ marginBottom: 16 }}>Рассылка уведомлений</Typography.Title>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, alignItems: 'start' }}>
         <Card bordered={false}>
           <Form form={form} layout="vertical" onFinish={handleSubmit}>
             <Form.Item name="title" label="Заголовок" rules={[{ required: true, message: 'Обязательное поле' }, { max: 120, message: 'Максимум 120 символов' }]}>
@@ -204,19 +206,19 @@ export default function BroadcastPage() {
                 </Typography.Text>
                 <Space wrap style={{ width: '100%' }}>
                   <Form.Item name="operator" label="Условие" initialValue="LT" style={{ marginBottom: 8 }}>
-                    <Select options={operatorLabels} style={{ width: 200 }} />
+                    <Select options={operatorLabels} style={{ width: isMobile ? '100%' : 200 }} />
                   </Form.Item>
                   <Form.Item name="dealValue" label="Значение" initialValue={5} style={{ marginBottom: 8 }}>
-                    <InputNumber min={0} style={{ width: 100 }} />
+                    <InputNumber min={0} style={{ width: isMobile ? '100%' : 100 }} />
                   </Form.Item>
                   <Form.Item name="periodDays" label="За дней" initialValue={30} style={{ marginBottom: 8 }}>
-                    <InputNumber min={1} max={365} style={{ width: 100 }} />
+                    <InputNumber min={1} max={365} style={{ width: isMobile ? '100%' : 100 }} />
                   </Form.Item>
                   <Form.Item name="roleFilter" label="Только роль" style={{ marginBottom: 8 }}>
                     <Select
                       allowClear
                       placeholder="Все роли"
-                      style={{ width: 160 }}
+                      style={{ width: isMobile ? '100%' : 160 }}
                       options={Object.entries(roleLabels).map(([value, label]) => ({ label, value }))}
                     />
                   </Form.Item>

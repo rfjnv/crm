@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Timeline, Typography, Tag, Spin, Collapse, Empty, theme } from 'antd';
 import { WarningOutlined } from '@ant-design/icons';
 import { adminApi } from '../api/admin.api';
+import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from './DealStatusTag';
 import type { AuditLog, DealStatus } from '../types';
 import dayjs from 'dayjs';
@@ -39,6 +40,7 @@ function renderJsonDiff(label: string, data: Record<string, unknown> | null | un
 
 export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
   const { token: tk } = theme.useToken();
+  const isMobile = useIsMobile();
   const { data: auditLogs, isLoading } = useQuery({
     queryKey: ['deal-audit', dealId],
     queryFn: () => adminApi.getDealAudit(dealId),
@@ -93,7 +95,7 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
                     key: 'diff',
                     label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Показать before/after</Typography.Text>,
                     children: (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
                         {renderJsonDiff('До', entry.before, tk.colorFillTertiary)}
                         {renderJsonDiff('После', entry.after, tk.colorFillTertiary)}
                       </div>

@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select } from 'antd';
+import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Client } from '../types';
 
 function formatPhone(value: string): string {
@@ -47,6 +49,7 @@ export default function ClientsPage() {
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const isMobile = useIsMobile();
 
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
@@ -156,7 +159,7 @@ export default function ClientsPage() {
       <Form.Item name="contactName" label="Контактное лицо" rules={[{ required: true, message: 'Обязательное поле' }]}>
         <Input />
       </Form.Item>
-      <Space style={{ width: '100%' }} size="middle">
+      <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
         <Form.Item name="phone" label="Телефон" style={{ flex: 1 }}>
           <PhoneInput />
         </Form.Item>
@@ -191,7 +194,7 @@ export default function ClientsPage() {
         <Space wrap>
           <Input.Search
             placeholder="Поиск (компания, контакт, телефон, email)..."
-            style={{ width: 300 }}
+            style={{ width: isMobile ? '100%' : 300 }}
             allowClear
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -202,7 +205,7 @@ export default function ClientsPage() {
               showSearch
               optionFilterProp="label"
               placeholder="Менеджер"
-              style={{ width: 200 }}
+              style={{ width: isMobile ? '100%' : 200 }}
               value={managerFilter}
               onChange={setManagerFilter}
               options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: u.fullName, value: u.id }))}
@@ -212,6 +215,47 @@ export default function ClientsPage() {
         </Space>
       </div>
 
+      {isMobile ? (
+        <MobileCardList
+          data={filteredClients}
+          rowKey="id"
+          loading={isLoading}
+          renderCard={(client: Client) => (
+            <Card size="small" style={{ marginBottom: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link to={`/clients/${client.id}`}>
+                    <Typography.Text strong>{client.companyName}</Typography.Text>
+                  </Link>
+                  <div style={{ marginTop: 2 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{client.contactName}</Typography.Text>
+                  </div>
+                  {client.phone && (
+                    <div style={{ marginTop: 2 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{client.phone}</Typography.Text>
+                    </div>
+                  )}
+                  {client.manager?.fullName && (
+                    <div style={{ marginTop: 2 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{client.manager.fullName}</Typography.Text>
+                    </div>
+                  )}
+                </div>
+                {(isAdmin || user?.permissions?.includes('edit_client')) && (
+                  <Space size={4}>
+                    <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(client)} />
+                    {isAdmin && (
+                      <Popconfirm title="Архивировать клиента?" onConfirm={() => archiveMut.mutate(client.id)}>
+                        <Button type="text" danger icon={<InboxOutlined />} size="small" />
+                      </Popconfirm>
+                    )}
+                  </Space>
+                )}
+              </div>
+            </Card>
+          )}
+        />
+      ) : (
       <Table
         dataSource={filteredClients}
         columns={columns}
@@ -221,6 +265,7 @@ export default function ClientsPage() {
         size="middle"
         bordered={false}
       />
+      )}
 
       {/* Create Modal */}
       <Modal

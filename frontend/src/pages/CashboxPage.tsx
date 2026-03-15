@@ -14,6 +14,7 @@ import { clientsApi } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ClientDebtRow } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
 type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
@@ -36,6 +37,7 @@ const paymentStatusLabels: Record<string, { color: string; label: string }> = {
 };
 
 export default function CashboxPage() {
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState('payments');
   const [period, setPeriod] = useState<string>('day');
   const [clientId, setClientId] = useState<string>();
@@ -335,7 +337,7 @@ export default function CashboxPage() {
                   showSearch
                   optionFilterProp="label"
                   placeholder="Клиент"
-                  style={{ width: 200 }}
+                  style={{ width: isMobile ? '100%' : 200 }}
                   value={clientId}
                   onChange={setClientId}
                   options={clientOptions}
@@ -343,7 +345,7 @@ export default function CashboxPage() {
                 <Select
                   allowClear
                   placeholder="Способ оплаты"
-                  style={{ width: 160 }}
+                  style={{ width: isMobile ? '100%' : 160 }}
                   value={method}
                   onChange={setMethod}
                   options={[
@@ -359,7 +361,7 @@ export default function CashboxPage() {
                 <Select
                   allowClear
                   placeholder="Статус оплаты"
-                  style={{ width: 160 }}
+                  style={{ width: isMobile ? '100%' : 160 }}
                   value={paymentStatus}
                   onChange={setPaymentStatus}
                   options={[
@@ -410,6 +412,7 @@ export default function CashboxPage() {
                 pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
                 size="middle"
                 bordered={false}
+                scroll={{ x: 600 }}
                 summary={() => data?.payments && data.payments.length > 0 ? (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={3}>Итого</Table.Summary.Cell>
@@ -431,7 +434,7 @@ export default function CashboxPage() {
               <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Input.Search
                   placeholder="Поиск по клиенту или менеджеру..."
-                  style={{ width: 300 }}
+                  style={{ width: isMobile ? '100%' : 300 }}
                   allowClear
                   value={debtSearch}
                   onChange={(e) => setDebtSearch(e.target.value)}
@@ -488,13 +491,13 @@ export default function CashboxPage() {
                   onChange={(v) => setManagerId(v)}
                   allowClear
                   placeholder="Менеджер"
-                  style={{ width: 200 }}
+                  style={{ width: isMobile ? '100%' : 200 }}
                   options={managers}
                 />
                 <Select
                   value={sortBy}
                   onChange={(v) => setSortBy(v)}
-                  style={{ width: 220 }}
+                  style={{ width: isMobile ? '100%' : 220 }}
                   options={[
                     { value: 'debt_desc', label: 'Сортировка: наибольший долг' },
                     { value: 'newest', label: 'Сортировка: новые сделки' },
@@ -526,7 +529,7 @@ export default function CashboxPage() {
         onOk={handlePay}
         okText="Оплатить"
         confirmLoading={paymentMut.isPending}
-        width={600}
+        width={isMobile ? '100%' : 600}
         okButtonProps={{ disabled: !selectedDealId }}
       >
         {clientDetailLoading ? (

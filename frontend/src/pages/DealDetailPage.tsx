@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
   List, Table, message, InputNumber, Form, Modal, Popconfirm, DatePicker, Tabs,
-  Select, Alert, Radio, Tooltip,
+  Select, Alert, Radio, Tooltip, Collapse,
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
@@ -21,6 +21,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
 import SuperOverrideModal from '../components/SuperOverrideModal';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem } from '../types';
@@ -80,6 +81,7 @@ export default function DealDetailPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const role = user?.role as UserRole | undefined;
+  const isMobile = useIsMobile();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['deal', id] });
@@ -556,7 +558,13 @@ export default function DealDetailPage() {
 
     return (
       <Card bordered={false} style={{ marginBottom: 16 }}>
-        <Space wrap>{actions}</Space>
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {actions}
+          </div>
+        ) : (
+          <Space wrap>{actions}</Space>
+        )}
       </Card>
     );
   }
@@ -594,18 +602,38 @@ export default function DealDetailPage() {
 
     return (
       <Card title="Ответ склада" bordered={false}>
-        <Table
-          dataSource={respondedItems}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          bordered={false}
-          columns={[
-            { title: 'Товар', dataIndex: ['product', 'name'] },
-            { title: 'Комментарий запроса', dataIndex: 'requestComment', render: (v: string | null) => v || '—' },
-            { title: 'Ответ склада', dataIndex: 'warehouseComment', render: (v: string | null) => v || '—' },
-          ]}
-        />
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {respondedItems.map((item) => (
+              <Card key={item.id} size="small" bordered>
+                <Typography.Text strong>{item.product?.name}</Typography.Text>
+                {item.requestComment && (
+                  <div style={{ marginTop: 4 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>Запрос: </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>{item.requestComment}</Typography.Text>
+                  </div>
+                )}
+                <div style={{ marginTop: 4 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>Ответ: </Typography.Text>
+                  <Typography.Text>{item.warehouseComment}</Typography.Text>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Table
+            dataSource={respondedItems}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            bordered={false}
+            columns={[
+              { title: 'Товар', dataIndex: ['product', 'name'] },
+              { title: 'Комментарий запроса', dataIndex: 'requestComment', render: (v: string | null) => v || '—' },
+              { title: 'Ответ склада', dataIndex: 'warehouseComment', render: (v: string | null) => v || '—' },
+            ]}
+          />
+        )}
         {firstResponded?.confirmedAt && (
           <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
             Ответ: {dayjs(firstResponded.confirmedAt).format('DD.MM.YYYY HH:mm')}
@@ -682,7 +710,7 @@ export default function DealDetailPage() {
             </Popconfirm>
           )}
         >
-          <Descriptions size="small" column={3}>
+          <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
             <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
             <Descriptions.Item label="Клиент">{deal.client?.companyName}</Descriptions.Item>
             <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
@@ -690,6 +718,277 @@ export default function DealDetailPage() {
         </Card>
       )}
 
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Детали */}
+          <Card bordered={false} size="small">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Клиент">
+                <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
+              </Descriptions.Item>
+              <Descriptions.Item label="Менеджер">
+                {isAdmin ? (
+                  <Select
+                    value={deal.managerId}
+                    onChange={(val) => managerMut.mutate(val)}
+                    loading={managerMut.isPending}
+                    style={{ minWidth: 120 }}
+                    showSearch
+                    optionFilterProp="label"
+                    options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+                  />
+                ) : (
+                  deal.manager?.fullName
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Сумма">
+                {hasQuantities ? formatUZS(deal.amount) : <Typography.Text type="secondary">Не установлено</Typography.Text>}
+              </Descriptions.Item>
+              {deal.discount && Number(deal.discount) > 0 && (
+                <Descriptions.Item label="Скидка">{formatUZS(deal.discount)}</Descriptions.Item>
+              )}
+              <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
+              {deal.contract && (
+                <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
+              )}
+              {deal.paymentMethod && (
+                <Descriptions.Item label="Способ оплаты">
+                  <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label="Статус">
+                <DealStatusTag status={deal.status} />
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+
+          {/* Оплата */}
+          {hasQuantities && (
+            <Card
+              title="Оплата"
+              size="small"
+              extra={
+                !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                  <Space>
+                    <Button size="small" icon={<PlusOutlined />} onClick={() => setPaymentRecordModal(true)}>+</Button>
+                    <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
+                  </Space>
+                )
+              }
+              bordered={false}
+            >
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
+                <Descriptions.Item label="Статус">
+                  <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Оплачено">{formatUZS(deal.paidAmount)} / {formatUZS(deal.amount)}</Descriptions.Item>
+                {Number(deal.amount) - Number(deal.paidAmount) > 0 && (
+                  <Descriptions.Item label="Долг">
+                    <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
+                  </Descriptions.Item>
+                )}
+                {deal.dueDate && (
+                  <Descriptions.Item label="Срок">{dayjs(deal.dueDate).format('DD.MM.YYYY')}</Descriptions.Item>
+                )}
+              </Descriptions>
+
+              {(dealPayments ?? []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>Платежи:</Typography.Text>
+                  {(dealPayments ?? []).map((p: any) => (
+                    <Card key={p.id} size="small" bordered>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography.Text strong>{formatUZS(p.amount)}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                      </div>
+                      {(p.method || p.creator?.fullName) && (
+                        <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
+                          {p.method && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.method}</Typography.Text>}
+                          {p.creator?.fullName && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.creator.fullName}</Typography.Text>}
+                        </div>
+                      )}
+                      {p.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.note}</Typography.Text></div>}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Товары */}
+          <Card
+            title={`Товары (${deal.items?.length ?? 0})`}
+            size="small"
+            extra={canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>+</Button>}
+            bordered={false}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(deal.items ?? []).map((item) => (
+                <Card key={item.id} size="small" bordered>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Typography.Text strong style={{ display: 'block', wordBreak: 'break-word' }}>{item.product?.name}</Typography.Text>
+                      <Tag style={{ marginTop: 4 }}>{item.product?.sku}</Tag>
+                    </div>
+                    {canEditItems && (
+                      <Popconfirm title="Удалить?" onConfirm={() => removeItemMut.mutate(item.id)}>
+                        <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                      </Popconfirm>
+                    )}
+                  </div>
+                  {item.requestComment && (
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Запрос: {item.requestComment}</Typography.Text>
+                    </div>
+                  )}
+                  {hasQuantities && item.requestedQty != null && (
+                    <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+                      <div>
+                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>Кол-во</Typography.Text>
+                        <div><Typography.Text strong>{formatQty(item.requestedQty)} {item.product?.unit || 'шт'}</Typography.Text></div>
+                      </div>
+                      {item.price != null && (
+                        <div>
+                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>Цена</Typography.Text>
+                          <div><Typography.Text>{formatUZS(item.price)}</Typography.Text></div>
+                        </div>
+                      )}
+                      {item.requestedQty != null && item.price != null && (
+                        <div>
+                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>Сумма</Typography.Text>
+                          <div><Typography.Text strong>{formatUZS(Number(item.price) * Number(item.requestedQty))}</Typography.Text></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {item.warehouseComment && (
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Склад: {item.warehouseComment}</Typography.Text>
+                    </div>
+                  )}
+                </Card>
+              ))}
+              {hasQuantities && (() => {
+                const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
+                if (subtotal <= 0) return null;
+                const discount = Number(deal.discount || 0);
+                return (
+                  <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: 8 }}>
+                    {discount > 0 && (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography.Text>Подытог</Typography.Text>
+                          <Typography.Text>{formatUZS(subtotal)}</Typography.Text>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography.Text>Скидка</Typography.Text>
+                          <Typography.Text type="success">-{formatUZS(discount)}</Typography.Text>
+                        </div>
+                      </>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography.Text strong>Итого</Typography.Text>
+                      <Typography.Text strong>{formatUZS(discount > 0 ? subtotal - discount : subtotal)}</Typography.Text>
+                    </div>
+                  </div>
+                );
+              })()}
+              {(deal.items ?? []).length === 0 && (
+                <Typography.Text type="secondary">Нет товаров</Typography.Text>
+              )}
+            </div>
+          </Card>
+
+          {renderWarehouseInfo()}
+          {renderShipment()}
+
+          {/* Комментарии */}
+          <Card title="Комментарии" size="small" bordered={false}>
+            <List
+              dataSource={deal.comments ?? []}
+              locale={{ emptyText: 'Нет комментариев' }}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    title={
+                      <div>
+                        <Typography.Text strong>{item.author?.fullName}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                          {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
+                        </Typography.Text>
+                      </div>
+                    }
+                    description={item.text}
+                  />
+                </List.Item>
+              )}
+            />
+            {!isReadOnly && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <Input
+                  placeholder="Комментарий..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  onPressEnter={() => comment.trim() && commentMut.mutate(comment.trim())}
+                />
+                <Button type="primary" icon={<SendOutlined />} loading={commentMut.isPending} onClick={() => comment.trim() && commentMut.mutate(comment.trim())} />
+              </div>
+            )}
+          </Card>
+
+          {/* История */}
+          <Collapse
+            size="small"
+            items={[
+              {
+                key: 'history',
+                label: 'История',
+                children: (
+                  <Timeline
+                    items={(history ?? []).map((entry: DealHistoryEntry) => {
+                      if (entry.kind === 'audit') {
+                        return {
+                          color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
+                          children: (
+                            <div>
+                              <Typography.Text strong style={{ fontSize: 12 }}>{entry.user?.fullName}</Typography.Text>{' '}
+                              <Tag style={{ fontSize: 11 }}>{entry.action}</Tag>
+                              <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                              {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
+                                <div style={{ marginTop: 4 }}>
+                                  <DealStatusTag status={entry.before.status as DealStatus} />{' → '}
+                                  <DealStatusTag status={entry.after.status as DealStatus} />
+                                </div>
+                              )}
+                            </div>
+                          ),
+                        };
+                      }
+                      return {
+                        color: entry.type === 'IN' ? 'green' : 'red',
+                        children: (
+                          <div>
+                            <Tag color={entry.type === 'IN' ? 'green' : 'red'} style={{ fontSize: 11 }}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
+                            <Typography.Text strong style={{ fontSize: 12 }}>{entry.product?.name}</Typography.Text>{' '}
+                            <Typography.Text style={{ fontSize: 12 }}>x {entry.quantity}</Typography.Text>
+                            <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                          </div>
+                        ),
+                      };
+                    })}
+                  />
+                ),
+              },
+              ...(isSuperAdmin ? [{
+                key: 'audit',
+                label: 'Аудит (SA)',
+                children: <AuditHistoryPanel dealId={id!} />,
+              }] : []),
+            ]}
+          />
+        </div>
+      ) : (
       <Tabs
         defaultActiveKey="details"
         items={[
@@ -781,6 +1080,7 @@ export default function DealDetailPage() {
                         size="small"
                         bordered={false}
                         style={{ marginTop: 16 }}
+                        scroll={{ x: 500 }}
                         columns={[
                           { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
                           { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '—' },
@@ -801,6 +1101,7 @@ export default function DealDetailPage() {
                     pagination={false}
                     size="small"
                     bordered={false}
+                    scroll={{ x: 600 }}
                     summary={() => {
                       if (!hasQuantities) return null;
                       const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
@@ -923,6 +1224,7 @@ export default function DealDetailPage() {
           }] : []),
         ]}
       />
+      )}
 
       {/* Add Item Modal */}
       <Modal
@@ -984,7 +1286,7 @@ export default function DealDetailPage() {
         confirmLoading={warehouseResponseMut.isPending}
         okText="Ответить"
         cancelText="Отмена"
-        width={700}
+        width={isMobile ? '100%' : 700}
       >
         <Form form={warehouseForm} layout="vertical" onFinish={(values) => {
           const items = values.items.map((item: Record<string, unknown>) => ({
@@ -1032,7 +1334,7 @@ export default function DealDetailPage() {
         confirmLoading={setQuantitiesMut.isPending}
         okText="Сохранить"
         cancelText="Отмена"
-        width={800}
+        width={isMobile ? '100%' : 800}
       >
         <Form form={quantitiesForm} layout="vertical" onFinish={(values) => {
           const items = values.items.map((item: Record<string, unknown>) => ({
@@ -1064,7 +1366,7 @@ export default function DealDetailPage() {
                           Ответ склада: {itemData.warehouseComment}
                         </Typography.Text>
                       )}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                         <Form.Item name={[field.name, 'requestedQty']} label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
                           <InputNumber
                             style={{ width: '100%' }}
@@ -1088,7 +1390,7 @@ export default function DealDetailPage() {
           </Form.List>
 
           <Card size="small" title="Оплата" bordered>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Form.Item name="discount" label="Скидка">
                 <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
               </Form.Item>
@@ -1187,10 +1489,10 @@ export default function DealDetailPage() {
         confirmLoading={shipmentMut.isPending}
         okText="Оформить"
         cancelText="Отмена"
-        width={600}
+        width={isMobile ? '100%' : 600}
       >
         <Form form={shipmentForm} layout="vertical" onFinish={(v) => shipmentMut.mutate({ ...v, departureTime: v.departureTime.toISOString(), shipmentComment: v.shipmentComment || undefined })}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="vehicleType" label="Тип транспорта" rules={[{ required: true, message: 'Обязательно' }]}>
               <Input placeholder="Грузовик / Фура / ..." />
             </Form.Item>
@@ -1289,7 +1591,7 @@ export default function DealDetailPage() {
           <Form.Item name="amount" label="Сумма договора">
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="startDate" label="Дата начала" rules={[{ required: true, message: 'Обязательно' }]}>
               <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
             </Form.Item>

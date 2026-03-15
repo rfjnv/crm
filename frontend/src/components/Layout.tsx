@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, theme } from 'antd';
+import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MenuOutlined,
   BulbOutlined,
   ContainerOutlined,
   DollarOutlined,
@@ -37,8 +38,10 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { authApi } from '../api/auth.api';
 import { conversationsApi } from '../api/conversations.api';
+import { useIsMobile } from '../hooks/useIsMobile';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
+import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission } from '../types';
@@ -50,11 +53,18 @@ const SIDER_COLLAPSED_WIDTH = 64;
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, refreshToken, logout } = useAuthStore();
   const { mode, toggle } = useThemeStore();
   const { token: themeToken } = theme.useToken();
+  const isMobile = useIsMobile();
+
+  // Close mobile drawer on navigation
+  useEffect(() => {
+    if (isMobile) setMobileMenuOpen(false);
+  }, [location.pathname, isMobile]);
 
   const handleLogout = async () => {
     try {
@@ -89,12 +99,13 @@ export default function Layout() {
     : 0;
 
   const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
+  const showGroupLabels = isMobile || !collapsed;
 
   const menuItems: MenuProps['items'] = [
     // ── ОПЕРАЦИИ ──
-    ...(collapsed
-      ? []
-      : [{ type: 'group' as const, label: 'ОПЕРАЦИИ' }]),
+    ...(showGroupLabels
+      ? [{ type: 'group' as const, label: 'ОПЕРАЦИИ' }]
+      : []),
     {
       key: '/dashboard',
       icon: <DashboardOutlined />,
@@ -176,9 +187,9 @@ export default function Layout() {
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
       ? [
         { type: 'divider' as const },
-        ...(collapsed
-          ? []
-          : [{ type: 'group' as const, label: 'ФИНАНСЫ' }]),
+        ...(showGroupLabels
+          ? [{ type: 'group' as const, label: 'ФИНАНСЫ' }]
+          : []),
         {
           key: '/finance/debts',
           icon: <DollarOutlined />,
@@ -206,9 +217,9 @@ export default function Layout() {
 
     // ── АРХИВ ──
     { type: 'divider' as const },
-    ...(collapsed
-      ? []
-      : [{ type: 'group' as const, label: 'АРХИВ' }]),
+    ...(showGroupLabels
+      ? [{ type: 'group' as const, label: 'АРХИВ' }]
+      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN')
       ? [{
         key: '/deals/closed',
@@ -233,9 +244,9 @@ export default function Layout() {
     ...(hasRole('SUPER_ADMIN', 'ADMIN')
       ? [
         { type: 'divider' as const },
-        ...(collapsed
-          ? []
-          : [{ type: 'group' as const, label: 'АНАЛИТИКА' }]),
+        ...(showGroupLabels
+          ? [{ type: 'group' as const, label: 'АНАЛИТИКА' }]
+          : []),
         {
           key: '/analytics',
           icon: <BarChartOutlined />,
@@ -253,9 +264,9 @@ export default function Layout() {
     ...(hasPermission('manage_users')
       ? [
         { type: 'divider' as const },
-        ...(collapsed
-          ? []
-          : [{ type: 'group' as const, label: 'СИСТЕМА' }]),
+        ...(showGroupLabels
+          ? [{ type: 'group' as const, label: 'СИСТЕМА' }]
+          : []),
         {
           key: '/users',
           icon: <UserOutlined />,
@@ -295,66 +306,89 @@ export default function Layout() {
 
   const selectedKey = '/' + location.pathname.split('/').slice(1, 3).join('/');
 
-  return (
-    <AntLayout style={{ minHeight: '100vh' }}>
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        trigger={null}
-        width={SIDER_WIDTH}
-        collapsedWidth={SIDER_COLLAPSED_WIDTH}
+  const menuContent = (
+    <>
+      <Link
+        to="/dashboard"
         style={{
-          background: themeToken.colorBgContainer,
-          borderRight: `1px solid ${themeToken.colorBorderSecondary}`,
-          position: 'fixed',
-          left: 0,
+          height: 72,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isMobile ? 'flex-start' : (collapsed ? 'center' : 'flex-start'),
+          borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
+          textDecoration: 'none',
+          padding: (!isMobile && collapsed) ? '0' : '0 14px',
+          overflow: 'hidden',
+          position: 'sticky',
           top: 0,
-          bottom: 0,
-          zIndex: 100,
-          overflow: 'auto',
+          zIndex: 101,
+          background: themeToken.colorBgContainer,
         }}
       >
-        <Link
-          to="/dashboard"
+        <img
+          src={(!isMobile && collapsed) ? miniLogo : logo}
+          alt="Polygraph Business"
           style={{
-            height: 72,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
-            textDecoration: 'none',
-            padding: collapsed ? '0' : '0 14px',
-            overflow: 'hidden',
-            position: 'sticky',
-            top: 0,
-            zIndex: 101,
+            height: (!isMobile && collapsed) ? 40 : 52,
+            maxWidth: (!isMobile && collapsed) ? 48 : 192,
+            objectFit: 'contain',
+            transition: 'all 0.3s',
+          }}
+        />
+      </Link>
+      <Menu
+        mode="inline"
+        selectedKeys={[selectedKey]}
+        items={menuItems}
+        style={{ borderRight: 0, paddingTop: 12 }}
+      />
+    </>
+  );
+
+  return (
+    <AntLayout style={{ minHeight: '100vh' }}>
+      {isMobile ? (
+        <Drawer
+          placement="left"
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          width={260}
+          styles={{ body: { padding: 0 } }}
+        >
+          {menuContent}
+          <div style={{ padding: '16px', borderTop: `1px solid ${themeToken.colorBorderSecondary}` }}>
+            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} block>
+              Выход
+            </Button>
+          </div>
+        </Drawer>
+      ) : (
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          trigger={null}
+          width={SIDER_WIDTH}
+          collapsedWidth={SIDER_COLLAPSED_WIDTH}
+          style={{
             background: themeToken.colorBgContainer,
+            borderRight: `1px solid ${themeToken.colorBorderSecondary}`,
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 100,
+            overflow: 'auto',
           }}
         >
-          <img
-            src={collapsed ? miniLogo : logo}
-            alt="Polygraph Business"
-            style={{
-              height: collapsed ? 40 : 52,
-              maxWidth: collapsed ? 48 : 192,
-              objectFit: 'contain',
-              transition: 'all 0.3s',
-            }}
-          />
-        </Link>
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          style={{ borderRight: 0, paddingTop: 12 }}
-        />
-      </Sider>
+          {menuContent}
+        </Sider>
+      )}
 
-      <AntLayout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
+      <AntLayout style={{ marginLeft: isMobile ? 0 : siderWidth, transition: 'margin-left 0.2s' }}>
         <Header
           style={{
-            padding: '0 24px',
+            padding: isMobile ? '0 12px' : '0 24px',
             background: themeToken.colorBgContainer,
             display: 'flex',
             alignItems: 'center',
@@ -367,12 +401,20 @@ export default function Layout() {
             lineHeight: '56px',
           }}
         >
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {isMobile ? (
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileMenuOpen(true)}
+            />
+          ) : (
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+            />
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
             <NotificationBell />
             <Switch
               checkedChildren={<BulbOutlined />}
@@ -381,17 +423,23 @@ export default function Layout() {
               onChange={toggle}
               size="small"
             />
-            <Typography.Text strong>{user?.fullName}</Typography.Text>
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
-              Выход
-            </Button>
+            {!isMobile && <Typography.Text strong>{user?.fullName}</Typography.Text>}
+            {!isMobile && (
+              <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
+                Выход
+              </Button>
+            )}
           </div>
         </Header>
-        <Content style={{ margin: 24 }}>
+        <Content style={{ margin: isMobile ? 12 : 24, paddingBottom: isMobile ? 60 : 0 }}>
           <Outlet />
         </Content>
         <NotificationPermissionBanner />
       </AntLayout>
+
+      {isMobile && (
+        <BottomTabBar />
+      )}
     </AntLayout>
   );
 }

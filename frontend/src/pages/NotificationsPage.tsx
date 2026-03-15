@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Typography, Button, Segmented, List, Tag, Space, message, theme } from 'antd';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined, CheckOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
 import PushNotificationToggle from '../components/PushNotificationToggle';
@@ -25,6 +26,7 @@ export default function NotificationsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { token: tk } = theme.useToken();
+  const isMobile = useIsMobile();
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', filter],
@@ -62,9 +64,9 @@ export default function NotificationsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', marginBottom: 16, gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Уведомления</Typography.Title>
-        <Space>
+        <Space wrap>
           <Button icon={<CheckOutlined />} onClick={() => markAllReadMut.mutate()} loading={markAllReadMut.isPending}>
             Прочитать все
           </Button>

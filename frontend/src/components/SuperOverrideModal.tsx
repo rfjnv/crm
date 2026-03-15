@@ -7,6 +7,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type OverrideDealData } from '../api/admin.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from './DealStatusTag';
 import type { Deal, Product, DealStatus, User } from '../types';
 import dayjs from 'dayjs';
@@ -47,6 +48,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
   const [editShipment, setEditShipment] = useState(false);
   const queryClient = useQueryClient();
   const { token: tk } = theme.useToken();
+  const isMobile = useIsMobile();
 
   // Pre-populate on open
   useEffect(() => {
@@ -209,7 +211,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
       title={<><Tag color="red">SUPER ADMIN</Tag> Override: {deal.title}</>}
       open={open}
       onCancel={onClose}
-      width={900}
+      width={isMobile ? '100%' : 900}
       footer={[
         <Button key="cancel" onClick={onClose}>Отмена</Button>,
         <Popconfirm
@@ -249,7 +251,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
           label: 'Основное',
           children: (
             <Form form={form} layout="vertical">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="title" label="Название">
                   <Input />
                 </Form.Item>
@@ -370,7 +372,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
           label: 'Оплата',
           children: (
             <Form form={form} layout="vertical">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="paymentMethod" label="Способ оплаты">
                   <Select allowClear placeholder="Не указан" options={[
                     { label: 'Наличные', value: 'CASH' },
@@ -420,7 +422,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                 </div>
               ) : (
                 <Form form={shipmentForm} layout="vertical">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                     <Form.Item name="vehicleType" label="Тип транспорта" rules={[{ required: true }]}>
                       <Input placeholder="Грузовик / Фура / ..." />
                     </Form.Item>

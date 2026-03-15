@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge } from 'antd';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -83,6 +84,7 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const { data, isLoading } = useQuery({
     queryKey: ['analytics', period],

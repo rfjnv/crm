@@ -2,12 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Table, Typography, Spin, Button, Card } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import type { RevenueTodayPayment } from '../types';
 
 export default function RevenueTodayPage() {
+  const isMobile = useIsMobile();
   const { data, isLoading } = useQuery({
     queryKey: ['revenue-today'],
     queryFn: dashboardApi.revenueToday,
@@ -66,6 +69,29 @@ export default function RevenueTodayPage() {
       </div>
 
       <Card bordered={false}>
+        {isMobile ? (
+          <>
+            <MobileCardList
+              data={data.payments}
+              rowKey="id"
+              renderCard={(p: RevenueTodayPayment) => (
+                <Card size="small" bordered>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography.Text strong>{formatUZS(p.amount)}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('HH:mm')}</Typography.Text>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <Link to={`/deals/${p.deal.id}`}><Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text></Link>
+                  </div>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{p.client?.companyName} · {p.method || '—'}</Typography.Text>
+                </Card>
+              )}
+            />
+            <div style={{ marginTop: 12, textAlign: 'right' }}>
+              <Typography.Text strong style={{ fontSize: 16, color: '#52c41a' }}>Итого: {formatUZS(data.total)}</Typography.Text>
+            </div>
+          </>
+        ) : (
         <Table
           dataSource={data.payments}
           columns={columns}
@@ -73,6 +99,7 @@ export default function RevenueTodayPage() {
           pagination={false}
           size="middle"
           bordered={false}
+          scroll={{ x: 600 }}
           summary={() => (
             <Table.Summary.Row>
               <Table.Summary.Cell index={0} colSpan={4}>
@@ -85,6 +112,7 @@ export default function RevenueTodayPage() {
             </Table.Summary.Row>
           )}
         />
+        )}
       </Card>
     </div>
   );

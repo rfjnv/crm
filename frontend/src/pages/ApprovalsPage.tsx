@@ -1,14 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography } from 'antd';
+import { Table, Typography, Card } from 'antd';
 import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import { dealsApi } from '../api/deals.api';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Deal, DealStatus } from '../types';
 import dayjs from 'dayjs';
 
 export default function ApprovalsPage() {
+  const isMobile = useIsMobile();
   const user = useAuthStore((s) => s.user);
   const role = user?.role;
 
@@ -54,6 +57,30 @@ export default function ApprovalsPage() {
         </Typography.Text>
       )}
 
+      {isMobile ? (
+        <MobileCardList
+          data={deals ?? []}
+          rowKey="id"
+          loading={isLoading}
+          renderCard={(deal: Deal) => (
+            <Card size="small" bordered>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
+                  <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
+                  <div><DealStatusTag status={deal.status} /></div>
+                </div>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{deal.manager?.fullName} · {dayjs(deal.createdAt).format('DD.MM.YYYY')}</Typography.Text>
+              </div>
+            </Card>
+          )}
+        />
+      ) : (
       <Table
         dataSource={deals}
         columns={columns}
@@ -62,8 +89,10 @@ export default function ApprovalsPage() {
         pagination={{ pageSize: 20 }}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
         locale={{ emptyText: 'Нет сделок, ожидающих действий' }}
       />
+      )}
     </div>
   );
 }

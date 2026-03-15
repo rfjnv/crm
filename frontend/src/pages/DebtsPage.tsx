@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Input, Tag, Select, Space, InputNumber } from 'antd';
+import { Table, Typography, Input, Tag, Select, Space, InputNumber, Card } from 'antd';
 import { financeApi } from '../api/finance.api';
 import { usersApi } from '../api/users.api';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import { formatUZS } from '../utils/currency';
 import type { ClientDebtRow } from '../types';
 import dayjs from 'dayjs';
@@ -19,6 +21,7 @@ export default function DebtsPage() {
   const [debtStatus, setDebtStatus] = useState<DebtStatus>('all');
   const [managerId, setManagerId] = useState<string | undefined>(undefined);
   const [sortBy, setSortBy] = useState<SortOption>('debt_desc');
+  const isMobile = useIsMobile();
 
   const params = useMemo(() => {
     const p: { minDebt?: number; managerId?: string; paymentStatus?: string } = {};
@@ -160,11 +163,11 @@ export default function DebtsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Долги</Typography.Title>
         <Input.Search
           placeholder="Поиск по клиенту или менеджеру..."
-          style={{ width: 300 }}
+          style={{ width: isMobile ? '100%' : 300 }}
           allowClear
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -175,7 +178,7 @@ export default function DebtsPage() {
         <Select
           value={debtRange}
           onChange={(v) => setDebtRange(v)}
-          style={{ width: 180 }}
+          style={{ width: isMobile ? '100%' : 180 }}
           options={[
             { value: 'all', label: 'Сумма долга: все' },
             { value: '1m', label: '> 1 000 000' },
@@ -187,7 +190,7 @@ export default function DebtsPage() {
         {debtRange === 'custom' && (
           <InputNumber
             placeholder="Мин. сумма"
-            style={{ width: 160 }}
+            style={{ width: isMobile ? '100%' : 160 }}
             min={0}
             step={100000}
             value={customMin}
@@ -199,7 +202,7 @@ export default function DebtsPage() {
         <Select
           value={debtStatus}
           onChange={(v) => setDebtStatus(v)}
-          style={{ width: 180 }}
+          style={{ width: isMobile ? '100%' : 180 }}
           options={[
             { value: 'all', label: 'Статус: все' },
             { value: 'PARTIAL', label: 'Частичная оплата' },
@@ -211,13 +214,13 @@ export default function DebtsPage() {
           onChange={(v) => setManagerId(v)}
           allowClear
           placeholder="Менеджер"
-          style={{ width: 200 }}
+          style={{ width: isMobile ? '100%' : 200 }}
           options={managers}
         />
         <Select
           value={sortBy}
           onChange={(v) => setSortBy(v)}
-          style={{ width: 220 }}
+          style={{ width: isMobile ? '100%' : 220 }}
           options={[
             { value: 'debt_desc', label: 'Сортировка: наибольший долг' },
             { value: 'newest', label: 'Сортировка: новые сделки' },
@@ -246,19 +249,54 @@ export default function DebtsPage() {
         </div>
       )}
 
-      <Table
-        dataSource={filtered}
-        columns={columns}
-        rowKey="clientId"
-        loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-        size="middle"
-        bordered={false}
-        locale={{ emptyText: 'Нет задолженностей' }}
-        onRow={(_record) => ({
-          style: { cursor: 'pointer' },
-        })}
-      />
+      {isMobile ? (
+        <MobileCardList<ClientDebtRow>
+          data={filtered}
+          loading={isLoading}
+          rowKey="clientId"
+          emptyText="Нет задолженностей"
+          renderCard={(record) => (
+            <Card size="small">
+              <div style={{ marginBottom: 8 }}>
+                <Link to={`/clients/${record.clientId}`} style={{ fontWeight: 600, fontSize: 15 }}>
+                  {record.clientName}
+                </Link>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Typography.Text type="secondary">Общий долг</Typography.Text>
+                <span style={{ color: record.totalDebt < 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
+                  {record.totalDebt < 0 ? `−${formatUZS(Math.abs(record.totalDebt))}` : formatUZS(record.totalDebt)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Typography.Text type="secondary">Сделок</Typography.Text>
+                <Typography.Text>{record.dealsCount}</Typography.Text>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Typography.Text type="secondary">Последний платёж</Typography.Text>
+                <Typography.Text>{record.lastPaymentDate ? dayjs(record.lastPaymentDate).format('DD.MM.YYYY') : '\u2014'}</Typography.Text>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                {record.paymentStatus === 'PARTIAL' ? <Tag color="orange">Частично</Tag> : <Tag color="default">Не оплачено</Tag>}
+              </div>
+            </Card>
+          )}
+        />
+      ) : (
+        <Table
+          dataSource={filtered}
+          columns={columns}
+          rowKey="clientId"
+          loading={isLoading}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          size="middle"
+          bordered={false}
+          locale={{ emptyText: 'Нет задолженностей' }}
+          onRow={(_record) => ({
+            style: { cursor: 'pointer' },
+          })}
+        />
+      )}
     </div>
   );
 }

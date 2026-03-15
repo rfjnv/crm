@@ -1,4 +1,5 @@
-import { Steps } from 'antd';
+import { Steps, Tag, Progress, Typography } from 'antd';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { DealStatus } from '../types';
 
 const pipelineSteps: { status: DealStatus; label: string }[] = [
@@ -17,7 +18,50 @@ const statusToStep: Partial<Record<DealStatus, DealStatus>> = {
   FINANCE_APPROVED: 'WAITING_FINANCE',
 };
 
+function MobilePipeline({ status }: { status: DealStatus }) {
+  if (status === 'CANCELED') {
+    return <Tag color="error" style={{ fontSize: 14, padding: '4px 12px' }}>Отменена</Tag>;
+  }
+  if (status === 'REJECTED') {
+    return <Tag color="error" style={{ fontSize: 14, padding: '4px 12px' }}>Отклонена</Tag>;
+  }
+
+  const mappedStatus = statusToStep[status] || status;
+  let currentIndex = pipelineSteps.findIndex((s) => s.status === mappedStatus);
+  if (currentIndex === -1) currentIndex = 0;
+  const isClosed = status === 'CLOSED';
+  const total = pipelineSteps.length;
+  const step = isClosed ? total : currentIndex + 1;
+  const percent = Math.round((step / total) * 100);
+  const currentLabel = pipelineSteps[currentIndex]?.label || '';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Progress
+        type="circle"
+        percent={percent}
+        size={44}
+        format={() => `${step}/${total}`}
+        status={isClosed ? 'success' : 'active'}
+        strokeWidth={8}
+      />
+      <div>
+        <Typography.Text strong style={{ fontSize: 14 }}>{currentLabel}</Typography.Text>
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Этап {step} из {total}
+          </Typography.Text>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DealPipeline({ status }: { status: DealStatus }) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) return <MobilePipeline status={status} />;
+
   if (status === 'CANCELED') {
     return (
       <Steps

@@ -11,6 +11,7 @@ import {
 import { tasksApi } from '../api/tasks.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { Task, TaskStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -33,6 +34,7 @@ export default function TasksPage() {
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const isMobile = useIsMobile();
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['tasks'],
@@ -288,7 +290,7 @@ export default function TasksPage() {
         title={detailTask?.title}
         open={!!detailTask}
         onClose={() => setDetailTask(null)}
-        width={480}
+        width={isMobile ? '100%' : 480}
         extra={
           detailTask && (isAdmin || detailTask.createdById === user?.id) ? (
             <Popconfirm title="Удалить задачу?" onConfirm={() => deleteMut.mutate(detailTask.id)}>

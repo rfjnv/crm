@@ -8,10 +8,12 @@ import {
 import { SendOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
 export default function ShipmentPage() {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
   const [shipmentModal, setShipmentModal] = useState<string | null>(null);
@@ -129,6 +131,7 @@ export default function ShipmentPage() {
         pagination={false}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
         locale={{ emptyText: 'Нет сделок для отгрузки' }}
         expandable={{
           expandedRowRender: (record: Deal) => {
@@ -181,7 +184,7 @@ export default function ShipmentPage() {
         confirmLoading={shipmentMut.isPending}
         okText="Отгрузить"
         cancelText="Отмена"
-        width={500}
+        width={isMobile ? '100%' : 500}
       >
         <Form
           form={shipmentForm}

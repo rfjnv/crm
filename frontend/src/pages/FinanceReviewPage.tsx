@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Typography, Button, Space, Tag, Modal, Input, message, theme,
+  Table, Typography, Button, Space, Tag, Modal, Input, message, theme, Card,
 } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Deal } from '../types';
 import dayjs from 'dayjs';
 
@@ -29,6 +31,7 @@ const paymentMethodLabels: Record<string, string> = {
 type FinanceDeal = Deal & { clientDebt: number };
 
 export default function FinanceReviewPage() {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
 
@@ -155,6 +158,37 @@ export default function FinanceReviewPage() {
         {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
       </Typography.Title>
 
+      {isMobile ? (
+        <MobileCardList
+          data={list}
+          rowKey="id"
+          loading={isLoading}
+          renderCard={(deal: FinanceDeal) => (
+            <Card size="small" bordered>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
+                  <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                </div>
+                <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
+              </div>
+              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
+                {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+              </div>
+              {deal.clientDebt > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <Typography.Text style={{ color: token.colorError, fontSize: 12 }}>Долг клиента: {formatUZS(deal.clientDebt)}</Typography.Text>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                <Button type="primary" size="small" icon={<CheckOutlined />} loading={approveMut.isPending} onClick={() => approveMut.mutate(deal.id)}>Одобрить</Button>
+                <Button danger size="small" icon={<CloseOutlined />} onClick={() => { setRejectModal(deal.id); setRejectReason(''); }}>Отклонить</Button>
+              </div>
+            </Card>
+          )}
+        />
+      ) : (
       <Table
         dataSource={list}
         columns={columns}
@@ -163,6 +197,7 @@ export default function FinanceReviewPage() {
         pagination={false}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
         locale={{ emptyText: 'Нет сделок на проверке' }}
         summary={() => {
           if (list.length === 0) return null;
@@ -180,6 +215,7 @@ export default function FinanceReviewPage() {
           );
         }}
       />
+      )}
 
       <Modal
         title="Отклонить сделку"

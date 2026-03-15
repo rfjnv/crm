@@ -14,6 +14,7 @@ import {
 import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import { useThemeStore } from '../store/themeStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
@@ -74,6 +75,7 @@ export default function HistoryAnalyticsPage() {
   const isDark = mode === 'dark';
   const SEGMENT_COLORS = isDark ? SEGMENT_COLORS_DARK : SEGMENT_COLORS_LIGHT;
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   // ── All hooks before any conditional return ──
   const [activeTab, setActiveTab] = useState('overview');
@@ -545,7 +547,7 @@ export default function HistoryAnalyticsPage() {
       <Card title={<><CalendarOutlined /> Матрица активности клиентов</>} size="small"
         extra={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Input.Search placeholder="Поиск..." allowClear style={{ width: 200 }} onSearch={setActivitySearch} onChange={(e) => !e.target.value && setActivitySearch('')} />
+            <Input.Search placeholder="Поиск..." allowClear style={{ width: isMobile ? '100%' : 200 }} onSearch={setActivitySearch} onChange={(e) => !e.target.value && setActivitySearch('')} />
             <Select mode="multiple" placeholder="Выбрать клиентов" allowClear style={{ minWidth: 200 }} maxTagCount={2}
               value={selectedClients} onChange={setSelectedClients}
               options={(clientActivity || []).map((c) => ({ label: c.companyName, value: c.clientId }))}
@@ -936,6 +938,7 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Топ-20 товаров (без цены)" size="small">
             <Table dataSource={dataQuality.topProducts} rowKey="id" size="small" pagination={false}
+              scroll={{ x: 600 }}
               columns={[
                 { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
                 { title: 'Товар', dataIndex: 'name', key: 'name', ellipsis: true },
@@ -965,7 +968,7 @@ export default function HistoryAnalyticsPage() {
       <Card title="Проблемные строки (qty > 0, цена = 0)" size="small"
         extra={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Input.Search placeholder="Поиск..." allowClear style={{ width: 200 }} onSearch={setDqSearch} onChange={(e) => !e.target.value && setDqSearch('')} />
+            <Input.Search placeholder="Поиск..." allowClear style={{ width: isMobile ? '100%' : 200 }} onSearch={setDqSearch} onChange={(e) => !e.target.value && setDqSearch('')} />
             <Select mode="multiple" placeholder="Тип операции" allowClear style={{ minWidth: 160 }} maxTagCount={2}
               value={dqOpTypeFilter} onChange={setDqOpTypeFilter}
               options={Object.entries(OP_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))} />

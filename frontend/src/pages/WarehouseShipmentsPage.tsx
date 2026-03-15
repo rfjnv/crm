@@ -8,10 +8,12 @@ import {
 import { EyeOutlined, TruckOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
 export default function WarehouseShipmentsPage() {
+  const isMobile = useIsMobile();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [search, setSearch] = useState('');
@@ -187,7 +189,7 @@ export default function WarehouseShipmentsPage() {
 
         <Input.Search
           placeholder="Поиск по накладной, клиенту, транспорту..."
-          style={{ width: 350 }}
+          style={{ width: isMobile ? '100%' : 350 }}
           allowClear
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -199,6 +201,7 @@ export default function WarehouseShipmentsPage() {
         columns={columns}
         rowKey="id"
         loading={isLoading}
+        scroll={{ x: 600 }}
         pagination={{
           current: page,
           pageSize: limit,
@@ -233,7 +236,7 @@ export default function WarehouseShipmentsPage() {
           setDrawerOpen(false);
           setSelectedDeal(null);
         }}
-        width={600}
+        width={isMobile ? '100%' : 600}
         loading={detailLoading}
       >
         {dealDetail && (

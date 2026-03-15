@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space, theme } from 'antd';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space, theme, Card } from 'antd';
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Product } from '../types';
 import dayjs from 'dayjs';
 
@@ -25,6 +27,7 @@ export default function WarehousePage() {
   const user = useAuthStore((s) => s.user);
   const canCorrectStock = user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_MANAGER';
   const { token: tk } = theme.useToken();
+  const isMobile = useIsMobile();
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
@@ -215,14 +218,14 @@ export default function WarehousePage() {
         <Input.Search
           placeholder="Поиск по названию или артикулу"
           allowClear
-          style={{ width: 280 }}
+          style={{ width: isMobile ? '100%' : 280 }}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
         />
         <Select
           value={stockFilter}
           onChange={setStockFilter}
-          style={{ width: 180 }}
+          style={{ width: isMobile ? '100%' : 180 }}
           options={[
             { label: 'Все остатки', value: 'all' },
             { label: 'Нет на складе (0)', value: 'zero' },
@@ -235,13 +238,13 @@ export default function WarehousePage() {
           onChange={setUnitFilter}
           allowClear
           placeholder="Ед. измерения"
-          style={{ width: 160 }}
+          style={{ width: isMobile ? '100%' : 160 }}
           options={uniqueUnits.map((u) => ({ label: u, value: u }))}
         />
         <Select
           value={activeFilter}
           onChange={setActiveFilter}
-          style={{ width: 160 }}
+          style={{ width: isMobile ? '100%' : 160 }}
           options={[
             { label: 'Все товары', value: 'all' },
             { label: 'Активные', value: 'active' },
@@ -250,20 +253,80 @@ export default function WarehousePage() {
         />
       </div>
 
-      <Table
-        dataSource={filteredProducts}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{
-          defaultPageSize: 30,
-          showSizeChanger: true,
-          pageSizeOptions: ['10', '20', '30', '50', '100'],
-          showTotal: (total) => `Всего: ${total}`,
-        }}
-        size="middle"
-        rowClassName={(r) => Number(r.stock) < Number(r.minStock) ? 'low-stock-row' : ''}
-      />
+      {isMobile ? (
+        <MobileCardList<Product>
+          data={filteredProducts}
+          loading={isLoading}
+          rowKey="id"
+          emptyText="Нет товаров"
+          renderCard={(record) => {
+            const stock = Number(record.stock);
+            const min = Number(record.minStock);
+            let stockColor = '#52c41a';
+            if (stock === 0) stockColor = '#ff4d4f';
+            else if (stock < min) stockColor = '#faad14';
+            return (
+              <Card size="small">
+                <div style={{ marginBottom: 6 }}>
+                  <Typography.Text strong style={{ fontSize: 15 }}>{record.name}</Typography.Text>
+                </div>
+                <div style={{ marginBottom: 6 }}>
+                  <Tag>{record.sku}</Tag>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Typography.Text type="secondary">Остаток</Typography.Text>
+                  <span style={{ fontWeight: 600, color: stockColor }}>{stock}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Typography.Text type="secondary">Ед.</Typography.Text>
+                  <Typography.Text>{record.unit}</Typography.Text>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Typography.Text type="secondary">Статус</Typography.Text>
+                  {stock === 0 ? <Tag color="red">Нет на складе</Tag> : stock < min ? <Tag color="orange">Мало</Tag> : <Tag color="green">В норме</Tag>}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'].includes(user?.role ?? '') && (
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => { setSelectedProduct(record); form.setFieldsValue({ productId: record.id }); setInModal(true); }}
+                    >
+                      Приход
+                    </Button>
+                  )}
+                  {canCorrectStock && (
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => { setCorrectProduct(record); correctForm.setFieldsValue({ newStock: Number(record.stock) }); }}
+                    >
+                      Коррекция
+                    </Button>
+                  )}
+                  <Button size="small" onClick={() => setMovementsProduct(record)}>История</Button>
+                </div>
+              </Card>
+            );
+          }}
+        />
+      ) : (
+        <Table
+          dataSource={filteredProducts}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{
+            defaultPageSize: 30,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '30', '50', '100'],
+            showTotal: (total) => `Всего: ${total}`,
+          }}
+          size="middle"
+          rowClassName={(r) => Number(r.stock) < Number(r.minStock) ? 'low-stock-row' : ''}
+        />
+      )}
 
       {/* Income Modal */}
       <Modal
@@ -304,7 +367,7 @@ export default function WarehousePage() {
         open={!!movementsProduct}
         onCancel={() => setMovementsProduct(null)}
         footer={null}
-        width={700}
+        width={isMobile ? '100%' : 700}
       >
         <Table
           dataSource={movements ?? []}
@@ -312,6 +375,7 @@ export default function WarehousePage() {
           rowKey="id"
           pagination={{ pageSize: 15 }}
           size="small"
+          scroll={{ x: 600 }}
         />
       </Modal>
 

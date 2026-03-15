@@ -12,6 +12,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { formatUZS, moneyFormatter } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const PERIODS = [
   { label: 'Месяц', value: 30 },
@@ -20,6 +21,7 @@ const PERIODS = [
 ];
 
 export default function ProductDetailPage() {
+  const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token: tk } = theme.useToken();
@@ -65,8 +67,8 @@ export default function ProductDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', marginBottom: 16, gap: 8 }}>
+        <Space wrap>
           <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/inventory/products')} />
           <Typography.Title level={4} style={{ margin: 0 }}>{p.name}</Typography.Title>
           <Tag>{p.sku}</Tag>
@@ -82,7 +84,7 @@ export default function ProductDetailPage() {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Product Info */}
         <Card size="small" bordered={false}>
-          <Descriptions column={4} size="small">
+          <Descriptions column={{ xs: 2, sm: 4 }} size="small">
             <Descriptions.Item label="Ед. изм.">{p.unit}</Descriptions.Item>
             <Descriptions.Item label="Категория">{p.category || '—'}</Descriptions.Item>
             <Descriptions.Item label="Формат">{p.format || '—'}</Descriptions.Item>
@@ -100,22 +102,22 @@ export default function ProductDetailPage() {
 
         {/* Key Metrics */}
         <Row gutter={[12, 12]}>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Выручка" value={sales.totalRevenue} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Продано" value={sales.totalQuantitySold} suffix={p.unit} />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Сделок" value={sales.dealsUsing} />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Ср. цена" value={sales.avgPricePerUnit} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
@@ -126,13 +128,13 @@ export default function ProductDetailPage() {
         {isSuperAdmin && profitability.totalRevenue > 0 && (
           <Card title="Рентабельность" size="small" bordered={false}>
             <Row gutter={12}>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Statistic title="Себестоимость" value={profitability.totalCost} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Statistic title="Выручка" value={profitability.totalRevenue} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Statistic
                   title="Валовая прибыль"
                   value={profitability.grossProfit}
@@ -141,7 +143,7 @@ export default function ProductDetailPage() {
                   valueStyle={{ color: profitability.grossProfit >= 0 ? '#52c41a' : '#ff4d4f' }}
                 />
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Statistic
                   title="Маржа"
                   value={profitability.marginPercent}
@@ -229,6 +231,7 @@ export default function ProductDetailPage() {
             size="small"
             loading={movLoading}
             pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: ['10', '15', '30', '50'] }}
+            scroll={{ x: 600 }}
             columns={[
               {
                 title: 'Дата',

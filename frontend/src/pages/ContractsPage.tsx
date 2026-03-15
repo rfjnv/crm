@@ -18,8 +18,10 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ContractListItem, ContractDetail, DealStatus } from '../types';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function ContractsPage() {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const canManageContracts = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
@@ -271,7 +273,7 @@ export default function ContractsPage() {
             showSearch
             optionFilterProp="label"
             placeholder="Фильтр по клиенту"
-            style={{ width: 250 }}
+            style={{ width: isMobile ? '100%' : 250 }}
             value={filterClient}
             onChange={setFilterClient}
             options={clientOptions}
@@ -303,6 +305,7 @@ export default function ContractsPage() {
         pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
       />
 
       {/* Create Contract Modal */}
@@ -314,7 +317,7 @@ export default function ContractsPage() {
         confirmLoading={createMut.isPending}
         okText="Создать"
         cancelText="Отмена"
-        width={520}
+        width={isMobile ? '100%' : 520}
       >
         <Form form={form} layout="vertical" onFinish={handleCreateFinish}>
           <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
@@ -353,7 +356,7 @@ export default function ContractsPage() {
         confirmLoading={updateMut.isPending}
         okText="Сохранить"
         cancelText="Отмена"
-        width={520}
+        width={isMobile ? '100%' : 520}
       >
         <Form form={form} layout="vertical" onFinish={handleEditFinish}>
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
@@ -393,7 +396,7 @@ export default function ContractsPage() {
         title={contractDetail ? `Договор ${contractDetail.contractNumber}` : 'Договор'}
         open={!!detailId}
         onClose={() => setDetailId(null)}
-        width={640}
+        width={isMobile ? '100%' : 640}
         loading={detailLoading}
       >
         {contractDetail && <ContractDetailView detail={contractDetail} onPay={openPaymentModal} />}
@@ -408,7 +411,7 @@ export default function ContractsPage() {
         confirmLoading={payMut.isPending}
         okText="Внести"
         cancelText="Отмена"
-        width={400}
+        width={isMobile ? '100%' : 400}
       >
         <Form form={payForm} layout="vertical" onFinish={handlePayment}>
           <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]}>

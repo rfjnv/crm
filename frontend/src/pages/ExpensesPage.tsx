@@ -20,6 +20,8 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { expensesApi } from '../api/expenses.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Expense } from '../types';
 
 const EXPENSE_CATEGORIES = [
@@ -38,6 +40,7 @@ export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const canDelete = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const isMobile = useIsMobile();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -151,7 +154,7 @@ export default function ExpensesPage() {
           Расходы
         </Typography.Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          Добавить
+          {isMobile ? '' : 'Добавить'}
         </Button>
       </div>
 
@@ -163,26 +166,54 @@ export default function ExpensesPage() {
             format="DD.MM.YYYY"
             placeholder={['С', 'По']}
             allowClear
+            style={{ width: isMobile ? '100%' : undefined }}
           />
           <Select
             placeholder="Категория"
             value={categoryFilter}
             onChange={(v) => setCategoryFilter(v)}
             allowClear
-            style={{ width: 180 }}
+            style={{ width: isMobile ? '100%' : 180 }}
             options={EXPENSE_CATEGORIES.map((c) => ({ label: c, value: c }))}
           />
         </Space>
 
-        <Table
-          dataSource={expenses}
-          columns={columns}
-          rowKey="id"
-          loading={isLoading}
-          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-          size="middle"
-          locale={{ emptyText: 'Нет расходов' }}
-        />
+        {isMobile ? (
+          <MobileCardList
+            data={expenses}
+            rowKey="id"
+            loading={isLoading}
+            renderCard={(item: Expense) => (
+              <Card size="small" bordered>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <Typography.Text strong>{item.category}</Typography.Text>
+                    <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.date).format('DD.MM.YYYY')}</Typography.Text></div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Typography.Text strong>{formatUZS(item.amount)}</Typography.Text>
+                    {canDelete && (
+                      <Popconfirm title="Удалить расход?" onConfirm={() => deleteMutation.mutate(item.id)} okText="Да" cancelText="Нет">
+                        <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                      </Popconfirm>
+                    )}
+                  </div>
+                </div>
+                {item.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>{item.note}</Typography.Text></div>}
+              </Card>
+            )}
+          />
+        ) : (
+          <Table
+            dataSource={expenses}
+            columns={columns}
+            rowKey="id"
+            loading={isLoading}
+            pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+            size="middle"
+            locale={{ emptyText: 'Нет расходов' }}
+          />
+        )}
 
         <div style={{ marginTop: 16, textAlign: 'right' }}>
           <Typography.Text strong style={{ fontSize: 16 }}>
@@ -202,6 +233,7 @@ export default function ExpensesPage() {
         confirmLoading={createMutation.isPending}
         okText="Добавить"
         cancelText="Отмена"
+        width={isMobile ? '100%' : 520}
       >
         <Form form={form} layout="vertical">
           <Form.Item name="date" label="Дата" rules={[{ required: true, message: 'Выберите дату' }]}>

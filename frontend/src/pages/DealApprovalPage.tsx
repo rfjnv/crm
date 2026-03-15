@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Tag, Button, Modal, Input, message, Space, Badge } from 'antd';
+import { Table, Typography, Tag, Button, Modal, Input, message, Space, Badge, Card } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCardList from '../components/MobileCardList';
 import type { Deal, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -15,6 +17,7 @@ const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string 
 };
 
 export default function DealApprovalPage() {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectDealId, setRejectDealId] = useState<string | null>(null);
@@ -154,6 +157,31 @@ export default function DealApprovalPage() {
         </Space>
       </div>
 
+      {isMobile ? (
+        <MobileCardList
+          data={deals ?? []}
+          rowKey="id"
+          loading={isLoading}
+          renderCard={(deal: Deal) => (
+            <Card size="small" bordered>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
+                  <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                </div>
+                <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                <Space size="small">
+                  <Button type="primary" icon={<CheckOutlined />} size="small" loading={approveMutation.isPending} onClick={() => approveMutation.mutate(deal.id)}>OK</Button>
+                  <Button danger icon={<CloseOutlined />} size="small" onClick={() => handleRejectClick(deal.id)} />
+                </Space>
+              </div>
+            </Card>
+          )}
+        />
+      ) : (
       <Table
         dataSource={deals ?? []}
         columns={columns}
@@ -162,8 +190,10 @@ export default function DealApprovalPage() {
         pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
         locale={{ emptyText: 'Нет сделок, ожидающих одобрения' }}
       />
+      )}
 
       <Modal
         title="Отклонить сделку"

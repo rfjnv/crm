@@ -7,10 +7,12 @@ import {
 } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
 export default function StockConfirmationPage() {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [respondModal, setRespondModal] = useState<Deal | null>(null);
   const [respondForm] = Form.useForm();
@@ -106,6 +108,7 @@ export default function StockConfirmationPage() {
         pagination={false}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
         locale={{ emptyText: 'Нет сделок для ответа' }}
         expandable={{
           expandedRowRender: (record: Deal) => {
@@ -138,7 +141,7 @@ export default function StockConfirmationPage() {
         confirmLoading={respondMut.isPending}
         okText="Ответить"
         cancelText="Отмена"
-        width={700}
+        width={isMobile ? '100%' : 700}
       >
         <Form form={respondForm} layout="vertical" onFinish={(values) => {
           if (!respondModal) return;

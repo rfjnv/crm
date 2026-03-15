@@ -12,6 +12,7 @@ import { clientsApi } from '../api/clients.api';
 import { inventoryApi } from '../api/warehouse.api';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { Product, DealStatus } from '../types';
 import dayjs from 'dayjs';
@@ -83,6 +84,7 @@ export default function DealCreatePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const { token: tk } = theme.useToken();
+  const isMobile = useIsMobile();
 
   const [clientId, setClientId] = useState<string>();
   const [title, setTitle] = useState('');
@@ -262,7 +264,7 @@ export default function DealCreatePage() {
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Card title="Основное" bordered={false}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
               <Select showSearch placeholder="Выберите клиента" optionFilterProp="label" style={{ width: '100%' }}

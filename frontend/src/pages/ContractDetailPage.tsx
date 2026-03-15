@@ -19,6 +19,7 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
   ? new URL(import.meta.env.VITE_API_URL).origin
@@ -42,6 +43,7 @@ function canPreview(mimeType: string) {
 }
 
 export default function ContractDetailPage() {
+  const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -199,7 +201,7 @@ export default function ContractDetailPage() {
           Договор {contract.contractNumber}
         </Typography.Title>
 
-        <Descriptions column={2} bordered size="small" style={{ marginBottom: 24 }}>
+        <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small" style={{ marginBottom: 24 }}>
           <Descriptions.Item label="Клиент">
             <Link to={`/clients/${contract.clientId}`}>{contract.client?.companyName}</Link>
           </Descriptions.Item>
@@ -217,22 +219,22 @@ export default function ContractDetailPage() {
         </Descriptions>
 
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Сумма договора" value={Number(contract.amount)} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Сумма сделок" value={contract.totalAmount} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Оплачено" value={contract.totalPaid} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} />
             </Card>
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic title="Остаток" value={contract.remaining} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: contract.remaining > 0 ? '#ff4d4f' : '#52c41a' }} />
             </Card>
@@ -247,6 +249,7 @@ export default function ContractDetailPage() {
           size="small"
           pagination={false}
           style={{ marginBottom: 24 }}
+          scroll={{ x: 600 }}
           columns={[
             { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link> },
             { title: 'Статус', dataIndex: 'status', width: 140, render: (v: DealStatus) => <DealStatusTag status={v} /> },
@@ -277,6 +280,7 @@ export default function ContractDetailPage() {
             size="small"
             pagination={false}
             style={{ marginBottom: 24 }}
+            scroll={{ x: 600 }}
             columns={[
               { title: '#', width: 50, render: (_: unknown, __: unknown, i: number) => i + 1 },
               { title: 'Наименование', dataIndex: 'name' },

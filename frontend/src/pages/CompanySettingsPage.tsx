@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import { UploadOutlined, SaveOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { CompanySettings } from '../types';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
@@ -13,6 +14,7 @@ const BACKEND_URL = import.meta.env.VITE_API_URL
 export default function CompanySettingsPage() {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['company-settings'],
@@ -86,7 +88,7 @@ export default function CompanySettingsPage() {
             <Input placeholder="ООО Polygraph Business" />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <Form.Item label="ИНН" name="inn">
               <Input placeholder="123456789" />
             </Form.Item>
@@ -99,7 +101,7 @@ export default function CompanySettingsPage() {
             <Input placeholder="г. Ташкент, ул. ..." />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <Form.Item label="Телефон" name="phone">
               <Input placeholder="+998 ..." />
             </Form.Item>
@@ -115,7 +117,7 @@ export default function CompanySettingsPage() {
             <Input placeholder="АКБ ..." />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <Form.Item label="Расчётный счёт" name="bankAccount">
               <Input placeholder="20208000..." />
             </Form.Item>

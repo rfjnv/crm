@@ -6,12 +6,13 @@ import {
 } from 'antd';
 import {
   SendOutlined, PaperClipOutlined, CloseOutlined, CheckOutlined, MoreOutlined,
-  PlayCircleOutlined,
+  PlayCircleOutlined, ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { conversationsApi } from '../api/conversations.api';
 import { API_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import type { ConversationType, Conversation, ChatMessage, MessageAttachmentInfo } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
@@ -52,7 +53,9 @@ function isVideoMime(mime: string): boolean {
 export default function MessagesPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const isMobile = useIsMobile();
   const [activeType, setActiveType] = useState<ConversationType | null>(null);
+  const [showChat, setShowChat] = useState(false);
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
@@ -199,6 +202,7 @@ export default function MessagesPage() {
   const handleSearchSelect = (msg: ChatMessage) => {
     setSearchQuery('');
     setActiveType(msg.conversationType);
+    if (isMobile) setShowChat(true);
   };
 
   const canEditOrDelete = (msg: ChatMessage) =>
@@ -346,7 +350,7 @@ export default function MessagesPage() {
                 }}
               >
                 <div style={{ fontWeight: 600 }}>{msg.replyTo.sender?.fullName}</div>
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: isMobile ? '80%' : 300 }}>
                   {msg.replyTo.isDeleted ? 'Сообщение удалено' : msg.replyTo.text}
                 </div>
               </div>
@@ -393,11 +397,12 @@ export default function MessagesPage() {
 
   // ── Render ──
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 130px)', gap: 0 }}>
+    <div style={{ display: 'flex', height: isMobile ? 'calc(100vh - 186px)' : 'calc(100vh - 130px)', gap: 0 }}>
       {/* Left Panel */}
+      {(!isMobile || !showChat) && (
       <div
         style={{
-          width: 280, minWidth: 280,
+          width: isMobile ? '100%' : 280, minWidth: isMobile ? undefined : 280,
           borderRight: `1px solid ${tk.colorBorderSecondary}`,
           display: 'flex', flexDirection: 'column',
           background: tk.colorBgContainer,
@@ -419,7 +424,7 @@ export default function MessagesPage() {
           {(conversations ?? []).map((conv: Conversation) => (
             <div
               key={conv.type}
-              onClick={() => { setActiveType(conv.type); setSearchQuery(''); }}
+              onClick={() => { setActiveType(conv.type); setSearchQuery(''); if (isMobile) setShowChat(true); }}
               style={{
                 padding: '12px 16px', cursor: 'pointer',
                 borderBottom: `1px solid ${tk.colorBorderSecondary}`,
@@ -452,12 +457,14 @@ export default function MessagesPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Right Panel */}
+      {(!isMobile || showChat) && (
       <div
         style={{
           flex: 1, display: 'flex', flexDirection: 'column',
-          background: tk.colorBgContainer, borderRadius: '0 8px 8px 0',
+          background: tk.colorBgContainer, borderRadius: isMobile ? '8px' : '0 8px 8px 0',
         }}
       >
         {/* Header */}
@@ -469,7 +476,12 @@ export default function MessagesPage() {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}
           >
-            <Typography.Text strong style={{ fontSize: 16 }}>{CONVERSATION_LABELS[activeType]}</Typography.Text>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {isMobile && (
+                <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setShowChat(false)} />
+              )}
+              <Typography.Text strong style={{ fontSize: 16 }}>{CONVERSATION_LABELS[activeType]}</Typography.Text>
+            </div>
           </div>
         )}
 
@@ -611,6 +623,7 @@ export default function MessagesPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { Deal, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -15,6 +16,7 @@ const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string 
 };
 
 export default function ClosedDealsPage() {
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
 
   const { data: deals, isLoading } = useQuery({
@@ -49,7 +51,7 @@ export default function ClosedDealsPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>Архив закрытых сделок</Typography.Title>
         <Input.Search
           placeholder="Поиск по названию или клиенту..."
-          style={{ width: 300 }}
+          style={{ width: isMobile ? '100%' : 300 }}
           allowClear
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -65,6 +67,7 @@ export default function ClosedDealsPage() {
         size="middle"
         bordered={false}
         locale={{ emptyText: 'Нет закрытых сделок' }}
+        scroll={{ x: 600 }}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { Area } from '@ant-design/charts';
@@ -28,6 +29,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const chartTheme = isDark ? 'classicDark' : 'classic';
+  const isMobile = useIsMobile();
 
   const role = user?.role as UserRole | undefined;
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -229,6 +231,30 @@ export default function DashboardPage() {
       >
         {allStockIssues.length === 0 ? (
           <Typography.Text type="secondary">Все товары в достаточном количестве</Typography.Text>
+        ) : isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {allStockIssues.map((item) => (
+              <Card
+                key={item.id}
+                size="small"
+                style={{ borderLeft: `3px solid ${item.issue === 'zero' ? '#ff4d4f' : '#fa8c16'}`, cursor: 'pointer' }}
+                onClick={() => navigate(`/inventory/products/${item.id}`)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Typography.Text strong>{item.name}</Typography.Text>
+                    <div><Tag style={{ marginTop: 4 }}>{item.sku}</Tag></div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ color: item.issue === 'zero' ? '#ff4d4f' : '#fa8c16', fontWeight: 600, fontSize: 16 }}>
+                      {item.stock}
+                    </span>
+                    <div style={{ fontSize: 11, color: themeToken.colorTextSecondary }}>мин: {item.minStock}</div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         ) : (
           <Table
             dataSource={allStockIssues}

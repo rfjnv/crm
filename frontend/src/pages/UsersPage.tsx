@@ -8,6 +8,7 @@ import { adminApi } from '../api/admin.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 
@@ -31,6 +32,7 @@ const roleColors: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [kpiUser, setKpiUser] = useState<User | null>(null);
@@ -267,6 +269,7 @@ export default function UsersPage() {
         pagination={false}
         size="middle"
         bordered={false}
+        scroll={{ x: 600 }}
       />
 
       <Modal
@@ -277,7 +280,7 @@ export default function UsersPage() {
         confirmLoading={isPending}
         okText={isEditing ? 'Сохранить' : 'Создать'}
         cancelText="Отмена"
-        width={520}
+        width={isMobile ? '100%' : 520}
       >
         <Form form={form} layout="vertical" onFinish={handleFinish}>
           <Form.Item name="login" label="Логин" rules={[{ required: true, message: 'Обязательно' }]}>
@@ -322,7 +325,7 @@ export default function UsersPage() {
         open={!!kpiUser}
         onCancel={() => setKpiUser(null)}
         footer={null}
-        width={640}
+        width={isMobile ? '100%' : 640}
       >
         <div style={{ marginBottom: 16 }}>
           <Segmented

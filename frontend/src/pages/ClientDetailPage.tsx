@@ -14,6 +14,7 @@ import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, DealShort, PaymentStatus, AuditLog, PaymentRecord } from '../types';
@@ -52,6 +53,7 @@ export default function ClientDetailPage() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
+  const isMobile = useIsMobile();
 
   // Client-side payment status filter (no API call on change)
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL');
@@ -234,6 +236,7 @@ export default function ClientDetailPage() {
                     size="small"
                     bordered={false}
                     locale={{ emptyText: 'Нет договоров' }}
+                    scroll={{ x: 500 }}
                   />
                 </Card>
               </Space>
@@ -261,6 +264,7 @@ export default function ClientDetailPage() {
                   bordered={false}
                   columns={dealColumns}
                   locale={{ emptyText: 'Нет сделок' }}
+                  scroll={{ x: 500 }}
                   summary={() => {
                     const deals = filteredDeals.filter((d) => d.status !== 'CANCELED');
                     if (deals.length === 0) return null;
@@ -440,6 +444,7 @@ export default function ClientDetailPage() {
                   size="small"
                   bordered={false}
                   locale={{ emptyText: 'Нет платежей' }}
+                  scroll={{ x: 500 }}
                   summary={() => {
                     const list = payments ?? [];
                     if (list.length === 0) return null;
@@ -525,11 +530,11 @@ export default function ClientDetailPage() {
           <Form.Item name="contactName" label="Контактное лицо" rules={[{ required: true, message: 'Обязательное поле' }]}>
             <Input />
           </Form.Item>
-          <Space style={{ width: '100%' }} size="middle">
-            <Form.Item name="phone" label="Телефон" style={{ flex: 1 }}>
+          <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+            <Form.Item name="phone" label="Телефон" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
               <Input placeholder="+998 99 999 99 99" />
             </Form.Item>
-            <Form.Item name="email" label="Email" style={{ flex: 1 }}>
+            <Form.Item name="email" label="Email" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
               <Input />
             </Form.Item>
           </Space>
