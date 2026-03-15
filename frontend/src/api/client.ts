@@ -71,6 +71,13 @@ client.interceptors.response.use(
     try {
       const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
       useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
+      // Refresh user data so permissions stay up-to-date
+      try {
+        const meRes = await axios.get(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${data.accessToken}` },
+        });
+        useAuthStore.getState().setAuth(meRes.data, data.accessToken, data.refreshToken);
+      } catch { /* tokens already updated */ }
       processQueue(null, data.accessToken);
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
       return client(originalRequest);
