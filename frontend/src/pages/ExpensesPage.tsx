@@ -39,7 +39,7 @@ const EXPENSE_CATEGORIES = [
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const canDelete = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const canDelete = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.permissions?.includes('manage_expenses');
   const isMobile = useIsMobile();
 
   const [modalOpen, setModalOpen] = useState(false);

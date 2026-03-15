@@ -1,9 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
+import { requirePermission } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { AppError } from '../../lib/errors';
 import { createExpenseDto } from './expenses.dto';
 
 const router = Router();
@@ -13,6 +12,7 @@ router.use(authenticate);
 // ──── LIST ────
 router.get(
   '/',
+  requirePermission('manage_expenses'),
   asyncHandler(async (req: Request, res: Response) => {
     const { from, to, category } = req.query;
 
@@ -39,12 +39,8 @@ router.get(
 // ──── CREATE ────
 router.post(
   '/',
+  requirePermission('manage_expenses'),
   asyncHandler(async (req: Request, res: Response) => {
-    const role = req.user!.role as Role;
-    if (!['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'].includes(role)) {
-      throw new AppError(403, 'Недостаточно прав');
-    }
-
     const data = createExpenseDto.parse(req.body);
 
     const expense = await prisma.expense.create({
@@ -65,12 +61,8 @@ router.post(
 // ──── DELETE ────
 router.delete(
   '/:id',
+  requirePermission('manage_expenses'),
   asyncHandler(async (req: Request, res: Response) => {
-    const role = req.user!.role as Role;
-    if (!['SUPER_ADMIN', 'ADMIN'].includes(role)) {
-      throw new AppError(403, 'Только администратор может удалять расходы');
-    }
-
     const id = req.params.id as string;
     await prisma.expense.delete({ where: { id } });
     res.json({ ok: true });

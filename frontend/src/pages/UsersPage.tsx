@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, Select, Typography, message, Tag, Popconfirm, Checkbox, Tooltip, Card, Row, Col, Statistic, Segmented, Spin, theme } from 'antd';
-import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, BarChartOutlined } from '@ant-design/icons';
+import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
 import { usersApi } from '../api/users.api';
-import { adminApi } from '../api/admin.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
@@ -115,30 +114,6 @@ export default function UsersPage() {
       message.error(msg);
     },
   });
-
-  const purgeMut = useMutation({
-    mutationFn: () => adminApi.purgeData(),
-    onSuccess: () => {
-      queryClient.invalidateQueries();
-      message.success('Все данные очищены');
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка очистки';
-      message.error(msg);
-    },
-  });
-
-  function handlePurge() {
-    Modal.confirm({
-      title: 'Очистить все данные?',
-      icon: <ExclamationCircleOutlined />,
-      content: 'Будут удалены все клиенты, сделки, товары, движения склада и история. Это действие необратимо!',
-      okText: 'Да, удалить всё',
-      okType: 'danger',
-      cancelText: 'Отмена',
-      onOk: () => purgeMut.mutateAsync(),
-    });
-  }
 
   function closeModal() {
     setOpen(false);
@@ -400,17 +375,6 @@ export default function UsersPage() {
         ) : null}
       </Modal>
 
-      {isSuperAdmin && (
-        <div style={{ marginTop: 48, padding: 24, border: '1px solid #ff4d4f', borderRadius: 8 }}>
-          <Typography.Title level={5} type="danger" style={{ margin: 0 }}>Опасная зона</Typography.Title>
-          <Typography.Text type="secondary" style={{ display: 'block', margin: '8px 0 16px' }}>
-            Удалить все клиенты, сделки, товары, движения склада и историю. Пользователи не удаляются.
-          </Typography.Text>
-          <Button danger type="primary" icon={<DeleteOutlined />} loading={purgeMut.isPending} onClick={handlePurge}>
-            Очистить все данные
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

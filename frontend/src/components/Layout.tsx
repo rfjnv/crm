@@ -184,12 +184,16 @@ export default function Layout() {
     },
 
     // ── ФИНАНСЫ ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') || hasPermission('manage_expenses')
       ? [
         { type: 'divider' as const },
         ...(showGroupLabels
           ? [{ type: 'group' as const, label: 'ФИНАНСЫ' }]
           : []),
+      ]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
+      ? [
         {
           key: '/finance/debts',
           icon: <DollarOutlined />,
@@ -200,6 +204,10 @@ export default function Layout() {
           icon: <AuditOutlined />,
           label: <Link to="/finance/review">На проверке</Link>,
         },
+      ]
+      : []),
+    ...(hasPermission('manage_expenses')
+      ? [
         {
           key: '/finance/expenses',
           icon: <WalletOutlined />,

@@ -32,9 +32,6 @@ export interface OverrideDealData {
 }
 
 export const adminApi = {
-  purgeData: () =>
-    client.post<{ success: boolean; message: string }>('/admin/purge-data').then((r) => r.data),
-
   overrideDeal: (id: string, data: OverrideDealData) =>
     client.patch<Deal>(`/admin/deals/${id}/override`, data).then((r) => r.data),
 
