@@ -362,41 +362,39 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    // Compute gross/prepay using tagged "ПП:" deals for correct Excel-matching split.
-    // Regular deals (no "ПП:" prefix): per-client positive → gross, negative → prepay.
-    // "ПП:" deals: always go to prepayments (regardless of sign).
-    const [regularAgg, ppAgg] = await Promise.all([
-      prisma.$queryRaw<{ client_id: string; balance: string }[]>(
-        managerId
-          ? Prisma.sql`SELECT client_id, SUM(amount - paid_amount)::text as balance
-             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
-               AND (title IS NULL OR title NOT LIKE 'ПП:%') AND manager_id = ${managerId}
-             GROUP BY client_id`
-          : Prisma.sql`SELECT client_id, SUM(amount - paid_amount)::text as balance
-             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
-               AND (title IS NULL OR title NOT LIKE 'ПП:%')
-             GROUP BY client_id`
-      ),
-      prisma.$queryRaw<{ balance: string }[]>(
-        managerId
-          ? Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as balance
-             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
-               AND title LIKE 'ПП:%' AND manager_id = ${managerId}`
-          : Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as balance
-             FROM deals WHERE is_archived = false AND status NOT IN ('CANCELED','REJECTED')
-               AND title LIKE 'ПП:%'`
-      ),
-    ]);
+    // Compute debt totals from closingBalance (imported from Excel AB column).
+    // Debt types: K, NK, PK, F → чистый долг
+    // PP → предоплаты
+    // Общий долг = чистый долг + предоплаты
+    const debtSplit = await prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
+      managerId
+        ? Prisma.sql`
+          SELECT
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
+            COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+            AND d.manager_id = ${managerId}
+            AND di.closing_balance IS NOT NULL`
+        : Prisma.sql`
+          SELECT
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
+            COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+            AND di.closing_balance IS NOT NULL`
+    );
 
-    let grossDebt = 0;
-    let prepayments = 0;
-    for (const row of regularAgg) {
-      const bal = Number(row.balance);
-      if (bal > 0) grossDebt += bal;
-      else prepayments += bal;
-    }
-    prepayments += Number(ppAgg[0]?.balance ?? 0);
-    const netDebt = grossDebt + prepayments;
+    const split = debtSplit[0];
+    const netDebtTotal = Number(split?.net_debt ?? 0);   // Чистый долг (K+NK+PK+F)
+    const prepayments = Number(split?.pp_balance ?? 0);    // Предоплаты (PP)
+    const grossDebt = netDebtTotal + prepayments; // Общий долг
 
     res.json({
       clients,
@@ -405,7 +403,7 @@ router.get(
         dealsCount: totalDealsCount,
         grossDebt,
         prepayments,
-        totalDebt: netDebt,
+        totalDebt: netDebtTotal,
       },
     });
   }),

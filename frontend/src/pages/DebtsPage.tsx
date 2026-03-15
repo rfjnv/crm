@@ -238,13 +238,13 @@ export default function DebtsPage() {
             Сделок: {totals.dealsCount}
           </Typography.Text>
           <Typography.Text type="secondary">
-            Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(totals.grossDebt ?? 0)}</span>
+            Чистый долг: <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(totals.totalDebt)}</span>
           </Typography.Text>
           <Typography.Text type="secondary">
-            Предоплаты: <span style={{ color: '#52c41a' }}>{formatUZS(Math.abs(totals.prepayments ?? 0))}</span>
+            Предоплаты: <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatUZS(Math.abs(totals.prepayments ?? 0))}</span>
           </Typography.Text>
           <Typography.Text type="secondary">
-            Чистый долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(totals.totalDebt)}</span>
+            Общий долг: <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(totals.grossDebt ?? 0)}</span>
           </Typography.Text>
         </div>
       )}

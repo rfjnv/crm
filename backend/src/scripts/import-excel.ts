@@ -57,7 +57,9 @@ function getSheetLayout(ws: XLSX.WorkSheet) {
     index: paymentStartCol + i * 3 + 1,
     method,
   }));
-  return { paymentCols, paymentDateCol, totalCols };
+  // Closing balance (Excel AB or AA) is always one column before payment date
+  const closingBalanceCol = paymentDateCol - 1;
+  return { paymentCols, paymentDateCol, closingBalanceCol, totalCols };
 }
 
 // Column indices (stable across all layouts — columns A through J don't shift)
@@ -356,11 +358,34 @@ async function processMonth(
     return rowDate >= monthDate && rowDate < monthEnd;
   });
 
+  // Carry-forward rows: dates before this month. We need their closingBalance for debt calculation.
+  const carryForwardRows = allRows.filter((row) => {
+    const rowDate = toDate(row[COL_DATE]);
+    if (!rowDate) return false;
+    return rowDate < monthDate;
+  });
+
   const groups = groupRowsByClient(rows);
+  // Also group carry-forward rows by client
+  const cfGroups = groupRowsByClient(carryForwardRows);
 
   let dealCount = 0;
   let itemCount = 0;
   let paymentCount = 0;
+
+  // Ensure placeholder product exists for balance-only rows (no product name in Excel)
+  let placeholderProductId: string;
+  const existingPlaceholder = await prisma.product.findFirst({
+    where: { sku: 'IMPORT-BALANCE' },
+  });
+  if (existingPlaceholder) {
+    placeholderProductId = existingPlaceholder.id;
+  } else {
+    const created = await prisma.product.create({
+      data: { name: 'Баланс (без товара)', sku: 'IMPORT-BALANCE', unit: 'шт', stock: 0, minStock: 0, isActive: false },
+    });
+    placeholderProductId = created.id;
+  }
 
   for (const group of groups) {
    try {
@@ -372,7 +397,7 @@ async function processMonth(
     // Compute deal totals from items
     let dealAmount = 0;
     let totalPaid = 0;
-    const itemsData: { productId: string; qty: number; price: number; sourceOpType: string | null; isProblem: boolean }[] = [];
+    const itemsData: { productId: string; qty: number; price: number; sourceOpType: string | null; isProblem: boolean; closingBalance: number | null }[] = [];
     const paymentsData: { amount: number; method: string; paidAt: Date }[] = [];
 
     for (const row of group.rows) {
@@ -381,6 +406,8 @@ async function processMonth(
       const qty = numVal(row[COL_QTY]);
       const price = numVal(row[COL_PRICE]);
       const sourceOpType = mapOpType(row[COL_OP_TYPE]);
+      const closingBalanceRaw = row[layout.closingBalanceCol];
+      const closingBalance = closingBalanceRaw != null ? numVal(closingBalanceRaw) : null;
 
       if (productName && qty > 0) {
         const productId = productMap.get(normLower(row[COL_PRODUCT]));
@@ -394,8 +421,12 @@ async function processMonth(
             dealAmount += lineTotal;
           }
 
-          itemsData.push({ productId, qty, price, sourceOpType, isProblem });
+          itemsData.push({ productId, qty, price, sourceOpType, isProblem, closingBalance });
         }
+      } else if (!productName && closingBalance != null && closingBalance !== 0) {
+        // Row without product but with closing balance (e.g. payment-only or balance adjustment)
+        // Use placeholder product to preserve closingBalance for debt calculation
+        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, sourceOpType, isProblem: false, closingBalance });
       }
 
       // Payments — skip for EXCHANGE rows
@@ -445,30 +476,34 @@ async function processMonth(
 
     // Create deal items
     for (const item of itemsData) {
+      const actualProductId = item.productId === '__PLACEHOLDER__' ? placeholderProductId : item.productId;
       await prisma.dealItem.create({
         data: {
           dealId: deal.id,
-          productId: item.productId,
+          productId: actualProductId,
           requestedQty: item.qty,
           price: item.price,
           sourceOpType: item.sourceOpType,
+          closingBalance: item.closingBalance,
           isProblem: item.isProblem,
         },
       });
       itemCount++;
 
-      // Create inventory OUT movement
-      await prisma.inventoryMovement.create({
-        data: {
-          productId: item.productId,
-          type: 'OUT',
-          quantity: item.qty,
-          dealId: deal.id,
-          note: `Импорт: ${MONTH_NAMES_RU[monthIndex]} ${year}`,
-          createdBy: managerId,
-          createdAt: monthDate,
-        },
-      });
+      // Create inventory OUT movement (skip for balance-only placeholder items)
+      if (item.productId !== '__PLACEHOLDER__' && item.qty > 0) {
+        await prisma.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'OUT',
+            quantity: item.qty,
+            dealId: deal.id,
+            note: `Импорт: ${MONTH_NAMES_RU[monthIndex]} ${year}`,
+            createdBy: managerId,
+            createdAt: monthDate,
+          },
+        });
+      }
     }
 
     // Create payments (deduplicate same amount+method+date)
@@ -489,6 +524,110 @@ async function processMonth(
    } catch (err) {
     console.error(`  ⚠ Error processing client "${group.clientName}":`, (err as Error).message);
    }
+  }
+
+  // Process carry-forward rows: add closingBalance-only deal items to existing deals
+  // These represent opening balances carried from prior months
+  for (const cfGroup of cfGroups) {
+    try {
+      const clientId = clientMap.get(cfGroup.clientKey);
+      if (!clientId) continue;
+
+      // Find the deal for this client (created above)
+      const existingDeal = await prisma.deal.findFirst({
+        where: {
+          clientId,
+          title: { contains: `${MONTH_NAMES_RU[monthIndex]} ${year}` },
+          status: 'CLOSED',
+        },
+        select: { id: true },
+      });
+
+      if (!existingDeal) {
+        // Create a carry-forward-only deal for clients who have no March transactions
+        const managerId = managerMap.get(cfGroup.managerKey) || defaultManagerId;
+        const deal = await prisma.deal.create({
+          data: {
+            title: `${cfGroup.clientName} — ${MONTH_NAMES_RU[monthIndex]} ${year}`,
+            status: 'CLOSED',
+            amount: 0,
+            paidAmount: 0,
+            paymentStatus: 'UNPAID',
+            paymentType: 'FULL',
+            clientId,
+            managerId,
+            createdAt: monthDate,
+            updatedAt: monthDate,
+          },
+        });
+        dealCount++;
+
+        for (const row of cfGroup.rows) {
+          const productName = norm(row[COL_PRODUCT]);
+          const sourceOpType = mapOpType(row[COL_OP_TYPE]);
+          const closingBalanceRaw = row[layout.closingBalanceCol];
+          const closingBalance = closingBalanceRaw != null ? numVal(closingBalanceRaw) : null;
+
+          let productId: string;
+          if (productName) {
+            const found = productMap.get(normLower(row[COL_PRODUCT]));
+            if (!found) continue;
+            productId = found;
+          } else if (closingBalance != null && closingBalance !== 0) {
+            productId = placeholderProductId;
+          } else {
+            continue;
+          }
+
+          await prisma.dealItem.create({
+            data: {
+              dealId: deal.id,
+              productId,
+              requestedQty: 0,
+              price: 0,
+              sourceOpType,
+              closingBalance,
+              isProblem: false,
+            },
+          });
+          itemCount++;
+        }
+      } else {
+        // Add carry-forward items to the existing deal
+        for (const row of cfGroup.rows) {
+          const productName = norm(row[COL_PRODUCT]);
+          const sourceOpType = mapOpType(row[COL_OP_TYPE]);
+          const closingBalanceRaw = row[layout.closingBalanceCol];
+          const closingBalance = closingBalanceRaw != null ? numVal(closingBalanceRaw) : null;
+
+          let productId: string;
+          if (productName) {
+            const found = productMap.get(normLower(row[COL_PRODUCT]));
+            if (!found) continue;
+            productId = found;
+          } else if (closingBalance != null && closingBalance !== 0) {
+            productId = placeholderProductId;
+          } else {
+            continue;
+          }
+
+          await prisma.dealItem.create({
+            data: {
+              dealId: existingDeal.id,
+              productId,
+              requestedQty: 0,
+              price: 0,
+              sourceOpType,
+              closingBalance,
+              isProblem: false,
+            },
+          });
+          itemCount++;
+        }
+      }
+    } catch (err) {
+      console.error(`  ⚠ Error processing carry-forward for "${cfGroup.clientName}":`, (err as Error).message);
+    }
   }
 
   return { deals: dealCount, items: itemCount, payments: paymentCount };
