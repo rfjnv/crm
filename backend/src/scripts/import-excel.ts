@@ -71,6 +71,7 @@ const COL_PRODUCT = 4;
 const COL_QTY = 5;
 const COL_UNIT = 6;
 const COL_PRICE = 7;
+const COL_REVENUE = 8;    // Column I — выручка по строке
 const COL_OP_TYPE = 9;    // Column J — тип операции (к, н, н/к, п, п/к, пп, обмен, ф)
 
 // Mapping: Excel manager name (lowercase Cyrillic) → real login
@@ -394,10 +395,26 @@ async function processMonth(
 
     const managerId = managerMap.get(group.managerKey) || defaultManagerId;
 
+    // Use the earliest row date as deal createdAt so period filters align better with Excel chronology.
+    const groupRowDates = group.rows
+      .map((r) => toDate(r[COL_DATE]))
+      .filter((d): d is Date => !!d);
+    const dealCreatedAt = groupRowDates.length > 0
+      ? new Date(Math.min(...groupRowDates.map((d) => d.getTime())))
+      : monthDate;
+
     // Compute deal totals from items
     let dealAmount = 0;
     let totalPaid = 0;
-    const itemsData: { productId: string; qty: number; price: number; sourceOpType: string | null; isProblem: boolean; closingBalance: number | null }[] = [];
+    const itemsData: {
+      productId: string;
+      qty: number;
+      price: number;
+      sourceOpType: string | null;
+      isProblem: boolean;
+      closingBalance: number | null;
+      dealDate: Date | null;
+    }[] = [];
     const paymentsData: { amount: number; method: string; paidAt: Date }[] = [];
 
     for (const row of group.rows) {
@@ -405,14 +422,18 @@ async function processMonth(
       const productName = norm(row[COL_PRODUCT]);
       const qty = numVal(row[COL_QTY]);
       const price = numVal(row[COL_PRICE]);
+      const revenue = numVal(row[COL_REVENUE]);
       const sourceOpType = mapOpType(row[COL_OP_TYPE]);
       const closingBalanceRaw = row[layout.closingBalanceCol];
       const closingBalance = closingBalanceRaw != null ? numVal(closingBalanceRaw) : null;
+      const dealDate = toDate(row[COL_DATE]) || monthMid;
 
       if (productName && qty > 0) {
         const productId = productMap.get(normLower(row[COL_PRODUCT]));
         if (productId) {
-          const lineTotal = qty * price;
+          // Prefer explicit revenue from Excel column I; fallback to qty * price.
+          const lineTotal = revenue > 0 ? revenue : qty * price;
+          const effectivePrice = lineTotal > 0 ? lineTotal / qty : price;
           const isProblem = price === 0;
           const isExchange = sourceOpType === 'EXCHANGE';
 
@@ -421,12 +442,12 @@ async function processMonth(
             dealAmount += lineTotal;
           }
 
-          itemsData.push({ productId, qty, price, sourceOpType, isProblem, closingBalance });
+          itemsData.push({ productId, qty, price: effectivePrice, sourceOpType, isProblem, closingBalance, dealDate });
         }
       } else if (!productName && closingBalance != null && closingBalance !== 0) {
         // Row without product but with closing balance (e.g. payment-only or balance adjustment)
         // Use placeholder product to preserve closingBalance for debt calculation
-        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, sourceOpType, isProblem: false, closingBalance });
+        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, sourceOpType, isProblem: false, closingBalance, dealDate });
       }
 
       // Payments — skip for EXCHANGE rows
@@ -468,8 +489,8 @@ async function processMonth(
         paymentType: 'FULL',
         clientId,
         managerId,
-        createdAt: monthDate,
-        updatedAt: monthDate,
+        createdAt: dealCreatedAt,
+        updatedAt: dealCreatedAt,
       },
     });
     dealCount++;
@@ -486,6 +507,7 @@ async function processMonth(
           sourceOpType: item.sourceOpType,
           closingBalance: item.closingBalance,
           isProblem: item.isProblem,
+          dealDate: item.dealDate,
         },
       });
       itemCount++;
@@ -500,7 +522,7 @@ async function processMonth(
             dealId: deal.id,
             note: `Импорт: ${MONTH_NAMES_RU[monthIndex]} ${year}`,
             createdBy: managerId,
-            createdAt: monthDate,
+            createdAt: item.dealDate || dealCreatedAt,
           },
         });
       }

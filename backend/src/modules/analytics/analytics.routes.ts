@@ -67,18 +67,26 @@ router.get(
       topClientsRaw,
       topProductsRaw,
     ] = await Promise.all([
-      // Total revenue in period (from payments, same as Dashboard)
+      // Total revenue in period (Excel-like logic: sum line revenue by deal date)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${start}
+               AND COALESCE(di.deal_date, d.created_at) < ${end}
+               AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${start}
+               AND COALESCE(di.deal_date, d.created_at) < ${end}`
           ),
       // Avg deal amount in period (from deal items, not deal.amount which may be closingBalance)
       dealScope.managerId
@@ -109,21 +117,31 @@ router.get(
       prisma.deal.count({
         where: { ...dealScope, status: 'CANCELED', isArchived: false, createdAt: { gte: start, lt: end } },
       }),
-      // Revenue by day (from payments, same as Dashboard)
+      // Revenue by day (group by Excel row date when available)
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-               AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})
-             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(di.requested_qty * di.price)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${start}
+               AND COALESCE(di.deal_date, d.created_at) < ${end}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${start} AND p.paid_at < ${end}
-             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(di.requested_qty * di.price)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${start}
+               AND COALESCE(di.deal_date, d.created_at) < ${end}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           ),
       // Deals by status

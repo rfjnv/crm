@@ -45,46 +45,70 @@ router.get(
       revenueLast30DaysRaw,
       dealsByStatusCounts,
     ] = await Promise.all([
-      // 1. Revenue today (from payments)
+      // 1. Revenue today (Excel-style: sum deal item revenue by deal date)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfToday} AND p.paid_at < ${startOfTomorrow}
-             AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfToday} AND p.paid_at < ${startOfTomorrow}`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
           ),
 
       // 2. Revenue yesterday (for delta)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfYesterday} AND p.paid_at < ${startOfToday}
-             AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}
+               AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfYesterday} AND p.paid_at < ${startOfToday}`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}`
           ),
 
-      // 3. Revenue this month (from payments, consistent with daily)
+      // 3. Revenue this month
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfMonth} AND p.paid_at < ${startOfTomorrow}
-             AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(p.amount), 0)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${startOfMonth} AND p.paid_at < ${startOfTomorrow}`
+            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
           ),
 
       // 4. Active deals count
@@ -147,21 +171,31 @@ router.get(
         },
       }),
 
-      // 10. Revenue last 30 days (from payments)
+      // 10. Revenue last 30 days
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
-             AND p.deal_id IN (SELECT id FROM deals WHERE manager_id = ${dealScope.managerId})
-             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(di.requested_qty * di.price)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day, SUM(p.amount)::text as total
-             FROM payments p
-             WHERE p.paid_at >= ${thirtyDaysAgo} AND p.paid_at < ${startOfTomorrow}
-             GROUP BY DATE((p.paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(di.requested_qty * di.price)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status IN ('SHIPPED', 'CLOSED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
              ORDER BY day ASC`
           ),
 
