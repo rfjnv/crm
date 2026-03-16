@@ -261,7 +261,7 @@ router.get(
     }[]>(
       Prisma.sql`SELECT EXTRACT(MONTH FROM m.created_at)::int as month,
         SUM(m.quantity)::text as total_quantity,
-        COALESCE(SUM(di.price * di.requested_qty), 0)::text as total_revenue
+        COALESCE(SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0)), 0)::text as total_revenue
       FROM inventory_movements m
       LEFT JOIN deal_items di ON di.deal_id = m.deal_id AND di.product_id = m.product_id
       WHERE m.type = 'OUT' AND m.created_at >= NOW() - INTERVAL '12 months'

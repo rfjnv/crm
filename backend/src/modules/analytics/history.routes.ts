@@ -74,11 +74,13 @@ router.get(
       Prisma.sql`SELECT
         COUNT(DISTINCT d.id)::text as total_deals,
         COUNT(DISTINCT d.client_id)::text as total_clients,
-        COALESCE(SUM(di_rev.rev), 0)::text as total_revenue,
-        COALESCE(AVG(di_rev.rev), 0)::text as avg_deal
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_revenue,
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
       FROM deals d
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+      LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
+      WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+        AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
+        AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
     );
 
@@ -161,14 +163,16 @@ router.get(
       { month: number; revenue: string; active_clients: string }[]
     >(
       Prisma.sql`SELECT
-        EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
+        EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as revenue,
         COUNT(DISTINCT d.client_id)::text as active_clients
       FROM deals d
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+      LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
+      WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+        AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
+        AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      GROUP BY EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
 
@@ -238,7 +242,7 @@ router.get(
         COALESCE(SUM(di_rev.rev), 0)::text as shipped
       FROM shipments s
       JOIN deals d ON d.id = s.deal_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND s.shipped_at >= ${yearStart} AND s.shipped_at < ${yearEnd}
@@ -287,7 +291,7 @@ router.get(
         COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
@@ -317,7 +321,7 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name, p.unit,
         COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
-        COALESCE(SUM(di.price * di.requested_qty), 0)::text as total_revenue,
+        COALESCE(SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0)), 0)::text as total_revenue,
         COUNT(DISTINCT d.client_id)::text as unique_buyers
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -358,7 +362,7 @@ router.get(
         COUNT(DISTINCT d.client_id)::text as clients
       FROM deals d
       JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       LEFT JOIN (
         SELECT d2.manager_id, SUM(p.amount) as total_collected
         FROM payments p
@@ -438,7 +442,7 @@ router.get(
         c.id as client_id,
         c.company_name,
         EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(di.requested_qty * di.price), 0)::text as revenue
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as revenue
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       LEFT JOIN deal_items di ON di.deal_id = d.id
@@ -632,7 +636,7 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name,
         SUM(di.requested_qty)::text as qty,
-        SUM(di.price * di.requested_qty)::text as revenue
+        SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0))::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
@@ -656,7 +660,7 @@ router.get(
         COALESCE(SUM(di_rev.rev), 0)::text as revenue
       FROM deals d
       JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
@@ -847,7 +851,7 @@ router.get(
       Prisma.sql`WITH client_revenue AS (
         SELECT c.id, c.company_name, COALESCE(SUM(di_rev.rev), 0) as revenue
         FROM deals d JOIN clients c ON c.id = d.client_id
-        LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+        LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
         WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         GROUP BY c.id, c.company_name
@@ -933,7 +937,7 @@ router.get(
         COUNT(d.id)::text as deals_count
       FROM deals d
       JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -984,7 +988,7 @@ router.get(
           EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
           COALESCE(SUM(di_rev.rev), 0) as revenue
         FROM deals d
-        LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+        LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
         WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         GROUP BY d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -1044,7 +1048,7 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(AVG(di_rev.rev), 0)::text as avg_deal_size
       FROM deals d
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -1067,7 +1071,7 @@ router.get(
         MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_active_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name`,
@@ -1197,7 +1201,7 @@ router.get(
     >(
       Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
         COALESCE(di.requested_qty, 0)::text as qty, COALESCE(di.price, 0)::text as price,
-        (COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
+        COALESCE(di.line_total, COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
         d.title as deal_title, d.id as deal_id, d.created_at
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1254,7 +1258,7 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         SUM(di.requested_qty)::text as total_qty,
-        SUM(di.requested_qty * di.price)::text as total_revenue,
+        SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total_revenue,
         COUNT(DISTINCT d.id)::text as deals_count
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1265,7 +1269,7 @@ router.get(
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(di.requested_qty * di.price) DESC`,
+      ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC`,
     );
 
     res.json({
@@ -1649,7 +1653,7 @@ router.get(
       { total_rows: string; total_amount: string }[]
     >(
       Prisma.sql`SELECT COUNT(*)::text as total_rows,
-        COALESCE(SUM(di.requested_qty * di.price), 0)::text as total_amount
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
@@ -1665,7 +1669,7 @@ router.get(
     >(
       Prisma.sql`SELECT EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
         COUNT(*)::text as count,
-        COALESCE(SUM(di.requested_qty * di.price), 0)::text as amount
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
@@ -1683,7 +1687,7 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         COUNT(*)::text as pp_count,
-        COALESCE(SUM(di.requested_qty * di.price), 0)::text as total_amount
+        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
@@ -1693,7 +1697,7 @@ router.get(
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(di.requested_qty * di.price) DESC
+      ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC
       LIMIT 20`,
     );
 
@@ -1799,7 +1803,7 @@ router.get(
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       JOIN first_deal f ON f.client_id = d.client_id AND f.cohort_month = ${cohortMonth}
-      LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
         AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}

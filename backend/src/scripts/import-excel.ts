@@ -410,6 +410,7 @@ async function processMonth(
       productId: string;
       qty: number;
       price: number;
+      lineTotal: number;
       sourceOpType: string | null;
       isProblem: boolean;
       closingBalance: number | null;
@@ -442,12 +443,12 @@ async function processMonth(
             dealAmount += lineTotal;
           }
 
-          itemsData.push({ productId, qty, price: effectivePrice, sourceOpType, isProblem, closingBalance, dealDate });
+          itemsData.push({ productId, qty, price: effectivePrice, lineTotal, sourceOpType, isProblem, closingBalance, dealDate });
         }
       } else if (!productName && closingBalance != null && closingBalance !== 0) {
         // Row without product but with closing balance (e.g. payment-only or balance adjustment)
         // Use placeholder product to preserve closingBalance for debt calculation
-        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, sourceOpType, isProblem: false, closingBalance, dealDate });
+        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, lineTotal: 0, sourceOpType, isProblem: false, closingBalance, dealDate });
       }
 
       // Payments — skip for EXCHANGE rows
@@ -504,6 +505,7 @@ async function processMonth(
           productId: actualProductId,
           requestedQty: item.qty,
           price: item.price,
+          lineTotal: item.lineTotal,
           sourceOpType: item.sourceOpType,
           closingBalance: item.closingBalance,
           isProblem: item.isProblem,

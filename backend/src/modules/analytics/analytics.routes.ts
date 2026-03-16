@@ -67,10 +67,10 @@ router.get(
       topClientsRaw,
       topProductsRaw,
     ] = await Promise.all([
-      // Total revenue in period (Excel-like logic: sum line revenue by deal date)
+      // Total revenue in period (Excel-like logic: sum line_total by deal date)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -80,7 +80,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -88,12 +88,12 @@ router.get(
                AND COALESCE(di.deal_date, d.created_at) >= ${start}
                AND COALESCE(di.deal_date, d.created_at) < ${end}`
           ),
-      // Avg deal amount in period (from deal items, not deal.amount which may be closingBalance)
+      // Avg deal amount in period (from deal items line_total)
       dealScope.managerId
         ? prisma.$queryRaw<{ avg_amount: string }[]>(
             Prisma.sql`SELECT COALESCE(AVG(di_rev.rev), 0)::text as avg_amount
              FROM deals d
-             LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+             LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
              WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}
                AND d.manager_id = ${dealScope.managerId}`
@@ -101,7 +101,7 @@ router.get(
         : prisma.$queryRaw<{ avg_amount: string }[]>(
             Prisma.sql`SELECT COALESCE(AVG(di_rev.rev), 0)::text as avg_amount
              FROM deals d
-             LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+             LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
              WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}`
           ),
@@ -121,7 +121,7 @@ router.get(
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(di.requested_qty * di.price)::text as total
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -134,7 +134,7 @@ router.get(
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(di.requested_qty * di.price)::text as total
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -150,13 +150,13 @@ router.get(
         where: { ...dealScope, isArchived: false, createdAt: { gte: start, lt: end } },
         _count: true,
       }),
-      // Top 5 clients by revenue (from deal items qty*price, not deal.amount)
+      // Top 5 clients by revenue (from deal items line_total)
       dealScope.managerId
         ? prisma.$queryRaw<{ client_id: string; company_name: string; total_revenue: string }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, COALESCE(SUM(di_rev.rev), 0)::text as total_revenue
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+             LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}
@@ -169,7 +169,7 @@ router.get(
             Prisma.sql`SELECT c.id as client_id, c.company_name, COALESCE(SUM(di_rev.rev), 0)::text as total_revenue
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+             LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
                AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}
@@ -270,10 +270,10 @@ router.get(
         where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
         _sum: { paidAmount: true },
       }),
-      // Paper turnover (from deal items qty*price, not deal.amount)
+      // Paper turnover (from deal items line_total)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
@@ -281,7 +281,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
@@ -371,7 +371,7 @@ router.get(
            COUNT(*)::text as total_deals
          FROM deals d
          JOIN users u ON u.id = d.manager_id
-         LEFT JOIN (SELECT deal_id, SUM(requested_qty * price) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+         LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
          WHERE d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
          GROUP BY d.manager_id, u.full_name

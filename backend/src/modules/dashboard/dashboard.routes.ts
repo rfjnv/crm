@@ -45,10 +45,10 @@ router.get(
       revenueLast30DaysRaw,
       dealsByStatusCounts,
     ] = await Promise.all([
-      // 1. Revenue today (Excel-style: sum deal item revenue by deal date)
+      // 1. Revenue today (Excel-style: sum line_total from column I by deal date)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -58,7 +58,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -70,7 +70,7 @@ router.get(
       // 2. Revenue yesterday (for delta)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -80,7 +80,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -92,7 +92,7 @@ router.get(
       // 3. Revenue this month
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -102,7 +102,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(di.requested_qty * di.price), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -187,7 +187,7 @@ router.get(
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(di.requested_qty * di.price)::text as total
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -200,7 +200,7 @@ router.get(
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(di.requested_qty * di.price)::text as total
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status IN ('SHIPPED', 'CLOSED')
@@ -270,21 +270,52 @@ router.get(
     const startOfToday = new Date(Date.UTC(y, mo, dy) - TASHKENT_OFFSET);
     const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
 
-    const payments = await prisma.payment.findMany({
-      where: {
-        paidAt: { gte: startOfToday, lt: startOfTomorrow },
-      },
-      include: {
-        deal: { select: { id: true, title: true } },
-        client: { select: { id: true, companyName: true } },
-        creator: { select: { id: true, fullName: true } },
-      },
-      orderBy: { paidAt: 'desc' },
-    });
+    // Show deal items matching today's revenue (aligned with dashboard card formula)
+    const rows = await prisma.$queryRaw<{
+      id: string;
+      line_total: string;
+      deal_date: Date;
+      deal_id: string;
+      deal_title: string;
+      client_id: string;
+      company_name: string;
+      manager_id: string;
+      manager_name: string;
+      product_name: string;
+    }[]>(
+      Prisma.sql`SELECT di.id,
+                        COALESCE(di.line_total, di.requested_qty * di.price, 0)::text as line_total,
+                        COALESCE(di.deal_date, d.created_at) as deal_date,
+                        d.id as deal_id, d.title as deal_title,
+                        c.id as client_id, c.company_name,
+                        u.id as manager_id, u.full_name as manager_name,
+                        p.name as product_name
+       FROM deal_items di
+       JOIN deals d ON d.id = di.deal_id
+       JOIN clients c ON c.id = d.client_id
+       JOIN users u ON u.id = d.manager_id
+       JOIN products p ON p.id = di.product_id
+       WHERE d.status IN ('SHIPPED', 'CLOSED')
+         AND d.is_archived = false
+         AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+         AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+       ORDER BY COALESCE(di.deal_date, d.created_at) DESC`
+    );
 
-    const total = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const items = rows.map((r) => ({
+      id: r.id,
+      amount: r.line_total,
+      paidAt: r.deal_date,
+      method: null,
+      deal: { id: r.deal_id, title: r.deal_title },
+      client: { id: r.client_id, companyName: r.company_name },
+      creator: { id: r.manager_id, fullName: r.manager_name },
+      productName: r.product_name,
+    }));
 
-    res.json({ payments, total });
+    const total = items.reduce((sum, i) => sum + Number(i.amount), 0);
+
+    res.json({ payments: items, total });
   }),
 );
 

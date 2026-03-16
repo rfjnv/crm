@@ -283,6 +283,7 @@ model DealItem {
   requestedQty     Decimal?        @db.Decimal(12, 3) @map("requested_qty")
   price            Decimal?        @db.Decimal(12, 2)
   sourceOpType     String?         @map("source_op_type")
+  lineTotal        Decimal?        @db.Decimal(15, 2) @map("line_total")
   closingBalance   Decimal?        @db.Decimal(15, 2) @map("closing_balance")
   isProblem        Boolean         @default(false) @map("is_problem")
   requestComment   String?         @map("request_comment")

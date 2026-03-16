@@ -162,12 +162,15 @@ export class DealsService {
       });
 
       for (const item of dto.items) {
+        const qty = item.requestedQty ?? 0;
+        const price = item.price ?? 0;
         await tx.dealItem.create({
           data: {
             dealId: created.id,
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
+            lineTotal: qty > 0 && price > 0 ? qty * price : null,
             requestComment: item.requestComment,
           },
         });
@@ -575,6 +578,7 @@ export class DealsService {
           data: {
             requestedQty: item.requestedQty,
             price: item.price,
+            lineTotal: item.requestedQty * item.price,
           },
         });
       }
