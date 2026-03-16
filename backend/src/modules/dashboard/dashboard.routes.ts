@@ -121,31 +121,42 @@ router.get(
       }),
 
       // 5. Total debt (same as /finance/debts totals: gross = net debt + prepayments)
+      // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
       dealScope.managerId
         ? prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
-            Prisma.sql`SELECT
+            Prisma.sql`WITH latest_deals AS (
+                          SELECT DISTINCT ON (d.client_id) d.id AS deal_id
+                          FROM deals d
+                          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+                            AND d.manager_id = ${dealScope.managerId}
+                            AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+                          ORDER BY d.client_id, d.created_at DESC
+                        )
+                        SELECT
                           COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                             THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
                           COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
                             THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
                        FROM deal_items di
-                       JOIN deals d ON d.id = di.deal_id
-                       WHERE d.is_archived = false
-                         AND d.status NOT IN ('CANCELED', 'REJECTED')
-                         AND d.manager_id = ${dealScope.managerId}
-                         AND di.closing_balance IS NOT NULL`
+                       JOIN latest_deals ld ON ld.deal_id = di.deal_id
+                       WHERE di.closing_balance IS NOT NULL`
           )
         : prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
-            Prisma.sql`SELECT
+            Prisma.sql`WITH latest_deals AS (
+                          SELECT DISTINCT ON (d.client_id) d.id AS deal_id
+                          FROM deals d
+                          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+                            AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+                          ORDER BY d.client_id, d.created_at DESC
+                        )
+                        SELECT
                           COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                             THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
                           COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
                             THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
                        FROM deal_items di
-                       JOIN deals d ON d.id = di.deal_id
-                       WHERE d.is_archived = false
-                         AND d.status NOT IN ('CANCELED', 'REJECTED')
-                         AND di.closing_balance IS NOT NULL`
+                       JOIN latest_deals ld ON ld.deal_id = di.deal_id
+                       WHERE di.closing_balance IS NOT NULL`
           ),
 
       // 6. Zero stock products

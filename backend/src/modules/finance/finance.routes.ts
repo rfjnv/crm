@@ -246,28 +246,42 @@ router.get(
     }
 
     // Compute per-client debt from closingBalance (Excel AB column).
-    // This replaces the old deal.amount - deal.paidAmount approach.
+    // IMPORTANT: closing_balance is a running total per client, not an increment.
+    // We must only use the LATEST deal per client to avoid summing the same debt
+    // across multiple months.
     const perClientDebt = await prisma.$queryRaw<{ client_id: string; total_debt: string }[]>(
       managerId
         ? Prisma.sql`
-          SELECT d.client_id,
+          WITH latest_deals AS (
+            SELECT DISTINCT ON (d.client_id) d.id AS deal_id, d.client_id
+            FROM deals d
+            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+              AND d.manager_id = ${managerId}
+              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+            ORDER BY d.client_id, d.created_at DESC
+          )
+          SELECT ld.client_id,
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
           FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-            AND d.manager_id = ${managerId}
-            AND di.closing_balance IS NOT NULL
-          GROUP BY d.client_id`
+          JOIN latest_deals ld ON ld.deal_id = di.deal_id
+          WHERE di.closing_balance IS NOT NULL
+          GROUP BY ld.client_id`
         : Prisma.sql`
-          SELECT d.client_id,
+          WITH latest_deals AS (
+            SELECT DISTINCT ON (d.client_id) d.id AS deal_id, d.client_id
+            FROM deals d
+            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+            ORDER BY d.client_id, d.created_at DESC
+          )
+          SELECT ld.client_id,
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
           FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-            AND di.closing_balance IS NOT NULL
-          GROUP BY d.client_id`
+          JOIN latest_deals ld ON ld.deal_id = di.deal_id
+          WHERE di.closing_balance IS NOT NULL
+          GROUP BY ld.client_id`
     );
 
     // Build a map of per-client debt from closingBalance
@@ -375,29 +389,42 @@ router.get(
     // Debt types: K, NK, PK, F → чистый долг
     // PP → предоплаты
     // Общий долг = чистый долг + предоплаты
+    // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
     const debtSplit = await prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
       managerId
         ? Prisma.sql`
+          WITH latest_deals AS (
+            SELECT DISTINCT ON (d.client_id) d.id AS deal_id
+            FROM deals d
+            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+              AND d.manager_id = ${managerId}
+              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+            ORDER BY d.client_id, d.created_at DESC
+          )
           SELECT
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
             COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
           FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-            AND d.manager_id = ${managerId}
-            AND di.closing_balance IS NOT NULL`
+          JOIN latest_deals ld ON ld.deal_id = di.deal_id
+          WHERE di.closing_balance IS NOT NULL`
         : Prisma.sql`
+          WITH latest_deals AS (
+            SELECT DISTINCT ON (d.client_id) d.id AS deal_id
+            FROM deals d
+            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
+              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+            ORDER BY d.client_id, d.created_at DESC
+          )
           SELECT
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
             COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
           FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-            AND di.closing_balance IS NOT NULL`
+          JOIN latest_deals ld ON ld.deal_id = di.deal_id
+          WHERE di.closing_balance IS NOT NULL`
     );
 
     const split = debtSplit[0];
