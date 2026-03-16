@@ -312,7 +312,7 @@ export default function DealDetailPage() {
 
   // Contract: create new and attach to deal
   const createContractMut = useMutation({
-    mutationFn: async (data: { contractNumber: string; amount?: number; startDate: string; endDate?: string; notes?: string }) => {
+    mutationFn: async (data: { contractNumber: string; contractType?: 'ANNUAL' | 'ONE_TIME'; amount?: number; startDate: string; endDate?: string; notes?: string }) => {
       const contract = await contractsApi.create({ ...data, clientId: dealData!.clientId });
       await dealsApi.update(id!, { contractId: contract.id });
       return contract;
