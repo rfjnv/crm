@@ -66,7 +66,8 @@ app.get('/api/health', async (_req, res) => {
     // DB unreachable
   }
   const status = dbOk ? 'ok' : 'degraded';
-  res.status(dbOk ? 200 : 503).json({ status, db: dbOk, timestamp: new Date().toISOString() });
+  // Render health checks should stay green even during transient DB hiccups.
+  res.status(200).json({ status, db: dbOk, timestamp: new Date().toISOString() });
 });
 
 // Routes
