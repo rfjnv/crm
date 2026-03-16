@@ -716,17 +716,27 @@ async function main() {
     console.log(`  ** Only importing month ${onlyMonth} (${MONTH_NAMES_RU[onlyMonth - 1]}) **`);
   }
 
-  // --clean: delete existing imported deals for this year (cascade deletes items, payments, movements)
+  // --clean: delete existing imported deals for this year
   if (cleanMode) {
     console.log(`  [CLEAN] Deleting existing imported deals for ${year}...`);
     const sheetCount = Math.min(12, wb.SheetNames.length);
     for (let m = 0; m < sheetCount; m++) {
       if (onlyMonth && m !== onlyMonth - 1) continue;
-      const pattern = `% — ${MONTH_NAMES_RU[m]} ${year}`;
-      const deleted = await prisma.deal.deleteMany({
-        where: { title: { endsWith: `— ${MONTH_NAMES_RU[m]} ${year}` }, status: 'CLOSED' },
-      });
-      console.log(`  [CLEAN] ${MONTH_NAMES_RU[m]} ${year}: deleted ${deleted.count} deals`);
+      const suffix = `— ${MONTH_NAMES_RU[m]} ${year}`;
+      const dealIds = (await prisma.deal.findMany({
+        where: { title: { endsWith: suffix }, status: 'CLOSED' },
+        select: { id: true },
+      })).map(d => d.id);
+
+      if (dealIds.length > 0) {
+        // Delete dependent records that don't cascade
+        await prisma.payment.deleteMany({ where: { dealId: { in: dealIds } } });
+        await prisma.inventoryMovement.deleteMany({ where: { dealId: { in: dealIds } } });
+        await prisma.message.deleteMany({ where: { dealId: { in: dealIds } } });
+        // Now delete deals (DealItem, DealComment, Shipment cascade automatically)
+        await prisma.deal.deleteMany({ where: { id: { in: dealIds } } });
+      }
+      console.log(`  [CLEAN] ${MONTH_NAMES_RU[m]} ${year}: deleted ${dealIds.length} deals`);
     }
     console.log('');
   }
