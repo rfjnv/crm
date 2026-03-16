@@ -445,10 +445,17 @@ async function processMonth(
 
           itemsData.push({ productId, qty, price: effectivePrice, lineTotal, sourceOpType, isProblem, closingBalance, dealDate });
         }
-      } else if (!productName && closingBalance != null && closingBalance !== 0) {
-        // Row without product but with closing balance (e.g. payment-only or balance adjustment)
-        // Use placeholder product to preserve closingBalance for debt calculation
-        itemsData.push({ productId: '__PLACEHOLDER__', qty: 0, price: 0, lineTotal: 0, sourceOpType, isProblem: false, closingBalance, dealDate });
+      } else if (!productName) {
+        // Row without product name — use placeholder product.
+        // Preserve revenue (lineTotal) and closingBalance when available.
+        const lineTotal = revenue > 0 ? revenue : (qty > 0 && price > 0 ? qty * price : 0);
+        const isExchange = sourceOpType === 'EXCHANGE';
+        if (!isExchange && lineTotal > 0) {
+          dealAmount += lineTotal;
+        }
+        if (lineTotal > 0 || (closingBalance != null && closingBalance !== 0)) {
+          itemsData.push({ productId: '__PLACEHOLDER__', qty, price, lineTotal, sourceOpType, isProblem: false, closingBalance, dealDate });
+        }
       }
 
       // Payments — skip for EXCHANGE rows
