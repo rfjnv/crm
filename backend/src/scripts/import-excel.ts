@@ -447,12 +447,9 @@ async function processMonth(
         }
       } else if (!productName) {
         // Row without product name — use placeholder product.
-        // Preserve revenue (lineTotal) and closingBalance when available.
+        // lineTotal is stored for revenue queries but does NOT inflate dealAmount
+        // (these are internal operations like "ламинация цех", not client debt).
         const lineTotal = revenue > 0 ? revenue : (qty > 0 && price > 0 ? qty * price : 0);
-        const isExchange = sourceOpType === 'EXCHANGE';
-        if (!isExchange && lineTotal > 0) {
-          dealAmount += lineTotal;
-        }
         if (lineTotal > 0 || (closingBalance != null && closingBalance !== 0)) {
           itemsData.push({ productId: '__PLACEHOLDER__', qty, price, lineTotal, sourceOpType, isProblem: false, closingBalance, dealDate });
         }

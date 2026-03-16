@@ -51,7 +51,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
@@ -61,7 +61,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
@@ -73,7 +73,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}
@@ -83,7 +83,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}`
@@ -95,7 +95,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
@@ -105,7 +105,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
@@ -190,7 +190,7 @@ router.get(
                               SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
@@ -203,7 +203,7 @@ router.get(
                               SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
                AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
@@ -295,7 +295,7 @@ router.get(
        JOIN clients c ON c.id = d.client_id
        JOIN users u ON u.id = d.manager_id
        JOIN products p ON p.id = di.product_id
-       WHERE d.status IN ('SHIPPED', 'CLOSED')
+       WHERE d.status NOT IN ('CANCELED', 'REJECTED')
          AND d.is_archived = false
          AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
          AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
