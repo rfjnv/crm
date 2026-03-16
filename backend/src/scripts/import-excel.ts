@@ -686,6 +686,9 @@ async function main() {
     process.exit(1);
   }
 
+  // --clean flag: delete existing imported deals for this year before reimporting
+  const cleanMode = process.argv.includes('--clean');
+
   const filePath = path.resolve(process.cwd(), '..', fileArg);
   console.log(`Reading: ${filePath}`);
   console.log(`Year: ${year}`);
@@ -712,6 +715,22 @@ async function main() {
   if (onlyMonth) {
     console.log(`  ** Only importing month ${onlyMonth} (${MONTH_NAMES_RU[onlyMonth - 1]}) **`);
   }
+
+  // --clean: delete existing imported deals for this year (cascade deletes items, payments, movements)
+  if (cleanMode) {
+    console.log(`  [CLEAN] Deleting existing imported deals for ${year}...`);
+    const sheetCount = Math.min(12, wb.SheetNames.length);
+    for (let m = 0; m < sheetCount; m++) {
+      if (onlyMonth && m !== onlyMonth - 1) continue;
+      const pattern = `% — ${MONTH_NAMES_RU[m]} ${year}`;
+      const deleted = await prisma.deal.deleteMany({
+        where: { title: { endsWith: `— ${MONTH_NAMES_RU[m]} ${year}` }, status: 'CLOSED' },
+      });
+      console.log(`  [CLEAN] ${MONTH_NAMES_RU[m]} ${year}: deleted ${deleted.count} deals`);
+    }
+    console.log('');
+  }
+
   let totalDeals = 0;
   let totalItems = 0;
   let totalPayments = 0;
