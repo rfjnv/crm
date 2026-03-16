@@ -37,7 +37,7 @@ router.get(
       revenueYesterdayAgg,
       revenueMonthAgg,
       activeDealsCount,
-      totalDebtRaw,
+      totalDebtSplitRaw,
       zeroStockProducts,
       lowStockProducts,
       closedDealsToday,
@@ -120,20 +120,32 @@ router.get(
         },
       }),
 
-      // 5. Total debt (net = gross debt - prepayments)
+      // 5. Total debt (same as /finance/debts totals: gross = net debt + prepayments)
       dealScope.managerId
-        ? prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
-             FROM deals d
-             WHERE d.is_archived = false
-               AND d.status NOT IN ('CANCELED', 'REJECTED')
-               AND d.manager_id = ${dealScope.managerId}`
+        ? prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
+            Prisma.sql`SELECT
+                          COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
+                          COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
+                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+                       FROM deal_items di
+                       JOIN deals d ON d.id = di.deal_id
+                       WHERE d.is_archived = false
+                         AND d.status NOT IN ('CANCELED', 'REJECTED')
+                         AND d.manager_id = ${dealScope.managerId}
+                         AND di.closing_balance IS NOT NULL`
           )
-        : prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
-             FROM deals d
-             WHERE d.is_archived = false
-               AND d.status NOT IN ('CANCELED', 'REJECTED')`
+        : prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
+            Prisma.sql`SELECT
+                          COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
+                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
+                          COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
+                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+                       FROM deal_items di
+                       JOIN deals d ON d.id = di.deal_id
+                       WHERE d.is_archived = false
+                         AND d.status NOT IN ('CANCELED', 'REJECTED')
+                         AND di.closing_balance IS NOT NULL`
           ),
 
       // 6. Zero stock products
@@ -215,12 +227,17 @@ router.get(
       minStock: Number(p.min_stock),
     }));
 
+    const debtSplit = totalDebtSplitRaw[0];
+    const netDebt = Number(debtSplit?.net_debt ?? 0);
+    const prepayments = Number(debtSplit?.pp_balance ?? 0);
+    const grossDebt = netDebt + prepayments;
+
     res.json({
       revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
+      totalDebt: grossDebt,
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
