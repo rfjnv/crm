@@ -81,7 +81,6 @@ export default function HistoryAnalyticsPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [kpiDrawer, setKpiDrawer] = useState<string | null>(null);
   const [monthDrawer, setMonthDrawer] = useState<number | null>(null);
-  const [activitySearch, setActivitySearch] = useState('');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [segmentFilter, setSegmentFilter] = useState<string[]>([]);
   const [dqSearch, setDqSearch] = useState('');
@@ -174,12 +173,8 @@ export default function HistoryAnalyticsPage() {
   const filteredActivity = useMemo(() => {
     let list = data?.clientActivity || [];
     if (selectedClients.length > 0) list = list.filter((c) => selectedClients.includes(c.clientId));
-    if (activitySearch.trim()) {
-      const lower = activitySearch.trim().toLowerCase();
-      list = list.filter((c) => c.companyName.toLowerCase().includes(lower));
-    }
     return list;
-  }, [data?.clientActivity, selectedClients, activitySearch]);
+  }, [data?.clientActivity, selectedClients]);
 
   const filteredSegments = useMemo(() => {
     let list = extended?.clientSegments || [];
@@ -546,13 +541,11 @@ export default function HistoryAnalyticsPage() {
 
       <Card title={<><CalendarOutlined /> Матрица активности клиентов</>} size="small"
         extra={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Input.Search placeholder="Поиск..." allowClear style={{ width: isMobile ? '100%' : 200 }} onSearch={setActivitySearch} onChange={(e) => !e.target.value && setActivitySearch('')} />
-            <Select mode="multiple" placeholder="Выбрать клиентов" allowClear style={{ minWidth: 200 }} maxTagCount={2}
-              value={selectedClients} onChange={setSelectedClients}
-              options={(clientActivity || []).map((c) => ({ label: c.companyName, value: c.clientId }))}
-              filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())} />
-          </div>
+          <Select mode="multiple" placeholder="Поиск клиентов..." allowClear showSearch
+            style={{ width: isMobile ? '100%' : 300 }} maxTagCount={2}
+            value={selectedClients} onChange={setSelectedClients}
+            options={(clientActivity || []).map((c) => ({ label: c.companyName, value: c.clientId }))}
+            filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())} />
         }
       >
         <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -561,7 +554,44 @@ export default function HistoryAnalyticsPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5' }} /> Нет данных</span>
         </div>
-        <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={false} scroll={{ x: 900 }} />
+        {isMobile ? (
+          <div style={{ maxHeight: 500, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filteredActivity.map((record) => (
+              <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>{record.companyName}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {visibleMonths.map((m) => {
+                    const revenue = getMonthRevenue(record, m);
+                    const bgColor = getRevenueColor(revenue);
+                    const isClickable = revenue > 0;
+                    const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
+                    return (
+                      <Tooltip key={m} title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                        <div
+                          onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
+                          style={{
+                            width: 36, height: 36, borderRadius: 6, backgroundColor: bgColor,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 10, fontWeight: 500, cursor: isClickable ? 'pointer' : 'default',
+                            color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
+                          }}
+                        >
+                          {MONTH_LABELS[m]}
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                  <div style={{ display: 'flex', alignItems: 'center', marginLeft: 4 }}>
+                    <Tag color="blue" style={{ margin: 0 }}>{record.activeMonths.length} мес.</Tag>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {filteredActivity.length === 0 && <div style={{ textAlign: 'center', color: token.colorTextSecondary, padding: 24 }}>Нет данных</div>}
+          </div>
+        ) : (
+          <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={false} scroll={{ x: 900 }} />
+        )}
       </Card>
     </>
   );
