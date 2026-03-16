@@ -102,6 +102,12 @@ export const dealsApi = {
   createPayment: (dealId: string, data: { amount: number; method?: string; note?: string; paidAt?: string }) =>
     client.post<PaymentRecord>(`/deals/${dealId}/payments`, data).then((r) => r.data),
 
+  updatePayment_record: (dealId: string, paymentId: string, data: { amount?: number; method?: string | null; note?: string | null; paidAt?: string }) =>
+    client.patch<PaymentRecord>(`/deals/${dealId}/payments/${paymentId}`, data).then((r) => r.data),
+
+  deletePayment_record: (dealId: string, paymentId: string) =>
+    client.delete(`/deals/${dealId}/payments/${paymentId}`).then((r) => r.data),
+
   getDealPayments: (dealId: string) =>
     client.get<PaymentRecord[]>(`/deals/${dealId}/payments`).then((r) => r.data),
 

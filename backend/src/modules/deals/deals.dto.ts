@@ -98,6 +98,13 @@ export const createPaymentRecordDto = z.object({
   paidAt: z.string().datetime().optional(),
 });
 
+export const updatePaymentRecordDto = z.object({
+  amount: z.number().positive('Сумма должна быть положительной').optional(),
+  method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+  paidAt: z.string().datetime().optional(),
+});
+
 export type CreateDealDto = z.infer<typeof createDealDto>;
 export type UpdateDealDto = z.infer<typeof updateDealDto>;
 export type PaymentDto = z.infer<typeof paymentDto>;
@@ -110,6 +117,7 @@ export type ShipmentDto = z.infer<typeof shipmentDto>;
 export type FinanceRejectDto = z.infer<typeof financeRejectDto>;
 export type ShipmentHoldDto = z.infer<typeof shipmentHoldDto>;
 export type CreatePaymentRecordDto = z.infer<typeof createPaymentRecordDto>;
+export type UpdatePaymentRecordDto = z.infer<typeof updatePaymentRecordDto>;
 
 // ──── SUPER_ADMIN Override ────
 

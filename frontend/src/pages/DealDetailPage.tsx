@@ -24,7 +24,7 @@ import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem } from '../types';
+import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -64,6 +64,7 @@ export default function DealDetailPage() {
   const [rejectModal, setRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [paymentRecordModal, setPaymentRecordModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<{ id: string } | null>(null);
   const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [createContractModal, setCreateContractModal] = useState(false);
@@ -281,9 +282,30 @@ export default function DealDetailPage() {
   const paymentRecordMut = useMutation({
     mutationFn: (data: { amount: number; method?: string; note?: string; paidAt?: string }) =>
       dealsApi.createPayment(id!, data),
-    onSuccess: () => { invalidate(); setPaymentRecordModal(false); paymentRecordForm.resetFields(); message.success('Платёж добавлен'); },
+    onSuccess: () => { invalidate(); setPaymentRecordModal(false); setEditingPayment(null); paymentRecordForm.resetFields(); message.success('Платёж добавлен'); },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка добавления платежа';
+      message.error(msg);
+    },
+  });
+
+  const updatePaymentRecordMut = useMutation({
+    mutationFn: (data: { paymentId: string; amount?: number; method?: string | null; note?: string | null; paidAt?: string }) => {
+      const { paymentId, ...rest } = data;
+      return dealsApi.updatePayment_record(id!, paymentId, rest);
+    },
+    onSuccess: () => { invalidate(); setPaymentRecordModal(false); setEditingPayment(null); paymentRecordForm.resetFields(); message.success('Платёж обновлён'); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка обновления платежа';
+      message.error(msg);
+    },
+  });
+
+  const deletePaymentRecordMut = useMutation({
+    mutationFn: (paymentId: string) => dealsApi.deletePayment_record(id!, paymentId),
+    onSuccess: () => { invalidate(); message.success('Платёж удалён'); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления платежа';
       message.error(msg);
     },
   });
@@ -448,15 +470,15 @@ export default function DealDetailPage() {
       actions.push(
         contractMissing
           ? <Tooltip key="fin-approve" title="Сначала прикрепите договор">
-              <Button type="primary" icon={<CheckCircleOutlined />} disabled>
-                Одобрить финансы
-              </Button>
-            </Tooltip>
+            <Button type="primary" icon={<CheckCircleOutlined />} disabled>
+              Одобрить финансы
+            </Button>
+          </Tooltip>
           : <Popconfirm key="fin-approve" title="Одобрить финансы?" onConfirm={() => financeApproveMut.mutate()}>
-              <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
-                Одобрить финансы
-              </Button>
-            </Popconfirm>,
+            <Button type="primary" icon={<CheckCircleOutlined />} loading={financeApproveMut.isPending}>
+              Одобрить финансы
+            </Button>
+          </Popconfirm>,
         <Button key="fin-reject" danger icon={<CloseCircleOutlined />} onClick={() => setRejectModal(true)}>
           Отклонить
         </Button>,
@@ -770,7 +792,7 @@ export default function DealDetailPage() {
               extra={
                 !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                   <Space>
-                    <Button size="small" icon={<PlusOutlined />} onClick={() => setPaymentRecordModal(true)}>+</Button>
+                    <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
                     <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
                   </Space>
                 )
@@ -800,11 +822,25 @@ export default function DealDetailPage() {
                     <Card key={p.id} size="small" bordered>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography.Text strong>{formatUZS(p.amount)}</Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                        <Space size={4}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                          {!isReadOnly && (isAdmin || role === 'ACCOUNTANT') && (
+                            <>
+                              <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
+                                setEditingPayment({ id: p.id });
+                                paymentRecordForm.setFieldsValue({ amount: Number(p.amount), method: p.method || undefined, paidAt: dayjs(p.paidAt), note: p.note || '' });
+                                setPaymentRecordModal(true);
+                              }} />
+                              <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(p.id)}>
+                                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                              </Popconfirm>
+                            </>
+                          )}
+                        </Space>
                       </div>
                       {(p.method || p.creator?.fullName) && (
                         <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                          {p.method && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.method}</Typography.Text>}
+                          {p.method && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{paymentMethodLabels[p.method] || p.method}</Typography.Text>}
                           {p.creator?.fullName && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.creator.fullName}</Typography.Text>}
                         </div>
                       )}
@@ -989,241 +1025,256 @@ export default function DealDetailPage() {
           />
         </div>
       ) : (
-      <Tabs
-        defaultActiveKey="details"
-        items={[
-          {
-            key: 'details',
-            label: 'Детали',
-            children: (
-              <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                <Card bordered={false}>
-                  <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-                    <Descriptions.Item label="Клиент">
-                      <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Менеджер">
-                      {isAdmin ? (
-                        <Select
-                          value={deal.managerId}
-                          onChange={(val) => managerMut.mutate(val)}
-                          loading={managerMut.isPending}
-                          style={{ minWidth: 200 }}
-                          showSearch
-                          optionFilterProp="label"
-                          options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
-                        />
-                      ) : (
-                        deal.manager?.fullName
-                      )}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Сумма">
-                      {hasQuantities ? formatUZS(deal.amount) : <Typography.Text type="secondary">Не установлено</Typography.Text>}
-                    </Descriptions.Item>
-                    {deal.discount && Number(deal.discount) > 0 && (
-                      <Descriptions.Item label="Скидка">{formatUZS(deal.discount)}</Descriptions.Item>
-                    )}
-                    <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
-                    {deal.contract && (
-                      <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
-                    )}
-                    {deal.paymentMethod && (
-                      <Descriptions.Item label="Способ оплаты">
-                        <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
-                      </Descriptions.Item>
-                    )}
-                    <Descriptions.Item label="Статус">
-                      <DealStatusTag status={deal.status} />
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
-
-                {hasQuantities && (
-                  <Card
-                    title="Оплата"
-                    extra={
-                      <Space>
-                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
-                          <Button size="small" icon={<PlusOutlined />} onClick={() => setPaymentRecordModal(true)}>Добавить платёж</Button>
-                        )}
-                        {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
-                          <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
-                        )}
-                      </Space>
-                    }
-                    bordered={false}
-                  >
+        <Tabs
+          defaultActiveKey="details"
+          items={[
+            {
+              key: 'details',
+              label: 'Детали',
+              children: (
+                <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                  <Card bordered={false}>
                     <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-                      <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
-                      <Descriptions.Item label="Статус оплаты">
-                        <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                      <Descriptions.Item label="Клиент">
+                        <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
                       </Descriptions.Item>
-                      <Descriptions.Item label="Оплачено">{formatUZS(deal.paidAmount)} / {formatUZS(deal.amount)}</Descriptions.Item>
-                      {Number(deal.amount) - Number(deal.paidAmount) > 0 && (
-                        <Descriptions.Item label="Долг">
-                          <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
+                      <Descriptions.Item label="Менеджер">
+                        {isAdmin ? (
+                          <Select
+                            value={deal.managerId}
+                            onChange={(val) => managerMut.mutate(val)}
+                            loading={managerMut.isPending}
+                            style={{ minWidth: 200 }}
+                            showSearch
+                            optionFilterProp="label"
+                            options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+                          />
+                        ) : (
+                          deal.manager?.fullName
+                        )}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Сумма">
+                        {hasQuantities ? formatUZS(deal.amount) : <Typography.Text type="secondary">Не установлено</Typography.Text>}
+                      </Descriptions.Item>
+                      {deal.discount && Number(deal.discount) > 0 && (
+                        <Descriptions.Item label="Скидка">{formatUZS(deal.discount)}</Descriptions.Item>
+                      )}
+                      <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
+                      {deal.contract && (
+                        <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
+                      )}
+                      {deal.paymentMethod && (
+                        <Descriptions.Item label="Способ оплаты">
+                          <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
                         </Descriptions.Item>
                       )}
-                      {deal.dueDate && (
-                        <Descriptions.Item label="Срок оплаты">{dayjs(deal.dueDate).format('DD.MM.YYYY')}</Descriptions.Item>
-                      )}
-                      {deal.terms && (
-                        <Descriptions.Item label="Условия" span={2}>{deal.terms}</Descriptions.Item>
-                      )}
+                      <Descriptions.Item label="Статус">
+                        <DealStatusTag status={deal.status} />
+                      </Descriptions.Item>
                     </Descriptions>
+                  </Card>
 
-                    {(dealPayments ?? []).length > 0 && (
-                      <Table
-                        dataSource={dealPayments}
-                        rowKey="id"
-                        pagination={false}
-                        size="small"
-                        bordered={false}
-                        style={{ marginTop: 16 }}
-                        scroll={{ x: 500 }}
-                        columns={[
-                          { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-                          { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '—' },
-                          { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
-                          { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => v || '—' },
-                          { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
-                        ]}
-                      />
+                  {hasQuantities && (
+                    <Card
+                      title="Оплата"
+                      extra={
+                        <Space>
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                            <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
+                          )}
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                            <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
+                          )}
+                        </Space>
+                      }
+                      bordered={false}
+                    >
+                      <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+                        <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
+                        <Descriptions.Item label="Статус оплаты">
+                          <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Оплачено">{formatUZS(deal.paidAmount)} / {formatUZS(deal.amount)}</Descriptions.Item>
+                        {Number(deal.amount) - Number(deal.paidAmount) > 0 && (
+                          <Descriptions.Item label="Долг">
+                            <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
+                          </Descriptions.Item>
+                        )}
+                        {deal.dueDate && (
+                          <Descriptions.Item label="Срок оплаты">{dayjs(deal.dueDate).format('DD.MM.YYYY')}</Descriptions.Item>
+                        )}
+                        {deal.terms && (
+                          <Descriptions.Item label="Условия" span={2}>{deal.terms}</Descriptions.Item>
+                        )}
+                      </Descriptions>
+
+                      {(dealPayments ?? []).length > 0 && (
+                        <Table
+                          dataSource={dealPayments}
+                          rowKey="id"
+                          pagination={false}
+                          size="small"
+                          bordered={false}
+                          style={{ marginTop: 16 }}
+                          scroll={{ x: 500 }}
+                          columns={[
+                            { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
+                            { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v ? (paymentMethodLabels[v] || v) : '—' },
+                            { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+                            { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => v || '—' },
+                            { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
+                            ...(!isReadOnly && (isAdmin || role === 'ACCOUNTANT') ? [{
+                              title: '', key: 'actions', width: 80,
+                              render: (_: unknown, record: PaymentRecord) => (
+                                <Space size={0}>
+                                  <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
+                                    setEditingPayment({ id: record.id });
+                                    paymentRecordForm.setFieldsValue({ amount: Number(record.amount), method: record.method || undefined, paidAt: dayjs(record.paidAt), note: record.note || '' });
+                                    setPaymentRecordModal(true);
+                                  }} />
+                                  <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(record.id)}>
+                                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                                  </Popconfirm>
+                                </Space>
+                              ),
+                            }] : []),
+                          ]}
+                        />
+                      )}
+                    </Card>
+                  )}
+
+                  <Card title={`Товары (${deal.items?.length ?? 0})`} extra={canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Добавить</Button>} bordered={false}>
+                    <Table
+                      dataSource={deal.items ?? []}
+                      columns={itemColumns}
+                      rowKey="id"
+                      pagination={false}
+                      size="small"
+                      bordered={false}
+                      scroll={{ x: 600 }}
+                      summary={() => {
+                        if (!hasQuantities) return null;
+                        const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
+                        if (subtotal <= 0) return null;
+                        const discount = Number(deal.discount || 0);
+                        const hasDiscount = discount > 0;
+                        return (
+                          <>
+                            {hasDiscount && (
+                              <>
+                                <Table.Summary.Row>
+                                  <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Подытог</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS(subtotal)}</Typography.Text></Table.Summary.Cell>
+                                </Table.Summary.Row>
+                                <Table.Summary.Row>
+                                  <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(discount)}</Typography.Text></Table.Summary.Cell>
+                                </Table.Summary.Row>
+                              </>
+                            )}
+                            <Table.Summary.Row>
+                              <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(hasDiscount ? subtotal - discount : subtotal)}</Typography.Text></Table.Summary.Cell>
+                            </Table.Summary.Row>
+                          </>
+                        );
+                      }}
+                    />
+                  </Card>
+
+                  {renderWarehouseInfo()}
+                  {renderShipment()}
+
+                  <Card title="Комментарии" bordered={false}>
+                    <List
+                      dataSource={deal.comments ?? []}
+                      locale={{ emptyText: 'Нет комментариев' }}
+                      renderItem={(item) => (
+                        <List.Item>
+                          <List.Item.Meta
+                            title={
+                              <Space>
+                                <Typography.Text strong>{item.author?.fullName}</Typography.Text>
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                  {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
+                                </Typography.Text>
+                              </Space>
+                            }
+                            description={item.text}
+                          />
+                        </List.Item>
+                      )}
+                    />
+                    {!isReadOnly && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                        <Input
+                          placeholder="Написать комментарий..."
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          onPressEnter={() => comment.trim() && commentMut.mutate(comment.trim())}
+                        />
+                        <Button type="primary" icon={<SendOutlined />} loading={commentMut.isPending} onClick={() => comment.trim() && commentMut.mutate(comment.trim())} />
+                      </div>
                     )}
                   </Card>
-                )}
-
-                <Card title={`Товары (${deal.items?.length ?? 0})`} extra={canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Добавить</Button>} bordered={false}>
-                  <Table
-                    dataSource={deal.items ?? []}
-                    columns={itemColumns}
-                    rowKey="id"
-                    pagination={false}
-                    size="small"
-                    bordered={false}
-                    scroll={{ x: 600 }}
-                    summary={() => {
-                      if (!hasQuantities) return null;
-                      const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
-                      if (subtotal <= 0) return null;
-                      const discount = Number(deal.discount || 0);
-                      const hasDiscount = discount > 0;
-                      return (
-                        <>
-                          {hasDiscount && (
-                            <>
-                              <Table.Summary.Row>
-                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Подытог</Typography.Text></Table.Summary.Cell>
-                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS(subtotal)}</Typography.Text></Table.Summary.Cell>
-                              </Table.Summary.Row>
-                              <Table.Summary.Row>
-                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
-                                <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(discount)}</Typography.Text></Table.Summary.Cell>
-                              </Table.Summary.Row>
-                            </>
-                          )}
-                          <Table.Summary.Row>
-                            <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
-                            <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(hasDiscount ? subtotal - discount : subtotal)}</Typography.Text></Table.Summary.Cell>
-                          </Table.Summary.Row>
-                        </>
-                      );
-                    }}
-                  />
-                </Card>
-
-                {renderWarehouseInfo()}
-                {renderShipment()}
-
-                <Card title="Комментарии" bordered={false}>
-                  <List
-                    dataSource={deal.comments ?? []}
-                    locale={{ emptyText: 'Нет комментариев' }}
-                    renderItem={(item) => (
-                      <List.Item>
-                        <List.Item.Meta
-                          title={
-                            <Space>
-                              <Typography.Text strong>{item.author?.fullName}</Typography.Text>
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
-                              </Typography.Text>
-                            </Space>
-                          }
-                          description={item.text}
-                        />
-                      </List.Item>
-                    )}
-                  />
-                  {!isReadOnly && (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                      <Input
-                        placeholder="Написать комментарий..."
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        onPressEnter={() => comment.trim() && commentMut.mutate(comment.trim())}
-                      />
-                      <Button type="primary" icon={<SendOutlined />} loading={commentMut.isPending} onClick={() => comment.trim() && commentMut.mutate(comment.trim())} />
-                    </div>
-                  )}
-                </Card>
-              </Space>
-            ),
-          },
-          {
-            key: 'history',
-            label: 'История',
-            children: (
-              <Card bordered={false}>
-                <Timeline
-                  items={(history ?? []).map((entry: DealHistoryEntry) => {
-                    if (entry.kind === 'audit') {
+                </Space>
+              ),
+            },
+            {
+              key: 'history',
+              label: 'История',
+              children: (
+                <Card bordered={false}>
+                  <Timeline
+                    items={(history ?? []).map((entry: DealHistoryEntry) => {
+                      if (entry.kind === 'audit') {
+                        return {
+                          color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
+                          children: (
+                            <div>
+                              <Typography.Text strong>{entry.user?.fullName}</Typography.Text>{' '}
+                              <Tag>{entry.action}</Tag>{' '}
+                              <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                              {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
+                                <div style={{ marginTop: 4 }}>
+                                  <DealStatusTag status={entry.before.status as DealStatus} />{' → '}
+                                  <DealStatusTag status={entry.after.status as DealStatus} />
+                                </div>
+                              )}
+                            </div>
+                          ),
+                        };
+                      }
                       return {
-                        color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
+                        color: entry.type === 'IN' ? 'green' : 'red',
                         children: (
                           <div>
-                            <Typography.Text strong>{entry.user?.fullName}</Typography.Text>{' '}
-                            <Tag>{entry.action}</Tag>{' '}
+                            <Tag color={entry.type === 'IN' ? 'green' : 'red'}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
+                            <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
+                            <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
+                            <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
                             <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                            {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
-                              <div style={{ marginTop: 4 }}>
-                                <DealStatusTag status={entry.before.status as DealStatus} />{' → '}
-                                <DealStatusTag status={entry.after.status as DealStatus} />
-                              </div>
-                            )}
+                            {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
                           </div>
                         ),
                       };
-                    }
-                    return {
-                      color: entry.type === 'IN' ? 'green' : 'red',
-                      children: (
-                        <div>
-                          <Tag color={entry.type === 'IN' ? 'green' : 'red'}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
-                          <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
-                          <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
-                          <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
-                          <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                          {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
-                        </div>
-                      ),
-                    };
-                  })}
-                />
-              </Card>
-            ),
-          },
-          ...(isSuperAdmin ? [{
-            key: 'audit',
-            label: <><AuditOutlined /> Аудит (SA)</>,
-            children: (
-              <Card bordered={false}>
-                <AuditHistoryPanel dealId={id!} />
-              </Card>
-            ),
-          }] : []),
-        ]}
-      />
+                    })}
+                  />
+                </Card>
+              ),
+            },
+            ...(isSuperAdmin ? [{
+              key: 'audit',
+              label: <><AuditOutlined /> Аудит (SA)</>,
+              children: (
+                <Card bordered={false}>
+                  <AuditHistoryPanel dealId={id!} />
+                </Card>
+              ),
+            }] : []),
+          ]}
+        />
       )}
 
       {/* Add Item Modal */}
@@ -1537,15 +1588,21 @@ export default function DealDetailPage() {
 
       {/* Payment Record Modal */}
       <Modal
-        title="Добавить платёж"
+        title={editingPayment ? 'Редактировать платёж' : 'Добавить платёж'}
         open={paymentRecordModal}
-        onCancel={() => setPaymentRecordModal(false)}
+        onCancel={() => { setPaymentRecordModal(false); setEditingPayment(null); paymentRecordForm.resetFields(); }}
         onOk={() => paymentRecordForm.submit()}
-        confirmLoading={paymentRecordMut.isPending}
-        okText="Добавить"
+        confirmLoading={paymentRecordMut.isPending || updatePaymentRecordMut.isPending}
+        okText={editingPayment ? 'Сохранить' : 'Добавить'}
         cancelText="Отмена"
       >
-        <Form form={paymentRecordForm} layout="vertical" onFinish={(v) => paymentRecordMut.mutate({ ...v, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined })}>
+        <Form form={paymentRecordForm} layout="vertical" onFinish={(v) => {
+          if (editingPayment) {
+            updatePaymentRecordMut.mutate({ paymentId: editingPayment.id, amount: v.amount, method: v.method || null, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined, note: v.note || null });
+          } else {
+            paymentRecordMut.mutate({ ...v, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined });
+          }
+        }}>
           <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]}>
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
@@ -1580,11 +1637,29 @@ export default function DealDetailPage() {
       >
         <Form form={contractForm} layout="vertical" onFinish={(v) => createContractMut.mutate({
           contractNumber: v.contractNumber,
+          contractType: v.contractType || 'ONE_TIME',
           amount: v.amount || 0,
           startDate: v.startDate.format('YYYY-MM-DD'),
           endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : undefined,
           notes: v.notes || undefined,
-        })}>
+        })}
+        onValuesChange={(changed) => {
+          if (changed.contractType) {
+            const start = contractForm.getFieldValue('startDate') || dayjs();
+            if (changed.contractType === 'ANNUAL') {
+              contractForm.setFieldsValue({ startDate: start, endDate: dayjs(start).endOf('year') });
+            } else {
+              contractForm.setFieldsValue({ endDate: undefined });
+            }
+          }
+        }}
+        >
+          <Form.Item name="contractType" label="Тип договора" initialValue="ONE_TIME">
+            <Radio.Group>
+              <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+              <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input placeholder="Например: Д-2026-001" />
           </Form.Item>

@@ -8,7 +8,7 @@ import {
   createDealDto, updateDealDto, createCommentDto, paymentDto,
   addDealItemDto, warehouseResponseDto, setItemQuantitiesDto,
   shipmentDto, financeRejectDto, sendToFinanceDto,
-  createPaymentRecordDto, shipmentHoldDto,
+  createPaymentRecordDto, updatePaymentRecordDto, shipmentHoldDto,
 } from './deals.dto';
 
 const router = Router();
@@ -69,6 +69,8 @@ router.post('/:id/shipment-release', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SU
 
 // Payment Records
 router.post('/:id/payments', validate(createPaymentRecordDto), asyncHandler(dealsController.createPaymentRecord.bind(dealsController)));
+router.patch('/:id/payments/:paymentId', validate(updatePaymentRecordDto), asyncHandler(dealsController.updatePaymentRecord.bind(dealsController)));
+router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
 
 export default router;

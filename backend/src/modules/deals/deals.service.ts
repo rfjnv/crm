@@ -8,7 +8,7 @@ import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
   ShipmentDto, FinanceRejectDto, SendToFinanceDto,
-  CreatePaymentRecordDto, ShipmentHoldDto,
+  CreatePaymentRecordDto, UpdatePaymentRecordDto, ShipmentHoldDto,
   SuperOverrideDealDto,
 } from './deals.dto';
 
@@ -1540,6 +1540,98 @@ export class DealsService {
     });
 
     return payment.created;
+  }
+
+  async updatePaymentRecord(dealId: string, paymentId: string, dto: UpdatePaymentRecordDto, user: AuthUser) {
+    const result = await prisma.$transaction(async (tx) => {
+      const deal = await tx.deal.findFirst({
+        where: { id: dealId, ...ownerScope(user), isArchived: false },
+      });
+      if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+      const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
+      if (!payment) throw new AppError(404, 'Платёж не найден');
+
+      const oldAmount = Number(payment.amount);
+      const newAmount = dto.amount ?? oldAmount;
+      const diff = newAmount - oldAmount;
+      const newTotal = Number(deal.paidAmount) + diff;
+
+      if (dto.paidAt) {
+        const paymentDate = new Date(dto.paidAt);
+        if (paymentDate > new Date()) throw new AppError(400, 'Дата оплаты не может быть в будущем');
+      }
+
+      const updated = await tx.payment.update({
+        where: { id: paymentId },
+        data: {
+          ...(dto.amount !== undefined && { amount: dto.amount }),
+          ...(dto.method !== undefined && { method: dto.method }),
+          ...(dto.note !== undefined && { note: dto.note }),
+          ...(dto.paidAt && { paidAt: new Date(dto.paidAt) }),
+        },
+        include: { creator: { select: { id: true, fullName: true } } },
+      });
+
+      let paymentStatus: PrismaPaymentStatus;
+      const dealAmount = Number(deal.amount);
+      if (newTotal === 0) paymentStatus = 'UNPAID';
+      else if (newTotal >= dealAmount) paymentStatus = 'PAID';
+      else paymentStatus = 'PARTIAL';
+
+      const dealUpdated = await tx.deal.updateMany({
+        where: { id: dealId, version: deal.version },
+        data: { paidAmount: newTotal, paymentStatus, version: { increment: 1 } },
+      });
+      if (dealUpdated.count === 0) throw new AppError(409, 'Данные сделки были изменены. Обновите страницу.');
+
+      return updated;
+    });
+
+    await auditLog({
+      userId: user.userId, action: 'PAYMENT_UPDATE', entityType: 'deal', entityId: dealId,
+      after: { paymentId, ...dto },
+    });
+
+    return result;
+  }
+
+  async deletePaymentRecord(dealId: string, paymentId: string, user: AuthUser) {
+    const result = await prisma.$transaction(async (tx) => {
+      const deal = await tx.deal.findFirst({
+        where: { id: dealId, ...ownerScope(user), isArchived: false },
+      });
+      if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+      const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
+      if (!payment) throw new AppError(404, 'Платёж не найден');
+
+      const removedAmount = Number(payment.amount);
+      const newTotal = Number(deal.paidAmount) - removedAmount;
+
+      await tx.payment.delete({ where: { id: paymentId } });
+
+      let paymentStatus: PrismaPaymentStatus;
+      const dealAmount = Number(deal.amount);
+      if (newTotal <= 0) paymentStatus = 'UNPAID';
+      else if (newTotal >= dealAmount) paymentStatus = 'PAID';
+      else paymentStatus = 'PARTIAL';
+
+      const dealUpdated = await tx.deal.updateMany({
+        where: { id: dealId, version: deal.version },
+        data: { paidAmount: Math.max(0, newTotal), paymentStatus, version: { increment: 1 } },
+      });
+      if (dealUpdated.count === 0) throw new AppError(409, 'Данные сделки были изменены. Обновите страницу.');
+
+      return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus };
+    });
+
+    await auditLog({
+      userId: user.userId, action: 'PAYMENT_DELETE', entityType: 'deal', entityId: dealId,
+      after: { paymentId, removedAmount: result.removedAmount },
+    });
+
+    return result;
   }
 
   async getDealPayments(dealId: string, user: AuthUser) {

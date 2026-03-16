@@ -193,6 +193,16 @@ export class DealsController {
     res.status(201).json(payment);
   }
 
+  async updatePaymentRecord(req: Request, res: Response): Promise<void> {
+    const payment = await dealsService.updatePaymentRecord(req.params.id as string, req.params.paymentId as string, req.body, getUser(req));
+    res.json(payment);
+  }
+
+  async deletePaymentRecord(req: Request, res: Response): Promise<void> {
+    await dealsService.deletePaymentRecord(req.params.id as string, req.params.paymentId as string, getUser(req));
+    res.json({ ok: true });
+  }
+
   async getDealPayments(req: Request, res: Response): Promise<void> {
     const payments = await dealsService.getDealPayments(req.params.id as string, getUser(req));
     res.json(payments);
