@@ -141,11 +141,7 @@ export default function ContractDetailPage() {
   });
 
   function handlePoaPrint(poaId: string) {
-    const printUrl = poaApi.getPrintUrl(poaId);
-    const token = useAuthStore.getState().accessToken;
-    fetch(printUrl, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => { if (!r.ok) throw new Error(); return r.blob(); })
-      .then((blob) => { window.open(URL.createObjectURL(blob), '_blank'); })
+    poaApi.downloadPrint(poaId)
       .catch(() => message.error('Ошибка генерации PDF'));
   }
 
@@ -180,19 +176,7 @@ export default function ContractDetailPage() {
 
   function handlePrint(docType?: string) {
     setPdfLoading(true);
-    const printUrl = contractsApi.getPrintUrl(id!, docType);
-    const token = useAuthStore.getState().accessToken;
-    fetch(printUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error('PDF generation failed');
-        return r.blob();
-      })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-      })
+    contractsApi.downloadPrint(id!, docType)
       .catch(() => message.error('Ошибка генерации PDF'))
       .finally(() => setPdfLoading(false));
   }

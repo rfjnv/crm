@@ -1,5 +1,6 @@
 import client from './client';
 import type { ContractType } from '../types';
+import { downloadBlob, getFilenameFromDisposition } from '../utils/download';
 
 export interface PoaItem {
   name: string;
@@ -64,6 +65,17 @@ export const poaApi = {
 
   delete: (id: string) =>
     client.delete(`/power-of-attorney/${id}`).then((r) => r.data),
+
+  downloadPrint: (id: string) =>
+    client.get(`/power-of-attorney/${id}/print`, {
+      responseType: 'blob',
+    }).then((r) => {
+      const filename = getFilenameFromDisposition(
+        r.headers['content-disposition'],
+        `power-of-attorney-${id}.pdf`,
+      );
+      downloadBlob(r.data, filename);
+    }),
 
   getPrintUrl: (id: string) => {
     const baseURL = client.defaults.baseURL || '';

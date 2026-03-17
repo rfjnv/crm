@@ -57,11 +57,7 @@ export default function PowerOfAttorneyPage() {
   });
 
   function handlePrint(poaId: string) {
-    const printUrl = poaApi.getPrintUrl(poaId);
-    const token = useAuthStore.getState().accessToken;
-    fetch(printUrl, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => { if (!r.ok) throw new Error(); return r.blob(); })
-      .then((blob) => { window.open(URL.createObjectURL(blob), '_blank'); })
+    poaApi.downloadPrint(poaId)
       .catch(() => message.error('Ошибка генерации PDF'));
   }
 

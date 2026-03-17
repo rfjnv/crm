@@ -1,5 +1,6 @@
 import client from './client';
 import type { Contract, ContractListItem, ContractDetail, ContractAttachment, ContractType } from '../types';
+import { downloadBlob, getFilenameFromDisposition } from '../utils/download';
 
 export const contractsApi = {
   list: (clientId?: string) =>
@@ -29,6 +30,22 @@ export const contractsApi = {
 
   hardDelete: (id: string) =>
     client.delete(`/contracts/${id}/hard`).then((r) => r.data),
+
+  downloadPrint: (id: string, doc?: string, poaId?: string) =>
+    client.get(`/contracts/${id}/print`, {
+      params: {
+        ...(doc ? { doc } : {}),
+        ...(poaId ? { poaId } : {}),
+      },
+      responseType: 'blob',
+    }).then((r) => {
+      const fallbackDoc = (doc || 'contract').toLowerCase();
+      const filename = getFilenameFromDisposition(
+        r.headers['content-disposition'],
+        `contract-${id}-${fallbackDoc}.pdf`,
+      );
+      downloadBlob(r.data, filename);
+    }),
 
   getPrintUrl: (id: string, doc?: string) => {
     const baseURL = client.defaults.baseURL || '';
