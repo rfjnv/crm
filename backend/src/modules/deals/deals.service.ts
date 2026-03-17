@@ -49,6 +49,17 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   REOPENED: ['ADMIN', 'SUPER_ADMIN'],
 };
 
+const FINANCE_REVIEW_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
+const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
+
+function requiresFinanceReview(method: PaymentMethod): boolean {
+  return FINANCE_REVIEW_METHODS.includes(method);
+}
+
+function requiresContract(method: PaymentMethod | null): boolean {
+  return !!method && CONTRACT_REQUIRED_METHODS.includes(method);
+}
+
 function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Role): void {
   const allowed = STATUS_TRANSITIONS[from];
   if (!allowed || !allowed.includes(to)) {
@@ -370,7 +381,7 @@ export class DealsService {
     }
 
     // Determine target status based on payment method
-    const needsFinanceReview = dto.paymentMethod === 'QR' || dto.paymentMethod === 'TRANSFER' || dto.paymentMethod === 'INSTALLMENT';
+    const needsFinanceReview = requiresFinanceReview(dto.paymentMethod as PaymentMethod);
     const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'ADMIN_APPROVED';
 
     validateStatusTransition(deal.status, targetStatus, user.role);
@@ -663,7 +674,7 @@ export class DealsService {
     const targetStatus: DealStatus = 'ADMIN_APPROVED';
 
     // QR/INSTALLMENT deals require a contract
-    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
+    if (requiresContract(deal.paymentMethod) && !deal.contractId) {
       throw new AppError(400, 'Для QR/перечисления необходимо привязать договор к сделке');
     }
 
@@ -825,7 +836,7 @@ export class DealsService {
     }
 
     // Contract check for QR/TRANSFER/INSTALLMENT
-    if ((deal.paymentMethod === 'QR' || deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT') && !deal.contractId) {
+    if (requiresContract(deal.paymentMethod) && !deal.contractId) {
       throw new AppError(400, 'Для QR/перечисления/рассрочки необходимо привязать договор к сделке');
     }
 

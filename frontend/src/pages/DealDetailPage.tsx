@@ -43,6 +43,8 @@ const paymentMethodLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
+const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
+
 /** Format qty: integers without .0, decimals up to 3 digits */
 function formatQty(value: number | string | null | undefined): string {
   if (value == null) return '—';
@@ -122,7 +124,7 @@ export default function DealDetailPage() {
   });
 
   // Contracts for the deal's client (for attach modal)
-  const needsContract = dealData?.paymentMethod === 'QR' || dealData?.paymentMethod === 'INSTALLMENT' || dealData?.paymentMethod === 'TRANSFER';
+  const needsContract = !!dealData?.paymentMethod && CONTRACT_REQUIRED_METHODS.includes(dealData.paymentMethod);
   const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
 
   const isSuperAdmin = role === 'SUPER_ADMIN';
