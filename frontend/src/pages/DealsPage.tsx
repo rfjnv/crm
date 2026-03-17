@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
-import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
@@ -24,7 +24,7 @@ const kanbanStatuses: DealStatus[] = [
   'REJECTED', 'REOPENED',
 ];
 
-function DealCard({ deal }: { deal: Deal }) {
+function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
   const cfg = statusConfig[deal.status];
   const { token } = theme.useToken();
   return (
@@ -46,12 +46,18 @@ function DealCard({ deal }: { deal: Deal }) {
             {paymentStatusLabels[deal.paymentStatus]?.label}
           </Tag>
         </div>
+        <div style={{ marginTop: 6 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <LinkOutlined style={{ marginRight: 6 }} />
+            {openLabel}
+          </Typography.Text>
+        </div>
       </Link>
     </Card>
   );
 }
 
-function KanbanColumn({ status, deals }: { status: DealStatus; deals: Deal[] }) {
+function KanbanColumn({ status, deals, openLabel }: { status: DealStatus; deals: Deal[]; openLabel: string }) {
   const { token } = theme.useToken();
   return (
     <div style={{ minWidth: 220, flex: '1 0 220px' }}>
@@ -60,7 +66,7 @@ function KanbanColumn({ status, deals }: { status: DealStatus; deals: Deal[] }) 
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 60, borderRadius: 6, padding: 4 }}>
         {deals.map((deal) => (
-          <DealCard key={deal.id} deal={deal} />
+          <DealCard key={deal.id} deal={deal} openLabel={openLabel} />
         ))}
       </div>
     </div>
@@ -83,6 +89,10 @@ export default function DealsPage() {
 
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const isManager = user?.role === 'MANAGER';
+  const entityLabel = isManager ? 'Заявки' : 'Сделки';
+  const oneEntityLabel = isManager ? 'Заявка' : 'Сделка';
+  const openLabel = isManager ? 'Открыть заявку' : 'Открыть сделку';
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY_VIEW, viewMode); }, [viewMode]);
   useEffect(() => {
@@ -124,7 +134,7 @@ export default function DealsPage() {
   }, {} as Record<DealStatus, Deal[]>);
 
   const columns = [
-    { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+    { title: oneEntityLabel, dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
     { title: 'Клиент', dataIndex: ['client', 'companyName'] },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
@@ -136,6 +146,17 @@ export default function DealsPage() {
     },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+    ...(isManager
+      ? [{
+        title: '',
+        width: 150,
+        render: (_: unknown, r: Deal) => (
+          <Button size="small" icon={<LinkOutlined />} onClick={() => navigate(`/deals/${r.id}`)}>
+            Открыть заявку
+          </Button>
+        ),
+      }]
+      : []),
     ...(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.permissions?.includes('archive_deals')
       ? [{
         title: '',
@@ -156,7 +177,7 @@ export default function DealsPage() {
     <div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Space wrap>
-          <Typography.Title level={4} style={{ margin: 0 }}>Сделки</Typography.Title>
+          <Typography.Title level={4} style={{ margin: 0 }}>{entityLabel}</Typography.Title>
           {viewMode === 'table' && (
             <Select
               allowClear
@@ -181,7 +202,9 @@ export default function DealsPage() {
             ]}
           />
           {canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deals/new')}>{isMobile ? '' : 'Создать'}</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deals/new')}>
+              {isMobile ? '' : isManager ? 'Новая заявка' : 'Создать'}
+            </Button>
           )}
         </Space>
       </div>
@@ -192,18 +215,18 @@ export default function DealsPage() {
             data={deals ?? []}
             rowKey="id"
             loading={isLoading}
-            renderCard={(deal) => <DealCard deal={deal} />}
+            renderCard={(deal) => <DealCard deal={deal} openLabel={openLabel} />}
           />
         ) : (
           <Table
-          dataSource={deals}
-          columns={columns}
-          rowKey="id"
-          loading={isLoading}
-          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-          size="middle"
-          bordered={false}
-        />
+            dataSource={deals}
+            columns={columns}
+            rowKey="id"
+            loading={isLoading}
+            pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+            size="middle"
+            bordered={false}
+          />
         )
       ) : (
         isMobile ? (
@@ -217,18 +240,18 @@ export default function DealsPage() {
                     <DealStatusTag status={status} /> ({statusDeals.length})
                   </div>
                   {statusDeals.map((deal) => (
-                    <DealCard key={deal.id} deal={deal} />
+                    <DealCard key={deal.id} deal={deal} openLabel={openLabel} />
                   ))}
                 </div>
               );
             })}
           </div>
         ) : (
-        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
-          {kanbanStatuses.map((status) => (
-            <KanbanColumn key={status} status={status} deals={dealsByStatus[status] ?? []} />
-          ))}
-        </div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
+            {kanbanStatuses.map((status) => (
+              <KanbanColumn key={status} status={status} deals={dealsByStatus[status] ?? []} openLabel={openLabel} />
+            ))}
+          </div>
         )
       )}
     </div>

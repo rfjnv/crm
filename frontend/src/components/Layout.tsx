@@ -129,7 +129,7 @@ export default function Layout() {
       ? [{
         key: '/deals',
         icon: <FundProjectionScreenOutlined />,
-        label: <Link to="/deals">Сделки</Link>,
+        label: <Link to="/deals">{role === 'MANAGER' ? 'Заявки' : 'Сделки'}</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')

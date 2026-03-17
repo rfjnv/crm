@@ -7,6 +7,7 @@ import {
   ShopOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
+import { useAuthStore } from '../store/authStore';
 
 const TABS = [
   { key: '/dashboard', icon: DashboardOutlined, label: 'Главная' },
@@ -20,8 +21,15 @@ export default function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const role = useAuthStore((s) => s.user?.role);
 
-  const activeKey = TABS.find(t => location.pathname.startsWith(t.key))?.key;
+  const tabs = TABS.map((tab) =>
+    tab.key === '/deals' && role === 'MANAGER'
+      ? { ...tab, label: 'Заявки' }
+      : tab,
+  );
+
+  const activeKey = tabs.find(t => location.pathname.startsWith(t.key))?.key;
 
   return (
     <div style={{
@@ -38,7 +46,7 @@ export default function BottomTabBar() {
       zIndex: 1000,
       paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
-      {TABS.map(tab => {
+      {tabs.map(tab => {
         const isActive = activeKey === tab.key;
         const color = isActive ? token.colorPrimary : token.colorTextSecondary;
         const Icon = tab.icon;
