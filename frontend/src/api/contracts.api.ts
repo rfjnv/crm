@@ -2,6 +2,16 @@ import client from './client';
 import type { Contract, ContractListItem, ContractDetail, ContractAttachment, ContractType } from '../types';
 import { downloadBlob, getFilenameFromDisposition } from '../utils/download';
 
+const PRINT_FILENAME_BY_DOC: Record<string, string> = {
+  CONTRACT: 'contract',
+  CONTRACT_ANNUAL: 'contract',
+  CONTRACT_ONE_TIME: 'contract',
+  SPECIFICATION: 'specification',
+  INVOICE: 'invoice',
+  POWER_OF_ATTORNEY: 'power-of-attorney',
+  PACKAGE: 'contract-package',
+};
+
 export const contractsApi = {
   list: (clientId?: string) =>
     client.get<ContractListItem[]>('/contracts', { params: clientId ? { clientId } : {} }).then((r) => r.data),
@@ -36,13 +46,15 @@ export const contractsApi = {
       params: {
         ...(doc ? { doc } : {}),
         ...(poaId ? { poaId } : {}),
+        ts: Date.now(),
       },
+      headers: { Accept: 'application/pdf' },
       responseType: 'blob',
     }).then((r) => {
-      const fallbackDoc = (doc || 'contract').toLowerCase();
+      const fallbackDoc = PRINT_FILENAME_BY_DOC[(doc || 'CONTRACT').toUpperCase()] || 'contract';
       const filename = getFilenameFromDisposition(
         r.headers['content-disposition'],
-        `contract-${id}-${fallbackDoc}.pdf`,
+        `${fallbackDoc}-${id}.pdf`,
       );
       downloadBlob(r.data, filename);
     }),

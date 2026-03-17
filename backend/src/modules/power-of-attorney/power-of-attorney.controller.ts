@@ -7,6 +7,16 @@ function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
 }
 
+function setPdfDownloadHeaders(res: Response, filename: string) {
+  const encodedFilename = encodeURIComponent(filename);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+}
+
 export class PowerOfAttorneyController {
   async findAll(req: Request, res: Response): Promise<void> {
     const contractId = req.query.contractId as string | undefined;
@@ -37,8 +47,7 @@ export class PowerOfAttorneyController {
   async print(req: Request, res: Response): Promise<void> {
     try {
       const pdfBuffer = await poaService.generatePdf(req.params.id as string);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="poa-${req.params.id}.pdf"`);
+      setPdfDownloadHeaders(res, `poa-${req.params.id}.pdf`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error('PoA PDF generation error:', error instanceof Error ? error.stack : error);

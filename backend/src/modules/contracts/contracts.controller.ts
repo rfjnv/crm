@@ -8,6 +8,26 @@ function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
 }
 
+const CONTRACT_FILENAME_BY_DOC: Record<DocType, string> = {
+  CONTRACT: 'contract',
+  CONTRACT_ANNUAL: 'contract',
+  CONTRACT_ONE_TIME: 'contract',
+  SPECIFICATION: 'specification',
+  INVOICE: 'invoice',
+  POWER_OF_ATTORNEY: 'power-of-attorney',
+  PACKAGE: 'contract-package',
+};
+
+function setPdfDownloadHeaders(res: Response, filename: string) {
+  const encodedFilename = encodeURIComponent(filename);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+}
+
 export class ContractsController {
   async findAll(req: Request, res: Response): Promise<void> {
     const clientId = req.query.clientId as string | undefined;
@@ -66,8 +86,8 @@ export class ContractsController {
       const poaId = req.query.poaId as string | undefined;
 
       const pdfBuffer = await contractsService.generatePdf(req.params.id as string, docType, poaId);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="contract-${req.params.id}-${docType.toLowerCase()}.pdf"`);
+      const filenameBase = CONTRACT_FILENAME_BY_DOC[docType] || 'contract';
+      setPdfDownloadHeaders(res, `${filenameBase}-${req.params.id}.pdf`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error('PDF generation error:', error instanceof Error ? error.stack : error);

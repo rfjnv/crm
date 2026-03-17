@@ -68,11 +68,13 @@ export const poaApi = {
 
   downloadPrint: (id: string) =>
     client.get(`/power-of-attorney/${id}/print`, {
+      params: { ts: Date.now() },
+      headers: { Accept: 'application/pdf' },
       responseType: 'blob',
     }).then((r) => {
       const filename = getFilenameFromDisposition(
         r.headers['content-disposition'],
-        `power-of-attorney-${id}.pdf`,
+        `poa-${id}.pdf`,
       );
       downloadBlob(r.data, filename);
     }),
