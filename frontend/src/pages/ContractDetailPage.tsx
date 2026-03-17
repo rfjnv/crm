@@ -12,7 +12,7 @@ import {
   ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
   OrderedListOutlined, DollarOutlined, SolutionOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
-  CalculatorOutlined, PlusOutlined, PrinterOutlined, EditOutlined,
+  CalculatorOutlined, PlusOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';

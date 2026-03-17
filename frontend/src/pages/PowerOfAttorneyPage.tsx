@@ -13,12 +13,10 @@ import { poaApi } from '../api/power-of-attorney.api';
 import type { PowerOfAttorney, CreatePoaData } from '../api/power-of-attorney.api';
 import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
-import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function PowerOfAttorneyPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const isMobile = useIsMobile();
   const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 

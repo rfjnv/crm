@@ -24,7 +24,6 @@ import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import { VAT_RATE } from '../utils/vat';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
