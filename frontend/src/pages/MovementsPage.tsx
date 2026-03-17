@@ -42,7 +42,15 @@ export default function MovementsPage() {
     { title: 'Товар', dataIndex: ['product', 'name'] },
     { title: 'Артикул', dataIndex: ['product', 'sku'], render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Кол-во', dataIndex: 'quantity', align: 'right' as const, width: 80 },
-    { title: 'Сделка', dataIndex: ['deal', 'title'], render: (v: string | undefined) => v || '—' },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, record: any) => {
+        const clientName = record.deal?.client?.companyName || record.deal?.title;
+        if (!record.deal?.id || !clientName) return clientName || '—';
+        return <Link to={`/deals/${record.deal.id}`}>{clientName}</Link>;
+      },
+    },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
     { title: 'Дата', dataIndex: 'createdAt', width: 140, render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
   ];
@@ -85,8 +93,9 @@ export default function MovementsPage() {
                 <Card size="small" style={{ background: 'rgba(22, 119, 255, 0.04)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка</Typography.Text>
-                      <div><Typography.Text strong>{m.deal.title}</Typography.Text></div>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Клиент</Typography.Text>
+                      <div><Typography.Text strong>{m.deal.client?.companyName || m.deal.title}</Typography.Text></div>
+                      <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка: {m.deal.title}</Typography.Text></div>
                     </div>
                     <RightOutlined style={{ color: '#999' }} />
                   </div>
