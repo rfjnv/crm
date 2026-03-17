@@ -294,7 +294,7 @@ export interface InventoryMovement {
   createdBy: string;
   createdAt: string;
   product?: { id: string; name: string; sku: string; stock?: number };
-  deal?: { id: string; title: string } | null;
+  deal?: { id: string; title: string; client?: { companyName: string } } | null;
 }
 
 export interface AuditLog {
@@ -589,9 +589,14 @@ export interface Expense {
   category: string;
   amount: string;
   note?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectedReason?: string | null;
   createdBy: string;
   createdAt: string;
   creator?: { id: string; fullName: string };
+  approver?: { id: string; fullName: string } | null;
 }
 
 // ──── Tasks ────
