@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import type { PushPayload } from '../push/push.service';
+import { telegramCustomerService } from './telegram.customer.service';
 
 const LINK_SECRET = config.jwt.accessSecret + '_tg';
 
@@ -63,16 +64,14 @@ class TelegramService {
           { parse_mode: 'HTML' },
         );
       } catch {
-        this.bot!.sendMessage(chatId, '\u274C \u0422\u043E\u043A\u0435\u043D \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D \u0438\u043B\u0438 \u0438\u0441\u0442\u0451\u043A. \u041F\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u0432 CRM \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 "\u041F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C Telegram" \u0437\u0430\u043D\u043E\u0432\u043E.');
+        this.bot!.sendMessage(chatId, '\u274C \u0422\u043E\u043A\u0435\u043D \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 CRM \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D \u0438\u043B\u0438 \u0438\u0441\u0442\u0451\u043A.');
+        await telegramCustomerService.handleStart(this.bot!, msg);
       }
     });
 
     // /start without token
-    this.bot.onText(/^\/start$/, (msg) => {
-      this.bot!.sendMessage(msg.chat.id,
-        '\u{1F44B} \u042D\u0442\u043E \u0431\u043E\u0442 CRM Polygraph Business.\n\n\u0414\u043B\u044F \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 \u043F\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u0432 CRM \u2192 \u0423\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F \u2192 "\u041F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C Telegram".',
-        { parse_mode: 'HTML' },
-      );
+    this.bot.onText(/^\/start$/, async (msg) => {
+      await telegramCustomerService.handleStart(this.bot!, msg);
     });
 
     // /unlink
@@ -85,6 +84,14 @@ class TelegramService {
       }
       await prisma.user.update({ where: { id: user.id }, data: { telegramChatId: null } });
       this.bot!.sendMessage(chatId, '\u2705 \u0410\u043A\u043A\u0430\u0443\u043D\u0442 \u043E\u0442\u0432\u044F\u0437\u0430\u043D. \u0412\u044B \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0431\u0443\u0434\u0435\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F.');
+    });
+
+    this.bot.on('callback_query', async (query) => {
+      await telegramCustomerService.handleCallbackQuery(this.bot!, query);
+    });
+
+    this.bot.on('message', async (msg) => {
+      await telegramCustomerService.handleMessage(this.bot!, msg);
     });
   }
 
