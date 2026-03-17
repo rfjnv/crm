@@ -904,13 +904,12 @@ export class DealsService {
             },
           },
           items: {
-            select: { id: true, requestedQty: true },
             include: {
               product: { select: { name: true, sku: true } },
             },
           },
         },
-        orderBy: [{ createdAt: 'desc' }], // Use createdAt instead of shipment.shippedAt for more reliable ordering
+        orderBy: [{ shipment: { shippedAt: 'desc' } }],
         skip,
         take: limit,
       }),
@@ -950,7 +949,6 @@ export class DealsService {
             },
           },
           items: {
-            select: { id: true, requestedQty: true },
             include: {
               product: { select: { name: true, sku: true } },
             },

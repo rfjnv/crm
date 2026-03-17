@@ -21,8 +21,8 @@ export default function WarehouseShipmentsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['warehouse-shipments-debug', page, limit], // Use debug endpoint temporarily
-    queryFn: () => dealsApi.getAllDealsDebug(page, limit), // Use debug API
+    queryKey: ['warehouse-shipments', page, limit],
+    queryFn: () => dealsApi.getShipments(page, limit),
     refetchInterval: 30_000,
   });
 
@@ -180,11 +180,6 @@ export default function WarehouseShipmentsPage() {
           {pagination?.total ? (
             <Tag style={{ marginLeft: 8, fontSize: 14 }}>{pagination.total}</Tag>
           ) : null}
-          {(data as any)?.debug && (
-            <Tag color="orange" style={{ marginLeft: 8, fontSize: 12 }}>
-              DEBUG: {(data as any).debug.dealsWithShipment}/{(data as any).debug.totalDeals} сделок с отгрузками
-            </Tag>
-          )}
         </Typography.Title>
 
         <Input.Search
