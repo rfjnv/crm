@@ -93,12 +93,13 @@ router.patch(
   '/:id/approve',
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    const expenseId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!expense) throw new AppError(404, 'Расход не найден');
     if (expense.status !== 'PENDING') throw new AppError(400, 'Расход не на рассмотрении');
 
     const updated = await prisma.expense.update({
-      where: { id: req.params.id },
+      where: { id: expenseId },
       data: {
         status: 'APPROVED',
         approvedBy: req.user!.userId,
@@ -128,12 +129,13 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const { reason } = rejectExpenseDto.parse(req.body);
 
-    const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    const expenseId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!expense) throw new AppError(404, 'Расход не найден');
     if (expense.status !== 'PENDING') throw new AppError(400, 'Расход не на рассмотрении');
 
     const updated = await prisma.expense.update({
-      where: { id: req.params.id },
+      where: { id: expenseId },
       data: {
         status: 'REJECTED',
         approvedBy: req.user!.userId,
@@ -162,7 +164,8 @@ router.delete(
   '/:id',
   requirePermission('manage_expenses'),
   asyncHandler(async (req: Request, res: Response) => {
-    const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    const expenseId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!expense) throw new AppError(404, 'Расход не найден');
 
     const isAdmin = req.user!.role === 'ADMIN' || req.user!.role === 'SUPER_ADMIN';
@@ -172,7 +175,7 @@ router.delete(
       throw new AppError(403, 'Недостаточно прав для удаления');
     }
 
-    await prisma.expense.delete({ where: { id: req.params.id } });
+    await prisma.expense.delete({ where: { id: expenseId } });
     res.json({ ok: true });
   }),
 );
