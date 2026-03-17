@@ -3,6 +3,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { pushService } from '../push/push.service';
+import { telegramService } from '../telegram/telegram.service';
 import type { BroadcastDto } from './notifications.dto';
 
 interface FindAllOptions {
@@ -239,6 +240,18 @@ export class NotificationsService {
     Promise.allSettled(
       targetUsers.map((u) =>
         pushService.sendPushToUser(u.id, {
+          title: dto.title,
+          body: dto.body,
+          url: dto.link || undefined,
+          severity: dto.severity,
+        }),
+      ),
+    ).catch(() => {});
+
+    // Fire-and-forget telegram to all target users
+    Promise.allSettled(
+      targetUsers.map((u) =>
+        telegramService.sendToUser(u.id, {
           title: dto.title,
           body: dto.body,
           url: dto.link || undefined,

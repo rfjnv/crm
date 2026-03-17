@@ -139,6 +139,7 @@ model User {
   contractAttachments ContractAttachment[] @relation("ContractAttachmentUploader")
   contractsDeleted    Contract[]           @relation("ContractDeletedBy")
   pushSubscriptions   PushSubscription[]
+  telegramChatId      String?          @unique @map("telegram_chat_id")
 
   @@map("users")
 }

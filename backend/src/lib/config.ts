@@ -57,4 +57,9 @@ export const config = {
     privateKey: process.env.VAPID_PRIVATE_KEY || '',
     subject: process.env.VAPID_SUBJECT || 'mailto:admin@polygraph.uz',
   },
+
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    crmUrl: 'https://www.polygraphbusinesscrm.app',
+  },
 } as const;

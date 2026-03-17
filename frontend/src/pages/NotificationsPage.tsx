@@ -6,6 +6,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined, CheckOutlined } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
 import PushNotificationToggle from '../components/PushNotificationToggle';
+import TelegramLinkButton from '../components/TelegramLinkButton';
 import SystemNotificationsToggle from '../components/SystemNotificationsToggle';
 import type { AppNotification, NotificationSeverity } from '../types';
 import dayjs from 'dayjs';
@@ -83,6 +84,7 @@ export default function NotificationsPage() {
 
       <SystemNotificationsToggle />
       <PushNotificationToggle />
+      <TelegramLinkButton />
 
       <List
         loading={isLoading}

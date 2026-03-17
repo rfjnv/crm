@@ -4,6 +4,7 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
 import { pushService } from '../push/push.service';
+import { telegramService } from '../telegram/telegram.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
@@ -417,6 +418,12 @@ export class DealsService {
           url: `/deals/${dealId}`,
           severity: 'WARNING',
         }).catch(() => {});
+        telegramService.sendToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${deal.title}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
       }
     }
 
@@ -440,6 +447,12 @@ export class DealsService {
         });
 
         pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
+          title: 'Сделка ожидает проверки',
+          body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+        telegramService.sendToRoles(['ADMIN', 'SUPER_ADMIN'], {
           title: 'Сделка ожидает проверки',
           body: `Сделка "${deal.title}" ожидает вашего одобрения`,
           url: `/deals/${dealId}`,
@@ -686,6 +699,12 @@ export class DealsService {
       url: `/deals/${dealId}`,
       severity: 'INFO',
     }).catch(() => {});
+    telegramService.sendToUser(deal.managerId, {
+      title: 'Сделка одобрена бухгалтером',
+      body: `Сделка "${deal.title}" прошла финансовую проверку`,
+      url: `/deals/${dealId}`,
+      severity: 'INFO',
+    }).catch(() => {});
 
     // Notify admins that deal needs their approval after finance review
     const admins = await prisma.user.findMany({
@@ -706,6 +725,12 @@ export class DealsService {
       });
 
       pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
+        title: 'Сделка прошла финансовую проверку',
+        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+      telegramService.sendToRoles(['ADMIN', 'SUPER_ADMIN'], {
         title: 'Сделка прошла финансовую проверку',
         body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
         url: `/deals/${dealId}`,
@@ -767,6 +792,12 @@ export class DealsService {
     });
 
     pushService.sendPushToUser(deal.managerId, {
+      title: 'Сделка отклонена бухгалтером',
+      body: `Сделка "${deal.title}" отклонена: ${dto.reason}`,
+      url: `/deals/${dealId}`,
+      severity: 'URGENT',
+    }).catch(() => {});
+    telegramService.sendToUser(deal.managerId, {
       title: 'Сделка отклонена бухгалтером',
       body: `Сделка "${deal.title}" отклонена: ${dto.reason}`,
       url: `/deals/${dealId}`,
@@ -1222,6 +1253,12 @@ export class DealsService {
       url: `/deals/${dealId}`,
       severity: 'INFO',
     }).catch(() => {});
+    telegramService.sendToUser(deal.managerId, {
+      title: 'Сделка одобрена',
+      body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
+      url: `/deals/${dealId}`,
+      severity: 'INFO',
+    }).catch(() => {});
 
     // Notify warehouse managers that deal is ready for shipment
     const warehouseManagers = await prisma.user.findMany({
@@ -1242,6 +1279,12 @@ export class DealsService {
       });
 
       pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+        title: 'Новая сделка на отгрузку',
+        body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+      telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
         title: 'Новая сделка на отгрузку',
         body: `Сделка "${deal.title}" одобрена и готова к отгрузке`,
         url: `/deals/${dealId}`,
@@ -1268,6 +1311,12 @@ export class DealsService {
       });
 
       pushService.sendPushToRoles(['ACCOUNTANT'], {
+        title: 'Сделка одобрена админом',
+        body: `Сделка "${deal.title}" одобрена и передана на отгрузку`,
+        url: `/deals/${dealId}`,
+        severity: 'INFO',
+      }).catch(() => {});
+      telegramService.sendToRoles(['ACCOUNTANT'], {
         title: 'Сделка одобрена админом',
         body: `Сделка "${deal.title}" одобрена и передана на отгрузку`,
         url: `/deals/${dealId}`,
@@ -1332,6 +1381,12 @@ export class DealsService {
       url: `/deals/${dealId}`,
       severity: 'URGENT',
     }).catch(() => {});
+    telegramService.sendToUser(deal.managerId, {
+      title: 'Сделка отклонена',
+      body: `Сделка "${deal.title}" отклонена: ${reason}`,
+      url: `/deals/${dealId}`,
+      severity: 'URGENT',
+    }).catch(() => {});
 
     // Notify accountants about admin rejection
     const accountants = await prisma.user.findMany({
@@ -1352,6 +1407,12 @@ export class DealsService {
       });
 
       pushService.sendPushToRoles(['ACCOUNTANT'], {
+        title: 'Сделка отклонена админом',
+        body: `Сделка "${deal.title}" отклонена: ${reason}`,
+        url: `/deals/${dealId}`,
+        severity: 'WARNING',
+      }).catch(() => {});
+      telegramService.sendToRoles(['ACCOUNTANT'], {
         title: 'Сделка отклонена админом',
         body: `Сделка "${deal.title}" отклонена: ${reason}`,
         url: `/deals/${dealId}`,
