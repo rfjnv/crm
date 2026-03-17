@@ -112,16 +112,16 @@ export default function ArchivedDealsPage() {
           )}
         />
       ) : (
-      <Table
-        dataSource={deals}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-        size="middle"
-        bordered={false}
-        scroll={{ x: 600 }}
-      />
+        <Table
+          dataSource={deals}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          size="middle"
+          bordered={false}
+          scroll={{ x: 600 }}
+        />
       )}
     </div>
   );

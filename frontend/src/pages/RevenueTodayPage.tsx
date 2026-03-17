@@ -92,26 +92,26 @@ export default function RevenueTodayPage() {
             </div>
           </>
         ) : (
-        <Table
-          dataSource={data.payments}
-          columns={columns}
-          rowKey="id"
-          pagination={false}
-          size="middle"
-          bordered={false}
-          scroll={{ x: 600 }}
-          summary={() => (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={4}>
-                <strong>Итого</strong>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={1} align="right">
-                <strong style={{ color: '#52c41a' }}>{formatUZS(data.total)}</strong>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={2} />
-            </Table.Summary.Row>
-          )}
-        />
+          <Table
+            dataSource={data.payments}
+            columns={columns}
+            rowKey="id"
+            pagination={false}
+            size="middle"
+            bordered={false}
+            scroll={{ x: 600 }}
+            summary={() => (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={4}>
+                  <strong>Итого</strong>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <strong style={{ color: '#52c41a' }}>{formatUZS(data.total)}</strong>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} />
+              </Table.Summary.Row>
+            )}
+          />
         )}
       </Card>
     </div>

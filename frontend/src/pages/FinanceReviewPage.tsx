@@ -189,32 +189,32 @@ export default function FinanceReviewPage() {
           )}
         />
       ) : (
-      <Table
-        dataSource={list}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={false}
-        size="middle"
-        bordered={false}
-        scroll={{ x: 600 }}
-        locale={{ emptyText: 'Нет сделок на проверке' }}
-        summary={() => {
-          if (list.length === 0) return null;
-          const total = list.reduce((s, d) => s + Number(d.amount), 0);
-          return (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={2}>
-                <Typography.Text strong>Итого: {list.length} сделок</Typography.Text>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={2} align="right">
-                <Typography.Text strong>{formatUZS(total)}</Typography.Text>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={3} colSpan={8} />
-            </Table.Summary.Row>
-          );
-        }}
-      />
+        <Table
+          dataSource={list}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={false}
+          size="middle"
+          bordered={false}
+          scroll={{ x: 600 }}
+          locale={{ emptyText: 'Нет сделок на проверке' }}
+          summary={() => {
+            if (list.length === 0) return null;
+            const total = list.reduce((s, d) => s + Number(d.amount), 0);
+            return (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={2}>
+                  <Typography.Text strong>Итого: {list.length} сделок</Typography.Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="right">
+                  <Typography.Text strong>{formatUZS(total)}</Typography.Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} colSpan={8} />
+              </Table.Summary.Row>
+            );
+          }}
+        />
       )}
 
       <Modal

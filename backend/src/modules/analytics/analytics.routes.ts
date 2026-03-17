@@ -423,12 +423,14 @@ router.get(
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(amount), 0)::text as total
          FROM expenses
-         WHERE date >= ${start} AND date < ${end}`
+         WHERE date >= ${start} AND date < ${end}
+           AND status = 'APPROVED'`
       ),
       prisma.$queryRaw<{ category: string; total: string }[]>(
         Prisma.sql`SELECT category, SUM(amount)::text as total
          FROM expenses
          WHERE date >= ${start} AND date < ${end}
+           AND status = 'APPROVED'
          GROUP BY category
          ORDER BY SUM(amount) DESC`
       ),

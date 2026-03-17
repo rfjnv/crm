@@ -197,7 +197,7 @@ export class WarehouseService {
         },
         include: {
           product: { select: { id: true, name: true, sku: true, stock: true } },
-          deal: { select: { id: true, title: true } },
+          deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
         },
       });
 
@@ -226,7 +226,7 @@ export class WarehouseService {
       where: productId ? { productId } : {},
       include: {
         product: { select: { id: true, name: true, sku: true } },
-        deal: { select: { id: true, title: true } },
+        deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -242,7 +242,7 @@ export class WarehouseService {
     return prisma.inventoryMovement.findMany({
       where: { productId },
       include: {
-        deal: { select: { id: true, title: true } },
+        deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });

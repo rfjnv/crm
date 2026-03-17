@@ -400,229 +400,229 @@ export default function MessagesPage() {
     <div style={{ display: 'flex', height: isMobile ? 'calc(100vh - 186px)' : 'calc(100vh - 130px)', gap: 0 }}>
       {/* Left Panel */}
       {(!isMobile || !showChat) && (
-      <div
-        style={{
-          width: isMobile ? '100%' : 280, minWidth: isMobile ? undefined : 280,
-          borderRight: `1px solid ${tk.colorBorderSecondary}`,
-          display: 'flex', flexDirection: 'column',
-          background: tk.colorBgContainer,
-          borderRadius: '8px 0 0 8px',
-        }}
-      >
-        <div style={{ padding: 12, borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-          <Typography.Title level={5} style={{ margin: '0 0 8px' }}>Сообщения</Typography.Title>
-          <Input.Search
-            placeholder="Поиск..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            allowClear
-            size="small"
-          />
-        </div>
+        <div
+          style={{
+            width: isMobile ? '100%' : 280, minWidth: isMobile ? undefined : 280,
+            borderRight: `1px solid ${tk.colorBorderSecondary}`,
+            display: 'flex', flexDirection: 'column',
+            background: tk.colorBgContainer,
+            borderRadius: '8px 0 0 8px',
+          }}
+        >
+          <div style={{ padding: 12, borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
+            <Typography.Title level={5} style={{ margin: '0 0 8px' }}>Сообщения</Typography.Title>
+            <Input.Search
+              placeholder="Поиск..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              allowClear
+              size="small"
+            />
+          </div>
 
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          {(conversations ?? []).map((conv: Conversation) => (
-            <div
-              key={conv.type}
-              onClick={() => { setActiveType(conv.type); setSearchQuery(''); if (isMobile) setShowChat(true); }}
-              style={{
-                padding: '12px 16px', cursor: 'pointer',
-                borderBottom: `1px solid ${tk.colorBorderSecondary}`,
-                background: activeType === conv.type ? tk.colorPrimaryBg : 'transparent',
-                transition: 'background 0.2s',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography.Text strong>{CONVERSATION_LABELS[conv.type] || conv.label}</Typography.Text>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {conv.lastMessage && (
-                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      {dayjs(conv.lastMessage.createdAt).format('HH:mm')}
-                    </Typography.Text>
-                  )}
-                  {conv.unreadCount > 0 && <Badge count={conv.unreadCount} size="small" />}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {(conversations ?? []).map((conv: Conversation) => (
+              <div
+                key={conv.type}
+                onClick={() => { setActiveType(conv.type); setSearchQuery(''); if (isMobile) setShowChat(true); }}
+                style={{
+                  padding: '12px 16px', cursor: 'pointer',
+                  borderBottom: `1px solid ${tk.colorBorderSecondary}`,
+                  background: activeType === conv.type ? tk.colorPrimaryBg : 'transparent',
+                  transition: 'background 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography.Text strong>{CONVERSATION_LABELS[conv.type] || conv.label}</Typography.Text>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {conv.lastMessage && (
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        {dayjs(conv.lastMessage.createdAt).format('HH:mm')}
+                      </Typography.Text>
+                    )}
+                    {conv.unreadCount > 0 && <Badge count={conv.unreadCount} size="small" />}
+                  </div>
                 </div>
+                {conv.lastMessage && (
+                  <Typography.Text
+                    type="secondary"
+                    style={{ fontSize: 12, display: 'block', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {conv.lastMessage.isDeleted
+                      ? 'Сообщение удалено'
+                      : `${conv.lastMessage.sender?.fullName}: ${conv.lastMessage.text}`}
+                  </Typography.Text>
+                )}
               </div>
-              {conv.lastMessage && (
-                <Typography.Text
-                  type="secondary"
-                  style={{ fontSize: 12, display: 'block', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {conv.lastMessage.isDeleted
-                    ? 'Сообщение удалено'
-                    : `${conv.lastMessage.sender?.fullName}: ${conv.lastMessage.text}`}
-                </Typography.Text>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Right Panel */}
       {(!isMobile || showChat) && (
-      <div
-        style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          background: tk.colorBgContainer, borderRadius: isMobile ? '8px' : '0 8px 8px 0',
-        }}
-      >
-        {/* Header */}
-        {activeType && (
-          <div
-            style={{
-              padding: '12px 20px',
-              borderBottom: `1px solid ${tk.colorBorderSecondary}`,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {isMobile && (
-                <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setShowChat(false)} />
-              )}
-              <Typography.Text strong style={{ fontSize: 16 }}>{CONVERSATION_LABELS[activeType]}</Typography.Text>
-            </div>
-          </div>
-        )}
-
-        {/* Messages / Search Area */}
         <div
           style={{
-            flex: 1, overflow: 'auto', padding: '16px 20px',
-            display: 'flex', flexDirection: 'column', gap: 2,
+            flex: 1, display: 'flex', flexDirection: 'column',
+            background: tk.colorBgContainer, borderRadius: isMobile ? '8px' : '0 8px 8px 0',
           }}
         >
-          {/* Search results mode */}
-          {searchQuery.length >= 2 ? (
-            searchResults && searchResults.length > 0 ? (
-              searchResults.map((msg) => (
+          {/* Header */}
+          {activeType && (
+            <div
+              style={{
+                padding: '12px 20px',
+                borderBottom: `1px solid ${tk.colorBorderSecondary}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isMobile && (
+                  <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setShowChat(false)} />
+                )}
+                <Typography.Text strong style={{ fontSize: 16 }}>{CONVERSATION_LABELS[activeType]}</Typography.Text>
+              </div>
+            </div>
+          )}
+
+          {/* Messages / Search Area */}
+          <div
+            style={{
+              flex: 1, overflow: 'auto', padding: '16px 20px',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}
+          >
+            {/* Search results mode */}
+            {searchQuery.length >= 2 ? (
+              searchResults && searchResults.length > 0 ? (
+                searchResults.map((msg) => (
+                  <div
+                    key={msg.id}
+                    onClick={() => handleSearchSelect(msg)}
+                    style={{
+                      padding: '8px 12px', cursor: 'pointer', borderRadius: 8,
+                      background: tk.colorFillSecondary, marginBottom: 4,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <Typography.Text strong style={{ fontSize: 12 }}>{msg.sender?.fullName}</Typography.Text>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <Tag style={{ fontSize: 10, margin: 0 }}>{CONVERSATION_LABELS[msg.conversationType]}</Tag>
+                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(msg.createdAt).format('DD.MM HH:mm')}</Typography.Text>
+                      </div>
+                    </div>
+                    <Typography.Text style={{ fontSize: 13 }}>{msg.text}</Typography.Text>
+                  </div>
+                ))
+              ) : (
+                <Empty description="Ничего не найдено" style={{ margin: 'auto' }} />
+              )
+            ) : (
+              <>
+                {!activeType && <Empty description="Выберите чат" style={{ margin: 'auto' }} />}
+                {activeType && messagesLoading && <Spin style={{ margin: 'auto' }} />}
+                {activeType && !messagesLoading && sorted.length === 0 && <Empty description="Нет сообщений" style={{ margin: 'auto' }} />}
+
+                {dateGroups.map((group) => (
+                  <div key={group.date}>
+                    {/* Date separator */}
+                    <div style={{ display: 'flex', alignItems: 'center', margin: '12px 0', gap: 12 }}>
+                      <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />
+                      <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{group.label}</Typography.Text>
+                      <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />
+                    </div>
+                    {group.msgs.map(renderMessage)}
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Input area */}
+          {activeType && !searchQuery && (
+            <div style={{ borderTop: `1px solid ${tk.colorBorderSecondary}` }}>
+              {/* Reply preview */}
+              {replyingTo && (
                 <div
-                  key={msg.id}
-                  onClick={() => handleSearchSelect(msg)}
                   style={{
-                    padding: '8px 12px', cursor: 'pointer', borderRadius: 8,
-                    background: tk.colorFillSecondary, marginBottom: 4,
+                    padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
+                    borderLeft: `3px solid ${tk.colorPrimary}`, margin: '0 12px',
+                    background: tk.colorFillSecondary, borderRadius: '0 4px 4px 0',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                    <Typography.Text strong style={{ fontSize: 12 }}>{msg.sender?.fullName}</Typography.Text>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <Tag style={{ fontSize: 10, margin: 0 }}>{CONVERSATION_LABELS[msg.conversationType]}</Tag>
-                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(msg.createdAt).format('DD.MM HH:mm')}</Typography.Text>
-                    </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: tk.colorPrimary }}>{replyingTo.sender?.fullName}</div>
+                    <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replyingTo.text}</div>
                   </div>
-                  <Typography.Text style={{ fontSize: 13 }}>{msg.text}</Typography.Text>
+                  <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setReplyingTo(null)} />
                 </div>
-              ))
-            ) : (
-              <Empty description="Ничего не найдено" style={{ margin: 'auto' }} />
-            )
-          ) : (
-            <>
-              {!activeType && <Empty description="Выберите чат" style={{ margin: 'auto' }} />}
-              {activeType && messagesLoading && <Spin style={{ margin: 'auto' }} />}
-              {activeType && !messagesLoading && sorted.length === 0 && <Empty description="Нет сообщений" style={{ margin: 'auto' }} />}
+              )}
 
-              {dateGroups.map((group) => (
-                <div key={group.date}>
-                  {/* Date separator */}
-                  <div style={{ display: 'flex', alignItems: 'center', margin: '12px 0', gap: 12 }}>
-                    <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />
-                    <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{group.label}</Typography.Text>
-                    <div style={{ flex: 1, height: 1, background: tk.colorBorderSecondary }} />
+              {/* Edit preview */}
+              {editingMessage && (
+                <div
+                  style={{
+                    padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
+                    background: tk.colorWarningBg || tk.colorFillSecondary, margin: '0 12px', borderRadius: 4,
+                  }}
+                >
+                  <div style={{ flex: 1, fontSize: 12 }}>
+                    <Typography.Text strong>Редактирование</Typography.Text>
                   </div>
-                  {group.msgs.map(renderMessage)}
+                  <Button type="text" size="small" icon={<CloseOutlined />} onClick={cancelEdit} />
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </>
+              )}
+
+              {/* Selected files */}
+              {selectedFiles.length > 0 && (
+                <div style={{ padding: '4px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {selectedFiles.map((f, i) => (
+                    <Tag key={i} closable onClose={() => removeFile(i)} style={{ fontSize: 11 }}>
+                      {f.name} ({formatFileSize(f.size)})
+                    </Tag>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ padding: '12px 20px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                {!editingMessage && (
+                  <>
+                    <Button
+                      type="text"
+                      icon={<PaperClipOutlined />}
+                      onClick={() => fileInputRef.current?.click()}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={handleFileSelect}
+                    />
+                  </>
+                )}
+                <Input.TextArea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) { e.preventDefault(); handleSend(); }
+                  }}
+                  placeholder="Написать сообщение..."
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  loading={sendMut.isPending || editMut.isPending}
+                  onClick={handleSend}
+                  disabled={!text.trim()}
+                />
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Input area */}
-        {activeType && !searchQuery && (
-          <div style={{ borderTop: `1px solid ${tk.colorBorderSecondary}` }}>
-            {/* Reply preview */}
-            {replyingTo && (
-              <div
-                style={{
-                  padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
-                  borderLeft: `3px solid ${tk.colorPrimary}`, margin: '0 12px',
-                  background: tk.colorFillSecondary, borderRadius: '0 4px 4px 0',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: tk.colorPrimary }}>{replyingTo.sender?.fullName}</div>
-                  <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replyingTo.text}</div>
-                </div>
-                <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setReplyingTo(null)} />
-              </div>
-            )}
-
-            {/* Edit preview */}
-            {editingMessage && (
-              <div
-                style={{
-                  padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8,
-                  background: tk.colorWarningBg || tk.colorFillSecondary, margin: '0 12px', borderRadius: 4,
-                }}
-              >
-                <div style={{ flex: 1, fontSize: 12 }}>
-                  <Typography.Text strong>Редактирование</Typography.Text>
-                </div>
-                <Button type="text" size="small" icon={<CloseOutlined />} onClick={cancelEdit} />
-              </div>
-            )}
-
-            {/* Selected files */}
-            {selectedFiles.length > 0 && (
-              <div style={{ padding: '4px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {selectedFiles.map((f, i) => (
-                  <Tag key={i} closable onClose={() => removeFile(i)} style={{ fontSize: 11 }}>
-                    {f.name} ({formatFileSize(f.size)})
-                  </Tag>
-                ))}
-              </div>
-            )}
-
-            <div style={{ padding: '12px 20px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              {!editingMessage && (
-                <>
-                  <Button
-                    type="text"
-                    icon={<PaperClipOutlined />}
-                    onClick={() => fileInputRef.current?.click()}
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    style={{ display: 'none' }}
-                    onChange={handleFileSelect}
-                  />
-                </>
-              )}
-              <Input.TextArea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onPressEnter={(e) => {
-                  if (!e.shiftKey) { e.preventDefault(); handleSend(); }
-                }}
-                placeholder="Написать сообщение..."
-                autoSize={{ minRows: 1, maxRows: 4 }}
-                style={{ flex: 1 }}
-              />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                loading={sendMut.isPending || editMut.isPending}
-                onClick={handleSend}
-                disabled={!text.trim()}
-              />
-            </div>
-          </div>
-        )}
-      </div>
       )}
     </div>
   );

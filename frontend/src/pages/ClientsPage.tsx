@@ -256,15 +256,15 @@ export default function ClientsPage() {
           )}
         />
       ) : (
-      <Table
-        dataSource={filteredClients}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-        size="middle"
-        bordered={false}
-      />
+        <Table
+          dataSource={filteredClients}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          size="middle"
+          bordered={false}
+        />
       )}
 
       {/* Create Modal */}

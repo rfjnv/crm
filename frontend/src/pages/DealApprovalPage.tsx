@@ -182,17 +182,17 @@ export default function DealApprovalPage() {
           )}
         />
       ) : (
-      <Table
-        dataSource={deals ?? []}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-        size="middle"
-        bordered={false}
-        scroll={{ x: 600 }}
-        locale={{ emptyText: 'Нет сделок, ожидающих одобрения' }}
-      />
+        <Table
+          dataSource={deals ?? []}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          size="middle"
+          bordered={false}
+          scroll={{ x: 600 }}
+          locale={{ emptyText: 'Нет сделок, ожидающих одобрения' }}
+        />
       )}
 
       <Modal

@@ -81,17 +81,17 @@ export default function ApprovalsPage() {
           )}
         />
       ) : (
-      <Table
-        dataSource={deals}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{ pageSize: 20 }}
-        size="middle"
-        bordered={false}
-        scroll={{ x: 600 }}
-        locale={{ emptyText: 'Нет сделок, ожидающих действий' }}
-      />
+        <Table
+          dataSource={deals}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ pageSize: 20 }}
+          size="middle"
+          bordered={false}
+          scroll={{ x: 600 }}
+          locale={{ emptyText: 'Нет сделок, ожидающих действий' }}
+        />
       )}
     </div>
   );
