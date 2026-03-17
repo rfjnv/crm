@@ -45,6 +45,10 @@ const paymentMethodLabels: Record<string, string> = {
 
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 
+function getDefaultContractEndDate(start?: dayjs.Dayjs) {
+  return dayjs(start ?? dayjs()).endOf('year');
+}
+
 /** Format qty: integers without .0, decimals up to 3 digits */
 function formatQty(value: number | string | null | undefined): string {
   if (value == null) return '—';
@@ -381,8 +385,31 @@ export default function DealDetailPage() {
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
+  const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
+
+  function openSetQuantitiesEditor() {
+    const initialValues = (deal.items ?? []).map((item) => ({
+      dealItemId: item.id,
+      productName: item.product?.name || 'Товар',
+      unit: item.product?.unit || 'шт',
+      warehouseComment: item.warehouseComment || '',
+      requestedQty: Number(item.requestedQty) || 0,
+      price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
+    }));
+
+    quantitiesForm.setFieldsValue({
+      items: initialValues,
+      discount: Number(deal.discount) || 0,
+      paymentType: deal.paymentType || 'FULL',
+      paidAmount: Number(deal.paidAmount) || 0,
+      dueDate: deal.dueDate ? dayjs(deal.dueDate) : null,
+      terms: deal.terms || '',
+    });
+
+    setSetQuantitiesModal(true);
+  }
 
   // ──── Role-based action buttons ────
 
@@ -401,18 +428,12 @@ export default function DealDetailPage() {
     // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
     if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
-        <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={() => {
-          const initialValues = (deal.items ?? []).map((item) => ({
-            dealItemId: item.id,
+        <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
+          {/*
             productName: item.product?.name || 'Товар',
             unit: item.product?.unit || 'шт',
-            warehouseComment: item.warehouseComment || '',
-            requestedQty: Number(item.requestedQty) || 0,
-            price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
-          }));
-          quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
-          setSetQuantitiesModal(true);
-        }}>
+          Указать количества и цены
+          */}
           Указать количества и цены
         </Button>,
       );
@@ -428,7 +449,8 @@ export default function DealDetailPage() {
     // IN_PROGRESS without quantities → Set quantities
     if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
       actions.push(
-        <Button key="set-quantities-ip" type="primary" icon={<EditOutlined />} onClick={() => {
+        <Button key="set-quantities-ip" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
+          {/*
           const initialValues = (deal.items ?? []).map((item) => ({
             dealItemId: item.id,
             productName: item.product?.name || 'Товар',
@@ -440,6 +462,8 @@ export default function DealDetailPage() {
           quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
           setSetQuantitiesModal(true);
         }}>
+          Указать количества и цены
+          */}
           Указать количества и цены
         </Button>,
       );
@@ -469,9 +493,12 @@ export default function DealDetailPage() {
     }
 
     // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
-    if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT')) {
+    if (canAdjustFinanceItems) {
       const contractMissing = needsContract && !deal.contractId;
       actions.push(
+        <Button key="edit-finance-items" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
+          Изменить цены
+        </Button>,
         contractMissing
           ? <Tooltip key="fin-approve" title="Сначала прикрепите договор">
             <Button type="primary" icon={<CheckCircleOutlined />} disabled>
@@ -721,7 +748,8 @@ export default function DealDetailPage() {
             <Space>
               <Button size="small" type="primary" icon={<FileTextOutlined />} onClick={() => {
                 contractForm.resetFields();
-                contractForm.setFieldsValue({ startDate: dayjs(), amount: Number(deal.amount) || 0 });
+                const startDate = dayjs();
+                contractForm.setFieldsValue({ startDate, endDate: getDefaultContractEndDate(startDate), amount: Number(deal.amount) || 0 });
                 setCreateContractModal(true);
               }}>Создать договор</Button>
               <Button size="small" icon={<LinkOutlined />} onClick={() => setAttachContractModal(true)}>Прикрепить</Button>
@@ -1682,22 +1710,22 @@ export default function DealDetailPage() {
         okText="Создать и прикрепить"
         cancelText="Отмена"
       >
-        <Form form={contractForm} layout="vertical" onFinish={(v) => createContractMut.mutate({
-          contractNumber: v.contractNumber,
-          contractType: v.contractType || 'ONE_TIME',
-          amount: v.amount || 0,
-          startDate: v.startDate.format('YYYY-MM-DD'),
-          endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : undefined,
-          notes: v.notes || undefined,
-        })}
+        <Form form={contractForm} layout="vertical" onFinish={(v) => {
+          const startDate = v.startDate;
+          const endDate = v.endDate || getDefaultContractEndDate(startDate);
+          createContractMut.mutate({
+            contractNumber: v.contractNumber,
+            contractType: v.contractType || 'ONE_TIME',
+            amount: v.amount || 0,
+            startDate: startDate.format('YYYY-MM-DD'),
+            endDate: endDate.format('YYYY-MM-DD'),
+            notes: v.notes || undefined,
+          });
+        }}
         onValuesChange={(changed) => {
-          if (changed.contractType) {
-            const start = contractForm.getFieldValue('startDate') || dayjs();
-            if (changed.contractType === 'ANNUAL') {
-              contractForm.setFieldsValue({ startDate: start, endDate: dayjs(start).endOf('year') });
-            } else {
-              contractForm.setFieldsValue({ endDate: undefined });
-            }
+          if (changed.contractType || changed.startDate) {
+            const start = changed.startDate || contractForm.getFieldValue('startDate') || dayjs();
+            contractForm.setFieldsValue({ startDate: start, endDate: getDefaultContractEndDate(start) });
           }
         }}
         >
@@ -1771,7 +1799,8 @@ export default function DealDetailPage() {
           onClick={() => {
             setAttachContractModal(false);
             contractForm.resetFields();
-            contractForm.setFieldsValue({ startDate: dayjs(), amount: Number(deal.amount) || 0 });
+            const startDate = dayjs();
+            contractForm.setFieldsValue({ startDate, endDate: getDefaultContractEndDate(startDate), amount: Number(deal.amount) || 0 });
             setCreateContractModal(true);
           }}
         >

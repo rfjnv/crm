@@ -545,13 +545,15 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED') {
+    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED' && deal.status !== 'WAITING_FINANCE') {
       throw new AppError(400, 'Сделка должна быть в статусе "В работе" для установки количеств');
     }
 
     // Verify user is manager of this deal or admin
     const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
-    if (!isAdmin && deal.managerId !== user.userId) {
+    const canFinanceEdit = user.role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE';
+    const canManagerEdit = deal.managerId === user.userId && deal.status !== 'WAITING_FINANCE';
+    if (!isAdmin && !canFinanceEdit && !canManagerEdit) {
       throw new AppError(403, 'Только менеджер сделки или администратор может установить количества');
     }
 

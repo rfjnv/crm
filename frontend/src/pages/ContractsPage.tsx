@@ -20,6 +20,10 @@ import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 
+function getDefaultContractEndDate(start?: dayjs.Dayjs) {
+  return dayjs(start ?? dayjs()).endOf('year');
+}
+
 export default function ContractsPage() {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -100,7 +104,8 @@ export default function ContractsPage() {
   function openCreate() {
     setEditingContract(null);
     form.resetFields();
-    form.setFieldsValue({ startDate: dayjs() });
+    const startDate = dayjs();
+    form.setFieldsValue({ startDate, endDate: getDefaultContractEndDate(startDate) });
     setCreateOpen(true);
   }
 
@@ -119,13 +124,15 @@ export default function ContractsPage() {
   }
 
   function handleCreateFinish(values: Record<string, unknown>) {
+    const startDate = values.startDate as dayjs.Dayjs;
+    const endDate = (values.endDate as dayjs.Dayjs | undefined) || getDefaultContractEndDate(startDate);
     createMut.mutate({
       clientId: values.clientId as string,
       contractNumber: values.contractNumber as string,
       contractType: (values.contractType as 'ANNUAL' | 'ONE_TIME') || 'ONE_TIME',
       amount: (values.amount as number) || undefined,
-      startDate: (values.startDate as dayjs.Dayjs).format('YYYY-MM-DD'),
-      endDate: values.endDate ? (values.endDate as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
+      startDate: startDate.format('YYYY-MM-DD'),
+      endDate: endDate.format('YYYY-MM-DD'),
       notes: (values.notes as string) || undefined,
     });
   }
@@ -336,7 +343,17 @@ export default function ContractsPage() {
         cancelText="Отмена"
         width={isMobile ? '100%' : 520}
       >
-        <Form form={form} layout="vertical" onFinish={handleCreateFinish}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleCreateFinish}
+          onValuesChange={(changed) => {
+            if (changed.contractType || changed.startDate) {
+              const startDate = changed.startDate || form.getFieldValue('startDate') || dayjs();
+              form.setFieldsValue({ startDate, endDate: getDefaultContractEndDate(startDate) });
+            }
+          }}
+        >
           <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
             <Select showSearch optionFilterProp="label" placeholder="Выберите клиента" options={clientOptions} />
           </Form.Item>

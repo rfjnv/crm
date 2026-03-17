@@ -58,7 +58,7 @@ export default function ContractDetailPage() {
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
-  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfLoadingKey, setPdfLoadingKey] = useState<string | null>(null);
   const [showVat, setShowVat] = useState(false);
   const [poaModalOpen, setPoaModalOpen] = useState(false);
   const [poaForm] = Form.useForm();
@@ -175,10 +175,13 @@ export default function ContractDetailPage() {
   const vatTotal = useMemo(() => allItems.reduce((s, i) => s + i.vatAmount, 0), [allItems]);
 
   function handlePrint(docType?: string) {
-    setPdfLoading(true);
-    contractsApi.downloadPrint(id!, docType)
+    const targetDocType = docType ?? 'PACKAGE';
+    setPdfLoadingKey(targetDocType);
+    contractsApi.downloadPrint(id!, targetDocType)
       .catch(() => message.error('Ошибка генерации PDF'))
-      .finally(() => setPdfLoading(false));
+      .finally(() => {
+        setPdfLoadingKey((current) => (current === targetDocType ? null : current));
+      });
   }
 
   function handleSoftDelete() {
@@ -194,6 +197,7 @@ export default function ContractDetailPage() {
 
   const dealsCount = contract.deals?.length || 0;
   const isAnnual = contract.contractType === 'ANNUAL';
+  const isPdfBusy = pdfLoadingKey !== null;
 
   const pdfMenuItems = [
     ...(isAnnual ? [{ key: 'CONTRACT', label: 'Договор' }] : []),
@@ -218,11 +222,12 @@ export default function ContractDetailPage() {
         <Dropdown.Button
           icon={<DownOutlined />}
           type="primary"
-          loading={pdfLoading}
+          loading={pdfLoadingKey === 'PACKAGE'}
+          disabled={isPdfBusy && pdfLoadingKey !== 'PACKAGE'}
           onClick={() => handlePrint('PACKAGE')}
           menu={{
             items: pdfMenuItems,
-            onClick: ({ key }) => handlePrint(key),
+            onClick: ({ key }) => handlePrint(String(key)),
           }}
         >
           <FilePdfOutlined /> Скачать комплект
@@ -310,9 +315,7 @@ export default function ContractDetailPage() {
         {/* Items / Products Table */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography.Title level={5} style={{ margin: 0 }}>Товары / услуги ({allItems.length})</Typography.Title>
-          {canManage && (
             <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС 12%</Button>
-          )}
         </div>
         {allItems.length === 0 ? (
           <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>Нет товаров в сделках</Typography.Text>
@@ -390,8 +393,8 @@ export default function ContractDetailPage() {
                   type="link"
                   size="small"
                   icon={<DownloadOutlined />}
-                  disabled={!doc.ready || pdfLoading}
-                  loading={pdfLoading}
+                  disabled={!doc.ready || (isPdfBusy && pdfLoadingKey !== doc.key)}
+                  loading={pdfLoadingKey === doc.key}
                   onClick={() => handlePrint(doc.key)}
                 >
                   Скачать
@@ -416,8 +419,8 @@ export default function ContractDetailPage() {
                 type="link"
                 size="small"
                 icon={<DownloadOutlined />}
-                disabled={pdfLoading}
-                loading={pdfLoading}
+                disabled={isPdfBusy && pdfLoadingKey !== 'PACKAGE'}
+                loading={pdfLoadingKey === 'PACKAGE'}
                 onClick={() => handlePrint('PACKAGE')}
               >
                 Скачать

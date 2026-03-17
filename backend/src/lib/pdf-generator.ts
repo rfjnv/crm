@@ -148,10 +148,11 @@ function computeItemsWithVat(items: DealItemForPdf[]): {
   let subtotalVat = 0;
   const rows = items.map((item, i) => {
     const qty = Number(item.requestedQty) || 0;
-    const price = Number(item.price) || 0;
-    const sum = qty * price;
-    const vatAmount = Math.round(sum * VAT_RATE * 100) / 100;
-    const totalWithVat = sum + vatAmount;
+    const priceWithVat = Number(item.price) || 0;
+    const totalWithVat = Math.round(qty * priceWithVat * 100) / 100;
+    const vatAmount = Math.round((totalWithVat * VAT_RATE / (1 + VAT_RATE)) * 100) / 100;
+    const sum = Math.round((totalWithVat - vatAmount) * 100) / 100;
+    const price = qty > 0 ? Math.round((sum / qty) * 100) / 100 : 0;
     subtotalBase += sum;
     subtotalVat += vatAmount;
     return {

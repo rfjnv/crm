@@ -44,8 +44,8 @@ router.delete('/:id/items/:itemId', asyncHandler(dealsController.removeItem.bind
 // Workflow: Warehouse Response
 router.post('/:id/stock-confirm', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(warehouseResponseDto), asyncHandler(dealsController.submitWarehouseResponse.bind(dealsController)));
 
-// Workflow: Set Item Quantities (Manager fills after warehouse response)
-router.post('/:id/set-quantities', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(setItemQuantitiesDto), asyncHandler(dealsController.setItemQuantities.bind(dealsController)));
+// Workflow: Set Item Quantities (Manager fills after warehouse response, accountant may adjust in finance step)
+router.post('/:id/set-quantities', authorize('MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), validate(setItemQuantitiesDto), asyncHandler(dealsController.setItemQuantities.bind(dealsController)));
 
 // Workflow: Send to Finance (Manager selects payment method)
 router.post('/:id/send-to-finance', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(sendToFinanceDto), asyncHandler(dealsController.sendToFinance.bind(dealsController)));
