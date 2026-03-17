@@ -125,6 +125,13 @@ export default function Layout() {
         label: <Link to="/contracts">Договоры</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
+      ? [{
+        key: '/power-of-attorney',
+        icon: <SolutionOutlined />,
+        label: <Link to="/power-of-attorney">Доверенности</Link>,
+      }]
+      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/deals',

@@ -35,6 +35,7 @@ import ContractsPage from './pages/ContractsPage';
 import ArchivedDealsPage from './pages/ArchivedDealsPage';
 import CashboxPage from './pages/CashboxPage';
 import ContractDetailPage from './pages/ContractDetailPage';
+import PowerOfAttorneyPage from './pages/PowerOfAttorneyPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
@@ -89,6 +90,7 @@ export default function App() {
                 <Route path="/clients/:id" element={<ClientDetailPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />
                 <Route path="/contracts/:id" element={<ContractDetailPage />} />
+                <Route path="/power-of-attorney" element={<PowerOfAttorneyPage />} />
                 <Route path="/deals" element={<DealsPage />} />
                 <Route path="/deals/new" element={<DealCreatePage />} />
                 <Route path="/deals/approval" element={<DealApprovalPage />} />

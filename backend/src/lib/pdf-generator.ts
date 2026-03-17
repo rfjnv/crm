@@ -20,6 +20,12 @@ export interface ContractForPdf {
     contactName: string;
     phone: string | null;
     address: string | null;
+    inn: string | null;
+    bankName: string | null;
+    bankAccount: string | null;
+    mfo: string | null;
+    vatRegCode: string | null;
+    oked: string | null;
   } | null;
   deals: {
     id: string;
@@ -33,7 +39,7 @@ export interface ContractForPdf {
 }
 
 export interface DealItemForPdf {
-  product: { name: string; sku: string; unit: string };
+  product: { name: string; sku: string; unit: string; countryOfOrigin?: string | null };
   requestedQty: unknown;
   price: unknown;
 }
@@ -49,9 +55,42 @@ export interface CompanySettingsForPdf {
   mfo: string;
   director: string;
   logoPath: string | null;
+  vatRegCode: string;
+  oked: string;
 }
 
-export type DocType = 'CONTRACT' | 'SPECIFICATION' | 'INVOICE' | 'POWER_OF_ATTORNEY' | 'PACKAGE';
+export interface PowerOfAttorneyForPdf {
+  poaNumber: string;
+  poaType: 'ANNUAL' | 'ONE_TIME';
+  authorizedPersonName: string;
+  authorizedPersonInn: string | null;
+  authorizedPersonPosition: string | null;
+  validFrom: Date;
+  validUntil: Date;
+  items: { name: string; unit: string; qty?: number }[];
+  contract: { contractNumber: string; startDate: Date };
+  client: {
+    companyName: string;
+    contactName: string;
+    phone: string | null;
+    address: string | null;
+    inn: string | null;
+    bankName: string | null;
+    bankAccount: string | null;
+    mfo: string | null;
+    vatRegCode: string | null;
+    oked: string | null;
+  } | null;
+}
+
+export type DocType =
+  | 'CONTRACT'
+  | 'CONTRACT_ANNUAL'
+  | 'CONTRACT_ONE_TIME'
+  | 'SPECIFICATION'
+  | 'INVOICE'
+  | 'POWER_OF_ATTORNEY'
+  | 'PACKAGE';
 
 // ---------- Helpers ----------
 
@@ -81,195 +120,324 @@ function getLogoBase64(logoPath: string | null | undefined): string {
   return `data:${mime};base64,${data.toString('base64')}`;
 }
 
-function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    NEW: 'Новая', IN_PROGRESS: 'В работе',
-    WAITING_STOCK_CONFIRMATION: 'Ожид. склад', STOCK_CONFIRMED: 'Склад подтв.',
-    WAITING_FINANCE: 'Ожид. финансы', FINANCE_APPROVED: 'Финансы ок',
-    ADMIN_APPROVED: 'Одобрена', READY_FOR_SHIPMENT: 'К отгрузке',
-    SHIPMENT_ON_HOLD: 'Отгр. задержка',
-    CLOSED: 'Закрыта', CANCELED: 'Отменена', REJECTED: 'Отклонена',
-  };
-  return map[status] || status;
+// ---------- VAT ----------
+
+const VAT_RATE = 0.12;
+
+interface VatRow {
+  num: number;
+  name: string;
+  sku: string;
+  unit: string;
+  countryOfOrigin: string;
+  qty: number;
+  price: number;
+  sum: number;
+  vatRate: number;
+  vatAmount: number;
+  totalWithVat: number;
 }
 
-function paymentStatusLabel(status: string): string {
-  const map: Record<string, string> = {
-    UNPAID: 'Не оплачено', PARTIAL: 'Частично', PAID: 'Оплачено',
-  };
-  return map[status] || status;
-}
-
-function computeItemsTotals(items: DealItemForPdf[]) {
-  let subtotal = 0;
+function computeItemsWithVat(items: DealItemForPdf[]): {
+  rows: VatRow[];
+  subtotalBase: number;
+  subtotalVat: number;
+  grandTotal: number;
+} {
+  let subtotalBase = 0;
+  let subtotalVat = 0;
   const rows = items.map((item, i) => {
     const qty = Number(item.requestedQty) || 0;
     const price = Number(item.price) || 0;
     const sum = qty * price;
-    subtotal += sum;
-    return { num: i + 1, name: item.product.name, sku: item.product.sku, unit: item.product.unit, qty, price, sum };
+    const vatAmount = Math.round(sum * VAT_RATE * 100) / 100;
+    const totalWithVat = sum + vatAmount;
+    subtotalBase += sum;
+    subtotalVat += vatAmount;
+    return {
+      num: i + 1,
+      name: item.product.name,
+      sku: item.product.sku,
+      unit: item.product.unit,
+      countryOfOrigin: item.product.countryOfOrigin || 'Купля-продажа',
+      qty,
+      price,
+      sum,
+      vatRate: 12,
+      vatAmount,
+      totalWithVat,
+    };
   });
-  return { rows, subtotal };
+  return { rows, subtotalBase, subtotalVat, grandTotal: subtotalBase + subtotalVat };
 }
 
 // ---------- Shared CSS ----------
 
-const BASE_CSS = `
+const FORMAL_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #333; padding: 40px 50px; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 2px solid #22609A; padding-bottom: 20px; }
-.header-left { flex: 1; }
-.logo { max-height: 70px; max-width: 200px; margin-bottom: 8px; }
-.company-name { font-size: 16px; font-weight: bold; color: #22609A; margin-bottom: 4px; }
-.company-details { font-size: 10px; color: #666; line-height: 1.6; }
-.header-right { text-align: right; font-size: 10px; color: #666; }
-.doc-title { text-align: center; font-size: 18px; font-weight: bold; margin: 20px 0 5px; color: #22609A; }
-.doc-subtitle { text-align: center; font-size: 11px; color: #888; margin-bottom: 25px; }
-.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-.info-block { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 12px 15px; }
-.info-block-title { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 0.5px; }
-.info-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-.info-label { color: #666; }
-.info-value { font-weight: 600; }
-.summary-row { display: flex; justify-content: space-around; margin: 20px 0; padding: 15px; background: #f0f6ff; border-radius: 6px; border: 1px solid #d0e0f0; }
-.summary-item { text-align: center; }
-.summary-label { font-size: 10px; color: #666; text-transform: uppercase; }
-.summary-value { font-size: 16px; font-weight: bold; color: #22609A; }
-.summary-value.paid { color: #52c41a; }
-.summary-value.remaining { color: #ff4d4f; }
-table { width: 100%; border-collapse: collapse; margin: 10px 0 25px; font-size: 11px; }
-th { background: #22609A; color: white; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase; }
-td { padding: 7px 10px; border-bottom: 1px solid #e9ecef; }
-tr:nth-child(even) td { background: #f8f9fa; }
-.money { text-align: right; font-variant-numeric: tabular-nums; }
-.section-title { font-size: 13px; font-weight: bold; color: #22609A; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #e9ecef; }
-.signatures { display: flex; justify-content: space-between; margin-top: 50px; padding-top: 20px; }
+body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 11px; line-height: 1.4; color: #000; padding: 15mm 15mm 15mm 20mm; }
+.doc-title { text-align: center; font-size: 16px; font-weight: bold; margin: 15px 0 5px; }
+.doc-subtitle { text-align: center; font-size: 12px; margin-bottom: 15px; }
+.requisites-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 15px 0; border: 1px solid #000; }
+.requisites-col { padding: 8px 10px; }
+.requisites-col + .requisites-col { border-left: 1px solid #000; }
+.req-row { margin-bottom: 3px; }
+.req-label { font-weight: bold; }
+.section-num { font-weight: bold; margin: 12px 0 6px; }
+.article-text { text-indent: 20px; margin-bottom: 6px; text-align: justify; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10px; }
+th, td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
+th { background: #f0f0f0; font-weight: bold; text-align: center; font-size: 9px; }
+td.money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.center { text-align: center; }
+.totals-row { font-weight: bold; }
+.totals-row td { border-top: 2px solid #000; }
+.signatures { display: flex; justify-content: space-between; margin-top: 30px; page-break-inside: avoid; }
 .signature-block { width: 45%; }
-.signature-title { font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #22609A; }
-.signature-line { border-bottom: 1px solid #333; height: 30px; margin-bottom: 4px; }
-.signature-hint { font-size: 9px; color: #999; text-align: center; }
-.notes { margin: 15px 0; padding: 10px 15px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px; font-size: 11px; }
-.footer { margin-top: 30px; text-align: center; font-size: 9px; color: #aaa; }
-.totals-row { font-weight: bold; background: #f0f6ff !important; }
-.totals-row td { border-top: 2px solid #22609A; }
+.signature-title { font-weight: bold; margin-bottom: 4px; text-decoration: underline; }
+.signature-line { border-bottom: 1px solid #000; height: 25px; margin: 4px 0; }
+.signature-hint { font-size: 9px; color: #666; text-align: center; }
+.sig-person { margin-bottom: 3px; }
+.total-words { margin: 10px 0; font-size: 11px; }
+.poa-field { margin: 4px 0; }
+.poa-label { font-weight: bold; }
+.indent { text-indent: 30px; }
 `;
 
-// ---------- Shared Blocks ----------
-
-function headerBlock(company: CompanySettingsForPdf | null): string {
-  const logoSrc = getLogoBase64(company?.logoPath);
-  const hasCompany = company && company.companyName;
-  return `<div class="header">
-  <div class="header-left">
-    ${logoSrc ? `<img src="${logoSrc}" class="logo" alt="logo">` : ''}
-    ${hasCompany ? `<div class="company-name">${company!.companyName}</div>` : ''}
-    <div class="company-details">
-      ${company?.inn ? `ИНН: ${company.inn}<br>` : ''}
-      ${company?.address ? `${company.address}<br>` : ''}
-      ${company?.phone ? `Тел: ${company.phone}` : ''}${company?.email ? ` · ${company.email}` : ''}
-    </div>
-  </div>
-  <div class="header-right">
-    ${company?.bankName ? `Банк: ${company.bankName}<br>` : ''}
-    ${company?.bankAccount ? `Р/с: ${company.bankAccount}<br>` : ''}
-    ${company?.mfo ? `МФО: ${company.mfo}` : ''}
-  </div>
-</div>`;
+function wrapHtml(bodyContent: string): string {
+  return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><style>${FORMAL_CSS}</style></head><body>${bodyContent}</body></html>`;
 }
 
-function partiesBlock(contract: ContractForPdf, company: CompanySettingsForPdf | null): string {
-  const hasCompany = company && company.companyName;
-  return `<div class="info-grid">
-  <div class="info-block">
-    <div class="info-block-title">Поставщик</div>
-    ${hasCompany ? `
-      <div class="info-row"><span class="info-value">${company!.companyName}</span></div>
-      ${company!.address ? `<div class="info-row"><span class="info-label">${company!.address}</span></div>` : ''}
-      ${company!.director ? `<div class="info-row"><span class="info-label">Директор:</span><span class="info-value">${company!.director}</span></div>` : ''}
-    ` : '<div class="info-row"><span class="info-label">Не указан</span></div>'}
-  </div>
-  <div class="info-block">
-    <div class="info-block-title">Покупатель</div>
-    ${contract.client ? `
-      <div class="info-row"><span class="info-value">${contract.client.companyName}</span></div>
-      ${contract.client.contactName ? `<div class="info-row"><span class="info-label">Контакт:</span><span class="info-value">${contract.client.contactName}</span></div>` : ''}
-      ${contract.client.phone ? `<div class="info-row"><span class="info-label">Тел:</span><span class="info-value">${contract.client.phone}</span></div>` : ''}
-      ${contract.client.address ? `<div class="info-row"><span class="info-label">${contract.client.address}</span></div>` : ''}
-    ` : '<div class="info-row"><span class="info-label">Не указан</span></div>'}
-  </div>
-</div>`;
-}
+// ---------- Template: CONTRACT ANNUAL ----------
 
-function signaturesBlock(contract: ContractForPdf, company: CompanySettingsForPdf | null): string {
-  return `<div class="signatures">
+export function buildContractAnnualHtml(
+  contract: ContractForPdf,
+  company: CompanySettingsForPdf | null,
+  items: DealItemForPdf[],
+): string {
+  const { rows, subtotalBase, subtotalVat, grandTotal } = computeItemsWithVat(items);
+  const cl = contract.client;
+  const endYear = contract.endDate ? new Date(contract.endDate).getFullYear() : new Date().getFullYear();
+
+  const itemRows = rows.map((r) => `
+    <tr>
+      <td class="center">${r.num}</td>
+      <td>${r.name}</td>
+      <td class="center">${r.unit}</td>
+      <td class="money">${r.qty}</td>
+      <td class="money">${formatMoney(r.price)}</td>
+      <td class="money">${formatMoney(r.sum)}</td>
+      <td class="center">${r.vatRate}%</td>
+      <td class="money">${formatMoney(r.vatAmount)}</td>
+      <td class="money">${formatMoney(r.totalWithVat)}</td>
+    </tr>
+  `).join('');
+
+  const body = `
+<div class="doc-title">ДОГОВОР № ${contract.contractNumber}</div>
+<div class="doc-subtitle">г. Ташкент &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${formatDate(contract.startDate)}</div>
+
+<p class="article-text">
+  <strong>${company?.companyName || '_______________'}</strong>, именуемое в дальнейшем «Поставщик», в лице директора
+  <strong>${company?.director || '_______________'}</strong>, действующего на основании Устава, с одной стороны, и
+  <strong>${cl?.companyName || '_______________'}</strong>, именуемое в дальнейшем «Покупатель», в лице
+  <strong>${cl?.contactName || '_______________'}</strong>, действующего на основании Устава, с другой стороны,
+  заключили настоящий Договор о нижеследующем:
+</p>
+
+<div class="section-num">1. ПРЕДМЕТ ДОГОВОРА</div>
+<p class="article-text">1.1. Поставщик обязуется поставить, а Покупатель принять и оплатить товары в ассортименте, количестве и по ценам, указанным в Спецификации, являющейся неотъемлемой частью настоящего Договора.</p>
+<p class="article-text">1.2. Наименование, количество, цена и общая стоимость товара:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Кол-во</th>
+      <th>Цена</th><th>Сумма</th><th>Ставка НДС</th><th>Сумма НДС</th><th>Итого с НДС</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemRows}
+    <tr class="totals-row">
+      <td colspan="5" style="text-align: right;">Итого:</td>
+      <td class="money">${formatMoney(subtotalBase)}</td>
+      <td></td>
+      <td class="money">${formatMoney(subtotalVat)}</td>
+      <td class="money">${formatMoney(grandTotal)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-num">2. УСЛОВИЯ ОПЛАТЫ</div>
+<p class="article-text">2.1. Оплата производится путём перечисления денежных средств на расчётный счёт Поставщика в течение 30 (тридцати) банковских дней с момента поставки товара.</p>
+<p class="article-text">2.2. Датой оплаты считается дата зачисления денежных средств на расчётный счёт Поставщика.</p>
+
+<div class="section-num">3. УСЛОВИЯ ПОСТАВКИ</div>
+<p class="article-text">3.1. Поставка товара осуществляется со склада Поставщика. Доставка товара осуществляется силами и за счёт Покупателя, если иное не оговорено дополнительно.</p>
+<p class="article-text">3.2. Право собственности на товар переходит к Покупателю с момента подписания товарно-транспортной накладной.</p>
+
+<div class="section-num">4. ОТВЕТСТВЕННОСТЬ СТОРОН</div>
+<p class="article-text">4.1. За несвоевременную оплату Покупатель уплачивает пеню в размере 0,5% от суммы задолженности за каждый день просрочки, но не более 50% от суммы задолженности.</p>
+<p class="article-text">4.2. Стороны несут ответственность за неисполнение или ненадлежащее исполнение обязательств в соответствии с законодательством Республики Узбекистан.</p>
+
+<div class="section-num">5. ПОРЯДОК РАЗРЕШЕНИЯ СПОРОВ</div>
+<p class="article-text">5.1. Все споры и разногласия решаются путём переговоров. При недостижении согласия споры рассматриваются в хозяйственном суде.</p>
+
+<div class="section-num">6. ФОРС-МАЖОР</div>
+<p class="article-text">6.1. Стороны освобождаются от ответственности за полное или частичное неисполнение обязательств, если оно явилось следствием обстоятельств непреодолимой силы.</p>
+
+<div class="section-num">7. ПРОЧИЕ УСЛОВИЯ</div>
+<p class="article-text">7.1. Настоящий Договор вступает в силу с момента подписания и действует до 31.12.${endYear}.</p>
+<p class="article-text">7.2. Договор составлен в двух экземплярах, по одному для каждой из сторон.</p>
+<p class="article-text">7.3. Все изменения и дополнения к настоящему Договору действительны при условии их письменного оформления и подписания обеими сторонами.</p>
+
+${contract.notes ? `<p class="article-text" style="margin-top: 10px;"><strong>Примечание:</strong> ${contract.notes}</p>` : ''}
+
+<div class="section-num">8. РЕКВИЗИТЫ И ПОДПИСИ СТОРОН</div>
+
+<div class="requisites-grid">
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Поставщик:</span></div>
+    <div class="req-row">${company?.companyName || '—'}</div>
+    <div class="req-row">ИНН: ${company?.inn || '—'}</div>
+    <div class="req-row">Адрес: ${company?.address || '—'}</div>
+    <div class="req-row">Р/с: ${company?.bankAccount || '—'}</div>
+    <div class="req-row">Банк: ${company?.bankName || '—'}</div>
+    <div class="req-row">МФО: ${company?.mfo || '—'}</div>
+    ${company?.vatRegCode ? `<div class="req-row">Рег. код НДС: ${company.vatRegCode}</div>` : ''}
+    ${company?.oked ? `<div class="req-row">ОКЭД: ${company.oked}</div>` : ''}
+    <div class="req-row">Тел: ${company?.phone || '—'}</div>
+  </div>
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Покупатель:</span></div>
+    <div class="req-row">${cl?.companyName || '—'}</div>
+    <div class="req-row">ИНН: ${cl?.inn || '—'}</div>
+    <div class="req-row">Адрес: ${cl?.address || '—'}</div>
+    <div class="req-row">Р/с: ${cl?.bankAccount || '—'}</div>
+    <div class="req-row">Банк: ${cl?.bankName || '—'}</div>
+    <div class="req-row">МФО: ${cl?.mfo || '—'}</div>
+    ${cl?.vatRegCode ? `<div class="req-row">Рег. код НДС: ${cl.vatRegCode}</div>` : ''}
+    ${cl?.oked ? `<div class="req-row">ОКЭД: ${cl.oked}</div>` : ''}
+    <div class="req-row">Тел: ${cl?.phone || '—'}</div>
+  </div>
+</div>
+
+<div class="signatures">
   <div class="signature-block">
     <div class="signature-title">Поставщик</div>
-    ${company?.director ? `<div style="margin-bottom: 4px;">${company.director}</div>` : ''}
+    ${company?.director ? `<div class="sig-person">${company.director}</div>` : ''}
     <div class="signature-line"></div>
     <div class="signature-hint">подпись / М.П.</div>
   </div>
   <div class="signature-block">
     <div class="signature-title">Покупатель</div>
-    ${contract.client?.contactName ? `<div style="margin-bottom: 4px;">${contract.client.contactName}</div>` : ''}
+    ${cl?.contactName ? `<div class="sig-person">${cl.contactName}</div>` : ''}
     <div class="signature-line"></div>
     <div class="signature-hint">подпись / М.П.</div>
   </div>
-</div>`;
+</div>
+`;
+
+  return wrapHtml(body);
 }
 
-function footerBlock(): string {
-  return `<div class="footer">Документ сформирован ${formatDate(new Date())} · Polygraph Business CRM</div>`;
-}
+// ---------- Template: CONTRACT ONE_TIME (Счёт-Договор) ----------
 
-function wrapHtml(bodyContent: string): string {
-  return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><style>${BASE_CSS}</style></head><body>${bodyContent}</body></html>`;
-}
+export function buildContractOneTimeHtml(
+  contract: ContractForPdf,
+  company: CompanySettingsForPdf | null,
+  items: DealItemForPdf[],
+): string {
+  const { rows, subtotalBase, subtotalVat, grandTotal } = computeItemsWithVat(items);
+  const cl = contract.client;
 
-// ---------- Template: CONTRACT ----------
-
-export function buildContractHtml(contract: ContractForPdf, company: CompanySettingsForPdf | null): string {
-  const dealsRows = contract.deals.map((d, i) => `
+  const itemRows = rows.map((r) => `
     <tr>
-      <td>${i + 1}</td>
-      <td>${d.title || d.id.slice(0, 8)}</td>
-      <td>${statusLabel(d.status)}</td>
-      <td class="money">${formatMoney(d.amount)}</td>
-      <td class="money">${formatMoney(d.paidAmount)}</td>
-      <td>${paymentStatusLabel(d.paymentStatus)}</td>
+      <td class="center">${r.num}</td>
+      <td>${r.name}</td>
+      <td class="center">${r.unit}</td>
+      <td class="money">${r.qty}</td>
+      <td class="money">${formatMoney(r.price)}</td>
+      <td class="money">${formatMoney(r.sum)}</td>
+      <td class="center">${r.vatRate}%</td>
+      <td class="money">${formatMoney(r.vatAmount)}</td>
+      <td class="money">${formatMoney(r.totalWithVat)}</td>
     </tr>
   `).join('');
 
   const body = `
-${headerBlock(company)}
-
-<div class="doc-title">ДОГОВОР ${contract.contractNumber}</div>
-<div class="doc-subtitle">
-  от ${formatDate(contract.startDate)}
-  ${contract.endDate ? ` по ${formatDate(contract.endDate)}` : ''}
-  · ${contract.isActive ? 'Действующий' : 'Закрыт'}
+<div style="text-align: left; margin-bottom: 15px; font-size: 10px; line-height: 1.6;">
+  <strong>${company?.companyName || '—'}</strong><br>
+  ИНН: ${company?.inn || '—'} | Р/с: ${company?.bankAccount || '—'}<br>
+  Банк: ${company?.bankName || '—'} | МФО: ${company?.mfo || '—'}<br>
+  ${company?.vatRegCode ? `Рег. код НДС: ${company.vatRegCode}<br>` : ''}
+  Адрес: ${company?.address || '—'} | Тел: ${company?.phone || '—'}
 </div>
 
-${partiesBlock(contract, company)}
+<div class="doc-title">СЧЁТ-ДОГОВОР № ${contract.contractNumber}</div>
+<div class="doc-subtitle">от ${formatDate(contract.startDate)}</div>
 
-<div class="summary-row">
-  <div class="summary-item"><div class="summary-label">Сумма договора</div><div class="summary-value">${formatMoney(contract.amount)} сум</div></div>
-  <div class="summary-item"><div class="summary-label">Сумма сделок</div><div class="summary-value">${formatMoney(contract.totalAmount)} сум</div></div>
-  <div class="summary-item"><div class="summary-label">Оплачено</div><div class="summary-value paid">${formatMoney(contract.totalPaid)} сум</div></div>
-  <div class="summary-item"><div class="summary-label">Остаток</div><div class="summary-value ${contract.remaining > 0 ? 'remaining' : 'paid'}">${formatMoney(contract.remaining)} сум</div></div>
+<p class="article-text">
+  <strong>${company?.companyName || '___'}</strong> (Поставщик) предлагает
+  <strong>${cl?.companyName || '___'}</strong> (Покупатель) приобрести товар на следующих условиях:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Кол-во</th>
+      <th>Цена</th><th>Сумма</th><th>Ставка НДС</th><th>Сумма НДС</th><th>Итого с НДС</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemRows}
+    <tr class="totals-row">
+      <td colspan="5" style="text-align: right;">Итого:</td>
+      <td class="money">${formatMoney(subtotalBase)}</td>
+      <td></td>
+      <td class="money">${formatMoney(subtotalVat)}</td>
+      <td class="money">${formatMoney(grandTotal)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="article-text"><strong>Условия оплаты:</strong> Оплата производится в течение 5 (пяти) банковских дней с момента выставления счёта.</p>
+<p class="article-text"><strong>Срок поставки:</strong> В течение 3 (трёх) рабочих дней с момента оплаты.</p>
+<p class="article-text">Оплата данного счёт-договора означает согласие с условиями поставки товара.</p>
+
+${contract.notes ? `<p class="article-text"><strong>Примечание:</strong> ${contract.notes}</p>` : ''}
+
+<div class="requisites-grid">
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Поставщик:</span></div>
+    <div class="req-row">${company?.companyName || '—'}</div>
+    <div class="req-row">ИНН: ${company?.inn || '—'}</div>
+    <div class="req-row">Р/с: ${company?.bankAccount || '—'}</div>
+    <div class="req-row">Банк: ${company?.bankName || '—'} | МФО: ${company?.mfo || '—'}</div>
+  </div>
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Покупатель:</span></div>
+    <div class="req-row">${cl?.companyName || '—'}</div>
+    <div class="req-row">ИНН: ${cl?.inn || '—'}</div>
+    <div class="req-row">Р/с: ${cl?.bankAccount || '—'}</div>
+    <div class="req-row">Банк: ${cl?.bankName || '—'} | МФО: ${cl?.mfo || '—'}</div>
+  </div>
 </div>
 
-${contract.notes ? `<div class="notes"><strong>Примечание:</strong> ${contract.notes}</div>` : ''}
-
-${contract.deals.length > 0 ? `
-  <div class="section-title">Сделки (${contract.deals.length})</div>
-  <table>
-    <thead><tr><th>#</th><th>Сделка</th><th>Статус</th><th class="money">Сумма</th><th class="money">Оплачено</th><th>Оплата</th></tr></thead>
-    <tbody>${dealsRows}</tbody>
-  </table>
-` : ''}
-
-${signaturesBlock(contract, company)}
-${footerBlock()}
+<div class="signatures">
+  <div class="signature-block">
+    <div class="signature-title">Поставщик</div>
+    ${company?.director ? `<div class="sig-person">${company.director}</div>` : ''}
+    <div class="signature-line"></div>
+    <div class="signature-hint">подпись / М.П.</div>
+  </div>
+  <div class="signature-block">
+    <div class="signature-title">Покупатель</div>
+    ${cl?.contactName ? `<div class="sig-person">${cl.contactName}</div>` : ''}
+    <div class="signature-line"></div>
+    <div class="signature-hint">подпись / М.П.</div>
+  </div>
+</div>
 `;
 
   return wrapHtml(body);
@@ -282,123 +450,179 @@ export function buildSpecificationHtml(
   company: CompanySettingsForPdf | null,
   items: DealItemForPdf[],
 ): string {
-  const { rows, subtotal } = computeItemsTotals(items);
+  const { rows, subtotalBase, subtotalVat, grandTotal } = computeItemsWithVat(items);
 
   const itemRows = rows.map((r) => `
     <tr>
-      <td>${r.num}</td>
+      <td class="center">${r.num}</td>
       <td>${r.name}</td>
-      <td>${r.sku}</td>
-      <td>${r.unit}</td>
+      <td class="center">${r.unit}</td>
       <td class="money">${r.qty}</td>
       <td class="money">${formatMoney(r.price)}</td>
       <td class="money">${formatMoney(r.sum)}</td>
+      <td class="center">${r.vatRate}%</td>
+      <td class="money">${formatMoney(r.vatAmount)}</td>
+      <td class="money">${formatMoney(r.totalWithVat)}</td>
     </tr>
   `).join('');
 
   const body = `
-${headerBlock(company)}
+<div style="text-align: left; margin-bottom: 10px; font-size: 10px; line-height: 1.6; border-bottom: 1px solid #000; padding-bottom: 10px;">
+  <strong>Банковские реквизиты Поставщика:</strong><br>
+  ${company?.companyName || '—'}<br>
+  Р/с: ${company?.bankAccount || '—'} | Банк: ${company?.bankName || '—'} | МФО: ${company?.mfo || '—'}<br>
+  ИНН: ${company?.inn || '—'}${company?.vatRegCode ? ` | Рег. код НДС: ${company.vatRegCode}` : ''}
+</div>
 
 <div class="doc-title">СПЕЦИФИКАЦИЯ</div>
-<div class="doc-subtitle">к Договору ${contract.contractNumber} от ${formatDate(contract.startDate)}</div>
-
-${partiesBlock(contract, company)}
+<div class="doc-subtitle">к Договору № ${contract.contractNumber} от ${formatDate(contract.startDate)}</div>
 
 <table>
   <thead>
     <tr>
-      <th>#</th><th>Наименование</th><th>Артикул</th><th>Ед. изм.</th>
-      <th class="money">Кол-во</th><th class="money">Цена</th><th class="money">Сумма</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${itemRows}
-    <tr class="totals-row">
-      <td colspan="6" style="text-align: right;">Итого:</td>
-      <td class="money">${formatMoney(subtotal)}</td>
-    </tr>
-  </tbody>
-</table>
-
-${signaturesBlock(contract, company)}
-${footerBlock()}
-`;
-
-  return wrapHtml(body);
-}
-
-// ---------- Template: INVOICE ----------
-
-export function buildInvoiceHtml(
-  contract: ContractForPdf,
-  company: CompanySettingsForPdf | null,
-  items: DealItemForPdf[],
-): string {
-  const { rows, subtotal } = computeItemsTotals(items);
-
-  const itemRows = rows.map((r) => `
-    <tr>
-      <td>${r.num}</td>
-      <td>${r.name}</td>
-      <td>${r.unit}</td>
-      <td class="money">${r.qty}</td>
-      <td class="money">${formatMoney(r.price)}</td>
-      <td class="money">${formatMoney(r.sum)}</td>
-    </tr>
-  `).join('');
-
-  const body = `
-${headerBlock(company)}
-
-<div class="doc-title">СЧЁТ-ФАКТУРА</div>
-<div class="doc-subtitle">к Договору ${contract.contractNumber} от ${formatDate(contract.startDate)}</div>
-
-<div class="info-grid">
-  <div class="info-block">
-    <div class="info-block-title">Поставщик</div>
-    ${company ? `
-      <div class="info-row"><span class="info-value">${company.companyName}</span></div>
-      ${company.inn ? `<div class="info-row"><span class="info-label">ИНН:</span><span class="info-value">${company.inn}</span></div>` : ''}
-      ${company.bankAccount ? `<div class="info-row"><span class="info-label">Р/с:</span><span class="info-value">${company.bankAccount}</span></div>` : ''}
-      ${company.bankName ? `<div class="info-row"><span class="info-label">Банк:</span><span class="info-value">${company.bankName}</span></div>` : ''}
-      ${company.mfo ? `<div class="info-row"><span class="info-label">МФО:</span><span class="info-value">${company.mfo}</span></div>` : ''}
-    ` : '<div class="info-row"><span class="info-label">Не указан</span></div>'}
-  </div>
-  <div class="info-block">
-    <div class="info-block-title">Покупатель</div>
-    ${contract.client ? `
-      <div class="info-row"><span class="info-value">${contract.client.companyName}</span></div>
-      ${contract.client.contactName ? `<div class="info-row"><span class="info-label">Контакт:</span><span class="info-value">${contract.client.contactName}</span></div>` : ''}
-      ${contract.client.phone ? `<div class="info-row"><span class="info-label">Тел:</span><span class="info-value">${contract.client.phone}</span></div>` : ''}
-      ${contract.client.address ? `<div class="info-row"><span class="info-label">Адрес:</span><span class="info-value">${contract.client.address}</span></div>` : ''}
-    ` : '<div class="info-row"><span class="info-label">Не указан</span></div>'}
-  </div>
-</div>
-
-<div class="summary-row">
-  <div class="summary-item"><div class="summary-label">К оплате</div><div class="summary-value">${formatMoney(subtotal)} сум</div></div>
-  <div class="summary-item"><div class="summary-label">Оплачено</div><div class="summary-value paid">${formatMoney(contract.totalPaid)} сум</div></div>
-  <div class="summary-item"><div class="summary-label">Остаток</div><div class="summary-value ${contract.remaining > 0 ? 'remaining' : 'paid'}">${formatMoney(contract.remaining)} сум</div></div>
-</div>
-
-<table>
-  <thead>
-    <tr>
-      <th>#</th><th>Наименование</th><th>Ед. изм.</th>
-      <th class="money">Кол-во</th><th class="money">Цена</th><th class="money">Сумма</th>
+      <th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Кол-во</th>
+      <th>Цена</th><th>Сумма</th><th>Ставка НДС</th><th>Сумма НДС</th><th>Итого с НДС</th>
     </tr>
   </thead>
   <tbody>
     ${itemRows}
     <tr class="totals-row">
       <td colspan="5" style="text-align: right;">Итого:</td>
-      <td class="money">${formatMoney(subtotal)}</td>
+      <td class="money">${formatMoney(subtotalBase)}</td>
+      <td></td>
+      <td class="money">${formatMoney(subtotalVat)}</td>
+      <td class="money">${formatMoney(grandTotal)}</td>
     </tr>
   </tbody>
 </table>
 
-${signaturesBlock(contract, company)}
-${footerBlock()}
+<p class="article-text" style="margin-top: 15px;"><strong>Условия оплаты:</strong> Перечисление на расчётный счёт Поставщика в течение 30 банковских дней с момента поставки.</p>
+<p class="article-text"><strong>Срок поставки:</strong> По мере готовности товара на складе Поставщика.</p>
+
+${contract.notes ? `<p class="article-text"><strong>Примечание:</strong> ${contract.notes}</p>` : ''}
+
+<div class="signatures">
+  <div class="signature-block">
+    <div class="signature-title">Поставщик</div>
+    ${company?.director ? `<div class="sig-person">${company.director}</div>` : ''}
+    <div class="signature-line"></div>
+    <div class="signature-hint">подпись / М.П.</div>
+  </div>
+  <div class="signature-block">
+    <div class="signature-title">Покупатель</div>
+    ${contract.client?.contactName ? `<div class="sig-person">${contract.client.contactName}</div>` : ''}
+    <div class="signature-line"></div>
+    <div class="signature-hint">подпись / М.П.</div>
+  </div>
+</div>
+`;
+
+  return wrapHtml(body);
+}
+
+// ---------- Template: INVOICE (Счёт-Фактура) ----------
+
+export function buildInvoiceHtml(
+  contract: ContractForPdf,
+  company: CompanySettingsForPdf | null,
+  items: DealItemForPdf[],
+): string {
+  const { rows, subtotalBase, subtotalVat, grandTotal } = computeItemsWithVat(items);
+  const cl = contract.client;
+
+  const itemRows = rows.map((r) => `
+    <tr>
+      <td class="center">${r.num}</td>
+      <td>${r.name}</td>
+      <td style="font-size: 8px;">${r.sku || '—'}</td>
+      <td class="center">${r.unit}</td>
+      <td class="money">${r.qty}</td>
+      <td class="money">${formatMoney(r.price)}</td>
+      <td class="money">${formatMoney(r.sum)}</td>
+      <td class="center">${r.vatRate}%</td>
+      <td class="money">${formatMoney(r.vatAmount)}</td>
+      <td class="money">${formatMoney(r.totalWithVat)}</td>
+      <td style="font-size: 8px;">${r.countryOfOrigin}</td>
+    </tr>
+  `).join('');
+
+  const body = `
+<div class="doc-title">Счет-фактура</div>
+<div class="doc-subtitle">
+  № ${contract.contractNumber} от ${formatDate(contract.startDate)}<br>
+  к договору № ${contract.contractNumber} от ${formatDate(contract.startDate)}
+</div>
+
+<div class="requisites-grid">
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Поставщик:</span> ${company?.companyName || '—'}</div>
+    <div class="req-row"><span class="req-label">Адрес:</span> ${company?.address || '—'}</div>
+    <div class="req-row"><span class="req-label">Идентификационный номер поставщика (ИНН):</span> ${company?.inn || '—'}</div>
+    <div class="req-row"><span class="req-label">Регистрационный код плательщика НДС:</span> ${company?.vatRegCode || '—'}</div>
+    <div class="req-row"><span class="req-label">Р/С:</span> ${company?.bankAccount || '—'}</div>
+    <div class="req-row"><span class="req-label">МФО:</span> ${company?.mfo || '—'}</div>
+  </div>
+  <div class="requisites-col">
+    <div class="req-row"><span class="req-label">Покупатель:</span> ${cl?.companyName || '—'}</div>
+    <div class="req-row"><span class="req-label">Адрес:</span> ${cl?.address || '—'}</div>
+    <div class="req-row"><span class="req-label">Идентификационный номер покупателя (ИНН):</span> ${cl?.inn || '—'}</div>
+    <div class="req-row"><span class="req-label">Регистрационный код плательщика НДС:</span> ${cl?.vatRegCode || '—'}</div>
+    <div class="req-row"><span class="req-label">Р/С:</span> ${cl?.bankAccount || '—'}</div>
+    <div class="req-row"><span class="req-label">МФО:</span> ${cl?.mfo || '—'}</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">№</th>
+      <th rowspan="2">Наименование товаров (услуг)</th>
+      <th rowspan="2">Идентификационный код по каталогу</th>
+      <th rowspan="2">Единица измерения</th>
+      <th rowspan="2">Количество</th>
+      <th rowspan="2">Цена</th>
+      <th rowspan="2">Стоимость поставки</th>
+      <th colspan="2">НДС</th>
+      <th rowspan="2">Стоимость поставки с учетом НДС</th>
+      <th rowspan="2">Происхождение товара</th>
+    </tr>
+    <tr>
+      <th>Ставка</th>
+      <th>Сумма</th>
+    </tr>
+    <tr style="font-size: 8px; text-align: center;">
+      <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemRows}
+    <tr class="totals-row">
+      <td colspan="6" style="text-align: right;">Итого</td>
+      <td class="money">${formatMoney(subtotalBase)}</td>
+      <td></td>
+      <td class="money">${formatMoney(subtotalVat)}</td>
+      <td class="money">${formatMoney(grandTotal)}</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="total-words">
+  <strong>Всего к оплате:</strong> ${formatMoney(grandTotal)} сум. в т. ч. НДС: ${formatMoney(subtotalVat)}.
+</div>
+
+<div class="requisites-grid" style="border: none; margin-top: 20px;">
+  <div class="requisites-col" style="border: none;">
+    <div class="sig-person"><strong>Руководитель:</strong> ${company?.director || '________________'}</div>
+    <div class="sig-person"><strong>Главный бухгалтер:</strong> ________________</div>
+    <div class="sig-person"><strong>Товар отпустил:</strong> ________________</div>
+  </div>
+  <div class="requisites-col" style="border: none;">
+    <div class="sig-person"><strong>Руководитель:</strong> ${cl?.contactName || '________________'}</div>
+    <div class="sig-person"><strong>Главный бухгалтер:</strong> ________________</div>
+    <div class="sig-person"><strong>Получил:</strong> ________________</div>
+  </div>
+</div>
 `;
 
   return wrapHtml(body);
@@ -407,46 +631,72 @@ ${footerBlock()}
 // ---------- Template: POWER OF ATTORNEY ----------
 
 export function buildPowerOfAttorneyHtml(
-  contract: ContractForPdf,
+  poa: PowerOfAttorneyForPdf,
   company: CompanySettingsForPdf | null,
 ): string {
+  const cl = poa.client;
+
+  const itemRows = poa.items.length > 0
+    ? poa.items.map((item, i) => `
+        <tr>
+          <td class="center">${i + 1}</td>
+          <td></td>
+          <td>${item.name}</td>
+          <td class="center">${item.unit}</td>
+          <td class="center">${item.qty != null ? item.qty : '—'}</td>
+        </tr>
+      `).join('')
+    : `<tr><td class="center">1</td><td></td><td>—</td><td>—</td><td>—</td></tr>`;
+
   const body = `
-${headerBlock(company)}
+<div class="doc-title">Доверенность ${poa.poaNumber}</div>
 
-<div class="doc-title">ДОВЕРЕННОСТЬ</div>
-<div class="doc-subtitle">к Договору ${contract.contractNumber} от ${formatDate(contract.startDate)}</div>
-
-<div style="margin: 30px 0; line-height: 2; font-size: 13px;">
-  <p>${company?.companyName || '_______________'}, в лице директора ${company?.director || '_______________'},
-  действующего на основании Устава, настоящим уполномочивает:</p>
-
-  <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;">
-    <div class="info-row" style="margin-bottom: 8px;">
-      <span class="info-label">ФИО доверенного лица:</span>
-      <span class="info-value">${contract.client?.contactName || '_______________'}</span>
-    </div>
-    <div class="info-row" style="margin-bottom: 8px;">
-      <span class="info-label">Организация:</span>
-      <span class="info-value">${contract.client?.companyName || '_______________'}</span>
-    </div>
-  </div>
-
-  <p>на получение товарно-материальных ценностей по Договору <strong>${contract.contractNumber}</strong>
-  от ${formatDate(contract.startDate)}${contract.endDate ? ` по ${formatDate(contract.endDate)}` : ''},
-  а также подписание всех необходимых документов, связанных с исполнением данного Договора.</p>
-
-  <p style="margin-top: 15px;">Сумма по Договору: <strong>${formatMoney(contract.amount)} сум</strong></p>
-
-  <p style="margin-top: 20px; font-size: 11px; color: #666;">
-    Доверенность действительна до ${contract.endDate ? formatDate(contract.endDate) : '_______________'}.
-  </p>
+<div style="text-align: center; margin: 20px 0; line-height: 2;">
+  <div class="poa-field"><span class="poa-label">Дата выдачи:</span> ${formatDate(poa.validFrom)}</div>
+  <div class="poa-field"><span class="poa-label">Доверенность действительна до:</span> ${formatDate(poa.validUntil)}</div>
+  <div class="poa-field"><span class="poa-label">Наименование предприятия:</span> ${cl?.companyName || '—'}</div>
+  <div class="poa-field"><span class="poa-label">Адрес:</span> ${cl?.address || '—'}</div>
+  <div class="poa-field"><span class="poa-label">ИНН/ПИНФЛ:</span> ${cl?.inn || '—'}</div>
+  <div class="poa-field"><span class="poa-label">Доверенность выдана: ФИО:</span> ${poa.authorizedPersonName} &nbsp; <span class="poa-label">ИНН/ПИНФЛ:</span> ${poa.authorizedPersonInn || '—'}</div>
+  <div class="poa-field"><span class="poa-label">На получение от:</span> ${company?.companyName || '—'}</div>
+  <div class="poa-field"><span class="poa-label">Материальных ценностей по договору:</span>№${poa.contract.contractNumber} от ${formatDate(poa.contract.startDate)}</div>
 </div>
 
-${signaturesBlock(contract, company)}
-${footerBlock()}
+<div class="doc-title" style="font-size: 13px; margin: 15px 0 10px;">Перечень товарно-материальных ценностей, подлежащих получению</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Номер по порядку</th>
+      <th>Идентификационный код по каталогу</th>
+      <th>Наименование товаров</th>
+      <th>Единица измерения</th>
+      <th>Количество</th>
+    </tr>
+    <tr style="font-size: 8px; text-align: center;">
+      <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemRows}
+  </tbody>
+</table>
+
+<div style="margin-top: 30px; line-height: 2.5;">
+  <div>Подпись получившего:____________________ удостоверяем</div>
+  <div>Руководитель:____________________${cl?.contactName || ''}</div>
+  <div>Глав. бух.:____________________</div>
+</div>
 `;
 
   return wrapHtml(body);
+}
+
+// ---------- Backward compat: old buildContractHtml ----------
+
+export function buildContractHtml(contract: ContractForPdf, company: CompanySettingsForPdf | null): string {
+  // Legacy: delegates to annual with empty items
+  return buildContractAnnualHtml(contract, company, []);
 }
 
 // ---------- Browser / PDF Generation ----------
@@ -513,7 +763,7 @@ export async function generateDocumentPdf(htmlPages: string[]): Promise<Buffer> 
       return pdfBuffers[0];
     }
 
-    // Merge multiple PDFs using PDF-lib-free approach: concatenate via pages
+    // Merge multiple PDFs using pdf-lib
     const { PDFDocument } = await import('pdf-lib');
     const mergedPdf = await PDFDocument.create();
     for (const buf of pdfBuffers) {

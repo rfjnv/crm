@@ -86,6 +86,12 @@ export interface Client {
   email?: string | null;
   address?: string | null;
   notes?: string | null;
+  inn?: string | null;
+  bankName?: string | null;
+  bankAccount?: string | null;
+  mfo?: string | null;
+  vatRegCode?: string | null;
+  oked?: string | null;
   managerId: string;
   isArchived: boolean;
   createdAt: string;
@@ -695,6 +701,8 @@ export interface CompanySettings {
   bankAccount: string;
   mfo: string;
   director: string;
+  vatRegCode: string;
+  oked: string;
   logoPath: string | null;
   updatedAt: string;
 }

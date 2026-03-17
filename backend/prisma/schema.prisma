@@ -174,6 +174,12 @@ model Client {
   email       String?
   address     String?
   notes       String?
+  inn         String?
+  bankName    String?  @map("bank_name")
+  bankAccount String?  @map("bank_account")
+  mfo         String?
+  vatRegCode  String?  @map("vat_reg_code")
+  oked        String?
   managerId   String   @map("manager_id")
   isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -211,6 +217,7 @@ model Contract {
   deletedBy User?   @relation("ContractDeletedBy", fields: [deletedById], references: [id])
   deals     Deal[]
   attachments ContractAttachment[]
+  powersOfAttorney PowerOfAttorney[]
 
   @@index([clientId])
   @@index([deletedAt])
@@ -232,6 +239,27 @@ model ContractAttachment {
 
   @@index([contractId])
   @@map("contract_attachments")
+}
+
+model PowerOfAttorney {
+  id                       String       @id @default(uuid())
+  contractId               String       @map("contract_id")
+  poaNumber                String       @unique @map("poa_number")
+  poaType                  ContractType @map("poa_type")
+  authorizedPersonName     String       @map("authorized_person_name")
+  authorizedPersonInn      String?      @map("authorized_person_inn")
+  authorizedPersonPosition String?      @map("authorized_person_position")
+  validFrom                DateTime     @map("valid_from")
+  validUntil               DateTime     @map("valid_until")
+  items                    Json?
+  notes                    String?
+  createdAt                DateTime     @default(now()) @map("created_at")
+  updatedAt                DateTime     @updatedAt @map("updated_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+  @@map("powers_of_attorney")
 }
 
 // ==================== DEALS ====================
@@ -615,6 +643,8 @@ model CompanySettings {
   mfo          String   @default("")
   director     String   @default("")
   logoPath     String?  @map("logo_path")
+  vatRegCode   String   @default("") @map("vat_reg_code")
+  oked         String   @default("")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("company_settings")

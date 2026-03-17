@@ -126,6 +126,15 @@ export default function CompanySettingsPage() {
             </Form.Item>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+            <Form.Item label="Рег. код НДС" name="vatRegCode">
+              <Input placeholder="123456789012" />
+            </Form.Item>
+            <Form.Item label="ОКЭД" name="oked">
+              <Input placeholder="12345" />
+            </Form.Item>
+          </div>
+
           <Form.Item>
             <Button
               type="primary"

@@ -10,6 +10,8 @@ export const updateCompanySettingsDto = z.object({
   bankAccount: z.string().optional(),
   mfo: z.string().optional(),
   director: z.string().optional(),
+  vatRegCode: z.string().optional(),
+  oked: z.string().optional(),
 });
 
 export type UpdateCompanySettingsDto = z.infer<typeof updateCompanySettingsDto>;

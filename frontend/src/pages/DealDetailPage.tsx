@@ -9,7 +9,7 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
-  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, CalculatorOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { adminApi } from '../api/admin.api';
@@ -24,6 +24,7 @@ import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { VAT_RATE } from '../utils/vat';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
@@ -72,6 +73,7 @@ export default function DealDetailPage() {
   const [overrideModal, setOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [showVat, setShowVat] = useState(false);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
@@ -378,6 +380,7 @@ export default function DealDetailPage() {
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
+  const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
   // ──── Role-based action buttons ────
@@ -601,6 +604,11 @@ export default function DealDetailPage() {
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
       { title: 'Цена', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatUZS(v) : '—' },
       { title: 'Сумма', key: 'total', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty)) : '—' },
+      ...(showVat ? [
+        { title: 'НДС %', key: 'vatRate', align: 'center' as const, width: 70, render: () => '12%' },
+        { title: 'Сумма НДС', key: 'vatAmount', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty) * 0.12) : '—' },
+        { title: 'С НДС', key: 'totalWithVat', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty) * 1.12) : '—' },
+      ] : []),
     ] : [
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
     ]),
@@ -856,7 +864,14 @@ export default function DealDetailPage() {
           <Card
             title={`Товары (${deal.items?.length ?? 0})`}
             size="small"
-            extra={canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>+</Button>}
+            extra={
+              <Space>
+                {canToggleVat && (
+                  <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС</Button>
+                )}
+                {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>+</Button>}
+              </Space>
+            }
             bordered={false}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -896,6 +911,18 @@ export default function DealDetailPage() {
                           <div><Typography.Text strong>{formatUZS(Number(item.price) * Number(item.requestedQty))}</Typography.Text></div>
                         </div>
                       )}
+                      {showVat && item.requestedQty != null && item.price != null && (
+                        <>
+                          <div>
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>НДС 12%</Typography.Text>
+                            <div><Typography.Text>{formatUZS(Number(item.price) * Number(item.requestedQty) * 0.12)}</Typography.Text></div>
+                          </div>
+                          <div>
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>С НДС</Typography.Text>
+                            <div><Typography.Text strong>{formatUZS(Number(item.price) * Number(item.requestedQty) * 1.12)}</Typography.Text></div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                   {item.warehouseComment && (
@@ -923,9 +950,15 @@ export default function DealDetailPage() {
                         </div>
                       </>
                     )}
+                    {showVat && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography.Text>НДС 12%</Typography.Text>
+                        <Typography.Text>{formatUZS((discount > 0 ? subtotal - discount : subtotal) * 0.12)}</Typography.Text>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography.Text strong>Итого</Typography.Text>
-                      <Typography.Text strong>{formatUZS(discount > 0 ? subtotal - discount : subtotal)}</Typography.Text>
+                      <Typography.Text strong>{formatUZS(showVat ? (discount > 0 ? subtotal - discount : subtotal) * 1.12 : (discount > 0 ? subtotal - discount : subtotal))}</Typography.Text>
                     </div>
                   </div>
                 );
@@ -1144,7 +1177,14 @@ export default function DealDetailPage() {
                     </Card>
                   )}
 
-                  <Card title={`Товары (${deal.items?.length ?? 0})`} extra={canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Добавить</Button>} bordered={false}>
+                  <Card title={`Товары (${deal.items?.length ?? 0})`} extra={
+                    <Space>
+                      {canToggleVat && (
+                        <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС 12%</Button>
+                      )}
+                      {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Добавить</Button>}
+                    </Space>
+                  } bordered={false}>
                     <Table
                       dataSource={deal.items ?? []}
                       columns={itemColumns}
@@ -1173,9 +1213,15 @@ export default function DealDetailPage() {
                                 </Table.Summary.Row>
                               </>
                             )}
+                            {showVat && (
+                              <Table.Summary.Row>
+                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>НДС 12%</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS((hasDiscount ? subtotal - discount : subtotal) * 0.12)}</Typography.Text></Table.Summary.Cell>
+                              </Table.Summary.Row>
+                            )}
                             <Table.Summary.Row>
                               <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
-                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(hasDiscount ? subtotal - discount : subtotal)}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(showVat ? (hasDiscount ? subtotal - discount : subtotal) * 1.12 : (hasDiscount ? subtotal - discount : subtotal))}</Typography.Text></Table.Summary.Cell>
                             </Table.Summary.Row>
                           </>
                         );

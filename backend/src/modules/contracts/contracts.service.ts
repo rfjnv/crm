@@ -4,8 +4,16 @@ import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
 import { CreateContractDto, UpdateContractDto, DeleteContractDto } from './contracts.dto';
 import { validateUploadedFile, generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
-import { generateContractPdf, buildContractHtml, buildSpecificationHtml, buildInvoiceHtml, buildPowerOfAttorneyHtml, generateDocumentPdf } from '../../lib/pdf-generator';
-import type { DocType, DealItemForPdf } from '../../lib/pdf-generator';
+import {
+  buildContractAnnualHtml,
+  buildContractOneTimeHtml,
+  buildContractHtml,
+  buildSpecificationHtml,
+  buildInvoiceHtml,
+  buildPowerOfAttorneyHtml,
+  generateDocumentPdf,
+} from '../../lib/pdf-generator';
+import type { DocType, DealItemForPdf, PowerOfAttorneyForPdf } from '../../lib/pdf-generator';
 import path from 'path';
 import fs from 'fs';
 
@@ -361,11 +369,16 @@ export class ContractsService {
 
   // ==================== PDF GENERATION ====================
 
-  async generatePdf(id: string, docType: DocType = 'CONTRACT'): Promise<Buffer> {
+  async generatePdf(id: string, docType: DocType = 'CONTRACT', poaId?: string): Promise<Buffer> {
     const contract = await prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, phone: true, address: true } },
+        client: {
+          select: {
+            id: true, companyName: true, contactName: true, phone: true, address: true,
+            inn: true, bankName: true, bankAccount: true, mfo: true, vatRegCode: true, oked: true,
+          },
+        },
         deals: {
           select: {
             id: true, title: true, status: true, amount: true,
@@ -374,7 +387,7 @@ export class ContractsService {
               select: {
                 requestedQty: true,
                 price: true,
-                product: { select: { name: true, sku: true, unit: true } },
+                product: { select: { name: true, sku: true, unit: true, countryOfOrigin: true } },
               },
             },
           },
@@ -413,12 +426,44 @@ export class ContractsService {
 
     const isAnnual = contract.contractType === 'ANNUAL';
 
+    // Helper to build PoA HTML
+    const buildPoaHtml = async (): Promise<string | null> => {
+      // Find the PoA record — use specific poaId if provided, otherwise the most recent one
+      const poaWhere: Record<string, unknown> = { contractId: id };
+      if (poaId) poaWhere.id = poaId;
+
+      const poa = await prisma.powerOfAttorney.findFirst({
+        where: poaWhere,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!poa) return null;
+
+      const poaForPdf: PowerOfAttorneyForPdf = {
+        poaNumber: poa.poaNumber,
+        poaType: poa.poaType as 'ANNUAL' | 'ONE_TIME',
+        authorizedPersonName: poa.authorizedPersonName,
+        authorizedPersonInn: poa.authorizedPersonInn,
+        authorizedPersonPosition: poa.authorizedPersonPosition,
+        validFrom: poa.validFrom,
+        validUntil: poa.validUntil,
+        items: (poa.items as { name: string; unit: string; qty?: number }[]) || [],
+        contract: { contractNumber: contract.contractNumber, startDate: contract.startDate },
+        client: contract.client,
+      };
+      return buildPowerOfAttorneyHtml(poaForPdf, companySettings);
+    };
+
     // Build HTML pages based on docType
     const htmlPages: string[] = [];
 
     switch (docType) {
       case 'CONTRACT':
-        htmlPages.push(buildContractHtml(pdfContract, companySettings));
+      case 'CONTRACT_ANNUAL':
+        htmlPages.push(buildContractAnnualHtml(pdfContract, companySettings, allItems));
+        break;
+      case 'CONTRACT_ONE_TIME':
+        htmlPages.push(buildContractOneTimeHtml(pdfContract, companySettings, allItems));
         break;
       case 'SPECIFICATION':
         htmlPages.push(buildSpecificationHtml(pdfContract, companySettings, allItems));
@@ -426,19 +471,29 @@ export class ContractsService {
       case 'INVOICE':
         htmlPages.push(buildInvoiceHtml(pdfContract, companySettings, allItems));
         break;
-      case 'POWER_OF_ATTORNEY':
-        htmlPages.push(buildPowerOfAttorneyHtml(pdfContract, companySettings));
-        break;
-      case 'PACKAGE':
-        if (isAnnual) {
-          htmlPages.push(buildContractHtml(pdfContract, companySettings));
-          htmlPages.push(buildSpecificationHtml(pdfContract, companySettings, allItems));
+      case 'POWER_OF_ATTORNEY': {
+        const poaHtml = await buildPoaHtml();
+        if (poaHtml) {
+          htmlPages.push(poaHtml);
+        } else {
+          throw new AppError(404, 'Доверенность не найдена. Создайте доверенность для этого контракта.');
         }
-        htmlPages.push(buildInvoiceHtml(pdfContract, companySettings, allItems));
-        htmlPages.push(buildPowerOfAttorneyHtml(pdfContract, companySettings));
         break;
+      }
+      case 'PACKAGE': {
+        if (isAnnual) {
+          htmlPages.push(buildContractAnnualHtml(pdfContract, companySettings, allItems));
+        } else {
+          htmlPages.push(buildContractOneTimeHtml(pdfContract, companySettings, allItems));
+        }
+        htmlPages.push(buildSpecificationHtml(pdfContract, companySettings, allItems));
+        htmlPages.push(buildInvoiceHtml(pdfContract, companySettings, allItems));
+        const poaHtml = await buildPoaHtml();
+        if (poaHtml) htmlPages.push(poaHtml);
+        break;
+      }
       default:
-        htmlPages.push(buildContractHtml(pdfContract, companySettings));
+        htmlPages.push(buildContractAnnualHtml(pdfContract, companySettings, allItems));
     }
 
     return generateDocumentPdf(htmlPages);

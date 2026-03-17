@@ -8,6 +8,12 @@ export const createClientDto = z.object({
   address: z.string().optional(),
   notes: z.string().optional(),
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
+  inn: z.string().optional(),
+  bankName: z.string().optional(),
+  bankAccount: z.string().optional(),
+  mfo: z.string().optional(),
+  vatRegCode: z.string().optional(),
+  oked: z.string().optional(),
 });
 
 export const updateClientDto = z.object({
@@ -18,6 +24,12 @@ export const updateClientDto = z.object({
   address: z.string().optional(),
   notes: z.string().optional(),
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
+  inn: z.string().optional(),
+  bankName: z.string().optional(),
+  bankAccount: z.string().optional(),
+  mfo: z.string().optional(),
+  vatRegCode: z.string().optional(),
+  oked: z.string().optional(),
 });
 
 export type CreateClientDto = z.infer<typeof createClientDto>;

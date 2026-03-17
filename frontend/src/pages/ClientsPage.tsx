@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card } from 'antd';
+import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
@@ -120,6 +120,12 @@ export default function ClientsPage() {
       address: client.address || '',
       notes: client.notes || '',
       managerId: client.managerId,
+      inn: client.inn || '',
+      bankName: client.bankName || '',
+      bankAccount: client.bankAccount || '',
+      mfo: client.mfo || '',
+      vatRegCode: client.vatRegCode || '',
+      oked: client.oked || '',
     });
     setEditOpen(true);
   };
@@ -184,6 +190,36 @@ export default function ClientsPage() {
           />
         </Form.Item>
       )}
+      <Collapse size="small" ghost items={[{
+        key: 'requisites',
+        label: 'Реквизиты (ИНН, банк, МФО)',
+        children: (
+          <>
+            <Form.Item name="inn" label="ИНН">
+              <Input placeholder="123456789" />
+            </Form.Item>
+            <Form.Item name="bankName" label="Банк">
+              <Input placeholder="АКБ ..." />
+            </Form.Item>
+            <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+              <Form.Item name="bankAccount" label="Расчётный счёт" style={{ flex: 1 }}>
+                <Input placeholder="20208000..." />
+              </Form.Item>
+              <Form.Item name="mfo" label="МФО" style={{ flex: 1 }}>
+                <Input placeholder="00000" />
+              </Form.Item>
+            </Space>
+            <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+              <Form.Item name="vatRegCode" label="Рег. код НДС" style={{ flex: 1 }}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="oked" label="ОКЭД" style={{ flex: 1 }}>
+                <Input />
+              </Form.Item>
+            </Space>
+          </>
+        ),
+      }]} />
     </>
   );
 

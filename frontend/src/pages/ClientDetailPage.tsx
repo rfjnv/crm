@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Timeline, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme,
+  message, theme, Collapse,
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
@@ -138,6 +138,12 @@ export default function ClientDetailPage() {
       email: client.email || '',
       address: client.address || '',
       notes: client.notes || '',
+      inn: client.inn || '',
+      bankName: client.bankName || '',
+      bankAccount: client.bankAccount || '',
+      mfo: client.mfo || '',
+      vatRegCode: client.vatRegCode || '',
+      oked: client.oked || '',
     });
     setEditOpen(true);
   };
@@ -225,6 +231,22 @@ export default function ClientDetailPage() {
                     <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
                     <Descriptions.Item label="Заметки">{client.notes || '—'}</Descriptions.Item>
                   </Descriptions>
+                  {(client.inn || client.bankName || client.bankAccount || client.mfo || client.vatRegCode || client.oked) && (
+                    <Collapse size="small" ghost style={{ marginTop: 12 }} items={[{
+                      key: 'requisites',
+                      label: 'Реквизиты',
+                      children: (
+                        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+                          <Descriptions.Item label="ИНН">{client.inn || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Банк">{client.bankName || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Р/С">{client.bankAccount || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="МФО">{client.mfo || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Рег. код НДС">{client.vatRegCode || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="ОКЭД">{client.oked || '—'}</Descriptions.Item>
+                        </Descriptions>
+                      ),
+                    }]} />
+                  )}
                 </Card>
 
                 <Card title="Договоры" extra={<Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setContractModal(true)}>Создать</Button>} bordered={false}>
@@ -544,6 +566,36 @@ export default function ClientDetailPage() {
           <Form.Item name="notes" label="Заметки">
             <Input.TextArea rows={2} />
           </Form.Item>
+          <Collapse size="small" ghost items={[{
+            key: 'requisites',
+            label: 'Реквизиты (ИНН, банк, МФО)',
+            children: (
+              <>
+                <Form.Item name="inn" label="ИНН">
+                  <Input placeholder="123456789" />
+                </Form.Item>
+                <Form.Item name="bankName" label="Банк">
+                  <Input placeholder="АКБ ..." />
+                </Form.Item>
+                <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+                  <Form.Item name="bankAccount" label="Расчётный счёт" style={{ flex: 1 }}>
+                    <Input placeholder="20208000..." />
+                  </Form.Item>
+                  <Form.Item name="mfo" label="МФО" style={{ flex: 1 }}>
+                    <Input placeholder="00000" />
+                  </Form.Item>
+                </Space>
+                <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+                  <Form.Item name="vatRegCode" label="Рег. код НДС" style={{ flex: 1 }}>
+                    <Input />
+                  </Form.Item>
+                  <Form.Item name="oked" label="ОКЭД" style={{ flex: 1 }}>
+                    <Input />
+                  </Form.Item>
+                </Space>
+              </>
+            ),
+          }]} />
         </Form>
       </Modal>
     </div>

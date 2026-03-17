@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag,
-  DatePicker, Card, Space, Descriptions, Drawer, Timeline, Statistic, Row, Col,
+  DatePicker, Card, Space, Descriptions, Drawer, Timeline, Statistic, Row, Col, Tabs,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, FileTextOutlined,
@@ -31,6 +31,7 @@ export default function ContractsPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentDealId, setPaymentDealId] = useState<string | null>(null);
   const [filterClient, setFilterClient] = useState<string>();
+  const [filterType, setFilterType] = useState<string>('ALL');
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
 
@@ -168,6 +169,11 @@ export default function ContractsPage() {
     [clients],
   );
 
+  const filteredContracts = useMemo(() => {
+    if (filterType === 'ALL') return contracts ?? [];
+    return (contracts ?? []).filter((c) => c.contractType === filterType);
+  }, [contracts, filterType]);
+
   const columns = [
     {
       title: 'Номер',
@@ -254,14 +260,14 @@ export default function ContractsPage() {
   ];
 
   const totals = useMemo(() => {
-    if (!contracts) return { total: 0, paid: 0, remaining: 0, count: 0 };
+    if (!filteredContracts.length) return { total: 0, paid: 0, remaining: 0, count: 0 };
     return {
-      count: contracts.length,
-      total: contracts.reduce((s, c) => s + c.totalAmount, 0),
-      paid: contracts.reduce((s, c) => s + c.totalPaid, 0),
-      remaining: contracts.reduce((s, c) => s + c.remaining, 0),
+      count: filteredContracts.length,
+      total: filteredContracts.reduce((s, c) => s + c.totalAmount, 0),
+      paid: filteredContracts.reduce((s, c) => s + c.totalPaid, 0),
+      remaining: filteredContracts.reduce((s, c) => s + c.remaining, 0),
     };
-  }, [contracts]);
+  }, [filteredContracts]);
 
   return (
     <div>
@@ -297,8 +303,19 @@ export default function ContractsPage() {
         </Col>
       </Row>
 
+      <Tabs
+        activeKey={filterType}
+        onChange={setFilterType}
+        style={{ marginBottom: 16 }}
+        items={[
+          { key: 'ALL', label: 'Все' },
+          { key: 'ANNUAL', label: 'Годовые' },
+          { key: 'ONE_TIME', label: 'Разовые' },
+        ]}
+      />
+
       <Table
-        dataSource={contracts}
+        dataSource={filteredContracts}
         columns={columns}
         rowKey="id"
         loading={isLoading}

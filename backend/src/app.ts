@@ -26,6 +26,7 @@ import tasksRoutes from './modules/tasks/tasks.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import pushRoutes from './modules/push/push.routes';
 import telegramRoutes from './modules/telegram/telegram.routes';
+import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
 
 const app = express();
 
@@ -92,6 +93,7 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/telegram', telegramRoutes);
+app.use('/api/power-of-attorney', poaRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

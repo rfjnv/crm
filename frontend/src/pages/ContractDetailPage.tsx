@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography, Descriptions, Tag, Table, Card, Statistic, Row, Col, Space,
   Timeline, Button, Upload, message, Popconfirm, Spin, Empty, Divider, Modal, Input, Dropdown,
+  Form, DatePicker,
 } from 'antd';
 import {
   FilePdfOutlined, UploadOutlined, DeleteOutlined,
@@ -11,11 +12,15 @@ import {
   ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
   OrderedListOutlined, DollarOutlined, SolutionOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
+  CalculatorOutlined, PlusOutlined, PrinterOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { contractsApi } from '../api/contracts.api';
+import { poaApi } from '../api/power-of-attorney.api';
+import type { PowerOfAttorney, CreatePoaData } from '../api/power-of-attorney.api';
 import { formatUZS, moneyFormatter } from '../utils/currency';
+import { VAT_RATE } from '../utils/vat';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
@@ -54,6 +59,9 @@ export default function ContractDetailPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [showVat, setShowVat] = useState(false);
+  const [poaModalOpen, setPoaModalOpen] = useState(false);
+  const [poaForm] = Form.useForm();
 
   const { data: contract, isLoading } = useQuery({
     queryKey: ['contract-detail', id],
@@ -103,24 +111,72 @@ export default function ContractDetailPage() {
     },
   });
 
+  const { data: poas } = useQuery({
+    queryKey: ['poas', id],
+    queryFn: () => poaApi.list(id!),
+    enabled: !!id,
+  });
+
+  const createPoaMut = useMutation({
+    mutationFn: (data: CreatePoaData) => poaApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poas', id] });
+      message.success('Доверенность создана');
+      setPoaModalOpen(false);
+      poaForm.resetFields();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка создания';
+      message.error(msg);
+    },
+  });
+
+  const deletePoaMut = useMutation({
+    mutationFn: (poaId: string) => poaApi.delete(poaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poas', id] });
+      message.success('Доверенность удалена');
+    },
+    onError: () => message.error('Ошибка удаления доверенности'),
+  });
+
+  function handlePoaPrint(poaId: string) {
+    const printUrl = poaApi.getPrintUrl(poaId);
+    const token = useAuthStore.getState().accessToken;
+    fetch(printUrl, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => { if (!r.ok) throw new Error(); return r.blob(); })
+      .then((blob) => { window.open(URL.createObjectURL(blob), '_blank'); })
+      .catch(() => message.error('Ошибка генерации PDF'));
+  }
+
   // Flatten all deal items for the items table
   const allItems = useMemo(() => {
     if (!contract?.deals) return [];
     return contract.deals.flatMap((d) =>
-      (d.items ?? []).map((item) => ({
-        key: `${d.id}-${item.id}`,
-        dealTitle: d.title || d.id.slice(0, 8),
-        name: item.product.name,
-        sku: item.product.sku,
-        unit: item.product.unit,
-        qty: Number(item.requestedQty) || 0,
-        price: Number(item.price) || 0,
-        sum: (Number(item.requestedQty) || 0) * (Number(item.price) || 0),
-      }))
+      (d.items ?? []).map((item) => {
+        const qty = Number(item.requestedQty) || 0;
+        const price = Number(item.price) || 0;
+        const sum = qty * price;
+        const vatAmount = Math.round(sum * VAT_RATE * 100) / 100;
+        const sumWithVat = sum + vatAmount;
+        return {
+          key: `${d.id}-${item.id}`,
+          dealTitle: d.title || d.id.slice(0, 8),
+          name: item.product.name,
+          sku: item.product.sku,
+          unit: item.product.unit,
+          qty,
+          price,
+          sum,
+          vatAmount,
+          sumWithVat,
+        };
+      })
     );
   }, [contract?.deals]);
 
   const itemsTotal = useMemo(() => allItems.reduce((s, i) => s + i.sum, 0), [allItems]);
+  const vatTotal = useMemo(() => allItems.reduce((s, i) => s + i.vatAmount, 0), [allItems]);
 
   function handlePrint(docType?: string) {
     setPdfLoading(true);
@@ -268,7 +324,12 @@ export default function ContractDetailPage() {
         />
 
         {/* Items / Products Table */}
-        <Typography.Title level={5}>Товары / услуги ({allItems.length})</Typography.Title>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography.Title level={5} style={{ margin: 0 }}>Товары / услуги ({allItems.length})</Typography.Title>
+          {canManage && (
+            <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС 12%</Button>
+          )}
+        </div>
         {allItems.length === 0 ? (
           <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>Нет товаров в сделках</Typography.Text>
         ) : (
@@ -287,18 +348,35 @@ export default function ContractDetailPage() {
               { title: 'Кол-во', dataIndex: 'qty', width: 80, align: 'right' as const },
               { title: 'Цена', dataIndex: 'price', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
               { title: 'Сумма', dataIndex: 'sum', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              ...(showVat ? [
+                { title: 'НДС %', width: 80, align: 'center' as const, render: () => '12%' },
+                { title: 'Сумма НДС', dataIndex: 'vatAmount', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+                { title: 'С НДС', dataIndex: 'sumWithVat', width: 130, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              ] : []),
               { title: 'Сделка', dataIndex: 'dealTitle', width: 140, ellipsis: true },
             ]}
             summary={() => (
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={6} align="right">
-                  <strong>Итого:</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right">
-                  <strong>{formatUZS(itemsTotal)}</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} />
-              </Table.Summary.Row>
+              <>
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={showVat ? 8 : 6} align="right"><strong>Без НДС:</strong></Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(itemsTotal)}</strong></Table.Summary.Cell>
+                  {showVat && <Table.Summary.Cell index={2} />}
+                </Table.Summary.Row>
+                {showVat && (
+                  <>
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0} colSpan={8} align="right"><strong>НДС 12%:</strong></Table.Summary.Cell>
+                      <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(vatTotal)}</strong></Table.Summary.Cell>
+                      <Table.Summary.Cell index={2} />
+                    </Table.Summary.Row>
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0} colSpan={8} align="right"><strong>Итого с НДС:</strong></Table.Summary.Cell>
+                      <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(itemsTotal + vatTotal)}</strong></Table.Summary.Cell>
+                      <Table.Summary.Cell index={2} />
+                    </Table.Summary.Row>
+                  </>
+                )}
+              </>
             )}
           />
         )}
@@ -363,6 +441,48 @@ export default function ContractDetailPage() {
             </Card>
           </Col>
         </Row>
+
+        {/* Powers of Attorney */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Typography.Title level={5} style={{ margin: 0 }}>Доверенности ({poas?.length || 0})</Typography.Title>
+          {canManage && (
+            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setPoaModalOpen(true)}>
+              Создать
+            </Button>
+          )}
+        </div>
+        {(!poas || poas.length === 0) ? (
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>Нет доверенностей</Typography.Text>
+        ) : (
+          <Table
+            dataSource={poas}
+            rowKey="id"
+            size="small"
+            pagination={false}
+            style={{ marginBottom: 24 }}
+            scroll={{ x: 600 }}
+            columns={[
+              { title: '№', dataIndex: 'poaNumber', width: 140 },
+              { title: 'Тип', dataIndex: 'poaType', width: 100, render: (v: string) => <Tag color={v === 'ANNUAL' ? 'blue' : 'default'}>{v === 'ANNUAL' ? 'Годовая' : 'Разовая'}</Tag> },
+              { title: 'Доверенное лицо', dataIndex: 'authorizedPersonName' },
+              { title: 'Должность', dataIndex: 'authorizedPersonPosition', render: (v: string | null) => v || '—' },
+              { title: 'С', dataIndex: 'validFrom', width: 110, render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+              { title: 'По', dataIndex: 'validUntil', width: 110, render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+              {
+                title: 'Действия', width: 120, render: (_: unknown, r: PowerOfAttorney) => (
+                  <Space size="small">
+                    <Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => handlePoaPrint(r.id)} />
+                    {canDelete && (
+                      <Popconfirm title="Удалить доверенность?" onConfirm={() => deletePoaMut.mutate(r.id)}>
+                        <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        )}
 
         {/* Payments */}
         <Typography.Title level={5}>История платежей ({contract.payments?.length || 0})</Typography.Title>
@@ -506,6 +626,60 @@ export default function ContractDetailPage() {
           value={deleteReason}
           onChange={(e) => setDeleteReason(e.target.value)}
         />
+      </Modal>
+
+      {/* Create PoA Modal */}
+      <Modal
+        title="Новая доверенность"
+        open={poaModalOpen}
+        onCancel={() => { setPoaModalOpen(false); poaForm.resetFields(); }}
+        onOk={() => poaForm.submit()}
+        confirmLoading={createPoaMut.isPending}
+        okText="Создать"
+        cancelText="Отмена"
+      >
+        <Form
+          form={poaForm}
+          layout="vertical"
+          onFinish={(v) => createPoaMut.mutate({
+            contractId: id!,
+            poaNumber: v.poaNumber,
+            poaType: v.poaType || contract?.contractType || 'ANNUAL',
+            authorizedPersonName: v.authorizedPersonName,
+            authorizedPersonInn: v.authorizedPersonInn,
+            authorizedPersonPosition: v.authorizedPersonPosition,
+            validFrom: v.validFrom.format('YYYY-MM-DD'),
+            validUntil: v.validUntil.format('YYYY-MM-DD'),
+            notes: v.notes,
+          })}
+        >
+          <Form.Item name="poaNumber" label="Номер доверенности" rules={[{ required: true, message: 'Обязательное поле' }]}>
+            <Input placeholder="ДВР-001" />
+          </Form.Item>
+          <Form.Item name="poaType" label="Тип" initialValue={contract?.contractType || 'ANNUAL'}>
+            <Input disabled value={contract?.contractType === 'ANNUAL' ? 'Годовая' : 'Разовая'} />
+          </Form.Item>
+          <Form.Item name="authorizedPersonName" label="ФИО доверенного лица" rules={[{ required: true, message: 'Обязательное поле' }]}>
+            <Input placeholder="Иванов Иван Иванович" />
+          </Form.Item>
+          <Form.Item name="authorizedPersonPosition" label="Должность">
+            <Input placeholder="Менеджер по закупкам" />
+          </Form.Item>
+          <Form.Item name="authorizedPersonInn" label="ИНН доверенного лица">
+            <Input placeholder="123456789" />
+          </Form.Item>
+          <Space style={{ width: '100%' }} size="middle">
+            <Form.Item name="validFrom" label="Действует с" rules={[{ required: true, message: 'Обязательное поле' }]} style={{ flex: 1 }}>
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+            <Form.Item name="validUntil" label="Действует до" rules={[{ required: true, message: 'Обязательное поле' }]} style={{ flex: 1 }}>
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+          </Space>
+          <Form.Item name="notes" label="Примечание">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

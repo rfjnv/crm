@@ -60,11 +60,12 @@ export class ContractsController {
 
   async printContract(req: Request, res: Response): Promise<void> {
     try {
-      const validDocTypes = ['CONTRACT', 'SPECIFICATION', 'INVOICE', 'POWER_OF_ATTORNEY', 'PACKAGE'];
+      const validDocTypes = ['CONTRACT', 'CONTRACT_ANNUAL', 'CONTRACT_ONE_TIME', 'SPECIFICATION', 'INVOICE', 'POWER_OF_ATTORNEY', 'PACKAGE'];
       const docParam = (req.query.doc as string || 'CONTRACT').toUpperCase();
       const docType: DocType = validDocTypes.includes(docParam) ? docParam as DocType : 'CONTRACT';
+      const poaId = req.query.poaId as string | undefined;
 
-      const pdfBuffer = await contractsService.generatePdf(req.params.id as string, docType);
+      const pdfBuffer = await contractsService.generatePdf(req.params.id as string, docType, poaId);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="contract-${req.params.id}-${docType.toLowerCase()}.pdf"`);
       res.send(pdfBuffer);

@@ -9,6 +9,12 @@ export interface CreateClientData {
   address?: string;
   notes?: string;
   managerId?: string;
+  inn?: string;
+  bankName?: string;
+  bankAccount?: string;
+  mfo?: string;
+  vatRegCode?: string;
+  oked?: string;
 }
 
 export const clientsApi = {
