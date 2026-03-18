@@ -487,6 +487,95 @@ async function processMonth(
 
 
 
+  // --- Inject Intelligent Opening Balance (Начальный долг) for new clients ---
+  // Many clients have their entire historical debt carried over just as a single number in Column C.
+  // Others have explicit 2023 rows representing that debt. We must inject the difference.
+  const allClientKeys = new Set([...groups.map(g => g.clientKey), ...cfGroups.map(g => g.clientKey)]);
+
+  for (const clientKey of allClientKeys) {
+    try {
+      const clientId = clientMap.get(clientKey);
+      if (!clientId) continue;
+
+      // Only inject if the client has NO existing deals in the DB at all (fresh import)
+      const existingDealsCount = await prisma.deal.count({ where: { clientId } });
+      if (existingDealsCount === 0) {
+        const clientGroups = groups.filter(g => g.clientKey === clientKey);
+        const clientCfGroups = cfGroups.filter(g => g.clientKey === clientKey);
+        
+        const allClientRows = [
+          ...clientGroups.flatMap(g => g.rows),
+          ...clientCfGroups.flatMap(g => g.rows)
+        ];
+
+        let earliestDate = monthDate;
+        let openingBalanceC = 0;
+        let explicitHistoricalDebt = 0;
+
+        for (const row of allClientRows) {
+          const d = toDate(row[COL_DATE]);
+          if (d && d < earliestDate) earliestDate = d;
+
+          const balRaw = row[COL_BALANCE];
+          if (balRaw != null && openingBalanceC === 0) {
+            const bal = numVal(balRaw);
+            if (bal !== 0) openingBalanceC = bal;
+          }
+
+          // If the row explicitly belongs to a previous year, sum up its extracted deal amount
+          if (d && d < monthDate) {
+             const rev = numVal(row[COL_REVENUE]);
+             const qty = numVal(row[COL_QTY]);
+             const price = numVal(row[COL_PRICE]);
+             const aaRaw = row[layout.closingBalanceCol];
+             let rowAmount = rev > 0 ? rev : (qty * price);
+             
+             // If missing price/qty, we fall back to closing balance (AA) + payments
+             if (rowAmount === 0 && aaRaw != null && numVal(aaRaw) !== 0) {
+                 let totalPaidRow = 0;
+                 for (const pc of layout.paymentCols) {
+                    const amt = numVal(row[pc.index]);
+                    if (amt > 0) totalPaidRow += amt;
+                 }
+                 rowAmount = numVal(aaRaw) + totalPaidRow;
+             }
+             explicitHistoricalDebt += rowAmount;
+          }
+        }
+
+        const missingIntelligentDebt = openingBalanceC - explicitHistoricalDebt;
+
+        // If explicitly tracked history does not cover the opening balance from Column C,
+        // we inject the remainder as a single carry-forward debt!
+        if (Math.abs(missingIntelligentDebt) > 1000) {
+          const managerKey = clientGroups[0]?.managerKey || clientCfGroups[0]?.managerKey;
+          const actualManagerId = managerMap.get(managerKey!) || defaultManagerId;
+          const clientName = clientGroups[0]?.clientName || clientCfGroups[0]?.clientName;
+
+          await prisma.deal.create({
+            data: {
+              title: `${clientName} — Начальный долг`,
+              status: 'CLOSED',
+              amount: missingIntelligentDebt > 0 ? missingIntelligentDebt : 0,
+              paidAmount: missingIntelligentDebt < 0 ? Math.abs(missingIntelligentDebt) : 0,
+              paymentStatus: missingIntelligentDebt <= 0 ? 'PAID' : 'UNPAID',
+              paymentType: 'FULL',
+              paymentMethod: 'CASH', 
+              clientId,
+              managerId: actualManagerId,
+              createdAt: new Date(earliestDate.getTime() - 1000), // 1 second before first transaction
+              updatedAt: new Date(earliestDate.getTime() - 1000),
+            },
+          });
+          dealCount++;
+        }
+      }
+    } catch (err) {
+      console.error(`  ⚠ Error processing initial balance for clientKey "${clientKey}":`, (err as Error).message);
+    }
+  }
+  // --- End Opening Balance Injection ---
+
   for (const group of groups) {
    try {
     const clientId = clientMap.get(group.clientKey);
