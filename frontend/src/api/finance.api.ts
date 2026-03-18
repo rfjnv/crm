@@ -14,6 +14,7 @@ export interface CashboxPayment {
   receivedBy: string;
   manager: string;
   dealPaymentStatus: string;
+  entryType: 'DEBT_COLLECTION' | 'SALE_PAYMENT';
 }
 
 export interface CashboxResponse {
@@ -32,6 +33,7 @@ export const financeApi = {
     clientId?: string;
     method?: string;
     paymentStatus?: string;
+    entryType?: 'DEBT_COLLECTION' | 'SALE_PAYMENT';
   }) =>
     client
       .get<CashboxResponse>('/finance/cashbox', { params })

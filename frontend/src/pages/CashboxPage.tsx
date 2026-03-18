@@ -43,6 +43,7 @@ export default function CashboxPage() {
   const [clientId, setClientId] = useState<string>();
   const [method, setMethod] = useState<string>();
   const [paymentStatus, setPaymentStatus] = useState<string>();
+  const [entryType, setEntryType] = useState<'DEBT_COLLECTION' | 'SALE_PAYMENT'>();
   const { token: tk } = theme.useToken();
 
   // Debtors tab state
@@ -59,8 +60,8 @@ export default function CashboxPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cashbox', period, clientId, method, paymentStatus],
-    queryFn: () => financeApi.cashbox({ period, clientId, method, paymentStatus }),
+    queryKey: ['cashbox', period, clientId, method, paymentStatus, entryType],
+    queryFn: () => financeApi.cashbox({ period, clientId, method, paymentStatus, entryType }),
     refetchInterval: 15_000,
   });
 
@@ -240,6 +241,21 @@ export default function CashboxPage() {
     },
   ];
 
+  const paymentColumnsWithEntryType = [
+    ...paymentColumns.slice(0, 5),
+    {
+      title: 'Тип прихода',
+      dataIndex: 'entryType',
+      width: 150,
+      render: (v: CashboxPayment['entryType']) => (
+        v === 'DEBT_COLLECTION'
+          ? <Tag color="gold">Приход долга</Tag>
+          : <Tag color="blue">Оплата продажи</Tag>
+      ),
+    },
+    ...paymentColumns.slice(5),
+  ];
+
   const debtorColumns = [
     {
       title: 'Клиент',
@@ -327,6 +343,7 @@ export default function CashboxPage() {
                   value={period}
                   onChange={(v) => setPeriod(v as string)}
                   options={[
+                    { label: 'Вчера', value: 'yesterday' },
                     { label: 'День', value: 'day' },
                     { label: 'Неделя', value: 'week' },
                     { label: 'Месяц', value: 'month' },
@@ -369,6 +386,17 @@ export default function CashboxPage() {
                     { label: 'Частично', value: 'PARTIAL' },
                   ]}
                 />
+                <Select
+                  allowClear
+                  placeholder="Тип прихода"
+                  style={{ width: isMobile ? '100%' : 180 }}
+                  value={entryType}
+                  onChange={setEntryType}
+                  options={[
+                    { label: 'Приход долга', value: 'DEBT_COLLECTION' },
+                    { label: 'Оплата продажи', value: 'SALE_PAYMENT' },
+                  ]}
+                />
               </Space>
 
               {/* Summary cards */}
@@ -406,7 +434,7 @@ export default function CashboxPage() {
 
               <Table
                 dataSource={data?.payments}
-                columns={paymentColumns}
+                columns={paymentColumnsWithEntryType}
                 rowKey="id"
                 loading={isLoading}
                 pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
@@ -419,7 +447,7 @@ export default function CashboxPage() {
                     <Table.Summary.Cell index={3} align="right">
                       {formatUZS(data.totals.totalAmount)}
                     </Table.Summary.Cell>
-                    <Table.Summary.Cell index={4} colSpan={5} />
+                    <Table.Summary.Cell index={4} colSpan={6} />
                   </Table.Summary.Row>
                 ) : undefined}
               />

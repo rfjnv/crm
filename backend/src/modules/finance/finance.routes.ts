@@ -14,13 +14,19 @@ router.use(authenticate);
 // ──── КАССА (Payments Report) ────
 router.get(
   '/cashbox',
-  authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'),
+  authorize('WAREHOUSE_MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'),
   asyncHandler(async (req: Request, res: Response) => {
     const period = req.query.period as string || 'day';
     const managerId = req.query.managerId as string | undefined;
     const clientId = req.query.clientId as string | undefined;
     const method = req.query.method as string | undefined;
     const paymentStatus = req.query.paymentStatus as string | undefined;
+    const entryType = req.query.entryType as string | undefined;
+
+    const getTashkentDayKey = (date: Date) => {
+      const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+      return new Date(date.getTime() + TASHKENT_OFFSET).toISOString().slice(0, 10);
+    };
 
     // Calculate date range (Tashkent = UTC+5)
     const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
@@ -30,8 +36,13 @@ router.get(
     const d = nowTashkent.getUTCDate();
     const startOfDay = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
     let fromDate: Date;
+    let toDate: Date | undefined;
 
-    if (period === 'week') {
+    if (period === 'yesterday') {
+      fromDate = new Date(startOfDay);
+      fromDate.setDate(fromDate.getDate() - 1);
+      toDate = new Date(startOfDay);
+    } else if (period === 'week') {
       fromDate = new Date(startOfDay);
       fromDate.setDate(fromDate.getDate() - 7);
     } else if (period === 'month') {
@@ -43,7 +54,10 @@ router.get(
 
     // Build where clause for payments
     const where: Prisma.PaymentWhereInput = {
-      paidAt: { gte: fromDate },
+      paidAt: {
+        gte: fromDate,
+        ...(toDate ? { lt: toDate } : {}),
+      },
     };
 
     if (managerId) {
@@ -63,6 +77,7 @@ router.get(
           select: {
             id: true,
             title: true,
+            createdAt: true,
             managerId: true,
             manager: { select: { id: true, fullName: true } },
             paymentStatus: true,
@@ -76,9 +91,22 @@ router.get(
     });
 
     // Filter by deal paymentStatus if specified
-    let filteredPayments = payments;
+    const typedPayments = payments.map((payment) => {
+      const isDebtCollection = !!payment.deal?.createdAt
+        && getTashkentDayKey(payment.paidAt) > getTashkentDayKey(payment.deal.createdAt);
+
+      return {
+        ...payment,
+        entryType: isDebtCollection ? 'DEBT_COLLECTION' : 'SALE_PAYMENT',
+      };
+    });
+
+    let filteredPayments = typedPayments;
     if (paymentStatus === 'PAID' || paymentStatus === 'PARTIAL') {
-      filteredPayments = payments.filter((p) => p.deal?.paymentStatus === paymentStatus);
+      filteredPayments = filteredPayments.filter((p) => p.deal?.paymentStatus === paymentStatus);
+    }
+    if (entryType === 'DEBT_COLLECTION' || entryType === 'SALE_PAYMENT') {
+      filteredPayments = filteredPayments.filter((p) => p.entryType === entryType);
     }
 
     // Calculate totals
@@ -118,6 +146,7 @@ router.get(
         receivedBy: p.receivedBy?.fullName || p.creator?.fullName,
         manager: p.deal?.manager?.fullName,
         dealPaymentStatus: p.deal?.paymentStatus,
+        entryType: p.entryType,
       })),
       totals: {
         totalAmount,

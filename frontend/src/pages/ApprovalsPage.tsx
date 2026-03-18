@@ -24,7 +24,7 @@ export default function ApprovalsPage() {
     title = 'Ожидает подтв. склада';
     description = 'Сделки, ожидающие подтверждения наличия на складе.';
   } else if (role === 'ACCOUNTANT') {
-    filterStatus = 'STOCK_CONFIRMED';
+    filterStatus = 'WAITING_FINANCE';
     title = 'Финансовое одобрение';
     description = 'Сделки, ожидающие финансового одобрения.';
   } else if (role === 'WAREHOUSE_MANAGER') {
@@ -34,8 +34,8 @@ export default function ApprovalsPage() {
   }
 
   const { data: deals, isLoading } = useQuery({
-    queryKey: ['deals', filterStatus],
-    queryFn: () => dealsApi.list(filterStatus),
+    queryKey: ['deals', 'approvals', role, filterStatus],
+    queryFn: () => (role === 'ACCOUNTANT' ? dealsApi.financeQueue() : dealsApi.list(filterStatus)),
   });
 
   const columns = [
