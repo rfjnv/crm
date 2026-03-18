@@ -612,13 +612,15 @@ async function processMonth(
         continue; // No old deals to apply payment to (first month scenario)
       }
 
-      // Apply payments to oldest unpaid deals first
+      // Apply total payment across oldest unpaid deals
       let remaining = totalPaid;
       for (const oldDeal of unpaidDeals) {
         if (remaining <= 0) break;
         const oldDebt = Number(oldDeal.amount) - Number(oldDeal.paidAmount);
         if (oldDebt <= 0) continue;
         const applyAmount = Math.min(remaining, oldDebt);
+        remaining -= applyAmount;
+
         const newPaid = Number(oldDeal.paidAmount) + applyAmount;
         const newStatus = newPaid >= Number(oldDeal.amount) ? 'PAID' : 'PARTIAL';
 
@@ -627,23 +629,18 @@ async function processMonth(
           data: { paidAmount: newPaid, paymentStatus: newStatus },
         });
 
-        // Record the payment record
-        for (const p of paymentsData) {
-          if (remaining <= 0) break;
-          const payAmt = Math.min(p.amount, remaining);
-          await prisma.payment.create({
-            data: {
-              amount: payAmt,
-              method: p.method as any,
-              dealId: oldDeal.id,
-              clientId,
-              createdBy: managerId,
-              paidAt: p.paidAt,
-            },
-          });
-          paymentCount++;
-          remaining -= payAmt;
-        }
+        // Record one payment record for this deal
+        await prisma.payment.create({
+          data: {
+            amount: applyAmount,
+            method: paymentsData[0]?.method as any || 'CASH',
+            dealId: oldDeal.id,
+            clientId,
+            createdBy: managerId,
+            paidAt: dealCreatedAt,
+          },
+        });
+        paymentCount++;
       }
       continue;
     }
