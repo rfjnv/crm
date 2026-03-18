@@ -551,6 +551,24 @@ async function processMonth(
       }
     }
 
+    // Check if the deal was marked as a debt transaction in Excel.
+    // If NOT a debt transaction, and Excel didn't specify payment amounts in L-Z columns,
+    // we auto-fill the payment so that the Deal doesn't appear as a Debt in CRM.
+    const isDebtDeal = group.rows.some((row) => {
+      const op = mapOpType(row[COL_OP_TYPE]);
+      return op && ['K', 'NK', 'PK', 'F', 'PP'].includes(op);
+    });
+
+    if (!isDebtDeal && dealAmount > totalPaid) {
+      const missingPayment = dealAmount - totalPaid;
+      totalPaid += missingPayment;
+      paymentsData.push({
+        amount: missingPayment,
+        method: group.paymentMethod || 'CASH',
+        paidAt: dealCreatedAt,
+      });
+    }
+
     // Skip if no items AND no payments
     if (itemsData.length === 0 && paymentsData.length === 0) continue;
 
