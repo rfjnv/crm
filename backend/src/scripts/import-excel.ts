@@ -240,6 +240,25 @@ async function createProducts(wb: XLSX.WorkBook): Promise<Map<string, string>> {
 
 // ───────── step 3: clients ─────────
 
+async function getDefaultManagerId(managerMap: Map<string, string>): Promise<string> {
+  // Try known managers first
+  const knownDefault = managerMap.get('дилмурод') || managerMap.values().next().value;
+  if (knownDefault) return knownDefault;
+
+  // Fallback: find any active admin or manager in the database
+  const fallbackUser = await prisma.user.findFirst({
+    where: { isActive: true, role: { in: ['ADMIN', 'SUPER_ADMIN', 'MANAGER'] } },
+    select: { id: true, fullName: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (fallbackUser) {
+    console.log(`  Using fallback manager: ${fallbackUser.fullName} (${fallbackUser.id})`);
+    return fallbackUser.id;
+  }
+
+  throw new Error('No users found in the database. Please create at least one user before importing.');
+}
+
 async function createClients(
   wb: XLSX.WorkBook,
   managerMap: Map<string, string>,
@@ -265,7 +284,7 @@ async function createClients(
     }
   }
 
-  const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
+  const defaultManagerId = await getDefaultManagerId(managerMap);
   const map = new Map<string, string>();
 
   // Build normalized CRM lookup to match token-sorted names
@@ -347,7 +366,7 @@ async function processMonth(
   const allRows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
   const layout = getSheetLayout(sheet);
 
-  const defaultManagerId = managerMap.get('дилмурод') || managerMap.values().next().value!;
+  const defaultManagerId = await getDefaultManagerId(managerMap);
   const monthDate = new Date(Date.UTC(year, monthIndex, 1));
   const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 1));
   const monthMid = new Date(Date.UTC(year, monthIndex, 15));
