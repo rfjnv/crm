@@ -586,13 +586,13 @@ async function processMonth(
       const closingBalance = closingBalanceRaw != null ? numVal(closingBalanceRaw) : null;
       const dealDate = toDate(row[COL_DATE]) || monthMid;
 
-      if (productName && qty > 0) {
+      if (productName) {
         const productId = productMap.get(normLower(row[COL_PRODUCT]));
         if (productId) {
           // Prefer explicit revenue from Excel column I; fallback to qty * price.
           const lineTotal = revenue > 0 ? revenue : qty * price;
-          const effectivePrice = lineTotal > 0 ? lineTotal / qty : price;
-          const isProblem = price === 0;
+          const effectivePrice = lineTotal > 0 && qty > 0 ? lineTotal / qty : price;
+          const isProblem = price === 0 && lineTotal === 0;
           const isExchange = sourceOpType === 'EXCHANGE';
 
           // EXCHANGE items don't contribute to deal amount
@@ -602,7 +602,7 @@ async function processMonth(
 
           itemsData.push({ productId, qty, price: effectivePrice, lineTotal, sourceOpType, isProblem, closingBalance, dealDate });
         }
-      } else if (!productName) {
+      } else {
         // Row without product name — use placeholder product.
         // lineTotal is stored for revenue queries but does NOT inflate dealAmount
         // (these are internal operations like "ламинация цех", not client debt).
@@ -627,13 +627,24 @@ async function processMonth(
       }
     }
 
-    // Check if the deal was marked as a debt transaction in Excel.
-    // If NOT a debt transaction, and Excel didn't specify payment amounts in L-Z columns,
-    // we auto-fill the payment so that the Deal doesn't appear as a Debt in CRM.
     const isDebtDeal = group.rows.some((row) => {
       const op = mapOpType(row[COL_OP_TYPE]);
       return op && ['K', 'NK', 'PK', 'F', 'PP'].includes(op);
     });
+
+    // If dealAmount is 0 (missing qty/price in Excel), but it's a debt deal or historical carry-forward,
+    // we MUST reconstruct the dealAmount using the closingBalance (from AA column).
+    if (dealAmount === 0 && itemsData.length > 0) {
+      let sumClosingBalances = 0;
+      for (const item of itemsData) {
+        if (item.closingBalance) sumClosingBalances += item.closingBalance;
+      }
+
+      const isHistorical = group.dealDate && group.dealDate < monthDate;
+      if ((isDebtDeal || isHistorical) && sumClosingBalances !== 0) {
+        dealAmount = sumClosingBalances + totalPaid;
+      }
+    }
 
     if (!isDebtDeal && dealAmount > totalPaid) {
       const missingPayment = dealAmount - totalPaid;
@@ -645,13 +656,8 @@ async function processMonth(
       });
     }
 
-    // Skip if no items AND no payments
-    if (itemsData.length === 0 && paymentsData.length === 0) continue;
-
-    // If no items but has payments → use payment total as deal amount
-    if (dealAmount === 0 && paymentsData.length > 0) {
-      dealAmount = totalPaid;
-    }
+    // Skip if no items AND no payments (and no reconstructed dealAmount)
+    if (itemsData.length === 0 && paymentsData.length === 0 && dealAmount === 0) continue;
 
     // Determine payment status
     let paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID' = 'UNPAID';
