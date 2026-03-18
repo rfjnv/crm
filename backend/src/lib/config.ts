@@ -60,6 +60,7 @@ export const config = {
 
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    clientBotToken: process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN || '',
     crmUrl: 'https://www.polygraphbusinesscrm.app',
   },
 } as const;

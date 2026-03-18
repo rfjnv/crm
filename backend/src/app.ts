@@ -27,6 +27,7 @@ import settingsRoutes from './modules/settings/settings.routes';
 import pushRoutes from './modules/push/push.routes';
 import telegramRoutes from './modules/telegram/telegram.routes';
 import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
+import './modules/telegram/telegram.customer-bot.service';
 
 const app = express();
 
