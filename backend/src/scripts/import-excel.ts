@@ -890,7 +890,7 @@ async function main() {
   console.log(`  VERIFYING DEBTS AGAINST EXCEL AA COLUMN`);
   console.log(`═══════════════════════════════════════`);
   
-  const clientLastRow = new Map<string, number>(); 
+  const clientExpectedSum = new Map<string, number>(); 
   
   for (let m = 0; m < sheetCount; m++) {
     if (onlyMonth && m !== onlyMonth - 1) continue;
@@ -904,10 +904,14 @@ async function main() {
       const clientKey = normalizeClientName(clientName);
       const clientId = clientMap.get(clientKey);
       if (!clientId) continue;
-      
+
+      const opType = mapOpType(row[COL_OP_TYPE]);
       const balRaw = row[layout.closingBalanceCol];
       if (balRaw != null) {
-        clientLastRow.set(clientId, numVal(balRaw));
+        if (['K', 'NK', 'PK', 'F', 'PP'].includes(opType || '')) {
+          const val = numVal(balRaw);
+          clientExpectedSum.set(clientId, (clientExpectedSum.get(clientId) || 0) + val);
+        }
       }
     }
   }
@@ -915,7 +919,7 @@ async function main() {
   let matchCount = 0;
   let mismatchCount = 0;
   
-  for (const [clientId, expectedDebt] of clientLastRow.entries()) {
+  for (const [clientId, expectedDebt] of clientExpectedSum.entries()) {
     const deals = await prisma.deal.findMany({
       where: { clientId, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
       select: { amount: true, paidAmount: true }
