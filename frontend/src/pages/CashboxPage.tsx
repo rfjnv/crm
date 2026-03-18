@@ -473,7 +473,7 @@ export default function CashboxPage() {
                       Клиентов: {debtsData.totals.clientCount}
                     </Typography.Text>
                     <Typography.Text type="secondary">
-                      Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebt)}</span>
+                      Чистый долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
                     </Typography.Text>
                   </Space>
                 )}

@@ -278,6 +278,8 @@ router.get(
     // IMPORTANT: closing_balance is a running total per client, not an increment.
     // We must only use the LATEST deal per client to avoid summing the same debt
     // across multiple months.
+    // Общий долг = К, Н/К, П/К, Ф (money we gave)
+    // Чистый долг = К, Н/К, П/К, Ф, ПП (money owed to us)
     const perClientDebt = await prisma.$queryRaw<{ client_id: string; total_debt: string }[]>(
       managerId
         ? Prisma.sql`
@@ -290,7 +292,7 @@ router.get(
             ORDER BY d.client_id, d.created_at DESC
           )
           SELECT ld.client_id,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
           FROM deal_items di
           JOIN latest_deals ld ON ld.deal_id = di.deal_id
@@ -305,7 +307,7 @@ router.get(
             ORDER BY d.client_id, d.created_at DESC
           )
           SELECT ld.client_id,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
                 THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
           FROM deal_items di
           JOIN latest_deals ld ON ld.deal_id = di.deal_id
@@ -415,11 +417,10 @@ router.get(
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
     // Compute debt totals from closingBalance (imported from Excel AB column).
-    // Debt types: K, NK, PK, F → чистый долг
-    // PP → предоплаты
-    // Общий долг = чистый долг + предоплаты
+    // Общий долг = К, Н/К, П/К, Ф (money we gave)
+    // Чистый долг = К, Н/К, П/К, Ф, ПП (money owed to us)
     // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
-    const debtSplit = await prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
+    const debtSplit = await prisma.$queryRaw<{ total_debt_given: string; total_debt_owed: string }[]>(
       managerId
         ? Prisma.sql`
           WITH latest_deals AS (
@@ -432,9 +433,9 @@ router.get(
           )
           SELECT
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
-            COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_given,
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_owed
           FROM deal_items di
           JOIN latest_deals ld ON ld.deal_id = di.deal_id
           WHERE di.closing_balance IS NOT NULL`
@@ -448,27 +449,27 @@ router.get(
           )
           SELECT
             COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
-            COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_given,
+            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
+                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_owed
           FROM deal_items di
           JOIN latest_deals ld ON ld.deal_id = di.deal_id
           WHERE di.closing_balance IS NOT NULL`
     );
 
     const split = debtSplit[0];
-    const netDebtTotal = Number(split?.net_debt ?? 0);   // Чистый долг (K+NK+PK+F)
-    const prepayments = Number(split?.pp_balance ?? 0);    // Предоплаты (PP)
-    const grossDebt = netDebtTotal + prepayments; // Общий долг
+    const totalDebtGiven = Number(split?.total_debt_given ?? 0);   // Общий долг (К+НК+ПК+Ф)
+    const totalDebtOwed = Number(split?.total_debt_owed ?? 0);      // Чистый долг (К+НК+ПК+Ф+ПП)
+    const prepayments = totalDebtGiven - totalDebtOwed;              // Передоплаты (разница)
 
     res.json({
       clients,
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        grossDebt,
-        prepayments,
-        totalDebt: netDebtTotal,
+        totalDebtGiven,      // Общий долг (К+НК+ПК+Ф)
+        totalDebtOwed,       // Чистый долг (К+НК+ПК+Ф+ПП)
+        prepayments,         // Передоплаты
       },
     });
   }),

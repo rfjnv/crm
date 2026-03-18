@@ -248,6 +248,7 @@ export interface Deal {
   dueDate?: string | null;
   paymentStatus: PaymentStatus;
   terms?: string | null;
+  includeVat?: boolean;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -427,7 +428,9 @@ export interface DebtsResponse {
   totals: {
     clientCount: number;
     dealsCount: number;
-    totalDebt: number;
+    totalDebtGiven: number;      // Общий долг (К+НК+ПК+Ф)
+    totalDebtOwed: number;       // Чистый долг (К+НК+ПК+Ф+ПП)
+    prepayments: number;         // Передоплаты
   };
 }
 
