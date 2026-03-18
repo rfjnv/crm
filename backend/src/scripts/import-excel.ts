@@ -471,6 +471,66 @@ async function processMonth(
     placeholderProductId = created.id;
   }
 
+  // --- Inject Opening Balance (Начальный долг) for new clients ---
+  const allClientKeys = new Set([...groups.map(g => g.clientKey), ...cfGroups.map(g => g.clientKey)]);
+
+  for (const clientKey of allClientKeys) {
+    try {
+      const clientId = clientMap.get(clientKey);
+      if (!clientId) continue;
+
+      // Only inject if the client has NO existing deals in the DB
+      const existingDealsCount = await prisma.deal.count({ where: { clientId } });
+      if (existingDealsCount === 0) {
+        const clientGroups = groups.filter(g => g.clientKey === clientKey);
+        const clientCfGroups = cfGroups.filter(g => g.clientKey === clientKey);
+        
+        const allClientRows = [
+          ...clientGroups.flatMap(g => g.rows),
+          ...clientCfGroups.flatMap(g => g.rows)
+        ];
+
+        let openingBalance = 0;
+        for (const row of allClientRows) {
+          const balRaw = row[COL_BALANCE];
+          if (balRaw != null) {
+            const bal = numVal(balRaw);
+            if (bal !== 0) {
+              openingBalance = bal;
+              break;
+            }
+          }
+        }
+
+        if (openingBalance !== 0) {
+          const managerKey = clientGroups[0]?.managerKey || clientCfGroups[0]?.managerKey;
+          const actualManagerId = managerMap.get(managerKey!) || defaultManagerId;
+          const clientName = clientGroups[0]?.clientName || clientCfGroups[0]?.clientName;
+
+          await prisma.deal.create({
+            data: {
+              title: `${clientName} — Начальный долг`,
+              status: 'CLOSED',
+              amount: openingBalance > 0 ? openingBalance : 0,
+              paidAmount: openingBalance < 0 ? Math.abs(openingBalance) : 0,
+              paymentStatus: openingBalance <= 0 ? 'PAID' : 'UNPAID',
+              paymentType: 'FULL',
+              paymentMethod: 'CASH', // default
+              clientId,
+              managerId: actualManagerId,
+              createdAt: new Date(monthDate.getTime() - 1000), // 1 second before month starts
+              updatedAt: new Date(monthDate.getTime() - 1000),
+            },
+          });
+          dealCount++;
+        }
+      }
+    } catch (err) {
+      console.error(`  ⚠ Error processing initial balance for clientKey "${clientKey}":`, (err as Error).message);
+    }
+  }
+  // --- End Opening Balance Injection ---
+
   for (const group of groups) {
    try {
     const clientId = clientMap.get(group.clientKey);
