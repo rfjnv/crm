@@ -226,7 +226,9 @@ async function importSheet(
               },
             },
           });
-          dealId = existingDeal?.id;
+          if (existingDeal) {
+            dealId = existingDeal.id;
+          }
         }
 
         if (dealId) {
