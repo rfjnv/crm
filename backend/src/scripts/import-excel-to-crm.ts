@@ -24,9 +24,7 @@ interface ExcelRow {
 
 async function getOrCreateManager(name: string) {
   if (!name || name.trim() === '' || name === '__EMPTY') {
-    const existing = await prisma.user.findFirst({
-      where: { role: 'MANAGER' },
-    });
+    const existing = await prisma.user.findFirst({ where: { role: 'MANAGER' } });
     return existing || createDefaultManager();
   }
 
@@ -39,12 +37,8 @@ async function getOrCreateManager(name: string) {
   });
 
   if (!manager) {
-    const login = cleanName
-      .toLowerCase()
-      .replace(/\s+/g, '.')
-      .substring(0, 30);
-
-    const hashedPassword = await hashPassword('temp123'); // Временный пароль
+    const login = cleanName.toLowerCase().replace(/\s+/g, '.').substring(0, 30);
+    const hashedPassword = await hashPassword('temp123');
 
     manager = await prisma.user.create({
       data: {
@@ -60,14 +54,10 @@ async function getOrCreateManager(name: string) {
 }
 
 async function createDefaultManager() {
-  const existing = await prisma.user.findFirst({
-    where: { role: 'MANAGER' },
-  });
-
+  const existing = await prisma.user.findFirst({ where: { role: 'MANAGER' } });
   if (existing) return existing;
 
   const hashedPassword = await hashPassword('default123');
-
   return await prisma.user.create({
     data: {
       login: 'default-manager',
@@ -85,9 +75,7 @@ async function getOrCreateClient(clientName: string, managerId: string) {
 
   const cleanName = String(clientName).trim().toLowerCase();
   let client = await prisma.client.findFirst({
-    where: {
-      companyName: { mode: 'insensitive', equals: cleanName },
-    },
+    where: { companyName: { mode: 'insensitive', equals: cleanName } },
   });
 
   if (!client) {
@@ -110,17 +98,11 @@ async function getOrCreateProduct(productName: string, unit: string = 'шт') {
 
   const cleanName = String(productName).trim().toLowerCase();
   let product = await prisma.product.findFirst({
-    where: {
-      name: { mode: 'insensitive', equals: cleanName },
-    },
+    where: { name: { mode: 'insensitive', equals: cleanName } },
   });
 
   if (!product) {
-    const sku = cleanName
-      .slice(0, 20)
-      .toUpperCase()
-      .replace(/\s+/g, '_');
-
+    const sku = cleanName.slice(0, 20).toUpperCase().replace(/\s+/g, '_');
     product = await prisma.product.create({
       data: {
         name: cleanName,
@@ -135,33 +117,24 @@ async function getOrCreateProduct(productName: string, unit: string = 'шт') {
 
 function parseExcelDate(value: any): Date {
   if (!value) return new Date();
-
   if (typeof value === 'number') {
-    // Excel serial: days since 1900-01-01
     return new Date((value - 25569) * 86400 * 1000);
   }
-
   const parsed = new Date(String(value));
   return !isNaN(parsed.getTime()) ? parsed : new Date();
 }
 
-async function importSheet(
-  workbook: XLSX.WorkBook,
-  sheetName: string
-) {
+async function importSheet(workbook: XLSX.WorkBook, sheetName: string) {
   console.log(`\n📄 Лист: ${sheetName}`);
 
   const worksheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, {
-    defval: null,
-    blankrows: false,
-  });
+  const rows = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { defval: null, blankrows: false });
 
   console.log(`📊 Строк: ${rows.length}`);
 
   let imported = 0;
   let skipped = 0;
-  const seenDeals = new Set<string>();
+  const seenDeals = new Map<string, string>();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -177,91 +150,85 @@ async function importSheet(
         continue;
       }
 
+      // ПРАВИЛЬНАЯ СТРУКТУРА:
+      // A: дата (row['дата'])
+      // B: фирма (row['фирма'])
+      // C: долг на начало (row['Ост-к на ...'])
+      // D: менеджер (row['__EMPTY'])
+      // E: товар (row['Отпуск товара за месяц'])
+      // F: количество (row['__EMPTY_1'])
+      // G: единица (row['__EMPTY_2'])
+      // H: цена (row['__EMPTY_3']) - мб пусто!
+      // I: ВЫРУЧКА (row['__EMPTY_4']) ← БЕРЕМ ОТСЮДА!
+      // J: платеж (row['нкп'])
+      // AA: остаток долга (Ост на ...)
+
       const quantity = parseFloat(String(row['__EMPTY_1'] || 0).replace(',', '.')) || 0;
       const unit = String(row['__EMPTY_2'] || 'шт').trim() || 'шт';
+
+      // ВЫРУЧКА ИЗ СТОЛБЦА I (__EMPTY_4)!
+      const revenueAmount = parseFloat(String(row['__EMPTY_4'] || 0).replace(',', '.')) || 0;
+
       const paymentCode = String(row['нкп'] || 'к').trim().toLowerCase();
       const paymentMethod = PAYMENT_METHOD_MAP[paymentCode] || 'TRANSFER';
 
-      // Получаем остаток
       const closingDebtKey = Object.keys(row).find(k => k.startsWith('Ост на'))!;
       const closingDebt = parseFloat(String(row[closingDebtKey] || 0)) || 0;
 
-      // Получаем дату
       const dealDate = row['дата'] ? parseExcelDate(row['дата']) : parseExcelDate(row['число']);
 
-      // Получаем или создаем менеджера
       const manager = await getOrCreateManager(managerName);
-
-      // Получаем или создаем клиента
       const client = await getOrCreateClient(clientName, manager.id);
 
-      // Если есть товар, создаем сделку с товаром
       let dealId: string | null = null;
 
       if (productName && productName !== 0 && productName !== '0') {
         const product = await getOrCreateProduct(productName, unit);
 
-        // Групируем сделки по дате и клиенту
+        // Группировка по дате и клиенту
         const dealKey = `${client.id}-${dealDate.toISOString().split('T')[0]}`;
 
-        let deal;
         if (!seenDeals.has(dealKey)) {
-          const totalAmount = quantity > 0 ? quantity * (parseFloat(String(row['__EMPTY_3'] || 0)) || 1) : 0;
-
-          deal = await prisma.deal.create({
+          // Создаем новую сделку с ВЫРУЧКОЙ из столбца I
+          const deal = await prisma.deal.create({
             data: {
               title: `${clientName} - ${dealDate.toLocaleDateString()}`,
               status: closingDebt === 0 ? 'CLOSED' : 'IN_PROGRESS',
-              amount: totalAmount,
+              amount: revenueAmount, // ВЫРУЧКА!
               clientId: client.id,
               managerId: manager.id,
               paymentMethod,
-              paidAmount: Math.max(0, totalAmount - closingDebt),
+              paidAmount: Math.max(0, revenueAmount - Math.abs(closingDebt)),
               paymentStatus: closingDebt > 0 ? 'PARTIAL' : 'PAID',
               createdAt: dealDate,
             },
           });
 
-          seenDeals.add(dealKey);
+          seenDeals.set(dealKey, deal.id);
           dealId = deal.id;
         } else {
-          // Используем уже созданную сделку за тот же день
-          const existingDeal = await prisma.deal.findFirst({
-            where: {
-              clientId: client.id,
-              createdAt: {
-                gte: new Date(dealDate.getFullYear(), dealDate.getMonth(), dealDate.getDate()),
-                lt: new Date(dealDate.getFullYear(), dealDate.getMonth(), dealDate.getDate() + 1),
-              },
-            },
-          });
-          if (existingDeal) {
-            dealId = existingDeal.id;
-          }
+          dealId = seenDeals.get(dealKey) || null;
         }
 
-        if (dealId) {
-          const salePrice = parseFloat(String(row['__EMPTY_3'] || 1).replace(',', '.')) || 0;
-          const lineTotal = quantity * salePrice;
-
-          // Преобразуем код платежа для sourceOpType
+        if (dealId && quantity > 0) {
+          // Цена = выручка / количество
+          const salePrice = quantity > 0 ? revenueAmount / quantity : 0;
           const sourceOpType = paymentCode.toUpperCase().replace('/', '');
 
-          // Создаем позицию сделки
           await prisma.dealItem.create({
             data: {
               dealId,
               productId: product.id,
               requestedQty: quantity,
               price: salePrice,
-              lineTotal,
+              lineTotal: revenueAmount, // ВЫРУЧКА!
               closingBalance: closingDebt,
               sourceOpType,
               dealDate,
             },
-          }).catch(() => {}); // Игнорируем дубликаты
+          }).catch(() => {});
 
-          // Инвентарное движение
+          // Инвентарь: товар вышел из склада
           if (quantity > 0) {
             await prisma.inventoryMovement.create({
               data: {
@@ -275,7 +242,7 @@ async function importSheet(
           }
         }
       } else {
-        // Даже без товара создаем сделку (долг)
+        // Только долг без товара
         const dealKey = `${client.id}-debt-${dealDate.toISOString().split('T')[0]}`;
         if (!seenDeals.has(dealKey)) {
           await prisma.deal.create({
@@ -292,7 +259,7 @@ async function importSheet(
             },
           }).catch(() => {});
 
-          seenDeals.add(dealKey);
+          seenDeals.set(dealKey, '');
         }
       }
 
@@ -315,13 +282,9 @@ async function importSheet(
 }
 
 async function main() {
-  console.log('🚀 Импорт данных из Excel в CRM\n');
-  console.log('=' .repeat(50));
-
   try {
     const baseDir = process.cwd();
 
-    // Проверяем, находимся ли мы в backend директории
     const filesToImport = [
       path.join(baseDir, '../analytics_2024-12-26.xlsx'),
       path.join(baseDir, '../analytics_2025-12-29.xlsx'),
@@ -336,15 +299,12 @@ async function main() {
     let totalImported = 0;
     let totalSkipped = 0;
 
+    console.log('🚀 Импорт данных из Excel в CRM\n');
+    console.log('='.repeat(50));
+
     for (const filePath of filesToImport) {
       const fileName = path.basename(filePath);
       console.log(`\n📂 Файл: ${fileName}`);
-      console.log('-'.repeat(50));
-
-      if (!fs.existsSync(filePath)) {
-        console.error(`  ❌ Не найден: ${filePath}`);
-        continue;
-      }
 
       try {
         const workbook = XLSX.readFile(filePath);
@@ -356,7 +316,7 @@ async function main() {
           totalSkipped += result.skipped;
         }
       } catch (error) {
-        console.error(`  ❌ Ошибка файла: ${error instanceof Error ? error.message : 'unknown'}`);
+        console.error(`  ❌ Ошибка: ${error instanceof Error ? error.message : 'unknown'}`);
       }
     }
 
