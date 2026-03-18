@@ -484,68 +484,7 @@ async function processMonth(
     placeholderProductId = created.id;
   }
 
-  // --- Inject Opening Balance (Начальный долг) for new clients ---
-  const allClientKeys = new Set([...groups.map(g => g.clientKey), ...cfGroups.map(g => g.clientKey)]);
 
-  for (const clientKey of allClientKeys) {
-    try {
-      const clientId = clientMap.get(clientKey);
-      if (!clientId) continue;
-
-      // Only inject if the client has NO existing deals in the DB
-      const existingDealsCount = await prisma.deal.count({ where: { clientId } });
-      if (existingDealsCount === 0) {
-        const clientGroups = groups.filter(g => g.clientKey === clientKey);
-        const clientCfGroups = cfGroups.filter(g => g.clientKey === clientKey);
-        
-        const allClientRows = [
-          ...clientGroups.flatMap(g => g.rows),
-          ...clientCfGroups.flatMap(g => g.rows)
-        ];
-
-        let earliestDate = monthDate;
-        let openingBalance = 0;
-        for (const row of allClientRows) {
-          const d = toDate(row[COL_DATE]);
-          if (d && d < earliestDate) earliestDate = d;
-
-          const balRaw = row[COL_BALANCE];
-          if (balRaw != null) {
-            const bal = numVal(balRaw);
-            if (bal !== 0 && openingBalance === 0) {
-              openingBalance = bal;
-            }
-          }
-        }
-
-        if (openingBalance !== 0) {
-          const managerKey = clientGroups[0]?.managerKey || clientCfGroups[0]?.managerKey;
-          const actualManagerId = managerMap.get(managerKey!) || defaultManagerId;
-          const clientName = clientGroups[0]?.clientName || clientCfGroups[0]?.clientName;
-
-          await prisma.deal.create({
-            data: {
-              title: `${clientName} — Начальный долг`,
-              status: 'CLOSED',
-              amount: openingBalance > 0 ? openingBalance : 0,
-              paidAmount: openingBalance < 0 ? Math.abs(openingBalance) : 0,
-              paymentStatus: openingBalance <= 0 ? 'PAID' : 'UNPAID',
-              paymentType: 'FULL',
-              paymentMethod: 'CASH', // default
-              clientId,
-              managerId: actualManagerId,
-              createdAt: new Date(earliestDate.getTime() - 1000), // 1 second before first transaction
-              updatedAt: new Date(earliestDate.getTime() - 1000),
-            },
-          });
-          dealCount++;
-        }
-      }
-    } catch (err) {
-      console.error(`  ⚠ Error processing initial balance for clientKey "${clientKey}":`, (err as Error).message);
-    }
-  }
-  // --- End Opening Balance Injection ---
 
   for (const group of groups) {
    try {
@@ -945,6 +884,54 @@ async function main() {
     totalPayments += result.payments;
     console.log(`  ${MONTH_NAMES_RU[m]}: ${result.deals} deals, ${result.items} items, ${result.payments} payments (filtered ${allRowCount - result.deals} carry-forward rows)`);
   }
+
+  console.log(`\n═══════════════════════════════════════`);
+  console.log(`  VERIFYING DEBTS AGAINST EXCEL AA COLUMN`);
+  console.log(`═══════════════════════════════════════`);
+  
+  const clientLastRow = new Map<string, number>(); 
+  
+  for (let m = 0; m < sheetCount; m++) {
+    if (onlyMonth && m !== onlyMonth - 1) continue;
+    const sheet = wb.Sheets[wb.SheetNames[m]];
+    const layout = getSheetLayout(sheet);
+    const allRows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
+    
+    for (const row of allRows) {
+      const clientName = norm(row[COL_CLIENT]);
+      if (!clientName) continue;
+      const clientKey = normalizeClientName(clientName);
+      const clientId = clientMap.get(clientKey);
+      if (!clientId) continue;
+      
+      const balRaw = row[layout.closingBalanceCol];
+      if (balRaw != null) {
+        clientLastRow.set(clientId, numVal(balRaw));
+      }
+    }
+  }
+
+  let matchCount = 0;
+  let mismatchCount = 0;
+  
+  for (const [clientId, expectedDebt] of clientLastRow.entries()) {
+    const deals = await prisma.deal.findMany({
+      where: { clientId, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
+      select: { amount: true, paidAmount: true }
+    });
+    
+    const actualDebt = deals.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0);
+    
+    if (Math.abs(actualDebt - expectedDebt) > 1) {
+      const client = await prisma.client.findUnique({ where: { id: clientId } });
+      console.log(`  ❌ MISMATCH for "${client?.companyName}": CRM = ${actualDebt}, Excel = ${expectedDebt} (Diff: ${actualDebt - expectedDebt})`);
+      mismatchCount++;
+    } else {
+      matchCount++;
+    }
+  }
+  
+  console.log(`  Verification: ${matchCount} matched, ${mismatchCount} mismatched.`);
 
   console.log(`\n═══════════════════════════════════════`);
   console.log(`  IMPORT COMPLETE`);
