@@ -274,111 +274,9 @@ router.get(
       }
     }
 
-    // Compute per-client debt from closingBalance (Excel AB column).
-    // IMPORTANT: closing_balance is a running total per client, not an increment.
-    // We must only use the LATEST deal per client to avoid summing the same debt
-    // across multiple months.
-    // Общий долг = К, Н/К, П/К, Ф (money we gave)
-    // Чистый долг = К, Н/К, П/К, Ф, ПП (money owed to us)
-    const perClientDebt = await prisma.$queryRaw<{ client_id: string; total_debt: string }[]>(
-      managerId
-        ? Prisma.sql`
-          WITH latest_deals AS (
-            SELECT DISTINCT ON (d.client_id) d.id AS deal_id, d.client_id
-            FROM deals d
-            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-              AND d.manager_id = ${managerId}
-              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-            ORDER BY d.client_id, d.created_at DESC
-          )
-          SELECT ld.client_id,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
-          FROM deal_items di
-          JOIN latest_deals ld ON ld.deal_id = di.deal_id
-          WHERE di.closing_balance IS NOT NULL
-          GROUP BY ld.client_id`
-        : Prisma.sql`
-          WITH latest_deals AS (
-            SELECT DISTINCT ON (d.client_id) d.id AS deal_id, d.client_id
-            FROM deals d
-            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-            ORDER BY d.client_id, d.created_at DESC
-          )
-          SELECT ld.client_id,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt
-          FROM deal_items di
-          JOIN latest_deals ld ON ld.deal_id = di.deal_id
-          WHERE di.closing_balance IS NOT NULL
-          GROUP BY ld.client_id`
-    );
-
-    // Build a map of per-client debt from closingBalance
-    const allDealsBalanceMap = new Map<string, number>();
-    for (const row of perClientDebt) {
-      allDealsBalanceMap.set(row.client_id, Number(row.total_debt));
-    }
-
-    // Also find clients with closingBalance debt/prepayment who have NO UNPAID/PARTIAL deals,
-    // so they wouldn't be in clientMap. We need to add them to the list.
-    const missingClientIds: string[] = [];
-    for (const [clientId, balance] of allDealsBalanceMap) {
-      if (balance !== 0 && !clientMap.has(clientId)) {
-        missingClientIds.push(clientId);
-      }
-    }
-
-    // Fetch client info for clients with closingBalance but no UNPAID/PARTIAL deals
-    if (missingClientIds.length > 0) {
-      const prepClients = await prisma.client.findMany({
-        where: { id: { in: missingClientIds } },
-        select: { id: true, companyName: true },
-      });
-
-      // Get last payment date for these clients
-      for (const pc of prepClients) {
-        const lastPayment = await prisma.payment.findFirst({
-          where: { clientId: pc.id },
-          orderBy: { paidAt: 'desc' },
-          select: { paidAt: true },
-        });
-
-        // Get primary manager from their deals
-        const managerAgg = await prisma.deal.groupBy({
-          by: ['managerId'],
-          where: { clientId: pc.id, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
-          _count: true,
-          orderBy: { _count: { managerId: 'desc' } },
-          take: 1,
-        });
-
-        let manager: { id: string; fullName: string } | null = null;
-        if (managerAgg.length > 0) {
-          const mgr = await prisma.user.findUnique({
-            where: { id: managerAgg[0].managerId },
-            select: { id: true, fullName: true },
-          });
-          if (mgr) manager = mgr;
-        }
-
-        clientMap.set(pc.id, {
-          clientId: pc.id,
-          clientName: pc.companyName || '',
-          totalDebt: 0,
-          totalAmount: 0,
-          totalPaid: 0,
-          dealsCount: 0,
-          lastPaymentDate: lastPayment?.paidAt?.toISOString() || null,
-          managers: new Map(),
-          newestDealDate: '',
-          oldestUnpaidDueDate: null,
-          hasPartial: false,
-          hasPaid: true,
-        });
-      }
-    }
+    // Removed the buggy closingBalance SQL query that overrode native debt calculations.
+    // The CRM import script now accurately inserts opening balances and ensures
+    // deal.amount - deal.paidAmount reliably reflects actual debt.
 
     let clients = [...clientMap.values()].map((c) => {
       let primaryManager: { id: string; fullName: string } | null = null;
@@ -387,10 +285,8 @@ router.get(
         if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
       }
 
-      // Use ALL-deals net balance instead of just UNPAID/PARTIAL sum,
-      // so overpayments on PAID deals offset debt correctly.
-      const allDealsBalance = allDealsBalanceMap.get(c.clientId);
-      const effectiveDebt = allDealsBalance !== undefined ? allDealsBalance : c.totalDebt;
+      // Just use the native CRM aggregated debt since the import script fixes make it perfectly accurate
+      const effectiveDebt = c.totalDebt;
 
       return {
         clientId: c.clientId,
@@ -416,51 +312,11 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    // Compute debt totals from closingBalance (imported from Excel AB column).
-    // Общий долг = К, Н/К, П/К, Ф (money we gave)
-    // Чистый долг = К, Н/К, П/К, Ф, ПП (money owed to us)
-    // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
-    const debtSplit = await prisma.$queryRaw<{ total_debt_given: string; total_debt_owed: string }[]>(
-      managerId
-        ? Prisma.sql`
-          WITH latest_deals AS (
-            SELECT DISTINCT ON (d.client_id) d.id AS deal_id
-            FROM deals d
-            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-              AND d.manager_id = ${managerId}
-              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-            ORDER BY d.client_id, d.created_at DESC
-          )
-          SELECT
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_given,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_owed
-          FROM deal_items di
-          JOIN latest_deals ld ON ld.deal_id = di.deal_id
-          WHERE di.closing_balance IS NOT NULL`
-        : Prisma.sql`
-          WITH latest_deals AS (
-            SELECT DISTINCT ON (d.client_id) d.id AS deal_id
-            FROM deals d
-            WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-              AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-            ORDER BY d.client_id, d.created_at DESC
-          )
-          SELECT
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_given,
-            COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F','PP')
-                THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS total_debt_owed
-          FROM deal_items di
-          JOIN latest_deals ld ON ld.deal_id = di.deal_id
-          WHERE di.closing_balance IS NOT NULL`
-    );
-
-    const split = debtSplit[0];
-    const totalDebtGiven = Number(split?.total_debt_given ?? 0);   // Общий долг (К+НК+ПК+Ф)
-    const totalDebtOwed = Number(split?.total_debt_owed ?? 0);      // Чистый долг (К+НК+ПК+Ф+ПП)
-    const prepayments = totalDebtGiven - totalDebtOwed;              // Передоплаты (разница)
+    // Sum across all clients for totals
+    const totalDebtOwed = clients.reduce((s, c) => s + (c.totalDebt > 0 ? c.totalDebt : 0), 0);
+    const prepayments = clients.reduce((s, c) => s + (c.totalDebt < 0 ? Math.abs(c.totalDebt) : 0), 0);
+    // Usually given debt is overall debt before prepayments are subtracted
+    const totalDebtGiven = totalDebtOwed + prepayments;
 
     res.json({
       clients,
