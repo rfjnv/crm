@@ -435,10 +435,19 @@ async function processMonth(
   const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 1));
   const monthMid = new Date(Date.UTC(year, monthIndex, 15));
 
+  // In January 2024, the sheet contains 2023 historical transactions. We MUST import them
+  // as normal deals because we don't have a 2023 file. For all other months, they are
+  // just carry-overs from previous sheets in the same file, so we ignore their revenue/price.
+  const allowPastDatesAsNormal = (year === 2024 && monthIndex === 0);
+
   // Filter out carry-forward rows: only include rows whose date falls within [monthStart, monthEnd)
   const rows = allRows.filter((row) => {
     const rowDate = toDate(row[COL_DATE]);
     if (!rowDate) return true; // keep rows without a date (fallback)
+    
+    if (allowPastDatesAsNormal) {
+      return rowDate < monthEnd;
+    }
     return rowDate >= monthDate && rowDate < monthEnd;
   });
 
@@ -446,6 +455,10 @@ async function processMonth(
   const carryForwardRows = allRows.filter((row) => {
     const rowDate = toDate(row[COL_DATE]);
     if (!rowDate) return false;
+    
+    if (allowPastDatesAsNormal) {
+      return false; // Treat all past rows as normal deals in Jan 2024
+    }
     return rowDate < monthDate;
   });
 
@@ -490,14 +503,17 @@ async function processMonth(
           ...clientCfGroups.flatMap(g => g.rows)
         ];
 
+        let earliestDate = monthDate;
         let openingBalance = 0;
         for (const row of allClientRows) {
+          const d = toDate(row[COL_DATE]);
+          if (d && d < earliestDate) earliestDate = d;
+
           const balRaw = row[COL_BALANCE];
           if (balRaw != null) {
             const bal = numVal(balRaw);
-            if (bal !== 0) {
+            if (bal !== 0 && openingBalance === 0) {
               openingBalance = bal;
-              break;
             }
           }
         }
@@ -518,8 +534,8 @@ async function processMonth(
               paymentMethod: 'CASH', // default
               clientId,
               managerId: actualManagerId,
-              createdAt: new Date(monthDate.getTime() - 1000), // 1 second before month starts
-              updatedAt: new Date(monthDate.getTime() - 1000),
+              createdAt: new Date(earliestDate.getTime() - 1000), // 1 second before first transaction
+              updatedAt: new Date(earliestDate.getTime() - 1000),
             },
           });
           dealCount++;
