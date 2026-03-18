@@ -486,6 +486,62 @@ async function processMonth(
   }
 
 
+  // --- Process carry-forward rows for PAYMENTS ---
+  // Carry-forward rows show old deals from prior months. When their opType changes to "п" 
+  // and AA=0, it means the client FULLY paid that old debt. When AA < colC, partial payment.
+  // We must apply these payments to the corresponding old deals in CRM.
+  for (const cfGroup of cfGroups) {
+    const clientId = clientMap.get(cfGroup.clientKey);
+    if (!clientId) continue;
+    const managerId = managerMap.get(cfGroup.managerKey) || defaultManagerId;
+
+    for (const row of cfGroup.rows) {
+      const colC = numVal(row[COL_BALANCE]); // Opening balance for this carry-forward row
+      const aa = numVal(row[layout.closingBalanceCol]); // Closing balance
+      
+      if (colC <= 0) continue; // No debt to pay off
+      
+      // Payment amount = how much of the old debt was paid off this month
+      const paymentMade = colC - aa;
+      if (paymentMade <= 0) continue; // No payment made (or debt increased)
+      
+      // Find oldest unpaid deals for this client and apply payment
+      const unpaidDeals = await prisma.deal.findMany({
+        where: { clientId, paymentStatus: { in: ['UNPAID', 'PARTIAL'] }, isArchived: false },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      let remaining = paymentMade;
+      for (const oldDeal of unpaidDeals) {
+        if (remaining <= 0) break;
+        const oldDebt = Number(oldDeal.amount) - Number(oldDeal.paidAmount);
+        if (oldDebt <= 0) continue;
+        const applyAmount = Math.min(remaining, oldDebt);
+        remaining -= applyAmount;
+
+        const newPaid = Number(oldDeal.paidAmount) + applyAmount;
+        const newStatus = newPaid >= Number(oldDeal.amount) ? 'PAID' : 'PARTIAL';
+
+        await prisma.deal.update({
+          where: { id: oldDeal.id },
+          data: { paidAmount: newPaid, paymentStatus: newStatus },
+        });
+
+        await prisma.payment.create({
+          data: {
+            amount: applyAmount,
+            method: 'CASH',
+            dealId: oldDeal.id,
+            clientId,
+            createdBy: managerId,
+            paidAt: monthDate,
+          },
+        });
+        paymentCount++;
+      }
+    }
+  }
+  // --- End carry-forward payments ---
 
   for (const group of groups) {
    try {
