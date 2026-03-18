@@ -274,9 +274,86 @@ router.get(
       }
     }
 
-    // Removed the buggy closingBalance SQL query that overrode native debt calculations.
-    // The CRM import script now accurately inserts opening balances and ensures
-    // deal.amount - deal.paidAmount reliably reflects actual debt.
+    // Calculate accurate net balance across ALL deals for each client, because
+    // isolated payments are marked as 'PAID' and would be ignored by the main query.
+    const allDealsGrouped = await prisma.deal.groupBy({
+      by: ['clientId'],
+      where: {
+        ...dealScope,
+        status: { notIn: ['CANCELED', 'REJECTED'] },
+        isArchived: false,
+        ...(managerId ? { managerId } : {}),
+      },
+      _sum: {
+        amount: true,
+        paidAmount: true,
+      }
+    });
+
+    const trueDebtMap = new Map<string, number>();
+    for (const row of allDealsGrouped) {
+      const netDebt = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
+      trueDebtMap.set(row.clientId, netDebt);
+    }
+
+    // Identify clients that have a non-zero net balance (e.g., prepayments) 
+    // but were not fetched by the main query because they lack UNPAID/PARTIAL deals.
+    const missingClientIds: string[] = [];
+    for (const [clientId, balance] of trueDebtMap.entries()) {
+      if (balance !== 0 && !clientMap.has(clientId)) {
+        missingClientIds.push(clientId);
+      }
+    }
+
+    if (missingClientIds.length > 0) {
+      const prepClients = await prisma.client.findMany({
+        where: { id: { in: missingClientIds } },
+        select: { id: true, companyName: true },
+      });
+
+      for (const pc of prepClients) {
+        const lastPayment = await prisma.payment.findFirst({
+          where: { clientId: pc.id },
+          orderBy: { paidAt: 'desc' },
+          select: { paidAt: true },
+        });
+
+        const managerAgg = await prisma.deal.groupBy({
+          by: ['managerId'],
+          where: { clientId: pc.id, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
+          _count: true,
+          orderBy: { _count: { managerId: 'desc' } },
+          take: 1,
+        });
+
+        let mgrObj: { id: string; fullName: string; count: number } | null = null;
+        if (managerAgg.length > 0) {
+          const mgr = await prisma.user.findUnique({
+            where: { id: managerAgg[0].managerId },
+            select: { id: true, fullName: true },
+          });
+          if (mgr) mgrObj = { id: mgr.id, fullName: mgr.fullName, count: 1 };
+        }
+
+        const managers = new Map<string, { id: string; fullName: string; count: number }>();
+        if (mgrObj) managers.set(mgrObj.id, mgrObj);
+
+        clientMap.set(pc.id, {
+          clientId: pc.id,
+          clientName: pc.companyName || '',
+          totalDebt: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          dealsCount: 0, // we omit deal details since they only have PAID deals
+          lastPaymentDate: lastPayment?.paidAt?.toISOString() || null,
+          managers,
+          newestDealDate: '',
+          oldestUnpaidDueDate: null,
+          hasPartial: false,
+          hasPaid: true,
+        });
+      }
+    }
 
     let clients = [...clientMap.values()].map((c) => {
       let primaryManager: { id: string; fullName: string } | null = null;
@@ -285,8 +362,8 @@ router.get(
         if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
       }
 
-      // Just use the native CRM aggregated debt since the import script fixes make it perfectly accurate
-      const effectiveDebt = c.totalDebt;
+      // Use the true ALL-DEALS aggregated debt
+      const effectiveDebt = trueDebtMap.get(c.clientId) ?? c.totalDebt;
 
       return {
         clientId: c.clientId,

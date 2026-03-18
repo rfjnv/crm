@@ -53,9 +53,10 @@ function getSheetLayout(ws: XLSX.WorkSheet) {
   // First payment group "total" column = totalCols - 17
   // (28 cols: 28-17=11=L; 29 cols: 29-17=12=M)
   const paymentStartCol = totalCols - 17;
-  // Each payment type occupies 3 columns; "this-month" is at offset +1
+  // Each payment type occupies 3 columns. The VERY FIRST column is the TOTAL (L, O, R, U, X).
+  // M, N are just individual payment dates. We want the TOTAL.
   const paymentCols = PAYMENT_METHODS.map((method, i) => ({
-    index: paymentStartCol + i * 3 + 1,
+    index: paymentStartCol + i * 3, // +0 instead of +1 to get the Total column!
     method,
   }));
   // Closing balance (Excel AB or AA) is always one column before payment date
