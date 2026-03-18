@@ -941,9 +941,11 @@ async function main() {
   
   const clientExpectedSum = new Map<string, number>(); 
   
-  for (let m = 0; m < sheetCount; m++) {
-    if (onlyMonth && m !== onlyMonth - 1) continue;
-    const sheet = wb.Sheets[wb.SheetNames[m]];
+  // Only check the LAST imported month — AA values don't accumulate, they UPDATE.
+  // December's AA = true final debt state.
+  const lastMonth = onlyMonth ? onlyMonth - 1 : sheetCount - 1;
+  {
+    const sheet = wb.Sheets[wb.SheetNames[lastMonth]];
     const layout = getSheetLayout(sheet);
     const allRows: Row[] = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 3 });
     
