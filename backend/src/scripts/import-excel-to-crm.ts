@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { PrismaClient, PaymentStatus, PaymentMethod } from '@prisma/client';
+import { hashPassword } from '../lib/password';
 
 const prisma = new PrismaClient();
 
@@ -43,10 +44,12 @@ async function getOrCreateManager(name: string) {
       .replace(/\s+/g, '.')
       .substring(0, 30);
 
+    const hashedPassword = await hashPassword('temp123'); // Временный пароль
+
     manager = await prisma.user.create({
       data: {
         login: login || `manager-${Date.now()}`,
-        password: 'temp',
+        password: hashedPassword,
         fullName: cleanName,
         role: 'MANAGER',
       },
@@ -57,12 +60,18 @@ async function getOrCreateManager(name: string) {
 }
 
 async function createDefaultManager() {
-  return await prisma.user.findFirst({
+  const existing = await prisma.user.findFirst({
     where: { role: 'MANAGER' },
-  }) || await prisma.user.create({
+  });
+
+  if (existing) return existing;
+
+  const hashedPassword = await hashPassword('default123');
+
+  return await prisma.user.create({
     data: {
       login: 'default-manager',
-      password: 'temp',
+      password: hashedPassword,
       fullName: 'Default Manager',
       role: 'MANAGER',
     },
