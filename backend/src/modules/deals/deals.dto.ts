@@ -68,6 +68,7 @@ export const setItemQuantitiesDto = z.object({
   paidAmount: z.number().min(0, 'Сумма не может быть отрицательной').default(0),
   dueDate: z.string().optional(),
   terms: z.string().optional(),
+  includeVat: z.boolean().default(true),
 });
 
 export const sendToFinanceDto = z.object({

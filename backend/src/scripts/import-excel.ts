@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { normalizeClientName } from '../lib/normalize-client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -256,7 +257,20 @@ async function getDefaultManagerId(managerMap: Map<string, string>): Promise<str
     return fallbackUser.id;
   }
 
-  throw new Error('No users found in the database. Please create at least one user before importing.');
+  // CREATE default admin user if none exists
+  console.log('  No users found in database. Creating default admin user (admin / admin123)...');
+  const password = await bcrypt.hash('admin123', 10);
+  const newUser = await prisma.user.create({
+    data: {
+      login: 'admin',
+      fullName: 'Системный Администратор',
+      password: password,
+      role: 'SUPER_ADMIN',
+      isActive: true,
+      permissions: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads', 'close_deals', 'archive_deals', 'stock_confirm', 'finance_approve', 'admin_approve', 'confirm_shipment', 'manage_inventory', 'manage_products', 'view_all_clients']
+    }
+  });
+  return newUser.id;
 }
 
 async function createClients(

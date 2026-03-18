@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -79,6 +79,7 @@ export default function DealDetailPage() {
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [showVat, setShowVat] = useState(false);
+  const [includeVat, setIncludeVat] = useState<boolean>(true);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
@@ -97,6 +98,28 @@ export default function DealDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['deal-history', id] });
     queryClient.invalidateQueries({ queryKey: ['deal-payments', id] });
   };
+
+  // Sync includeVat when deal changes
+  useEffect(() => {
+    if (dealData) {
+      setIncludeVat(dealData.includeVat ?? true);
+    }
+  }, [dealData?.id, dealData?.includeVat]);
+
+  // Sync quantities form when items change (e.g., after adding new item)
+  useEffect(() => {
+    if (setQuantitiesModal && dealData?.items) {
+      const initialValues = dealData.items.map((item) => ({
+        dealItemId: item.id,
+        productName: item.product?.name || 'Товар',
+        unit: item.product?.unit || 'шт',
+        warehouseComment: item.warehouseComment || '',
+        requestedQty: Number(item.requestedQty) || 0,
+        price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
+      }));
+      quantitiesForm.setFieldsValue({ items: initialValues });
+    }
+  }, [dealData?.items, setQuantitiesModal, quantitiesForm]);
 
   const { data: dealData, isLoading } = useQuery({
     queryKey: ['deal', id],
@@ -175,7 +198,15 @@ export default function DealDetailPage() {
 
   const addItemMut = useMutation({
     mutationFn: (data: { productId: string; requestComment?: string }) => dealsApi.addItem(id!, data),
-    onSuccess: () => { invalidate(); setItemModal(false); itemForm.resetFields(); message.success('Товар добавлен'); },
+    onSuccess: () => { 
+      invalidate(); 
+      // If setting quantities modal is open, don't close item modal
+      if (!setQuantitiesModal) {
+        setItemModal(false);
+      }
+      itemForm.resetFields(); 
+      message.success('Товар добавлен'); 
+    },
     onError: () => message.error('Ошибка добавления товара'),
   });
 
@@ -208,6 +239,7 @@ export default function DealDetailPage() {
       paidAmount?: number;
       dueDate?: string;
       terms?: string;
+      includeVat?: boolean;
     }) => dealsApi.setItemQuantities(id!, data),
     onSuccess: () => { invalidate(); setSetQuantitiesModal(false); quantitiesForm.resetFields(); message.success('Количества и цены установлены'); },
     onError: (err: unknown) => {
@@ -390,6 +422,13 @@ export default function DealDetailPage() {
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
   function openSetQuantitiesEditor() {
+    // If no items, open add item modal first
+    if ((deal.items ?? []).length === 0) {
+      message.warning('Сначала добавьте товары в сделку');
+      setItemModal(true);
+      return;
+    }
+
     const initialValues = (deal.items ?? []).map((item) => ({
       dealItemId: item.id,
       productName: item.product?.name || 'Товар',
@@ -406,6 +445,7 @@ export default function DealDetailPage() {
       paidAmount: Number(deal.paidAmount) || 0,
       dueDate: deal.dueDate ? dayjs(deal.dueDate) : null,
       terms: deal.terms || '',
+      includeVat: deal.includeVat ?? true,
     });
 
     setSetQuantitiesModal(true);
@@ -459,7 +499,13 @@ export default function DealDetailPage() {
             requestedQty: Number(item.requestedQty) || 0,
             price: Number(item.price) || (item.product?.salePrice ? Number(item.product.salePrice) : 0),
           }));
-          quantitiesForm.setFieldsValue({ items: initialValues, discount: 0, paymentType: 'FULL', paidAmount: 0 });
+          quantitiesForm.setFieldsValue({ 
+            items: initialValues, 
+            discount: 0, 
+            paymentType: 'FULL', 
+            paidAmount: 0,
+            includeVat: deal.includeVat ?? true,
+          });
           setSetQuantitiesModal(true);
         }}>
           Указать количества и цены
@@ -622,6 +668,37 @@ export default function DealDetailPage() {
     );
   }
 
+  // Helper functions for VAT-aware calculations
+  // Price includes VAT, so:
+  // - if includeVat=true: amount = price * qty (final revenue with VAT)
+  // - if includeVat=false: amount = (price / 1.12) * qty (revenue without VAT)
+  const calculateLineTotal = (price: number | null, qty: number | null): number => {
+    if (!price || !qty) return 0;
+    if (includeVat) {
+      return Number(price) * Number(qty); // Price already includes VAT
+    }
+    return (Number(price) / 1.12) * Number(qty); // Remove VAT from price
+  };
+
+  const calculateVatAmount = (price: number | null, qty: number | null): number => {
+    if (!price || !qty) return 0;
+    if (includeVat) {
+      // VAT is included in price, so: vatAmount = (price * qty) * (12/112)
+      return (Number(price) * Number(qty) * 12) / 112;
+    }
+    // If not including VAT, show 0
+    return 0;
+  };
+
+  const calculateTotalWithVat = (price: number | null, qty: number | null): number => {
+    if (!price || !qty) return 0;
+    if (includeVat) {
+      return Number(price) * Number(qty); // Already at full amount with VAT
+    }
+    // If not including VAT, this is just the price without VAT
+    return (Number(price) / 1.12) * Number(qty);
+  };
+
   // Build item columns dynamically based on deal state
   const itemColumns = [
     { title: 'Товар', dataIndex: ['product', 'name'] },
@@ -630,13 +707,11 @@ export default function DealDetailPage() {
     ...(hasQuantities ? [
       { title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, width: 90, render: (v: number | null) => v != null ? formatQty(v) : '—' },
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
-      { title: 'Цена', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatUZS(v) : '—' },
-      { title: 'Сумма', key: 'total', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty)) : '—' },
-      ...(showVat ? [
-        { title: 'НДС %', key: 'vatRate', align: 'center' as const, width: 70, render: () => '12%' },
-        { title: 'Сумма НДС', key: 'vatAmount', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty) * 0.12) : '—' },
-        { title: 'С НДС', key: 'totalWithVat', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(Number(r.price) * Number(r.requestedQty) * 1.12) : '—' },
-      ] : []),
+      { title: 'Цена (с НДС)', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatUZS(v) : '—' },
+      { title: 'Сумма', key: 'total', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(calculateLineTotal(Number(r.price), Number(r.requestedQty))) : '—' },
+      { title: 'НДС %', key: 'vatRate', align: 'center' as const, width: 70, render: () => includeVat ? '12%' : '—' },
+      { title: 'Сумма НДС', key: 'vatAmount', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(calculateVatAmount(Number(r.price), Number(r.requestedQty))) : '—' },
+      { title: includeVat ? 'С НДС' : 'Без НДС', key: 'totalWithVat', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(calculateTotalWithVat(Number(r.price), Number(r.requestedQty))) : '—' },
     ] : [
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
     ]),
@@ -895,9 +970,6 @@ export default function DealDetailPage() {
             size="small"
             extra={
               <Space>
-                {canToggleVat && (
-                  <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС</Button>
-                )}
                 {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>+</Button>}
               </Space>
             }
@@ -937,18 +1009,20 @@ export default function DealDetailPage() {
                       {item.requestedQty != null && item.price != null && (
                         <div>
                           <Typography.Text type="secondary" style={{ fontSize: 11 }}>Сумма</Typography.Text>
-                          <div><Typography.Text strong>{formatUZS(Number(item.price) * Number(item.requestedQty))}</Typography.Text></div>
+                          <div><Typography.Text strong>{formatUZS(calculateLineTotal(Number(item.price), Number(item.requestedQty)))}</Typography.Text></div>
                         </div>
                       )}
-                      {showVat && item.requestedQty != null && item.price != null && (
+                      {item.requestedQty != null && item.price != null && (
                         <>
+                          {includeVat && (
+                            <div>
+                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>НДС 12%</Typography.Text>
+                              <div><Typography.Text>{formatUZS(calculateVatAmount(Number(item.price), Number(item.requestedQty)))}</Typography.Text></div>
+                            </div>
+                          )}
                           <div>
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>НДС 12%</Typography.Text>
-                            <div><Typography.Text>{formatUZS(Number(item.price) * Number(item.requestedQty) * 0.12)}</Typography.Text></div>
-                          </div>
-                          <div>
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>С НДС</Typography.Text>
-                            <div><Typography.Text strong>{formatUZS(Number(item.price) * Number(item.requestedQty) * 1.12)}</Typography.Text></div>
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{includeVat ? 'С НДС' : 'Без НДС'}</Typography.Text>
+                            <div><Typography.Text strong>{formatUZS(calculateTotalWithVat(Number(item.price), Number(item.requestedQty)))}</Typography.Text></div>
                           </div>
                         </>
                       )}
@@ -979,15 +1053,15 @@ export default function DealDetailPage() {
                         </div>
                       </>
                     )}
-                    {showVat && (
+                    {includeVat && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <Typography.Text>НДС 12%</Typography.Text>
-                        <Typography.Text>{formatUZS((discount > 0 ? subtotal - discount : subtotal) * 0.12)}</Typography.Text>
+                        <Typography.Text>{formatUZS((discount > 0 ? subtotal - discount : subtotal) * 12 / 112)}</Typography.Text>
                       </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography.Text strong>Итого</Typography.Text>
-                      <Typography.Text strong>{formatUZS(showVat ? (discount > 0 ? subtotal - discount : subtotal) * 1.12 : (discount > 0 ? subtotal - discount : subtotal))}</Typography.Text>
+                      <Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text>
+                      <Typography.Text strong>{formatUZS(includeVat ? (discount > 0 ? subtotal - discount : subtotal) : (discount > 0 ? subtotal - discount : subtotal) / 1.12)}</Typography.Text>
                     </div>
                   </div>
                 );
@@ -1208,9 +1282,6 @@ export default function DealDetailPage() {
 
                   <Card title={`Товары (${deal.items?.length ?? 0})`} extra={
                     <Space>
-                      {canToggleVat && (
-                        <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС 12%</Button>
-                      )}
                       {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Добавить</Button>}
                     </Space>
                   } bordered={false}>
@@ -1224,7 +1295,7 @@ export default function DealDetailPage() {
                       scroll={{ x: 600 }}
                       summary={() => {
                         if (!hasQuantities) return null;
-                        const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
+                        const subtotal = (deal.items ?? []).reduce((sum, item) => sum + calculateLineTotal(Number(item.price ?? 0), Number(item.requestedQty ?? 0)), 0);
                         if (subtotal <= 0) return null;
                         const discount = Number(deal.discount || 0);
                         const hasDiscount = discount > 0;
@@ -1242,15 +1313,15 @@ export default function DealDetailPage() {
                                 </Table.Summary.Row>
                               </>
                             )}
-                            {showVat && (
+                            {includeVat && (
                               <Table.Summary.Row>
                                 <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>НДС 12%</Typography.Text></Table.Summary.Cell>
-                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS((hasDiscount ? subtotal - discount : subtotal) * 0.12)}</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS((hasDiscount ? subtotal - discount : subtotal) * 12 / 112)}</Typography.Text></Table.Summary.Cell>
                               </Table.Summary.Row>
                             )}
                             <Table.Summary.Row>
-                              <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого</Typography.Text></Table.Summary.Cell>
-                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(showVat ? (hasDiscount ? subtotal - discount : subtotal) * 1.12 : (hasDiscount ? subtotal - discount : subtotal))}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(includeVat ? (hasDiscount ? subtotal - discount : subtotal) : (hasDiscount ? subtotal - discount : subtotal) / 1.12)}</Typography.Text></Table.Summary.Cell>
                             </Table.Summary.Row>
                           </>
                         );
@@ -1475,6 +1546,7 @@ export default function DealDetailPage() {
             paidAmount: values.paymentType === 'FULL' ? undefined : values.paidAmount || 0,
             dueDate: values.dueDate ? values.dueDate.format('YYYY-MM-DD') : undefined,
             terms: values.terms || undefined,
+            includeVat: values.includeVat ?? true,
           });
         }}>
           <Form.List name="items">
@@ -1511,6 +1583,11 @@ export default function DealDetailPage() {
                     </Card>
                   );
                 })}
+                {canEditItems && (
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setItemModal(true)}>
+                    Добавить товар
+                  </Button>
+                )}
               </div>
             )}
           </Form.List>
@@ -1544,6 +1621,12 @@ export default function DealDetailPage() {
             </div>
             <Form.Item name="terms" label="Условия">
               <Input.TextArea rows={2} placeholder="Условия оплаты..." />
+            </Form.Item>
+            <Form.Item name="includeVat" label="НДС включен в цену товара">
+              <Radio.Group>
+                <Radio.Button value={true}>Включен (цена с НДС)</Radio.Button>
+                <Radio.Button value={false}>Исключен (цена без НДС)</Radio.Button>
+              </Radio.Group>
             </Form.Item>
           </Card>
         </Form>
@@ -1722,12 +1805,12 @@ export default function DealDetailPage() {
             notes: v.notes || undefined,
           });
         }}
-        onValuesChange={(changed) => {
-          if (changed.contractType || changed.startDate) {
-            const start = changed.startDate || contractForm.getFieldValue('startDate') || dayjs();
-            contractForm.setFieldsValue({ startDate: start, endDate: getDefaultContractEndDate(start) });
-          }
-        }}
+          onValuesChange={(changed) => {
+            if (changed.contractType || changed.startDate) {
+              const start = changed.startDate || contractForm.getFieldValue('startDate') || dayjs();
+              contractForm.setFieldsValue({ startDate: start, endDate: getDefaultContractEndDate(start) });
+            }
+          }}
         >
           <Form.Item name="contractType" label="Тип договора" initialValue="ONE_TIME">
             <Radio.Group>

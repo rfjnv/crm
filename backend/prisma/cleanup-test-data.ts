@@ -53,6 +53,8 @@ async function main() {
     // Audit logs
     const auditLogs = await tx.auditLog.deleteMany();
     console.log(`  Deleted auditLogs: ${auditLogs.count}`);
+  }, {
+    timeout: 30000, // 30 seconds
   });
 
   // Verify preserved data

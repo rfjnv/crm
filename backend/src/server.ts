@@ -1,7 +1,6 @@
 import app from './app';
 import { config } from './lib/config';
 import prisma from './lib/prisma';
-import { importProductsIfNeeded } from './lib/startup-import';
 import fs from 'fs';
 import path from 'path';
 
@@ -13,9 +12,6 @@ async function main() {
   // Verify DB connection
   await prisma.$connect();
   console.log('Database connected');
-
-  // Auto-import products from Excel on first run (skipped if products already exist)
-  await importProductsIfNeeded();
 
   app.listen(config.port, '0.0.0.0', () => {
     console.log(`Server running on 0.0.0.0:${config.port} [${config.nodeEnv}]`);

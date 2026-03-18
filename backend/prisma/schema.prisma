@@ -278,6 +278,7 @@ model Deal {
   dueDate       DateTime?     @map("due_date")
   paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
   discount      Decimal       @default(0) @db.Decimal(12, 2)
+  includeVat    Boolean       @default(true) @map("include_vat")
   terms         String?
   isArchived    Boolean       @default(false) @map("is_archived")
   archivedAt    DateTime?     @map("archived_at")

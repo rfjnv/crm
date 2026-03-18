@@ -621,6 +621,7 @@ export class DealsService {
           paymentStatus,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           terms: dto.terms,
+          includeVat: dto.includeVat ?? true,
         },
       });
     });
