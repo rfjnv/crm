@@ -235,6 +235,9 @@ async function importSheet(
           const salePrice = parseFloat(String(row['__EMPTY_3'] || 1).replace(',', '.')) || 0;
           const lineTotal = quantity * salePrice;
 
+          // Преобразуем код платежа для sourceOpType
+          const sourceOpType = paymentCode.toUpperCase().replace('/', '');
+
           // Создаем позицию сделки
           await prisma.dealItem.create({
             data: {
@@ -244,6 +247,7 @@ async function importSheet(
               price: salePrice,
               lineTotal,
               closingBalance: closingDebt,
+              sourceOpType,
               dealDate,
             },
           }).catch(() => {}); // Игнорируем дубликаты
