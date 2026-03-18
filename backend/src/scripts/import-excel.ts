@@ -599,10 +599,52 @@ async function processMonth(
     // Skip if no items AND no payments (and no reconstructed dealAmount)
     if (itemsData.length === 0 && paymentsData.length === 0 && dealAmount === 0) continue;
 
-    // Skip pure payment rows (opType "п") with no revenue — these are payments against
-    // OLD debts already tracked elsewhere. Creating deals for them produces false negative balances.
-    // Debt-type deals (К, НК, ПК, Ф, ПП) are never skipped.
+    // Pure payment rows (opType "п") with no revenue — payments against OLD debts.
+    // If prior-month deals exist for this client, apply payments to them.
+    // If no prior deals (first month import), skip to avoid false negative balances.
     if (dealAmount === 0 && totalPaid > 0 && !isDebtDeal) {
+      const unpaidDeals = await prisma.deal.findMany({
+        where: { clientId, paymentStatus: { in: ['UNPAID', 'PARTIAL'] }, isArchived: false },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (unpaidDeals.length === 0) {
+        continue; // No old deals to apply payment to (first month scenario)
+      }
+
+      // Apply payments to oldest unpaid deals first
+      let remaining = totalPaid;
+      for (const oldDeal of unpaidDeals) {
+        if (remaining <= 0) break;
+        const oldDebt = Number(oldDeal.amount) - Number(oldDeal.paidAmount);
+        if (oldDebt <= 0) continue;
+        const applyAmount = Math.min(remaining, oldDebt);
+        const newPaid = Number(oldDeal.paidAmount) + applyAmount;
+        const newStatus = newPaid >= Number(oldDeal.amount) ? 'PAID' : 'PARTIAL';
+
+        await prisma.deal.update({
+          where: { id: oldDeal.id },
+          data: { paidAmount: newPaid, paymentStatus: newStatus },
+        });
+
+        // Record the payment record
+        for (const p of paymentsData) {
+          if (remaining <= 0) break;
+          const payAmt = Math.min(p.amount, remaining);
+          await prisma.payment.create({
+            data: {
+              amount: payAmt,
+              method: p.method as any,
+              dealId: oldDeal.id,
+              clientId,
+              createdBy: managerId,
+              paidAt: p.paidAt,
+            },
+          });
+          paymentCount++;
+          remaining -= payAmt;
+        }
+      }
       continue;
     }
 
