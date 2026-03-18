@@ -36,8 +36,8 @@ async function importProducts() {
     // Read Excel file
     const filePath = path.resolve(__dirname, '../new.xlsx');
     if (!fs.existsSync(filePath)) {
-      console.error(`File not found: ${filePath}`);
-      process.exit(1);
+      console.warn(`⚠️  File not found (skipping import): ${filePath}`);
+      process.exit(0);
     }
 
     const workbook = XLSX.readFile(filePath);
