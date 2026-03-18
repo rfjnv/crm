@@ -339,15 +339,25 @@ async function createClients(
 
 // ───────── step 4: deals, items, payments ─────────
 
-interface GroupedDeal {
+interface GroupedClient {
   clientKey: string;
   clientName: string;
   managerKey: string;
   rows: Row[];
 }
 
-function groupRowsByClient(rows: Row[]): GroupedDeal[] {
-  const groups = new Map<string, GroupedDeal>();
+interface GroupedDeal {
+  groupKey: string;
+  clientKey: string;
+  clientName: string;
+  managerKey: string;
+  dealDate: Date | null;
+  paymentMethod: string | null;
+  rows: Row[];
+}
+
+function groupRowsByClient(rows: Row[]): GroupedClient[] {
+  const groups = new Map<string, GroupedClient>();
 
   for (const row of rows) {
     const clientName = norm(row[COL_CLIENT]);
@@ -363,6 +373,46 @@ function groupRowsByClient(rows: Row[]): GroupedDeal[] {
       });
     }
     groups.get(key)!.rows.push(row);
+  }
+
+  return Array.from(groups.values());
+}
+
+function groupRowsByClientAndDate(rows: Row[]): GroupedDeal[] {
+  const groups = new Map<string, GroupedDeal>();
+
+  for (const row of rows) {
+    const clientName = norm(row[COL_CLIENT]);
+    if (!clientName) continue;
+    
+    const clientKey = normalizeClientName(row[COL_CLIENT]);
+    const rowDate = toDate(row[COL_DATE]);
+    const dateStr = rowDate ? rowDate.toISOString().split('T')[0] : 'no-date';
+    const groupKey = `${clientKey}::${dateStr}`;
+    
+    // Attempt to parse paymentMethod from opType (column J)
+    const opType = mapOpType(row[COL_OP_TYPE]);
+    let paymentMethod = null;
+    if (opType) {
+      if (['K','N','NK'].includes(opType)) paymentMethod = 'CASH';
+      else if (['P','PK','PP','F'].includes(opType)) paymentMethod = 'TRANSFER';
+    }
+
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        groupKey,
+        clientKey,
+        clientName,
+        managerKey: MANAGER_ALIASES[normLower(row[COL_MANAGER])] || normLower(row[COL_MANAGER]),
+        dealDate: rowDate,
+        paymentMethod,
+        rows: [],
+      });
+    } else if (!groups.get(groupKey)!.paymentMethod && paymentMethod) {
+      groups.get(groupKey)!.paymentMethod = paymentMethod;
+    }
+    
+    groups.get(groupKey)!.rows.push(row);
   }
 
   return Array.from(groups.values());
@@ -399,7 +449,7 @@ async function processMonth(
     return rowDate < monthDate;
   });
 
-  const groups = groupRowsByClient(rows);
+  const groups = groupRowsByClientAndDate(rows);
   // Also group carry-forward rows by client
   const cfGroups = groupRowsByClient(carryForwardRows);
 
@@ -428,13 +478,11 @@ async function processMonth(
 
     const managerId = managerMap.get(group.managerKey) || defaultManagerId;
 
-    // Use the earliest row date as deal createdAt so period filters align better with Excel chronology.
-    const groupRowDates = group.rows
-      .map((r) => toDate(r[COL_DATE]))
-      .filter((d): d is Date => !!d);
-    const dealCreatedAt = groupRowDates.length > 0
-      ? new Date(Math.min(...groupRowDates.map((d) => d.getTime())))
-      : monthDate;
+    // Use the exact date of the deal instead of month start.
+    const dealCreatedAt = group.dealDate || monthDate;
+    const titleDateStr = group.dealDate 
+      ? group.dealDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : `${MONTH_NAMES_RU[monthIndex]} ${year}`;
 
     // Compute deal totals from items
     let dealAmount = 0;
@@ -519,12 +567,13 @@ async function processMonth(
     // Create deal
     const deal = await prisma.deal.create({
       data: {
-        title: `${group.clientName} — ${MONTH_NAMES_RU[monthIndex]} ${year}`,
+        title: `${group.clientName} — ${titleDateStr}`,
         status: 'CLOSED',
         amount: dealAmount,
         paidAmount: totalPaid,
         paymentStatus,
         paymentType: 'FULL',
+        paymentMethod: group.paymentMethod as any, // Assign parsed paymentMethod
         clientId,
         managerId,
         createdAt: dealCreatedAt,
@@ -594,13 +643,17 @@ async function processMonth(
       const clientId = clientMap.get(cfGroup.clientKey);
       if (!clientId) continue;
 
-      // Find the deal for this client (created above)
+      // Find the deal for this client (prefer earliest deal in the month)
       const existingDeal = await prisma.deal.findFirst({
         where: {
           clientId,
-          title: { contains: `${MONTH_NAMES_RU[monthIndex]} ${year}` },
+          createdAt: {
+            gte: monthDate,
+            lt: monthEnd,
+          },
           status: 'CLOSED',
         },
+        orderBy: { createdAt: 'asc' },
         select: { id: true },
       });
 
@@ -719,7 +772,7 @@ async function main() {
   // --clean flag: delete existing imported deals for this year before reimporting
   const cleanMode = process.argv.includes('--clean');
 
-  const filePath = path.resolve(process.cwd(), '..', fileArg);
+  const filePath = path.resolve(process.cwd(), fileArg);
   console.log(`Reading: ${filePath}`);
   console.log(`Year: ${year}`);
   const wb = XLSX.readFile(filePath);
