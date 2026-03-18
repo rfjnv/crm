@@ -9,7 +9,7 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
-  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, CalculatorOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { adminApi } from '../api/admin.api';
@@ -78,7 +78,6 @@ export default function DealDetailPage() {
   const [overrideModal, setOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
-  const [showVat, setShowVat] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
@@ -98,6 +97,17 @@ export default function DealDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['deal-history', id] });
     queryClient.invalidateQueries({ queryKey: ['deal-payments', id] });
   };
+
+  const { data: dealData, isLoading } = useQuery({
+    queryKey: ['deal', id],
+    queryFn: () => dealsApi.getById(id!),
+    enabled: !!id,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ['products'],
+    queryFn: inventoryApi.listProducts,
+  });
 
   // Sync includeVat when deal changes
   useEffect(() => {
@@ -120,17 +130,6 @@ export default function DealDetailPage() {
       quantitiesForm.setFieldsValue({ items: initialValues });
     }
   }, [dealData?.items, setQuantitiesModal, quantitiesForm]);
-
-  const { data: dealData, isLoading } = useQuery({
-    queryKey: ['deal', id],
-    queryFn: () => dealsApi.getById(id!),
-    enabled: !!id,
-  });
-
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: inventoryApi.listProducts,
-  });
 
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -418,7 +417,6 @@ export default function DealDetailPage() {
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
-  const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
   function openSetQuantitiesEditor() {
