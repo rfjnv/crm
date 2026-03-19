@@ -463,7 +463,13 @@ async function processMonth(
   // NODATE rows (like PP carry-forwards) only get imported in the FIRST month to avoid 12x duplication.
   const rows = allRows.filter((row) => {
     const rowDate = toDate(row[COL_DATE]);
-    if (!rowDate) return monthIndex === 0; // NODATE rows only in first month
+    if (!rowDate) {
+      if (monthIndex !== 0) return false; // NODATE rows only in first month
+      // For 2025+, if it has no product name, it's an Opening Balance from 2024.
+      // WE ALREADY HAVE 2024 DATA IN DB! Do NOT import as a new deal.
+      if (year > 2024 && !norm(row[COL_PRODUCT])) return false;
+      return true;
+    }
     
     if (allowPastDatesAsNormal) {
       return rowDate < monthEnd;
@@ -474,7 +480,12 @@ async function processMonth(
   // Carry-forward rows: dates before this month. We need their closingBalance for debt calculation.
   const carryForwardRows = allRows.filter((row) => {
     const rowDate = toDate(row[COL_DATE]);
-    if (!rowDate) return false;
+    if (!rowDate) {
+      if (monthIndex !== 0) return false;
+      // If it's 2025+ and has no product, it's an Opening Balance carry-forward!
+      if (year > 2024 && !norm(row[COL_PRODUCT])) return true;
+      return false;
+    }
     
     if (allowPastDatesAsNormal) {
       return false; // Treat all past rows as normal deals in Jan 2024
