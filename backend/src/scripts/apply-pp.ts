@@ -80,7 +80,7 @@ async function main() {
           data: {
             text: `Автоматически погашено на сумму ${applyAmount} сум за счет передоплаты (сделка "${creditDeal.title}")`,
             dealId: debtDeal.id,
-            managerId: debtDeal.managerId,
+            authorId: debtDeal.managerId,
           }
         });
 
@@ -89,7 +89,7 @@ async function main() {
           data: {
             text: `Передоплата на сумму ${applyAmount} сум перенесена в счет погашения долга (сделка "${debtDeal.title}")`,
             dealId: creditDeal.id,
-            managerId: creditDeal.managerId,
+            authorId: creditDeal.managerId,
           }
         });
 
