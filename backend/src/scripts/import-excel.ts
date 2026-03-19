@@ -1027,25 +1027,73 @@ async function main() {
 
   let matchCount = 0;
   let mismatchCount = 0;
+  let reconciledCount = 0;
   
   for (const [clientId, expectedDebt] of clientExpectedSum.entries()) {
     const deals = await prisma.deal.findMany({
       where: { clientId, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
-      select: { amount: true, paidAmount: true }
+      select: { id: true, amount: true, paidAmount: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
     });
     
     const actualDebt = deals.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0);
     
     if (Math.abs(actualDebt - expectedDebt) > 1) {
       const client = await prisma.client.findUnique({ where: { id: clientId } });
-      console.log(`  ❌ MISMATCH for "${client?.companyName}": CRM = ${actualDebt}, Excel = ${expectedDebt} (Diff: ${actualDebt - expectedDebt})`);
+      const diff = actualDebt - expectedDebt; // positive = CRM owes too much, need more payments
+      console.log(`  ❌ MISMATCH for "${client?.companyName}": CRM = ${actualDebt}, Excel = ${expectedDebt} (Diff: ${diff})`);
       mismatchCount++;
+      
+      // AUTO-RECONCILE: adjust paidAmount to force-match December AA
+      if (diff > 0) {
+        // CRM debt is too HIGH → need to ADD payments to reduce it
+        let remaining = diff;
+        for (const deal of deals) {
+          if (remaining <= 0) break;
+          const dealDebt = Number(deal.amount) - Number(deal.paidAmount);
+          if (dealDebt <= 0) continue;
+          const applyAmount = Math.min(remaining, dealDebt);
+          remaining -= applyAmount;
+          await prisma.deal.update({
+            where: { id: deal.id },
+            data: {
+              paidAmount: Number(deal.paidAmount) + applyAmount,
+              paymentStatus: (Number(deal.paidAmount) + applyAmount >= Number(deal.amount)) ? 'PAID' : 'PARTIAL',
+            },
+          });
+        }
+        console.log(`    → RECONCILED: added ${diff - remaining} in payments`);
+        reconciledCount++;
+      } else if (diff < 0) {
+        // CRM debt is too LOW → need to CREATE a reconciliation deal for the missing debt
+        // This covers cases where PP credits or inter-month debts weren't captured
+        const absDiff = Math.abs(diff);
+        const managerId = deals[0] ? undefined : undefined; // will use default
+        
+        await prisma.deal.create({
+          data: {
+            title: `${client?.companyName} — Сверка`,
+            status: 'CLOSED',
+            amount: expectedDebt > actualDebt ? absDiff : 0,
+            paidAmount: expectedDebt < actualDebt ? absDiff : 0,
+            paymentStatus: expectedDebt >= 0 ? 'UNPAID' : 'PAID',
+            paymentType: 'FULL',
+            paymentMethod: 'CASH',
+            clientId,
+            managerId: deals[0] ? (await prisma.deal.findUnique({ where: { id: deals[0].id }, select: { managerId: true } }))?.managerId || (await getDefaultManagerId(managerMap)) : await getDefaultManagerId(managerMap),
+            createdAt: new Date(Date.UTC(year, 11, 31)),
+            updatedAt: new Date(Date.UTC(year, 11, 31)),
+          },
+        });
+        console.log(`    → RECONCILED: created adjustment deal for ${diff}`);
+        reconciledCount++;
+      }
     } else {
       matchCount++;
     }
   }
   
-  console.log(`  Verification: ${matchCount} matched, ${mismatchCount} mismatched.`);
+  console.log(`  Verification: ${matchCount} matched, ${mismatchCount} mismatched, ${reconciledCount} auto-reconciled.`);
 
   console.log(`\n═══════════════════════════════════════`);
   console.log(`  IMPORT COMPLETE`);
