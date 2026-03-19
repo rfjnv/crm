@@ -389,23 +389,12 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    const allMatchingRawDeals = await prisma.deal.findMany({
-      where: {
-         ...dealScope,
-         status: { notIn: ['CANCELED', 'REJECTED'] },
-         isArchived: false,
-         ...(managerId ? { managerId } : {}),
-      },
-      select: { amount: true, paidAmount: true }
-    });
-
     let totalDebtOwed = 0; // Pure positive debt pool
     let prepayments = 0;   // Pure negative debt pool
 
-    for (const d of allMatchingRawDeals) {
-      const debt = Number(d.amount) - Number(d.paidAmount);
-      if (debt > 0) totalDebtOwed += debt;
-      else if (debt < 0) prepayments += Math.abs(debt);
+    for (const c of clients) {
+      if (c.totalDebt > 0) totalDebtOwed += c.totalDebt;
+      else if (c.totalDebt < 0) prepayments += Math.abs(c.totalDebt);
     }
 
     const totalDebtGiven = totalDebtOwed + prepayments;

@@ -249,10 +249,11 @@ router.get(
             Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY c.id, c.company_name
+             HAVING SUM(d.amount - d.paid_amount) > 0
              ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
           )
@@ -260,9 +261,10 @@ router.get(
             Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
-             WHERE d.payment_status IN ('UNPAID', 'PARTIAL')
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
              GROUP BY c.id, c.company_name
+             HAVING SUM(d.amount - d.paid_amount) > 0
              ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
           ),
