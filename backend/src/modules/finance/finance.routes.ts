@@ -397,16 +397,16 @@ router.get(
       else if (c.totalDebt < 0) prepayments += Math.abs(c.totalDebt);
     }
 
-    const totalDebtGiven = totalDebtOwed + prepayments;
+    const netDebt = totalDebtOwed - prepayments;
 
     res.json({
       clients,
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        totalDebtGiven,      // Общий долг (К+НК+ПК+Ф)
-        totalDebtOwed,       // Чистый долг (К+НК+ПК+Ф+ПП)
-        prepayments,         // Передоплаты
+        totalDebtGiven: totalDebtOwed,      // Общий долг (сумма всех плюсов)
+        totalDebtOwed: netDebt,             // Чистый долг (плюсы минус минусы)
+        prepayments,                        // Передоплаты
       },
     });
   }),
