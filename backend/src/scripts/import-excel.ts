@@ -999,6 +999,13 @@ async function main() {
   
   const clientExpectedSum = new Map<string, number>(); 
   
+  // Initialize expected debt to 0 for ANY client we imported year-to-date.
+  // If a client is completely gone by December, or only has cash ('н') rows,
+  // their true final debt is 0. If they have debt, December will overwrite this 0.
+  for (const clientId of clientMap.values()) {
+    clientExpectedSum.set(clientId, 0);
+  }
+  
   // Only check the LAST imported month — AA values don't accumulate, they UPDATE.
   // December's AA = true final debt state.
   const lastMonth = onlyMonth ? onlyMonth - 1 : sheetCount - 1;
@@ -1019,6 +1026,7 @@ async function main() {
       if (balRaw != null) {
         if (['K', 'NK', 'PK', 'F', 'PP'].includes(opType || '')) {
           const val = numVal(balRaw);
+          // Overwrite the 0 with the actual sum
           clientExpectedSum.set(clientId, (clientExpectedSum.get(clientId) || 0) + val);
         }
       }
