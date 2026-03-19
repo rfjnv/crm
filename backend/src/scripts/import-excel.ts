@@ -442,9 +442,10 @@ async function processMonth(
   const allowPastDatesAsNormal = (year === 2024 && monthIndex === 0);
 
   // Filter out carry-forward rows: only include rows whose date falls within [monthStart, monthEnd)
+  // NODATE rows (like PP carry-forwards) only get imported in the FIRST month to avoid 12x duplication.
   const rows = allRows.filter((row) => {
     const rowDate = toDate(row[COL_DATE]);
-    if (!rowDate) return true; // keep rows without a date (fallback)
+    if (!rowDate) return monthIndex === 0; // NODATE rows only in first month
     
     if (allowPastDatesAsNormal) {
       return rowDate < monthEnd;
@@ -499,11 +500,15 @@ async function processMonth(
       const colC = numVal(row[COL_BALANCE]); // Opening balance for this carry-forward row
       const aa = numVal(row[layout.closingBalanceCol]); // Closing balance
       
-      if (colC <= 0) continue; // No debt to pay off
+      // If colC is negative, this is a PP credit carry-forward. Skip it — it was
+      // already created in its origin month and doesn't need re-processing.
+      if (colC < 0) continue;
+      if (colC === 0 && aa <= 0) continue; // Nothing to process
       
       // Payment amount = how much of the old debt was paid off this month
-      const paymentMade = colC - aa;
-      if (paymentMade <= 0) continue; // No payment made (or debt increased)
+      // Use max(colC - aa, 0) — if aa > colC, debt increased (shouldn't apply negative payment)
+      const paymentMade = Math.max(colC - aa, 0);
+      if (paymentMade <= 0) continue; // No payment made
       
       // Find oldest unpaid deals for this client and apply payment
       const unpaidDeals = await prisma.deal.findMany({
