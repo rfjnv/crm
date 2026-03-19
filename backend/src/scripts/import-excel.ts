@@ -170,8 +170,26 @@ async function createManagers(): Promise<Map<string, string>> {
           console.log(`  Manager found by login: ${login} (${existing.fullName}) → ${existing.id}`);
           continue;
         }
+
+        // CREATE the missing manager!
+        console.log(`  Creating missing manager: "${name}" (login: ${login})...`);
+        const passwordHash = await bcrypt.hash('123456', 10);
+        const uppercaseName = name.charAt(0).toUpperCase() + name.slice(1);
+        const newUser = await prisma.user.create({
+          data: {
+            login,
+            fullName: uppercaseName,
+            password: passwordHash,
+            role: 'MANAGER',
+            isActive: true,
+            permissions: ['manage_users', 'view_all_deals', 'manage_deals', 'manage_leads'] // basic permissions
+          }
+        });
+        map.set(name, newUser.id);
+        console.log(`  ✓ Created manager: ${uppercaseName} → ${newUser.id}`);
+      } else {
+        console.error(`  WARNING: Manager "${name}" has no login mapping. Skipping.`);
       }
-      console.error(`  WARNING: Manager "${name}" not found by name or login. Skipping.`);
     }
   }
 
