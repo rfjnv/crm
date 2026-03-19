@@ -1044,9 +1044,10 @@ async function main() {
       console.log(`  ❌ MISMATCH for "${client?.companyName}": CRM = ${actualDebt}, Excel = ${expectedDebt} (Diff: ${diff})`);
       mismatchCount++;
       
-      // AUTO-RECONCILE: adjust paidAmount to force-match December AA
+      // AUTO-RECONCILE: force CRM to match December AA exactly
+      // Step 1: If CRM is too high, try to add payments to existing unpaid deals
+      let adjustedDebt = actualDebt;
       if (diff > 0) {
-        // CRM debt is too HIGH → need to ADD payments to reduce it
         let remaining = diff;
         for (const deal of deals) {
           if (remaining <= 0) break;
@@ -1062,32 +1063,36 @@ async function main() {
             },
           });
         }
-        console.log(`    → RECONCILED: added ${diff - remaining} in payments`);
-        reconciledCount++;
-      } else if (diff < 0) {
-        // CRM debt is too LOW → need to CREATE a reconciliation deal for the missing debt
-        // This covers cases where PP credits or inter-month debts weren't captured
-        const absDiff = Math.abs(diff);
-        const managerId = deals[0] ? undefined : undefined; // will use default
-        
+        adjustedDebt -= (diff - remaining);
+      }
+
+      // Step 2: If there's STILL a gap after payments, create a single reconciliation deal
+      const finalGap = adjustedDebt - expectedDebt;
+      if (Math.abs(finalGap) > 1) {
+        const resolvedManagerId = deals.length > 0
+          ? (await prisma.deal.findUnique({ where: { id: deals[0].id }, select: { managerId: true } }))?.managerId || (await getDefaultManagerId(managerMap))
+          : await getDefaultManagerId(managerMap);
+
+        // finalGap > 0 → CRM still too high → need credit (amount=0, paid=finalGap)
+        // finalGap < 0 → CRM still too low → need debt (amount=|finalGap|, paid=0)
         await prisma.deal.create({
           data: {
             title: `${client?.companyName} — Сверка`,
             status: 'CLOSED',
-            amount: expectedDebt > actualDebt ? absDiff : 0,
-            paidAmount: expectedDebt < actualDebt ? absDiff : 0,
-            paymentStatus: expectedDebt >= 0 ? 'UNPAID' : 'PAID',
+            amount: finalGap < 0 ? Math.abs(finalGap) : 0,
+            paidAmount: finalGap > 0 ? finalGap : 0,
+            paymentStatus: finalGap > 0 ? 'PAID' : 'UNPAID',
             paymentType: 'FULL',
             paymentMethod: 'CASH',
             clientId,
-            managerId: deals[0] ? (await prisma.deal.findUnique({ where: { id: deals[0].id }, select: { managerId: true } }))?.managerId || (await getDefaultManagerId(managerMap)) : await getDefaultManagerId(managerMap),
+            managerId: resolvedManagerId,
             createdAt: new Date(Date.UTC(year, 11, 31)),
             updatedAt: new Date(Date.UTC(year, 11, 31)),
           },
         });
-        console.log(`    → RECONCILED: created adjustment deal for ${diff}`);
-        reconciledCount++;
       }
+      console.log(`    → RECONCILED ✅`);
+      reconciledCount++;
     } else {
       matchCount++;
     }
