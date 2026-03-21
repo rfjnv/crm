@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { formatUZS, moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
+import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 
 const PERIODS = [
   { label: 'Месяц', value: 30 },
@@ -60,7 +61,7 @@ export default function ProductDetailPage() {
       ? { color: 'orange', label: 'Мало' }
       : { color: 'green', label: 'В наличии' };
 
-  const chartData = (data.movements.movementsByDay || []).flatMap((d) => [
+  const chartData = (data.movements.movementsByDay || []).flatMap((d: { day: string, inQty: number, outQty: number }) => [
     { day: d.day, type: 'Приход', qty: d.inQty },
     { day: d.day, type: 'Расход', qty: d.outQty },
   ]);
@@ -210,7 +211,7 @@ export default function ProductDetailPage() {
                 {
                   title: 'Клиент',
                   dataIndex: 'companyName',
-                  render: (v: string, r) => <Link to={`/clients/${r.clientId}`}>{v}</Link>,
+                  render: (v: string, r: { clientId: string }) => <Link to={`/clients/${r.clientId}`}>{v}</Link>,
                 },
                 {
                   title: `Кол-во (${p.unit})`,
@@ -267,6 +268,12 @@ export default function ProductDetailPage() {
             ]}
           />
         </Card>
+
+        {isSuperAdmin && (
+          <Card title="История изменений товара" size="small" bordered={false}>
+            <ProductAuditHistoryPanel productId={id} />
+          </Card>
+        )}
       </Space>
     </div>
   );

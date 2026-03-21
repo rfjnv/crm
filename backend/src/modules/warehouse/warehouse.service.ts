@@ -13,6 +13,20 @@ export class WarehouseService {
     });
   }
 
+  async getProductAuditHistory(productId?: string) {
+    return prisma.auditLog.findMany({
+      where: {
+        entityType: 'product',
+        ...(productId ? { entityId: productId } : {}),
+      },
+      include: {
+        user: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
   async createProduct(dto: CreateProductDto, userId: string) {
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {

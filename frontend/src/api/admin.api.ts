@@ -40,4 +40,7 @@ export const adminApi = {
 
   getDealAudit: (id: string) =>
     client.get<AuditLog[]>(`/admin/deals/${id}/audit`).then((r) => r.data),
+
+  getProductAudit: (productId?: string) =>
+    client.get<AuditLog[]>('/admin/products/audit', { params: { productId } }).then((r) => r.data),
 };

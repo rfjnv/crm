@@ -9,11 +9,13 @@ import type { Product } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
+import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 
 export default function ProductsPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -228,9 +230,14 @@ export default function ProductsPage() {
             ]}
           />
         </Space>
-        {canManageProducts && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
-        )}
+        <Space>
+          {isSuperAdmin && (
+            <Button onClick={() => setAuditOpen(true)}>История аудита</Button>
+          )}
+          {canManageProducts && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+          )}
+        </Space>
       </div>
 
       <Table
@@ -400,6 +407,18 @@ export default function ProductsPage() {
             <Select options={[{ label: 'Активен', value: true }, { label: 'Неактивен', value: false }]} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Audit History Modal */}
+      <Modal
+        title="История аудита товаров"
+        open={auditOpen}
+        onCancel={() => setAuditOpen(false)}
+        footer={null}
+        width={isMobile ? '100%' : 700}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+      >
+        <ProductAuditHistoryPanel />
       </Modal>
     </div>
   );

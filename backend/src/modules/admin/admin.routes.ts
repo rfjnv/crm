@@ -6,6 +6,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
 import { dealsService } from '../deals/deals.service';
+import { warehouseService } from '../warehouse/warehouse.service';
 import { AuthUser } from '../../lib/scope';
 
 const router = Router();
@@ -44,6 +45,17 @@ router.get(
   requirePermission('view_audit_history'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await dealsService.getAuditHistory(req.params.id as string);
+    res.json(result);
+  }),
+);
+
+// ──── SUPER_ADMIN Product Audit History ────
+router.get(
+  '/products/audit',
+  requirePermission('view_audit_history'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const productId = req.query.productId as string | undefined;
+    const result = await warehouseService.getProductAuditHistory(productId);
     res.json(result);
   }),
 );
