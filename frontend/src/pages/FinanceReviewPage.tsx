@@ -46,49 +46,35 @@ export default function FinanceReviewPage() {
 
   const list = deals ?? [];
 
-  const renderTransferInfo = (deal: FinanceDeal) => {
+  const renderTransferInfo = (deal: FinanceDeal, compact = false) => {
     if (deal.paymentMethod !== 'TRANSFER') {
-      return <Typography.Text type="secondary">Доп. данные не требуются</Typography.Text>;
+      return <Typography.Text type="secondary" style={{ fontSize: compact ? 12 : 13 }}>Нет доп. данных</Typography.Text>;
     }
 
     const documents = Array.isArray(deal.transferDocuments) ? deal.transferDocuments : [];
 
     return (
-      <div
-        style={{
-          display: 'grid',
-          gap: 8,
-          minWidth: 260,
-          padding: 10,
-          borderRadius: 10,
-          background: token.colorFillAlter,
-        }}
-      >
-        <div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ИНН</Typography.Text>
-          <div>
-            <Typography.Text code>{deal.transferInn || '—'}</Typography.Text>
-          </div>
+      <div style={{ display: 'grid', gap: compact ? 4 : 6, minWidth: compact ? 0 : 220 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Typography.Text type="secondary" style={{ fontSize: compact ? 11 : 12 }}>ИНН</Typography.Text>
+          <Typography.Text code style={{ fontSize: compact ? 11 : 12 }}>
+            {deal.transferInn || '—'}
+          </Typography.Text>
+          {deal.transferType && (
+            <Tag color="magenta" style={{ marginInlineEnd: 0 }}>
+              {transferTypeLabels[deal.transferType] ?? deal.transferType}
+            </Tag>
+          )}
         </div>
 
-        <div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Тип документа</Typography.Text>
-          <div style={{ marginTop: 4 }}>
-            {deal.transferType ? (
-              <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
-            ) : (
-              <Typography.Text>—</Typography.Text>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Документы</Typography.Text>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-            {documents.length > 0 ? documents.map((doc) => (
-              <Tag key={doc} color="cyan">{doc}</Tag>
-            )) : <Typography.Text>—</Typography.Text>}
-          </div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {documents.length > 0 ? documents.map((doc) => (
+            <Tag key={doc} color="cyan" style={{ marginInlineEnd: 0 }}>
+              {doc}
+            </Tag>
+          )) : (
+            <Typography.Text type="secondary" style={{ fontSize: compact ? 11 : 12 }}>Документы не выбраны</Typography.Text>
+          )}
         </div>
       </div>
     );
@@ -107,8 +93,8 @@ export default function FinanceReviewPage() {
             <Typography.Text type="secondary">{deal.client?.companyName || '—'}</Typography.Text>
           </div>
           <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
-            {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+            {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
+            {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
           </div>
         </div>
       ),
@@ -121,11 +107,12 @@ export default function FinanceReviewPage() {
           <div>
             <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
           </div>
-          <div style={{ marginTop: 6 }}>
+          <div style={{ marginTop: 4 }}>
             <Typography.Text
               style={{
                 color: deal.clientDebt > 0 ? token.colorError : token.colorTextSecondary,
                 fontWeight: deal.clientDebt > 0 ? 600 : 400,
+                fontSize: 13,
               }}
             >
               Долг: {formatUZS(deal.clientDebt)}
@@ -140,27 +127,15 @@ export default function FinanceReviewPage() {
       render: (_: unknown, deal: FinanceDeal) => renderTransferInfo(deal),
     },
     {
-      title: 'Договор',
-      key: 'contract',
-      render: (_: unknown, deal: FinanceDeal) => (
-        <div style={{ minWidth: 150 }}>
-          <div>{deal.contract?.contractNumber || '—'}</div>
-          <div style={{ marginTop: 4 }}>
-            <Typography.Text type="secondary">
-              Срок: {deal.dueDate ? dayjs(deal.dueDate).format('DD.MM.YYYY') : '—'}
-            </Typography.Text>
-          </div>
-        </div>
-      ),
-    },
-    {
       title: 'Менеджер',
       key: 'meta',
       render: (_: unknown, deal: FinanceDeal) => (
         <div style={{ minWidth: 140 }}>
           <div>{deal.manager?.fullName || '—'}</div>
           <div style={{ marginTop: 4 }}>
-            <Typography.Text type="secondary">{dayjs(deal.createdAt).format('DD.MM.YYYY')}</Typography.Text>
+            <Typography.Text type="secondary">
+              {dayjs(deal.createdAt).format('DD.MM.YYYY')}
+            </Typography.Text>
           </div>
         </div>
       ),
@@ -184,7 +159,7 @@ export default function FinanceReviewPage() {
         {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
       </Typography.Title>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        Здесь только обзор. Одобрение и отклонение лучше делать внутри самой сделки, где виден полный контекст.
+        Здесь только обзор. Полную проверку и решение удобнее делать внутри самой сделки.
       </Typography.Text>
 
       {isMobile ? (
@@ -209,13 +184,12 @@ export default function FinanceReviewPage() {
               </div>
 
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
-                {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
-                {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
-                {deal.contract?.contractNumber && <Tag color="gold">{deal.contract.contractNumber}</Tag>}
+                {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
+                {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
               </div>
 
               <div style={{ marginTop: 10 }}>
-                {renderTransferInfo(deal)}
+                {renderTransferInfo(deal, true)}
               </div>
 
               <div style={{ marginTop: 10, display: 'grid', gap: 4 }}>
@@ -242,20 +216,20 @@ export default function FinanceReviewPage() {
           pagination={false}
           size="middle"
           bordered={false}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 980 }}
           locale={{ emptyText: 'Нет сделок на проверке' }}
           summary={() => {
             if (list.length === 0) return null;
             const total = list.reduce((sum, deal) => sum + Number(deal.amount), 0);
             return (
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={1}>
+                <Table.Summary.Cell index={0}>
                   <Typography.Text strong>Итого: {list.length} сделок</Typography.Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
                   <Typography.Text strong>{formatUZS(total)}</Typography.Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} colSpan={4} />
+                <Table.Summary.Cell index={2} colSpan={3} />
               </Table.Summary.Row>
             );
           }}
