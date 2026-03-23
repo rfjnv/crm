@@ -103,7 +103,7 @@ export class DealsService {
     const deal = await prisma.deal.findFirst({
       where: { id, ...ownerScope(user) },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, inn: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         items: {
@@ -127,7 +127,9 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    return deal;
+    // Parse transfer documents if present
+    const parsedDeal = this.parseTransferDocuments(deal);
+    return parsedDeal;
   }
 
   // ==================== CREATE (simplified — client + items + comment only) ====================
@@ -386,12 +388,22 @@ export class DealsService {
 
     validateStatusTransition(deal.status, targetStatus, user.role);
 
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      status: targetStatus,
+      paymentMethod: dto.paymentMethod as PaymentMethod,
+    };
+
+    // Add transfer-specific fields if payment method is TRANSFER
+    if (dto.paymentMethod === 'TRANSFER' && dto.transferInn && dto.transferDocuments) {
+      updateData.transferInn = dto.transferInn;
+      updateData.transferDocuments = JSON.stringify(dto.transferDocuments);
+      updateData.transferType = dto.transferType || null;
+    }
+
     await prisma.deal.update({
       where: { id: dealId },
-      data: {
-        status: targetStatus,
-        paymentMethod: dto.paymentMethod as PaymentMethod,
-      },
+      data: updateData,
     });
 
     await auditLog({
@@ -2345,6 +2357,26 @@ export class DealsService {
       include: { user: { select: { id: true, fullName: true, role: true } } },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private parseTransferDocuments<T extends Record<string, unknown>>(deal: T): T & {
+    transferDocuments?: string[] | null;
+  } {
+    if (!deal.transferDocuments || typeof deal.transferDocuments !== 'string') {
+      return deal as T & { transferDocuments?: string[] | null };
+    }
+    try {
+      const parsed = JSON.parse(deal.transferDocuments as string);
+      return {
+        ...deal,
+        transferDocuments: Array.isArray(parsed) ? parsed : null,
+      } as T & { transferDocuments?: string[] | null };
+    } catch {
+      return {
+        ...deal,
+        transferDocuments: null,
+      } as T & { transferDocuments?: string[] | null };
+    }
   }
 }
 

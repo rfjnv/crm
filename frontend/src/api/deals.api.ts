@@ -70,8 +70,13 @@ export const dealsApi = {
     client.get<Deal[]>('/deals/stock-confirmation-queue').then((r) => r.data),
 
   // Workflow: Send to Finance (Manager selects payment method)
-  sendToFinance: (dealId: string, paymentMethod: PaymentMethod) =>
-    client.post<Deal>(`/deals/${dealId}/send-to-finance`, { paymentMethod }).then((r) => r.data),
+  sendToFinance: (dealId: string, data: {
+    paymentMethod: PaymentMethod;
+    transferInn?: string;
+    transferDocuments?: string[];
+    transferType?: 'ONE_TIME' | 'ANNUAL';
+  }) =>
+    client.post<Deal>(`/deals/${dealId}/send-to-finance`, data).then((r) => r.data),
 
   // Workflow: Finance
   approveFinance: (dealId: string) =>

@@ -280,6 +280,9 @@ model Deal {
   discount      Decimal       @default(0) @db.Decimal(12, 2)
   includeVat    Boolean       @default(true) @map("include_vat")
   terms         String?
+  transferInn   String?       @map("transfer_inn")
+  transferDocuments String?   @map("transfer_documents")
+  transferType  String?       @map("transfer_type")
   isArchived    Boolean       @default(false) @map("is_archived")
   archivedAt    DateTime?     @map("archived_at")
   archivedById  String?       @map("archived_by_id")

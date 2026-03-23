@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
   List, Table, message, InputNumber, Form, Modal, Popconfirm, DatePicker, Tabs,
-  Select, Alert, Radio, Tooltip, Collapse,
+  Select, Alert, Radio, Tooltip, Collapse, Checkbox,
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
@@ -73,6 +73,10 @@ export default function DealDetailPage() {
   const [editingPayment, setEditingPayment] = useState<{ id: string } | null>(null);
   const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [transferPaymentModal, setTransferPaymentModal] = useState(false);
+  const [transferInn, setTransferInn] = useState('');
+  const [transferDocuments, setTransferDocuments] = useState<string[]>(['Договор']);
+  const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
   const [overrideModal, setOverrideModal] = useState(false);
@@ -197,14 +201,14 @@ export default function DealDetailPage() {
 
   const addItemMut = useMutation({
     mutationFn: (data: { productId: string; requestComment?: string }) => dealsApi.addItem(id!, data),
-    onSuccess: () => { 
-      invalidate(); 
+    onSuccess: () => {
+      invalidate();
       // If setting quantities modal is open, don't close item modal
       if (!setQuantitiesModal) {
         setItemModal(false);
       }
-      itemForm.resetFields(); 
-      message.success('Товар добавлен'); 
+      itemForm.resetFields();
+      message.success('Товар добавлен');
     },
     onError: () => message.error('Ошибка добавления товара'),
   });
@@ -248,11 +252,20 @@ export default function DealDetailPage() {
   });
 
   const sendToFinanceMut = useMutation({
-    mutationFn: (paymentMethod: PaymentMethod) => dealsApi.sendToFinance(id!, paymentMethod),
+    mutationFn: (data: {
+      paymentMethod: PaymentMethod;
+      transferInn?: string;
+      transferDocuments?: string[];
+      transferType?: 'ONE_TIME' | 'ANNUAL';
+    }) => dealsApi.sendToFinance(id!, data),
     onSuccess: (result) => {
       invalidate();
       setSendToFinanceModal(false);
+      setTransferPaymentModal(false);
       setSelectedPaymentMethod(null);
+      setTransferInn('');
+      setTransferDocuments(['Договор']);
+      setTransferType('ONE_TIME');
       const skipped = result.status === 'ADMIN_APPROVED';
       message.success(skipped ? 'Отправлено на одобрение админа (финансы не требуются)' : 'Отправлено на проверку финансов');
     },
@@ -887,6 +900,27 @@ export default function DealDetailPage() {
                 <Descriptions.Item label="Способ оплаты">
                   <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
                 </Descriptions.Item>
+              )}
+              {deal.paymentMethod === 'TRANSFER' && deal.transferInn && (
+                <>
+                  <Descriptions.Item label="ИНН (перечисление)">
+                    <Typography.Text code>{deal.transferInn}</Typography.Text>
+                  </Descriptions.Item>
+                  {deal.transferDocuments && Array.isArray(deal.transferDocuments) && (
+                    <Descriptions.Item label="Документы">
+                      <Space wrap>
+                        {(deal.transferDocuments as unknown as string[]).map((doc: string) => (
+                          <Tag key={doc} color="cyan">{doc}</Tag>
+                        ))}
+                      </Space>
+                    </Descriptions.Item>
+                  )}
+                  {deal.transferType && (
+                    <Descriptions.Item label="Тип платежа для ИНН">
+                      <Tag color="magenta">{deal.transferType === 'ONE_TIME' ? 'Разовый' : 'Годовой'}</Tag>
+                    </Descriptions.Item>
+                  )}
+                </>
               )}
               <Descriptions.Item label="Статус">
                 <DealStatusTag status={deal.status} />
@@ -1640,10 +1674,18 @@ export default function DealDetailPage() {
             message.warning('Выберите способ оплаты');
             return;
           }
-          sendToFinanceMut.mutate(selectedPaymentMethod);
+          if (selectedPaymentMethod === 'TRANSFER') {
+            setSendToFinanceModal(false);
+            setTransferInn(dealData?.client?.inn || '');
+            setTransferDocuments(['Договор']);
+            setTransferType('ONE_TIME');
+            setTransferPaymentModal(true);
+          } else {
+            sendToFinanceMut.mutate({ paymentMethod: selectedPaymentMethod });
+          }
         }}
         confirmLoading={sendToFinanceMut.isPending}
-        okText="Отправить"
+        okText="Далее"
         cancelText="Отмена"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
@@ -1685,6 +1727,78 @@ export default function DealDetailPage() {
             </Radio.Button>
           </Space>
         </Radio.Group>
+      </Modal>
+
+      {/* Transfer Payment Info Modal */}
+      <Modal
+        title="Информация для бухгалтера - Перечисление"
+        open={transferPaymentModal}
+        onCancel={() => {
+          setTransferPaymentModal(false);
+          setSendToFinanceModal(true);
+          setTransferInn('');
+          setTransferDocuments(['Договор']);
+          setTransferType('ONE_TIME');
+        }}
+        onOk={() => {
+          if (!transferInn.trim()) {
+            message.warning('Укажите ИНН компании');
+            return;
+          }
+          if (transferDocuments.length === 0) {
+            message.warning('Выберите минимум один документ');
+            return;
+          }
+          if (!selectedPaymentMethod) {
+            message.error('Способ оплаты не выбран');
+            return;
+          }
+          sendToFinanceMut.mutate({
+            paymentMethod: selectedPaymentMethod,
+            transferInn: transferInn.trim(),
+            transferDocuments,
+            transferType,
+          });
+        }}
+        confirmLoading={sendToFinanceMut.isPending}
+        okText="Отправить в финансы"
+        cancelText="Назад"
+        width={600}
+      >
+        <Form layout="vertical">
+          <Form.Item label="ИНН компании" required>
+            <Input
+              placeholder="Укажите ИНН компании клиента"
+              value={transferInn}
+              onChange={(e) => setTransferInn(e.target.value)}
+              maxLength={50}
+            />
+          </Form.Item>
+
+          <Form.Item label="Документы" required>
+            <Checkbox.Group
+              value={transferDocuments}
+              onChange={(checkedValues) => setTransferDocuments(checkedValues as string[])}
+              options={[
+                { label: 'Договор', value: 'Договор' },
+                { label: 'Спецификация', value: 'Спецификация' },
+                { label: 'Счет', value: 'Счет' },
+                { label: 'Счет-фактура', value: 'Счет-фактура' },
+                { label: 'Накладная', value: 'Накладная' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item label="Тип платежа">
+            <Radio.Group
+              value={transferType}
+              onChange={(e) => setTransferType(e.target.value)}
+            >
+              <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+              <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* Shipment Modal */}

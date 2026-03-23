@@ -249,10 +249,13 @@ export interface Deal {
   paymentStatus: PaymentStatus;
   terms?: string | null;
   includeVat?: boolean;
+  transferInn?: string | null;
+  transferDocuments?: string[] | null;
+  transferType?: 'ONE_TIME' | 'ANNUAL' | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
-  client?: { id: string; companyName: string; contactName?: string };
+  client?: { id: string; companyName: string; contactName?: string; inn?: string | null };
   manager?: { id: string; fullName: string };
   contract?: { id: string; contractNumber: string } | null;
   items?: DealItem[];
