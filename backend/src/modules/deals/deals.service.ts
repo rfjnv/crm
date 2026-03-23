@@ -395,10 +395,16 @@ export class DealsService {
     };
 
     // Add transfer-specific fields if payment method is TRANSFER
-    if (dto.paymentMethod === 'TRANSFER' && dto.transferInn && dto.transferDocuments) {
-      updateData.transferInn = dto.transferInn;
-      updateData.transferDocuments = JSON.stringify(dto.transferDocuments);
-      updateData.transferType = dto.transferType || null;
+    if (dto.paymentMethod === 'TRANSFER') {
+      if (dto.transferInn) {
+        updateData.transferInn = dto.transferInn;
+      }
+      if (Array.isArray(dto.transferDocuments) && dto.transferDocuments.length > 0) {
+        updateData.transferDocuments = JSON.stringify(dto.transferDocuments);
+      }
+      if (dto.transferType) {
+        updateData.transferType = dto.transferType;
+      }
     }
 
     await prisma.deal.update({
