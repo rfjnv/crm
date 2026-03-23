@@ -68,7 +68,7 @@ async function main() {
       }
     }
     if (!found) {
-      console.warn(`Внимание! Файл ${fName} не найден ни по одному пути, таблица может быть неполной!`);
+      console.warn(`Внимание! Файл ${fName} не найден ни по одному пути!`);
     }
   }
 
@@ -105,13 +105,13 @@ async function main() {
           const qty = numVal(row[5]);
           const unit = row[6] ? String(row[6]).trim() : 'шт';
           let price = numVal(row[7]);
-          const revenue = numVal(row[8]);
+          const revenue = numVal(row[8]); // столбец I
           
           if (price === 0 && qty > 0) {
               price = revenue / qty;
           }
           
-          const paymentCode = String(row[9] || 'к').trim().toLowerCase();
+          const paymentCode = String(row[9] || 'к').trim().toLowerCase(); // J
           
           const cashPay = numVal(row[11]);
           const transferPay = numVal(row[14]);
@@ -119,7 +119,9 @@ async function main() {
           const plasticPay = numVal(row[20]);
           const terminalPay = numVal(row[23]);
           
-          const closingBalance = numVal(row[26]);
+          const totalPay = cashPay + transferPay + qrPay + plasticPay + terminalPay;
+          
+          const closingBalance = numVal(row[26]); // AA
           const paymentDate = row[27] ? parseExcelDate(row[27]) : dealDate;
 
           clientExcelData.push({
@@ -140,6 +142,7 @@ async function main() {
               CLICK: plasticPay,
               TERMINAL: terminalPay
             },
+            totalPay,
             closingBalance,
             paymentDate
           });
@@ -151,6 +154,8 @@ async function main() {
   // Для каждого клиента сначала удаляем все его существующие сделки, затем пересоздаем по правилам
   for (const client of dbClients) {
     console.log(`\n=== Пересоздание клиента: ${client.companyName} ===`);
+    
+    // Все записи клиента из всех файлов в хронологическом порядке (так как читаем файлы 2024->2026)
     const records = clientExcelData.filter(d => d.clientId === client.id);
     
     if (records.length === 0) {
@@ -159,7 +164,7 @@ async function main() {
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Очистка старых данных
+      // 1. ПОЛНАЯ очистка старых данных для этого клиента
       const deals = await tx.deal.findMany({ where: { clientId: client.id }, select: { id: true }});
       const dealIds = deals.map(d => d.id);
       
@@ -190,18 +195,20 @@ async function main() {
       let createdDeals = 0;
       let createdItems = 0;
       let createdPayments = 0;
+      
+      let accumulatedRevenue = 0;
+      let accumulatedPayments = 0;
 
       for (const [dateStr, rows] of dealsByDate.entries()) {
           const firstRow = rows[0];
           
-          const totalAmount = rows.reduce((sum, r) => sum + r.revenue, 0);
+          const totalAmount = rows.reduce((sum, r) => sum + r.revenue, 0); // Общая выручка дня
           
           let method = 'TRANSFER';
           if (firstRow.paymentCode === 'н' || firstRow.paymentCode === 'н/к') method = 'CASH';
           if (firstRow.paymentCode === 'пп') method = 'CLICK';
           
-          const lastRow = rows[rows.length - 1];
-          const closingDebt = lastRow.closingBalance;
+          const lastRow = rows[rows.length - 1]; // Последняя операция за день
           
           let totalPaid = 0;
           for (const r of rows) {
@@ -209,10 +216,13 @@ async function main() {
              totalPaid += payRow.CASH + payRow.TRANSFER + payRow.QR + payRow.CLICK + payRow.TERMINAL;
           }
           
+          accumulatedRevenue += totalAmount;
+          accumulatedPayments += totalPaid;
+          
           let paymentStatus = 'UNPAID';
           if (totalPaid >= totalAmount && totalAmount > 0) paymentStatus = 'PAID';
           else if (totalPaid > 0) paymentStatus = 'PARTIAL';
-          else if (closingDebt <= 0 && totalAmount > 0) paymentStatus = 'PAID'; 
+          else if (lastRow.closingBalance <= 0 && totalAmount > 0) paymentStatus = 'PAID'; 
 
           const dealTitle = `${client.companyName} - ${dateStr}`;
           const newDeal = await tx.deal.create({
@@ -222,7 +232,7 @@ async function main() {
                   managerId: defaultManager ? defaultManager.id : client.managerId || '', 
                   amount: totalAmount,
                   paidAmount: totalPaid,
-                  status: closingDebt === 0 ? 'CLOSED' : 'IN_PROGRESS',
+                  status: lastRow.closingBalance === 0 ? 'CLOSED' : 'IN_PROGRESS',
                   paymentStatus: paymentStatus as any,
                   paymentMethod: method as any,
                   createdAt: firstRow.dealDate,
@@ -268,8 +278,58 @@ async function main() {
               }
           }
       }
+      
+      // ИДЕАЛЬНАЯ КАЛИБРОВКА ДОЛГА ПО ПОСЛЕДНЕМУ СТОЛБЦУ AA:
+      // В СРМ долг клиента = Сумма сделок - Сумма платежей (accumulatedRevenue - accumulatedPayments).
+      // Если у клиента был долг на начало 2024 года, который не отразился в выручке I, но есть в AA, нам нужно добавить разницу!
+      // 'Долг который мы дали' считается в конце в AA.
+      const finalRow = records[records.length - 1]; // Точка абсолютной истины за 18 марта
+      const finalExcelAA = finalRow.closingBalance; 
+      // Если клиент в передоплате, Excel может учитывать 'пп' как отрицательное число или положительное (зависит от логики J)
+      // Допустим AA - положительное число для долга клиента (он нам должен), отрицательное/ноль - если нет долга.
+      // По логике: Долг = Все взятые товары (Revenue) - Все платежи
+      
+      const currentCrmDebt = accumulatedRevenue - accumulatedPayments;
+      const differenceDebt = finalExcelAA - currentCrmDebt; // То, чего не хватает в CRM!
+      
+      if (Math.abs(differenceDebt) > 100) {
+         console.log(`  Нехватка истории оплат/долга до 2024 года! Текущий CRM-долг: ${currentCrmDebt}, в AA Excel (последний): ${finalExcelAA}. Корректируем на ${differenceDebt}...`);
+         
+         const dealTitle = differenceDebt > 0 ? "Входящее сальдо (долг)" : "Переплата / Корректировка";
+         
+         const newCorrDeal = await tx.deal.create({
+              data: {
+                  title: dealTitle,
+                  clientId: client.id,
+                  managerId: defaultManager ? defaultManager.id : client.managerId || '', 
+                  amount: differenceDebt > 0 ? differenceDebt : 0, 
+                  paidAmount: differenceDebt < 0 ? Math.abs(differenceDebt) : 0, 
+                  status: 'CLOSED',
+                  paymentStatus: differenceDebt > 0 ? 'UNPAID' : 'PAID',
+                  paymentMethod: 'TRANSFER',
+                  createdAt: records[0].dealDate, 
+              }
+          });
+          createdDeals++;
+          
+          if (differenceDebt < 0) {
+              await tx.payment.create({
+                  data: {
+                      dealId: newCorrDeal.id,
+                      clientId: client.id,
+                      amount: Math.abs(differenceDebt),
+                      method: 'TRANSFER',
+                      paidAt: records[0].dealDate,
+                      createdBy: defaultManager!.id,
+                      note: "Переплата по корректировке сальдо (AA)"
+                  }
+              });
+              createdPayments++;
+          }
+      }
+      
       console.log(`Создано: ${createdDeals} сделок, ${createdItems} товаров, ${createdPayments} транзакций оплат.`);
-    }, { timeout: 300000 }); // Увеличим таймаут Prisma на случай многих сделок
+    }, { timeout: 300000 }); 
   }
 }
 
