@@ -259,7 +259,9 @@ export default function DealDetailPage() {
       transferType?: 'ONE_TIME' | 'ANNUAL';
     }) => dealsApi.sendToFinance(id!, data),
     onSuccess: (result) => {
-      invalidate();
+      // Update cache with fresh data
+      queryClient.setQueryData(['deal', id], result);
+
       setTimeout(() => {
         setSendToFinanceModal(false);
         setTransferPaymentModal(false);
@@ -267,7 +269,7 @@ export default function DealDetailPage() {
         setTransferInn('');
         setTransferDocuments(['Договор']);
         setTransferType('ONE_TIME');
-      }, 500);
+      }, 300);
       const skipped = result.status === 'ADMIN_APPROVED';
       message.success(skipped ? 'Отправлено на одобрение админа (финансы не требуются)' : 'Отправлено на проверку финансов');
     },
