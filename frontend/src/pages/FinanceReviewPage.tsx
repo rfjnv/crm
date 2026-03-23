@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Table, Typography, Button, Space, Tag, Modal, Input, message, theme, Card,
+  Table, Typography, Tag, theme, Card, Button,
 } from 'antd';
-import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -37,11 +36,7 @@ type FinanceDeal = Deal & { clientDebt: number };
 
 export default function FinanceReviewPage() {
   const isMobile = useIsMobile();
-  const queryClient = useQueryClient();
   const { token } = theme.useToken();
-
-  const [rejectModal, setRejectModal] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
 
   const { data: deals, isLoading } = useQuery({
     queryKey: ['finance-queue'],
@@ -49,56 +44,52 @@ export default function FinanceReviewPage() {
     refetchInterval: 10_000,
   });
 
-  const approveMut = useMutation({
-    mutationFn: (dealId: string) => dealsApi.approveFinance(dealId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['finance-queue'] });
-      message.success('Сделка одобрена');
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
-      message.error(msg);
-    },
-  });
-
-  const rejectMut = useMutation({
-    mutationFn: ({ dealId, reason }: { dealId: string; reason: string }) =>
-      dealsApi.rejectFinance(dealId, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['finance-queue'] });
-      message.success('Сделка отклонена');
-      setRejectModal(null);
-      setRejectReason('');
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
-      message.error(msg);
-    },
-  });
+  const list = deals ?? [];
 
   const renderTransferInfo = (deal: FinanceDeal) => {
-    if (deal.paymentMethod !== 'TRANSFER') return '—';
+    if (deal.paymentMethod !== 'TRANSFER') {
+      return <Typography.Text type="secondary">Доп. данные не требуются</Typography.Text>;
+    }
 
     const documents = Array.isArray(deal.transferDocuments) ? deal.transferDocuments : [];
 
     return (
-      <div style={{ minWidth: 240 }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: 8,
+          minWidth: 260,
+          padding: 10,
+          borderRadius: 10,
+          background: token.colorFillAlter,
+        }}
+      >
         <div>
-          <Typography.Text type="secondary">ИНН: </Typography.Text>
-          <Typography.Text code>{deal.transferInn || '—'}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ИНН</Typography.Text>
+          <div>
+            <Typography.Text code>{deal.transferInn || '—'}</Typography.Text>
+          </div>
         </div>
-        {documents.length > 0 && (
-          <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {documents.map((doc) => (
-              <Tag key={doc} color="cyan">{doc}</Tag>
-            ))}
-          </div>
-        )}
-        {deal.transferType && (
+
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Тип документа</Typography.Text>
           <div style={{ marginTop: 4 }}>
-            <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
+            {deal.transferType ? (
+              <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
+            ) : (
+              <Typography.Text>—</Typography.Text>
+            )}
           </div>
-        )}
+        </div>
+
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Документы</Typography.Text>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+            {documents.length > 0 ? documents.map((doc) => (
+              <Tag key={doc} color="cyan">{doc}</Tag>
+            )) : <Typography.Text>—</Typography.Text>}
+          </div>
+        </div>
       </div>
     );
   };
@@ -106,93 +97,95 @@ export default function FinanceReviewPage() {
   const columns = [
     {
       title: 'Сделка',
-      dataIndex: 'title',
-      render: (v: string, r: FinanceDeal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
-    },
-    {
-      title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
-    },
-    {
-      title: 'Сумма',
-      dataIndex: 'amount',
-      align: 'right' as const,
-      render: (v: string) => formatUZS(v),
-    },
-    {
-      title: 'Тип оплаты',
-      dataIndex: 'paymentType',
-      render: (v: string) => <Tag>{paymentTypeLabels[v] ?? v}</Tag>,
-    },
-    {
-      title: 'Способ оплаты',
-      dataIndex: 'paymentMethod',
-      render: (v: string | null) => v ? <Tag color="blue">{paymentMethodLabels[v] ?? v}</Tag> : '—',
-    },
-    {
-      title: 'Данные для бухгалтера',
-      render: (_: unknown, deal: FinanceDeal) => renderTransferInfo(deal),
-    },
-    {
-      title: 'Долг клиента',
-      dataIndex: 'clientDebt',
-      align: 'right' as const,
-      render: (v: number) => (
-        <Typography.Text style={{ color: v > 0 ? token.colorError : undefined, fontWeight: v > 0 ? 600 : undefined }}>
-          {formatUZS(v)}
-        </Typography.Text>
+      key: 'deal',
+      render: (_: unknown, deal: FinanceDeal) => (
+        <div style={{ minWidth: 220 }}>
+          <Link to={`/deals/${deal.id}`}>
+            <Typography.Text strong>{deal.title}</Typography.Text>
+          </Link>
+          <div style={{ marginTop: 4 }}>
+            <Typography.Text type="secondary">{deal.client?.companyName || '—'}</Typography.Text>
+          </div>
+          <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
+            {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+          </div>
+        </div>
       ),
     },
     {
-      title: 'Договор',
-      dataIndex: ['contract', 'contractNumber'],
-      render: (v: string | undefined) => v || '—',
+      title: 'Сумма',
+      key: 'money',
+      render: (_: unknown, deal: FinanceDeal) => (
+        <div style={{ minWidth: 160, textAlign: 'right' }}>
+          <div>
+            <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <Typography.Text
+              style={{
+                color: deal.clientDebt > 0 ? token.colorError : token.colorTextSecondary,
+                fontWeight: deal.clientDebt > 0 ? 600 : 400,
+              }}
+            >
+              Долг: {formatUZS(deal.clientDebt)}
+            </Typography.Text>
+          </div>
+        </div>
+      ),
     },
     {
-      title: 'Срок оплаты',
-      dataIndex: 'dueDate',
-      render: (v: string | null) => v ? dayjs(v).format('DD.MM.YYYY') : '—',
+      title: 'Для бухгалтера',
+      key: 'transfer',
+      render: (_: unknown, deal: FinanceDeal) => renderTransferInfo(deal),
+    },
+    {
+      title: 'Договор',
+      key: 'contract',
+      render: (_: unknown, deal: FinanceDeal) => (
+        <div style={{ minWidth: 150 }}>
+          <div>{deal.contract?.contractNumber || '—'}</div>
+          <div style={{ marginTop: 4 }}>
+            <Typography.Text type="secondary">
+              Срок: {deal.dueDate ? dayjs(deal.dueDate).format('DD.MM.YYYY') : '—'}
+            </Typography.Text>
+          </div>
+        </div>
+      ),
     },
     {
       title: 'Менеджер',
-      dataIndex: ['manager', 'fullName'],
+      key: 'meta',
+      render: (_: unknown, deal: FinanceDeal) => (
+        <div style={{ minWidth: 140 }}>
+          <div>{deal.manager?.fullName || '—'}</div>
+          <div style={{ marginTop: 4 }}>
+            <Typography.Text type="secondary">{dayjs(deal.createdAt).format('DD.MM.YYYY')}</Typography.Text>
+          </div>
+        </div>
+      ),
     },
     {
-      title: 'Дата',
-      dataIndex: 'createdAt',
-      render: (v: string) => dayjs(v).format('DD.MM.YYYY'),
-    },
-    {
-      title: 'Действия',
-      width: 120,
-      render: (_: unknown, r: FinanceDeal) => (
-        <Space size="small">
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckOutlined />}
-            loading={approveMut.isPending}
-            onClick={() => approveMut.mutate(r.id)}
-          />
-          <Button
-            danger
-            size="small"
-            icon={<CloseOutlined />}
-            onClick={() => { setRejectModal(r.id); setRejectReason(''); }}
-          />
-        </Space>
+      title: '',
+      key: 'open',
+      width: 110,
+      render: (_: unknown, deal: FinanceDeal) => (
+        <Button type="link" icon={<ArrowRightOutlined />}>
+          <Link to={`/deals/${deal.id}`}>Открыть</Link>
+        </Button>
       ),
     },
   ];
 
-  const list = deals ?? [];
-
   return (
     <div>
-      <Typography.Title level={4} style={{ marginBottom: 16 }}>
+      <Typography.Title level={4} style={{ marginBottom: 8 }}>
         Финансы на проверке
         {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
       </Typography.Title>
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        Здесь только обзор. Одобрение и отклонение лучше делать внутри самой сделки, где виден полный контекст.
+      </Typography.Text>
 
       {isMobile ? (
         <MobileCardList
@@ -201,45 +194,41 @@ export default function FinanceReviewPage() {
           loading={isLoading}
           renderCard={(deal: FinanceDeal) => (
             <Card size="small" bordered>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
-                  <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                  <Link to={`/deals/${deal.id}`}>
+                    <Typography.Text strong>{deal.title}</Typography.Text>
+                  </Link>
+                  <div style={{ marginTop: 4 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {deal.client?.companyName || '—'}
+                    </Typography.Text>
+                  </div>
                 </div>
                 <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
               </div>
-              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                 {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
                 {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+                {deal.contract?.contractNumber && <Tag color="gold">{deal.contract.contractNumber}</Tag>}
               </div>
-              {deal.paymentMethod === 'TRANSFER' && (
-                <div style={{ marginTop: 8 }}>
-                  <div>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>ИНН: </Typography.Text>
-                    <Typography.Text code style={{ fontSize: 12 }}>{deal.transferInn || '—'}</Typography.Text>
-                  </div>
-                  {Array.isArray(deal.transferDocuments) && deal.transferDocuments.length > 0 && (
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                      {deal.transferDocuments.map((doc) => (
-                        <Tag key={doc} color="cyan">{doc}</Tag>
-                      ))}
-                    </div>
-                  )}
-                  {deal.transferType && (
-                    <div style={{ marginTop: 4 }}>
-                      <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
-                    </div>
-                  )}
-                </div>
-              )}
-              {deal.clientDebt > 0 && (
-                <div style={{ marginTop: 4 }}>
-                  <Typography.Text style={{ color: token.colorError, fontSize: 12 }}>Долг клиента: {formatUZS(deal.clientDebt)}</Typography.Text>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <Button type="primary" size="small" icon={<CheckOutlined />} loading={approveMut.isPending} onClick={() => approveMut.mutate(deal.id)}>Одобрить</Button>
-                <Button danger size="small" icon={<CloseOutlined />} onClick={() => { setRejectModal(deal.id); setRejectReason(''); }}>Отклонить</Button>
+
+              <div style={{ marginTop: 10 }}>
+                {renderTransferInfo(deal)}
+              </div>
+
+              <div style={{ marginTop: 10, display: 'grid', gap: 4 }}>
+                <Typography.Text style={{ color: deal.clientDebt > 0 ? token.colorError : token.colorTextSecondary }}>
+                  Долг клиента: {formatUZS(deal.clientDebt)}
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Менеджер: {deal.manager?.fullName || '—'} • {dayjs(deal.createdAt).format('DD.MM.YYYY')}
+                </Typography.Text>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <Link to={`/deals/${deal.id}`}>Открыть сделку</Link>
               </div>
             </Card>
           )}
@@ -253,49 +242,25 @@ export default function FinanceReviewPage() {
           pagination={false}
           size="middle"
           bordered={false}
-          scroll={{ x: 980 }}
+          scroll={{ x: 1200 }}
           locale={{ emptyText: 'Нет сделок на проверке' }}
           summary={() => {
             if (list.length === 0) return null;
-            const total = list.reduce((s, d) => s + Number(d.amount), 0);
+            const total = list.reduce((sum, deal) => sum + Number(deal.amount), 0);
             return (
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={2}>
+                <Table.Summary.Cell index={0} colSpan={1}>
                   <Typography.Text strong>Итого: {list.length} сделок</Typography.Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} align="right">
+                <Table.Summary.Cell index={1} align="right">
                   <Typography.Text strong>{formatUZS(total)}</Typography.Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={3} colSpan={9} />
+                <Table.Summary.Cell index={2} colSpan={4} />
               </Table.Summary.Row>
             );
           }}
         />
       )}
-
-      <Modal
-        title="Отклонить сделку"
-        open={!!rejectModal}
-        onCancel={() => setRejectModal(null)}
-        onOk={() => {
-          if (!rejectReason.trim()) {
-            message.error('Укажите причину отклонения');
-            return;
-          }
-          rejectMut.mutate({ dealId: rejectModal!, reason: rejectReason });
-        }}
-        confirmLoading={rejectMut.isPending}
-        okText="Отклонить"
-        cancelText="Отмена"
-        okButtonProps={{ danger: true }}
-      >
-        <Input.TextArea
-          rows={3}
-          placeholder="Причина отклонения..."
-          value={rejectReason}
-          onChange={(e) => setRejectReason(e.target.value)}
-        />
-      </Modal>
     </div>
   );
 }
