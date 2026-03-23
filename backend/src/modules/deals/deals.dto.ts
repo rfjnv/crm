@@ -76,19 +76,7 @@ export const sendToFinanceDto = z.object({
   transferInn: z.string().optional(),
   transferDocuments: z.array(z.string()).optional(),
   transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
-}).refine(
-  (data) => {
-    // If TRANSFER, these fields are required
-    if (data.paymentMethod === 'TRANSFER') {
-      return !!data.transferInn && Array.isArray(data.transferDocuments) && data.transferDocuments.length > 0;
-    }
-    return true;
-  },
-  {
-    message: 'Для перечисления требуются ИНН и минимум один документ',
-    path: ['transferDocuments'],
-  }
-);
+});
 
 export const shipmentDto = z.object({
   vehicleType: z.string().min(1, 'Укажите тип транспорта'),
