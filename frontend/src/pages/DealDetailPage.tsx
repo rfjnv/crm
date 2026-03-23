@@ -260,12 +260,14 @@ export default function DealDetailPage() {
     }) => dealsApi.sendToFinance(id!, data),
     onSuccess: (result) => {
       invalidate();
-      setSendToFinanceModal(false);
-      setTransferPaymentModal(false);
-      setSelectedPaymentMethod(null);
-      setTransferInn('');
-      setTransferDocuments(['Договор']);
-      setTransferType('ONE_TIME');
+      setTimeout(() => {
+        setSendToFinanceModal(false);
+        setTransferPaymentModal(false);
+        setSelectedPaymentMethod(null);
+        setTransferInn('');
+        setTransferDocuments(['Договор']);
+        setTransferType('ONE_TIME');
+      }, 500);
       const skipped = result.status === 'ADMIN_APPROVED';
       message.success(skipped ? 'Отправлено на одобрение админа (финансы не требуются)' : 'Отправлено на проверку финансов');
     },
