@@ -28,6 +28,11 @@ const paymentMethodLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
+const transferTypeLabels: Record<'ONE_TIME' | 'ANNUAL', string> = {
+  ONE_TIME: 'Разовый',
+  ANNUAL: 'Годовой',
+};
+
 type FinanceDeal = Deal & { clientDebt: number };
 
 export default function FinanceReviewPage() {
@@ -71,6 +76,33 @@ export default function FinanceReviewPage() {
     },
   });
 
+  const renderTransferInfo = (deal: FinanceDeal) => {
+    if (deal.paymentMethod !== 'TRANSFER') return '—';
+
+    const documents = Array.isArray(deal.transferDocuments) ? deal.transferDocuments : [];
+
+    return (
+      <div style={{ minWidth: 240 }}>
+        <div>
+          <Typography.Text type="secondary">ИНН: </Typography.Text>
+          <Typography.Text code>{deal.transferInn || '—'}</Typography.Text>
+        </div>
+        {documents.length > 0 && (
+          <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {documents.map((doc) => (
+              <Tag key={doc} color="cyan">{doc}</Tag>
+            ))}
+          </div>
+        )}
+        {deal.transferType && (
+          <div style={{ marginTop: 4 }}>
+            <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const columns = [
     {
       title: 'Сделка',
@@ -96,6 +128,10 @@ export default function FinanceReviewPage() {
       title: 'Способ оплаты',
       dataIndex: 'paymentMethod',
       render: (v: string | null) => v ? <Tag color="blue">{paymentMethodLabels[v] ?? v}</Tag> : '—',
+    },
+    {
+      title: 'Данные для бухгалтера',
+      render: (_: unknown, deal: FinanceDeal) => renderTransferInfo(deal),
     },
     {
       title: 'Долг клиента',
@@ -176,6 +212,26 @@ export default function FinanceReviewPage() {
                 {deal.paymentType && <Tag>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
                 {deal.paymentMethod && <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
               </div>
+              {deal.paymentMethod === 'TRANSFER' && (
+                <div style={{ marginTop: 8 }}>
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>ИНН: </Typography.Text>
+                    <Typography.Text code style={{ fontSize: 12 }}>{deal.transferInn || '—'}</Typography.Text>
+                  </div>
+                  {Array.isArray(deal.transferDocuments) && deal.transferDocuments.length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                      {deal.transferDocuments.map((doc) => (
+                        <Tag key={doc} color="cyan">{doc}</Tag>
+                      ))}
+                    </div>
+                  )}
+                  {deal.transferType && (
+                    <div style={{ marginTop: 4 }}>
+                      <Tag color="magenta">{transferTypeLabels[deal.transferType] ?? deal.transferType}</Tag>
+                    </div>
+                  )}
+                </div>
+              )}
               {deal.clientDebt > 0 && (
                 <div style={{ marginTop: 4 }}>
                   <Typography.Text style={{ color: token.colorError, fontSize: 12 }}>Долг клиента: {formatUZS(deal.clientDebt)}</Typography.Text>
@@ -197,7 +253,7 @@ export default function FinanceReviewPage() {
           pagination={false}
           size="middle"
           bordered={false}
-          scroll={{ x: 600 }}
+          scroll={{ x: 980 }}
           locale={{ emptyText: 'Нет сделок на проверке' }}
           summary={() => {
             if (list.length === 0) return null;
@@ -210,7 +266,7 @@ export default function FinanceReviewPage() {
                 <Table.Summary.Cell index={2} align="right">
                   <Typography.Text strong>{formatUZS(total)}</Typography.Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={3} colSpan={8} />
+                <Table.Summary.Cell index={3} colSpan={9} />
               </Table.Summary.Row>
             );
           }}

@@ -945,7 +945,7 @@ export class DealsService {
     }
 
     return deals.map((d) => ({
-      ...d,
+      ...this.parseTransferDocuments(d),
       clientDebt: debtMap.get(d.clientId) ?? 0,
     }));
   }
