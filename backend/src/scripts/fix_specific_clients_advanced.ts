@@ -36,12 +36,23 @@ async function main() {
   }
 
   // Path resolution so it works on Linux server as well as Windows
-  let filePath = path.resolve(__dirname, '../../../../analytics_2026-03-18.xlsx');
-  if (!fs.existsSync(filePath)) {
-    filePath = String.raw`c:\Users\Noutbuk savdosi\CRM\analytics_2026-03-18.xlsx`;
+  const possiblePaths = [
+    path.join(process.cwd(), '../analytics_2026-03-18.xlsx'), // Render root if run from backend
+    path.join(process.cwd(), 'analytics_2026-03-18.xlsx'),    // Render root if run from root
+    path.resolve(__dirname, '../../../analytics_2026-03-18.xlsx'), // from scripts dir to root
+    String.raw`c:\Users\Noutbuk savdosi\CRM\analytics_2026-03-18.xlsx`
+  ];
+
+  let filePath = '';
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      filePath = p;
+      break;
+    }
   }
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Файл Excel не найден. Пожалуйста добавьте его в корень CRM: ${filePath}`);
+
+  if (!filePath) {
+    throw new Error(`Файл Excel не найден. Пожалуйста добавьте его в корень CRM. Проверенные пути:\n${possiblePaths.join('\n')}`);
   }
   
   console.log(`Загрузка Excel: ${filePath}`);
