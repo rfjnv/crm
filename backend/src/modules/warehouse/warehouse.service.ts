@@ -456,10 +456,8 @@ export class WarehouseService {
           continue;
         }
 
-        // Generate unique SKU
-        const timestamp = Date.now();
-        const index = result.successCount + 1;
-        const sku = `IMPORT-${timestamp}-${index}`;
+        // Default SKU to the product name
+        const sku = name;
 
         // Create product in transaction
         await prisma.$transaction(async (tx) => {

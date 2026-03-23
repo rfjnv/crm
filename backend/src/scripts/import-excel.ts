@@ -238,8 +238,7 @@ async function createProducts(wb: XLSX.WorkBook): Promise<Map<string, string>> {
       continue;
     }
 
-    skuCounter++;
-    const sku = `IMPORT-${String(skuCounter).padStart(4, '0')}`;
+    const sku = info.name;
 
     const product = await prisma.product.create({
       data: {
