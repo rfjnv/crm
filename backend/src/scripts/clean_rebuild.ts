@@ -25,7 +25,7 @@ function parseExcelDate(value: any): Date {
   return !isNaN(parsed.getTime()) ? parsed : new Date();
 }
 
-const clientsToFixStr = ["ппс", "тимур", "ламинац"];
+const clientsToFixStr = ["ппс"];
 
 async function main() {
   console.log('Ищем клиентов в базе...');
