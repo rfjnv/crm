@@ -52,6 +52,19 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
 const FINANCE_REVIEW_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 
+function normalizeTransferDocuments(documents?: string[]): string[] {
+  if (!Array.isArray(documents)) return [];
+
+  return Array.from(
+    new Set(
+      documents
+        .filter((doc): doc is string => typeof doc === 'string')
+        .map((doc) => doc.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function requiresFinanceReview(method: PaymentMethod): boolean {
   return FINANCE_REVIEW_METHODS.includes(method);
 }
@@ -396,15 +409,24 @@ export class DealsService {
 
     // Add transfer-specific fields if payment method is TRANSFER
     if (dto.paymentMethod === 'TRANSFER') {
-      if (dto.transferInn) {
-        updateData.transferInn = dto.transferInn;
+      const transferInn = dto.transferInn?.trim();
+      const transferDocuments = normalizeTransferDocuments(dto.transferDocuments);
+
+      if (!transferInn) {
+        throw new AppError(400, 'Укажите ИНН компании для перечисления');
       }
-      if (Array.isArray(dto.transferDocuments) && dto.transferDocuments.length > 0) {
-        updateData.transferDocuments = JSON.stringify(dto.transferDocuments);
+
+      if (transferDocuments.length === 0) {
+        throw new AppError(400, 'Выберите минимум один документ для перечисления');
       }
-      if (dto.transferType) {
-        updateData.transferType = dto.transferType;
-      }
+
+      updateData.transferInn = transferInn;
+      updateData.transferDocuments = JSON.stringify(transferDocuments);
+      updateData.transferType = dto.transferType ?? 'ONE_TIME';
+    } else {
+      updateData.transferInn = null;
+      updateData.transferDocuments = null;
+      updateData.transferType = null;
     }
 
     await prisma.deal.update({
@@ -586,7 +608,10 @@ export class DealsService {
     // Calculate amounts
     const subtotal = dto.items.reduce((s, i) => s + i.requestedQty * i.price, 0);
     const discount = dto.discount || 0;
-    const finalAmount = subtotal - discount;
+    let finalAmount = subtotal - discount;
+    if (dto.includeVat === false) {
+      finalAmount = Math.round((finalAmount / 1.12) * 100) / 100;
+    }
     if (finalAmount < 0) {
       throw new AppError(400, 'Сумма сделки не может быть отрицательной (скидка превышает подитог)');
     }
@@ -694,9 +719,9 @@ export class DealsService {
     // For WAITING_FINANCE → go to ADMIN_APPROVED (finance approved, now needs admin)
     const targetStatus: DealStatus = 'ADMIN_APPROVED';
 
-    // QR/INSTALLMENT deals require a contract
+    // TRANSFER/INSTALLMENT deals require a contract
     if (requiresContract(deal.paymentMethod) && !deal.contractId) {
-      throw new AppError(400, 'Для QR/перечисления необходимо привязать договор к сделке');
+      throw new AppError(400, 'Для перечисления/рассрочки необходимо привязать договор к сделке');
     }
 
     await prisma.deal.update({
@@ -856,9 +881,9 @@ export class DealsService {
       throw new AppError(400, 'Сделка не готова для одобрения администратором');
     }
 
-    // Contract check for QR/TRANSFER/INSTALLMENT
+    // Contract check for TRANSFER/INSTALLMENT
     if (requiresContract(deal.paymentMethod) && !deal.contractId) {
-      throw new AppError(400, 'Для QR/перечисления/рассрочки необходимо привязать договор к сделке');
+      throw new AppError(400, 'Для перечисления/рассрочки необходимо привязать договор к сделке');
     }
 
     // For deals already at ADMIN_APPROVED, move to READY_FOR_SHIPMENT
@@ -1755,7 +1780,11 @@ export class DealsService {
     if (!deal) return;
 
     const subtotal = items.reduce((s, i) => s + Number(i.requestedQty ?? 0) * Number(i.price ?? 0), 0);
-    const finalAmount = Math.max(0, subtotal - Number(deal.discount));
+    let finalAmount = Math.max(0, subtotal - Number(deal.discount));
+    
+    if (deal.includeVat === false) {
+      finalAmount = Math.round((finalAmount / 1.12) * 100) / 100;
+    }
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2373,9 +2402,10 @@ export class DealsService {
     }
     try {
       const parsed = JSON.parse(deal.transferDocuments as string);
+      const normalized = normalizeTransferDocuments(parsed);
       return {
         ...deal,
-        transferDocuments: Array.isArray(parsed) ? parsed : null,
+        transferDocuments: normalized.length > 0 ? normalized : null,
       } as T & { transferDocuments?: string[] | null };
     } catch {
       return {

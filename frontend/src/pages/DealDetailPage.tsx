@@ -44,6 +44,7 @@ const paymentMethodLabels: Record<string, string> = {
 };
 
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
+const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
 
 function getDefaultContractEndDate(start?: dayjs.Dayjs) {
   return dayjs(start ?? dayjs()).endOf('year');
@@ -75,7 +76,7 @@ export default function DealDetailPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [transferPaymentModal, setTransferPaymentModal] = useState(false);
   const [transferInn, setTransferInn] = useState('');
-  const [transferDocuments, setTransferDocuments] = useState<string[]>(['Договор']);
+  const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
@@ -170,6 +171,18 @@ export default function DealDetailPage() {
     queryFn: () => contractsApi.list(dealData!.clientId),
     enabled: !!dealData?.clientId && needsContract && canManageContract,
   });
+
+  const openTransferPaymentModal = () => {
+    setSendToFinanceModal(false);
+    setTransferInn((dealData?.transferInn || dealData?.client?.inn || '').trim());
+    setTransferDocuments(
+      Array.isArray(dealData?.transferDocuments) && dealData.transferDocuments.length > 0
+        ? [...dealData.transferDocuments]
+        : [...DEFAULT_TRANSFER_DOCUMENTS],
+    );
+    setTransferType(dealData?.transferType === 'ANNUAL' ? 'ANNUAL' : 'ONE_TIME');
+    setTransferPaymentModal(true);
+  };
 
   // ──── Mutations ────
 
@@ -267,7 +280,7 @@ export default function DealDetailPage() {
         setTransferPaymentModal(false);
         setSelectedPaymentMethod(null);
         setTransferInn('');
-        setTransferDocuments(['Договор']);
+        setTransferDocuments([...DEFAULT_TRANSFER_DOCUMENTS]);
         setTransferType('ONE_TIME');
       }, 300);
       const skipped = result.status === 'ADMIN_APPROVED';
@@ -830,7 +843,7 @@ export default function DealDetailPage() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Для QR/перечисления необходим договор"
+          message="Для перечисления/рассрочки необходим договор"
           description={canManageContract
             ? 'Создайте новый или прикрепите существующий договор к сделке.'
             : 'Привяжите договор к сделке перед финансовым одобрением.'}
@@ -920,7 +933,7 @@ export default function DealDetailPage() {
                     </Descriptions.Item>
                   )}
                   {deal.transferType && (
-                    <Descriptions.Item label="Тип платежа для ИНН">
+                    <Descriptions.Item label="Тип документа">
                       <Tag color="magenta">{deal.transferType === 'ONE_TIME' ? 'Разовый' : 'Годовой'}</Tag>
                     </Descriptions.Item>
                   )}
@@ -1072,7 +1085,7 @@ export default function DealDetailPage() {
                 </Card>
               ))}
               {hasQuantities && (() => {
-                const subtotal = (deal.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.requestedQty ?? 0), 0);
+                const subtotal = (deal.items ?? []).reduce((sum, item) => sum + calculateLineTotal(Number(item.price ?? 0), Number(item.requestedQty ?? 0)), 0);
                 if (subtotal <= 0) return null;
                 const discount = Number(deal.discount || 0);
                 return (
@@ -1085,7 +1098,7 @@ export default function DealDetailPage() {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography.Text>Скидка</Typography.Text>
-                          <Typography.Text type="success">-{formatUZS(discount)}</Typography.Text>
+                          <Typography.Text type="success">-{formatUZS(includeVat ? discount : discount / 1.12)}</Typography.Text>
                         </div>
                       </>
                     )}
@@ -1097,7 +1110,7 @@ export default function DealDetailPage() {
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text>
-                      <Typography.Text strong>{formatUZS(includeVat ? (discount > 0 ? subtotal - discount : subtotal) : (discount > 0 ? subtotal - discount : subtotal) / 1.12)}</Typography.Text>
+                      <Typography.Text strong>{formatUZS(includeVat ? (discount > 0 ? subtotal - discount : subtotal) : (discount > 0 ? subtotal - (discount / 1.12) : subtotal))}</Typography.Text>
                     </div>
                   </div>
                 );
@@ -1345,7 +1358,7 @@ export default function DealDetailPage() {
                                 </Table.Summary.Row>
                                 <Table.Summary.Row>
                                   <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
-                                  <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(discount)}</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(includeVat ? discount : discount / 1.12)}</Typography.Text></Table.Summary.Cell>
                                 </Table.Summary.Row>
                               </>
                             )}
@@ -1357,7 +1370,7 @@ export default function DealDetailPage() {
                             )}
                             <Table.Summary.Row>
                               <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text></Table.Summary.Cell>
-                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(includeVat ? (hasDiscount ? subtotal - discount : subtotal) : (hasDiscount ? subtotal - discount : subtotal) / 1.12)}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(includeVat ? (hasDiscount ? subtotal - discount : subtotal) : (hasDiscount ? subtotal - (discount / 1.12) : subtotal))}</Typography.Text></Table.Summary.Cell>
                             </Table.Summary.Row>
                           </>
                         );
@@ -1679,11 +1692,7 @@ export default function DealDetailPage() {
             return;
           }
           if (selectedPaymentMethod === 'TRANSFER') {
-            setSendToFinanceModal(false);
-            setTransferInn(dealData?.client?.inn || '');
-            setTransferDocuments(['Договор']);
-            setTransferType('ONE_TIME');
-            setTransferPaymentModal(true);
+            openTransferPaymentModal();
           } else {
             sendToFinanceMut.mutate({ paymentMethod: selectedPaymentMethod });
           }
@@ -1693,7 +1702,7 @@ export default function DealDetailPage() {
         cancelText="Отмена"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Выберите способ оплаты. Наличные, Payme, Click и Терминал не требуют проверки финансов. QR, Перечисление и Рассрочка направляются на проверку бухгалтера (требуется договор).
+          Выберите способ оплаты. Наличные, Payme, QR, Click и Терминал не требуют проверки финансов. Перечисление и Рассрочка направляются на проверку бухгалтера.
         </Typography.Paragraph>
         <Radio.Group
           value={selectedPaymentMethod}
@@ -1719,7 +1728,7 @@ export default function DealDetailPage() {
             </Radio.Button>
             <Radio.Button value="QR" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
               QR
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Требуется проверка бухгалтера + договор</Typography.Text>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Без проверки финансов</Typography.Text>
             </Radio.Button>
             <Radio.Button value="TRANSFER" style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
               Перечисление
@@ -1741,7 +1750,7 @@ export default function DealDetailPage() {
           setTransferPaymentModal(false);
           setSendToFinanceModal(true);
           setTransferInn('');
-          setTransferDocuments(['Договор']);
+          setTransferDocuments([...DEFAULT_TRANSFER_DOCUMENTS]);
           setTransferType('ONE_TIME');
         }}
         onOk={() => {
@@ -1793,7 +1802,7 @@ export default function DealDetailPage() {
             />
           </Form.Item>
 
-          <Form.Item label="Тип платежа">
+          <Form.Item label="Тип документа">
             <Radio.Group
               value={transferType}
               onChange={(e) => setTransferType(e.target.value)}

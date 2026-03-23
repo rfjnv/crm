@@ -13,20 +13,6 @@ export class WarehouseService {
     });
   }
 
-  async getProductAuditHistory(productId?: string) {
-    return prisma.auditLog.findMany({
-      where: {
-        entityType: 'product',
-        ...(productId ? { entityId: productId } : {}),
-      },
-      include: {
-        user: { select: { id: true, fullName: true, role: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-  }
-
   async createProduct(dto: CreateProductDto, userId: string) {
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {
@@ -262,6 +248,49 @@ export class WarehouseService {
     });
   }
 
+  async getProductAuditHistory(productId?: string) {
+    if (!productId) {
+      return prisma.auditLog.findMany({
+        where: {
+          entityType: { in: ['product', 'inventory_movement', 'stock_correction'] },
+        },
+        include: {
+          user: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      });
+    }
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new AppError(404, 'Товар не найден');
+    }
+
+    const movementIds = await prisma.inventoryMovement.findMany({
+      where: { productId },
+      select: { id: true },
+    });
+
+    return prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entityType: 'product', entityId: productId },
+          { entityType: 'stock_correction', entityId: productId },
+          {
+            entityType: 'inventory_movement',
+            entityId: { in: movementIds.map((movement) => movement.id) },
+          },
+        ],
+      },
+      include: {
+        user: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
   async getProductAnalytics(productId: string, periodDays: number) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
@@ -456,8 +485,10 @@ export class WarehouseService {
           continue;
         }
 
-        // Default SKU to the product name
-        const sku = name;
+        // Generate unique SKU
+        const timestamp = Date.now();
+        const index = result.successCount + 1;
+        const sku = `IMPORT-${timestamp}-${index}`;
 
         // Create product in transaction
         await prisma.$transaction(async (tx) => {
