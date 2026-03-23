@@ -43,112 +43,107 @@ async function main() {
   
   console.log(`Найдено ${dbClients.length} клиентов для полного пересоздания.`);
 
-  const possiblePaths = [
-    path.join(process.cwd(), '../analytics_2026-03-18.xlsx'),
-    path.join(process.cwd(), 'analytics_2026-03-18.xlsx'),
-    path.resolve(__dirname, '../../../analytics_2026-03-18.xlsx'),
-    String.raw`c:\Users\Noutbuk savdosi\CRM\analytics_2026-03-18.xlsx`
+  const fileNames = [
+    'analytics_2024-12-26.xlsx',
+    'analytics_2025-12-29.xlsx',
+    'analytics_2026-03-18.xlsx'
   ];
 
-  let filePath = '';
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      filePath = p;
-      break;
+  const filesFound: string[] = [];
+
+  for (const fName of fileNames) {
+    const possiblePaths = [
+      path.join(process.cwd(), '../' + fName),
+      path.join(process.cwd(), fName),
+      path.resolve(__dirname, '../../../' + fName),
+      String.raw`c:\Users\Noutbuk savdosi\CRM\` + fName
+    ];
+
+    let found = false;
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        filesFound.push(p);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      console.warn(`Внимание! Файл ${fName} не найден ни по одному пути, таблица может быть неполной!`);
     }
   }
 
-  if (!filePath) {
-    throw new Error(`Файл Excel не найден! Убедитесь что он загружен на сервер.`);
+  if (filesFound.length === 0) {
+    throw new Error('Ни один файл Excel не найден! Загрузите документы на сервер.');
   }
   
-  console.log(`Читаем Excel: ${filePath}`);
-  const wb = xlsx.readFile(filePath, { cellDates: true });
-
   const clientExcelData: any[] = [];
   
-  // A (0): Дата сделки
-  // B (1): Клиенты
-  // C (2): Долг (Ост-к на начало)
-  // D (3): Имя менеджеров
-  // E (4): Товары
-  // F (5): Количество
-  // G (6): Единицы измерения
-  // H (7): Цена продажи
-  // I (8): Итоговая сумма (выручка)
-  // J (9): Тип оплаты (к, н, н/к, п, п/к, пп, ф)
-  // K (10): Номер договора или дата
-  // L (11): Наличные
-  // O (14): Перечисление
-  // R (17): QR
-  // U (20): Пластик
-  // X (23): Терминал
-  // AA (26): Остаток долга
-  // AB (27): Дата оплаты
+  for (const filePath of filesFound) {
+    console.log(`Читаем Excel: ${filePath}`);
+    const wb = xlsx.readFile(filePath, { cellDates: true });
 
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: null });
-    if (rows.length < 4) continue;
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const rows = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: null });
+      if (rows.length < 4) continue;
 
-    for (let r = 3; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || !row[1]) continue;
-      
-      const clientName = norm(row[1]);
-      
-      // Ищем точное вхождение
-      const matchedDbClient = dbClients.find(c => {
-         const dbName = norm(c.companyName);
-         return dbName.includes(clientName) || clientName.includes(dbName);
-      });
-      
-      if (matchedDbClient) {
-        const dealDate = parseExcelDate(row[0]);
-        const managerName = row[3] ? String(row[3]).trim() : 'Unknown';
-        const productName = row[4] ? String(row[4]).trim() : '';
-        const qty = numVal(row[5]);
-        const unit = row[6] ? String(row[6]).trim() : 'шт';
-        let price = numVal(row[7]);
-        const revenue = numVal(row[8]);
+      for (let r = 3; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || !row[1]) continue;
         
-        // Если цена 0, вычисляем из выручки
-        if (price === 0 && qty > 0) {
-            price = revenue / qty;
-        }
+        const clientName = norm(row[1]);
         
-        const paymentCode = String(row[9] || 'к').trim().toLowerCase();
-        
-        const cashPay = numVal(row[11]);
-        const transferPay = numVal(row[14]);
-        const qrPay = numVal(row[17]);
-        const plasticPay = numVal(row[20]);
-        const terminalPay = numVal(row[23]);
-        
-        const closingBalance = numVal(row[26]);
-        const paymentDate = row[27] ? parseExcelDate(row[27]) : dealDate;
-
-        clientExcelData.push({
-          clientId: matchedDbClient.id,
-          dealDate,
-          dateStr: dealDate.toISOString().split('T')[0],
-          managerName,
-          productName,
-          qty,
-          unit,
-          price,
-          revenue,
-          paymentCode,
-          payments: {
-            CASH: cashPay,
-            TRANSFER: transferPay,
-            QR: qrPay,
-            CLICK: plasticPay,
-            TERMINAL: terminalPay
-          },
-          closingBalance,
-          paymentDate
+        const matchedDbClient = dbClients.find(c => {
+           const dbName = norm(c.companyName);
+           return dbName.includes(clientName) || clientName.includes(dbName);
         });
+        
+        if (matchedDbClient) {
+          const dealDate = parseExcelDate(row[0]);
+          const managerName = row[3] ? String(row[3]).trim() : 'Unknown';
+          const productName = row[4] ? String(row[4]).trim() : '';
+          const qty = numVal(row[5]);
+          const unit = row[6] ? String(row[6]).trim() : 'шт';
+          let price = numVal(row[7]);
+          const revenue = numVal(row[8]);
+          
+          if (price === 0 && qty > 0) {
+              price = revenue / qty;
+          }
+          
+          const paymentCode = String(row[9] || 'к').trim().toLowerCase();
+          
+          const cashPay = numVal(row[11]);
+          const transferPay = numVal(row[14]);
+          const qrPay = numVal(row[17]);
+          const plasticPay = numVal(row[20]);
+          const terminalPay = numVal(row[23]);
+          
+          const closingBalance = numVal(row[26]);
+          const paymentDate = row[27] ? parseExcelDate(row[27]) : dealDate;
+
+          clientExcelData.push({
+            clientId: matchedDbClient.id,
+            dealDate,
+            dateStr: dealDate.toISOString().split('T')[0],
+            managerName,
+            productName,
+            qty,
+            unit,
+            price,
+            revenue,
+            paymentCode,
+            payments: {
+              CASH: cashPay,
+              TRANSFER: transferPay,
+              QR: qrPay,
+              CLICK: plasticPay,
+              TERMINAL: terminalPay
+            },
+            closingBalance,
+            paymentDate
+          });
+        }
       }
     }
   }
@@ -164,7 +159,7 @@ async function main() {
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Очистка старых данных (Cascade не распространяется на payments и inventoryMovements, поэтому вручную)
+      // 1. Очистка старых данных
       const deals = await tx.deal.findMany({ where: { clientId: client.id }, select: { id: true }});
       const dealIds = deals.map(d => d.id);
       
@@ -174,7 +169,7 @@ async function main() {
         await tx.dealItem.deleteMany({ where: { dealId: { in: dealIds } } });
         await tx.dealComment.deleteMany({ where: { dealId: { in: dealIds } } });
         await tx.shipment.deleteMany({ where: { dealId: { in: dealIds } } });
-        await tx.message.deleteMany({ where: { dealId: { in: dealIds } } }); // Если есть сообщения привязанные к deal
+        await tx.message.deleteMany({ where: { dealId: { in: dealIds } } }); 
         await tx.deal.deleteMany({ where: { id: { in: dealIds } } });
         console.log(`Удалено ${dealIds.length} старых сделок и все их связи.`);
       }
@@ -188,9 +183,8 @@ async function main() {
         dealsByDate.get(row.dateStr)!.push(row);
       }
       
-      console.log(`Найдено ${dealsByDate.size} уникальных дат (будет создано ${dealsByDate.size} сделок)`);
+      console.log(`Найдено ${dealsByDate.size} уникальных дат (Сделок из ${records.length} строк Excel)`);
 
-      // Назначаем менеджера по умолчанию
       const defaultManager = await tx.user.findFirst({ where: { role: 'MANAGER' } });
       
       let createdDeals = 0;
@@ -200,19 +194,15 @@ async function main() {
       for (const [dateStr, rows] of dealsByDate.entries()) {
           const firstRow = rows[0];
           
-          // Вычисляем общую выручку (amount) со всех товаров за эту дату
           const totalAmount = rows.reduce((sum, r) => sum + r.revenue, 0);
           
-          // Определяем способ оплаты сделки (если смешанный, берем TRANSFER по умолчанию или из первого ряда)
           let method = 'TRANSFER';
           if (firstRow.paymentCode === 'н' || firstRow.paymentCode === 'н/к') method = 'CASH';
           if (firstRow.paymentCode === 'пп') method = 'CLICK';
           
-          // Вычисляем статусы по 'closingBalance' последнего ряда за день (для простоты - берем последний ряд Excel)
           const lastRow = rows[rows.length - 1];
           const closingDebt = lastRow.closingBalance;
           
-          // Считаем все платежи по этой сделке
           let totalPaid = 0;
           for (const r of rows) {
              const payRow = r.payments;
@@ -222,15 +212,14 @@ async function main() {
           let paymentStatus = 'UNPAID';
           if (totalPaid >= totalAmount && totalAmount > 0) paymentStatus = 'PAID';
           else if (totalPaid > 0) paymentStatus = 'PARTIAL';
-          else if (closingDebt <= 0 && totalAmount > 0) paymentStatus = 'PAID'; // Если долга нет на конец - тоже считаем оплачено
+          else if (closingDebt <= 0 && totalAmount > 0) paymentStatus = 'PAID'; 
 
-          // Создаем Deal
           const dealTitle = `${client.companyName} - ${dateStr}`;
           const newDeal = await tx.deal.create({
               data: {
                   title: dealTitle,
                   clientId: client.id,
-                  managerId: defaultManager ? defaultManager.id : client.managerId || '', // Предполагаем Manager ID
+                  managerId: defaultManager ? defaultManager.id : client.managerId || '', 
                   amount: totalAmount,
                   paidAmount: totalPaid,
                   status: closingDebt === 0 ? 'CLOSED' : 'IN_PROGRESS',
@@ -241,10 +230,8 @@ async function main() {
           });
           createdDeals++;
 
-          // Создаем Deal Items (товары разные в одну сделку)
           for (const r of rows) {
               if (r.productName) {
-                  // Ищем или создаем Product
                   let product = await tx.product.findFirst({ where: { name: { mode: 'insensitive', equals: r.productName } } });
                   if (!product) {
                       product = await tx.product.create({
@@ -265,7 +252,6 @@ async function main() {
                   });
                   createdItems++;
                   
-                  // Создаем транзакции оплат
                   const createPay = async (amo: number, pMethod: string) => {
                       if (amo > 0) {
                           await tx.payment.create({
@@ -281,13 +267,10 @@ async function main() {
                   await createPay(r.payments.TERMINAL, 'TERMINAL');
               }
           }
-          
       }
-      console.log(`Создано: ${createdDeals} сделок, ${createdItems} товаров в сделках, ${createdPayments} транзакций оплат.`);
-    });
+      console.log(`Создано: ${createdDeals} сделок, ${createdItems} товаров, ${createdPayments} транзакций оплат.`);
+    }, { timeout: 300000 }); // Увеличим таймаут Prisma на случай многих сделок
   }
-  
-  console.log('\nУспешное завершение. Все сделки корректно сгруппированы по датам с правильными ценами и оплатами.');
 }
 
 main().catch(e => console.error(e)).finally(() => prisma.$disconnect());
