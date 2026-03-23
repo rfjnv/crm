@@ -56,7 +56,7 @@ async function main() {
       path.join(process.cwd(), '../' + fName),
       path.join(process.cwd(), fName),
       path.resolve(__dirname, '../../../' + fName),
-      String.raw`c:\Users\Noutbuk savdosi\CRM\` + fName
+      'c:\\Users\\Noutbuk savdosi\\CRM\\' + fName
     ];
 
     let found = false;
