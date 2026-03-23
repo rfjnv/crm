@@ -228,7 +228,7 @@ async function main() {
                   let product = await tx.product.findFirst({ where: { name: { mode: 'insensitive', equals: r.productName } } });
                   if (!product) {
                       product = await tx.product.create({
-                          data: { name: r.productName, sku: 'ПР-' + Math.random().toString(36).substr(2, 9), unit: r.unit }
+                          data: { name: r.productName, sku: r.productName, unit: r.unit }
                       });
                   }
                   
