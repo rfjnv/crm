@@ -879,7 +879,6 @@ export default function AnalyticsPage() {
   // ════════════════════════════════════════
 
   const clientsIntel = intel?.clients;
-
   const segmentPieData = (clientsIntel?.segments ?? []).map((s) => ({
     type: segmentLabelMap[s.segment] || s.segment,
     value: s.count,
@@ -991,7 +990,7 @@ export default function AnalyticsPage() {
       </Row>
     </div>
   ) : (
-    <Spin style={{ display: 'block', margin: '60px auto' }} />
+    <Card bordered={false}><Empty description="Недостаточно данных для умной аналитики клиентов" /></Card>
   );
 
   // ════════════════════════════════════════
@@ -1141,7 +1140,7 @@ export default function AnalyticsPage() {
       </Row>
     </div>
   ) : (
-    <Spin style={{ display: 'block', margin: '60px auto' }} />
+    <Card bordered={false}><Empty description="Недостаточно данных для анализа товаров" /></Card>
   );
 
   const productHierarchyTab = (
@@ -1715,7 +1714,7 @@ export default function AnalyticsPage() {
   // ──── MANAGERS TAB (extended) ────
   // ════════════════════════════════════════
 
-  const managerRows = intel?.managers.rows ?? managers.rows.map((m) => ({
+  const managerRows = intel?.managers?.rows ?? managers.rows.map((m) => ({
     ...m,
     uniqueClients: 0,
     repeatClients: 0,
