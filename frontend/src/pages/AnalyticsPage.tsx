@@ -265,6 +265,10 @@ export default function AnalyticsPage() {
     queryFn: productsApi.list,
   });
 
+  const visibleProducts = useMemo(() => {
+    return allProducts.filter((p) => p.isActive);
+  }, [allProducts]);
+
   const { data: productSalesMap = {}, isLoading: salesLoading } = useQuery({
     queryKey: ['analytics-product-sales-map', period],
     queryFn: async () => {
@@ -332,7 +336,7 @@ export default function AnalyticsPage() {
   const categories = useMemo<CategorySummary[]>(() => {
     const byCategory = new Map<string, Product[]>();
 
-    for (const p of allProducts) {
+    for (const p of visibleProducts) {
       const category = (p.category && p.category.trim()) || 'Без категории';
       const list = byCategory.get(category) || [];
       list.push(p);
@@ -357,7 +361,33 @@ export default function AnalyticsPage() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [allProducts]);
+  }, [visibleProducts]);
+
+  const visibleComparisonKeys = useMemo(() => {
+    const keys = new Set<string>();
+
+    for (const p of visibleProducts) {
+      const category = (p.category && p.category.trim()) || 'Без категории';
+      const typeLabel = inferTypeLabel(p);
+      keys.add(compareKey('product', p.id));
+      keys.add(compareKey('category', category));
+      keys.add(compareKey('type', `${category}|${typeLabel}`));
+    }
+
+    return keys;
+  }, [visibleProducts]);
+
+  useEffect(() => {
+    setComparisonMap((prev) => {
+      const next: Record<string, HierarchyCompareItem> = {};
+      for (const [key, value] of Object.entries(prev)) {
+        if (visibleComparisonKeys.has(key)) {
+          next[key] = value;
+        }
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [visibleComparisonKeys]);
 
   useEffect(() => {
     if (!activeCategory && categories.length > 0) {
