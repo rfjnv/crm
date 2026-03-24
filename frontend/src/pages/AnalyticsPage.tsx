@@ -250,15 +250,17 @@ export default function AnalyticsPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: dataError } = useQuery({
     queryKey: ['analytics', period],
     queryFn: () => analyticsApi.getData(period),
   });
 
-  const { data: intel } = useQuery({
+  const { data: intel, error: intelError } = useQuery({
     queryKey: ['analytics-intelligence', period],
     queryFn: () => analyticsApi.getIntelligence(period),
   });
+
+  console.log('Analytics Debug:', { isLoading, data, intel, dataError, intelError });
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['analytics-product-hierarchy'],
