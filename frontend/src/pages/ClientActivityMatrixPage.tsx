@@ -10,8 +10,18 @@ import type { HistoryClientActivity } from '../types';
 const { Title } = Typography;
 
 const MONTH_LABELS: Record<number, string> = {
-  1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
-  7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек',
+  1: 'Янв',
+  2: 'Фев',
+  3: 'Мар',
+  4: 'Апр',
+  5: 'Май',
+  6: 'Июн',
+  7: 'Июл',
+  8: 'Авг',
+  9: 'Сен',
+  10: 'Окт',
+  11: 'Ноя',
+  12: 'Дек',
 };
 
 export default function ClientActivityMatrixPage() {
@@ -35,6 +45,7 @@ export default function ClientActivityMatrixPage() {
   });
 
   const clientActivity = data?.clientActivity ?? [];
+
   const visibleMonths = useMemo(() => {
     if (!data?.monthlyTrend?.length) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     const maxMonth = Math.max(...data.monthlyTrend.map((m) => m.month));
@@ -223,6 +234,7 @@ export default function ClientActivityMatrixPage() {
           />
         )}
       </Card>
+
       <Drawer
         title={cellDrawer ? `${cellDrawer.clientName} - ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
         open={!!cellDrawer}
@@ -234,7 +246,7 @@ export default function ClientActivityMatrixPage() {
         ) : (
           <>
             <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
-              РС‚РѕРіРѕ: {(clientMonthData?.totalRevenue ?? 0).toLocaleString('ru-RU')}
+              Итого: {(clientMonthData?.totalRevenue ?? 0).toLocaleString('ru-RU')}
             </div>
             <Table
               dataSource={clientMonthData?.items ?? []}
@@ -243,14 +255,14 @@ export default function ClientActivityMatrixPage() {
               pagination={false}
               scroll={{ x: 700 }}
               columns={[
-                { title: 'РўРѕРІР°СЂ', dataIndex: 'productName', key: 'productName', ellipsis: true },
-                { title: 'Р•Рґ.', dataIndex: 'unit', key: 'unit', width: 60 },
-                { title: 'РљРѕР»-РІРѕ', dataIndex: 'qty', key: 'qty', width: 90, render: (v: number) => v.toLocaleString('ru-RU') },
-                { title: 'Р¦РµРЅР°', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
-                { title: 'РС‚РѕРіРѕ', dataIndex: 'total', key: 'total', width: 120, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
-                { title: 'РЎРґРµР»РєР°', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
+                { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
+                { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
+                { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 90, render: (v: number) => v.toLocaleString('ru-RU') },
+                { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
+                { title: 'Итого', dataIndex: 'total', key: 'total', width: 120, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
+                { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
                 {
-                  title: 'Р”Р°С‚Р°',
+                  title: 'Дата',
                   dataIndex: 'createdAt',
                   key: 'createdAt',
                   width: 110,
