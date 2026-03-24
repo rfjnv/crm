@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme } from 'antd';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import { analyticsApi } from '../api/analytics.api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -21,10 +21,17 @@ export default function ClientActivityMatrixPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
+  const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['manager-client-activity', year],
     queryFn: () => analyticsApi.getHistory(year),
+  });
+
+  const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
+    queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
+    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, year),
+    enabled: !!cellDrawer,
   });
 
   const clientActivity = data?.clientActivity ?? [];
@@ -80,6 +87,7 @@ export default function ClientActivityMatrixPage() {
       render: (_: unknown, record: HistoryClientActivity) => {
         const revenue = getMonthRevenue(record, m);
         const bgColor = getRevenueColor(revenue);
+        const isClickable = revenue > 0;
         const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
         return (
           <Tooltip title={revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}>
@@ -96,7 +104,9 @@ export default function ClientActivityMatrixPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                cursor: isClickable ? 'pointer' : 'default',
               }}
+              onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
             >
               {revenue > 0 ? '●' : '—'}
             </div>
@@ -173,6 +183,7 @@ export default function ClientActivityMatrixPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {displayedMonths.map((m) => {
                     const revenue = getMonthRevenue(record, m);
+                    const isClickable = revenue > 0;
                     return (
                       <Tooltip key={m} title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
                         <div style={{
@@ -185,8 +196,14 @@ export default function ClientActivityMatrixPage() {
                           justifyContent: 'center',
                           fontSize: 10,
                           fontWeight: 500,
+                          cursor: isClickable ? 'pointer' : 'default',
                         }}>
-                          {MONTH_LABELS[m]}
+                          <span
+                            style={{ width: '100%', textAlign: 'center' }}
+                            onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
+                          >
+                            {MONTH_LABELS[m]}
+                          </span>
                         </div>
                       </Tooltip>
                     );
@@ -206,6 +223,44 @@ export default function ClientActivityMatrixPage() {
           />
         )}
       </Card>
+      <Drawer
+        title={cellDrawer ? `${cellDrawer.clientName} - ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
+        open={!!cellDrawer}
+        onClose={() => setCellDrawer(null)}
+        width="100%"
+      >
+        {clientMonthLoading ? (
+          <Spin />
+        ) : (
+          <>
+            <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
+              РС‚РѕРіРѕ: {(clientMonthData?.totalRevenue ?? 0).toLocaleString('ru-RU')}
+            </div>
+            <Table
+              dataSource={clientMonthData?.items ?? []}
+              rowKey="id"
+              size="small"
+              pagination={false}
+              scroll={{ x: 700 }}
+              columns={[
+                { title: 'РўРѕРІР°СЂ', dataIndex: 'productName', key: 'productName', ellipsis: true },
+                { title: 'Р•Рґ.', dataIndex: 'unit', key: 'unit', width: 60 },
+                { title: 'РљРѕР»-РІРѕ', dataIndex: 'qty', key: 'qty', width: 90, render: (v: number) => v.toLocaleString('ru-RU') },
+                { title: 'Р¦РµРЅР°', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
+                { title: 'РС‚РѕРіРѕ', dataIndex: 'total', key: 'total', width: 120, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
+                { title: 'РЎРґРµР»РєР°', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
+                {
+                  title: 'Р”Р°С‚Р°',
+                  dataIndex: 'createdAt',
+                  key: 'createdAt',
+                  width: 110,
+                  render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—',
+                },
+              ]}
+            />
+          </>
+        )}
+      </Drawer>
     </div>
   );
 }
