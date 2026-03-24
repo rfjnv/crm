@@ -100,6 +100,8 @@ export default function ClientActivityMatrixPage() {
     [filteredDrawerItems],
   );
 
+  const noDataColor = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
+
   const maxMonthRevenue = useMemo(() => {
     const all = clientActivity.flatMap((c) => c.monthlyData.map((m) => m.revenue));
     return all.reduce((a, b) => Math.max(a, b), 1);
@@ -111,7 +113,7 @@ export default function ClientActivityMatrixPage() {
   }
 
   function getRevenueColor(revenue: number): string {
-    if (revenue <= 0) return '#f5f5f5';
+    if (revenue <= 0) return noDataColor;
     const intensity = Math.min(revenue / maxMonthRevenue, 1);
     return `rgba(56,218,17,${0.2 + intensity * 0.8})`;
   }
@@ -218,7 +220,7 @@ export default function ClientActivityMatrixPage() {
         <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: '#f5f5f5' }} /> Нет данных</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных</span>
         </div>
 
         {isMobile ? (
