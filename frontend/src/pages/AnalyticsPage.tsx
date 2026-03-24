@@ -1447,7 +1447,7 @@ export default function AnalyticsPage() {
 
                 return (
                   <Card
-                    key={level}
+                    key={`comparison-table-${level}`}
                     size="small"
                     title={level === 'category' ? 'Категории vs Категории' : level === 'type' ? 'Типы vs Типы' : 'Товары vs Товары'}
                     style={{ marginTop: 12 }}
@@ -1491,7 +1491,7 @@ export default function AnalyticsPage() {
                   ...items.map((item) => ({
                     title: item.label,
                     dataIndex: item.key,
-                    key: item.key,
+                    key: `col-${item.key}`,
                     width: 130,
                   })),
                 ];
