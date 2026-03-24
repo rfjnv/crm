@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge } from 'antd';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -18,9 +18,11 @@ import {
 } from '@ant-design/icons';
 import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
+import { productsApi } from '../api/products.api';
+import { dealsApi } from '../api/deals.api';
 import { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
-import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow } from '../types';
+import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow, Product } from '../types';
 
 const statusColorMap: Record<string, string> = {
   NEW: '#6b9bd2',
@@ -71,6 +73,167 @@ const periodOptions = [
   { label: 'Год', value: 'year' },
 ];
 
+type CompareLevel = 'category' | 'type' | 'product';
+
+type HierarchyCompareItem = {
+  id: string;
+  key: string;
+  level: CompareLevel;
+  label: string;
+  category: string;
+  typeLabel?: string;
+  salesDeals: number;
+  soldQty: number;
+  salesRevenue: number;
+  avgDealRevenue: number;
+  avgUnitPrice: number;
+  lastSaleAt?: string | null;
+  format?: string;
+  sku?: string;
+  unit?: string;
+};
+
+type ProductSalesAggregate = {
+  productId: string;
+  soldQty: number;
+  salesRevenue: number;
+  dealIds: Set<string>;
+  lastSaleAt: string | null;
+};
+
+type CategorySummary = {
+  name: string;
+  products: Product[];
+  typesCount: number;
+  productsCount: number;
+  totalStock: number;
+  avgPrice: number;
+};
+
+type TypeSummary = {
+  name: string;
+  category: string;
+  products: Product[];
+  productsCount: number;
+  totalStock: number;
+  avgPrice: number;
+};
+
+function safePrice(value?: string | null): number {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function inferTypeLabel(product: Product): string {
+  const specs = product.specifications;
+  if (specs && typeof specs === 'object') {
+    const typeFromSpecs = (specs as Record<string, unknown>).type;
+    if (typeof typeFromSpecs === 'string' && typeFromSpecs.trim()) {
+      return typeFromSpecs.trim();
+    }
+  }
+
+  let cleaned = product.name || '';
+  if (product.format) {
+    const escapedFormat = product.format.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    cleaned = cleaned.replace(new RegExp(escapedFormat, 'ig'), ' ');
+  }
+
+  cleaned = cleaned
+    .replace(/\b\d+\s*[xх*]\s*\d+(\s*[xх*]\s*\d+)?\b/gi, ' ')
+    .replace(/\b\d+\s*(мкм|мм|см|cm|mm)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const firstChunk = cleaned.split(/[-–—/:(),]/)[0]?.trim();
+  return firstChunk || cleaned || 'Без типа';
+}
+
+function compareKey(level: CompareLevel, id: string): string {
+  return `${level}:${id}`;
+}
+
+function getPeriodStartDate(period: AnalyticsPeriod): Date {
+  const now = new Date();
+  const start = new Date(now);
+  if (period === 'week') {
+    start.setDate(now.getDate() - 7);
+    return start;
+  }
+  if (period === 'month') {
+    start.setMonth(now.getMonth() - 1);
+    return start;
+  }
+  if (period === 'quarter') {
+    start.setMonth(now.getMonth() - 3);
+    return start;
+  }
+  start.setFullYear(now.getFullYear() - 1);
+  return start;
+}
+
+function aggregateSalesForProducts(products: Product[], salesMap: Record<string, ProductSalesAggregate>) {
+  let soldQty = 0;
+  let salesRevenue = 0;
+  let lastSaleAt: string | null = null;
+  const dealIds = new Set<string>();
+
+  for (const product of products) {
+    const sales = salesMap[product.id];
+    if (!sales) continue;
+
+    soldQty += sales.soldQty;
+    salesRevenue += sales.salesRevenue;
+    for (const dealId of sales.dealIds) {
+      dealIds.add(dealId);
+    }
+    if (sales.lastSaleAt && (!lastSaleAt || new Date(sales.lastSaleAt) > new Date(lastSaleAt))) {
+      lastSaleAt = sales.lastSaleAt;
+    }
+  }
+
+  const salesDeals = dealIds.size;
+  return {
+    salesDeals,
+    soldQty,
+    salesRevenue,
+    avgDealRevenue: salesDeals > 0 ? salesRevenue / salesDeals : 0,
+    avgUnitPrice: soldQty > 0 ? salesRevenue / soldQty : 0,
+    lastSaleAt,
+  };
+}
+
+function buildComparisonRows(level: CompareLevel, items: HierarchyCompareItem[]) {
+  const baseRows: Array<{ metric: string;[key: string]: string | number }> = [
+    { metric: 'Сделок' },
+    { metric: 'Продано (шт.)' },
+    { metric: 'Выручка' },
+    { metric: 'Ср. чек' },
+    { metric: 'Ср. цена / ед.' },
+    { metric: 'Последняя продажа' },
+  ];
+
+  if (level === 'product') {
+    baseRows.push({ metric: 'Формат' });
+    baseRows.push({ metric: 'SKU' });
+  }
+
+  for (const item of items) {
+    baseRows[0][item.key] = item.salesDeals;
+    baseRows[1][item.key] = item.soldQty.toLocaleString('ru-RU');
+    baseRows[2][item.key] = formatUZS(item.salesRevenue);
+    baseRows[3][item.key] = formatUZS(item.avgDealRevenue);
+    baseRows[4][item.key] = formatUZS(item.avgUnitPrice);
+    baseRows[5][item.key] = item.lastSaleAt ? new Date(item.lastSaleAt).toLocaleDateString('ru-RU') : '-';
+    if (level === 'product') {
+      baseRows[6][item.key] = item.format || '-';
+      baseRows[7][item.key] = item.sku || '-';
+    }
+  }
+
+  return baseRows;
+}
+
 function FormulaHint({ text }: { text: string }) {
   return (
     <Tooltip title={text}>
@@ -81,6 +244,9 @@ function FormulaHint({ text }: { text: string }) {
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeType, setActiveType] = useState<string | null>(null);
+  const [comparisonMap, setComparisonMap] = useState<Record<string, HierarchyCompareItem>>({});
   const { token } = theme.useToken();
   const navigate = useNavigate();
 
@@ -94,6 +260,66 @@ export default function AnalyticsPage() {
     queryFn: () => analyticsApi.getIntelligence(period),
   });
 
+  const { data: allProducts = [] } = useQuery({
+    queryKey: ['analytics-product-hierarchy'],
+    queryFn: productsApi.list,
+  });
+
+  const { data: productSalesMap = {}, isLoading: salesLoading } = useQuery({
+    queryKey: ['analytics-product-sales-map', period],
+    queryFn: async () => {
+      const allDeals = await dealsApi.list(undefined, true);
+      const periodStart = getPeriodStartDate(period);
+      const closedDeals = allDeals.filter((deal) => {
+        if (deal.status !== 'CLOSED') return false;
+        const createdAt = new Date(deal.createdAt);
+        return createdAt >= periodStart;
+      });
+
+      const dealItemsEntries = await Promise.all(
+        closedDeals.map(async (deal) => {
+          try {
+            const items = await dealsApi.getItems(deal.id);
+            return { dealId: deal.id, createdAt: deal.createdAt, items };
+          } catch {
+            return { dealId: deal.id, createdAt: deal.createdAt, items: [] };
+          }
+        }),
+      );
+
+      const aggregateMap: Record<string, ProductSalesAggregate> = {};
+
+      for (const entry of dealItemsEntries) {
+        for (const item of entry.items) {
+          if (!item.productId) continue;
+          const qty = Number(item.requestedQty || 0);
+          const price = Number(item.price || 0);
+          if (qty <= 0 || price <= 0) continue;
+
+          if (!aggregateMap[item.productId]) {
+            aggregateMap[item.productId] = {
+              productId: item.productId,
+              soldQty: 0,
+              salesRevenue: 0,
+              dealIds: new Set<string>(),
+              lastSaleAt: null,
+            };
+          }
+
+          const current = aggregateMap[item.productId];
+          current.soldQty += qty;
+          current.salesRevenue += qty * price;
+          current.dealIds.add(entry.dealId);
+          if (!current.lastSaleAt || new Date(entry.createdAt) > new Date(current.lastSaleAt)) {
+            current.lastSaleAt = entry.createdAt;
+          }
+        }
+      }
+
+      return aggregateMap;
+    },
+  });
+
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
 
@@ -102,6 +328,134 @@ export default function AnalyticsPage() {
   }
 
   const { sales, finance, warehouse, managers, profitability } = data;
+
+  const categories = useMemo<CategorySummary[]>(() => {
+    const byCategory = new Map<string, Product[]>();
+
+    for (const p of allProducts) {
+      const category = (p.category && p.category.trim()) || 'Без категории';
+      const list = byCategory.get(category) || [];
+      list.push(p);
+      byCategory.set(category, list);
+    }
+
+    return [...byCategory.entries()]
+      .map(([name, products]) => {
+        const typeSet = new Set(products.map((p) => inferTypeLabel(p)));
+        const totalStock = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+        const avgPrice = products.length > 0
+          ? products.reduce((acc, p) => acc + safePrice(p.salePrice), 0) / products.length
+          : 0;
+
+        return {
+          name,
+          products,
+          typesCount: typeSet.size,
+          productsCount: products.length,
+          totalStock,
+          avgPrice,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [allProducts]);
+
+  useEffect(() => {
+    if (!activeCategory && categories.length > 0) {
+      setActiveCategory(categories[0].name);
+    }
+  }, [activeCategory, categories]);
+
+  useEffect(() => {
+    if (activeCategory && !categories.some((c) => c.name === activeCategory)) {
+      setActiveCategory(categories[0]?.name || null);
+      setActiveType(null);
+    }
+  }, [activeCategory, categories]);
+
+  const typeSummaries = useMemo<TypeSummary[]>(() => {
+    if (!activeCategory) return [];
+    const categoryData = categories.find((c) => c.name === activeCategory);
+    if (!categoryData) return [];
+
+    const byType = new Map<string, Product[]>();
+    for (const p of categoryData.products) {
+      const typeLabel = inferTypeLabel(p);
+      const list = byType.get(typeLabel) || [];
+      list.push(p);
+      byType.set(typeLabel, list);
+    }
+
+    return [...byType.entries()]
+      .map(([name, products]) => {
+        const totalStock = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+        const avgPrice = products.length > 0
+          ? products.reduce((acc, p) => acc + safePrice(p.salePrice), 0) / products.length
+          : 0;
+
+        return {
+          name,
+          category: activeCategory,
+          products,
+          productsCount: products.length,
+          totalStock,
+          avgPrice,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [activeCategory, categories]);
+
+  useEffect(() => {
+    if (typeSummaries.length === 0) {
+      setActiveType(null);
+      return;
+    }
+
+    if (!activeType || !typeSummaries.some((t) => t.name === activeType)) {
+      setActiveType(typeSummaries[0].name);
+    }
+  }, [activeType, typeSummaries]);
+
+  const productsOnLevel = useMemo(() => {
+    if (!activeType) return [];
+    return typeSummaries.find((t) => t.name === activeType)?.products || [];
+  }, [activeType, typeSummaries]);
+
+  const comparisonItems = useMemo(() => Object.values(comparisonMap), [comparisonMap]);
+
+  const comparisonByLevel = useMemo(() => {
+    return {
+      category: comparisonItems.filter((i) => i.level === 'category'),
+      type: comparisonItems.filter((i) => i.level === 'type'),
+      product: comparisonItems.filter((i) => i.level === 'product'),
+    };
+  }, [comparisonItems]);
+
+  const selectedSalesSummary = useMemo(() => {
+    const dealCount = comparisonItems.reduce((acc, item) => acc + item.salesDeals, 0);
+    const soldQty = comparisonItems.reduce((acc, item) => acc + item.soldQty, 0);
+    const revenue = comparisonItems.reduce((acc, item) => acc + item.salesRevenue, 0);
+    const avgDeal = dealCount > 0 ? revenue / dealCount : 0;
+    const lastSale = comparisonItems
+      .map((item) => item.lastSaleAt)
+      .filter((v): v is string => Boolean(v))
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+
+    return { dealCount, soldQty, revenue, avgDeal, lastSale };
+  }, [comparisonItems]);
+
+  const toggleComparison = (item: HierarchyCompareItem) => {
+    setComparisonMap((prev) => {
+      const next = { ...prev };
+      if (next[item.key]) {
+        delete next[item.key];
+      } else {
+        next[item.key] = item;
+      }
+      return next;
+    });
+  };
+
+  const isSelected = (key: string) => Boolean(comparisonMap[key]);
 
   // ──── Sales tab data ────
   const pieData = sales.dealsByStatus.map((d) => ({
@@ -758,6 +1112,333 @@ export default function AnalyticsPage() {
     <Spin style={{ display: 'block', margin: '60px auto' }} />
   );
 
+  const productHierarchyTab = (
+    <Row gutter={[16, 16]}>
+      <Col xs={24} xl={16}>
+        <Card
+          title="Иерархия товаров"
+          bordered={false}
+          style={{
+            background: isDark
+              ? 'linear-gradient(180deg, rgba(91,141,184,0.14) 0%, rgba(20,20,20,0.95) 35%)'
+              : 'linear-gradient(180deg, rgba(222,240,255,0.9) 0%, rgba(255,255,255,1) 38%)',
+          }}
+        >
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            Выбирайте элементы слева и сравнивайте, что действительно продается лучше
+          </Typography.Text>
+
+          <Row gutter={[12, 12]} style={{ marginBottom: 8 }}>
+            <Col xs={12} md={6}>
+              <Card size="small" style={{ borderRadius: 10 }}>
+                <Statistic title="Выбрано" value={comparisonItems.length} suffix="поз." valueStyle={{ color: '#1677ff', fontSize: 18 }} />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small" style={{ borderRadius: 10 }}>
+                <Statistic title="Сделки" value={selectedSalesSummary.dealCount} valueStyle={{ color: '#13a8a8', fontSize: 18 }} />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small" style={{ borderRadius: 10 }}>
+                <Statistic title="Продано" value={selectedSalesSummary.soldQty} formatter={(v) => Number(v).toLocaleString('ru-RU')} valueStyle={{ color: '#389e0d', fontSize: 18 }} />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small" style={{ borderRadius: 10 }}>
+                <Statistic title="Выручка" value={selectedSalesSummary.revenue} formatter={(v) => formatUZS(v as number)} valueStyle={{ color: '#d46b08', fontSize: 18 }} />
+              </Card>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={8}>
+              <Card size="small" title="1. Категории">
+                {categories.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет категорий" />
+                ) : (
+                  <List
+                    size="small"
+                    dataSource={categories}
+                    renderItem={(item) => {
+                      const key = compareKey('category', item.name);
+                      const sales = aggregateSalesForProducts(item.products, productSalesMap);
+                      const compareItem: HierarchyCompareItem = {
+                        id: item.name,
+                        key,
+                        level: 'category',
+                        label: item.name,
+                        category: item.name,
+                        salesDeals: sales.salesDeals,
+                        soldQty: sales.soldQty,
+                        salesRevenue: sales.salesRevenue,
+                        avgDealRevenue: sales.avgDealRevenue,
+                        avgUnitPrice: sales.avgUnitPrice,
+                        lastSaleAt: sales.lastSaleAt,
+                      };
+
+                      return (
+                        <List.Item
+                          onClick={() => {
+                            setActiveCategory(item.name);
+                            setActiveType(null);
+                          }}
+                          style={{
+                            cursor: 'pointer',
+                            background: activeCategory === item.name
+                              ? (isDark ? 'rgba(22,119,255,0.18)' : 'rgba(22,119,255,0.12)')
+                              : 'transparent',
+                            borderRadius: 8,
+                            paddingInline: 10,
+                          }}
+                          actions={[
+                            <Checkbox
+                              key={key}
+                              checked={isSelected(key)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => toggleComparison(compareItem)}
+                            />,
+                          ]}
+                        >
+                          <List.Item.Meta
+                            title={item.name}
+                            description={`Сделок: ${sales.salesDeals} • Выручка: ${formatUZS(sales.salesRevenue)}`}
+                          />
+                        </List.Item>
+                      );
+                    }}
+                  />
+                )}
+              </Card>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Card size="small" title={`2. Типы${activeCategory ? `: ${activeCategory}` : ''}`}>
+                {!activeCategory || typeSummaries.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите категорию" />
+                ) : (
+                  <List
+                    size="small"
+                    dataSource={typeSummaries}
+                    renderItem={(item) => {
+                      const id = `${item.category}|${item.name}`;
+                      const key = compareKey('type', id);
+                      const sales = aggregateSalesForProducts(item.products, productSalesMap);
+                      const compareItem: HierarchyCompareItem = {
+                        id,
+                        key,
+                        level: 'type',
+                        label: item.name,
+                        category: item.category,
+                        typeLabel: item.name,
+                        salesDeals: sales.salesDeals,
+                        soldQty: sales.soldQty,
+                        salesRevenue: sales.salesRevenue,
+                        avgDealRevenue: sales.avgDealRevenue,
+                        avgUnitPrice: sales.avgUnitPrice,
+                        lastSaleAt: sales.lastSaleAt,
+                      };
+
+                      return (
+                        <List.Item
+                          onClick={() => setActiveType(item.name)}
+                          style={{
+                            cursor: 'pointer',
+                            background: activeType === item.name
+                              ? (isDark ? 'rgba(19,194,194,0.2)' : 'rgba(19,194,194,0.12)')
+                              : 'transparent',
+                            borderRadius: 8,
+                            paddingInline: 10,
+                          }}
+                          actions={[
+                            <Checkbox
+                              key={key}
+                              checked={isSelected(key)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => toggleComparison(compareItem)}
+                            />,
+                          ]}
+                        >
+                          <List.Item.Meta
+                            title={item.name}
+                            description={`Сделок: ${sales.salesDeals} • Продано: ${sales.soldQty.toLocaleString('ru-RU')}`}
+                          />
+                        </List.Item>
+                      );
+                    }}
+                  />
+                )}
+              </Card>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Card size="small" title={`3. Товары${activeType ? `: ${activeType}` : ''}`}>
+                {!activeType || productsOnLevel.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Выберите тип" />
+                ) : (
+                  <List
+                    size="small"
+                    dataSource={productsOnLevel}
+                    renderItem={(item) => {
+                      const key = compareKey('product', item.id);
+                      const sales = aggregateSalesForProducts([item], productSalesMap);
+                      const compareItem: HierarchyCompareItem = {
+                        id: item.id,
+                        key,
+                        level: 'product',
+                        label: item.name,
+                        category: activeCategory || 'Без категории',
+                        typeLabel: activeType,
+                        salesDeals: sales.salesDeals,
+                        soldQty: sales.soldQty,
+                        salesRevenue: sales.salesRevenue,
+                        avgDealRevenue: sales.avgDealRevenue,
+                        avgUnitPrice: sales.avgUnitPrice,
+                        lastSaleAt: sales.lastSaleAt,
+                        format: item.format || '',
+                        sku: item.sku,
+                        unit: item.unit,
+                      };
+
+                      return (
+                        <List.Item
+                          style={{ borderRadius: 8, paddingInline: 10 }}
+                          actions={[
+                            <Checkbox
+                              key={key}
+                              checked={isSelected(key)}
+                              onChange={() => toggleComparison(compareItem)}
+                            />,
+                          ]}
+                        >
+                          <List.Item.Meta
+                            title={item.name}
+                            description={`Продано: ${sales.soldQty.toLocaleString('ru-RU')} • Выручка: ${formatUZS(sales.salesRevenue)}`}
+                          />
+                        </List.Item>
+                      );
+                    }}
+                  />
+                )}
+              </Card>
+            </Col>
+          </Row>
+        </Card>
+      </Col>
+
+      <Col xs={24} xl={8}>
+        <Card
+          title="Сравнение"
+          bordered={false}
+          style={{
+            position: 'sticky',
+            top: 12,
+            boxShadow: isDark ? '0 12px 28px rgba(0,0,0,0.35)' : '0 12px 28px rgba(0,0,0,0.08)',
+            borderRadius: 12,
+          }}
+          extra={comparisonItems.length > 0 ? <Button type="link" onClick={() => setComparisonMap({})}>Очистить</Button> : null}
+        >
+          {salesLoading ? (
+            <Spin style={{ display: 'block', margin: '20px auto' }} />
+          ) : comparisonItems.length === 0 ? (
+            <Typography.Text type="secondary">Выбирайте категории, типы или товары слева для сравнения</Typography.Text>
+          ) : (
+            <>
+              <Card
+                size="small"
+                style={{
+                  marginBottom: 12,
+                  borderRadius: 10,
+                  background: isDark
+                    ? 'linear-gradient(135deg, rgba(56,158,13,0.2) 0%, rgba(19,194,194,0.12) 100%)'
+                    : 'linear-gradient(135deg, rgba(246,255,237,1) 0%, rgba(230,255,251,1) 100%)',
+                }}
+              >
+                <Row gutter={[8, 8]}>
+                  <Col span={24}>
+                    <Typography.Text strong>Итог по выбранным</Typography.Text>
+                  </Col>
+                  <Col span={24}>
+                    <Typography.Text>Выручка: </Typography.Text>
+                    <Typography.Text strong style={{ color: '#389e0d' }}>{formatUZS(selectedSalesSummary.revenue)}</Typography.Text>
+                  </Col>
+                  <Col span={24}>
+                    <Typography.Text>Ср. чек: </Typography.Text>
+                    <Typography.Text strong>{formatUZS(selectedSalesSummary.avgDeal)}</Typography.Text>
+                  </Col>
+                  <Col span={24}>
+                    <Typography.Text>Последняя продажа: </Typography.Text>
+                    <Typography.Text strong>{selectedSalesSummary.lastSale ? new Date(selectedSalesSummary.lastSale).toLocaleDateString('ru-RU') : '—'}</Typography.Text>
+                  </Col>
+                </Row>
+              </Card>
+
+              <List
+                size="small"
+                dataSource={comparisonItems}
+                renderItem={(item) => (
+                  <List.Item
+                    actions={[
+                      <Button key={item.key} type="link" size="small" onClick={() => toggleComparison(item)}>
+                        Убрать
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span>{item.label}</span>
+                          <Tag color={item.level === 'category' ? 'blue' : item.level === 'type' ? 'gold' : 'green'}>
+                            {item.level === 'category' ? 'Категория' : item.level === 'type' ? 'Тип' : 'Товар'}
+                          </Tag>
+                        </div>
+                      }
+                      description={item.level === 'product' ? `${item.category} / ${item.typeLabel || 'Без типа'}` : item.category}
+                    />
+                  </List.Item>
+                )}
+              />
+
+              {(['category', 'type', 'product'] as const).map((level) => {
+                const items = comparisonByLevel[level];
+                if (items.length < 2) return null;
+
+                const rows = buildComparisonRows(level, items);
+                const columns = [
+                  { title: 'Метрика', dataIndex: 'metric', key: 'metric', width: 140 },
+                  ...items.map((item) => ({
+                    title: item.label,
+                    dataIndex: item.key,
+                    key: item.key,
+                    width: 130,
+                  })),
+                ];
+
+                return (
+                  <Card
+                    key={level}
+                    size="small"
+                    title={level === 'category' ? 'Категории vs Категории' : level === 'type' ? 'Типы vs Типы' : 'Товары vs Товары'}
+                    style={{ marginTop: 12 }}
+                  >
+                    <Table
+                      size="small"
+                      pagination={false}
+                      dataSource={rows}
+                      columns={columns}
+                      rowKey="metric"
+                      scroll={{ x: 'max-content' }}
+                    />
+                  </Card>
+                );
+              })}
+            </>
+          )}
+        </Card>
+      </Col>
+    </Row>
+  );
+
   // ════════════════════════════════════════
   // ──── WAREHOUSE TAB ────
   // ════════════════════════════════════════
@@ -1076,6 +1757,7 @@ export default function AnalyticsPage() {
           { key: 'finance', label: 'Финансы', children: financeTab },
           { key: 'clients', label: 'Клиенты', icon: <TeamOutlined />, children: clientsTab },
           { key: 'products', label: 'Товары+', icon: <ShoppingOutlined />, children: productsTab },
+          { key: 'product-hierarchy', label: 'Иерархия товаров', children: productHierarchyTab },
           { key: 'warehouse', label: 'Склад', children: warehouseTab },
           { key: 'managers', label: 'Менеджеры', children: managersTab },
           { key: 'profitability', label: 'Рентабельность', children: profitabilityTab },
