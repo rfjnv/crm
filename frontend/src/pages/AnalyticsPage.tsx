@@ -1454,11 +1454,6 @@ export default function AnalyticsPage() {
                   value: item.avgUnitPrice,
                 })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
 
-                const dealsChartData = items.map((item) => ({
-                  name: item.label,
-                  value: item.salesDeals,
-                })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
-
                 const rows = buildComparisonRows(level, items);
                 const columns = [
                   { title: 'Метрика', dataIndex: 'metric', key: 'metric', width: 140 },
