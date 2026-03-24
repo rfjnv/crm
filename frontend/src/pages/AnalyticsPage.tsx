@@ -1432,6 +1432,144 @@ export default function AnalyticsPage() {
                   </Card>
                 );
               })}
+              {(['category', 'type', 'product'] as const).map((level) => {
+                const items = comparisonByLevel[level];
+                if (items.length < 2) return null;
+
+                const lvlLabel = level === 'category' ? 'Категории' : level === 'type' ? 'Типы' : 'Товары';
+
+                // Prepare chart data
+                const revenueChartData = items.map((item) => ({
+                  name: item.label,
+                  value: item.salesRevenue,
+                })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+                const qtyChartData = items.map((item) => ({
+                  name: item.label,
+                  value: item.soldQty,
+                })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+                const priceChartData = items.map((item) => ({
+                  name: item.label,
+                  value: item.avgUnitPrice,
+                })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+                const dealsChartData = items.map((item) => ({
+                  name: item.label,
+                  value: item.salesDeals,
+                })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+                const rows = buildComparisonRows(level, items);
+                const columns = [
+                  { title: 'Метрика', dataIndex: 'metric', key: 'metric', width: 140 },
+                  ...items.map((item) => ({
+                    title: item.label,
+                    dataIndex: item.key,
+                    key: item.key,
+                    width: 130,
+                  })),
+                ];
+
+                return (
+                  <div key={level}>
+                    <Card
+                      size="small"
+                      title={`📊 ${lvlLabel} — Выручка`}
+                      style={{ marginTop: 12, borderRadius: 10 }}
+                    >
+                      {revenueChartData.length > 0 ? (
+                        <Bar
+                          data={revenueChartData}
+                          xField="name"
+                          yField="value"
+                          height={220}
+                          colorField="name"
+                          axis={{
+                            x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                            y: { labelFill: token.colorTextSecondary },
+                          }}
+                          tooltip={{
+                            formatter: (datum: any) => {
+                              return { name: datum.name, value: formatUZS(datum.value) };
+                            },
+                          }}
+                          theme={chartTheme}
+                        />
+                      ) : (
+                        <Typography.Text type="secondary">Нет данных</Typography.Text>
+                      )}
+                    </Card>
+
+                    <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
+                      <Col xs={24} md={12}>
+                        <Card size="small" title={`📦 Продаж (шт.)`} style={{ borderRadius: 10 }}>
+                          {qtyChartData.length > 0 ? (
+                            <Bar
+                              data={qtyChartData}
+                              xField="name"
+                              yField="value"
+                              height={200}
+                              colorField="name"
+                              axis={{
+                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                y: { labelFill: token.colorTextSecondary },
+                              }}
+                              tooltip={{
+                                formatter: (datum: any) => {
+                                  return { name: datum.name, value: datum.value.toLocaleString('ru-RU') };
+                                },
+                              }}
+                              theme={chartTheme}
+                            />
+                          ) : (
+                            <Typography.Text type="secondary">Нет данных</Typography.Text>
+                          )}
+                        </Card>
+                      </Col>
+                      <Col xs={24} md={12}>
+                        <Card size="small" title={`💰 Средняя цена за ед.`} style={{ borderRadius: 10 }}>
+                          {priceChartData.length > 0 ? (
+                            <Bar
+                              data={priceChartData}
+                              xField="name"
+                              yField="value"
+                              height={200}
+                              colorField="name"
+                              axis={{
+                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                y: { labelFill: token.colorTextSecondary },
+                              }}
+                              tooltip={{
+                                formatter: (datum: any) => {
+                                  return { name: datum.name, value: formatUZS(datum.value) };
+                                },
+                              }}
+                              theme={chartTheme}
+                            />
+                          ) : (
+                            <Typography.Text type="secondary">Нет данных</Typography.Text>
+                          )}
+                        </Card>
+                      </Col>
+                    </Row>
+
+                    <Card
+                      size="small"
+                      title={`🎯 ${lvlLabel} — Таблица сравнения`}
+                      style={{ marginTop: 12, borderRadius: 10 }}
+                    >
+                      <Table
+                        size="small"
+                        pagination={false}
+                        dataSource={rows}
+                        columns={columns}
+                        rowKey="metric"
+                        scroll={{ x: 'max-content' }}
+                      />
+                    </Card>
+                  </div>
+                );
+              })}
             </>
           )}
         </Card>
