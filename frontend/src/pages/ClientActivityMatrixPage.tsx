@@ -19,6 +19,7 @@ export default function ClientActivityMatrixPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [year, setYear] = useState(new Date().getFullYear());
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
   const { data, isLoading } = useQuery({
@@ -32,6 +33,12 @@ export default function ClientActivityMatrixPage() {
     const maxMonth = Math.max(...data.monthlyTrend.map((m) => m.month));
     return Array.from({ length: maxMonth }, (_, i) => i + 1);
   }, [data?.monthlyTrend]);
+
+  const displayedMonths = useMemo(() => {
+    if (selectedMonths.length === 0) return visibleMonths;
+    const available = new Set(visibleMonths);
+    return selectedMonths.filter((m) => available.has(m)).sort((a, b) => a - b);
+  }, [selectedMonths, visibleMonths]);
 
   const filteredActivity = useMemo(() => {
     if (selectedClients.length === 0) return clientActivity;
@@ -65,7 +72,7 @@ export default function ClientActivityMatrixPage() {
         <a onClick={() => navigate(`/clients/${r.clientId}`)}>{r.companyName}</a>
       ),
     },
-    ...visibleMonths.map((m) => ({
+    ...displayedMonths.map((m) => ({
       title: MONTH_LABELS[m],
       key: `m${m}`,
       width: 76,
@@ -118,9 +125,22 @@ export default function ClientActivityMatrixPage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Select
               value={year}
-              onChange={setYear}
+              onChange={(nextYear) => {
+                setYear(nextYear);
+                setSelectedMonths([]);
+              }}
               style={{ width: 110 }}
               options={[2024, 2025, 2026, 2027].map((y) => ({ label: y, value: y }))}
+            />
+            <Select
+              mode="multiple"
+              placeholder="Месяцы"
+              allowClear
+              style={{ width: isMobile ? 220 : 220 }}
+              maxTagCount={2}
+              value={selectedMonths}
+              onChange={(vals) => setSelectedMonths(vals.sort((a, b) => a - b))}
+              options={visibleMonths.map((m) => ({ label: MONTH_LABELS[m], value: m }))}
             />
             <Select
               mode="multiple"
@@ -151,7 +171,7 @@ export default function ClientActivityMatrixPage() {
                   <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {visibleMonths.map((m) => {
+                  {displayedMonths.map((m) => {
                     const revenue = getMonthRevenue(record, m);
                     return (
                       <Tooltip key={m} title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
@@ -189,4 +209,3 @@ export default function ClientActivityMatrixPage() {
     </div>
   );
 }
-
