@@ -266,7 +266,7 @@ export default function AnalyticsPage() {
   });
 
   const visibleProducts = useMemo(() => {
-    return allProducts.filter((p) => p.isActive);
+    return allProducts.filter((p: Product) => p.isActive);
   }, [allProducts]);
 
   const { data: productSalesMap = {}, isLoading: salesLoading } = useQuery({

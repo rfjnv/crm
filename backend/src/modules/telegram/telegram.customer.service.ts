@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client';
+import { DealStatus, Role } from '@prisma/client';
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
@@ -6,6 +6,7 @@ import { pushService } from '../push/push.service';
 
 const PAGE_SIZE = 6;
 const TASHKENT_TIME_ZONE = 'Asia/Tashkent';
+const REVIEWABLE_DEAL_STATUSES: DealStatus[] = ['CLOSED', 'SHIPPED'];
 
 type SessionMode =
   | 'IDLE'
@@ -42,6 +43,8 @@ interface CustomerSession {
   phone?: string;
   pendingQty?: PendingQuantityInput;
   reviewDraft?: ReviewDraft;
+  reviewAllowedDealIds?: string[];
+  submittingOrder?: boolean;
 }
 
 interface BusinessHoursStatus {
@@ -126,6 +129,7 @@ export class TelegramCustomerService {
       session.mode = 'IDLE';
       session.pendingQty = undefined;
       session.reviewDraft = undefined;
+      session.reviewAllowedDealIds = undefined;
       await bot.sendMessage(chatId, 'Текущее действие отменено.', {
         reply_markup: { remove_keyboard: true },
       });
@@ -202,6 +206,7 @@ export class TelegramCustomerService {
         session.mode = 'IDLE';
         session.pendingQty = undefined;
         session.reviewDraft = undefined;
+        session.reviewAllowedDealIds = undefined;
         await this.showHome(bot, chatId, messageId);
         return;
       }
@@ -217,6 +222,8 @@ export class TelegramCustomerService {
       }
 
       if (query.data === 'menu:review') {
+        session.reviewDraft = undefined;
+        session.reviewAllowedDealIds = undefined;
         if (session.phone) {
           await this.showReviewDealPicker(bot, chatId, session.phone, messageId);
         } else {
@@ -277,6 +284,10 @@ export class TelegramCustomerService {
       }
 
       if (query.data === 'cart:checkout') {
+        if (session.submittingOrder) {
+          await bot.answerCallbackQuery(query.id, { text: 'Заказ уже отправляется, подождите несколько секунд.' }).catch(() => {});
+          return;
+        }
         await this.startCheckout(bot, chatId, session);
         return;
       }
@@ -299,8 +310,18 @@ export class TelegramCustomerService {
           return;
         }
 
+        if (!session.reviewDraft?.dealId) {
+          await bot.answerCallbackQuery(query.id, { text: 'Сначала выберите заказ для отзыва.' }).catch(() => {});
+          if (session.phone) {
+            await this.showReviewDealPicker(bot, chatId, session.phone, messageId);
+          } else {
+            await this.showHome(bot, chatId, messageId);
+          }
+          return;
+        }
+
         session.reviewDraft = {
-          dealId: session.reviewDraft?.dealId || '',
+          dealId: session.reviewDraft.dealId,
           rating,
         };
         session.mode = 'AWAITING_REVIEW_TEXT';
@@ -347,6 +368,7 @@ export class TelegramCustomerService {
       session.mode = 'IDLE';
       session.pendingQty = undefined;
       session.reviewDraft = undefined;
+      session.reviewAllowedDealIds = undefined;
       await this.showHome(bot, chatId);
       return;
     }
@@ -697,6 +719,15 @@ export class TelegramCustomerService {
       return;
     }
 
+    if (qty > Number(product.stock)) {
+      await bot.sendMessage(
+        chatId,
+        `На складе сейчас только ${this.formatQty(Number(product.stock))} ${this.escapeHtml(product.unit || 'шт')}. Укажите меньшее количество.`,
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
     const existing = session.cart.find((item) => item.productId === product.id);
     if (existing) {
       existing.qty = qty;
@@ -839,6 +870,13 @@ export class TelegramCustomerService {
   }
 
   private async trySubmitOrder(bot: TelegramBot, chatId: number, session: CustomerSession): Promise<void> {
+    if (session.submittingOrder) {
+      await bot.sendMessage(chatId, 'Заказ уже отправляется, подождите несколько секунд.');
+      return;
+    }
+
+    session.submittingOrder = true;
+    try {
     const hours = this.getBusinessHoursStatus();
     if (!hours.isOpen) {
       await bot.sendMessage(
@@ -872,6 +910,45 @@ export class TelegramCustomerService {
       await bot.sendMessage(chatId, 'Выбранный менеджер сейчас недоступен. Пожалуйста, выберите другого.');
       await this.showManagerPicker(bot, chatId, 0);
       return;
+    }
+
+    const uniqueProductIds = [...new Set(session.cart.map((item) => item.productId))];
+    const products = await prisma.product.findMany({
+      where: { id: { in: uniqueProductIds } },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        unit: true,
+        salePrice: true,
+        stock: true,
+        isActive: true,
+      },
+    });
+    const productById = new Map(products.map((product) => [product.id, product]));
+
+    for (const item of session.cart) {
+      const product = productById.get(item.productId);
+      if (!product || !product.isActive || !product.salePrice || Number(product.stock) <= 0) {
+        await bot.sendMessage(chatId, `Товар "${this.escapeHtml(item.name)}" сейчас недоступен. Обновите корзину.`, {
+          parse_mode: 'HTML',
+        });
+        await this.showCart(bot, chatId, undefined, 'Некоторые позиции стали недоступны. Проверьте корзину.');
+        return;
+      }
+      if (item.qty > Number(product.stock)) {
+        await bot.sendMessage(
+          chatId,
+          `Для товара "${this.escapeHtml(product.name)}" доступно только ${this.formatQty(Number(product.stock))} ${this.escapeHtml(product.unit || 'шт')}.`,
+          { parse_mode: 'HTML' },
+        );
+        await this.showCart(bot, chatId, undefined, 'Проверьте количество в корзине и попробуйте снова.');
+        return;
+      }
+      item.price = Number(product.salePrice);
+      item.name = product.name;
+      item.sku = product.sku;
+      item.unit = product.unit;
     }
 
     const totalAmount = session.cart.reduce((sum, item) => sum + item.qty * item.price, 0);
@@ -993,6 +1070,9 @@ export class TelegramCustomerService {
     session.mode = 'IDLE';
     session.pendingQty = undefined;
     session.cart = [];
+    } finally {
+      session.submittingOrder = false;
+    }
   }
 
   private async notifyManager(
@@ -1108,9 +1188,11 @@ export class TelegramCustomerService {
     phone: string,
     messageId?: number,
   ): Promise<void> {
+    const session = this.getSession(chatId);
     const deals = await prisma.deal.findMany({
       where: {
         isArchived: false,
+        status: { in: REVIEWABLE_DEAL_STATUSES },
         client: { phone },
       },
       select: {
@@ -1123,6 +1205,7 @@ export class TelegramCustomerService {
     });
 
     if (!deals.length) {
+      session.reviewAllowedDealIds = [];
       await this.editOrSendMessage(
         bot,
         chatId,
@@ -1141,6 +1224,8 @@ export class TelegramCustomerService {
       );
       return;
     }
+
+    session.reviewAllowedDealIds = deals.map((deal) => deal.id);
 
     const keyboard: TelegramBot.InlineKeyboardButton[][] = deals.map((deal) => [
       {
@@ -1172,8 +1257,29 @@ export class TelegramCustomerService {
     dealId: string,
     messageId?: number,
   ): Promise<void> {
-    const deal = await prisma.deal.findUnique({
-      where: { id: dealId },
+    const session = this.getSession(chatId);
+    if (!session.phone || !session.reviewAllowedDealIds?.includes(dealId)) {
+      await this.editOrSendMessage(
+        bot,
+        chatId,
+        'Этот заказ недоступен для отзыва. Выберите заказ из списка.',
+        {
+          messageId,
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Назад к заказам', callback_data: 'menu:review' }]],
+          },
+        },
+      );
+      return;
+    }
+
+    const deal = await prisma.deal.findFirst({
+      where: {
+        id: dealId,
+        isArchived: false,
+        status: { in: REVIEWABLE_DEAL_STATUSES },
+        client: { phone: session.phone },
+      },
       select: { id: true, title: true },
     });
 
@@ -1192,7 +1298,6 @@ export class TelegramCustomerService {
       return;
     }
 
-    const session = this.getSession(chatId);
     session.reviewDraft = {
       dealId,
       rating: 0,
@@ -1236,8 +1341,13 @@ export class TelegramCustomerService {
       return;
     }
 
-    const deal = await prisma.deal.findUnique({
-      where: { id: draft.dealId },
+    const deal = await prisma.deal.findFirst({
+      where: {
+        id: draft.dealId,
+        isArchived: false,
+        status: { in: REVIEWABLE_DEAL_STATUSES },
+        client: session.phone ? { phone: session.phone } : undefined,
+      },
       select: { id: true, title: true, managerId: true },
     });
 
@@ -1307,6 +1417,7 @@ export class TelegramCustomerService {
 
     session.mode = 'IDLE';
     session.reviewDraft = undefined;
+    session.reviewAllowedDealIds = undefined;
     await bot.sendMessage(chatId, 'Спасибо. Отзыв сохранён и передан менеджеру.', {
       reply_markup: this.buildHomeKeyboard(),
     });

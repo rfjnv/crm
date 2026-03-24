@@ -219,13 +219,22 @@ async function createProducts(wb: XLSX.WorkBook): Promise<Map<string, string>> {
   }
 
   const map = new Map<string, string>();
-  let skuCounter = 0;
-
-  // Check how many IMPORT- products already exist
-  const existingCount = await prisma.product.count({
-    where: { sku: { startsWith: 'IMPORT-' } },
+  const existingProducts = await prisma.product.findMany({
+    select: { sku: true },
   });
-  skuCounter = existingCount;
+  const existingSkus = new Set(existingProducts.map((p) => p.sku.toLowerCase()));
+
+  const makeUniqueSku = (base: string): string => {
+    const cleanBase = base.trim() || 'PRODUCT';
+    let candidate = cleanBase;
+    let i = 2;
+    while (existingSkus.has(candidate.toLowerCase())) {
+      candidate = `${cleanBase}-${i}`;
+      i++;
+    }
+    existingSkus.add(candidate.toLowerCase());
+    return candidate;
+  };
 
   for (const [key, info] of productSet) {
     // Check if already exists by name (case insensitive via raw query)
@@ -238,7 +247,7 @@ async function createProducts(wb: XLSX.WorkBook): Promise<Map<string, string>> {
       continue;
     }
 
-    const sku = info.name;
+    const sku = makeUniqueSku(info.name);
 
     const product = await prisma.product.create({
       data: {
