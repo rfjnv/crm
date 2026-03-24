@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer } from 'antd';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { HistoryClientActivity } from '../types';
@@ -32,6 +33,8 @@ export default function ClientActivityMatrixPage() {
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
+  const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['manager-client-activity', year],
@@ -62,6 +65,40 @@ export default function ClientActivityMatrixPage() {
     if (selectedClients.length === 0) return clientActivity;
     return clientActivity.filter((c) => selectedClients.includes(c.clientId));
   }, [clientActivity, selectedClients]);
+
+  useEffect(() => {
+    if (!cellDrawer) return;
+    setDrawerSortOrder('desc');
+    setDrawerDateRange(null);
+  }, [cellDrawer?.clientId, cellDrawer?.month]);
+
+  const filteredDrawerItems = useMemo(() => {
+    let items = [...(clientMonthData?.items ?? [])];
+
+    if (drawerDateRange) {
+      const [from, to] = drawerDateRange;
+      const fromTs = from.startOf('day').valueOf();
+      const toTs = to.endOf('day').valueOf();
+      items = items.filter((item) => {
+        if (!item.createdAt) return false;
+        const ts = dayjs(item.createdAt).valueOf();
+        return ts >= fromTs && ts <= toTs;
+      });
+    }
+
+    items.sort((a, b) => {
+      const aTs = a.createdAt ? dayjs(a.createdAt).valueOf() : 0;
+      const bTs = b.createdAt ? dayjs(b.createdAt).valueOf() : 0;
+      return drawerSortOrder === 'desc' ? bTs - aTs : aTs - bTs;
+    });
+
+    return items;
+  }, [clientMonthData?.items, drawerDateRange, drawerSortOrder]);
+
+  const filteredDrawerTotal = useMemo(
+    () => filteredDrawerItems.reduce((sum, item) => sum + Number(item.total || 0), 0),
+    [filteredDrawerItems],
+  );
 
   const maxMonthRevenue = useMemo(() => {
     const all = clientActivity.flatMap((c) => c.monthlyData.map((m) => m.revenue));
@@ -245,11 +282,28 @@ export default function ClientActivityMatrixPage() {
           <Spin />
         ) : (
           <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <DatePicker.RangePicker
+                value={drawerDateRange}
+                onChange={(range) => setDrawerDateRange(range as [Dayjs, Dayjs] | null)}
+                placeholder={['Дата от', 'Дата до']}
+                allowClear
+              />
+              <Select
+                value={drawerSortOrder}
+                onChange={(v) => setDrawerSortOrder(v)}
+                style={{ width: 170 }}
+                options={[
+                  { label: 'Сначала новые', value: 'desc' },
+                  { label: 'Сначала старые', value: 'asc' },
+                ]}
+              />
+            </div>
             <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
-              Итого: {(clientMonthData?.totalRevenue ?? 0).toLocaleString('ru-RU')}
+              Итого: {filteredDrawerTotal.toLocaleString('ru-RU')}
             </div>
             <Table
-              dataSource={clientMonthData?.items ?? []}
+              dataSource={filteredDrawerItems}
               rowKey="id"
               size="small"
               pagination={false}
