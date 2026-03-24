@@ -17,6 +17,7 @@ import {
   DollarOutlined,
   BarChartOutlined,
   FieldTimeOutlined,
+  CalendarOutlined,
   AppstoreOutlined,
   BellOutlined,
   SendOutlined,
@@ -256,12 +257,19 @@ export default function Layout() {
       : []),
 
     // ── АНАЛИТИКА ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER')
       ? [
         { type: 'divider' as const },
         ...(showGroupLabels
           ? [{ type: 'group' as const, label: 'АНАЛИТИКА' }]
           : []),
+        {
+          key: '/manager/client-activity',
+          icon: <CalendarOutlined />,
+          label: <Link to="/manager/client-activity">Матрица активности клиентов</Link>,
+        },
+        ...(hasRole('SUPER_ADMIN', 'ADMIN')
+          ? [
         {
           key: '/analytics',
           icon: <BarChartOutlined />,
@@ -272,6 +280,8 @@ export default function Layout() {
           icon: <FieldTimeOutlined />,
           label: <Link to="/history-analytics">Аналитика (история)</Link>,
         },
+          ]
+          : []),
       ]
       : []),
 

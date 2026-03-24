@@ -39,6 +39,7 @@ import PowerOfAttorneyPage from './pages/PowerOfAttorneyPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
+import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
@@ -102,6 +103,9 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/users" element={<UsersPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER']} />}>
+                  <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
+                </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
