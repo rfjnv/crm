@@ -1539,7 +1539,7 @@ export default function AnalyticsPage() {
                           height={220}
                           colorField="name"
                           axis={{
-                            x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                            x: false,
                             y: { labelFill: token.colorTextSecondary },
                           }}
                           tooltip={{
@@ -1554,58 +1554,53 @@ export default function AnalyticsPage() {
                       )}
                     </Card>
 
-                    <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
-                      <Col xs={24} md={12}>
-                        <Card size="small" title={`📦 Продаж (шт.)`} style={{ borderRadius: 10 }}>
-                          {qtyChartData.length > 0 ? (
-                            <Bar
-                              data={qtyChartData}
-                              xField="name"
-                              yField="value"
-                              height={200}
-                              colorField="name"
-                              axis={{
-                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
-                                y: { labelFill: token.colorTextSecondary },
-                              }}
-                              tooltip={{
-                                formatter: (datum: any) => {
-                                  return { name: datum.name, value: datum.value.toLocaleString('ru-RU') };
-                                },
-                              }}
-                              theme={chartTheme}
-                            />
-                          ) : (
-                            <Typography.Text type="secondary">Нет данных</Typography.Text>
-                          )}
-                        </Card>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Card size="small" title={`💰 Средняя цена за ед.`} style={{ borderRadius: 10 }}>
-                          {priceChartData.length > 0 ? (
-                            <Bar
-                              data={priceChartData}
-                              xField="name"
-                              yField="value"
-                              height={200}
-                              colorField="name"
-                              axis={{
-                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
-                                y: { labelFill: token.colorTextSecondary },
-                              }}
-                              tooltip={{
-                                formatter: (datum: any) => {
-                                  return { name: datum.name, value: formatUZS(datum.value) };
-                                },
-                              }}
-                              theme={chartTheme}
-                            />
-                          ) : (
-                            <Typography.Text type="secondary">Нет данных</Typography.Text>
-                          )}
-                        </Card>
-                      </Col>
-                    </Row>
+                    <Card size="small" title={`📦 Продаж (шт.)`} style={{ marginTop: 12, borderRadius: 10 }}>
+                      {qtyChartData.length > 0 ? (
+                        <Bar
+                          data={qtyChartData}
+                          xField="name"
+                          yField="value"
+                          height={200}
+                          colorField="name"
+                          axis={{
+                            x: false,
+                            y: { labelFill: token.colorTextSecondary },
+                          }}
+                          tooltip={{
+                            formatter: (datum: any) => {
+                              return { name: datum.name, value: datum.value.toLocaleString('ru-RU') };
+                            },
+                          }}
+                          theme={chartTheme}
+                        />
+                      ) : (
+                        <Typography.Text type="secondary">Нет данных</Typography.Text>
+                      )}
+                    </Card>
+
+                    <Card size="small" title={`💰 Средняя цена за ед.`} style={{ marginTop: 12, borderRadius: 10 }}>
+                      {priceChartData.length > 0 ? (
+                        <Bar
+                          data={priceChartData}
+                          xField="name"
+                          yField="value"
+                          height={200}
+                          colorField="name"
+                          axis={{
+                            x: false,
+                            y: { labelFill: token.colorTextSecondary },
+                          }}
+                          tooltip={{
+                            formatter: (datum: any) => {
+                              return { name: datum.name, value: formatUZS(datum.value) };
+                            },
+                          }}
+                          theme={chartTheme}
+                        />
+                      ) : (
+                        <Typography.Text type="secondary">Нет данных</Typography.Text>
+                      )}
+                    </Card>
 
                     <Card
                       size="small"
