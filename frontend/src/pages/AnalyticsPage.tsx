@@ -323,19 +323,16 @@ export default function AnalyticsPage() {
       }
 
       return aggregateMap;
+
     },
   });
 
-  const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
-  const chartTheme = isDark ? 'classicDark' : 'classic';
-
-  if (isLoading || !data) {
-    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  }
-
-  const { sales, finance, warehouse, managers, profitability } = data;
+  // ── All hooks MUST be called unconditionally before any early returns ──
 
   const categories = useMemo<CategorySummary[]>(() => {
+    // Guard against data being undefined during loading, though visibleProducts handles it
+    if (!data && isLoading) return [];
+
     const byCategory = new Map<string, Product[]>();
 
     for (const p of visibleProducts) {
@@ -363,9 +360,12 @@ export default function AnalyticsPage() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [visibleProducts]);
+  }, [visibleProducts, data, isLoading]); // Added data, isLoading to dependencies for clarity, though visibleProducts is the primary one
 
   const visibleComparisonKeys = useMemo(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return new Set<string>();
+
     const keys = new Set<string>();
 
     for (const p of visibleProducts) {
@@ -377,9 +377,12 @@ export default function AnalyticsPage() {
     }
 
     return keys;
-  }, [visibleProducts]);
+  }, [visibleProducts, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   useEffect(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return;
+
     setComparisonMap((prev) => {
       const next: Record<string, HierarchyCompareItem> = {};
       for (const [key, value] of Object.entries(prev)) {
@@ -389,22 +392,31 @@ export default function AnalyticsPage() {
       }
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
-  }, [visibleComparisonKeys]);
+  }, [visibleComparisonKeys, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   useEffect(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return;
+
     if (!activeCategory && categories.length > 0) {
       setActiveCategory(categories[0].name);
     }
-  }, [activeCategory, categories]);
+  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   useEffect(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return;
+
     if (activeCategory && !categories.some((c) => c.name === activeCategory)) {
       setActiveCategory(categories[0]?.name || null);
       setActiveType(null);
     }
-  }, [activeCategory, categories]);
+  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   const typeSummaries = useMemo<TypeSummary[]>(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return [];
+
     if (!activeCategory) return [];
     const categoryData = categories.find((c) => c.name === activeCategory);
     if (!categoryData) return [];
@@ -434,9 +446,12 @@ export default function AnalyticsPage() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [activeCategory, categories]);
+  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   useEffect(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return;
+
     if (typeSummaries.length === 0) {
       setActiveType(null);
       return;
@@ -445,12 +460,15 @@ export default function AnalyticsPage() {
     if (!activeType || !typeSummaries.some((t) => t.name === activeType)) {
       setActiveType(typeSummaries[0].name);
     }
-  }, [activeType, typeSummaries]);
+  }, [activeType, typeSummaries, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   const productsOnLevel = useMemo(() => {
+    // Guard against data being undefined during loading
+    if (!data && isLoading) return [];
+
     if (!activeType) return [];
     return typeSummaries.find((t) => t.name === activeType)?.products || [];
-  }, [activeType, typeSummaries]);
+  }, [activeType, typeSummaries, data, isLoading]); // Added data, isLoading to dependencies for clarity
 
   const comparisonItems = useMemo(() => Object.values(comparisonMap), [comparisonMap]);
 
@@ -488,6 +506,16 @@ export default function AnalyticsPage() {
   };
 
   const isSelected = (key: string) => Boolean(comparisonMap[key]);
+
+  const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
+
+  // ── Early return after all hooks ──
+  if (isLoading || !data) {
+    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  }
+
+  const { sales, finance, warehouse, managers, profitability } = data;
 
   // ──── Sales tab data ────
   const pieData = sales.dealsByStatus.map((d) => ({
