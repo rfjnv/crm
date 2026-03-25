@@ -286,7 +286,8 @@ export default function ProductsPage() {
                 { label: 'пачка', value: 'пачка' },
                 { label: 'рулон', value: 'рулон' },
                 { label: 'м²', value: 'м²' },
-                { label: 'мп', value: 'мп' },
+                { label: 'п/м', value: 'п/м' },
+                { label: 'бабина', value: 'бабина' },
               ]} />
             </Form.Item>
             <Form.Item name="format" label="Формат" style={{ flex: 1 }}>
@@ -364,7 +365,8 @@ export default function ProductsPage() {
                 { label: 'пачка', value: 'пачка' },
                 { label: 'рулон', value: 'рулон' },
                 { label: 'м²', value: 'м²' },
-                { label: 'мп', value: 'мп' },
+                { label: 'п/м', value: 'п/м' },
+                { label: 'бабина', value: 'бабина' },
               ]} />
             </Form.Item>
             <Form.Item name="format" label="Формат" style={{ flex: 1 }}>

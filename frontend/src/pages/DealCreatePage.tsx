@@ -30,7 +30,7 @@ let nextKey = 0;
 function makeKey() { return `ci-${nextKey++}`; }
 
 /** Units that are discrete (integer-only) */
-const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп']);
+const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп', 'бабина']);
 
 function isIntegerUnit(unit?: string): boolean {
   if (!unit) return false;

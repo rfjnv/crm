@@ -91,6 +91,14 @@ async function getOrCreateClient(clientName: string, managerId: string) {
   return client;
 }
 
+function normalizeUnit(unit?: unknown): string {
+  if (!unit) return 'шт';
+  const u = String(unit).trim().toLowerCase();
+  if (u === 'мп') return 'п/м';
+  if (u === 'бабин') return 'бабина';
+  return String(unit).trim() || 'шт';
+}
+
 async function getOrCreateProduct(productName: string, unit: string = 'шт') {
   if (!productName || productName.trim() === '') {
     throw new Error('Product name cannot be empty');
@@ -107,7 +115,7 @@ async function getOrCreateProduct(productName: string, unit: string = 'шт') {
       data: {
         name: cleanName,
         sku: sku || `PROD-${Date.now()}`,
-        unit: String(unit || 'шт').trim() || 'шт',
+        unit: normalizeUnit(unit),
       },
     });
   }
