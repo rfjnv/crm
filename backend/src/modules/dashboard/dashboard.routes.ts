@@ -123,40 +123,18 @@ router.get(
       // 5. Total debt (same as /finance/debts totals: gross = net debt + prepayments)
       // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
       dealScope.managerId
-        ? prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
-            Prisma.sql`WITH latest_deals AS (
-                          SELECT DISTINCT ON (d.client_id) d.id AS deal_id
-                          FROM deals d
-                          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-                            AND d.manager_id = ${dealScope.managerId}
-                            AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-                          ORDER BY d.client_id, d.created_at DESC
-                        )
-                        SELECT
-                          COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
-                          COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
-                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
-                       FROM deal_items di
-                       JOIN latest_deals ld ON ld.deal_id = di.deal_id
-                       WHERE di.closing_balance IS NOT NULL`
+        ? prisma.$queryRaw<{ total_debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as total_debt
+             FROM deals
+             WHERE is_archived = false 
+               AND status NOT IN ('CANCELED', 'REJECTED')
+               AND manager_id = ${dealScope.managerId}`
           )
-        : prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
-            Prisma.sql`WITH latest_deals AS (
-                          SELECT DISTINCT ON (d.client_id) d.id AS deal_id
-                          FROM deals d
-                          WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
-                            AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
-                          ORDER BY d.client_id, d.created_at DESC
-                        )
-                        SELECT
-                          COALESCE(SUM(CASE WHEN di.source_op_type IN ('K','NK','PK','F')
-                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS net_debt,
-                          COALESCE(SUM(CASE WHEN di.source_op_type = 'PP'
-                            THEN COALESCE(di.closing_balance, 0) ELSE 0 END), 0)::text AS pp_balance
-                       FROM deal_items di
-                       JOIN latest_deals ld ON ld.deal_id = di.deal_id
-                       WHERE di.closing_balance IS NOT NULL`
+        : prisma.$queryRaw<{ total_debt: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as total_debt
+             FROM deals
+             WHERE is_archived = false 
+               AND status NOT IN ('CANCELED', 'REJECTED')`
           ),
 
       // 6. Zero stock products
@@ -238,17 +216,14 @@ router.get(
       minStock: Number(p.min_stock),
     }));
 
-    const debtSplit = totalDebtSplitRaw[0];
-    const netDebt = Number(debtSplit?.net_debt ?? 0);
-    const prepayments = Number(debtSplit?.pp_balance ?? 0);
-    const grossDebt = netDebt + prepayments;
+    const totalDebt = Number(totalDebtSplitRaw[0]?.total_debt ?? 0);
 
     res.json({
       revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt: grossDebt,
+      totalDebt,
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
