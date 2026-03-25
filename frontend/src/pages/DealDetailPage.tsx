@@ -1348,29 +1348,32 @@ export default function DealDetailPage() {
                         if (subtotal <= 0) return null;
                         const discount = Number(deal.discount || 0);
                         const hasDiscount = discount > 0;
+
+                        const labelColSpan = canEditItems ? itemColumns.length - 2 : itemColumns.length - 1;
+                        const valueColSpan = canEditItems ? 2 : 1;
                         return (
                           <>
                             {hasDiscount && (
                               <>
                                 <Table.Summary.Row>
-                                  <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Подытог</Typography.Text></Table.Summary.Cell>
-                                  <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS(subtotal)}</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={0} colSpan={labelColSpan} align="right"><Typography.Text>Подытог</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={1} colSpan={valueColSpan} align="right"><Typography.Text style={{ whiteSpace: 'nowrap' }}>{formatUZS(subtotal)}</Typography.Text></Table.Summary.Cell>
                                 </Table.Summary.Row>
                                 <Table.Summary.Row>
-                                  <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
-                                  <Table.Summary.Cell index={1} align="right"><Typography.Text type="success">-{formatUZS(includeVat ? discount : discount / 1.12)}</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={0} colSpan={labelColSpan} align="right"><Typography.Text>Скидка</Typography.Text></Table.Summary.Cell>
+                                  <Table.Summary.Cell index={1} colSpan={valueColSpan} align="right"><Typography.Text type="success" style={{ whiteSpace: 'nowrap' }}>-{formatUZS(includeVat ? discount : discount / 1.12)}</Typography.Text></Table.Summary.Cell>
                                 </Table.Summary.Row>
                               </>
                             )}
                             {includeVat && (
                               <Table.Summary.Row>
-                                <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text>НДС 12%</Typography.Text></Table.Summary.Cell>
-                                <Table.Summary.Cell index={1} align="right"><Typography.Text>{formatUZS((hasDiscount ? subtotal - discount : subtotal) * 12 / 112)}</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={0} colSpan={labelColSpan} align="right"><Typography.Text>НДС 12%</Typography.Text></Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} colSpan={valueColSpan} align="right"><Typography.Text style={{ whiteSpace: 'nowrap' }}>{formatUZS((hasDiscount ? subtotal - discount : subtotal) * 12 / 112)}</Typography.Text></Table.Summary.Cell>
                               </Table.Summary.Row>
                             )}
                             <Table.Summary.Row>
-                              <Table.Summary.Cell index={0} colSpan={itemColumns.length - 1}><Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text></Table.Summary.Cell>
-                              <Table.Summary.Cell index={1} align="right"><Typography.Text strong>{formatUZS(includeVat ? (hasDiscount ? subtotal - discount : subtotal) : (hasDiscount ? subtotal - (discount / 1.12) : subtotal))}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={0} colSpan={labelColSpan} align="right"><Typography.Text strong>Итого {includeVat ? '(с НДС)' : '(без НДС)'}</Typography.Text></Table.Summary.Cell>
+                              <Table.Summary.Cell index={1} colSpan={valueColSpan} align="right"><Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(includeVat ? (hasDiscount ? subtotal - discount : subtotal) : (hasDiscount ? subtotal - (discount / 1.12) : subtotal))}</Typography.Text></Table.Summary.Cell>
                             </Table.Summary.Row>
                           </>
                         );
