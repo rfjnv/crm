@@ -250,17 +250,15 @@ export default function AnalyticsPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
 
-  const { data, isLoading, error: dataError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['analytics', period],
     queryFn: () => analyticsApi.getData(period),
   });
 
-  const { data: intel, error: intelError } = useQuery({
+  const { data: intel } = useQuery({
     queryKey: ['analytics-intelligence', period],
     queryFn: () => analyticsApi.getIntelligence(period),
   });
-
-  console.log('Analytics Debug:', { isLoading, data, intel, dataError, intelError });
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['analytics-product-hierarchy'],
@@ -268,7 +266,7 @@ export default function AnalyticsPage() {
   });
 
   const visibleProducts = useMemo(() => {
-    return allProducts.filter((p: Product) => p.isActive);
+    return allProducts.filter((p) => p.isActive);
   }, [allProducts]);
 
   const { data: productSalesMap = {}, isLoading: salesLoading } = useQuery({
@@ -323,16 +321,19 @@ export default function AnalyticsPage() {
       }
 
       return aggregateMap;
-
     },
   });
 
-  // ── All hooks MUST be called unconditionally before any early returns ──
+  const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
+
+  if (isLoading || !data) {
+    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  }
+
+  const { sales, finance, warehouse, managers, profitability } = data;
 
   const categories = useMemo<CategorySummary[]>(() => {
-    // Guard against data being undefined during loading, though visibleProducts handles it
-    if (!data && isLoading) return [];
-
     const byCategory = new Map<string, Product[]>();
 
     for (const p of visibleProducts) {
@@ -360,12 +361,9 @@ export default function AnalyticsPage() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [visibleProducts, data, isLoading]); // Added data, isLoading to dependencies for clarity, though visibleProducts is the primary one
+  }, [visibleProducts]);
 
   const visibleComparisonKeys = useMemo(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return new Set<string>();
-
     const keys = new Set<string>();
 
     for (const p of visibleProducts) {
@@ -377,12 +375,9 @@ export default function AnalyticsPage() {
     }
 
     return keys;
-  }, [visibleProducts, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [visibleProducts]);
 
   useEffect(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return;
-
     setComparisonMap((prev) => {
       const next: Record<string, HierarchyCompareItem> = {};
       for (const [key, value] of Object.entries(prev)) {
@@ -392,31 +387,22 @@ export default function AnalyticsPage() {
       }
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
-  }, [visibleComparisonKeys, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [visibleComparisonKeys]);
 
   useEffect(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return;
-
     if (!activeCategory && categories.length > 0) {
       setActiveCategory(categories[0].name);
     }
-  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [activeCategory, categories]);
 
   useEffect(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return;
-
     if (activeCategory && !categories.some((c) => c.name === activeCategory)) {
       setActiveCategory(categories[0]?.name || null);
       setActiveType(null);
     }
-  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [activeCategory, categories]);
 
   const typeSummaries = useMemo<TypeSummary[]>(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return [];
-
     if (!activeCategory) return [];
     const categoryData = categories.find((c) => c.name === activeCategory);
     if (!categoryData) return [];
@@ -446,12 +432,9 @@ export default function AnalyticsPage() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [activeCategory, categories, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [activeCategory, categories]);
 
   useEffect(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return;
-
     if (typeSummaries.length === 0) {
       setActiveType(null);
       return;
@@ -460,15 +443,12 @@ export default function AnalyticsPage() {
     if (!activeType || !typeSummaries.some((t) => t.name === activeType)) {
       setActiveType(typeSummaries[0].name);
     }
-  }, [activeType, typeSummaries, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [activeType, typeSummaries]);
 
   const productsOnLevel = useMemo(() => {
-    // Guard against data being undefined during loading
-    if (!data && isLoading) return [];
-
     if (!activeType) return [];
     return typeSummaries.find((t) => t.name === activeType)?.products || [];
-  }, [activeType, typeSummaries, data, isLoading]); // Added data, isLoading to dependencies for clarity
+  }, [activeType, typeSummaries]);
 
   const comparisonItems = useMemo(() => Object.values(comparisonMap), [comparisonMap]);
 
@@ -506,16 +486,6 @@ export default function AnalyticsPage() {
   };
 
   const isSelected = (key: string) => Boolean(comparisonMap[key]);
-
-  const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
-  const chartTheme = isDark ? 'classicDark' : 'classic';
-
-  // ── Early return after all hooks ──
-  if (isLoading || !data) {
-    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  }
-
-  const { sales, finance, warehouse, managers, profitability } = data;
 
   // ──── Sales tab data ────
   const pieData = sales.dealsByStatus.map((d) => ({
@@ -907,6 +877,7 @@ export default function AnalyticsPage() {
   // ════════════════════════════════════════
 
   const clientsIntel = intel?.clients;
+
   const segmentPieData = (clientsIntel?.segments ?? []).map((s) => ({
     type: segmentLabelMap[s.segment] || s.segment,
     value: s.count,
@@ -1018,7 +989,7 @@ export default function AnalyticsPage() {
       </Row>
     </div>
   ) : (
-    <Card bordered={false}><Empty description="Недостаточно данных для умной аналитики клиентов" /></Card>
+    <Spin style={{ display: 'block', margin: '60px auto' }} />
   );
 
   // ════════════════════════════════════════
@@ -1168,7 +1139,7 @@ export default function AnalyticsPage() {
       </Row>
     </div>
   ) : (
-    <Card bordered={false}><Empty description="Недостаточно данных для анализа товаров" /></Card>
+    <Spin style={{ display: 'block', margin: '60px auto' }} />
   );
 
   const productHierarchyTab = (
@@ -1475,7 +1446,7 @@ export default function AnalyticsPage() {
 
                 return (
                   <Card
-                    key={`comparison-table-${level}`}
+                    key={level}
                     size="small"
                     title={level === 'category' ? 'Категории vs Категории' : level === 'type' ? 'Типы vs Типы' : 'Товары vs Товары'}
                     style={{ marginTop: 12 }}
@@ -1519,7 +1490,7 @@ export default function AnalyticsPage() {
                   ...items.map((item) => ({
                     title: item.label,
                     dataIndex: item.key,
-                    key: `col-${item.key}`,
+                    key: item.key,
                     width: 130,
                   })),
                 ];
@@ -1539,7 +1510,7 @@ export default function AnalyticsPage() {
                           height={220}
                           colorField="name"
                           axis={{
-                            x: false,
+                            x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
                             y: { labelFill: token.colorTextSecondary },
                           }}
                           tooltip={{
@@ -1554,53 +1525,58 @@ export default function AnalyticsPage() {
                       )}
                     </Card>
 
-                    <Card size="small" title={`📦 Продаж (шт.)`} style={{ marginTop: 12, borderRadius: 10 }}>
-                      {qtyChartData.length > 0 ? (
-                        <Bar
-                          data={qtyChartData}
-                          xField="name"
-                          yField="value"
-                          height={200}
-                          colorField="name"
-                          axis={{
-                            x: false,
-                            y: { labelFill: token.colorTextSecondary },
-                          }}
-                          tooltip={{
-                            formatter: (datum: any) => {
-                              return { name: datum.name, value: datum.value.toLocaleString('ru-RU') };
-                            },
-                          }}
-                          theme={chartTheme}
-                        />
-                      ) : (
-                        <Typography.Text type="secondary">Нет данных</Typography.Text>
-                      )}
-                    </Card>
-
-                    <Card size="small" title={`💰 Средняя цена за ед.`} style={{ marginTop: 12, borderRadius: 10 }}>
-                      {priceChartData.length > 0 ? (
-                        <Bar
-                          data={priceChartData}
-                          xField="name"
-                          yField="value"
-                          height={200}
-                          colorField="name"
-                          axis={{
-                            x: false,
-                            y: { labelFill: token.colorTextSecondary },
-                          }}
-                          tooltip={{
-                            formatter: (datum: any) => {
-                              return { name: datum.name, value: formatUZS(datum.value) };
-                            },
-                          }}
-                          theme={chartTheme}
-                        />
-                      ) : (
-                        <Typography.Text type="secondary">Нет данных</Typography.Text>
-                      )}
-                    </Card>
+                    <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
+                      <Col xs={24} md={12}>
+                        <Card size="small" title={`📦 Продаж (шт.)`} style={{ borderRadius: 10 }}>
+                          {qtyChartData.length > 0 ? (
+                            <Bar
+                              data={qtyChartData}
+                              xField="name"
+                              yField="value"
+                              height={200}
+                              colorField="name"
+                              axis={{
+                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                y: { labelFill: token.colorTextSecondary },
+                              }}
+                              tooltip={{
+                                formatter: (datum: any) => {
+                                  return { name: datum.name, value: datum.value.toLocaleString('ru-RU') };
+                                },
+                              }}
+                              theme={chartTheme}
+                            />
+                          ) : (
+                            <Typography.Text type="secondary">Нет данных</Typography.Text>
+                          )}
+                        </Card>
+                      </Col>
+                      <Col xs={24} md={12}>
+                        <Card size="small" title={`💰 Средняя цена за ед.`} style={{ borderRadius: 10 }}>
+                          {priceChartData.length > 0 ? (
+                            <Bar
+                              data={priceChartData}
+                              xField="name"
+                              yField="value"
+                              height={200}
+                              colorField="name"
+                              axis={{
+                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                y: { labelFill: token.colorTextSecondary },
+                              }}
+                              tooltip={{
+                                formatter: (datum: any) => {
+                                  return { name: datum.name, value: formatUZS(datum.value) };
+                                },
+                              }}
+                              theme={chartTheme}
+                            />
+                          ) : (
+                            <Typography.Text type="secondary">Нет данных</Typography.Text>
+                          )}
+                        </Card>
+                      </Col>
+                    </Row>
 
                     <Card
                       size="small"
@@ -1737,7 +1713,7 @@ export default function AnalyticsPage() {
   // ──── MANAGERS TAB (extended) ────
   // ════════════════════════════════════════
 
-  const managerRows = intel?.managers?.rows ?? managers.rows.map((m) => ({
+  const managerRows = intel?.managers.rows ?? managers.rows.map((m) => ({
     ...m,
     uniqueClients: 0,
     repeatClients: 0,
