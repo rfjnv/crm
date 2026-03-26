@@ -68,6 +68,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
         paidAmount: Number(deal.paidAmount),
         discount: Number(deal.discount || 0),
         dueDate: deal.dueDate ? dayjs(deal.dueDate) : undefined,
+        createdAt: deal.createdAt ? dayjs(deal.createdAt) : undefined,
         terms: deal.terms || '',
       });
 
@@ -143,6 +144,10 @@ export default function SuperOverrideModal({ open, deal, products, users, client
       const formDueDate = values.dueDate ? values.dueDate.format('YYYY-MM-DD') : null;
       const dealDueDate = deal.dueDate ? dayjs(deal.dueDate).format('YYYY-MM-DD') : null;
       if (formDueDate !== dealDueDate) data.dueDate = formDueDate;
+
+      const formCreatedAt = values.createdAt ? values.createdAt.format('YYYY-MM-DD') : null;
+      const dealCreatedAt = deal.createdAt ? dayjs(deal.createdAt).format('YYYY-MM-DD') : null;
+      if (formCreatedAt !== dealCreatedAt) data.createdAt = formCreatedAt;
 
       // Items (full replace if editItems is on)
       if (editItems) {
@@ -397,6 +402,9 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                   <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
                 </Form.Item>
                 <Form.Item name="dueDate" label="Срок оплаты">
+                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                </Form.Item>
+                <Form.Item name="createdAt" label="Дата создания сделки">
                   <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
                 </Form.Item>
               </div>
