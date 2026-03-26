@@ -12,6 +12,7 @@ export interface OverrideDealData {
   paymentType?: string;
   paidAmount?: number;
   dueDate?: string | null;
+  createdAt?: string | null;
   discount?: number;
   terms?: string | null;
   items?: {
