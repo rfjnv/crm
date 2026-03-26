@@ -257,6 +257,9 @@ export default function SuperOverrideModal({ open, deal, products, users, client
           children: (
             <Form form={form} layout="vertical">
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                <Form.Item name="createdAt" label="Дата создания сделки">
+                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                </Form.Item>
                 <Form.Item name="title" label="Название">
                   <Input />
                 </Form.Item>
@@ -402,9 +405,6 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                   <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
                 </Form.Item>
                 <Form.Item name="dueDate" label="Срок оплаты">
-                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
-                </Form.Item>
-                <Form.Item name="createdAt" label="Дата создания сделки">
                   <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
                 </Form.Item>
               </div>
