@@ -159,11 +159,13 @@ export default function DealDetailPage() {
   const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
 
   const isSuperAdmin = role === 'SUPER_ADMIN';
+  const canSuperOverride = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const canDeleteAnyDeal = isSuperAdmin;
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
     queryFn: clientsApi.list,
-    enabled: isSuperAdmin,
+    enabled: canSuperOverride,
   });
 
   const { data: clientContracts } = useQuery({
@@ -657,8 +659,8 @@ export default function DealDetailPage() {
       );
     }
 
-    // SUPER_ADMIN: Override button (always visible for SA)
-    if (isSuperAdmin) {
+    // Override tools: visible for users with corresponding permissions
+    if (canSuperOverride) {
       actions.push(
         <Button
           key="override"
@@ -669,6 +671,9 @@ export default function DealDetailPage() {
           Super Override
         </Button>,
       );
+    }
+
+    if (canDeleteAnyDeal) {
       actions.push(
         <Button
           key="delete-deal"
@@ -2019,8 +2024,8 @@ export default function DealDetailPage() {
         </Button>
       </Modal>
 
-      {/* SUPER_ADMIN: Override Modal */}
-      {isSuperAdmin && (
+      {/* Override Modal */}
+      {canSuperOverride && (
         <SuperOverrideModal
           open={overrideModal}
           deal={deal}
