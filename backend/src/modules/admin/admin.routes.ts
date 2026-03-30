@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Role } from '@prisma/client';
 import { authenticate } from '../../middleware/authenticate';
-import { requirePermission } from '../../middleware/authorize';
+import { authorize, requirePermission } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
@@ -20,7 +20,7 @@ function getUser(req: Request): AuthUser {
 // ──── SUPER_ADMIN Deal Override ────
 router.patch(
   '/deals/:id/override',
-  requirePermission('super_deal_override'),
+  authorize('SUPER_ADMIN', 'ADMIN'),
   validate(superOverrideDealDto),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await dealsService.overrideUpdate(req.params.id as string, req.body, getUser(req));
