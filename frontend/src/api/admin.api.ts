@@ -16,11 +16,24 @@ export interface OverrideDealData {
   discount?: number;
   terms?: string | null;
   items?: {
+    id?: string;
     productId: string;
     requestedQty?: number;
     price?: number;
     requestComment?: string;
     warehouseComment?: string;
+    dealDate?: string | null;
+    confirmedAt?: string | null;
+    createdAt?: string | null;
+  }[];
+  payments?: {
+    id: string;
+    paidAt?: string | null;
+    createdAt?: string | null;
+  }[];
+  comments?: {
+    id: string;
+    createdAt?: string | null;
   }[];
   shipment?: {
     vehicleType: string;
@@ -29,6 +42,7 @@ export interface OverrideDealData {
     departureTime: string;
     deliveryNoteNumber: string;
     shipmentComment?: string;
+    shippedAt?: string | null;
   };
 }
 

@@ -9,7 +9,7 @@ import { adminApi, type OverrideDealData } from '../api/admin.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from './DealStatusTag';
-import type { Deal, Product, DealStatus, User } from '../types';
+import type { Deal, Product, DealStatus, User, PaymentRecord, DealComment } from '../types';
 import dayjs from 'dayjs';
 
 const ALL_STATUSES: DealStatus[] = [
@@ -21,6 +21,7 @@ const ALL_STATUSES: DealStatus[] = [
 interface Props {
   open: boolean;
   deal: Deal;
+  payments: PaymentRecord[];
   products: Product[];
   users: User[];
   clients: { id: string; companyName: string }[];
@@ -30,20 +31,38 @@ interface Props {
 
 interface OverrideItem {
   key: string;
+  id?: string;
   productId: string;
   requestedQty?: number;
   price?: number;
   requestComment?: string;
   warehouseComment?: string;
+  dealDate?: dayjs.Dayjs;
+  confirmedAt?: dayjs.Dayjs;
+  createdAt?: dayjs.Dayjs;
+}
+
+interface OverridePayment {
+  id: string;
+  paidAt?: dayjs.Dayjs;
+  createdAt?: dayjs.Dayjs;
+}
+
+interface OverrideComment {
+  id: string;
+  text: string;
+  createdAt?: dayjs.Dayjs;
 }
 
 let nextKey = 0;
 
-export default function SuperOverrideModal({ open, deal, products, users, clients, onClose, onSuccess }: Props) {
+export default function SuperOverrideModal({ open, deal, payments, products, users, clients, onClose, onSuccess }: Props) {
   const [form] = Form.useForm();
   const [shipmentForm] = Form.useForm();
   const [reason, setReason] = useState('');
   const [items, setItems] = useState<OverrideItem[]>([]);
+  const [paymentDates, setPaymentDates] = useState<OverridePayment[]>([]);
+  const [commentDates, setCommentDates] = useState<OverrideComment[]>([]);
   const [editItems, setEditItems] = useState(false);
   const [editShipment, setEditShipment] = useState(false);
   const queryClient = useQueryClient();
@@ -75,13 +94,33 @@ export default function SuperOverrideModal({ open, deal, products, users, client
       // Pre-populate items
       const dealItems: OverrideItem[] = (deal.items ?? []).map((i) => ({
         key: `oi-${nextKey++}`,
+        id: i.id,
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : undefined,
         price: i.price != null ? Number(i.price) : undefined,
         requestComment: i.requestComment || undefined,
         warehouseComment: i.warehouseComment || undefined,
+        dealDate: i.dealDate ? dayjs(i.dealDate) : undefined,
+        confirmedAt: i.confirmedAt ? dayjs(i.confirmedAt) : undefined,
+        createdAt: i.createdAt ? dayjs(i.createdAt) : undefined,
       }));
       setItems(dealItems);
+
+      setPaymentDates(
+        (payments ?? []).map((payment) => ({
+          id: payment.id,
+          paidAt: payment.paidAt ? dayjs(payment.paidAt) : undefined,
+          createdAt: payment.createdAt ? dayjs(payment.createdAt) : undefined,
+        })),
+      );
+
+      setCommentDates(
+        ((deal.comments ?? []) as DealComment[]).map((comment) => ({
+          id: comment.id,
+          text: comment.text,
+          createdAt: comment.createdAt ? dayjs(comment.createdAt) : undefined,
+        })),
+      );
 
       if (deal.shipment) {
         setEditShipment(true);
@@ -90,6 +129,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
           vehicleNumber: deal.shipment.vehicleNumber,
           driverName: deal.shipment.driverName,
           departureTime: dayjs(deal.shipment.departureTime),
+          shippedAt: deal.shipment.shippedAt ? dayjs(deal.shipment.shippedAt) : undefined,
           deliveryNoteNumber: deal.shipment.deliveryNoteNumber,
           shipmentComment: deal.shipment.shipmentComment || '',
         });
@@ -97,7 +137,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
         shipmentForm.resetFields();
       }
     }
-  }, [open, deal, form, shipmentForm]);
+  }, [open, deal, payments, form, shipmentForm]);
 
   const productMap = useMemo(() => {
     const m = new Map<string, Product>();
@@ -141,26 +181,62 @@ export default function SuperOverrideModal({ open, deal, products, users, client
       if (values.discount !== Number(deal.discount || 0)) data.discount = values.discount;
       if (values.terms !== (deal.terms || '')) data.terms = values.terms || null;
 
-      const formDueDate = values.dueDate ? values.dueDate.format('YYYY-MM-DD') : null;
-      const dealDueDate = deal.dueDate ? dayjs(deal.dueDate).format('YYYY-MM-DD') : null;
+      const formDueDate = values.dueDate ? values.dueDate.toISOString() : null;
+      const dealDueDate = deal.dueDate ? dayjs(deal.dueDate).toISOString() : null;
       if (formDueDate !== dealDueDate) data.dueDate = formDueDate;
 
-      const formCreatedAt = values.createdAt ? values.createdAt.format('YYYY-MM-DD') : null;
-      const dealCreatedAt = deal.createdAt ? dayjs(deal.createdAt).format('YYYY-MM-DD') : null;
+      const formCreatedAt = values.createdAt ? values.createdAt.toISOString() : null;
+      const dealCreatedAt = deal.createdAt ? dayjs(deal.createdAt).toISOString() : null;
       if (formCreatedAt !== dealCreatedAt) data.createdAt = formCreatedAt;
 
-      // Items (full replace if editItems is on)
-      if (editItems) {
+      const hasItemDateChanges = items.some((item) => {
+        const original = deal.items?.find((entry) => entry.id === item.id);
+        return (
+          (item.dealDate ? item.dealDate.toISOString() : null) !== (original?.dealDate ? dayjs(original.dealDate).toISOString() : null)
+          || (item.confirmedAt ? item.confirmedAt.toISOString() : null) !== (original?.confirmedAt ? dayjs(original.confirmedAt).toISOString() : null)
+          || (item.createdAt ? item.createdAt.toISOString() : null) !== (original?.createdAt ? dayjs(original.createdAt).toISOString() : null)
+        );
+      });
+
+      if (editItems || hasItemDateChanges) {
         data.items = items
           .filter((i) => i.productId)
           .map((i) => ({
+            id: i.id,
             productId: i.productId,
             requestedQty: i.requestedQty,
             price: i.price,
             requestComment: i.requestComment,
             warehouseComment: i.warehouseComment,
+            dealDate: i.dealDate ? i.dealDate.toISOString() : null,
+            confirmedAt: i.confirmedAt ? i.confirmedAt.toISOString() : null,
+            createdAt: i.createdAt ? i.createdAt.toISOString() : null,
           }));
       }
+
+      const changedPayments = paymentDates
+        .map((payment) => {
+          const original = payments.find((entry) => entry.id === payment.id);
+          const paidAt = payment.paidAt ? payment.paidAt.toISOString() : null;
+          const createdAt = payment.createdAt ? payment.createdAt.toISOString() : null;
+          const originalPaidAt = original?.paidAt ? dayjs(original.paidAt).toISOString() : null;
+          const originalCreatedAt = original?.createdAt ? dayjs(original.createdAt).toISOString() : null;
+          if (paidAt === originalPaidAt && createdAt === originalCreatedAt) return null;
+          return { id: payment.id, paidAt, createdAt };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+      if (changedPayments.length > 0) data.payments = changedPayments;
+
+      const changedComments = commentDates
+        .map((comment) => {
+          const original = deal.comments?.find((entry) => entry.id === comment.id);
+          const createdAt = comment.createdAt ? comment.createdAt.toISOString() : null;
+          const originalCreatedAt = original?.createdAt ? dayjs(original.createdAt).toISOString() : null;
+          if (createdAt === originalCreatedAt) return null;
+          return { id: comment.id, createdAt };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+      if (changedComments.length > 0) data.comments = changedComments;
 
       // Shipment
       if (editShipment && !deal.shipment) {
@@ -171,6 +247,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
             vehicleNumber: sv.vehicleNumber,
             driverName: sv.driverName,
             departureTime: sv.departureTime.toISOString(),
+            shippedAt: sv.shippedAt ? sv.shippedAt.toISOString() : null,
             deliveryNoteNumber: sv.deliveryNoteNumber,
             shipmentComment: sv.shipmentComment || undefined,
           };
@@ -185,6 +262,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
             vehicleNumber: sv.vehicleNumber,
             driverName: sv.driverName,
             departureTime: sv.departureTime.toISOString(),
+            shippedAt: sv.shippedAt ? sv.shippedAt.toISOString() : null,
             deliveryNoteNumber: sv.deliveryNoteNumber,
             shipmentComment: sv.shipmentComment || undefined,
           };
@@ -205,6 +283,14 @@ export default function SuperOverrideModal({ open, deal, products, users, client
 
   function updateItem(key: string, patch: Partial<OverrideItem>) {
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  }
+
+  function updatePaymentDate(id: string, patch: Partial<OverridePayment>) {
+    setPaymentDates((prev) => prev.map((payment) => (payment.id === id ? { ...payment, ...patch } : payment)));
+  }
+
+  function updateCommentDate(id: string, patch: Partial<OverrideComment>) {
+    setCommentDates((prev) => prev.map((comment) => (comment.id === id ? { ...comment, ...patch } : comment)));
   }
 
   const itemsTotal = useMemo(() =>
@@ -258,7 +344,7 @@ export default function SuperOverrideModal({ open, deal, products, users, client
             <Form form={form} layout="vertical">
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="createdAt" label="Дата создания сделки">
-                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                  <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
                 </Form.Item>
                 <Form.Item name="title" label="Название">
                   <Input />
@@ -309,6 +395,9 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 90 }}>Кол-во</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 120 }}>Цена</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 100 }}>Сумма</th>
+                        <th style={{ padding: '4px 6px', fontSize: 12, width: 180 }}>Deal Date</th>
+                        <th style={{ padding: '4px 6px', fontSize: 12, width: 180 }}>Confirmed At</th>
+                        <th style={{ padding: '4px 6px', fontSize: 12, width: 180 }}>Item Created</th>
                         <th style={{ width: 32 }} />
                       </tr>
                     </thead>
@@ -353,6 +442,33 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                             </td>
                             <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
                               {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <DatePicker
+                                showTime
+                                style={{ width: '100%' }}
+                                format="DD.MM.YYYY HH:mm"
+                                value={item.dealDate}
+                                onChange={(v) => updateItem(item.key, { dealDate: v ?? undefined })}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <DatePicker
+                                showTime
+                                style={{ width: '100%' }}
+                                format="DD.MM.YYYY HH:mm"
+                                value={item.confirmedAt}
+                                onChange={(v) => updateItem(item.key, { confirmedAt: v ?? undefined })}
+                              />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <DatePicker
+                                showTime
+                                style={{ width: '100%' }}
+                                format="DD.MM.YYYY HH:mm"
+                                value={item.createdAt}
+                                onChange={(v) => updateItem(item.key, { createdAt: v ?? undefined })}
+                              />
                             </td>
                             <td style={{ padding: '4px 6px' }}>
                               <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} />
@@ -405,13 +521,80 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                   <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
                 </Form.Item>
                 <Form.Item name="dueDate" label="Срок оплаты">
-                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                  <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
                 </Form.Item>
               </div>
               <Form.Item name="terms" label="Условия">
                 <Input.TextArea rows={2} placeholder="Условия оплаты..." />
               </Form.Item>
             </Form>
+          ),
+        },
+        {
+          key: 'payment-dates',
+          label: `Payment Dates (${paymentDates.length})`,
+          children: (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {paymentDates.length === 0 ? (
+                <Typography.Text type="secondary">No payments for this deal.</Typography.Text>
+              ) : paymentDates.map((payment) => {
+                const original = payments.find((entry) => entry.id === payment.id);
+                return (
+                  <div key={payment.id} style={{ border: `1px solid ${tk.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+                    <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                      {(original?.amount ? formatUZS(Number(original.amount)) : 'Payment')} {original?.method ? `• ${original.method}` : ''}
+                    </Typography.Text>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <Typography.Text type="secondary">Paid At</Typography.Text>
+                        <DatePicker
+                          showTime
+                          style={{ width: '100%', marginTop: 4 }}
+                          format="DD.MM.YYYY HH:mm"
+                          value={payment.paidAt}
+                          onChange={(v) => updatePaymentDate(payment.id, { paidAt: v ?? undefined })}
+                        />
+                      </div>
+                      <div>
+                        <Typography.Text type="secondary">Created At</Typography.Text>
+                        <DatePicker
+                          showTime
+                          style={{ width: '100%', marginTop: 4 }}
+                          format="DD.MM.YYYY HH:mm"
+                          value={payment.createdAt}
+                          onChange={(v) => updatePaymentDate(payment.id, { createdAt: v ?? undefined })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ),
+        },
+        {
+          key: 'comment-dates',
+          label: `Comment Dates (${commentDates.length})`,
+          children: (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {commentDates.length === 0 ? (
+                <Typography.Text type="secondary">No comments for this deal.</Typography.Text>
+              ) : commentDates.map((comment) => (
+                <div key={comment.id} style={{ border: `1px solid ${tk.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+                  <Typography.Text style={{ display: 'block', marginBottom: 8 }}>
+                    {comment.text || 'Комментарий'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">Created At</Typography.Text>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', marginTop: 4 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={comment.createdAt}
+                    onChange={(v) => updateCommentDate(comment.id, { createdAt: v ?? undefined })}
+                  />
+                </div>
+              ))}
+            </div>
           ),
         },
         {
@@ -441,6 +624,9 @@ export default function SuperOverrideModal({ open, deal, products, users, client
                       <Input placeholder="ФИО водителя" />
                     </Form.Item>
                     <Form.Item name="departureTime" label="Время отправления" rules={[{ required: true }]}>
+                      <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+                    </Form.Item>
+                    <Form.Item name="shippedAt" label="Shipped At">
                       <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
                     </Form.Item>
                     <Form.Item name="deliveryNoteNumber" label="Номер накладной" rules={[{ required: true }]}>

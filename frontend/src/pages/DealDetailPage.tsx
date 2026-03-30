@@ -2029,6 +2029,7 @@ export default function DealDetailPage() {
         <SuperOverrideModal
           open={overrideModal}
           deal={deal}
+          payments={dealPayments ?? []}
           products={products ?? []}
           users={users ?? []}
           clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}

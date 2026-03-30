@@ -85,6 +85,11 @@ function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Ro
   }
 }
 
+function parseOptionalDate(value?: string | null): Date | null | undefined {
+  if (value === undefined) return undefined;
+  return value ? new Date(value) : null;
+}
+
 // ==================== SERVICE ====================
 
 export class DealsService {
@@ -2038,6 +2043,8 @@ export class DealsService {
       where: { id },
       include: {
         items: true,
+        comments: true,
+        payments: true,
         shipment: true,
         client: { select: { id: true, companyName: true } },
         manager: { select: { id: true, fullName: true } },
@@ -2062,18 +2069,33 @@ export class DealsService {
       paidAmount: Number(deal.paidAmount),
       paymentStatus: deal.paymentStatus,
       dueDate: deal.dueDate,
+      createdAt: deal.createdAt,
       terms: deal.terms,
       items: deal.items.map((i) => ({
         id: i.id,
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        dealDate: i.dealDate,
+        confirmedAt: i.confirmedAt,
+        createdAt: i.createdAt,
+      })),
+      payments: deal.payments.map((p) => ({
+        id: p.id,
+        paidAt: p.paidAt,
+        createdAt: p.createdAt,
+      })),
+      comments: deal.comments.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt,
       })),
       shipment: deal.shipment ? {
         vehicleType: deal.shipment.vehicleType,
         vehicleNumber: deal.shipment.vehicleNumber,
         driverName: deal.shipment.driverName,
+        departureTime: deal.shipment.departureTime,
         deliveryNoteNumber: deal.shipment.deliveryNoteNumber,
+        shippedAt: deal.shipment.shippedAt,
       } : null,
     };
 
@@ -2086,7 +2108,8 @@ export class DealsService {
       if (dto.terms !== undefined) data.terms = dto.terms;
       if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
       if (dto.paymentType !== undefined) data.paymentType = dto.paymentType;
-      if (dto.dueDate !== undefined) data.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+      if (dto.dueDate !== undefined) data.dueDate = parseOptionalDate(dto.dueDate);
+      if (dto.createdAt !== undefined && dto.createdAt !== null) data.createdAt = parseOptionalDate(dto.createdAt);
       if (dto.paidAmount !== undefined) data.paidAmount = dto.paidAmount;
 
       if (dto.clientId !== undefined && dto.clientId !== deal.clientId) {
@@ -2181,20 +2204,82 @@ export class DealsService {
           }
         }
 
-        await tx.dealItem.deleteMany({ where: { dealId: id } });
+        const existingItems = await tx.dealItem.findMany({ where: { dealId: id } });
+        const existingItemIds = new Set(existingItems.map((item) => item.id));
+        const incomingItemIds = new Set(dto.items.map((item) => item.id).filter((itemId): itemId is string => !!itemId));
         for (const item of dto.items) {
           const product = await tx.product.findUnique({ where: { id: item.productId } });
           if (!product) throw new AppError(404, `Товар ${item.productId} не найден`);
-          await tx.dealItem.create({
+          const itemData = {
+            productId: item.productId,
+            requestedQty: item.requestedQty ?? null,
+            price: item.price ?? null,
+            requestComment: item.requestComment,
+            warehouseComment: item.warehouseComment,
+            dealDate: parseOptionalDate(item.dealDate),
+            confirmedAt: parseOptionalDate(item.confirmedAt),
+            ...(item.createdAt !== undefined && item.createdAt !== null ? { createdAt: new Date(item.createdAt) } : {}),
+          };
+
+          if (item.id) {
+            if (!existingItemIds.has(item.id)) {
+              throw new AppError(404, `РџРѕР·РёС†РёСЏ ${item.id} РЅРµ РЅР°Р№РґРµРЅР°`);
+            }
+            await tx.dealItem.update({
+              where: { id: item.id },
+              data: itemData,
+            });
+          } else {
+            await tx.dealItem.create({
+              data: {
+                dealId: id,
+                ...itemData,
+              },
+            });
+          }
+        }
+
+        const idsToDelete = existingItems
+          .map((item) => item.id)
+          .filter((itemId) => !incomingItemIds.has(itemId));
+
+        if (idsToDelete.length > 0) {
+          await tx.dealItem.deleteMany({ where: { id: { in: idsToDelete } } });
+        }
+      }
+
+      if (dto.payments !== undefined) {
+        for (const payment of dto.payments) {
+          const existingPayment = await tx.payment.findFirst({
+            where: { id: payment.id, dealId: id },
+          });
+          if (!existingPayment) throw new AppError(404, `РџР»Р°С‚С‘Р¶ ${payment.id} РЅРµ РЅР°Р№РґРµРЅ`);
+
+          await tx.payment.update({
+            where: { id: payment.id },
             data: {
-              dealId: id,
-              productId: item.productId,
-              requestedQty: item.requestedQty ?? null,
-              price: item.price ?? null,
-              requestComment: item.requestComment,
-              warehouseComment: item.warehouseComment,
+              ...(payment.paidAt !== undefined ? { paidAt: parseOptionalDate(payment.paidAt) ?? existingPayment.paidAt } : {}),
+              ...(payment.createdAt !== undefined && payment.createdAt !== null ? { createdAt: parseOptionalDate(payment.createdAt) ?? existingPayment.createdAt } : {}),
             },
           });
+        }
+      }
+
+      if (dto.comments !== undefined) {
+        for (const comment of dto.comments) {
+          const existingComment = await tx.dealComment.findFirst({
+            where: { id: comment.id, dealId: id },
+          });
+          if (!existingComment) throw new AppError(404, `РљРѕРјРјРµРЅС‚Р°СЂРёР№ ${comment.id} РЅРµ РЅР°Р№РґРµРЅ`);
+
+          if (comment.createdAt !== undefined) {
+            await tx.dealComment.update({
+              where: { id: comment.id },
+              data: {
+                createdAt: (comment.createdAt !== null ? parseOptionalDate(comment.createdAt) : existingComment.createdAt) ?? existingComment.createdAt,
+              },
+            });
+          }
         }
       }
 
@@ -2209,6 +2294,7 @@ export class DealsService {
             departureTime: new Date(dto.shipment.departureTime),
             deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
             shipmentComment: dto.shipment.shipmentComment,
+            ...(dto.shipment.shippedAt !== undefined && dto.shipment.shippedAt !== null ? { shippedAt: parseOptionalDate(dto.shipment.shippedAt) ?? new Date() } : {}),
           },
           create: {
             dealId: id,
@@ -2219,6 +2305,7 @@ export class DealsService {
             deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
             shipmentComment: dto.shipment.shipmentComment,
             shippedBy: user.userId,
+            ...(dto.shipment.shippedAt !== undefined && dto.shipment.shippedAt !== null ? { shippedAt: parseOptionalDate(dto.shipment.shippedAt) ?? new Date() } : {}),
           },
         });
       }
@@ -2249,7 +2336,7 @@ export class DealsService {
     // Build "after" snapshot
     const updatedDeal = await prisma.deal.findUnique({
       where: { id },
-      include: { items: true, shipment: true },
+      include: { items: true, shipment: true, payments: true, comments: true },
     });
 
     const afterSnapshot: Record<string, unknown> = {
@@ -2264,17 +2351,33 @@ export class DealsService {
       paymentType: updatedDeal!.paymentType,
       paidAmount: Number(updatedDeal!.paidAmount),
       paymentStatus: updatedDeal!.paymentStatus,
+      dueDate: updatedDeal!.dueDate,
+      createdAt: updatedDeal!.createdAt,
       items: updatedDeal!.items.map((i) => ({
         id: i.id,
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        dealDate: i.dealDate,
+        confirmedAt: i.confirmedAt,
+        createdAt: i.createdAt,
+      })),
+      payments: updatedDeal!.payments.map((p) => ({
+        id: p.id,
+        paidAt: p.paidAt,
+        createdAt: p.createdAt,
+      })),
+      comments: updatedDeal!.comments.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt,
       })),
       shipment: updatedDeal!.shipment ? {
         vehicleType: updatedDeal!.shipment.vehicleType,
         vehicleNumber: updatedDeal!.shipment.vehicleNumber,
         driverName: updatedDeal!.shipment.driverName,
+        departureTime: updatedDeal!.shipment.departureTime,
         deliveryNoteNumber: updatedDeal!.shipment.deliveryNoteNumber,
+        shippedAt: updatedDeal!.shipment.shippedAt,
       } : null,
     };
 

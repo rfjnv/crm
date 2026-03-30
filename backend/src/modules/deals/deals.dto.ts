@@ -136,14 +136,28 @@ export const superOverrideDealDto = z.object({
   paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   paidAmount: z.number().min(0).optional(),
   dueDate: z.string().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
   discount: z.number().min(0).optional(),
   terms: z.string().nullable().optional(),
   items: z.array(z.object({
+    id: z.string().uuid().optional(),
     productId: z.string().uuid(),
     requestedQty: z.number().positive().optional(),
     price: z.number().min(0).optional(),
     requestComment: z.string().optional(),
     warehouseComment: z.string().optional(),
+    dealDate: z.string().nullable().optional(),
+    confirmedAt: z.string().nullable().optional(),
+    createdAt: z.string().nullable().optional(),
+  })).optional(),
+  payments: z.array(z.object({
+    id: z.string().uuid(),
+    paidAt: z.string().nullable().optional(),
+    createdAt: z.string().nullable().optional(),
+  })).optional(),
+  comments: z.array(z.object({
+    id: z.string().uuid(),
+    createdAt: z.string().nullable().optional(),
   })).optional(),
   shipment: z.object({
     vehicleType: z.string().min(1),
@@ -152,6 +166,7 @@ export const superOverrideDealDto = z.object({
     departureTime: z.string().min(1),
     deliveryNoteNumber: z.string().min(1),
     shipmentComment: z.string().optional(),
+    shippedAt: z.string().nullable().optional(),
   }).optional(),
 });
 
