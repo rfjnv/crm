@@ -230,7 +230,7 @@ router.get(
           amount: true,
           paidAmount: true,
         }
-      }),
+      }) as unknown as Promise<any[]>,
       prisma.deal.findMany({
         where: {
           ...dealScope,

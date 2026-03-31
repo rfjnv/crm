@@ -132,7 +132,7 @@ router.get(
           amount: true,
           paidAmount: true,
         }
-      }),
+      }) as unknown as Promise<any[]>,
 
       // 6. Zero stock products
       prisma.product.findMany({
