@@ -1,7 +1,8 @@
 import { Typography, Table, Rate, Card } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { reviewsApi, TelegramReview } from '../api/reviews.api';
+import { reviewsApi } from '../api/reviews.api';
+import type { TelegramReview } from '../api/reviews.api';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;

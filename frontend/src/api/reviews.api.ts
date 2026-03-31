@@ -1,4 +1,4 @@
-import { api } from './api';
+import client from './client';
 
 export interface TelegramReview {
   id: string;
@@ -22,7 +22,7 @@ export interface TelegramReview {
 
 export const reviewsApi = {
   getReviews: async () => {
-    const { data } = await api.get<TelegramReview[]>('/api/reviews');
+    const { data } = await client.get<TelegramReview[]>('/api/reviews');
     return data;
   },
 };
