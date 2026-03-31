@@ -223,7 +223,10 @@ export class WarehouseService {
 
   async getMovements(productId?: string) {
     return prisma.inventoryMovement.findMany({
-      where: productId ? { productId } : {},
+      where: {
+        ...(productId ? { productId } : {}),
+        type: { not: 'CORRECTION' },
+      },
       include: {
         product: { select: { id: true, name: true, sku: true } },
         deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
@@ -240,7 +243,10 @@ export class WarehouseService {
     }
 
     return prisma.inventoryMovement.findMany({
-      where: { productId },
+      where: {
+        productId,
+        type: { not: 'CORRECTION' },
+      },
       include: {
         deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
       },
@@ -253,6 +259,15 @@ export class WarehouseService {
       return prisma.auditLog.findMany({
         where: {
           entityType: { in: ['product', 'inventory_movement', 'stock_correction'] },
+          NOT: [
+            { entityType: 'stock_correction' },
+            {
+              after: {
+                path: ['type'],
+                equals: 'CORRECTION',
+              },
+            },
+          ],
         },
         include: {
           user: { select: { id: true, fullName: true, role: true } },
@@ -282,6 +297,15 @@ export class WarehouseService {
             entityId: { in: movementIds.map((movement) => movement.id) },
           },
         ],
+        NOT: [
+          { entityType: 'stock_correction' },
+          {
+            after: {
+              path: ['type'],
+              equals: 'CORRECTION',
+            },
+          },
+        ],
       },
       include: {
         user: { select: { id: true, fullName: true, role: true } },
@@ -302,7 +326,11 @@ export class WarehouseService {
 
     const [movements, dealItems, topClientsRaw] = await Promise.all([
       prisma.inventoryMovement.findMany({
-        where: { productId, createdAt: { gte: from } },
+        where: {
+          productId,
+          createdAt: { gte: from },
+          type: { not: 'CORRECTION' },
+        },
         select: { type: true, quantity: true, createdAt: true },
         orderBy: { createdAt: 'asc' },
       }),
@@ -336,7 +364,7 @@ export class WarehouseService {
       const day = m.createdAt.toISOString().slice(0, 10);
       const entry = dayMap.get(day) || { inQty: 0, outQty: 0 };
       if (m.type === 'IN') entry.inQty += Number(m.quantity);
-      else entry.outQty += Number(m.quantity);
+      else if (m.type === 'OUT') entry.outQty += Number(m.quantity);
       dayMap.set(day, entry);
     }
     const movementsByDay = Array.from(dayMap.entries())
