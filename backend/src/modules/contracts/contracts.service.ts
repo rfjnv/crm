@@ -447,7 +447,9 @@ export class ContractsService {
         authorizedPersonPosition: poa.authorizedPersonPosition,
         validFrom: poa.validFrom,
         validUntil: poa.validUntil,
-        items: (poa.items as { name: string; unit: string; qty?: number }[]) || [],
+        items: (Array.isArray(poa.items) && poa.items.length > 0)
+          ? (poa.items as { name: string; unit: string; qty?: number }[])
+          : allItems.map(i => ({ name: i.product.name, unit: i.product.unit, qty: Number(i.requestedQty) || undefined })),
         contract: { contractNumber: contract.contractNumber, startDate: contract.startDate },
         client: contract.client,
       };

@@ -43,6 +43,16 @@ export class PowerOfAttorneyService {
                 mfo: true, vatRegCode: true, oked: true,
               },
             },
+            deals: {
+              select: {
+                items: {
+                  select: {
+                    requestedQty: true,
+                    product: { select: { name: true, unit: true } },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -191,7 +201,13 @@ export class PowerOfAttorneyService {
       authorizedPersonPosition: poa.authorizedPersonPosition,
       validFrom: poa.validFrom,
       validUntil: poa.validUntil,
-      items: (poa.items as { name: string; unit: string; qty?: number }[]) || [],
+      items: (Array.isArray(poa.items) && poa.items.length > 0)
+        ? (poa.items as { name: string; unit: string; qty?: number }[])
+        : (poa.contract as any).deals?.flatMap((d: any) => d.items.map((i: any) => ({
+            name: i.product.name,
+            unit: i.product.unit,
+            qty: i.requestedQty,
+          }))) || [],
       contract: {
         contractNumber: poa.contract.contractNumber,
         startDate: poa.contract.startDate,

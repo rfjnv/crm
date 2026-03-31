@@ -12,7 +12,7 @@ import {
   ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
   OrderedListOutlined, DollarOutlined, SolutionOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
-  CalculatorOutlined, PlusOutlined, PrinterOutlined,
+  PlusOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
@@ -20,7 +20,6 @@ import { contractsApi } from '../api/contracts.api';
 import { poaApi } from '../api/power-of-attorney.api';
 import type { PowerOfAttorney, CreatePoaData } from '../api/power-of-attorney.api';
 import { formatUZS, moneyFormatter } from '../utils/currency';
-import { VAT_RATE } from '../utils/vat';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
@@ -59,7 +58,6 @@ export default function ContractDetailPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [pdfLoadingKey, setPdfLoadingKey] = useState<string | null>(null);
-  const [showVat, setShowVat] = useState(false);
   const [poaModalOpen, setPoaModalOpen] = useState(false);
   const [poaForm] = Form.useForm();
 
@@ -152,9 +150,9 @@ export default function ContractDetailPage() {
       (d.items ?? []).map((item) => {
         const qty = Number(item.requestedQty) || 0;
         const price = Number(item.price) || 0;
-        const sum = qty * price;
-        const vatAmount = Math.round(sum * VAT_RATE * 100) / 100;
-        const sumWithVat = sum + vatAmount;
+        const sumWithVat = qty * price;
+        const vatAmount = (sumWithVat * 12) / 112;
+        const sumWithoutVat = sumWithVat - vatAmount;
         return {
           key: `${d.id}-${item.id}`,
           dealTitle: d.title || d.id.slice(0, 8),
@@ -163,7 +161,7 @@ export default function ContractDetailPage() {
           unit: item.product.unit,
           qty,
           price,
-          sum,
+          sumWithoutVat,
           vatAmount,
           sumWithVat,
         };
@@ -171,7 +169,7 @@ export default function ContractDetailPage() {
     );
   }, [contract?.deals]);
 
-  const itemsTotal = useMemo(() => allItems.reduce((s, i) => s + i.sum, 0), [allItems]);
+  const itemsTotal = useMemo(() => allItems.reduce((s, i) => s + i.sumWithVat, 0), [allItems]);
   const vatTotal = useMemo(() => allItems.reduce((s, i) => s + i.vatAmount, 0), [allItems]);
 
   function handlePrint(docType?: string) {
@@ -315,7 +313,6 @@ export default function ContractDetailPage() {
         {/* Items / Products Table */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography.Title level={5} style={{ margin: 0 }}>Товары / услуги ({allItems.length})</Typography.Title>
-            <Button size="small" type={showVat ? 'primary' : 'default'} icon={<CalculatorOutlined />} onClick={() => setShowVat(!showVat)}>НДС 12%</Button>
         </div>
         {allItems.length === 0 ? (
           <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>Нет товаров в сделках</Typography.Text>
@@ -333,36 +330,19 @@ export default function ContractDetailPage() {
               { title: 'Артикул', dataIndex: 'sku', width: 120 },
               { title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
               { title: 'Кол-во', dataIndex: 'qty', width: 80, align: 'right' as const },
-              { title: 'Цена', dataIndex: 'price', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
-              { title: 'Сумма', dataIndex: 'sum', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
-              ...(showVat ? [
-                { title: 'НДС %', width: 80, align: 'center' as const, render: () => '12%' },
-                { title: 'Сумма НДС', dataIndex: 'vatAmount', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
-                { title: 'С НДС', dataIndex: 'sumWithVat', width: 130, align: 'right' as const, render: (v: number) => formatUZS(v) },
-              ] : []),
+              { title: 'Цена (с НДС)', dataIndex: 'price', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              { title: 'Сумма', dataIndex: 'sumWithVat', width: 120, align: 'right' as const, render: (v: number) => formatUZS(v) },
+              { title: 'В т.ч. НДС 12%', dataIndex: 'vatAmount', width: 140, align: 'right' as const, render: (v: number) => formatUZS(v) },
               { title: 'Сделка', dataIndex: 'dealTitle', width: 140, ellipsis: true },
             ]}
             summary={() => (
               <>
                 <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={showVat ? 8 : 6} align="right"><strong>Без НДС:</strong></Table.Summary.Cell>
+                  <Table.Summary.Cell index={0} colSpan={6} align="right"><strong>Итого:</strong></Table.Summary.Cell>
                   <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(itemsTotal)}</strong></Table.Summary.Cell>
-                  {showVat && <Table.Summary.Cell index={2} />}
+                  <Table.Summary.Cell index={2} align="right"><strong>{formatUZS(vatTotal)}</strong></Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} />
                 </Table.Summary.Row>
-                {showVat && (
-                  <>
-                    <Table.Summary.Row>
-                      <Table.Summary.Cell index={0} colSpan={8} align="right"><strong>НДС 12%:</strong></Table.Summary.Cell>
-                      <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(vatTotal)}</strong></Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} />
-                    </Table.Summary.Row>
-                    <Table.Summary.Row>
-                      <Table.Summary.Cell index={0} colSpan={8} align="right"><strong>Итого с НДС:</strong></Table.Summary.Cell>
-                      <Table.Summary.Cell index={1} align="right"><strong>{formatUZS(itemsTotal + vatTotal)}</strong></Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} />
-                    </Table.Summary.Row>
-                  </>
-                )}
               </>
             )}
           />
