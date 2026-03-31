@@ -221,11 +221,12 @@ export class WarehouseService {
     });
   }
 
-  async getMovements(productId?: string) {
+  async getMovements(productId?: string, role?: string) {
+    const isSuperAdmin = role === 'SUPER_ADMIN';
     return prisma.inventoryMovement.findMany({
       where: {
         ...(productId ? { productId } : {}),
-        type: { not: 'CORRECTION' },
+        ...(isSuperAdmin ? {} : { type: { not: 'CORRECTION' } }),
       },
       include: {
         product: { select: { id: true, name: true, sku: true } },
@@ -236,16 +237,18 @@ export class WarehouseService {
     });
   }
 
-  async getProductMovements(productId: string) {
+  async getProductMovements(productId: string, role?: string) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
     }
 
+    const isSuperAdmin = role === 'SUPER_ADMIN';
+
     return prisma.inventoryMovement.findMany({
       where: {
         productId,
-        type: { not: 'CORRECTION' },
+        ...(isSuperAdmin ? {} : { type: { not: 'CORRECTION' } }),
       },
       include: {
         deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
@@ -254,20 +257,24 @@ export class WarehouseService {
     });
   }
 
-  async getProductAuditHistory(productId?: string) {
+  async getProductAuditHistory(productId?: string, role?: string) {
+    const isSuperAdmin = role === 'SUPER_ADMIN';
+
     if (!productId) {
       return prisma.auditLog.findMany({
         where: {
           entityType: { in: ['product', 'inventory_movement', 'stock_correction'] },
-          NOT: [
-            { entityType: 'stock_correction' },
-            {
-              after: {
-                path: ['type'],
-                equals: 'CORRECTION',
+          ...(isSuperAdmin ? {} : {
+            NOT: [
+              { entityType: 'stock_correction' },
+              {
+                after: {
+                  path: ['type'],
+                  equals: 'CORRECTION',
+                },
               },
-            },
-          ],
+            ],
+          }),
         },
         include: {
           user: { select: { id: true, fullName: true, role: true } },
@@ -297,15 +304,17 @@ export class WarehouseService {
             entityId: { in: movementIds.map((movement) => movement.id) },
           },
         ],
-        NOT: [
-          { entityType: 'stock_correction' },
-          {
-            after: {
-              path: ['type'],
-              equals: 'CORRECTION',
+        ...(isSuperAdmin ? {} : {
+          NOT: [
+            { entityType: 'stock_correction' },
+            {
+              after: {
+                path: ['type'],
+                equals: 'CORRECTION',
+              },
             },
-          },
-        ],
+          ],
+        }),
       },
       include: {
         user: { select: { id: true, fullName: true, role: true } },

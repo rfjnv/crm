@@ -36,12 +36,12 @@ export class WarehouseController {
 
   async getMovements(req: Request, res: Response): Promise<void> {
     const productId = req.query.productId as string | undefined;
-    const movements = await warehouseService.getMovements(productId);
+    const movements = await warehouseService.getMovements(productId, req.user?.role);
     res.json(movements);
   }
 
   async getProductMovements(req: Request, res: Response): Promise<void> {
-    const movements = await warehouseService.getProductMovements(req.params.id as string);
+    const movements = await warehouseService.getProductMovements(req.params.id as string, req.user?.role);
     res.json(movements);
   }
 
