@@ -327,11 +327,6 @@ export default function AnalyticsPage() {
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
 
-  const sales = data?.sales;
-  const finance = data?.finance;
-  const warehouse = data?.warehouse;
-  const managers = data?.managers;
-  const profitability = data?.profitability;
 
   const categories = useMemo<CategorySummary[]>(() => {
     const byCategory = new Map<string, Product[]>();
@@ -492,8 +487,11 @@ export default function AnalyticsPage() {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   }
 
+  // Now data is guaranteed non-null — safe to destructure
+  const { sales, finance, warehouse, managers, profitability } = data;
+
   // ──── Sales tab data ────
-  const pieData = (sales?.dealsByStatus ?? []).map((d) => ({
+  const pieData = sales.dealsByStatus.map((d) => ({
     type: statusConfig[d.status as DealStatus]?.label || d.status,
     value: d.count,
     color: statusColorMap[d.status] || '#8c8c8c',
@@ -522,21 +520,21 @@ export default function AnalyticsPage() {
     });
   };
 
-  const lineData = buildRevenueChartData(sales?.revenueByDay ?? []);
+  const lineData = buildRevenueChartData(sales.revenueByDay);
 
-  const clientBarData = (sales?.topClients ?? []).map((c) => ({
+  const clientBarData = sales.topClients.map((c) => ({
     name: c.companyName,
     value: c.totalRevenue,
     clientId: c.clientId,
   }));
 
-  const productBarData = (sales?.topProducts ?? []).map((p) => ({
+  const productBarData = sales.topProducts.map((p) => ({
     name: p.name,
     value: p.totalQuantity,
     productId: p.productId,
   }));
 
-  const topSellingBarData = (warehouse?.topSelling ?? []).map((p) => ({
+  const topSellingBarData = warehouse.topSelling.map((p) => ({
     name: p.name,
     value: p.totalSold,
     productId: p.productId,
