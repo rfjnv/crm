@@ -667,7 +667,7 @@ export class TelegramCustomerService {
     const pageProducts = products.slice(start, start + PAGE_SIZE);
 
     const productLines = pageProducts.map((p, index) => 
-      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      Цена: ${this.formatMoney(Number(p.salePrice || 0))} | В наличии: ${this.formatQty(Number(p.stock))} ${this.escapeHtml(p.unit || 'шт')}`
+      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      Цена: ${this.formatMoney(Number(p.salePrice || 0))} | В наличии`
     );
 
     const productButtons: TelegramBot.InlineKeyboardButton[][] = [];
@@ -763,7 +763,7 @@ export class TelegramCustomerService {
         `<b>${this.escapeHtml(product.name)}</b>`,
         `Артикул: <code>${this.escapeHtml(product.sku)}</code>`,
         `Цена: <b>${this.formatMoney(Number(product.salePrice))}</b>`,
-        `Остаток: <b>${this.formatQty(Number(product.stock))} ${this.escapeHtml(product.unit || 'шт')}</b>`,
+        `Статус: <b>В наличии</b>`,
         '',
         'Отправьте количество одним сообщением. Например: <code>100</code>.',
       ].join('\n'),
@@ -822,7 +822,7 @@ export class TelegramCustomerService {
     if (qty > Number(product.stock)) {
       await bot.sendMessage(
         chatId,
-        `На складе сейчас только ${this.formatQty(Number(product.stock))} ${this.escapeHtml(product.unit || 'шт')}. Укажите меньшее количество.`,
+        `К сожалению, такого количества сейчас нет в наличии. Пожалуйста, укажите меньшее количество.`,
         { parse_mode: 'HTML' },
       );
       return;
@@ -1047,7 +1047,7 @@ export class TelegramCustomerService {
       if (item.qty > Number(product.stock)) {
         await bot.sendMessage(
           chatId,
-          `Для товара "${this.escapeHtml(product.name)}" доступно только ${this.formatQty(Number(product.stock))} ${this.escapeHtml(product.unit || 'шт')}.`,
+          `Для товара "${this.escapeHtml(product.name)}" указано большее количество, чем сейчас есть в наличии.`,
           { parse_mode: 'HTML' },
         );
         await this.showCart(bot, chatId, undefined, 'Проверьте количество в корзине и попробуйте снова.');
