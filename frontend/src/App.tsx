@@ -40,6 +40,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
+import ReviewsPage from './pages/ReviewsPage';
 import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
@@ -89,6 +90,7 @@ export default function App() {
                 <Route path="/revenue/today" element={<RevenueTodayPage />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetailPage />} />
+                <Route path="/reviews" element={<ReviewsPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />
                 <Route path="/contracts/:id" element={<ContractDetailPage />} />
                 <Route path="/power-of-attorney" element={<PowerOfAttorneyPage />} />

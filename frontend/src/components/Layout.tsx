@@ -32,6 +32,7 @@ import {
   SolutionOutlined,
   SettingOutlined,
   SafetyCertificateOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -117,6 +118,13 @@ export default function Layout() {
         key: '/clients',
         icon: <TeamOutlined />,
         label: <Link to="/clients">Клиенты</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR')
+      ? [{
+        key: '/reviews',
+        icon: <StarOutlined />,
+        label: <Link to="/reviews">Отзывы (Бот)</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT')
