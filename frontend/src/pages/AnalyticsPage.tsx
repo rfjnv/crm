@@ -20,6 +20,7 @@ import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import { dealsApi } from '../api/deals.api';
+import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow, Product } from '../types';
@@ -258,6 +259,12 @@ export default function AnalyticsPage() {
   const { data: intel } = useQuery({
     queryKey: ['analytics-intelligence', period],
     queryFn: () => analyticsApi.getIntelligence(period),
+  });
+
+  // Берём общий долг с той же страницы должников — чтобы цифра всегда совпадала
+  const { data: debtsData } = useQuery({
+    queryKey: ['finance-debts-total'],
+    queryFn: () => financeApi.getDebts(),
   });
 
   const { data: allProducts = [] } = useQuery({
@@ -741,8 +748,8 @@ export default function AnalyticsPage() {
           <Link to="/finance/debts" style={{ display: 'block' }}>
             <Card bordered={false} hoverable>
               <Statistic
-                title={<span>Общий долг<FormulaHint text="SUM(amount − paidAmount) по всем активным сделкам (живой расчёт)" /></span>}
-                value={finance.totalDebt}
+                title={<span>Общий долг<FormulaHint text="Сумма долгов всех клиентов из страницы должников" /></span>}
+                value={debtsData?.totals?.totalDebtOwed ?? finance.totalDebt}
                 formatter={(v) => formatUZS(v as number)}
                 prefix={<WarningOutlined />}
                 valueStyle={{ color: '#ff4d4f' }}

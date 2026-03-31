@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
+import { financeApi } from '../api/finance.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
@@ -23,6 +24,13 @@ export default function DashboardPage() {
     queryKey: ['dashboard-summary'],
     queryFn: dashboardApi.summary,
     refetchInterval: 10_000,
+  });
+
+  // Берём долг с той же страницы должников — чтобы цифра всегда совпадала
+  const { data: debtsData } = useQuery({
+    queryKey: ['finance-debts-total'],
+    queryFn: () => financeApi.getDebts(),
+    refetchInterval: 30_000,
   });
   const user = useAuthStore((s) => s.user);
   const { token: themeToken } = theme.useToken();
@@ -134,7 +142,7 @@ export default function DashboardPage() {
             <Card bordered={false} hoverable style={{ cursor: 'pointer' }}>
               <Statistic
                 title="Общий долг"
-                value={data.totalDebt}
+                value={debtsData?.totals?.totalDebtOwed ?? data.totalDebt}
                 formatter={(val) => formatUZS(val as number)}
                 prefix={<WarningOutlined style={{ color: '#ff4d4f' }} />}
                 valueStyle={{ color: '#ff4d4f' }}
