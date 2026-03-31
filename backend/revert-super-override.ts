@@ -20,13 +20,13 @@ async function main() {
     },
   });
 
-  const dealIdsToUpdate = [];
+  const dealIdsToUpdate: string[] = [];
 
   for (const log of logs) {
     const before = log.before as any;
     const after = log.after as any;
 
-    if (before?.status === 'READY_FOR_SHIPMENT' && after?.status === 'CLOSED') {
+    if (before?.status === 'READY_FOR_SHIPMENT' && after?.status === 'CLOSED' && log.entityId) {
       dealIdsToUpdate.push(log.entityId);
     }
   }
