@@ -22,7 +22,7 @@ export const config = {
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET || 'change-me-access-secret',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'change-me-refresh-secret',
-    accessExpiresIn: '4h',
+    accessExpiresIn: '15m',
     refreshExpiresIn: '7d',
     refreshExpiresInMs: 7 * 24 * 60 * 60 * 1000, // 7 days
   },

@@ -45,6 +45,8 @@ interface CustomerSession {
   reviewDraft?: ReviewDraft;
   reviewAllowedDealIds?: string[];
   submittingOrder?: boolean;
+  categories?: string[];
+  currentCategory?: string | null;
 }
 
 interface BusinessHoursStatus {
@@ -207,6 +209,7 @@ export class TelegramCustomerService {
         session.pendingQty = undefined;
         session.reviewDraft = undefined;
         session.reviewAllowedDealIds = undefined;
+        session.currentCategory = null;
         await this.showHome(bot, chatId, messageId);
         return;
       }
@@ -248,6 +251,23 @@ export class TelegramCustomerService {
           await this.showCatalog(bot, chatId, 0, messageId, 'Менеджер выбран. Теперь добавьте товары в заказ.');
         } else {
           await this.showCart(bot, chatId, messageId, 'Менеджер обновлён.');
+        }
+        return;
+      }
+
+      if (query.data === 'catalog:cats') {
+        session.currentCategory = null;
+        await this.showCatalog(bot, chatId, 0, messageId);
+        return;
+      }
+
+      if (query.data.startsWith('catalog:cat:')) {
+        const catIndex = this.parsePositiveInt(query.data.split(':')[2] || '0', -1);
+        if (session.categories && catIndex >= 0 && catIndex < session.categories.length) {
+          session.currentCategory = session.categories[catIndex];
+          await this.showCatalog(bot, chatId, 0, messageId);
+        } else {
+          await this.showCatalog(bot, chatId, 0, messageId, 'Категория не найдена.');
         }
         return;
       }
@@ -369,6 +389,7 @@ export class TelegramCustomerService {
       session.pendingQty = undefined;
       session.reviewDraft = undefined;
       session.reviewAllowedDealIds = undefined;
+      session.currentCategory = null;
       await this.showHome(bot, chatId);
       return;
     }
@@ -538,11 +559,90 @@ export class TelegramCustomerService {
     notice?: string,
   ): Promise<void> {
     const session = this.getSession(chatId);
+
+    const selectedManager = session.selectedManagerId
+      ? await prisma.user.findUnique({
+        where: { id: session.selectedManagerId },
+        select: { fullName: true },
+      })
+      : null;
+
+    if (!session.currentCategory) {
+      const dbCategories = await prisma.product.findMany({
+        where: { isActive: true, stock: { gt: 0 }, salePrice: { not: null } },
+        select: { category: true },
+        distinct: ['category'],
+      });
+
+      const categories = dbCategories.map((p) => p.category || 'Без категории').sort();
+      session.categories = categories;
+
+      if (!categories.length) {
+        await this.editOrSendMessage(
+          bot,
+          chatId,
+          'В каталоге сейчас нет доступных товаров.',
+          {
+            messageId,
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+            },
+          },
+        );
+        return;
+      }
+
+      const totalPages = Math.ceil(categories.length / PAGE_SIZE);
+      const safePage = Math.max(0, Math.min(page, totalPages - 1));
+      const start = safePage * PAGE_SIZE;
+      const pageCategories = categories.slice(start, start + PAGE_SIZE);
+
+      const keyboard: TelegramBot.InlineKeyboardButton[][] = pageCategories.map((cat) => {
+        const index = session.categories!.indexOf(cat);
+        return [
+          {
+            text: `📁 ${this.truncate(cat, 35)}`,
+            callback_data: `catalog:cat:${index}`,
+          },
+        ];
+      });
+
+      if (totalPages > 1) {
+        keyboard.push(this.buildPaginationRow('catalog', safePage, totalPages));
+      }
+
+      keyboard.push([
+        { text: `🧺 Корзина (${session.cart.length})`, callback_data: 'cart:view' },
+        { text: '👤 Менеджер', callback_data: 'manager:page:0' },
+      ]);
+      keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+
+      await this.editOrSendMessage(
+        bot,
+        chatId,
+        [
+          notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
+          '✨ <b>Каталог товаров</b>',
+          selectedManager ? `Менеджер: <b>${this.escapeHtml(selectedManager.fullName)}</b>` : 'Менеджер пока не выбран.',
+          '',
+          'Выберите категорию:',
+        ].filter(Boolean).join('\n'),
+        {
+          messageId,
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: keyboard },
+        },
+      );
+      return;
+    }
+
+    const isNoCategory = session.currentCategory === 'Без категории';
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
         stock: { gt: 0 },
         salePrice: { not: null },
+        category: isNoCategory ? null : session.currentCategory,
       },
       select: {
         id: true,
@@ -556,17 +656,8 @@ export class TelegramCustomerService {
     });
 
     if (!products.length) {
-      await this.editOrSendMessage(
-        bot,
-        chatId,
-        'В каталоге сейчас нет доступных товаров.',
-        {
-          messageId,
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
-          },
-        },
-      );
+      session.currentCategory = null;
+      await this.showCatalog(bot, chatId, 0, messageId, 'В этой категории не осталось товаров.');
       return;
     }
 
@@ -575,39 +666,48 @@ export class TelegramCustomerService {
     const start = safePage * PAGE_SIZE;
     const pageProducts = products.slice(start, start + PAGE_SIZE);
 
-    const keyboard: TelegramBot.InlineKeyboardButton[][] = pageProducts.map((product) => [
-      {
-        text: `➕ ${this.truncate(product.name, 24)} • ${this.formatMoney(Number(product.salePrice || 0))}`,
-        callback_data: `catalog:pick:${product.id}:${safePage}`,
-      },
-    ]);
+    const productLines = pageProducts.map((p, index) => 
+      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      Цена: ${this.formatMoney(Number(p.salePrice || 0))} | В наличии: ${this.formatQty(Number(p.stock))} ${this.escapeHtml(p.unit || 'шт')}`
+    );
+
+    const productButtons: TelegramBot.InlineKeyboardButton[][] = [];
+    let currentRow: TelegramBot.InlineKeyboardButton[] = [];
+    for (let i = 0; i < pageProducts.length; i++) {
+        currentRow.push({
+            text: `➕ ${i + 1}`,
+            callback_data: `catalog:pick:${pageProducts[i].id}:${safePage}`,
+        });
+        if (currentRow.length === 3 || i === pageProducts.length - 1) {
+            productButtons.push(currentRow);
+            currentRow = [];
+        }
+    }
+
+    const keyboard: TelegramBot.InlineKeyboardButton[][] = [...productButtons];
 
     if (totalPages > 1) {
       keyboard.push(this.buildPaginationRow('catalog', safePage, totalPages));
     }
 
+    keyboard.push([{ text: '📁 Все категории', callback_data: 'catalog:cats' }]);
+    
     keyboard.push([
       { text: `🧺 Корзина (${session.cart.length})`, callback_data: 'cart:view' },
       { text: '👤 Менеджер', callback_data: 'manager:page:0' },
     ]);
     keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
 
-    const selectedManager = session.selectedManagerId
-      ? await prisma.user.findUnique({
-        where: { id: session.selectedManagerId },
-        select: { fullName: true },
-      })
-      : null;
-
     await this.editOrSendMessage(
       bot,
       chatId,
       [
         notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
-        '<b>Каталог</b>',
+        `📁 <b>${this.escapeHtml(session.currentCategory)}</b>`,
         selectedManager ? `Менеджер: <b>${this.escapeHtml(selectedManager.fullName)}</b>` : 'Менеджер пока не выбран.',
         '',
-        'Нажмите на товар, затем отправьте количество отдельным сообщением.',
+        ...productLines,
+        '',
+        'Выберите номер товара из кнопок ниже:',
       ].filter(Boolean).join('\n'),
       {
         messageId,
@@ -805,12 +905,20 @@ export class TelegramCustomerService {
     );
     const total = session.cart.reduce((sum, item) => sum + item.qty * item.price, 0);
 
-    const keyboard: TelegramBot.InlineKeyboardButton[][] = session.cart.map((item) => [
-      {
-        text: `Удалить: ${this.truncate(item.name, 26)}`,
+    const removeButtons: TelegramBot.InlineKeyboardButton[][] = [];
+    let currentRow: TelegramBot.InlineKeyboardButton[] = [];
+    session.cart.forEach((item, index) => {
+      currentRow.push({
+        text: `❌ ${index + 1}`,
         callback_data: `cart:remove:${item.productId}`,
-      },
-    ]);
+      });
+      if (currentRow.length === 4 || index === session.cart.length - 1) {
+        removeButtons.push(currentRow);
+        currentRow = [];
+      }
+    });
+
+    const keyboard: TelegramBot.InlineKeyboardButton[][] = [...removeButtons];
 
     keyboard.push([
       { text: 'Добавить ещё', callback_data: 'cart:addmore' },

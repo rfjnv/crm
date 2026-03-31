@@ -378,13 +378,6 @@ export class WarehouseService {
     };
   }
 
-  private normalizeUnit(unit?: unknown): string {
-    const u = String(unit || 'шт').trim();
-    if (u.toLowerCase() === 'мп') return 'п/м';
-    if (u.toLowerCase() === 'бабин') return 'бабина';
-    return u || 'шт';
-  }
-
   /**
    * Parse stock value from Excel format: "5(171,4)" -> 5, "10.5" -> 10.5, "100" -> 100
    * Takes only the first number before any parentheses or other characters
@@ -430,7 +423,7 @@ export class WarehouseService {
           rowNum,
           name: cellB.v,
           format: cellC?.v || '',
-          unit: this.normalizeUnit(cellD?.v),
+          unit: cellD?.v || 'шт',
           stock: cellH?.v || 0,
         });
       }
@@ -470,7 +463,7 @@ export class WarehouseService {
       try {
         const name = String(row.name).trim();
         const format = row.format ? String(row.format).trim() : undefined;
-        const unit = this.normalizeUnit(row.unit);
+        const unit = String(row.unit).trim() || 'шт';
         const stock = this.parseStockValue(row.stock);
 
         // Validate
