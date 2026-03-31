@@ -385,7 +385,7 @@ export default function ClientDetailPage() {
                         <Card bordered={false} size="small" style={{ marginTop: 8 }}>
                           <Row gutter={[16, 8]}>
                             <Col xs={24} sm={8}>
-                              <Typography.Text type="secondary">Чистый долг: </Typography.Text>
+                              <Typography.Text type="secondary">Общий долг: </Typography.Text>
                               <Typography.Text strong style={{ color: netDebt > 0 ? '#ff4d4f' : netDebt < 0 ? '#52c41a' : undefined }}>
                                 {netDebt > 0 ? formatUZS(netDebt) : netDebt < 0 ? `Переплата: ${formatUZS(Math.abs(netDebt))}` : formatUZS(0)}
                               </Typography.Text>

@@ -219,20 +219,18 @@ router.get(
 
     // ──── FINANCE ────
     const [totalDebtRaw, overdueDeals, topDebtorsRaw, realTurnoverAgg, paperTurnoverAgg] = await Promise.all([
-      dealScope.managerId
-        ? prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
-             FROM deals d
-             WHERE d.is_archived = false
-               AND d.status NOT IN ('CANCELED', 'REJECTED')
-               AND d.manager_id = ${dealScope.managerId}`
-          )
-        : prisma.$queryRaw<{ debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt
-             FROM deals d
-             WHERE d.is_archived = false
-               AND d.status NOT IN ('CANCELED', 'REJECTED')`
-          ),
+      prisma.deal.groupBy({
+        by: ['clientId'],
+        where: {
+          ...dealScope,
+          isArchived: false,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+        _sum: {
+          amount: true,
+          paidAmount: true,
+        }
+      }),
       prisma.deal.findMany({
         where: {
           ...dealScope,
@@ -291,8 +289,15 @@ router.get(
           ),
     ]);
 
+    const totalDebtGrouped = totalDebtRaw as unknown as { clientId: string, _sum: { amount: Prisma.Decimal | null, paidAmount: Prisma.Decimal | null } }[];
+    let grossDebt = 0;
+    for (const row of totalDebtGrouped) {
+      const netDebt = Number(row._sum?.amount ?? 0) - Number(row._sum?.paidAmount ?? 0);
+      if (netDebt > 0) grossDebt += netDebt;
+    }
+
     const finance = {
-      totalDebt: totalDebtRaw[0] ? Number(totalDebtRaw[0].debt) : 0,
+      totalDebt: grossDebt,
       overdueDebts: overdueDeals.map((d) => ({
         dealId: d.id,
         title: d.title,

@@ -397,7 +397,7 @@ router.get(
       else if (c.totalDebt < 0) prepayments += Math.abs(c.totalDebt);
     }
 
-    const netDebt = totalDebtOwed - prepayments;
+    const netDebt = totalDebtOwed; // The user requested explicitly that the total debt exactly equal the sum of positive debtors' debts
 
     res.json({
       clients,

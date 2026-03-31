@@ -120,22 +120,19 @@ router.get(
         },
       }),
 
-      // 5. Total debt (same as /finance/debts totals: gross = net debt + prepayments)
-      // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total_debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as total_debt
-             FROM deals
-             WHERE is_archived = false 
-               AND status NOT IN ('CANCELED', 'REJECTED')
-               AND manager_id = ${dealScope.managerId}`
-          )
-        : prisma.$queryRaw<{ total_debt: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(amount - paid_amount), 0)::text as total_debt
-             FROM deals
-             WHERE is_archived = false 
-               AND status NOT IN ('CANCELED', 'REJECTED')`
-          ),
+      // 5. Total debt (only positive debts across all clients)
+      prisma.deal.groupBy({
+        by: ['clientId'],
+        where: {
+          ...dealScope,
+          isArchived: false,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+        _sum: {
+          amount: true,
+          paidAmount: true,
+        }
+      }),
 
       // 6. Zero stock products
       prisma.product.findMany({
@@ -216,14 +213,19 @@ router.get(
       minStock: Number(p.min_stock),
     }));
 
-    const totalDebt = Number(totalDebtSplitRaw[0]?.total_debt ?? 0);
+    const totalDebtGrouped = totalDebtSplitRaw as unknown as { clientId: string, _sum: { amount: Prisma.Decimal | null, paidAmount: Prisma.Decimal | null } }[];
+    let grossDebt = 0;
+    for (const row of totalDebtGrouped) {
+      const netDebt = Number(row._sum?.amount ?? 0) - Number(row._sum?.paidAmount ?? 0);
+      if (netDebt > 0) grossDebt += netDebt;
+    }
 
     res.json({
       revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
       revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
-      totalDebt,
+      totalDebt: grossDebt,
       closedDealsToday,
       closedDealsYesterday,
       zeroStockCount: zeroStockProducts.length,
