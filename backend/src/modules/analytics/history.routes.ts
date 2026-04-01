@@ -829,6 +829,12 @@ router.get(
           AND d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       ),
+      current_months AS (
+        SELECT DISTINCT month_start
+        FROM monthly_clients
+        WHERE month_start >= make_date(${year}::int, 1, 1)
+          AND month_start < make_date(${year + 1}::int, 1, 1)
+      ),
       retention_pairs AS (
         SELECT
           (a.month_start + interval '1 month')::date as month_start,
@@ -841,12 +847,11 @@ router.get(
         GROUP BY a.month_start
       )
       SELECT
-        EXTRACT(MONTH FROM month_start)::int as month,
-        total_clients,
-        retained_clients
-      FROM retention_pairs
-      WHERE month_start >= make_date(${year}::int, 1, 1)
-        AND month_start < make_date(${year + 1}::int, 1, 1)
+        EXTRACT(MONTH FROM cm.month_start)::int as month,
+        COALESCE(rp.total_clients, '0') as total_clients,
+        COALESCE(rp.retained_clients, '0') as retained_clients
+      FROM current_months cm
+      LEFT JOIN retention_pairs rp ON rp.month_start = cm.month_start
       ORDER BY month`,
     );
     const retentionNow = new Date();
