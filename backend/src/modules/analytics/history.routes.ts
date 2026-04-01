@@ -61,23 +61,6 @@ router.get(
     }
 
     const { yearStart, yearEnd } = getYearBounds(year);
-    const dqDateFilter = Prisma.sql`
-      AND COALESCE(di.deal_date, d.created_at) >= ${yearStart}
-      AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
-    `;
-    const dqProblemFilter = Prisma.sql`
-      AND (
-        (
-          COALESCE(di.requested_qty, 0) > 0
-          AND (
-            di.price IS NULL
-            OR di.price <= 0
-            OR COALESCE(di.line_total, COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0), 0) <= 0
-          )
-        )
-        OR d.amount <= 0
-      )
-    `;
 
     // ── 1. Overview KPIs ──
     const overviewRaw = await prisma.$queryRaw<
@@ -1431,6 +1414,23 @@ router.get(
     }
 
     const { yearStart, yearEnd } = getYearBounds(year);
+    const dqDateFilter = Prisma.sql`
+      AND COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+      AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
+    `;
+    const dqProblemFilter = Prisma.sql`
+      AND (
+        (
+          COALESCE(di.requested_qty, 0) > 0
+          AND (
+            di.price IS NULL
+            OR di.price <= 0
+            OR COALESCE(di.line_total, COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0), 0) <= 0
+          )
+        )
+        OR d.amount <= 0
+      )
+    `;
 
     // 1. KPI totals
     const kpiRaw = await prisma.$queryRaw<
