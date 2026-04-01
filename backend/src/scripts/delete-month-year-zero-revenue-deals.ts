@@ -6,6 +6,36 @@ import { Prisma, PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const EXECUTE = process.argv.includes('--execute');
 
+function parseYearArg(): number | null {
+  const args = process.argv.slice(2);
+
+  // --year=2025
+  const inline = args.find((a) => a.startsWith('--year='));
+  if (inline) {
+    const value = inline.slice('--year='.length).trim();
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2099) {
+      throw new Error('Invalid --year value. Use year between 2000 and 2099.');
+    }
+    return parsed;
+  }
+
+  // --year 2025
+  const idx = args.indexOf('--year');
+  if (idx >= 0) {
+    const value = (args[idx + 1] || '').trim();
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2099) {
+      throw new Error('Invalid --year value. Use year between 2000 and 2099.');
+    }
+    return parsed;
+  }
+
+  return null;
+}
+
+const TARGET_YEAR = parseYearArg();
+
 const MONTHS_RU = [
   'Январь',
   'Февраль',
@@ -28,11 +58,13 @@ function fmtMoney(raw: string): string {
 }
 
 async function main() {
-  const monthRegex = `\\s*[—-]\\s*(${MONTHS_RU.join('|')})\\s+20\\d{2}\\s*$`;
+  const yearToken = TARGET_YEAR ? String(TARGET_YEAR) : '20\\d{2}';
+  const monthRegex = `\\s*[—-]\\s*(${MONTHS_RU.join('|')})\\s+${yearToken}\\s*$`;
   const dayMonthYearRegex = `\\s*[—-]\\s*\\d{2}\\.\\d{2}\\.\\d{4}\\s*$`;
 
   console.log('============================================================');
   console.log(`Delete month-year deals with zero revenue (${EXECUTE ? 'EXECUTE' : 'DRY-RUN'})`);
+  console.log(`Year filter: ${TARGET_YEAR ?? 'ALL (2000-2099)'}`);
   console.log('============================================================\n');
 
   const candidates = await prisma.$queryRaw<{
@@ -79,7 +111,8 @@ async function main() {
   }
 
   if (!EXECUTE) {
-    console.log('\nDry-run only. Run with --execute to apply deletion.');
+    const yearPart = TARGET_YEAR ? ` --year=${TARGET_YEAR}` : '';
+    console.log(`\nDry-run only. Run with --execute${yearPart} to apply deletion.`);
     return;
   }
 
