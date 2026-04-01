@@ -845,13 +845,21 @@ router.get(
           ON a.client_id = b.client_id
          AND b.month_start = (a.month_start + interval '1 month')::date
         GROUP BY a.month_start
+      ),
+      months_to_show AS (
+        SELECT month_start FROM current_months
+        UNION
+        SELECT month_start
+        FROM retention_pairs
+        WHERE month_start >= make_date(${year}::int, 1, 1)
+          AND month_start < make_date(${year + 1}::int, 1, 1)
       )
       SELECT
-        EXTRACT(MONTH FROM cm.month_start)::int as month,
+        EXTRACT(MONTH FROM ms.month_start)::int as month,
         COALESCE(rp.total_clients, '0') as total_clients,
         COALESCE(rp.retained_clients, '0') as retained_clients
-      FROM current_months cm
-      LEFT JOIN retention_pairs rp ON rp.month_start = cm.month_start
+      FROM months_to_show ms
+      LEFT JOIN retention_pairs rp ON rp.month_start = ms.month_start
       ORDER BY month`,
     );
     const retentionNow = new Date();
