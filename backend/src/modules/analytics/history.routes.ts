@@ -840,7 +840,7 @@ router.get(
         month: r.month,
         totalClients: total,
         retainedClients: retained,
-        retentionRate: total > 0 ? Math.round((retained / total) * 100) / 100 : 0,
+        retentionRate: total > 0 ? retained / total : 0,
       };
     });
 

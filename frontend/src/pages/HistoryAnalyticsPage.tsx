@@ -603,11 +603,23 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Удержание клиентов (MoM)" size="small">
             <Line
-              data={extended.retention.map((r) => ({ month: r.month, rate: Math.round(r.retentionRate * 100), _month: r.month }))}
+              data={extended.retention.map((r) => ({
+                month: r.month,
+                rate: Math.round(r.retentionRate * 1000) / 10,
+                retainedClients: r.retainedClients,
+                totalClients: r.totalClients,
+                _month: r.month,
+              }))}
               xField="month" yField="rate" height={280}
               point={{ shapeField: 'circle', sizeField: 4 }}
-              axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } }}
-              tooltip={{ items: [{ field: 'rate', channel: 'y', name: 'Удержание', valueFormatter: (v: number) => `${v}%` }] }}
+              axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => `${Number(v).toFixed(1)}%` } }}
+              tooltip={{
+                items: [
+                  { field: 'rate', channel: 'y', name: 'Удержание', valueFormatter: (v: number) => `${Number(v).toFixed(1)}%` },
+                  { field: 'retainedClients', name: 'Удержано клиентов' },
+                  { field: 'totalClients', name: 'Клиентов в месяце' },
+                ],
+              }}
               theme={chartTheme}
               onReady={({ chart }) => {
                 chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
