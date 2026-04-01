@@ -876,7 +876,7 @@ router.get(
         retainedClients: retained,
         retentionRate: total > 0 ? retained / total : 0,
       };
-    }).filter((r) => !(year === retentionCurrentYear && r.month === retentionCurrentMonth));
+    }).filter((r) => !(year === retentionCurrentYear && r.month > retentionCurrentMonth));
 
     // 2. Revenue concentration
     const concentrationRaw = await prisma.$queryRaw<
