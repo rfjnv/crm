@@ -2210,10 +2210,13 @@ export class DealsService {
         for (const item of dto.items) {
           const product = await tx.product.findUnique({ where: { id: item.productId } });
           if (!product) throw new AppError(404, `Товар ${item.productId} не найден`);
+          const qty = item.requestedQty ?? 0;
+          const price = item.price ?? 0;
           const itemData = {
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
+            lineTotal: qty > 0 && price > 0 ? qty * price : null,
             requestComment: item.requestComment,
             warehouseComment: item.warehouseComment,
             dealDate: parseOptionalDate(item.dealDate),

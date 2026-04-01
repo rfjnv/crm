@@ -60,40 +60,17 @@ app.use(express.json({ limit: '1mb' }));
 // Static files (uploaded attachments)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// Health check + Temporary Mass Update for Deals
+// Health check
 app.get('/api/health', async (_req, res) => {
   let dbOk = false;
-  let updateResult = '';
   try {
-    const deals = await prisma.deal.findMany({
-      where: { title: { contains: 'Сделка от 25.03.2026' } },
-      select: { id: true }
-    });
-    
-    if (deals.length > 0) {
-      const ids = deals.map(d => d.id);
-      const newDate = new Date('2026-03-24T12:00:00Z');
-      const updated = await prisma.deal.updateMany({
-        where: { id: { in: ids } },
-        data: {
-          createdAt: newDate,
-          title: 'Сделка от 24.03.2026',
-          status: 'READY_FOR_SHIPMENT',
-        }
-      });
-      updateResult = `Updated ${updated.count} deals.`;
-    } else {
-      updateResult = 'No matching deals found.';
-    }
-    
+    await prisma.$queryRaw`SELECT 1`;
     dbOk = true;
-    console.log('MASS UPDATE SUCCESS:', updateResult);
   } catch (err) {
-    updateResult = `Update ERROR: ${(err as Error).message}`;
-    console.log(updateResult);
+    console.error('Health check DB error:', (err as Error).message);
   }
   const status = dbOk ? 'ok' : 'degraded';
-  res.status(200).json({ status, db: dbOk, update: updateResult, timestamp: new Date().toISOString() });
+  res.status(200).json({ status, db: dbOk, timestamp: new Date().toISOString() });
 });
 
 // Routes
