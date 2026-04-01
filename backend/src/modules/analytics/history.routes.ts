@@ -815,28 +815,45 @@ router.get(
     const { yearStart, yearEnd } = getYearBounds(year);
 
     // 1. Retention (previous month -> current month)
+    const retentionStart = new Date(`${year - 1}-11-30T19:00:00Z`); // Dec 1 00:00 Asia/Tashkent
     const retentionRaw = await prisma.$queryRaw<
       { month: number; total_clients: string; retained_clients: string }[]
     >(
       Prisma.sql`WITH monthly_clients AS (
         SELECT DISTINCT d.client_id,
-          EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
+          DATE_TRUNC('month', (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::date as month_start
         FROM deals d
         LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
-        WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+        WHERE COALESCE(di.deal_date, d.created_at) >= ${retentionStart}
           AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
           AND d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+      ),
+      retention_pairs AS (
+        SELECT
+          (a.month_start + interval '1 month')::date as month_start,
+          COUNT(DISTINCT a.client_id)::text as total_clients,
+          COUNT(DISTINCT b.client_id)::text as retained_clients
+        FROM monthly_clients a
+        LEFT JOIN monthly_clients b
+          ON a.client_id = b.client_id
+         AND b.month_start = (a.month_start + interval '1 month')::date
+        GROUP BY a.month_start
       )
-      SELECT (a.month + 1)::int as month,
-        COUNT(DISTINCT a.client_id)::text as total_clients,
-        COUNT(DISTINCT b.client_id)::text as retained_clients
-      FROM monthly_clients a
-      LEFT JOIN monthly_clients b ON a.client_id = b.client_id AND b.month = a.month + 1
-      WHERE a.month < 12
-      GROUP BY a.month
-      ORDER BY a.month`,
+      SELECT
+        EXTRACT(MONTH FROM month_start)::int as month,
+        total_clients,
+        retained_clients
+      FROM retention_pairs
+      WHERE month_start >= make_date(${year}::int, 1, 1)
+        AND month_start < make_date(${year + 1}::int, 1, 1)
+      ORDER BY month`,
     );
+    const retentionNow = new Date();
+    const retentionTashkent = new Date(retentionNow.getTime() + 5 * 60 * 60 * 1000);
+    const retentionCurrentYear = retentionTashkent.getUTCFullYear();
+    const retentionCurrentMonth = retentionTashkent.getUTCMonth() + 1;
+
     const retention = retentionRaw.map((r) => {
       const total = Number(r.total_clients);
       const retained = Number(r.retained_clients);
@@ -846,7 +863,7 @@ router.get(
         retainedClients: retained,
         retentionRate: total > 0 ? retained / total : 0,
       };
-    });
+    }).filter((r) => !(year === retentionCurrentYear && r.month === retentionCurrentMonth));
 
     // 2. Revenue concentration
     const concentrationRaw = await prisma.$queryRaw<
