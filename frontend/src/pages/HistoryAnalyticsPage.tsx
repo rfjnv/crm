@@ -616,8 +616,8 @@ export default function HistoryAnalyticsPage() {
               tooltip={{
                 items: [
                   { field: 'rate', channel: 'y', name: 'Удержание', valueFormatter: (v: number) => `${Number(v).toFixed(1)}%` },
-                  { field: 'retainedClients', name: 'Удержано клиентов' },
-                  { field: 'totalClients', name: 'Клиентов в месяце' },
+                  { field: 'retainedClients', name: 'Вернулось в текущем месяце' },
+                  { field: 'totalClients', name: 'Клиентов в предыдущем месяце' },
                 ],
               }}
               theme={chartTheme}

@@ -814,17 +814,21 @@ router.get(
 
     const { yearStart, yearEnd } = getYearBounds(year);
 
-    // 1. Retention (month-over-month)
+    // 1. Retention (previous month -> current month)
     const retentionRaw = await prisma.$queryRaw<
       { month: number; total_clients: string; retained_clients: string }[]
     >(
       Prisma.sql`WITH monthly_clients AS (
-        SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
+        SELECT DISTINCT d.client_id,
+          EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
         FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
+        LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
+        WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+          AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
+          AND d.is_archived = false
           AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       )
-      SELECT a.month,
+      SELECT (a.month + 1)::int as month,
         COUNT(DISTINCT a.client_id)::text as total_clients,
         COUNT(DISTINCT b.client_id)::text as retained_clients
       FROM monthly_clients a
