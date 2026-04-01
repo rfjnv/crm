@@ -891,7 +891,7 @@ export default function HistoryAnalyticsPage() {
         </Col>
         <Col xs={12} sm={8} lg={6}>
           <Card size="small">
-            <Statistic title="Объём без цены" value={dataQuality.totalQtyInProblem} formatter={(val) => Number(val).toLocaleString('ru-RU')} />
+            <Statistic title="Объём в проблемных строках" value={dataQuality.totalQtyInProblem} formatter={(val) => Number(val).toLocaleString('ru-RU')} />
           </Card>
         </Col>
         <Col xs={24} sm={8} lg={12}>
@@ -1007,7 +1007,7 @@ export default function HistoryAnalyticsPage() {
       </Row>
 
       {/* Problem rows table */}
-      <Card title="Проблемные строки (qty > 0, цена = 0)" size="small"
+      <Card title="Проблемные строки (нет цены/цена 0/сумма сделки 0)" size="small"
         extra={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Input.Search placeholder="Поиск..." allowClear style={{ width: isMobile ? '100%' : 200 }} onSearch={setDqSearch} onChange={(e) => !e.target.value && setDqSearch('')} />

@@ -61,6 +61,23 @@ router.get(
     }
 
     const { yearStart, yearEnd } = getYearBounds(year);
+    const dqDateFilter = Prisma.sql`
+      AND COALESCE(di.deal_date, d.created_at) >= ${yearStart}
+      AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
+    `;
+    const dqProblemFilter = Prisma.sql`
+      AND (
+        (
+          COALESCE(di.requested_qty, 0) > 0
+          AND (
+            di.price IS NULL
+            OR di.price <= 0
+            OR COALESCE(di.line_total, COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0), 0) <= 0
+          )
+        )
+        OR d.amount <= 0
+      )
+    `;
 
     // ── 1. Overview KPIs ──
     const overviewRaw = await prisma.$queryRaw<
@@ -1423,9 +1440,7 @@ router.get(
         COALESCE(SUM(di.requested_qty), 0)::text as total_qty
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE di.is_problem = true
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}`,
+      WHERE d.is_archived = false${dealFilter}${dqDateFilter}${dqProblemFilter}`,
     );
 
     // 2. By operation type
@@ -1436,9 +1451,7 @@ router.get(
         COUNT(*)::text as count
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE di.is_problem = true
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false${dealFilter}${dqDateFilter}${dqProblemFilter}
       GROUP BY COALESCE(di.source_op_type, 'НЕ УКАЗАН')
       ORDER BY COUNT(*) DESC`,
     );
@@ -1453,9 +1466,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE di.is_problem = true
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false${dealFilter}${dqDateFilter}${dqProblemFilter}
       GROUP BY p.id, p.name, p.unit
       ORDER BY SUM(di.requested_qty) DESC
       LIMIT 20`,
@@ -1471,9 +1482,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
-      WHERE di.is_problem = true
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false${dealFilter}${dqDateFilter}${dqProblemFilter}
       GROUP BY c.id, c.company_name
       ORDER BY COUNT(*) DESC
       LIMIT 20`,
@@ -1497,11 +1506,8 @@ router.get(
       JOIN products p ON p.id = di.product_id
       JOIN clients c ON c.id = d.client_id
       JOIN users u ON u.id = d.manager_id
-      WHERE di.is_problem = true
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
-      ORDER BY di.requested_qty DESC
-      LIMIT 500`,
+      WHERE d.is_archived = false${dealFilter}${dqDateFilter}${dqProblemFilter}
+      ORDER BY d.created_at DESC, di.id DESC`,
     );
 
     const responseData = {
