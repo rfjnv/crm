@@ -161,6 +161,27 @@ app.get('/api/debug/revenue-gap', async (_req, res) => {
   });
 });
 
+// Temporary: revenue difference diagnostics for specific effective date
+app.get('/debug/revenue-diff', async (_req, res) => {
+  const rows = await prisma.$queryRaw<
+    { id: string; deal_amount: string; line_sum: string; diff: string }[]
+  >(Prisma.sql`
+    SELECT
+      d.id,
+      d.amount AS deal_amount,
+      COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0) AS line_sum,
+      d.amount - COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0) AS diff
+    FROM deals d
+    LEFT JOIN deal_items di ON di.deal_id = d.id
+    WHERE DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') = DATE '2026-03-31'
+    GROUP BY d.id, d.amount
+    HAVING d.amount <> COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)
+    ORDER BY ABS(d.amount - COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)) DESC
+  `);
+
+  res.json(rows);
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
