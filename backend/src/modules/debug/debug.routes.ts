@@ -4,11 +4,50 @@ import prisma from '../../lib/prisma';
 
 const router = Router();
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Calendar date YYYY-MM-DD; rejects invalid days/months. */
+function parseYmd(input: string): string | null {
+  if (!YMD_RE.test(input)) return null;
+  const [ys, ms, ds] = input.split('-');
+  const y = Number(ys), m = Number(ms), d = Number(ds);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return input;
+}
+
+/** Today's calendar date in Asia/Tashkent (same notion as revenue-gap SQL). */
+function todayYmdTashkent(): string {
+  const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+  const nowTZ = new Date(Date.now() + TASHKENT_OFFSET);
+  const y = nowTZ.getUTCFullYear();
+  const mo = String(nowTZ.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(nowTZ.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${d}`;
+}
+
 router.get('/debug/test', (_req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/debug/revenue-diff', async (_req, res) => {
+function firstQueryString(v: unknown): string {
+  if (typeof v === 'string') return v.trim();
+  if (Array.isArray(v) && typeof v[0] === 'string') return v[0].trim();
+  return '';
+}
+
+router.get('/debug/revenue-diff', async (req, res) => {
+  const fromQuery = firstQueryString(req.query.date);
+  const dateStr = fromQuery ? parseYmd(fromQuery) : todayYmdTashkent();
+  if (fromQuery && !dateStr) {
+    res.status(400).json({
+      error: 'Invalid date',
+      detail: 'Use query param date=YYYY-MM-DD (valid calendar date).',
+    });
+    return;
+  }
+
   const rows = await prisma.$queryRaw<
     { id: string; deal_amount: string; line_sum: string; diff: string }[]
   >(Prisma.sql`
@@ -19,7 +58,7 @@ router.get('/debug/revenue-diff', async (_req, res) => {
       d.amount - COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0) AS diff
     FROM deals d
     LEFT JOIN deal_items di ON di.deal_id = d.id
-    WHERE DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') = DATE '2026-03-31'
+    WHERE DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') = ${dateStr}::date
     GROUP BY d.id, d.amount
     HAVING d.amount <> COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)
     ORDER BY ABS(d.amount - COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)) DESC
