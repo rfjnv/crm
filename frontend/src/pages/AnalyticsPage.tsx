@@ -23,6 +23,12 @@ import { dealsApi } from '../api/deals.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
+import {
+  LEGEND_OPERATIONAL,
+  LEGEND_SHIPPED_REVENUE,
+  TOOLTIP_OPERATIONAL_REVENUE,
+  TOOLTIP_SHIPPED_REVENUE,
+} from '../constants/analyticsRevenueTooltips';
 import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow, Product } from '../types';
 
 const statusColorMap: Record<string, string> = {
@@ -173,6 +179,50 @@ function getPeriodStartDate(period: AnalyticsPeriod): Date {
   return start;
 }
 
+function buildRevenueChartData(
+  raw: { day: string; total: number; shippedTotal?: number }[],
+): { day: string; total: number }[] {
+  if (raw.length === 0) return [];
+  const map = new Map(raw.map((d) => [d.day, d.total]));
+  const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
+  const startDate = new Date(sorted[0].day + 'T12:00:00Z');
+  const endDate = new Date(sorted[sorted.length - 1].day + 'T12:00:00Z');
+  const filled: { day: string; total: number }[] = [];
+  for (let dt = new Date(startDate); dt <= endDate; dt.setUTCDate(dt.getUTCDate() + 1)) {
+    const key = dt.toISOString().slice(0, 10);
+    filled.push({ day: key, total: map.get(key) ?? 0 });
+  }
+  return filled.map((d) => {
+    const parts = d.day.split('-');
+    const dayNum = parseInt(parts[2], 10);
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    return { day: `${dayNum} ${MONTH_SHORT[monthIdx]}`, total: d.total };
+  });
+}
+
+/** Long-format rows for dual-line chart (operational + shipped per calendar day). */
+function buildRevenueByDayDualData(
+  raw: { day: string; total: number; shippedTotal?: number }[],
+): { day: string; value: number; metric: string }[] {
+  if (raw.length === 0) return [];
+  const mapOp = new Map(raw.map((d) => [d.day, d.total]));
+  const mapSh = new Map(raw.map((d) => [d.day, d.shippedTotal ?? 0]));
+  const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
+  const startDate = new Date(sorted[0].day + 'T12:00:00Z');
+  const endDate = new Date(sorted[sorted.length - 1].day + 'T12:00:00Z');
+  const out: { day: string; value: number; metric: string }[] = [];
+  for (let dt = new Date(startDate); dt <= endDate; dt.setUTCDate(dt.getUTCDate() + 1)) {
+    const key = dt.toISOString().slice(0, 10);
+    const parts = key.split('-');
+    const dayNum = parseInt(parts[2], 10);
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const label = `${dayNum} ${MONTH_SHORT[monthIdx]}`;
+    out.push({ day: label, value: mapOp.get(key) ?? 0, metric: LEGEND_OPERATIONAL });
+    out.push({ day: label, value: mapSh.get(key) ?? 0, metric: LEGEND_SHIPPED_REVENUE });
+  }
+  return out;
+}
+
 function aggregateSalesForProducts(products: Product[], salesMap: Record<string, ProductSalesAggregate>) {
   let soldQty = 0;
   let salesRevenue = 0;
@@ -245,6 +295,7 @@ function FormulaHint({ text }: { text: string }) {
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
+  const [revenueDayMode, setRevenueDayMode] = useState<'both' | 'operational'>('both');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [comparisonMap, setComparisonMap] = useState<Record<string, HierarchyCompareItem>>({});
@@ -506,28 +557,15 @@ export default function AnalyticsPage() {
   const pieColorDomain = pieData.map((d) => d.type);
   const pieColorRange = pieData.map((d) => d.color);
 
-  const buildRevenueChartData = (
-    raw: { day: string; total: number }[],
-  ): { day: string; total: number }[] => {
-    if (raw.length === 0) return [];
-    const map = new Map(raw.map((d) => [d.day, d.total]));
-    const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
-    const startDate = new Date(sorted[0].day + 'T12:00:00Z');
-    const endDate = new Date(sorted[sorted.length - 1].day + 'T12:00:00Z');
-    const filled: { day: string; total: number }[] = [];
-    for (let dt = new Date(startDate); dt <= endDate; dt.setUTCDate(dt.getUTCDate() + 1)) {
-      const key = dt.toISOString().slice(0, 10);
-      filled.push({ day: key, total: map.get(key) ?? 0 });
-    }
-    return filled.map((d) => {
-      const parts = d.day.split('-');
-      const dayNum = parseInt(parts[2]);
-      const monthIdx = parseInt(parts[1]) - 1;
-      return { day: `${dayNum} ${MONTH_SHORT[monthIdx]}`, total: d.total };
-    });
-  };
+  const lineDataOperational = buildRevenueChartData(sales.revenueByDay).map((d) => ({
+    day: d.day,
+    value: d.total,
+    metric: LEGEND_OPERATIONAL,
+  }));
 
-  const lineData = buildRevenueChartData(sales.revenueByDay);
+  const lineDataDual = buildRevenueByDayDualData(sales.revenueByDay);
+
+  const revenueDayChartData = revenueDayMode === 'both' ? lineDataDual : lineDataOperational;
 
   const clientBarData = sales.topClients.map((c) => ({
     name: c.companyName,
@@ -557,7 +595,14 @@ export default function AnalyticsPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} size="small">
             <Statistic
-              title={<span>Общая выручка<FormulaHint text="Сумма оплат по закрытым сделкам за период" /></span>}
+              title={
+                <span>
+                  Операционная выручка
+                  <Tooltip title={TOOLTIP_OPERATIONAL_REVENUE}>
+                    <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
+                  </Tooltip>
+                </span>
+              }
               value={sales.totalRevenue}
               formatter={(v) => formatUZS(v as number)}
               prefix={<DollarOutlined />}
@@ -568,7 +613,25 @@ export default function AnalyticsPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} size="small">
             <Statistic
-              title={<span>Средний чек<FormulaHint text="Общая выручка ÷ Кол-во завершённых сделок" /></span>}
+              title={
+                <span>
+                  Отгруженная выручка
+                  <Tooltip title={TOOLTIP_SHIPPED_REVENUE}>
+                    <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
+                  </Tooltip>
+                </span>
+              }
+              value={sales.shippedRevenue}
+              formatter={(v) => formatUZS(v as number)}
+              prefix={<DollarOutlined />}
+              valueStyle={{ color: '#237804' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card bordered={false} size="small">
+            <Statistic
+              title={<span>Средний чек<FormulaHint text="Средняя сумма строк по сделкам с выручкой в периоде (операционная)" /></span>}
               value={sales.avgDealAmount}
               formatter={(v) => formatUZS(v as number)}
               prefix={<RiseOutlined />}
@@ -606,19 +669,53 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title="Выручка по дням" bordered={false}>
-            {lineData.length > 0 ? (
+          <Card
+            title={
+              <span>
+                Выручка по дням
+                <Tooltip
+                  title={
+                    <div style={{ maxWidth: 360 }}>
+                      <div style={{ marginBottom: 8 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>
+                      <div>{TOOLTIP_SHIPPED_REVENUE}</div>
+                    </div>
+                  }
+                >
+                  <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.5 }} />
+                </Tooltip>
+              </span>
+            }
+            extra={
+              <Segmented
+                size="small"
+                value={revenueDayMode}
+                onChange={(v) => setRevenueDayMode(v as 'both' | 'operational')}
+                options={[
+                  { label: 'Две линии', value: 'both' },
+                  { label: 'Только операционная', value: 'operational' },
+                ]}
+              />
+            }
+            bordered={false}
+          >
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
+              Синяя линия — операционная выручка; зелёная — по сделкам «Отгружено» и «Закрыто». Переключатель сверху справа.
+            </Typography.Paragraph>
+            {revenueDayChartData.length > 0 ? (
               <Line
-                data={lineData}
+                data={revenueDayChartData}
                 xField="day"
-                yField="total"
+                yField="value"
+                seriesField="metric"
                 height={340}
                 shapeField="smooth"
-                style={{
-                  stroke: '#5b8db8',
-                  lineWidth: 2.5,
+                style={{ lineWidth: 2.5 }}
+                scale={{
+                  color: {
+                    domain: [LEGEND_OPERATIONAL, LEGEND_SHIPPED_REVENUE],
+                    range: ['#1677ff', '#389e0d'],
+                  },
                 }}
-                point={{ size: 3, style: { fill: '#fff', stroke: '#5b8db8', lineWidth: 1.5 } }}
                 axis={{
                   y: {
                     labelFormatter: (v: number) => formatUZS(v),
@@ -632,7 +729,10 @@ export default function AnalyticsPage() {
                     labelAutoRotate: false,
                   },
                 }}
-                tooltip={{ items: [{ field: 'total', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
+                tooltip={{
+                  items: [{ field: 'value', channel: 'y', valueFormatter: (v: number) => formatUZS(v) }],
+                }}
+                legend={{ color: { position: 'top', itemLabelFill: token.colorText } }}
                 theme={chartTheme}
               />
             ) : (
@@ -665,20 +765,33 @@ export default function AnalyticsPage() {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title="Топ 5 клиентов по выручке" bordered={false}>
+          <Card
+            title={
+              <span>
+                Топ 5 клиентов
+                <Tooltip title="Столбцы — операционная выручка за период. Рядом в карточках сверху — отгруженная выручка по всему периоду; по клиентам детализация «отгружено» в отчётах истории.">
+                  <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.5 }} />
+                </Tooltip>
+              </span>
+            }
+            bordered={false}
+          >
             {clientBarData.length > 0 ? (
               <>
+                <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 8, fontSize: 12 }}>
+                  Операционная выручка (как на левом графике, синяя линия).
+                </Typography.Paragraph>
                 <Bar
                   data={clientBarData}
                   xField="name"
                   yField="value"
-                  height={300}
+                  height={280}
                   colorField="name"
                   axis={{
                     x: { labelFill: token.colorTextSecondary },
                     y: { labelFormatter: (v: number) => formatUZS(v), labelFill: token.colorTextSecondary },
                   }}
-                  tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
+                  tooltip={{ items: [{ field: 'value', channel: 'y', name: LEGEND_OPERATIONAL, valueFormatter: (v: number) => formatUZS(v) }] }}
                   theme={chartTheme}
                   onReady={(plot) => {
                     plot.chart.on('element:click', (evt: { data?: { data?: { clientId?: string } } }) => {

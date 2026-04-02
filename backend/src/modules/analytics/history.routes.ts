@@ -1,6 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import {
+  SQL_DEALS_ACTIVE_FILTER,
+  SQL_DEALS_SHIPPED_CLOSED_FILTER,
+  SQL_EFFECTIVE_ITEM_TS,
+  SQL_LINE_REVENUE_DI,
+} from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -56,13 +62,13 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'overview-v5' });
+      const cached = await getSnapshot({ year, month: 0, type: 'overview-v6' });
       if (cached) { res.json(cached); return; }
     }
 
     const { yearStart, yearEnd } = getYearBounds(year);
 
-    // ── 1. Overview KPIs ──
+    // ── 1. Overview KPIs (line revenue + effective item date; active deals only) ──
     const overviewRaw = await prisma.$queryRaw<
       {
         total_deals: string;
@@ -74,14 +80,13 @@ router.get(
       Prisma.sql`SELECT
         COUNT(DISTINCT d.id)::text as total_deals,
         COUNT(DISTINCT d.client_id)::text as total_clients,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_revenue,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
-      FROM deals d
-      LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
-      WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
-        AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}`,
     );
 
     // Total collected (from payments table by paid_at)
@@ -91,20 +96,28 @@ router.get(
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}`,
     );
 
-    // Outstanding debt — use paid_amount from deals (reliable, correctly maintained per deal)
-    const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string }[]>(
-      Prisma.sql`SELECT
-        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as total_debt,
-        COALESCE(SUM(GREATEST(d.paid_amount - d.amount, 0)), 0)::text as total_overpayments
-      FROM deals d
-      WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')
-        AND d.created_at < ${yearEnd}${dealFilter}`,
+    // Outstanding debt — per-client net (finance-aligned), then positive pool / prepayment pool / true net
+    const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string; net_balance: string }[]>(
+      Prisma.sql`WITH per_client AS (
+        SELECT d.client_id,
+          COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0) AS net
+        FROM deals d
+        WHERE d.is_archived = false
+          AND d.status NOT IN ('CANCELED','REJECTED')
+          AND d.created_at < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN net > 0 THEN net ELSE 0 END), 0)::text as total_debt,
+        COALESCE(SUM(CASE WHEN net < 0 THEN -net ELSE 0 END), 0)::text as total_overpayments,
+        COALESCE(SUM(net), 0)::text as net_balance
+      FROM per_client`,
     );
 
     const ov = overviewRaw[0];
     const debtPositive = Number(debtRaw[0].total_debt);
     const totalOverpayments = Number(debtRaw[0].total_overpayments);
+    const netBalanceFromClients = Number(debtRaw[0].net_balance);
 
     // Debug mode for debt calculation audit
     const showDebug = req.query.debug === 'true';
@@ -137,7 +150,7 @@ router.get(
         totalDealsAmount: Number(dbg.total_deals_amount),
         totalPaid: Number(dbg.total_paid),
         simpleDebt: Number(dbg.total_deals_amount) - Number(dbg.total_paid),
-        adjustedDebt: debtPositive,
+        adjustedDebt: netBalanceFromClients,
         totalOverpayments,
         dealCount: Number(dbg.deal_count),
         dealsWithDebt: Number(dbg.deals_with_debt),
@@ -153,26 +166,24 @@ router.get(
       totalDebt: debtPositive,
       totalDebtPositive: debtPositive,
       totalOverpayments,
-      netBalance: debtPositive - totalOverpayments,
+      netBalance: netBalanceFromClients,
       avgDeal: Math.round(Number(ov.avg_deal)),
     };
 
-    // ── 2. Monthly trend ──
-    // Revenue grouped by deal creation month (Tashkent TZ)
+    // ── 2. Monthly trend — revenue by effective item month (Tashkent)
     const revenueByMonthRaw = await prisma.$queryRaw<
       { month: number; revenue: string; active_clients: string }[]
     >(
       Prisma.sql`SELECT
-        EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as revenue,
+        EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
         COUNT(DISTINCT d.client_id)::text as active_clients
-      FROM deals d
-      LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
-      WHERE COALESCE(di.deal_date, d.created_at) >= ${yearStart}
-        AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY EXTRACT(MONTH FROM (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
 
@@ -224,8 +235,8 @@ router.get(
         GROUP BY p.client_id, ms.month
       )
       SELECT cd.month,
-        COALESCE(SUM(GREATEST(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0), 0)), 0)::text as opening_balance,
-        COALESCE(SUM(GREATEST(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0), 0)), 0)::text as closing_balance
+        COALESCE(SUM(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0)), 0)::text as opening_balance,
+        COALESCE(SUM(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0)), 0)::text as closing_balance
       FROM client_deals cd
       LEFT JOIN client_payments cp ON cp.client_id = cd.client_id AND cp.month = cd.month
       GROUP BY cd.month
@@ -233,8 +244,23 @@ router.get(
     );
     const balanceMap = new Map(balanceRaw.map((r) => [r.month, { opening: Number(r.opening_balance), closing: Number(r.closing_balance) }]));
 
-    // Shipped per month — deals that were actually shipped (from shipments table)
-    const shippedByMonthRaw = await prisma.$queryRaw<
+    // Line revenue by month for SHIPPED/CLOSED (effective item date) — «отгруженная выручка по дате строки»
+    const shippedRevenueByMonthRaw = await prisma.$queryRaw<
+      { month: number; shipped_revenue: string }[]
+    >(
+      Prisma.sql`SELECT
+        EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_SHIPPED_CLOSED_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      ORDER BY month`,
+    );
+    // Sum deal line totals by calendar month of shipment event (warehouse date) — unchanged meaning, key still `shipped`
+    const shippedAtByMonthRaw = await prisma.$queryRaw<
       { month: number; shipped: string }[]
     >(
       Prisma.sql`SELECT
@@ -249,31 +275,34 @@ router.get(
       GROUP BY EXTRACT(MONTH FROM (s.shipped_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
-    const shippedMap = new Map(shippedByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
+    const shippedRevenueMap = new Map(shippedRevenueByMonthRaw.map((r) => [r.month, Number(r.shipped_revenue)]));
+    const shippedMap = new Map(shippedAtByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
     const revenueMap = new Map(revenueByMonthRaw.map((r) => [r.month, { revenue: Number(r.revenue), activeClients: Number(r.active_clients) }]));
 
     // Build trend for all months 1–currentMonth (always include zero-data months for correct charts)
     const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12;
     const monthlyTrend: {
-      month: number; revenue: number; collected: number; shipped: number;
+      month: number; revenue: number; collected: number; shipped: number; shippedRevenue: number;
       activeClients: number; openingBalance: number; closingBalance: number;
     }[] = [];
     for (let m = 1; m <= currentMonth; m++) {
       const rev = revenueMap.get(m);
       const collected = collectedMap.get(m) ?? 0;
       const shipped = shippedMap.get(m) ?? 0;
+      const shippedRevenue = shippedRevenueMap.get(m) ?? 0;
       monthlyTrend.push({
         month: m,
         revenue: rev?.revenue ?? 0,
         collected,
         shipped,
+        shippedRevenue,
         activeClients: rev?.activeClients ?? 0,
         openingBalance: balanceMap.get(m)?.opening ?? 0,
         closingBalance: balanceMap.get(m)?.closing ?? 0,
       });
     }
 
-    // ── 3. Top clients — use paid_amount for debt calculation ──
+    // ── 3. Top clients — year-scoped line revenue; paid/deal counts once per deal; debt = client net ──
     const topClientsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -284,19 +313,42 @@ router.get(
         debt: string;
       }[]
     >(
-      Prisma.sql`SELECT c.id, c.company_name,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
-        COALESCE(SUM(d.paid_amount), 0)::text as paid,
-        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt
-      FROM deals d
-      JOIN clients c ON c.id = d.client_id
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY c.id, c.company_name
-      ORDER BY SUM(di_rev.rev) DESC NULLS LAST
+      Prisma.sql`WITH line_scope AS (
+        SELECT di.deal_id, d.client_id, ${SQL_LINE_REVENUE_DI} AS ln
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      ),
+      rev AS (
+        SELECT client_id, COALESCE(SUM(ln), 0) AS revenue
+        FROM line_scope
+        GROUP BY client_id
+      ),
+      deal_agg AS (
+        SELECT d.client_id,
+          COUNT(DISTINCT d.id) AS deals_count,
+          COALESCE(SUM(d.paid_amount), 0) AS paid
+        FROM deals d
+        WHERE d.id IN (SELECT DISTINCT deal_id FROM line_scope)
+        GROUP BY d.client_id
+      )
+      SELECT c.id, c.company_name,
+        da.deals_count::text,
+        r.revenue::text as revenue,
+        da.paid::text as paid,
+        (SELECT COALESCE(SUM(d2.amount) - SUM(d2.paid_amount), 0)::text
+         FROM deals d2
+         WHERE d2.client_id = c.id
+           AND d2.is_archived = false
+           AND d2.status NOT IN ('CANCELED','REJECTED')
+           ${dealScope.managerId ? Prisma.sql`AND d2.manager_id = ${dealScope.managerId}` : Prisma.sql``}
+        ) as debt
+      FROM rev r
+      JOIN clients c ON c.id = r.client_id
+      JOIN deal_agg da ON da.client_id = c.id
+      ORDER BY r.revenue DESC NULLS LAST
       LIMIT 30`,
     );
     const topClients = topClientsRaw.map((r) => ({
@@ -321,13 +373,14 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name, p.unit,
         COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
-        COALESCE(SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0)), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
         COUNT(DISTINCT d.client_id)::text as unique_buyers
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -344,7 +397,7 @@ router.get(
       uniqueBuyers: Number(r.unique_buyers),
     }));
 
-    // ── 5. Manager stats — collected from payments table (source of truth) ──
+    // ── 5. Manager stats — line revenue by effective date; collected from payments ──
     const managersRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -355,14 +408,25 @@ router.get(
         clients: string;
       }[]
     >(
-      Prisma.sql`SELECT u.id, u.full_name,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
+      Prisma.sql`WITH mgr_rev AS (
+        SELECT d.manager_id,
+          COUNT(DISTINCT d.id)::text AS deals_count,
+          COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue,
+          COUNT(DISTINCT d.client_id)::text AS clients
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+        GROUP BY d.manager_id
+      )
+      SELECT u.id, u.full_name,
+        mr.deals_count,
+        mr.revenue,
         COALESCE(mc.total_collected, 0)::text as collected,
-        COUNT(DISTINCT d.client_id)::text as clients
-      FROM deals d
-      JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+        mr.clients
+      FROM mgr_rev mr
+      JOIN users u ON u.id = mr.manager_id
       LEFT JOIN (
         SELECT d2.manager_id, SUM(p.amount) as total_collected
         FROM payments p
@@ -370,10 +434,7 @@ router.get(
         WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}
         GROUP BY d2.manager_id
       ) mc ON mc.manager_id = u.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY u.id, u.full_name, mc.total_collected
-      ORDER BY SUM(di_rev.rev) DESC NULLS LAST`,
+      ORDER BY mr.revenue::numeric DESC NULLS LAST`,
     );
     const managers = managersRaw.map((r) => ({
       id: r.id,
@@ -402,7 +463,7 @@ router.get(
       count: Number(r.count),
     }));
 
-    // ── 7. Debtors — use paid_amount from deals (reliable per-deal tracking) ──
+    // ── 7. Debtors — client net balance (SUM(amount) − SUM(paid)); positive net only ──
     const debtorsRaw = await prisma.$queryRaw<
       {
         id: string;
@@ -415,15 +476,15 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         COALESCE(SUM(d.amount), 0)::text as total_amount,
         COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt
+        (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0))::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')
         AND d.created_at < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - d.paid_amount, 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - d.paid_amount, 0)) DESC
+      HAVING (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) > 0
+      ORDER BY (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) DESC
       LIMIT 30`,
     );
     const debtors = debtorsRaw.map((r) => ({
@@ -434,22 +495,22 @@ router.get(
       debt: Number(r.debt),
     }));
 
-    // ── 8. Client activity matrix (with revenue per month) ──
+    // ── 8. Client activity matrix — month from effective item date ──
     const clientActivityRaw = await prisma.$queryRaw<
       { client_id: string; company_name: string; month: number; revenue: string }[]
     >(
       Prisma.sql`SELECT
         c.id as client_id,
         c.company_name,
-        EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as revenue
-      FROM deals d
+        EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
-      LEFT JOIN deal_items di ON di.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY c.company_name, month`,
     );
     const activityMap = new Map<string, { clientId: string; companyName: string; activeMonths: number[]; monthlyData: { month: number; revenue: number }[] }>();
@@ -482,7 +543,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'overview-v5' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'overview-v6' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -524,8 +585,13 @@ router.get(
         FROM deals d
         JOIN clients c ON c.id = d.client_id
         JOIN users u ON u.id = d.manager_id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-          AND d.is_archived = false${managerFilter}
+        WHERE d.is_archived = false${managerFilter}
+          AND EXISTS (
+            SELECT 1 FROM deal_items di
+            WHERE di.deal_id = d.id
+              AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+              AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
+          )
         ORDER BY d.amount DESC
         LIMIT 100`,
       );
@@ -600,7 +666,7 @@ router.get(
 
     // Snapshot: admin-only, past months
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      const cached = await getSnapshot({ year, month, type: 'month-detail-v4' });
+      const cached = await getSnapshot({ year, month, type: 'month-detail-v5' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -625,9 +691,14 @@ router.get(
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       JOIN users u ON u.id = d.manager_id
-      WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false${dealFilter}
+      WHERE d.is_archived = false${dealFilter}
+        AND EXISTS (
+          SELECT 1 FROM deal_items di
+          WHERE di.deal_id = d.id
+            AND EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
+            AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+            AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
+        )
       ORDER BY d.amount DESC`,
     );
 
@@ -636,14 +707,13 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name,
         SUM(di.requested_qty)::text as qty,
-        SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0))::text as revenue
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+      WHERE EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart} AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
+        AND ${SQL_DEALS_ACTIVE_FILTER}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -656,17 +726,16 @@ router.get(
       { id: string; full_name: string; deals_count: string; revenue: string }[]
     >(
       Prisma.sql`SELECT u.id, u.full_name,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue
-      FROM deals d
+        COUNT(DISTINCT d.id)::text as deals_count,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
       JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+      WHERE EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart} AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
+        AND ${SQL_DEALS_ACTIVE_FILTER}${dealFilter}
       GROUP BY u.id, u.full_name
-      ORDER BY SUM(di_rev.rev) DESC NULLS LAST`,
+      ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST`,
     );
 
     // Payments in this month (by paid_at — cashflow)
@@ -721,8 +790,8 @@ router.get(
         GROUP BY p.client_id
       )
       SELECT
-        COALESCE(SUM(GREATEST(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0), 0)), 0)::text as opening_balance,
-        COALESCE(SUM(GREATEST(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0), 0)), 0)::text as closing_balance
+        COALESCE(SUM(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0)), 0)::text as opening_balance,
+        COALESCE(SUM(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0)), 0)::text as closing_balance
       FROM client_deals cd
       LEFT JOIN client_payments cp ON cp.client_id = cd.client_id`,
     );
@@ -733,15 +802,15 @@ router.get(
       Prisma.sql`SELECT c.id, c.company_name,
         SUM(d.amount)::text as total_amount,
         COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        SUM(GREATEST(d.amount - d.paid_amount, 0))::text as debt
+        (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0))::text as debt
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - d.paid_amount, 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - d.paid_amount, 0)) DESC
+      HAVING (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) > 0
+      ORDER BY (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) DESC
       LIMIT 30`,
     );
 
@@ -791,7 +860,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      saveSnapshot({ year, month, type: 'month-detail-v4' }, responseData).catch(() => {});
+      saveSnapshot({ year, month, type: 'month-detail-v5' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -808,7 +877,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'extended' });
+      const cached = await getSnapshot({ year, month: 0, type: 'extended-v2' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -821,13 +890,12 @@ router.get(
     >(
       Prisma.sql`WITH monthly_clients AS (
         SELECT DISTINCT d.client_id,
-          DATE_TRUNC('month', (COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::date as month_start
-        FROM deals d
-        LEFT JOIN deal_items di ON di.deal_id = d.id AND (di.line_total > 0 OR (di.requested_qty > 0 AND di.price > 0))
-        WHERE COALESCE(di.deal_date, d.created_at) >= ${retentionStart}
-          AND COALESCE(di.deal_date, d.created_at) < ${yearEnd}
-          AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+          DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::date as month_start
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${retentionStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       ),
       current_months AS (
         SELECT DISTINCT month_start
@@ -883,11 +951,13 @@ router.get(
       { id: string; company_name: string; revenue: string; running_total: string; grand_total: string }[]
     >(
       Prisma.sql`WITH client_revenue AS (
-        SELECT c.id, c.company_name, COALESCE(SUM(di_rev.rev), 0) as revenue
-        FROM deals d JOIN clients c ON c.id = d.client_id
-        LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        SELECT c.id, c.company_name, COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) as revenue
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        JOIN clients c ON c.id = d.client_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY c.id, c.company_name
         ORDER BY revenue DESC
       )
@@ -914,13 +984,14 @@ router.get(
     >(
       Prisma.sql`WITH product_months AS (
         SELECT di.product_id, p.name,
-          EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+          EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
           d.client_id
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
           AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       ),
       product_stats AS (
@@ -966,15 +1037,16 @@ router.get(
       { manager_id: string; full_name: string; month: number; revenue: string; deals_count: string }[]
     >(
       Prisma.sql`SELECT d.manager_id, u.full_name,
-        EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
-        COUNT(d.id)::text as deals_count
-      FROM deals d
+        EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
+        COUNT(DISTINCT d.id)::text as deals_count
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
       JOIN users u ON u.id = d.manager_id
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY u.full_name, month`,
     );
     const managerTrendRaw2 = managerTrendRaw.map((r) => ({
@@ -1011,21 +1083,25 @@ router.get(
       { cohort_month: number; active_month: number; client_count: string; revenue_total: string }[]
     >(
       Prisma.sql`WITH first_deal AS (
-        SELECT d.client_id, MIN(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
-        FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        SELECT d.client_id,
+          MIN(EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY d.client_id
       ),
       monthly_activity AS (
         SELECT d.client_id,
-          EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
-          COALESCE(SUM(di_rev.rev), 0) as revenue
-        FROM deals d
-        LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-        GROUP BY d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+          EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
+          COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) as revenue
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       )
       SELECT f.cohort_month, ma.active_month,
         COUNT(DISTINCT ma.client_id)::text as client_count,
@@ -1048,14 +1124,24 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         COALESCE(SUM(d.amount - d.paid_amount), 0)::text as debt,
-        COALESCE(SUM(d.amount), 0)::text as revenue,
-        CASE WHEN SUM(d.amount) > 0
-          THEN (SUM(d.amount - d.paid_amount)::numeric / SUM(d.amount)::numeric)::text
+        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
+        CASE WHEN COALESCE(SUM(di_rev.rev), 0) > 0
+          THEN (SUM(d.amount - d.paid_amount)::numeric / NULLIF(SUM(di_rev.rev), 0)::numeric)::text
+          WHEN SUM(d.amount) > 0
+          THEN (SUM(d.amount - d.paid_amount)::numeric / NULLIF(SUM(d.amount), 0)::numeric)::text
           ELSE '0'
         END as debt_ratio,
-        MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_deal_month
+        (SELECT MAX(EXTRACT(MONTH FROM (COALESCE(di2.deal_date, d2.created_at) AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int
+         FROM deal_items di2
+         JOIN deals d2 ON d2.id = di2.deal_id
+         WHERE d2.client_id = c.id
+           AND d2.is_archived = false
+           AND d2.status NOT IN ('CANCELED','REJECTED')
+           ${dealScope.managerId ? Prisma.sql`AND d2.manager_id = ${dealScope.managerId}` : Prisma.sql``}
+        ) as last_deal_month
       FROM deals d
       JOIN clients c ON c.id = d.client_id
+      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND d.payment_status IN ('UNPAID', 'PARTIAL')
@@ -1077,15 +1163,16 @@ router.get(
     const seasonalityRaw = await prisma.$queryRaw<
       { month: number; revenue: string; deals_count: string; avg_deal_size: string }[]
     >(
-      Prisma.sql`SELECT EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(AVG(di_rev.rev), 0)::text as avg_deal_size
-      FROM deals d
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
+        COUNT(DISTINCT d.id)::text as deals_count,
+        (COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) / NULLIF(COUNT(DISTINCT d.id), 0))::text as avg_deal_size
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
     const seasonality = seasonalityRaw.map((r) => ({
@@ -1100,14 +1187,15 @@ router.get(
       { id: string; company_name: string; deals_count: string; total_revenue: string; last_active_month: number }[]
     >(
       Prisma.sql`SELECT c.id, c.company_name,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(SUM(di_rev.rev), 0)::text as total_revenue,
-        MAX(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_active_month
-      FROM deals d
+        COUNT(DISTINCT d.id)::text as deals_count,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        MAX(EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_active_month
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name`,
     );
 
@@ -1115,10 +1203,12 @@ router.get(
     const activeMonthsRaw = await prisma.$queryRaw<
       { client_id: string; month: number }[]
     >(
-      Prisma.sql`SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
-      FROM deals d
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd} AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}`,
+      Prisma.sql`SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}`,
     );
     const clientMonthsMap = new Map<string, number[]>();
     for (const row of activeMonthsRaw) {
@@ -1197,7 +1287,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'extended' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'extended-v2' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -1241,8 +1331,9 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE d.client_id = ${clientId}
-        AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
+        AND EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
         AND d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.requested_qty IS NOT NULL AND di.price IS NOT NULL
@@ -1292,18 +1383,18 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         SUM(di.requested_qty)::text as total_qty,
-        SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total_revenue,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
         COUNT(DISTINCT d.id)::text as deals_count
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.product_id = ${productId}
-        AND d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
+        AND ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+        AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC`,
+      ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC`,
     );
 
     res.json({
@@ -1787,16 +1878,15 @@ router.get(
         COUNT(d.id)::text as deals_count,
         COALESCE(SUM(d.amount), 0)::text as total_amount,
         COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        COALESCE(SUM(GREATEST(d.amount - d.paid_amount, 0)), 0)::text as debt,
-        COALESCE(SUM(GREATEST(d.paid_amount - d.amount, 0)), 0)::text as overpayment
+        GREATEST(COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0), 0)::text as debt,
+        GREATEST(COALESCE(SUM(d.paid_amount), 0) - COALESCE(SUM(d.amount), 0), 0)::text as overpayment
       FROM deals d
       JOIN clients c ON c.id = d.client_id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
       GROUP BY c.id, c.company_name
-      HAVING SUM(GREATEST(d.amount - d.paid_amount, 0)) > 0
-        OR SUM(GREATEST(d.paid_amount - d.amount, 0)) > 0
-      ORDER BY SUM(GREATEST(d.amount - d.paid_amount, 0)) DESC`,
+      HAVING COALESCE(SUM(d.amount), 0) <> COALESCE(SUM(d.paid_amount), 0)
+      ORDER BY GREATEST(COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0), 0) DESC`,
     );
 
     const BOM = '\uFEFF';
@@ -1828,28 +1918,32 @@ router.get(
     const rows = await prisma.$queryRaw<
       { client_id: string; company_name: string; revenue: string; deals_count: string }[]
     >(
-      Prisma.sql`WITH first_deal AS (
+      Prisma.sql`WITH line_scope AS (
         SELECT d.client_id,
-          MIN(EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
-        FROM deals d
-        WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-          AND d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-        GROUP BY d.client_id
+          d.id as deal_id,
+          EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
+          SUM(${SQL_LINE_REVENUE_DI}) as rev
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
+          AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id, d.id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      ),
+      first_active AS (
+        SELECT client_id, MIN(active_month) as cohort_month
+        FROM line_scope
+        GROUP BY client_id
       )
       SELECT c.id as client_id, c.company_name,
-        COALESCE(SUM(di_rev.rev), 0)::text as revenue,
-        COUNT(d.id)::text as deals_count
-      FROM deals d
-      JOIN clients c ON c.id = d.client_id
-      JOIN first_deal f ON f.client_id = d.client_id AND f.cohort_month = ${cohortMonth}
-      LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
-      WHERE d.created_at >= ${yearStart} AND d.created_at < ${yearEnd}
-        AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-        AND EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int = ${activeMonth}
+        COALESCE(SUM(ls.rev), 0)::text as revenue,
+        COUNT(DISTINCT ls.deal_id)::text as deals_count
+      FROM line_scope ls
+      JOIN first_active fa ON fa.client_id = ls.client_id AND fa.cohort_month = ${cohortMonth}
+      JOIN clients c ON c.id = ls.client_id
+      WHERE ls.active_month = ${activeMonth}
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(di_rev.rev) DESC NULLS LAST`,
+      ORDER BY SUM(ls.rev) DESC NULLS LAST`,
     );
 
     res.json({

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,6 +13,15 @@ import {
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
+import {
+  LEGEND_OPERATIONAL,
+  LEGEND_SHIPPED_REVENUE,
+  LEGEND_PAID,
+  LEGEND_SHIPPED_AT,
+  TOOLTIP_OPERATIONAL_REVENUE,
+  TOOLTIP_SHIPPED_REVENUE,
+  TOOLTIP_SHIPPED_AT_MONTHLY,
+} from '../constants/analyticsRevenueTooltips';
 import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type {
@@ -21,7 +30,7 @@ import type {
   ExchangeProduct, ExchangeClient, PrepaymentClient,
 } from '../types';
 
-const { Title } = Typography;
+const { Title, Paragraph, Text } = Typography;
 
 const MONTH_LABELS: Record<number, string> = {
   1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
@@ -93,6 +102,8 @@ export default function HistoryAnalyticsPage() {
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
   const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number } | null>(null);
+  /** Monthly chart: compare operational vs shipped revenue, or show one metric. */
+  const [historyRevMode, setHistoryRevMode] = useState<'both' | 'operational' | 'shipped'>('both');
 
   const { data, isLoading } = useQuery({ queryKey: ['analytics-history', year], queryFn: () => analyticsApi.getHistory(year) });
 
@@ -221,10 +232,23 @@ export default function HistoryAnalyticsPage() {
   const clickableRow = { cursor: 'pointer' };
 
   // ── Chart data ──
-  const areaData = monthlyTrend.flatMap((m) => [
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.revenue, type: 'Выручка', _month: m.month },
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: 'Оплачено', _month: m.month },
-    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.shipped, type: 'Отгружено', _month: m.month },
+  const totalShippedRevenueYear = monthlyTrend.reduce((s, m) => s + (m.shippedRevenue ?? 0), 0);
+
+  const revenueLineData = monthlyTrend.flatMap((m) => {
+    const label = MONTH_LABELS[m.month] || `${m.month}`;
+    const rows: { month: string; value: number; series: string; _month: number }[] = [];
+    if (historyRevMode === 'both' || historyRevMode === 'operational') {
+      rows.push({ month: label, value: m.revenue, series: LEGEND_OPERATIONAL, _month: m.month });
+    }
+    if (historyRevMode === 'both' || historyRevMode === 'shipped') {
+      rows.push({ month: label, value: m.shippedRevenue ?? 0, series: LEGEND_SHIPPED_REVENUE, _month: m.month });
+    }
+    return rows;
+  });
+
+  const paymentsWarehouseAreaData = monthlyTrend.flatMap((m) => [
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: LEGEND_PAID, _month: m.month },
+    { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.shipped, type: LEGEND_SHIPPED_AT, _month: m.month },
   ]);
   const clientBarData = monthlyTrend.map((m) => ({
     month: MONTH_LABELS[m.month] || `${m.month}`, clients: m.activeClients, _month: m.month,
@@ -245,10 +269,48 @@ export default function HistoryAnalyticsPage() {
   }
 
   // ── KPI cards config ──
-  const kpiCards = [
+  const kpiCards: {
+    key: string;
+    title: ReactNode;
+    value: number;
+    prefix: ReactNode;
+    style: CSSProperties;
+    fmt?: boolean;
+    noDrawer?: boolean;
+  }[] = [
     { key: 'deals', title: 'Сделок', value: overview.totalDeals, prefix: <ShoppingOutlined />, style: {} },
     { key: 'clients', title: 'Клиентов', value: overview.totalClients, prefix: <TeamOutlined />, style: {} },
-    { key: 'revenue', title: 'Выручка', value: overview.totalRevenue, prefix: <DollarOutlined />, style: {}, fmt: true },
+    {
+      key: 'revenue',
+      title: (
+        <span>
+          Операционная выручка
+          <Tooltip title={TOOLTIP_OPERATIONAL_REVENUE}>
+            <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
+          </Tooltip>
+        </span>
+      ),
+      value: overview.totalRevenue,
+      prefix: <DollarOutlined />,
+      style: { color: token.colorPrimary },
+      fmt: true,
+    },
+    {
+      key: 'shippedRevenueY',
+      title: (
+        <span>
+          Отгруженная выручка
+          <Tooltip title={TOOLTIP_SHIPPED_REVENUE}>
+            <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
+          </Tooltip>
+        </span>
+      ),
+      value: totalShippedRevenueYear,
+      prefix: <DollarOutlined />,
+      style: { color: '#237804' },
+      fmt: true,
+      noDrawer: true,
+    },
     { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
     { key: 'debt', title: <span>Долг <Tooltip title="SUM(amount - paid) по сделкам где долг > 0. Кумулятивно за все годы."><InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} /></Tooltip></span>, value: overview.totalDebt, prefix: <WarningOutlined />, style: { color: overview.totalDebt > 0 ? token.colorError : token.colorSuccess }, fmt: true },
@@ -286,7 +348,21 @@ export default function HistoryAnalyticsPage() {
     { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
     { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80, sorter: (a: HistoryTopClient, b: HistoryTopClient) => a.dealsCount - b.dealsCount },
-    { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v), sorter: (a: HistoryTopClient, b: HistoryTopClient) => a.revenue - b.revenue },
+    {
+      title: (
+        <span>
+          Выручка
+          <Tooltip title={`${TOOLTIP_OPERATIONAL_REVENUE} Колонка — операционная выручка клиента за год.`}>
+            <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
+          </Tooltip>
+        </span>
+      ),
+      dataIndex: 'revenue',
+      key: 'revenue',
+      width: 120,
+      render: (v: number) => fmtNum(v),
+      sorter: (a: HistoryTopClient, b: HistoryTopClient) => a.revenue - b.revenue,
+    },
     { title: 'Оплачено', dataIndex: 'paid', key: 'paid', width: 120, render: (v: number) => fmtNum(v) },
     { title: 'Долг', dataIndex: 'debt', key: 'debt', width: 120, render: (v: number) => <span style={{ color: v > 0 ? token.colorError : token.colorSuccess }}>{fmtNum(v)}</span>, sorter: (a: HistoryTopClient, b: HistoryTopClient) => a.debt - b.debt },
   ];
@@ -324,7 +400,7 @@ export default function HistoryAnalyticsPage() {
         const isClickable = revenue > 0;
         const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
         return (
-          <Tooltip title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+          <Tooltip title={`${MONTH_LABELS[m]} — операционная выручка: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
             <div
               style={{
                 width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
@@ -432,7 +508,12 @@ export default function HistoryAnalyticsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {kpiCards.map((kpi) => (
           <Col xs={12} sm={8} lg={6} key={kpi.key}>
-            <Card size="small" hoverable onClick={() => setKpiDrawer(kpi.key)} style={{ cursor: 'pointer' }}>
+            <Card
+              size="small"
+              hoverable={!kpi.noDrawer}
+              onClick={kpi.noDrawer ? undefined : () => setKpiDrawer(kpi.key)}
+              style={{ cursor: kpi.noDrawer ? 'default' : 'pointer' }}
+            >
               <Statistic
                 title={kpi.title}
                 value={kpi.value}
@@ -458,9 +539,105 @@ export default function HistoryAnalyticsPage() {
         </Button>
       </div>
 
-      <Card title="Динамика по месяцам" size="small" style={{ marginBottom: 24 }}>
-        <Area data={areaData} xField="month" yField="value" colorField="type" height={300}
-          shapeField="smooth" style={{ fillOpacity: 0.15 }}
+      <Card
+        title={
+          <span>
+            Выручка по месяцам
+            <Tooltip
+              title={
+                <div style={{ maxWidth: 360 }}>
+                  <div style={{ marginBottom: 8 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>
+                  <div>{TOOLTIP_SHIPPED_REVENUE}</div>
+                </div>
+              }
+            >
+              <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.55 }} />
+            </Tooltip>
+          </span>
+        }
+        extra={
+          <Segmented
+            size="small"
+            value={historyRevMode}
+            onChange={(v) => setHistoryRevMode(v as 'both' | 'operational' | 'shipped')}
+            options={[
+              { label: 'Обе линии', value: 'both' },
+              { label: 'Операционная', value: 'operational' },
+              { label: 'Отгружено', value: 'shipped' },
+            ]}
+          />
+        }
+        size="small"
+        style={{ marginBottom: 16 }}
+      >
+        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
+          Сравнение двух показателей выручки (не путать с графиком ниже: там оплаты и склад).
+        </Paragraph>
+        {revenueLineData.length > 0 ? (
+          <Line
+            data={revenueLineData}
+            xField="month"
+            yField="value"
+            seriesField="series"
+            height={300}
+            shapeField="smooth"
+            style={{ lineWidth: 2.5 }}
+            scale={{
+              color: {
+                domain: [LEGEND_OPERATIONAL, LEGEND_SHIPPED_REVENUE],
+                range: ['#1677ff', '#389e0d'],
+              },
+            }}
+            axis={axisStyle}
+            tooltip={{ items: [{ field: 'value', channel: 'y', valueFormatter: (v: number) => fmtNum(v) }] }}
+            legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
+            theme={chartTheme}
+            onReady={({ chart }) => {
+              chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
+                const m = ev?.data?.data?._month;
+                if (m) setMonthDrawer(m);
+              });
+            }}
+          />
+        ) : (
+          <Text type="secondary">Нет данных</Text>
+        )}
+      </Card>
+
+      <Card
+        title={
+          <span>
+            Оплаты и склад
+            <Tooltip
+              title={
+                <div style={{ maxWidth: 360 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <strong>{LEGEND_PAID}:</strong> сумма платежей по дате оплаты (paid_at) в каждом месяце.
+                  </div>
+                  <div>
+                    <strong>{LEGEND_SHIPPED_AT}:</strong> {TOOLTIP_SHIPPED_AT_MONTHLY}
+                  </div>
+                </div>
+              }
+            >
+              <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.55 }} />
+            </Tooltip>
+          </span>
+        }
+        size="small"
+        style={{ marginBottom: 24 }}
+      >
+        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
+          Здесь нет «второй выручки» — только денежный поток и отгрузки по дате склада.
+        </Paragraph>
+        <Area
+          data={paymentsWarehouseAreaData}
+          xField="month"
+          yField="value"
+          colorField="type"
+          height={280}
+          shapeField="smooth"
+          style={{ fillOpacity: 0.15 }}
           axis={axisStyle}
           tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Сумма', valueFormatter: (v: number) => fmtNum(v) }] }}
           legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
@@ -566,7 +743,7 @@ export default function HistoryAnalyticsPage() {
                     const isClickable = revenue > 0;
                     const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
                     return (
-                      <Tooltip key={m} title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                      <Tooltip key={m} title={`${MONTH_LABELS[m]} — операционная выручка: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
                         <div
                           onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
                           style={{

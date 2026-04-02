@@ -354,16 +354,25 @@ export interface RevenueTodayResponse {
 // ──── Analytics ────
 
 export interface AnalyticsSales {
+  /** Operational line revenue (active deals, effective item date). */
   totalRevenue: number;
+  /** SHIPPED/CLOSED line revenue (same date rules). */
+  shippedRevenue: number;
   avgDealAmount: number;
   conversionNewToCompleted: number | null;
   cancellationRate: number | null;
   totalDeals: number;
   completedDeals: number;
   canceledDeals: number;
-  revenueByDay: { day: string; total: number }[];
+  /** `total` = operational; `shippedTotal` = shipped/closed (same calendar day, Tashkent). */
+  revenueByDay: { day: string; total: number; shippedTotal: number }[];
   dealsByStatus: { status: string; count: number }[];
-  topClients: { clientId: string; companyName: string; totalRevenue: number }[];
+  topClients: {
+    clientId: string;
+    companyName: string;
+    totalRevenue: number;
+    shippedRevenue: number;
+  }[];
   topProducts: { productId: string; name: string; totalQuantity: number }[];
 }
 
@@ -835,7 +844,10 @@ export interface HistoryMonthlyTrend {
   month: number;
   revenue: number;
   collected: number;
+  /** Line totals by warehouse `shipped_at` month (logistics). */
   shipped: number;
+  /** SHIPPED/CLOSED line revenue by effective item date (same rules as Analytics «отгружено»). */
+  shippedRevenue?: number;
   activeClients: number;
   openingBalance: number;
   closingBalance: number;
