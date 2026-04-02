@@ -162,7 +162,7 @@ app.get('/api/debug/revenue-gap', async (_req, res) => {
 });
 
 // Temporary: revenue difference diagnostics for specific effective date
-app.get('/debug/revenue-diff', async (_req, res) => {
+const revenueDiffDebugHandler = async (req: express.Request, res: express.Response) => {
   const rows = await prisma.$queryRaw<
     { id: string; deal_amount: string; line_sum: string; diff: string }[]
   >(Prisma.sql`
@@ -180,6 +180,13 @@ app.get('/debug/revenue-diff', async (_req, res) => {
   `);
 
   res.json(rows);
+};
+
+app.get('/debug/revenue-diff', async (req, res) => {
+  await revenueDiffDebugHandler(req, res);
+});
+app.get('/api/debug/revenue-diff', async (req, res) => {
+  await revenueDiffDebugHandler(req, res);
 });
 
 // Routes

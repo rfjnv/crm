@@ -221,13 +221,9 @@ export class WarehouseService {
     });
   }
 
-  async getMovements(productId?: string, role?: string) {
-    const isSuperAdmin = role === 'SUPER_ADMIN';
+  async getMovements(productId?: string) {
     return prisma.inventoryMovement.findMany({
-      where: {
-        ...(productId ? { productId } : {}),
-        ...(isSuperAdmin ? {} : { type: { not: 'CORRECTION' } }),
-      },
+      where: productId ? { productId } : {},
       include: {
         product: { select: { id: true, name: true, sku: true } },
         deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
@@ -237,19 +233,14 @@ export class WarehouseService {
     });
   }
 
-  async getProductMovements(productId: string, role?: string) {
+  async getProductMovements(productId: string) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
     }
 
-    const isSuperAdmin = role === 'SUPER_ADMIN';
-
     return prisma.inventoryMovement.findMany({
-      where: {
-        productId,
-        ...(isSuperAdmin ? {} : { type: { not: 'CORRECTION' } }),
-      },
+      where: { productId },
       include: {
         deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
       },
@@ -257,24 +248,11 @@ export class WarehouseService {
     });
   }
 
-  async getProductAuditHistory(productId?: string, role?: string) {
-    const isSuperAdmin = role === 'SUPER_ADMIN';
-
+  async getProductAuditHistory(productId?: string) {
     if (!productId) {
       return prisma.auditLog.findMany({
         where: {
           entityType: { in: ['product', 'inventory_movement', 'stock_correction'] },
-          ...(isSuperAdmin ? {} : {
-            NOT: [
-              { entityType: 'stock_correction' },
-              {
-                after: {
-                  path: ['type'],
-                  equals: 'CORRECTION',
-                },
-              },
-            ],
-          }),
         },
         include: {
           user: { select: { id: true, fullName: true, role: true } },
@@ -304,17 +282,6 @@ export class WarehouseService {
             entityId: { in: movementIds.map((movement) => movement.id) },
           },
         ],
-        ...(isSuperAdmin ? {} : {
-          NOT: [
-            { entityType: 'stock_correction' },
-            {
-              after: {
-                path: ['type'],
-                equals: 'CORRECTION',
-              },
-            },
-          ],
-        }),
       },
       include: {
         user: { select: { id: true, fullName: true, role: true } },
@@ -335,11 +302,7 @@ export class WarehouseService {
 
     const [movements, dealItems, topClientsRaw] = await Promise.all([
       prisma.inventoryMovement.findMany({
-        where: {
-          productId,
-          createdAt: { gte: from },
-          type: { not: 'CORRECTION' },
-        },
+        where: { productId, createdAt: { gte: from } },
         select: { type: true, quantity: true, createdAt: true },
         orderBy: { createdAt: 'asc' },
       }),
@@ -373,7 +336,7 @@ export class WarehouseService {
       const day = m.createdAt.toISOString().slice(0, 10);
       const entry = dayMap.get(day) || { inQty: 0, outQty: 0 };
       if (m.type === 'IN') entry.inQty += Number(m.quantity);
-      else if (m.type === 'OUT') entry.outQty += Number(m.quantity);
+      else entry.outQty += Number(m.quantity);
       dayMap.set(day, entry);
     }
     const movementsByDay = Array.from(dayMap.entries())

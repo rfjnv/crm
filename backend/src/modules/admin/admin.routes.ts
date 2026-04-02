@@ -55,7 +55,7 @@ router.get(
   requirePermission('view_audit_history'),
   asyncHandler(async (req: Request, res: Response) => {
     const productId = req.query.productId as string | undefined;
-    const result = await warehouseService.getProductAuditHistory(productId, req.user?.role);
+    const result = await warehouseService.getProductAuditHistory(productId);
     res.json(result);
   }),
 );
