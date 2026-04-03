@@ -34,3 +34,14 @@ export const updateClientDto = z.object({
 
 export type CreateClientDto = z.infer<typeof createClientDto>;
 export type UpdateClientDto = z.infer<typeof updateClientDto>;
+
+export const createClientNoteDto = z.object({
+  content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),
+});
+
+export const updateClientNoteDto = z.object({
+  content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),
+});
+
+export type CreateClientNoteDto = z.infer<typeof createClientNoteDto>;
+export type UpdateClientNoteDto = z.infer<typeof updateClientNoteDto>;

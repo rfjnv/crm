@@ -142,6 +142,7 @@ model User {
   contractsDeleted    Contract[]           @relation("ContractDeletedBy")
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
+  clientNotes         ClientNote[]
 
   @@map("users")
 }
@@ -186,14 +187,32 @@ model Client {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  manager   User       @relation("ClientManager", fields: [managerId], references: [id])
-  deals     Deal[]
-  contracts Contract[]
-  payments  Payment[]
+  manager     User         @relation("ClientManager", fields: [managerId], references: [id])
+  deals       Deal[]
+  contracts   Contract[]
+  payments    Payment[]
+  clientNotes ClientNote[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
   @@map("clients")
+}
+
+model ClientNote {
+  id        String    @id @default(uuid())
+  clientId  String    @map("client_id")
+  userId    String    @map("user_id")
+  content   String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([clientId, deletedAt])
+  @@index([clientId, createdAt])
+  @@map("client_notes")
 }
 
 // ==================== CONTRACTS ====================

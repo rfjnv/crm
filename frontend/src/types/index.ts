@@ -78,6 +78,24 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
+export interface ClientNote {
+  id: string;
+  clientId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  user: { id: string; fullName: string };
+}
+
+export interface ClientLastNote {
+  id: string;
+  preview: string | null;
+  createdAt: string;
+  authorName: string;
+}
+
 export interface Client {
   id: string;
   companyName: string;
@@ -96,6 +114,10 @@ export interface Client {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Max of client updatedAt, latest deal createdAt, latest payment paidAt (from list API). */
+  lastContactAt?: string | null;
+  /** Latest non-deleted client note (from list API). */
+  lastNote?: ClientLastNote | null;
   manager?: { id: string; fullName: string };
   deals?: DealShort[];
   contracts?: Contract[];

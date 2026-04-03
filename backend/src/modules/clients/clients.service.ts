@@ -1,4 +1,4 @@
-import { DealStatus, Client } from '@prisma/client';
+import { DealStatus, Client, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -33,12 +33,92 @@ interface DealFilters {
   to?: string;
 }
 
+type LatestNoteRow = {
+  id: string;
+  clientId: string;
+  content: string;
+  createdAt: Date;
+  authorName: string;
+};
+
 export class ClientsService {
+  /**
+   * Client list: 1 query for clients + manager, then 3 batched queries (latest note per client,
+   * max deal date per client, max payment date per client) — fixed query count, no N+1.
+   */
   async findAll(user: AuthUser) {
-    return prisma.client.findMany({
+    const rows = await prisma.client.findMany({
       where: { ...clientOwnerScope(user), isArchived: false },
-      include: { manager: { select: { id: true, fullName: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: {
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const [noteRows, dealsAgg, paysAgg] = await Promise.all([
+      prisma.$queryRaw<LatestNoteRow[]>(Prisma.sql`
+        SELECT DISTINCT ON (cn.client_id)
+          cn.id,
+          cn.client_id AS "clientId",
+          cn.content,
+          cn.created_at AS "createdAt",
+          u.full_name AS "authorName"
+        FROM client_notes cn
+        INNER JOIN users u ON u.id = cn.user_id
+        WHERE cn.deleted_at IS NULL
+          AND cn.client_id IN (${Prisma.join(ids)})
+        ORDER BY cn.client_id, cn.created_at DESC
+      `),
+      prisma.deal.groupBy({
+        by: ['clientId'],
+        where: { clientId: { in: ids }, isArchived: false },
+        _max: { createdAt: true },
+      }),
+      prisma.payment.groupBy({
+        by: ['clientId'],
+        where: { clientId: { in: ids } },
+        _max: { paidAt: true },
+      }),
+    ]);
+
+    const noteByClient = new Map(noteRows.map((n) => [n.clientId, n]));
+    const dealMaxByClient = new Map(
+      dealsAgg.map((d) => [d.clientId, d._max.createdAt?.getTime() ?? 0]),
+    );
+    const payMaxByClient = new Map(
+      paysAgg.map((p) => [p.clientId, p._max.paidAt?.getTime() ?? 0]),
+    );
+
+    return rows.map((client) => {
+      const latestNote = noteByClient.get(client.id);
+      const noteMs = latestNote?.createdAt.getTime() ?? 0;
+      const lastMs = Math.max(
+        client.updatedAt.getTime(),
+        client.createdAt.getTime(),
+        dealMaxByClient.get(client.id) ?? 0,
+        payMaxByClient.get(client.id) ?? 0,
+        noteMs,
+      );
+      const preview =
+        latestNote && latestNote.content.length > 140
+          ? `${latestNote.content.slice(0, 140)}…`
+          : latestNote?.content ?? null;
+      return {
+        ...client,
+        lastContactAt: new Date(lastMs).toISOString(),
+        lastNote: latestNote
+          ? {
+              id: latestNote.id,
+              preview,
+              createdAt: latestNote.createdAt.toISOString(),
+              authorName: latestNote.authorName,
+            }
+          : null,
+      };
     });
   }
 

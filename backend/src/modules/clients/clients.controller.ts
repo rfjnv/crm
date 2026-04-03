@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { DealStatus, Role } from '@prisma/client';
 import { clientsService } from './clients.service';
+import { clientNotesService } from './client-notes.service';
 import type { AuthUser } from '../../lib/scope';
 
 function getUser(req: Request): AuthUser {
@@ -52,6 +53,37 @@ export class ClientsController {
     const periodDays = req.query.periodDays ? parseInt(req.query.periodDays as string, 10) : 30;
     const analytics = await clientsService.getAnalytics(req.params.id as string, getUser(req), periodDays);
     res.json(analytics);
+  }
+
+  async listNotes(req: Request, res: Response): Promise<void> {
+    const includeDeleted = req.query.includeDeleted === 'true' || req.query.includeDeleted === '1';
+    const notes = await clientNotesService.list(req.params.id as string, getUser(req), includeDeleted);
+    res.json(notes);
+  }
+
+  async createNote(req: Request, res: Response): Promise<void> {
+    const note = await clientNotesService.create(req.params.id as string, req.body, getUser(req));
+    res.status(201).json(note);
+  }
+
+  async updateNote(req: Request, res: Response): Promise<void> {
+    const note = await clientNotesService.update(
+      req.params.id as string,
+      req.params.noteId as string,
+      req.body,
+      getUser(req),
+    );
+    res.json(note);
+  }
+
+  async deleteNote(req: Request, res: Response): Promise<void> {
+    const note = await clientNotesService.softDelete(req.params.id as string, req.params.noteId as string, getUser(req));
+    res.json(note);
+  }
+
+  async restoreNote(req: Request, res: Response): Promise<void> {
+    const note = await clientNotesService.restore(req.params.id as string, req.params.noteId as string, getUser(req));
+    res.json(note);
   }
 }
 

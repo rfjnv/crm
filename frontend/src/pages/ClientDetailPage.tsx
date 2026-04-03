@@ -2,13 +2,14 @@ import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Descriptions, Card, Table, Typography, Spin, Timeline, Tag, Space, Button,
+  Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
   message, theme, Collapse,
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
@@ -16,8 +17,10 @@ import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from '../components/DealStatusTag';
+import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
+import ClientNotesPanel from '../components/ClientNotesPanel';
 import { formatUZS } from '../utils/currency';
-import type { DealStatus, DealShort, PaymentStatus, AuditLog, PaymentRecord } from '../types';
+import type { DealStatus, DealShort, PaymentStatus, PaymentRecord } from '../types';
 import type { CreateClientData } from '../api/clients.api';
 import dayjs from 'dayjs';
 
@@ -67,7 +70,7 @@ export default function ClientDetailPage() {
     enabled: !!id,
   });
 
-  const { data: history } = useQuery({
+  const { data: history, isLoading: historyLoading } = useQuery({
     queryKey: ['client-history', id],
     queryFn: () => clientsApi.history(id!),
     enabled: !!id,
@@ -484,26 +487,20 @@ export default function ClientDetailPage() {
             ),
           },
           {
+            key: 'notes',
+            label: (
+              <span>
+                <CommentOutlined /> Заметки
+              </span>
+            ),
+            children: <ClientNotesPanel clientId={id!} />,
+          },
+          {
             key: 'history',
             label: 'История',
             children: (
               <Card bordered={false}>
-                <Timeline
-                  items={(history ?? []).map((log: AuditLog) => ({
-                    children: (
-                      <div>
-                        <Typography.Text strong>{log.user?.fullName}</Typography.Text>{' '}
-                        <Tag>{log.action}</Tag>{' '}
-                        <Typography.Text type="secondary">{dayjs(log.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                        {log.after && (
-                          <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
-                            {JSON.stringify(log.after)}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                  }))}
-                />
+                <ClientAuditHistoryPanel logs={history} isLoading={historyLoading} />
               </Card>
             ),
           },

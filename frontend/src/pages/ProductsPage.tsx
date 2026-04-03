@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
@@ -23,6 +23,8 @@ export default function ProductsPage() {
   const [countryFilter, setCountryFilter] = useState<string | undefined>();
   const [stockFilter, setStockFilter] = useState<string>('all');
   const [activeFilter, setActiveFilter] = useState<string>('active');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -35,15 +37,29 @@ export default function ProductsPage() {
     queryFn: inventoryApi.listProducts,
   });
 
-  const filtered = (products ?? []).filter((p) => {
-    if (activeFilter === 'active' && !p.isActive) return false;
-    if (activeFilter === 'inactive' && p.isActive) return false;
-    if (categoryFilter && p.category !== categoryFilter) return false;
-    if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
-    if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
-    if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
-    return true;
-  });
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  const filtered = useMemo(() => {
+    return (products ?? []).filter((p) => {
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        const inName = p.name.toLowerCase().includes(q);
+        const skuStr = (p.sku ?? '').trim();
+        const inSku = skuStr.length > 0 && skuStr.toLowerCase().includes(q);
+        if (!inName && !inSku) return false;
+      }
+      if (activeFilter === 'active' && !p.isActive) return false;
+      if (activeFilter === 'inactive' && p.isActive) return false;
+      if (categoryFilter && p.category !== categoryFilter) return false;
+      if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
+      if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
+      if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
+      return true;
+    });
+  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, stockFilter]);
 
   const categories = [...new Set((products ?? []).map((p) => p.category).filter(Boolean))] as string[];
   const countries = [...new Set((products ?? []).map((p) => p.countryOfOrigin).filter(Boolean))] as string[];
@@ -191,6 +207,15 @@ export default function ProductsPage() {
 
   return (
     <div>
+      <div style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          placeholder="Поиск по названию или артикулу (SKU)..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          style={{ width: '100%', maxWidth: isMobile ? '100%' : 420 }}
+        />
+      </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Space>
           <Typography.Title level={4} style={{ margin: 0 }}>Товары</Typography.Title>

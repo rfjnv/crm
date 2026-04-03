@@ -1,5 +1,5 @@
 import client from './client';
-import type { Client, AuditLog, PaymentRecord, ClientAnalytics } from '../types';
+import type { Client, AuditLog, PaymentRecord, ClientAnalytics, ClientNote } from '../types';
 
 export interface CreateClientData {
   companyName: string;
@@ -36,4 +36,25 @@ export const clientsApi = {
 
   analytics: (id: string, periodDays?: number) =>
     client.get<ClientAnalytics>(`/clients/${id}/analytics`, { params: periodDays ? { periodDays } : {} }).then((r) => r.data),
+
+  notes: {
+    list: (clientId: string, opts?: { includeDeleted?: boolean }) =>
+      client
+        .get<ClientNote[]>(`/clients/${clientId}/notes`, {
+          params: opts?.includeDeleted ? { includeDeleted: 'true' } : {},
+        })
+        .then((r) => r.data),
+
+    create: (clientId: string, data: { content: string }) =>
+      client.post<ClientNote>(`/clients/${clientId}/notes`, data).then((r) => r.data),
+
+    update: (clientId: string, noteId: string, data: { content: string }) =>
+      client.patch<ClientNote>(`/clients/${clientId}/notes/${noteId}`, data).then((r) => r.data),
+
+    delete: (clientId: string, noteId: string) =>
+      client.delete<ClientNote>(`/clients/${clientId}/notes/${noteId}`).then((r) => r.data),
+
+    restore: (clientId: string, noteId: string) =>
+      client.post<ClientNote>(`/clients/${clientId}/notes/${noteId}/restore`).then((r) => r.data),
+  },
 };

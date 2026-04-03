@@ -9,6 +9,46 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import type { Client } from '../types';
+import dayjs from 'dayjs';
+
+type ClientSortMode = 'name_asc' | 'name_desc' | 'created_desc' | 'contact_desc';
+
+const CLIENT_SORT_OPTIONS: { value: ClientSortMode; label: string }[] = [
+  { value: 'name_asc', label: 'А → Я' },
+  { value: 'name_desc', label: 'Я → А' },
+  { value: 'created_desc', label: 'По дате создания' },
+  { value: 'contact_desc', label: 'По последнему контакту' },
+];
+
+function compareCompanyName(a: string, b: string): number {
+  return a.localeCompare(b, 'ru', { sensitivity: 'base' });
+}
+
+function ts(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const n = new Date(iso).getTime();
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function lastContactTs(c: Client): number {
+  return ts(c.lastContactAt ?? c.updatedAt);
+}
+
+function sortClients(list: Client[], mode: ClientSortMode): Client[] {
+  const out = [...list];
+  switch (mode) {
+    case 'name_asc':
+      return out.sort((a, b) => compareCompanyName(a.companyName, b.companyName));
+    case 'name_desc':
+      return out.sort((a, b) => compareCompanyName(b.companyName, a.companyName));
+    case 'created_desc':
+      return out.sort((a, b) => ts(b.createdAt) - ts(a.createdAt));
+    case 'contact_desc':
+      return out.sort((a, b) => lastContactTs(b) - lastContactTs(a));
+    default:
+      return out;
+  }
+}
 
 function formatPhone(value: string): string {
   const digits = value.replace(/\D/g, '');
@@ -45,6 +85,7 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [search, setSearch] = useState('');
   const [managerFilter, setManagerFilter] = useState<string>();
+  const [sortMode, setSortMode] = useState<ClientSortMode>('name_asc');
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -76,8 +117,8 @@ export default function ClientsPage() {
     if (managerFilter) {
       list = list.filter(c => c.managerId === managerFilter);
     }
-    return list;
-  }, [clients, search, managerFilter]);
+    return sortClients(list, sortMode);
+  }, [clients, search, managerFilter, sortMode]);
 
   const createMut = useMutation({
     mutationFn: (data: CreateClientData) => clientsApi.create(data),
@@ -136,6 +177,27 @@ export default function ClientsPage() {
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Email', dataIndex: 'email' },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    {
+      title: 'Последний контакт',
+      key: 'lastContact',
+      width: 200,
+      render: (_: unknown, r: Client) => {
+        const ln = r.lastNote;
+        if (!ln?.createdAt) {
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        return (
+          <div>
+            <Typography.Text>{dayjs(ln.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {ln.authorName}
+              </Typography.Text>
+            </div>
+          </div>
+        );
+      },
+    },
     ...(isAdmin || user?.permissions?.includes('edit_client')
       ? [{
         title: '',
@@ -247,6 +309,13 @@ export default function ClientsPage() {
               options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: u.fullName, value: u.id }))}
             />
           )}
+          <Select<ClientSortMode>
+            value={sortMode}
+            onChange={setSortMode}
+            style={{ width: isMobile ? '100%' : 260 }}
+            options={CLIENT_SORT_OPTIONS}
+            popupMatchSelectWidth={false}
+          />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
         </Space>
       </div>
@@ -274,6 +343,17 @@ export default function ClientsPage() {
                   {client.manager?.fullName && (
                     <div style={{ marginTop: 2 }}>
                       <Typography.Text type="secondary" style={{ fontSize: 11 }}>{client.manager.fullName}</Typography.Text>
+                    </div>
+                  )}
+                  {client.lastNote?.createdAt && (
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 10 }}>Последний контакт: </Typography.Text>
+                      <Typography.Text style={{ fontSize: 11, display: 'block' }}>
+                        {dayjs(client.lastNote.createdAt).format('DD.MM.YY HH:mm')}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        {client.lastNote.authorName}
+                      </Typography.Text>
                     </div>
                   )}
                 </div>
