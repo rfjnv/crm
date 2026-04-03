@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -236,10 +237,10 @@ router.get(
         AVG(sub.monthly_qty)::text as avg_monthly,
         (STDDEV(sub.monthly_qty) / NULLIF(AVG(sub.monthly_qty), 0))::text as cv
       FROM (
-        SELECT product_id, DATE_TRUNC('month', created_at) as month, SUM(quantity) as monthly_qty
-        FROM inventory_movements
-        WHERE type = 'OUT' AND created_at >= NOW() - INTERVAL '12 months'
-        GROUP BY product_id, DATE_TRUNC('month', created_at)
+        SELECT m.product_id, DATE_TRUNC('month', m.created_at) as month, SUM(m.quantity) as monthly_qty
+        FROM inventory_movements m
+        WHERE ${sqlMovementIsSale('m')} AND m.created_at >= NOW() - INTERVAL '12 months'
+        GROUP BY m.product_id, DATE_TRUNC('month', m.created_at)
       ) sub
       JOIN products p ON p.id = sub.product_id
       GROUP BY sub.product_id, p.name
@@ -264,7 +265,7 @@ router.get(
         COALESCE(SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0)), 0)::text as total_revenue
       FROM inventory_movements m
       LEFT JOIN deal_items di ON di.deal_id = m.deal_id AND di.product_id = m.product_id
-      WHERE m.type = 'OUT' AND m.created_at >= NOW() - INTERVAL '12 months'
+      WHERE ${sqlMovementIsSale('m')} AND m.created_at >= NOW() - INTERVAL '12 months'
       GROUP BY EXTRACT(MONTH FROM m.created_at)
       ORDER BY month`,
     );

@@ -1,6 +1,10 @@
 import prisma from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
+import {
+  resolveProductChartGranularity,
+  sqlInventoryMovementBucket,
+} from '../../lib/inventoryAnalytics';
 import { auditLog } from '../../lib/logger';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 
@@ -291,7 +295,7 @@ export class WarehouseService {
     });
   }
 
-  async getProductAnalytics(productId: string, periodDays: number) {
+  async getProductAnalytics(productId: string, periodDays: number, granularityParam?: string | null) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
@@ -300,12 +304,31 @@ export class WarehouseService {
     const from = new Date();
     from.setDate(from.getDate() - periodDays);
 
-    const [movements, dealItems, topClientsRaw] = await Promise.all([
-      prisma.inventoryMovement.findMany({
-        where: { productId, createdAt: { gte: from } },
-        select: { type: true, quantity: true, createdAt: true },
-        orderBy: { createdAt: 'asc' },
-      }),
+    const { granularity, allowed } = resolveProductChartGranularity(periodDays, granularityParam);
+    const bucketExpr = sqlInventoryMovementBucket(granularity);
+
+    const [totalsRow, seriesRows, dealItems, topClientsRaw] = await Promise.all([
+      prisma.$queryRaw<{ total_in: string; total_sale: string; total_correction: string }[]>(
+        Prisma.sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' AND m.deal_id IS NOT NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale,
+          COALESCE(SUM(CASE WHEN m.type = 'CORRECTION' OR (m.type = 'OUT' AND m.deal_id IS NULL) THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_correction
+        FROM inventory_movements m
+        WHERE m.product_id = ${productId} AND m.created_at >= ${from}`,
+      ),
+      prisma.$queryRaw<{ bucket: Date; in_qty: string; sale_qty: string; correction_qty: string }[]>(
+        Prisma.sql`
+        SELECT
+          ${bucketExpr} AS bucket,
+          COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' AND m.deal_id IS NOT NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty,
+          COALESCE(SUM(CASE WHEN m.type = 'CORRECTION' OR (m.type = 'OUT' AND m.deal_id IS NULL) THEN m.quantity::numeric ELSE 0 END), 0)::text AS correction_qty
+        FROM inventory_movements m
+        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+        GROUP BY 1
+        ORDER BY 1`,
+      ),
       prisma.dealItem.findMany({
         where: { productId, deal: { createdAt: { gte: from }, status: { not: 'CANCELED' } } },
         select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
@@ -327,21 +350,17 @@ export class WarehouseService {
       ),
     ]);
 
-    const totalIn = movements.filter((m) => m.type === 'IN').reduce((s, m) => s + Number(m.quantity), 0);
-    const totalOut = movements.filter((m) => m.type === 'OUT').reduce((s, m) => s + Number(m.quantity), 0);
+    const t = totalsRow[0];
+    const totalIn = t ? Number(t.total_in) : 0;
+    const totalOut = t ? Number(t.total_sale) : 0;
+    const totalCorrection = t ? Number(t.total_correction) : 0;
 
-    // Movement trend by day
-    const dayMap = new Map<string, { inQty: number; outQty: number }>();
-    for (const m of movements) {
-      const day = m.createdAt.toISOString().slice(0, 10);
-      const entry = dayMap.get(day) || { inQty: 0, outQty: 0 };
-      if (m.type === 'IN') entry.inQty += Number(m.quantity);
-      else entry.outQty += Number(m.quantity);
-      dayMap.set(day, entry);
-    }
-    const movementsByDay = Array.from(dayMap.entries())
-      .map(([day, v]) => ({ day, ...v }))
-      .sort((a, b) => a.day.localeCompare(b.day));
+    const movementsByDay = seriesRows.map((r) => ({
+      day: r.bucket.toISOString().slice(0, 10),
+      inQty: Number(r.in_qty),
+      outQty: Number(r.sale_qty),
+      correctionQty: Number(r.correction_qty),
+    }));
 
     // Sales metrics
     const totalQuantitySold = dealItems.reduce((s, di) => s + Number(di.requestedQty || 0), 0);
@@ -357,7 +376,14 @@ export class WarehouseService {
 
     return {
       product,
-      movements: { totalIn, totalOut, movementsByDay },
+      movements: {
+        totalIn,
+        totalOut,
+        totalCorrection,
+        movementsByDay,
+        chartGranularity: granularity,
+        allowedChartGranularities: allowed,
+      },
       sales: {
         totalRevenue,
         totalQuantitySold,

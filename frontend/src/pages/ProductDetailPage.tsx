@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -21,6 +21,18 @@ const PERIODS = [
   { label: 'Год', value: 365 },
 ];
 
+type ChartGranularity = 'day' | 'month' | 'quarter';
+
+function formatMovementChartBucket(isoDay: string, g: ChartGranularity): string {
+  const d = isoDay.slice(0, 10);
+  const [Y, M, D] = d.split('-').map((x) => parseInt(x, 10));
+  if (!Y || !M) return isoDay;
+  if (g === 'day') return `${String(D).padStart(2, '0')}.${String(M).padStart(2, '0')}`;
+  if (g === 'month') return `${String(M).padStart(2, '0')}.${Y}`;
+  const q = Math.floor((M - 1) / 3) + 1;
+  return `Q${q} ${Y}`;
+}
+
 export default function ProductDetailPage() {
   const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
@@ -32,10 +44,21 @@ export default function ProductDetailPage() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [periodDays, setPeriodDays] = useState(30);
+  const [granularity, setGranularity] = useState<ChartGranularity>('day');
+
+  useEffect(() => {
+    if (periodDays <= 35) {
+      setGranularity('day');
+    } else {
+      setGranularity('month');
+    }
+  }, [periodDays]);
+
+  const effectiveGranularity: ChartGranularity | undefined = periodDays <= 35 ? undefined : granularity;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['product-analytics', id, periodDays],
-    queryFn: () => inventoryApi.getProductAnalytics(id!, periodDays),
+    queryKey: ['product-analytics', id, periodDays, effectiveGranularity ?? 'day'],
+    queryFn: () => inventoryApi.getProductAnalytics(id!, periodDays, effectiveGranularity),
     enabled: !!id,
   });
 
@@ -61,10 +84,15 @@ export default function ProductDetailPage() {
       ? { color: 'orange', label: 'Мало' }
       : { color: 'green', label: 'В наличии' };
 
-  const chartData = (data.movements.movementsByDay || []).flatMap((d: { day: string, inQty: number, outQty: number }) => [
-    { day: d.day, type: 'Приход', qty: d.inQty },
-    { day: d.day, type: 'Расход', qty: d.outQty },
-  ]);
+  const chartGranularity: ChartGranularity = data.movements.chartGranularity ?? 'day';
+
+  const chartData = (data.movements.movementsByDay || []).flatMap(
+    (d: { day: string; inQty: number; outQty: number; correctionQty?: number }) => [
+      { period: d.day, type: 'Приход', qty: d.inQty },
+      { period: d.day, type: 'Отгрузка (сделки)', qty: d.outQty },
+      { period: d.day, type: 'Коррекция', qty: d.correctionQty ?? 0 },
+    ],
+  );
 
   return (
     <div>
@@ -75,11 +103,31 @@ export default function ProductDetailPage() {
           <Tag>{p.sku}</Tag>
           <Tag color={p.isActive ? 'green' : 'red'}>{p.isActive ? 'Активен' : 'Неактивен'}</Tag>
         </Space>
-        <Segmented
-          value={periodDays}
-          onChange={(v) => setPeriodDays(v as number)}
-          options={PERIODS}
-        />
+        <Space wrap>
+          <Segmented
+            value={periodDays}
+            onChange={(v) => setPeriodDays(v as number)}
+            options={PERIODS}
+          />
+          {periodDays > 35 && (
+            <Segmented<ChartGranularity>
+              value={granularity}
+              onChange={(v) => setGranularity(v)}
+              options={
+                periodDays <= 120
+                  ? [
+                      { label: 'По дням', value: 'day' },
+                      { label: 'По месяцам', value: 'month' },
+                    ]
+                  : [
+                      { label: 'По дням', value: 'day' },
+                      { label: 'По месяцам', value: 'month' },
+                      { label: 'По кварталам', value: 'quarter' },
+                    ]
+              }
+            />
+          )}
+        </Space>
       </div>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -162,14 +210,18 @@ export default function ProductDetailPage() {
           <Card title="Движение товара" size="small" bordered={false}>
             <Column
               data={chartData}
-              xField="day"
+              xField="period"
               yField="qty"
               seriesField="type"
               isGroup
               height={250}
-              color={['#52c41a', '#ff4d4f']}
+              color={['#52c41a', '#ff4d4f', '#faad14']}
               legend={{ position: 'top-right' }}
-              xAxis={{ label: { formatter: (v: string) => dayjs(v).format('DD.MM') } }}
+              xAxis={{
+                label: {
+                  formatter: (v: string) => formatMovementChartBucket(String(v), chartGranularity),
+                },
+              }}
               theme={chartTheme}
               axis={{
                 x: { labelFill: tk.colorText },
@@ -177,7 +229,7 @@ export default function ProductDetailPage() {
               }}
             />
             <Row gutter={12} style={{ marginTop: 12 }}>
-              <Col span={12}>
+              <Col xs={24} sm={8}>
                 <Statistic
                   title="Поступило за период"
                   value={data.movements.totalIn}
@@ -186,13 +238,21 @@ export default function ProductDetailPage() {
                   valueStyle={{ color: '#52c41a' }}
                 />
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={8}>
                 <Statistic
-                  title="Отгружено за период"
+                  title="Отгрузка по сделкам"
                   value={data.movements.totalOut}
                   suffix={p.unit}
                   prefix={<ArrowDownOutlined />}
                   valueStyle={{ color: '#ff4d4f' }}
+                />
+              </Col>
+              <Col xs={24} sm={8}>
+                <Statistic
+                  title="Коррекции / без сделки"
+                  value={data.movements.totalCorrection ?? 0}
+                  suffix={p.unit}
+                  valueStyle={{ color: '#faad14' }}
                 />
               </Col>
             </Row>
@@ -243,10 +303,16 @@ export default function ProductDetailPage() {
               {
                 title: 'Тип',
                 dataIndex: 'type',
-                width: 100,
-                render: (v: 'IN' | 'OUT') => (
-                  <Tag color={v === 'IN' ? 'green' : 'red'}>{v === 'IN' ? 'Приход' : 'Расход'}</Tag>
-                ),
+                width: 120,
+                render: (v: string) => {
+                  const cfg =
+                    v === 'IN'
+                      ? { color: 'green' as const, label: 'Приход' }
+                      : v === 'CORRECTION'
+                        ? { color: 'orange' as const, label: 'Коррекция' }
+                        : { color: 'red' as const, label: 'Расход' };
+                  return <Tag color={cfg.color}>{cfg.label}</Tag>;
+                },
               },
               {
                 title: 'Кол-во',

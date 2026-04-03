@@ -8,6 +8,7 @@ import {
   SQL_EFFECTIVE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
 } from '../../lib/analytics';
+import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -268,7 +269,7 @@ router.get(
         Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_quantity
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
-         WHERE m.type = 'OUT'
+         WHERE ${sqlMovementIsSale('m')}
            AND m.created_at >= ${start} AND m.created_at < ${end}
          GROUP BY p.id, p.name
          ORDER BY SUM(m.quantity) DESC
@@ -430,7 +431,7 @@ router.get(
         Prisma.sql`SELECT p.id, p.name, p.sku, p.stock,
                 MAX(m.created_at) as last_out_date
          FROM products p
-         LEFT JOIN inventory_movements m ON m.product_id = p.id AND m.type = 'OUT'
+         LEFT JOIN inventory_movements m ON m.product_id = p.id AND ${sqlMovementIsSale('m')}
          WHERE p.is_active = true AND p.stock > 0
          GROUP BY p.id, p.name, p.sku, p.stock
          HAVING MAX(m.created_at) IS NULL OR MAX(m.created_at) < NOW() - INTERVAL '30 days'
@@ -440,7 +441,7 @@ router.get(
         Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
-         WHERE m.type = 'OUT'
+         WHERE ${sqlMovementIsSale('m')}
          GROUP BY p.id, p.name
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`
