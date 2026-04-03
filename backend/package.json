@@ -18,6 +18,7 @@
     "db:deactivate-imports": "tsx prisma/deactivate-imports.ts",
     "db:cleanup": "tsx prisma/cleanup-test-data.ts",
     "db:cleanup-all": "tsx prisma/cleanup-all-data.ts",
+    "db:cleanup-zero-deal-items": "tsx src/scripts/cleanup-zero-qty-price-deal-items.ts",
     "db:snapshots": "tsx src/scripts/generate-snapshots.ts",
     "import-excel": "tsx src/scripts/import-excel-to-crm.ts"
   },
