@@ -76,6 +76,7 @@ enum PaymentStatus {
 enum AuditAction {
   CREATE
   UPDATE
+  UPDATE_CLIENT
   DELETE
   ARCHIVE
   RESTORE

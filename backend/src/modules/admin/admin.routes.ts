@@ -8,6 +8,7 @@ import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
 import { dealsService } from '../deals/deals.service';
 import { warehouseService } from '../warehouse/warehouse.service';
 import { AuthUser } from '../../lib/scope';
+import { listAuditLogsForSuperAdmin } from './admin.audit-logs.service';
 
 const router = Router();
 
@@ -16,6 +17,25 @@ router.use(authenticate);
 function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
 }
+
+// ──── SUPER_ADMIN global audit log search ────
+router.get(
+  '/audit-logs',
+  authorize('SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const lim = req.query.limit !== undefined ? parseInt(String(req.query.limit), 10) : undefined;
+    const off = req.query.offset !== undefined ? parseInt(String(req.query.offset), 10) : undefined;
+    const result = await listAuditLogsForSuperAdmin({
+      userId: typeof req.query.userId === 'string' ? req.query.userId : undefined,
+      entityId: typeof req.query.entityId === 'string' ? req.query.entityId : undefined,
+      from: typeof req.query.from === 'string' ? req.query.from : undefined,
+      to: typeof req.query.to === 'string' ? req.query.to : undefined,
+      limit: lim !== undefined && !Number.isNaN(lim) ? lim : undefined,
+      offset: off !== undefined && !Number.isNaN(off) ? off : undefined,
+    });
+    res.json(result);
+  }),
+);
 
 // ──── SUPER_ADMIN Deal Override ────
 router.patch(

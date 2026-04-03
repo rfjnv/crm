@@ -1,9 +1,31 @@
-import { DealStatus } from '@prisma/client';
+import { DealStatus, Client } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
 import { CreateClientDto, UpdateClientDto } from './clients.dto';
+
+function clientAuditSnapshot(c: Client) {
+  return {
+    id: c.id,
+    companyName: c.companyName,
+    contactName: c.contactName,
+    phone: c.phone,
+    email: c.email,
+    address: c.address,
+    notes: c.notes,
+    inn: c.inn,
+    bankName: c.bankName,
+    bankAccount: c.bankAccount,
+    mfo: c.mfo,
+    vatRegCode: c.vatRegCode,
+    oked: c.oked,
+    managerId: c.managerId,
+    isArchived: c.isArchived,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
 
 interface DealFilters {
   dealStatus?: DealStatus;
@@ -116,15 +138,16 @@ export class ClientsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
-    // Managers can only edit their own clients
-    const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
-    if (!isAdmin && client.managerId !== user.userId) {
-      throw new AppError(403, 'Вы можете редактировать только своих клиентов');
+    const isElevated = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+    const hasEditClient = user.permissions.includes('edit_client');
+    const isOwner = client.managerId === user.userId;
+
+    if (!isElevated && !hasEditClient && !isOwner) {
+      throw new AppError(403, 'Недостаточно прав для редактирования клиента');
     }
 
-    // Validate managerId change (admin only)
     if (dto.managerId) {
-      if (!isAdmin) {
+      if (!isElevated) {
         throw new AppError(403, 'Только администратор может менять менеджера');
       }
       const manager = await prisma.user.findUnique({ where: { id: dto.managerId } });
@@ -133,14 +156,7 @@ export class ClientsService {
       }
     }
 
-    const before = {
-      companyName: client.companyName,
-      contactName: client.contactName,
-      phone: client.phone,
-      email: client.email,
-      address: client.address,
-      managerId: client.managerId,
-    };
+    const before = clientAuditSnapshot(client);
 
     const updated = await prisma.client.update({
       where: { id },
@@ -149,18 +165,11 @@ export class ClientsService {
 
     await auditLog({
       userId: user.userId,
-      action: 'UPDATE',
+      action: 'UPDATE_CLIENT',
       entityType: 'client',
       entityId: id,
       before,
-      after: {
-        companyName: updated.companyName,
-        contactName: updated.contactName,
-        phone: updated.phone,
-        email: updated.email,
-        address: updated.address,
-        managerId: updated.managerId,
-      },
+      after: clientAuditSnapshot(updated),
     });
 
     return updated;
