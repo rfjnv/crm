@@ -42,6 +42,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@prisma/adapter-pg": "^6.19.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
@@ -50,6 +51,7 @@
     "@types/node-telegram-bot-api": "^0.64.14",
     "@types/web-push": "^3.6.4",
     "@types/xlsx": "^0.0.36",
+    "pg-connection-string": "^2.12.0",
     "prisma": "^6.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
