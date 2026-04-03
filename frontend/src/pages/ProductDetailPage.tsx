@@ -87,11 +87,57 @@ export default function ProductDetailPage() {
   const chartGranularity: ChartGranularity = data.movements.chartGranularity ?? 'day';
 
   const chartData = (data.movements.movementsByDay || []).flatMap(
-    (d: { day: string; inQty: number; outQty: number; correctionQty?: number }) => [
+    (d: { day: string; inQty: number; outQty: number }) => [
       { period: d.day, type: 'Приход', qty: d.inQty },
       { period: d.day, type: 'Отгрузка (сделки)', qty: d.outQty },
-      { period: d.day, type: 'Коррекция', qty: d.correctionQty ?? 0 },
     ],
+  );
+
+  const correctionsInfo = data.movements.correctionsOutsideAnalytics ?? 0;
+
+  const movementChartTitle = (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        width: '100%',
+        rowGap: 8,
+      }}
+    >
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        Движение товара
+      </Typography.Title>
+      <Space wrap size="small" style={{ borderLeft: isMobile ? undefined : `1px solid ${tk.colorBorderSecondary}`, paddingLeft: isMobile ? 0 : 12 }}>
+        <Segmented
+          size="small"
+          value={periodDays}
+          onChange={(v) => setPeriodDays(v as number)}
+          options={PERIODS}
+        />
+        {periodDays > 35 && (
+          <Segmented<ChartGranularity>
+            size="small"
+            value={granularity}
+            onChange={(v) => setGranularity(v)}
+            options={
+              periodDays <= 120
+                ? [
+                    { label: 'По дням', value: 'day' },
+                    { label: 'По месяцам', value: 'month' },
+                  ]
+                : [
+                    { label: 'По дням', value: 'day' },
+                    { label: 'По месяцам', value: 'month' },
+                    { label: 'По кварталам', value: 'quarter' },
+                  ]
+            }
+          />
+        )}
+      </Space>
+    </div>
   );
 
   return (
@@ -102,31 +148,6 @@ export default function ProductDetailPage() {
           <Typography.Title level={4} style={{ margin: 0 }}>{p.name}</Typography.Title>
           <Tag>{p.sku}</Tag>
           <Tag color={p.isActive ? 'green' : 'red'}>{p.isActive ? 'Активен' : 'Неактивен'}</Tag>
-        </Space>
-        <Space wrap>
-          <Segmented
-            value={periodDays}
-            onChange={(v) => setPeriodDays(v as number)}
-            options={PERIODS}
-          />
-          {periodDays > 35 && (
-            <Segmented<ChartGranularity>
-              value={granularity}
-              onChange={(v) => setGranularity(v)}
-              options={
-                periodDays <= 120
-                  ? [
-                      { label: 'По дням', value: 'day' },
-                      { label: 'По месяцам', value: 'month' },
-                    ]
-                  : [
-                      { label: 'По дням', value: 'day' },
-                      { label: 'По месяцам', value: 'month' },
-                      { label: 'По кварталам', value: 'quarter' },
-                    ]
-              }
-            />
-          )}
         </Space>
       </div>
 
@@ -205,31 +226,44 @@ export default function ProductDetailPage() {
           </Card>
         )}
 
-        {/* Movement Chart */}
-        {chartData.length > 0 && (
-          <Card title="Движение товара" size="small" bordered={false}>
-            <Column
-              data={chartData}
-              xField="period"
-              yField="qty"
-              seriesField="type"
-              isGroup
-              height={250}
-              color={['#52c41a', '#ff4d4f', '#faad14']}
-              legend={{ position: 'top-right' }}
-              xAxis={{
-                label: {
-                  formatter: (v: string) => formatMovementChartBucket(String(v), chartGranularity),
-                },
-              }}
-              theme={chartTheme}
-              axis={{
-                x: { labelFill: tk.colorText },
-                y: { labelFill: tk.colorText },
-              }}
-            />
-            <Row gutter={12} style={{ marginTop: 12 }}>
-              <Col xs={24} sm={8}>
+        {/* Movement chart + period / granularity (analytics: только приход и отгрузка по сделкам) */}
+        <Card
+            title={movementChartTitle}
+            size="small"
+            bordered={false}
+            styles={{
+              header: { minHeight: 'auto' },
+              body: { paddingTop: chartData.length > 0 ? 8 : 16 },
+            }}
+          >
+            {chartData.length > 0 ? (
+              <Column
+                data={chartData}
+                xField="period"
+                yField="qty"
+                seriesField="type"
+                isGroup
+                height={250}
+                color={['#52c41a', '#ff4d4f']}
+                legend={{ position: 'top' }}
+                xAxis={{
+                  label: {
+                    formatter: (v: string) => formatMovementChartBucket(String(v), chartGranularity),
+                  },
+                }}
+                theme={chartTheme}
+                axis={{
+                  x: { labelFill: tk.colorText },
+                  y: { labelFill: tk.colorText },
+                }}
+              />
+            ) : (
+              <Typography.Text type="secondary">
+                За выбранный период нет приходов и отгрузок по сделкам.
+              </Typography.Text>
+            )}
+            <Row gutter={[12, 12]} style={{ marginTop: chartData.length > 0 ? 16 : 8 }}>
+              <Col xs={24} sm={12}>
                 <Statistic
                   title="Поступило за период"
                   value={data.movements.totalIn}
@@ -238,7 +272,7 @@ export default function ProductDetailPage() {
                   valueStyle={{ color: '#52c41a' }}
                 />
               </Col>
-              <Col xs={24} sm={8}>
+              <Col xs={24} sm={12}>
                 <Statistic
                   title="Отгрузка по сделкам"
                   value={data.movements.totalOut}
@@ -247,17 +281,15 @@ export default function ProductDetailPage() {
                   valueStyle={{ color: '#ff4d4f' }}
                 />
               </Col>
-              <Col xs={24} sm={8}>
-                <Statistic
-                  title="Коррекции / без сделки"
-                  value={data.movements.totalCorrection ?? 0}
-                  suffix={p.unit}
-                  valueStyle={{ color: '#faad14' }}
-                />
-              </Col>
             </Row>
+            {correctionsInfo > 0 && (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 13 }}>
+                Коррекции (вне аналитики):{' '}
+                <Typography.Text strong>{moneyFormatter(correctionsInfo)}</Typography.Text> {p.unit} — не входят в график и
+                итоги выше.
+              </Typography.Paragraph>
+            )}
           </Card>
-        )}
 
         {/* Top Clients */}
         {topClients.length > 0 && (

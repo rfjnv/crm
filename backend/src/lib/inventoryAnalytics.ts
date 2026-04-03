@@ -4,8 +4,8 @@ import { Prisma } from '@prisma/client';
 /**
  * Inventory movement semantics for analytics (not stock math).
  *
- * SALE: outgoing stock tied to a deal (отгрузка / «реальный расход» для аналитики).
- * CORRECTION: explicit correction or legacy/manual OUT without deal (не продажа).
+ * Product movement analytics counts ONLY: IN + OUT with deal (sales).
+ * Excluded from analytics (stock adjustments, not sales): CORRECTION, OUT without deal.
  */
 export function isInventorySaleMovement(type: MovementType, dealId: string | null | undefined): boolean {
   return type === 'OUT' && dealId != null;
@@ -20,10 +20,17 @@ export function sqlMovementIsSale(alias = 'm'): Prisma.Sql {
   return Prisma.raw(`(${alias}.type = 'OUT' AND ${alias}.deal_id IS NOT NULL)`);
 }
 
-/** CORRECTION type or OUT without deal_id (manual/import/unlinked). */
+/** Movements excluded from product movement charts/totals (коррекции / вне аналитики). */
 export function sqlMovementIsAnalyticsCorrection(alias = 'm'): Prisma.Sql {
   return Prisma.raw(
     `(${alias}.type = 'CORRECTION' OR (${alias}.type = 'OUT' AND ${alias}.deal_id IS NULL))`,
+  );
+}
+
+/** Rows that participate in product movement analytics (приход + отгрузка по сделкам). */
+export function sqlMovementIncludedInProductAnalytics(alias = 'm'): Prisma.Sql {
+  return Prisma.raw(
+    `(${alias}.type = 'IN' OR (${alias}.type = 'OUT' AND ${alias}.deal_id IS NOT NULL))`,
   );
 }
 

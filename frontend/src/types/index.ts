@@ -712,9 +712,9 @@ export interface ProductAnalytics {
     totalIn: number;
     /** Отгрузки по сделкам (реальный «расход» для аналитики), без коррекций остатка. */
     totalOut: number;
-    /** Коррекции остатка + OUT без сделки (импорт/ручное; не продажа). */
-    totalCorrection: number;
-    movementsByDay: { day: string; inQty: number; outQty: number; correctionQty: number }[];
+    /** Коррекции / OUT без сделки за период — только справочно, не в графике и не в итогах аналитики. */
+    correctionsOutsideAnalytics?: number;
+    movementsByDay: { day: string; inQty: number; outQty: number }[];
     /** Фактическая детализация графика движений (после валидации по периоду). */
     chartGranularity?: 'day' | 'month' | 'quarter';
     /** Допустимые значения granularity для текущего periodDays. */

@@ -4,6 +4,8 @@ import { AppError } from '../../lib/errors';
 import {
   resolveProductChartGranularity,
   sqlInventoryMovementBucket,
+  sqlMovementIncludedInProductAnalytics,
+  sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
 import { auditLog } from '../../lib/logger';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
@@ -307,27 +309,34 @@ export class WarehouseService {
     const { granularity, allowed } = resolveProductChartGranularity(periodDays, granularityParam);
     const bucketExpr = sqlInventoryMovementBucket(granularity);
 
-    const [totalsRow, seriesRows, dealItems, topClientsRaw] = await Promise.all([
-      prisma.$queryRaw<{ total_in: string; total_sale: string; total_correction: string }[]>(
+    const [totalsRow, seriesRows, correctionsOutsideRow, dealItems, topClientsRaw] = await Promise.all([
+      prisma.$queryRaw<{ total_in: string; total_sale: string }[]>(
         Prisma.sql`
         SELECT
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
-          COALESCE(SUM(CASE WHEN m.type = 'OUT' AND m.deal_id IS NOT NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale,
-          COALESCE(SUM(CASE WHEN m.type = 'CORRECTION' OR (m.type = 'OUT' AND m.deal_id IS NULL) THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_correction
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale
         FROM inventory_movements m
-        WHERE m.product_id = ${productId} AND m.created_at >= ${from}`,
+        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+          AND ${sqlMovementIncludedInProductAnalytics('m')}`,
       ),
-      prisma.$queryRaw<{ bucket: Date; in_qty: string; sale_qty: string; correction_qty: string }[]>(
+      prisma.$queryRaw<{ bucket: Date; in_qty: string; sale_qty: string }[]>(
         Prisma.sql`
         SELECT
           ${bucketExpr} AS bucket,
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
-          COALESCE(SUM(CASE WHEN m.type = 'OUT' AND m.deal_id IS NOT NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty,
-          COALESCE(SUM(CASE WHEN m.type = 'CORRECTION' OR (m.type = 'OUT' AND m.deal_id IS NULL) THEN m.quantity::numeric ELSE 0 END), 0)::text AS correction_qty
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty
         FROM inventory_movements m
         WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+          AND ${sqlMovementIncludedInProductAnalytics('m')}
         GROUP BY 1
         ORDER BY 1`,
+      ),
+      prisma.$queryRaw<{ qty: string }[]>(
+        Prisma.sql`
+        SELECT COALESCE(SUM(m.quantity::numeric), 0)::text AS qty
+        FROM inventory_movements m
+        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+          AND ${sqlMovementIsAnalyticsCorrection('m')}`,
       ),
       prisma.dealItem.findMany({
         where: { productId, deal: { createdAt: { gte: from }, status: { not: 'CANCELED' } } },
@@ -353,13 +362,12 @@ export class WarehouseService {
     const t = totalsRow[0];
     const totalIn = t ? Number(t.total_in) : 0;
     const totalOut = t ? Number(t.total_sale) : 0;
-    const totalCorrection = t ? Number(t.total_correction) : 0;
+    const correctionsOutsideAnalytics = correctionsOutsideRow[0] ? Number(correctionsOutsideRow[0].qty) : 0;
 
     const movementsByDay = seriesRows.map((r) => ({
       day: r.bucket.toISOString().slice(0, 10),
       inQty: Number(r.in_qty),
       outQty: Number(r.sale_qty),
-      correctionQty: Number(r.correction_qty),
     }));
 
     // Sales metrics
@@ -379,7 +387,8 @@ export class WarehouseService {
       movements: {
         totalIn,
         totalOut,
-        totalCorrection,
+        /** Сумма коррекций за период; не входит в график и итоги аналитики (справочно). */
+        correctionsOutsideAnalytics,
         movementsByDay,
         chartGranularity: granularity,
         allowedChartGranularities: allowed,
