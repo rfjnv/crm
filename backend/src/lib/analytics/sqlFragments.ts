@@ -24,11 +24,16 @@ export const SQL_EFFECTIVE_ITEM_TS = Prisma.sql`COALESCE(di.deal_date, d.created
 export const SQL_EFFECTIVE_ITEM_DATE_TASHKENT = Prisma.sql`DATE((${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})`;
 
 /**
- * Active deals: included in default (operational) revenue — not canceled/rejected, not archived.
+ * Active deals: not canceled/rejected, not archived (pipeline / non-revenue contexts).
  */
 export const SQL_DEALS_ACTIVE_FILTER = Prisma.sql`d.status NOT IN ('CANCELED', 'REJECTED') AND d.is_archived = false`;
 
 /**
- * Shipped/closed deals only — for “shipped revenue” metric (not used in dashboard yet).
+ * Revenue analytics: only fully closed deals (line totals from deal_items).
  */
-export const SQL_DEALS_SHIPPED_CLOSED_FILTER = Prisma.sql`d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false`;
+export const SQL_DEALS_CLOSED_REVENUE_FILTER = Prisma.sql`d.status = 'CLOSED' AND d.is_archived = false`;
+
+/**
+ * @deprecated Use SQL_DEALS_CLOSED_REVENUE_FILTER — revenue counts CLOSED only (not SHIPPED).
+ */
+export const SQL_DEALS_SHIPPED_CLOSED_FILTER = SQL_DEALS_CLOSED_REVENUE_FILTER;
