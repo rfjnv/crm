@@ -1,11 +1,29 @@
 import client from './client';
-import type { AnalyticsData, IntelligenceData, HistoryData, HistoryExtendedData, HistoryDrilldownData, HistoryMonthDetail, HistoryClientMonthData, HistoryProductBuyersData, HistoryCashflowData, DataQualityData, ExchangeData, PrepaymentData, HistoryCohortClientsData } from '../types';
+import type {
+  AnalyticsData,
+  IntelligenceData,
+  HistoryData,
+  HistoryExtendedData,
+  HistoryDrilldownData,
+  HistoryMonthDetail,
+  HistoryClientMonthData,
+  HistoryProductBuyersData,
+  HistoryCashflowData,
+  DataQualityData,
+  ExchangeData,
+  PrepaymentData,
+  HistoryCohortClientsData,
+  AbcXyzResponse,
+} from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
 export const analyticsApi = {
   getData: (period: AnalyticsPeriod = 'month') =>
     client.get<AnalyticsData>('/analytics', { params: { period } }).then((r) => r.data),
+
+  getAbcXyz: (period: AnalyticsPeriod = 'month') =>
+    client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: { period } }).then((r) => r.data),
   getIntelligence: (period: AnalyticsPeriod = 'month') =>
     client.get<IntelligenceData>('/analytics/intelligence', { params: { period } }).then((r) => r.data),
   getHistory: (year: number = new Date().getFullYear()) =>
