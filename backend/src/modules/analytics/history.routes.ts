@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_ACTIVE_FILTER,
+  SQL_DEALS_CLOSED_REVENUE_FILTER,
   SQL_DEALS_SHIPPED_CLOSED_FILTER,
   SQL_EFFECTIVE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
@@ -84,7 +84,7 @@ router.get(
         COALESCE(SUM(${SQL_LINE_REVENUE_DI}) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}`,
     );
@@ -180,7 +180,7 @@ router.get(
         COUNT(DISTINCT d.client_id)::text as active_clients
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -317,7 +317,7 @@ router.get(
         SELECT di.deal_id, d.client_id, ${SQL_LINE_REVENUE_DI} AS ln
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       ),
@@ -378,7 +378,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
@@ -415,7 +415,7 @@ router.get(
           COUNT(DISTINCT d.client_id)::text AS clients
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY d.manager_id
@@ -507,7 +507,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -713,7 +713,7 @@ router.get(
       JOIN products p ON p.id = di.product_id
       WHERE EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart} AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
-        AND ${SQL_DEALS_ACTIVE_FILTER}${dealFilter}
+        AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
         AND di.is_problem = false
         AND COALESCE(di.source_op_type, '') != 'EXCHANGE'
@@ -733,7 +733,7 @@ router.get(
       JOIN users u ON u.id = d.manager_id
       WHERE EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}) = ${month}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart} AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}
-        AND ${SQL_DEALS_ACTIVE_FILTER}${dealFilter}
+        AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}${dealFilter}
       GROUP BY u.id, u.full_name
       ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST`,
     );
@@ -893,7 +893,7 @@ router.get(
           DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::date as month_start
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${retentionStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       ),
@@ -955,7 +955,7 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN clients c ON c.id = d.client_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY c.id, c.company_name
@@ -989,7 +989,7 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
           AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
@@ -1043,7 +1043,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN users u ON u.id = d.manager_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY d.manager_id, u.full_name, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -1087,7 +1087,7 @@ router.get(
           MIN(EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as cohort_month
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY d.client_id
@@ -1098,7 +1098,7 @@ router.get(
           COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) as revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY d.client_id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -1169,7 +1169,7 @@ router.get(
         (COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) / NULLIF(COUNT(DISTINCT d.id), 0))::text as avg_deal_size
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
@@ -1193,7 +1193,7 @@ router.get(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name`,
@@ -1206,7 +1206,7 @@ router.get(
       Prisma.sql`SELECT DISTINCT d.client_id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_ACTIVE_FILTER}
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}`,
     );
@@ -1389,7 +1389,7 @@ router.get(
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
       WHERE di.product_id = ${productId}
-        AND ${SQL_DEALS_ACTIVE_FILTER}
+        AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
@@ -1925,7 +1925,7 @@ router.get(
           SUM(${SQL_LINE_REVENUE_DI}) as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_ACTIVE_FILTER}
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${yearStart}
           AND ${SQL_EFFECTIVE_ITEM_TS} < ${yearEnd}${dealFilter}
         GROUP BY d.client_id, d.id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})

@@ -359,7 +359,7 @@ export class WarehouseService {
           productId,
           deal: {
             ...(from ? { createdAt: { gte: from } } : {}),
-            status: { not: 'CANCELED' },
+            status: 'CLOSED',
           },
         },
         select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
@@ -372,7 +372,7 @@ export class WarehouseService {
           JOIN clients c ON c.id = d.client_id
           WHERE di.product_id = ${productId}
             ${dealDateFilter}
-            AND d.status != 'CANCELED'
+            AND d.status = 'CLOSED'
             AND di.requested_qty > 0
           GROUP BY c.id, c.company_name
           ORDER BY total_qty DESC

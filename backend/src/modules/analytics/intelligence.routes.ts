@@ -1,7 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
-import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
+import {
+  SQL_DEALS_CLOSED_REVENUE_FILTER,
+  SQL_EFFECTIVE_ITEM_TS,
+  SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_TZ,
+} from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -112,25 +117,33 @@ router.get(
     const clientRows = dealScope.managerId
       ? await prisma.$queryRaw<ClientRow[]>(
           Prisma.sql`SELECT c.id, c.company_name,
-            COUNT(d.id) FILTER (WHERE d.status IN ('SHIPPED','CLOSED'))::text as completed_deals,
-            COALESCE(SUM(d.paid_amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as ltv,
-            COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as avg_deal,
-            MAX(d.created_at) as last_deal_date,
+            COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
+            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
+            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
+            MAX(d.created_at) FILTER (WHERE d.status = 'CLOSED') as last_deal_date,
             COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
           FROM clients c
           LEFT JOIN deals d ON d.client_id = c.id AND d.is_archived = false
+          LEFT JOIN (
+            SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0))::numeric as rev
+            FROM deal_items GROUP BY deal_id
+          ) di_rev ON di_rev.deal_id = d.id
           WHERE c.is_archived = false AND (d.manager_id = ${dealScope.managerId} OR d.id IS NULL)
           GROUP BY c.id, c.company_name`,
         )
       : await prisma.$queryRaw<ClientRow[]>(
           Prisma.sql`SELECT c.id, c.company_name,
-            COUNT(d.id) FILTER (WHERE d.status IN ('SHIPPED','CLOSED'))::text as completed_deals,
-            COALESCE(SUM(d.paid_amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as ltv,
-            COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED','CLOSED')), 0)::text as avg_deal,
-            MAX(d.created_at) as last_deal_date,
+            COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
+            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
+            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
+            MAX(d.created_at) FILTER (WHERE d.status = 'CLOSED') as last_deal_date,
             COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
           FROM clients c
           LEFT JOIN deals d ON d.client_id = c.id AND d.is_archived = false
+          LEFT JOIN (
+            SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0))::numeric as rev
+            FROM deal_items GROUP BY deal_id
+          ) di_rev ON di_rev.deal_id = d.id
           WHERE c.is_archived = false
           GROUP BY c.id, c.company_name`,
         );
@@ -181,7 +194,7 @@ router.get(
           SELECT client_id,
             EXTRACT(EPOCH FROM (created_at - LAG(created_at) OVER (PARTITION BY client_id ORDER BY created_at))) / 86400 as day_diff
           FROM deals
-          WHERE status IN ('SHIPPED','CLOSED') AND is_archived = false
+          WHERE status = 'CLOSED' AND is_archived = false
         ) gaps
         WHERE gaps.day_diff IS NOT NULL
         GROUP BY gaps.client_id
@@ -215,7 +228,7 @@ router.get(
       JOIN deal_items di2 ON di1.deal_id = di2.deal_id AND di1.product_id < di2.product_id
       JOIN products p1 ON p1.id = di1.product_id
       JOIN products p2 ON p2.id = di2.product_id
-      JOIN deals d ON d.id = di1.deal_id AND d.is_archived = false
+      JOIN deals d ON d.id = di1.deal_id AND d.is_archived = false AND d.status = 'CLOSED'
       GROUP BY di1.product_id, p1.name, di2.product_id, p2.name
       ORDER BY COUNT(DISTINCT di1.deal_id) DESC
       LIMIT 10`,
@@ -229,23 +242,27 @@ router.get(
       coOccurrences: Number(r.co_occurrences),
     }));
 
-    // Demand stability (coefficient of variation)
+    // Demand stability: CV of monthly line revenue per product (CLOSED deals, deal_items, Tashkent month)
     const stabilityRaw = await prisma.$queryRaw<{
       product_id: string; name: string; avg_monthly: string; cv: string | null;
     }[]>(
       Prisma.sql`SELECT sub.product_id, p.name,
-        AVG(sub.monthly_qty)::text as avg_monthly,
-        (STDDEV(sub.monthly_qty) / NULLIF(AVG(sub.monthly_qty), 0))::text as cv
+        AVG(sub.monthly_rev)::text as avg_monthly,
+        (STDDEV_SAMP(sub.monthly_rev) / NULLIF(AVG(sub.monthly_rev), 0))::text as cv
       FROM (
-        SELECT m.product_id, DATE_TRUNC('month', m.created_at) as month, SUM(m.quantity) as monthly_qty
-        FROM inventory_movements m
-        WHERE ${sqlMovementIsSale('m')} AND m.created_at >= NOW() - INTERVAL '12 months'
-        GROUP BY m.product_id, DATE_TRUNC('month', m.created_at)
+        SELECT di.product_id,
+          DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+          SUM(${SQL_LINE_REVENUE_DI})::numeric as monthly_rev
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+        GROUP BY di.product_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
       ) sub
       JOIN products p ON p.id = sub.product_id
       GROUP BY sub.product_id, p.name
       HAVING COUNT(*) >= 3
-      ORDER BY STDDEV(sub.monthly_qty) / NULLIF(AVG(sub.monthly_qty), 0) ASC NULLS LAST
+      ORDER BY STDDEV_SAMP(sub.monthly_rev) / NULLIF(AVG(sub.monthly_rev), 0) ASC NULLS LAST
       LIMIT 15`,
     );
 
@@ -256,17 +273,18 @@ router.get(
       coefficient: r.cv ? Math.round(Number(r.cv) * 100) / 100 : 0,
     }));
 
-    // Seasonality (monthly, last 12 months)
+    // Seasonality: aggregate by calendar month (Tashkent) from CLOSED deal line dates
     const seasonalityRaw = await prisma.$queryRaw<{
       month: number; total_quantity: string; total_revenue: string;
     }[]>(
-      Prisma.sql`SELECT EXTRACT(MONTH FROM m.created_at)::int as month,
-        SUM(m.quantity)::text as total_quantity,
-        COALESCE(SUM(COALESCE(di.line_total, di.price * di.requested_qty, 0)), 0)::text as total_revenue
-      FROM inventory_movements m
-      LEFT JOIN deal_items di ON di.deal_id = m.deal_id AND di.product_id = m.product_id
-      WHERE ${sqlMovementIsSale('m')} AND m.created_at >= NOW() - INTERVAL '12 months'
-      GROUP BY EXTRACT(MONTH FROM m.created_at)
+      Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})::int as month,
+        COALESCE(SUM(di.requested_qty), 0)::text as total_quantity,
+        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+        AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
       ORDER BY month`,
     );
 
@@ -290,16 +308,16 @@ router.get(
       Prisma.sql`SELECT
         d.manager_id,
         u.full_name,
-        COUNT(*) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED'))::text as completed_count,
-        COALESCE(SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as total_revenue,
-        COALESCE(AVG(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as avg_deal_amount,
+        COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as completed_count,
+        COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as total_revenue,
+        COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal_amount,
         COUNT(*)::text as total_deals,
         COUNT(DISTINCT d.client_id)::text as unique_clients,
         (SELECT COUNT(*) FROM (
           SELECT d2.client_id
           FROM deals d2
           WHERE d2.manager_id = d.manager_id
-            AND d2.status IN ('SHIPPED', 'CLOSED')
+            AND d2.status = 'CLOSED'
             AND d2.is_archived = false
             AND d2.created_at >= ${start} AND d2.created_at < ${end}
           GROUP BY d2.client_id
@@ -307,10 +325,14 @@ router.get(
         ) rc)::text as repeat_clients
       FROM deals d
       JOIN users u ON u.id = d.manager_id
+      LEFT JOIN (
+        SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0))::numeric as rev
+        FROM deal_items GROUP BY deal_id
+      ) di_rev ON di_rev.deal_id = d.id
       WHERE d.is_archived = false
         AND d.created_at >= ${start} AND d.created_at < ${end}
       GROUP BY d.manager_id, u.full_name
-      ORDER BY SUM(d.amount) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`,
+      ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED') DESC NULLS LAST`,
     );
 
     const managerAvgDaysRaw = await prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
@@ -318,7 +340,7 @@ router.get(
         d.manager_id,
         AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
       FROM deals d
-      WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+      WHERE d.status = 'CLOSED' AND d.is_archived = false
         AND d.created_at >= ${start} AND d.created_at < ${end}
       GROUP BY d.manager_id`,
     );
@@ -372,7 +394,7 @@ router.get(
       Prisma.sql`SELECT AVG(GREATEST(0, EXTRACT(EPOCH FROM (p.last_paid - d.due_date)) / 86400))::text as avg_days_late
       FROM deals d
       JOIN (SELECT deal_id, MAX(paid_at) as last_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
-      WHERE d.due_date IS NOT NULL AND d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+      WHERE d.due_date IS NOT NULL AND d.status = 'CLOSED' AND d.is_archived = false`,
     );
     const avgPaymentDelayDays = delayRaw[0]?.avg_days_late ? Math.round(Number(delayRaw[0].avg_days_late) * 10) / 10 : 0;
 
@@ -383,7 +405,7 @@ router.get(
         NULLIF(COUNT(*), 0))::text as on_time_rate
       FROM deals d
       JOIN (SELECT deal_id, MAX(paid_at) as last_paid FROM payments GROUP BY deal_id) p ON p.deal_id = d.id
-      WHERE d.due_date IS NOT NULL AND d.status IN ('SHIPPED','CLOSED') AND d.is_archived = false`,
+      WHERE d.due_date IS NOT NULL AND d.status = 'CLOSED' AND d.is_archived = false`,
     );
     const onTimePaymentRate = onTimeRaw[0]?.on_time_rate ? Number(onTimeRaw[0].on_time_rate) : 0;
 

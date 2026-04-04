@@ -198,6 +198,8 @@ export default function WarehousePage() {
       render: (v: string) =>
         v === 'IN' ? (
           <Tag color="green" icon={<ArrowUpOutlined />}>Приход</Tag>
+        ) : v === 'CORRECTION' ? (
+          <Tag color="orange" icon={<EditOutlined />}>Коррекция</Tag>
         ) : (
           <Tag color="red" icon={<ArrowDownOutlined />}>Расход</Tag>
         ),

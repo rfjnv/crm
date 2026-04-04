@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_ACTIVE_FILTER,
+  SQL_DEALS_CLOSED_REVENUE_FILTER,
   SQL_DEALS_SHIPPED_CLOSED_FILTER,
   SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_ITEM_TS,
@@ -69,7 +69,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}`,
@@ -78,7 +78,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}`,
           );
@@ -112,7 +112,7 @@ router.get(
                SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
-               WHERE ${SQL_DEALS_ACTIVE_FILTER}
+               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                  AND d.manager_id = ${dealScope.managerId}
@@ -125,7 +125,7 @@ router.get(
                SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
-               WHERE ${SQL_DEALS_ACTIVE_FILTER}
+               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                GROUP BY d.id
@@ -139,7 +139,7 @@ router.get(
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}
@@ -151,7 +151,7 @@ router.get(
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
              GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
@@ -193,17 +193,17 @@ router.get(
             shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name,
-                 COALESCE(SUM(CASE WHEN d.status NOT IN ('CANCELED','REJECTED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END), 0)::text as operational_revenue,
-                 COALESCE(SUM(CASE WHEN d.status IN ('SHIPPED','CLOSED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
+                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
-               WHERE d.is_archived = false
+               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                  AND d.manager_id = ${dealScope.managerId}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name
-               ORDER BY SUM(CASE WHEN d.status NOT IN ('CANCELED','REJECTED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END) DESC NULLS LAST
+               ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           )
         : prisma.$queryRaw<{
@@ -213,16 +213,16 @@ router.get(
             shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name,
-                 COALESCE(SUM(CASE WHEN d.status NOT IN ('CANCELED','REJECTED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END), 0)::text as operational_revenue,
-                 COALESCE(SUM(CASE WHEN d.status IN ('SHIPPED','CLOSED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
+                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
-               WHERE d.is_archived = false
+               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name
-               ORDER BY SUM(CASE WHEN d.status NOT IN ('CANCELED','REJECTED') THEN ${SQL_LINE_REVENUE_DI} ELSE 0 END) DESC NULLS LAST
+               ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           );
 
@@ -245,7 +245,7 @@ router.get(
       avgDealOperational(),
       // COMPLETED + CLOSED count (for conversion)
       prisma.deal.count({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
+        where: { ...dealScope, status: 'CLOSED', isArchived: false, createdAt: { gte: start, lt: end } },
       }),
       // Total deals created in period (all statuses)
       prisma.deal.count({
@@ -264,15 +264,18 @@ router.get(
         _count: true,
       }),
       topClientsByOperationalRevenue(),
-      // Top 5 products by quantity sold
+      // Top 5 products by quantity sold (CLOSED deals, deal_items only)
       prisma.$queryRaw<{ product_id: string; name: string; total_quantity: string }[]>(
-        Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_quantity
-         FROM inventory_movements m
-         JOIN products p ON p.id = m.product_id
-         WHERE ${sqlMovementIsSale('m')}
-           AND m.created_at >= ${start} AND m.created_at < ${end}
+        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(SUM(di.requested_qty), 0)::text as total_quantity
+         FROM deal_items di
+         JOIN deals d ON d.id = di.deal_id
+         JOIN products p ON p.id = di.product_id
+         WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
+           AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+           AND di.requested_qty IS NOT NULL
          GROUP BY p.id, p.name
-         ORDER BY SUM(m.quantity) DESC
+         ORDER BY SUM(di.requested_qty) DESC
          LIMIT 5`,
       ),
     ]);
@@ -372,7 +375,7 @@ router.get(
              LIMIT 10`
           ),
       prisma.deal.aggregate({
-        where: { ...dealScope, status: { in: ['SHIPPED', 'CLOSED'] }, isArchived: false, createdAt: { gte: start, lt: end } },
+        where: { ...dealScope, status: 'CLOSED', isArchived: false, createdAt: { gte: start, lt: end } },
         _sum: { paidAmount: true },
       }),
       // Paper turnover (from deal items line_total)
@@ -381,7 +384,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+             WHERE d.status = 'CLOSED' AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}
                AND d.manager_id = ${dealScope.managerId}`
           )
@@ -389,7 +392,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+             WHERE d.status = 'CLOSED' AND d.is_archived = false
                AND d.created_at >= ${start} AND d.created_at < ${end}`
           ),
     ]);
@@ -477,9 +480,9 @@ router.get(
         Prisma.sql`SELECT
            d.manager_id,
            u.full_name,
-           COUNT(*) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED'))::text as completed_count,
-           COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as total_revenue,
-           COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')), 0)::text as avg_deal_amount,
+           COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as completed_count,
+           COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as total_revenue,
+           COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal_amount,
            COUNT(*)::text as total_deals
          FROM deals d
          JOIN users u ON u.id = d.manager_id
@@ -487,14 +490,14 @@ router.get(
          WHERE d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
          GROUP BY d.manager_id, u.full_name
-         ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status IN ('SHIPPED', 'CLOSED')) DESC NULLS LAST`
+         ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED') DESC NULLS LAST`
       ),
       prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
         Prisma.sql`SELECT
            d.manager_id,
            AVG(EXTRACT(EPOCH FROM (d.updated_at - d.created_at)) / 86400)::text as avg_days
          FROM deals d
-         WHERE d.status IN ('SHIPPED', 'CLOSED') AND d.is_archived = false
+         WHERE d.status = 'CLOSED' AND d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
          GROUP BY d.manager_id`
       ),
@@ -526,7 +529,7 @@ router.get(
          FROM deal_items di
          JOIN deals d ON d.id = di.deal_id
          JOIN products pr ON pr.id = di.product_id
-         WHERE d.status IN ('SHIPPED', 'CLOSED')
+         WHERE d.status = 'CLOSED'
            AND d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
            AND di.requested_qty IS NOT NULL

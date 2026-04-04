@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_ACTIVE_FILTER,
+  SQL_DEALS_CLOSED_REVENUE_FILTER,
   SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
@@ -44,7 +44,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}`,
@@ -53,7 +53,7 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}`,
           );
@@ -65,7 +65,7 @@ router.get(
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
@@ -77,7 +77,7 @@ router.get(
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_ACTIVE_FILTER}
+             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
              GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
@@ -276,7 +276,7 @@ router.get(
        JOIN clients c ON c.id = d.client_id
        JOIN users u ON u.id = d.manager_id
        JOIN products p ON p.id = di.product_id
-       WHERE ${SQL_DEALS_ACTIVE_FILTER}
+       WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${startOfToday}
          AND ${SQL_EFFECTIVE_ITEM_TS} < ${startOfTomorrow}
        ORDER BY ${SQL_EFFECTIVE_ITEM_TS} DESC`

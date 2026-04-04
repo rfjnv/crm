@@ -1,26 +1,24 @@
 /**
- * User-facing explanations for operational vs shipped revenue (aligned with backend analytics).
- * RU copy for CRM operators.
+ * User-facing explanations for revenue analytics (aligned with backend: CLOSED deals, deal_items line totals).
  */
 
-/** Stat / primary metric — operational revenue */
+/** Primary revenue — closed deals only */
 export const TOOLTIP_OPERATIONAL_REVENUE =
-  'Операционная выручка — сумма строк сделок (сумма строки или количество × цена) по сделкам, которые не отменены и не в архиве. ' +
-  'Календарный месяц и день берутся по дате строки сделки; если даты строки нет — по дате создания сделки. ' +
-  'Часовой пояс отчёта: Ташкент. Это основной показатель объёма продаж за период.';
+  'Выручка — сумма строк сделок (строка или количество × цена) только по сделкам в статусе «Закрыто». ' +
+  'Отменённые, черновики и незакрытые сделки не входят. ' +
+  'День/месяц: дата строки сделки (deal_date), иначе дата создания сделки; часовой пояс Ташкент.';
 
-/** Stat / secondary metric — shipped & closed line revenue */
+/** Legacy label: same as operational (both metrics use CLOSED-only line revenue). */
 export const TOOLTIP_SHIPPED_REVENUE =
-  'Отгруженная выручка — те же строки и те же правила даты, но учитываются только сделки в статусе «Отгружено» или «Закрыто». ' +
-  'Показывает объём продаж по уже отгруженным/закрытым сделкам; обычно не больше операционной выручки за тот же период.';
+  'Совпадает с основной выручкой: учитываются только закрытые сделки, только строки deal_items.';
 
 /** History monthly series: sum tied to warehouse shipment timestamp */
 export const TOOLTIP_SHIPPED_AT_MONTHLY =
   'Сумма строк по фактической дате отгрузки на складе (shipped_at), по месяцу этой даты. ' +
-  'Это логистический срез: он может не совпадать с «отгруженной выручкой» по дате строки сделки.';
+  'Это логистический срез: он может не совпадать с выручкой по дате строки сделки.';
 
 /** Short labels for chart legend */
-export const LEGEND_OPERATIONAL = 'Операционная выручка';
-export const LEGEND_SHIPPED_REVENUE = 'Отгружено (закрытые сделки)';
+export const LEGEND_OPERATIONAL = 'Выручка (закрытые сделки)';
+export const LEGEND_SHIPPED_REVENUE = 'Выручка (закрытые сделки)';
 export const LEGEND_PAID = 'Оплачено (по дате платежа)';
 export const LEGEND_SHIPPED_AT = 'Склад: по дате отгрузки';

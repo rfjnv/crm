@@ -4,6 +4,12 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
 import { CreateClientDto, UpdateClientDto } from './clients.dto';
+import {
+  SQL_DEALS_CLOSED_REVENUE_FILTER,
+  SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
+  SQL_EFFECTIVE_ITEM_TS,
+  SQL_LINE_REVENUE_DI,
+} from '../../lib/analytics';
 
 function clientAuditSnapshot(c: Client) {
   return {
@@ -348,13 +354,51 @@ export class ClientsService {
       },
     });
 
-    // Metrics (exclude CANCELED from totals)
-    const nonCanceled = allDeals.filter((d) => d.status !== 'CANCELED');
+    // Metrics: debt from active pipeline; revenue only from CLOSED (deal_items line totals)
+    const nonCanceled = allDeals.filter((d) => d.status !== 'CANCELED' && d.status !== 'REJECTED');
     const totalDeals = allDeals.length;
     const completedDeals = allDeals.filter((d) => d.status === 'CLOSED').length;
     const canceledDeals = allDeals.filter((d) => d.status === 'CANCELED').length;
-    const totalSpent = nonCanceled.reduce((s, d) => s + Number(d.paidAmount), 0);
     const currentDebt = nonCanceled.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount)), 0);
+
+    const [revAgg, revByDayRaw, topProductsRaw] = await Promise.all([
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`
+        SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE d.client_id = ${id}
+          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}`,
+      ),
+      prisma.$queryRaw<{ day: Date; amount: string }[]>(
+        Prisma.sql`
+        SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+               SUM(${SQL_LINE_REVENUE_DI})::text as amount
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE d.client_id = ${id}
+          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}
+        GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+        ORDER BY day ASC`,
+      ),
+      prisma.$queryRaw<{ product_id: string; total_qty: string }[]>(
+        Prisma.sql`
+        SELECT di.product_id, COALESCE(SUM(di.requested_qty), 0)::text as total_qty
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE d.client_id = ${id}
+          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}
+          AND di.requested_qty IS NOT NULL
+        GROUP BY di.product_id
+        ORDER BY SUM(di.requested_qty) DESC
+        LIMIT 5`,
+      ),
+    ]);
+
+    const totalSpent = revAgg[0] ? Number(revAgg[0].total) : 0;
 
     // Last payment
     const lastPayment = await prisma.payment.findFirst({
@@ -363,31 +407,12 @@ export class ClientsService {
       select: { paidAt: true },
     });
 
-    // Revenue by day (within period, exclude CANCELED)
-    const periodDeals = nonCanceled.filter((d) => d.createdAt >= periodStart);
-    const revenueByDay: Record<string, number> = {};
-    for (const deal of periodDeals) {
-      const day = deal.createdAt.toISOString().slice(0, 10);
-      revenueByDay[day] = (revenueByDay[day] || 0) + Number(deal.amount);
-    }
-    const revenueByDayArr = Object.entries(revenueByDay)
-      .map(([date, amount]) => ({ date, amount }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const revenueByDayArr = revByDayRaw.map((r) => ({
+      date: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10),
+      amount: Number(r.amount),
+    }));
 
-    // Top products (from non-CANCELED deals)
-    const nonCanceledIds = nonCanceled.map((d) => d.id);
-    const topProducts = nonCanceledIds.length > 0
-      ? await prisma.dealItem.groupBy({
-          by: ['productId'],
-          where: { dealId: { in: nonCanceledIds }, requestedQty: { not: null } },
-          _sum: { requestedQty: true },
-          orderBy: { _sum: { requestedQty: 'desc' } },
-          take: 5,
-        })
-      : [];
-
-    // Fetch product names for top products
-    const productIds = topProducts.map((tp) => tp.productId);
+    const productIds = topProductsRaw.map((tp) => tp.product_id);
     const products = productIds.length > 0
       ? await prisma.product.findMany({
           where: { id: { in: productIds } },
@@ -396,10 +421,10 @@ export class ClientsService {
       : [];
     const productMap = new Map(products.map((p) => [p.id, p.name]));
 
-    const topProductsResult = topProducts.map((tp) => ({
-      productId: tp.productId,
-      productName: productMap.get(tp.productId) || 'Неизвестный',
-      totalQuantity: tp._sum?.requestedQty ? Number(tp._sum.requestedQty) : 0,
+    const topProductsResult = topProductsRaw.map((tp) => ({
+      productId: tp.product_id,
+      productName: productMap.get(tp.product_id) || 'Неизвестный',
+      totalQuantity: Number(tp.total_qty),
     }));
 
     // Recent payments

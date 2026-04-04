@@ -43,6 +43,12 @@ const paymentMethodLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
+function inventoryMovementTag(type: string): { color: string; label: string } {
+  if (type === 'IN') return { color: 'green', label: 'Приход' };
+  if (type === 'CORRECTION') return { color: 'orange', label: 'Коррекция' };
+  return { color: 'red', label: 'Расход' };
+}
+
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
 
@@ -1191,17 +1197,20 @@ export default function DealDetailPage() {
                           ),
                         };
                       }
-                      return {
-                        color: entry.type === 'IN' ? 'green' : 'red',
-                        children: (
-                          <div>
-                            <Tag color={entry.type === 'IN' ? 'green' : 'red'} style={{ fontSize: 11 }}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
-                            <Typography.Text strong style={{ fontSize: 12 }}>{entry.product?.name}</Typography.Text>{' '}
-                            <Typography.Text style={{ fontSize: 12 }}>x {entry.quantity}</Typography.Text>
-                            <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
-                          </div>
-                        ),
-                      };
+                      {
+                        const mv = inventoryMovementTag(entry.type);
+                        return {
+                          color: mv.color,
+                          children: (
+                            <div>
+                              <Tag color={mv.color} style={{ fontSize: 11 }}>{mv.label}</Tag>{' '}
+                              <Typography.Text strong style={{ fontSize: 12 }}>{entry.product?.name}</Typography.Text>{' '}
+                              <Typography.Text style={{ fontSize: 12 }}>x {entry.quantity}</Typography.Text>
+                              <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                            </div>
+                          ),
+                        };
+                      }
                     })}
                   />
                 ),
@@ -1449,19 +1458,22 @@ export default function DealDetailPage() {
                           ),
                         };
                       }
-                      return {
-                        color: entry.type === 'IN' ? 'green' : 'red',
-                        children: (
-                          <div>
-                            <Tag color={entry.type === 'IN' ? 'green' : 'red'}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
-                            <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
-                            <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
-                            <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
-                            <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                            {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
-                          </div>
-                        ),
-                      };
+                      {
+                        const mv = inventoryMovementTag(entry.type);
+                        return {
+                          color: mv.color,
+                          children: (
+                            <div>
+                              <Tag color={mv.color}>{mv.label}</Tag>{' '}
+                              <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
+                              <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
+                              <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
+                              <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                              {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
+                            </div>
+                          ),
+                        };
+                      }
                     })}
                   />
                 </Card>
