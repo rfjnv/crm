@@ -44,9 +44,13 @@ import type {
 } from '../types';
 
 function AbcXyzTableBodyCell(props: PropsWithChildren<TdHTMLAttributes<HTMLTableCellElement>>) {
-  const { children, style, ...rest } = props;
+  const { children, style, className, ...rest } = props;
   return (
-    <td {...rest} style={{ ...style, verticalAlign: 'top', padding: '12px 16px' }}>
+    <td
+      {...rest}
+      className={className}
+      style={{ ...style, verticalAlign: 'top', padding: '12px 16px' }}
+    >
       {children}
     </td>
   );
@@ -2089,6 +2093,7 @@ export default function AnalyticsPage() {
       title: 'Рекомендация',
       key: 'recommendation',
       width: 352,
+      onCell: () => ({ className: 'abc-xyz-rec-td' }),
       render: (_: unknown, r: AbcXyzRow) => <AbcXyzRecommendationCell recommendation={r.recommendation} />,
     },
   ];
@@ -2113,6 +2118,14 @@ export default function AnalyticsPage() {
           <style>{`
             .analytics-abc-xyz-table .ant-table-tbody > tr > td:last-child {
               padding-right: 20px;
+            }
+            .analytics-abc-xyz-table .ant-table-tbody > tr > td.abc-xyz-rec-td {
+              height: 1px;
+              vertical-align: top;
+            }
+            .analytics-abc-xyz-table .ant-table-tbody > tr > td.abc-xyz-rec-td .abc-xyz-rec-fill {
+              height: 100%;
+              min-height: 100%;
             }
           `}</style>
           <Card size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
