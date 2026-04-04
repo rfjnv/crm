@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined, ApartmentOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
+import ProductHierarchyPanel from '../components/ProductHierarchyPanel';
 
 export default function ProductsPage() {
   const isMobile = useIsMobile();
@@ -27,6 +28,7 @@ export default function ProductsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 20;
+  const [listMode, setListMode] = useState<'table' | 'hierarchy'>('table');
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -240,6 +242,14 @@ export default function ProductsPage() {
       >
         <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 8 : 12} style={{ width: isMobile ? '100%' : 'auto' }}>
           <Typography.Title level={4} style={{ margin: 0 }}>Товары</Typography.Title>
+          <Segmented
+            value={listMode}
+            onChange={(v) => setListMode(v as 'table' | 'hierarchy')}
+            options={[
+              { label: isMobile ? 'Список' : <><UnorderedListOutlined /> Список</>, value: 'table' },
+              { label: isMobile ? 'Дерево' : <><ApartmentOutlined /> Иерархия</>, value: 'hierarchy' },
+            ]}
+          />
           <Select
             allowClear
             placeholder="Категория"
@@ -291,7 +301,41 @@ export default function ProductsPage() {
         </Space>
       </div>
 
-      {isMobile ? (
+      {listMode === 'hierarchy' ? (
+        <ProductHierarchyPanel
+          products={filtered}
+          loading={isLoading}
+          canManage={canManageProducts}
+          searchHint={
+            debouncedSearch || categoryFilter || countryFilter || stockFilter !== 'all' || activeFilter !== 'active'
+              ? 'Показаны товары по текущим фильтрам и поиску.'
+              : undefined
+          }
+          onEditProduct={(p) => {
+            setEditProduct(p);
+            editForm.setFieldsValue({
+              name: p.name,
+              sku: p.sku,
+              unit: p.unit,
+              format: p.format,
+              category: p.category,
+              countryOfOrigin: p.countryOfOrigin,
+              minStock: p.minStock,
+              purchasePrice: p.purchasePrice ? Number(p.purchasePrice) : undefined,
+              salePrice: p.salePrice ? Number(p.salePrice) : undefined,
+              installmentPrice: p.installmentPrice ? Number(p.installmentPrice) : undefined,
+              manufacturedAt: p.manufacturedAt ? dayjs(p.manufacturedAt) : null,
+              expiresAt: p.expiresAt ? dayjs(p.expiresAt) : null,
+              isActive: p.isActive,
+            });
+          }}
+          onAddProductInCategory={(category) => {
+            setOpen(true);
+            form.resetFields();
+            form.setFieldsValue({ category, unit: 'шт', minStock: 0 });
+          }}
+        />
+      ) : isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filteredMobileSlice.map((p) => {
             const stock = Number(p.stock);
