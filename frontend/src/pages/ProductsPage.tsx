@@ -48,11 +48,6 @@ export default function ProductsPage() {
     setMobilePage(1);
   }, [debouncedSearch, categoryFilter, countryFilter, stockFilter, activeFilter]);
 
-  const filteredMobileSlice = useMemo(() => {
-    const start = (mobilePage - 1) * mobilePageSize;
-    return filtered.slice(start, start + mobilePageSize);
-  }, [filtered, mobilePage, mobilePageSize]);
-
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
       if (debouncedSearch) {
@@ -71,6 +66,11 @@ export default function ProductsPage() {
       return true;
     });
   }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, stockFilter]);
+
+  const filteredMobileSlice = useMemo(() => {
+    const start = (mobilePage - 1) * mobilePageSize;
+    return filtered.slice(start, start + mobilePageSize);
+  }, [filtered, mobilePage, mobilePageSize]);
 
   const categories = [...new Set((products ?? []).map((p) => p.category).filter(Boolean))] as string[];
   const countries = [...new Set((products ?? []).map((p) => p.countryOfOrigin).filter(Boolean))] as string[];
