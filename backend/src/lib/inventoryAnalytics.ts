@@ -34,20 +34,28 @@ export function sqlMovementIncludedInProductAnalytics(alias = 'm'): Prisma.Sql {
   );
 }
 
-export type ChartGranularity = 'day' | 'month' | 'quarter';
+export type ChartGranularity = 'day' | 'month' | 'quarter' | 'year';
 
-/** ~месяц: только день; ~квартал: день|месяц; ~год: день|месяц|квартал */
+export type ProductAnalyticsPeriod = number | 'all';
+
+/** ~месяц: только день; ~квартал: день|месяц; ~год: день|месяц|квартал; всё: месяц|квартал|год */
 export function resolveProductChartGranularity(
-  periodDays: number,
+  period: ProductAnalyticsPeriod,
   requested?: string | null,
 ): { granularity: ChartGranularity; allowed: ChartGranularity[] } {
   const q = (requested || '').toLowerCase().trim();
 
-  if (periodDays <= 35) {
+  if (period === 'all') {
+    const allowed: ChartGranularity[] = ['month', 'quarter', 'year'];
+    if (q === 'month' || q === 'quarter' || q === 'year') return { granularity: q, allowed };
+    return { granularity: 'month', allowed };
+  }
+
+  if (period <= 35) {
     return { granularity: 'day', allowed: ['day'] };
   }
 
-  if (periodDays <= 120) {
+  if (period <= 120) {
     const allowed: ChartGranularity[] = ['day', 'month'];
     if (q === 'day' || q === 'month') return { granularity: q, allowed };
     return { granularity: 'month', allowed };
@@ -67,6 +75,8 @@ export function sqlInventoryMovementBucket(granularity: ChartGranularity): Prism
       return Prisma.sql`date_trunc('month', m.created_at)`;
     case 'quarter':
       return Prisma.sql`date_trunc('quarter', m.created_at)`;
+    case 'year':
+      return Prisma.sql`date_trunc('year', m.created_at)`;
     default:
       return Prisma.sql`(m.created_at::date)`;
   }

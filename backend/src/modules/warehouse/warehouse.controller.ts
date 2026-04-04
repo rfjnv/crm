@@ -46,13 +46,21 @@ export class WarehouseController {
   }
 
   async getProductAnalytics(req: Request, res: Response): Promise<void> {
-    const periodDays = parseInt(req.query.periodDays as string) || 30;
+    const periodParam = req.query.period;
+    const isAll =
+      typeof periodParam === 'string' && periodParam.trim().toLowerCase() === 'all';
+    const parsed = parseInt(String(req.query.periodDays ?? ''), 10);
+    const period = isAll
+      ? ('all' as const)
+      : Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : 30;
     const g = req.query.granularity;
     const granularity =
       typeof g === 'string' && g.trim() ? g.trim() : undefined;
     const data = await warehouseService.getProductAnalytics(
       req.params.id as string,
-      periodDays,
+      period,
       granularity,
     );
     res.json(data);

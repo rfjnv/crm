@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -15,13 +15,16 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 
-const PERIODS = [
+type PeriodChoice = 30 | 90 | 365 | 'all';
+
+const PERIODS: { label: string; value: PeriodChoice }[] = [
   { label: 'Месяц', value: 30 },
   { label: 'Квартал', value: 90 },
   { label: 'Год', value: 365 },
+  { label: 'Все', value: 'all' },
 ];
 
-type ChartGranularity = 'day' | 'month' | 'quarter';
+type ChartGranularity = 'day' | 'month' | 'quarter' | 'year';
 
 function formatMovementChartBucket(isoDay: string, g: ChartGranularity): string {
   const d = isoDay.slice(0, 10);
@@ -29,6 +32,7 @@ function formatMovementChartBucket(isoDay: string, g: ChartGranularity): string 
   if (!Y || !M) return isoDay;
   if (g === 'day') return `${String(D).padStart(2, '0')}.${String(M).padStart(2, '0')}`;
   if (g === 'month') return `${String(M).padStart(2, '0')}.${Y}`;
+  if (g === 'year') return String(Y);
   const q = Math.floor((M - 1) / 3) + 1;
   return `Q${q} ${Y}`;
 }
@@ -43,22 +47,58 @@ export default function ProductDetailPage() {
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  const [periodDays, setPeriodDays] = useState(30);
+  const [period, setPeriod] = useState<PeriodChoice>(30);
   const [granularity, setGranularity] = useState<ChartGranularity>('day');
+  const prevPeriodRef = useRef<PeriodChoice>(period);
+
+  const chartGranularityOptions = useMemo(() => {
+    if (period === 'all') {
+      return [
+        { label: 'По месяцам', value: 'month' as const },
+        { label: 'По кварталам', value: 'quarter' as const },
+        { label: 'По годам', value: 'year' as const },
+      ];
+    }
+    if (period <= 35) {
+      return [{ label: 'По дням', value: 'day' as const }];
+    }
+    if (period <= 120) {
+      return [
+        { label: 'По дням', value: 'day' as const },
+        { label: 'По месяцам', value: 'month' as const },
+      ];
+    }
+    return [
+      { label: 'По дням', value: 'day' as const },
+      { label: 'По месяцам', value: 'month' as const },
+      { label: 'По кварталам', value: 'quarter' as const },
+    ];
+  }, [period]);
 
   useEffect(() => {
-    if (periodDays <= 35) {
-      setGranularity('day');
-    } else {
-      setGranularity('month');
-    }
-  }, [periodDays]);
+    const prev = prevPeriodRef.current;
+    prevPeriodRef.current = period;
 
-  const effectiveGranularity: ChartGranularity | undefined = periodDays <= 35 ? undefined : granularity;
+    if (period === 30) {
+      setGranularity('day');
+      return;
+    }
+    if (prev === 30) {
+      setGranularity('month');
+      return;
+    }
+    setGranularity((g) => {
+      const allowed = chartGranularityOptions.map((o) => o.value);
+      return allowed.includes(g) ? g : 'month';
+    });
+  }, [period, chartGranularityOptions]);
+
+  const effectiveGranularity: ChartGranularity | undefined =
+    period === 30 ? undefined : granularity;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['product-analytics', id, periodDays, effectiveGranularity ?? 'day'],
-    queryFn: () => inventoryApi.getProductAnalytics(id!, periodDays, effectiveGranularity),
+    queryKey: ['product-analytics', id, period, effectiveGranularity ?? 'day'],
+    queryFn: () => inventoryApi.getProductAnalytics(id!, period, effectiveGranularity),
     enabled: !!id,
   });
 
@@ -93,8 +133,7 @@ export default function ProductDetailPage() {
     ],
   );
 
-  const correctionsInfo = data.movements.correctionsOutsideAnalytics ?? 0;
-
+  /** Только группировка графика; период — в шапке страницы */
   const movementChartTitle = (
     <div
       style={{
@@ -110,33 +149,12 @@ export default function ProductDetailPage() {
       <Typography.Title level={5} style={{ margin: 0 }}>
         Движение товара
       </Typography.Title>
-      <Space wrap size="small" style={{ borderLeft: isMobile ? undefined : `1px solid ${tk.colorBorderSecondary}`, paddingLeft: isMobile ? 0 : 12 }}>
-        <Segmented
-          size="small"
-          value={periodDays}
-          onChange={(v) => setPeriodDays(v as number)}
-          options={PERIODS}
-        />
-        {periodDays > 35 && (
-          <Segmented<ChartGranularity>
-            size="small"
-            value={granularity}
-            onChange={(v) => setGranularity(v)}
-            options={
-              periodDays <= 120
-                ? [
-                    { label: 'По дням', value: 'day' },
-                    { label: 'По месяцам', value: 'month' },
-                  ]
-                : [
-                    { label: 'По дням', value: 'day' },
-                    { label: 'По месяцам', value: 'month' },
-                    { label: 'По кварталам', value: 'quarter' },
-                  ]
-            }
-          />
-        )}
-      </Space>
+      <Segmented<ChartGranularity>
+        size="small"
+        value={period === 30 ? 'day' : granularity}
+        onChange={(v) => setGranularity(v)}
+        options={chartGranularityOptions}
+      />
     </div>
   );
 
@@ -149,6 +167,11 @@ export default function ProductDetailPage() {
           <Tag>{p.sku}</Tag>
           <Tag color={p.isActive ? 'green' : 'red'}>{p.isActive ? 'Активен' : 'Неактивен'}</Tag>
         </Space>
+        <Segmented<PeriodChoice>
+          value={period}
+          onChange={(v) => setPeriod(v)}
+          options={PERIODS}
+        />
       </div>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -226,7 +249,7 @@ export default function ProductDetailPage() {
           </Card>
         )}
 
-        {/* Movement chart + period / granularity (analytics: только приход и отгрузка по сделкам) */}
+        {/* Движение: график (группировка — только в заголовке карточки); период — в шапке страницы */}
         <Card
             title={movementChartTitle}
             size="small"
@@ -282,13 +305,6 @@ export default function ProductDetailPage() {
                 />
               </Col>
             </Row>
-            {correctionsInfo > 0 && (
-              <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 13 }}>
-                Коррекции (вне аналитики):{' '}
-                <Typography.Text strong>{moneyFormatter(correctionsInfo)}</Typography.Text> {p.unit} — не входят в график и
-                итоги выше.
-              </Typography.Paragraph>
-            )}
           </Card>
 
         {/* Top Clients */}

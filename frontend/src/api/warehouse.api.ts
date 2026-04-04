@@ -19,11 +19,15 @@ export const inventoryApi = {
   getProductMovements: (id: string) =>
     client.get<InventoryMovement[]>(`/inventory/products/${id}/movements`).then((r) => r.data),
 
-  getProductAnalytics: (id: string, periodDays?: number, granularity?: 'day' | 'month' | 'quarter') =>
+  getProductAnalytics: (
+    id: string,
+    period: number | 'all',
+    granularity?: 'day' | 'month' | 'quarter' | 'year',
+  ) =>
     client
       .get<ProductAnalytics>(`/inventory/products/${id}/analytics`, {
         params: {
-          ...(periodDays != null ? { periodDays } : {}),
+          ...(period === 'all' ? { period: 'all' } : { periodDays: period }),
           ...(granularity ? { granularity } : {}),
         },
       })

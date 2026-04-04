@@ -297,16 +297,29 @@ export class WarehouseService {
     });
   }
 
-  async getProductAnalytics(productId: string, periodDays: number, granularityParam?: string | null) {
+  async getProductAnalytics(
+    productId: string,
+    period: number | 'all',
+    granularityParam?: string | null,
+  ) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
     }
 
-    const from = new Date();
-    from.setDate(from.getDate() - periodDays);
+    const from =
+      period === 'all'
+        ? null
+        : (() => {
+            const d = new Date();
+            d.setDate(d.getDate() - period);
+            return d;
+          })();
 
-    const { granularity, allowed } = resolveProductChartGranularity(periodDays, granularityParam);
+    const movementDateFilter = from ? Prisma.sql`AND m.created_at >= ${from}` : Prisma.empty;
+    const dealDateFilter = from ? Prisma.sql`AND d.created_at >= ${from}` : Prisma.empty;
+
+    const { granularity, allowed } = resolveProductChartGranularity(period, granularityParam);
     const bucketExpr = sqlInventoryMovementBucket(granularity);
 
     const [totalsRow, seriesRows, correctionsOutsideRow, dealItems, topClientsRaw] = await Promise.all([
@@ -316,7 +329,8 @@ export class WarehouseService {
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
           COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale
         FROM inventory_movements m
-        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+        WHERE m.product_id = ${productId}
+          ${movementDateFilter}
           AND ${sqlMovementIncludedInProductAnalytics('m')}`,
       ),
       prisma.$queryRaw<{ bucket: Date; in_qty: string; sale_qty: string }[]>(
@@ -326,7 +340,8 @@ export class WarehouseService {
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
           COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty
         FROM inventory_movements m
-        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+        WHERE m.product_id = ${productId}
+          ${movementDateFilter}
           AND ${sqlMovementIncludedInProductAnalytics('m')}
         GROUP BY 1
         ORDER BY 1`,
@@ -335,11 +350,18 @@ export class WarehouseService {
         Prisma.sql`
         SELECT COALESCE(SUM(m.quantity::numeric), 0)::text AS qty
         FROM inventory_movements m
-        WHERE m.product_id = ${productId} AND m.created_at >= ${from}
+        WHERE m.product_id = ${productId}
+          ${movementDateFilter}
           AND ${sqlMovementIsAnalyticsCorrection('m')}`,
       ),
       prisma.dealItem.findMany({
-        where: { productId, deal: { createdAt: { gte: from }, status: { not: 'CANCELED' } } },
+        where: {
+          productId,
+          deal: {
+            ...(from ? { createdAt: { gte: from } } : {}),
+            status: { not: 'CANCELED' },
+          },
+        },
         select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
       }),
       prisma.$queryRaw<{ client_id: string; company_name: string; total_qty: number }[]>(
@@ -349,7 +371,7 @@ export class WarehouseService {
           JOIN deals d ON d.id = di.deal_id
           JOIN clients c ON c.id = d.client_id
           WHERE di.product_id = ${productId}
-            AND d.created_at >= ${from}
+            ${dealDateFilter}
             AND d.status != 'CANCELED'
             AND di.requested_qty > 0
           GROUP BY c.id, c.company_name
