@@ -2025,7 +2025,6 @@ export default function AnalyticsPage() {
       key: 'revenue',
       align: 'right' as const,
       render: (v: number) => formatUZS(v),
-      sorter: (a: AbcXyzRow, b: AbcXyzRow) => a.revenue - b.revenue,
     },
     {
       title: 'Доля, %',
@@ -2075,14 +2074,34 @@ export default function AnalyticsPage() {
     },
     {
       title: 'Рекомендация',
-      dataIndex: 'recommendation',
       key: 'recommendation',
-      ellipsis: true,
-      render: (v: string) => (
-        <Typography.Text style={{ fontSize: 12 }} ellipsis={{ tooltip: v }}>
-          {v}
-        </Typography.Text>
-      ),
+      width: 340,
+      render: (_: unknown, r: AbcXyzRow) => {
+        const rec = r.recommendation;
+        return (
+          <div style={{ maxWidth: 340 }}>
+            <Typography.Text strong style={{ display: 'block', fontSize: 13 }}>
+              {rec.title}
+            </Typography.Text>
+            <Typography.Paragraph
+              type="secondary"
+              style={{ fontSize: 12, margin: '6px 0 4px' }}
+              ellipsis={{ rows: 2, tooltip: rec.description }}
+            >
+              {rec.description}
+            </Typography.Paragraph>
+            <Typography.Text style={{ fontSize: 12, display: 'block' }}>
+              <span style={{ color: token.colorTextSecondary }}>Действие: </span>
+              {rec.action}
+            </Typography.Text>
+            {rec.risk ? (
+              <Tag color="warning" style={{ marginTop: 6, whiteSpace: 'normal', lineHeight: 1.35, display: 'block' }}>
+                Риск: {rec.risk}
+              </Tag>
+            ) : null}
+          </div>
+        );
+      },
     },
   ];
 
@@ -2147,7 +2166,7 @@ export default function AnalyticsPage() {
               dataSource={abcXyzSortedProducts}
               rowKey="entityId"
               pagination={{ pageSize: 15, showSizeChanger: true }}
-              scroll={{ x: 1120 }}
+              scroll={{ x: 1320 }}
               size="small"
             />
           </Card>
@@ -2157,7 +2176,7 @@ export default function AnalyticsPage() {
               dataSource={abcXyzSortedClients}
               rowKey="entityId"
               pagination={{ pageSize: 15, showSizeChanger: true }}
-              scroll={{ x: 1120 }}
+              scroll={{ x: 1320 }}
               size="small"
             />
           </Card>

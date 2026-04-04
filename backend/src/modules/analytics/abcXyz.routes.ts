@@ -105,7 +105,12 @@ function buildRows(
   abc: Abc;
   xyz: Xyz;
   combined: string;
-  recommendation: string;
+  recommendation: {
+    title: string;
+    description: string;
+    action: string;
+    risk?: string;
+  };
 }[] {
   const total = sorted.reduce((s, r) => s + r.revenue, 0);
   let running = 0;

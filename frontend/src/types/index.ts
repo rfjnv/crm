@@ -439,6 +439,14 @@ export interface AnalyticsProfitability {
   expensesByCategory: { category: string; total: number }[];
 }
 
+/** Подсказка для менеджера (RU), без изменения логики ABC/XYZ. */
+export interface AbcXyzRecommendation {
+  title: string;
+  description: string;
+  action: string;
+  risk?: string;
+}
+
 /** ABC/XYZ классификация: выручка = закрытые сделки, строки deal_items за период; XYZ — CV по месяцам за 12 мес. */
 export interface AbcXyzRow {
   entityId: string;
@@ -449,7 +457,7 @@ export interface AbcXyzRow {
   abc: 'A' | 'B' | 'C';
   xyz: 'X' | 'Y' | 'Z' | 'NEW';
   combined: string;
-  recommendation: string;
+  recommendation: AbcXyzRecommendation;
 }
 
 export interface AbcXyzResponse {
