@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button } from 'antd';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -23,13 +23,23 @@ import { dealsApi } from '../api/deals.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
+import { LEGEND_OPERATIONAL, TOOLTIP_OPERATIONAL_REVENUE } from '../constants/analyticsRevenueTooltips';
 import {
-  LEGEND_OPERATIONAL,
-  LEGEND_SHIPPED_REVENUE,
-  TOOLTIP_OPERATIONAL_REVENUE,
-  TOOLTIP_SHIPPED_REVENUE,
-} from '../constants/analyticsRevenueTooltips';
-import type { DealStatus, ClientLTVRow, CrossSellPair, DemandStabilityRow, Product } from '../types';
+  ABC_TAG_COLORS,
+  compareAbcXyzRowsByImportance,
+  filterAbcXyzRows,
+  uniqueCombinedClasses,
+  xyzTagColor,
+  xyzTagStyle,
+} from '../constants/abcXyzUx';
+import type {
+  DealStatus,
+  ClientLTVRow,
+  CrossSellPair,
+  DemandStabilityRow,
+  Product,
+  AbcXyzRow,
+} from '../types';
 
 const statusColorMap: Record<string, string> = {
   NEW: '#6b9bd2',
@@ -200,29 +210,6 @@ function buildRevenueChartData(
   });
 }
 
-/** Long-format rows for dual-line chart (operational + shipped per calendar day). */
-function buildRevenueByDayDualData(
-  raw: { day: string; total: number; shippedTotal?: number }[],
-): { day: string; value: number; metric: string }[] {
-  if (raw.length === 0) return [];
-  const mapOp = new Map(raw.map((d) => [d.day, d.total]));
-  const mapSh = new Map(raw.map((d) => [d.day, d.shippedTotal ?? 0]));
-  const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
-  const startDate = new Date(sorted[0].day + 'T12:00:00Z');
-  const endDate = new Date(sorted[sorted.length - 1].day + 'T12:00:00Z');
-  const out: { day: string; value: number; metric: string }[] = [];
-  for (let dt = new Date(startDate); dt <= endDate; dt.setUTCDate(dt.getUTCDate() + 1)) {
-    const key = dt.toISOString().slice(0, 10);
-    const parts = key.split('-');
-    const dayNum = parseInt(parts[2], 10);
-    const monthIdx = parseInt(parts[1], 10) - 1;
-    const label = `${dayNum} ${MONTH_SHORT[monthIdx]}`;
-    out.push({ day: label, value: mapOp.get(key) ?? 0, metric: LEGEND_OPERATIONAL });
-    out.push({ day: label, value: mapSh.get(key) ?? 0, metric: LEGEND_SHIPPED_REVENUE });
-  }
-  return out;
-}
-
 function aggregateSalesForProducts(products: Product[], salesMap: Record<string, ProductSalesAggregate>) {
   let soldQty = 0;
   let salesRevenue = 0;
@@ -295,10 +282,12 @@ function FormulaHint({ text }: { text: string }) {
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
-  const [revenueDayMode, setRevenueDayMode] = useState<'both' | 'operational'>('both');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [comparisonMap, setComparisonMap] = useState<Record<string, HierarchyCompareItem>>({});
+  const [abcXyzFilterAbc, setAbcXyzFilterAbc] = useState<string | undefined>();
+  const [abcXyzFilterXyz, setAbcXyzFilterXyz] = useState<string | undefined>();
+  const [abcXyzFilterCombined, setAbcXyzFilterCombined] = useState<string | undefined>();
   const { token } = theme.useToken();
   const navigate = useNavigate();
 
@@ -306,6 +295,44 @@ export default function AnalyticsPage() {
     queryKey: ['analytics', period],
     queryFn: () => analyticsApi.getData(period),
   });
+
+  const { data: abcXyz, isLoading: abcXyzLoading } = useQuery({
+    queryKey: ['analytics-abc-xyz', period],
+    queryFn: () => analyticsApi.getAbcXyz(period),
+  });
+
+  useEffect(() => {
+    setAbcXyzFilterAbc(undefined);
+    setAbcXyzFilterXyz(undefined);
+    setAbcXyzFilterCombined(undefined);
+  }, [period]);
+
+  const abcXyzCombinedSelectOptions = useMemo(() => {
+    if (!abcXyz) return [];
+    return uniqueCombinedClasses(abcXyz.products, abcXyz.clients).map((v) => ({ label: v, value: v }));
+  }, [abcXyz]);
+
+  const abcXyzSortedProducts = useMemo(() => {
+    if (!abcXyz?.products) return [];
+    const filtered = filterAbcXyzRows(
+      abcXyz.products,
+      abcXyzFilterAbc,
+      abcXyzFilterXyz,
+      abcXyzFilterCombined,
+    );
+    return [...filtered].sort(compareAbcXyzRowsByImportance);
+  }, [abcXyz, abcXyzFilterAbc, abcXyzFilterXyz, abcXyzFilterCombined]);
+
+  const abcXyzSortedClients = useMemo(() => {
+    if (!abcXyz?.clients) return [];
+    const filtered = filterAbcXyzRows(
+      abcXyz.clients,
+      abcXyzFilterAbc,
+      abcXyzFilterXyz,
+      abcXyzFilterCombined,
+    );
+    return [...filtered].sort(compareAbcXyzRowsByImportance);
+  }, [abcXyz, abcXyzFilterAbc, abcXyzFilterXyz, abcXyzFilterCombined]);
 
   const { data: intel } = useQuery({
     queryKey: ['analytics-intelligence', period],
@@ -557,15 +584,10 @@ export default function AnalyticsPage() {
   const pieColorDomain = pieData.map((d) => d.type);
   const pieColorRange = pieData.map((d) => d.color);
 
-  const lineDataOperational = buildRevenueChartData(sales.revenueByDay).map((d) => ({
+  const revenueDayChartData = buildRevenueChartData(sales.revenueByDay).map((d) => ({
     day: d.day,
     value: d.total,
-    metric: LEGEND_OPERATIONAL,
   }));
-
-  const lineDataDual = buildRevenueByDayDualData(sales.revenueByDay);
-
-  const revenueDayChartData = revenueDayMode === 'both' ? lineDataDual : lineDataOperational;
 
   const clientBarData = sales.topClients.map((c) => ({
     name: c.companyName,
@@ -597,7 +619,7 @@ export default function AnalyticsPage() {
             <Statistic
               title={
                 <span>
-                  Операционная выручка
+                  Выручка (закрытые сделки)
                   <Tooltip title={TOOLTIP_OPERATIONAL_REVENUE}>
                     <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
                   </Tooltip>
@@ -613,25 +635,7 @@ export default function AnalyticsPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} size="small">
             <Statistic
-              title={
-                <span>
-                  Отгруженная выручка
-                  <Tooltip title={TOOLTIP_SHIPPED_REVENUE}>
-                    <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
-                  </Tooltip>
-                </span>
-              }
-              value={sales.shippedRevenue}
-              formatter={(v) => formatUZS(v as number)}
-              prefix={<DollarOutlined />}
-              valueStyle={{ color: '#237804' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} size="small">
-            <Statistic
-              title={<span>Средний чек<FormulaHint text="Средняя сумма строк по сделкам с выручкой в периоде (операционная)" /></span>}
+              title={<span>Средний чек<FormulaHint text="Средняя сумма строк по закрытым сделкам с выручкой в выбранном периоде" /></span>}
               value={sales.avgDealAmount}
               formatter={(v) => formatUZS(v as number)}
               prefix={<RiseOutlined />}
@@ -673,49 +677,24 @@ export default function AnalyticsPage() {
             title={
               <span>
                 Выручка по дням
-                <Tooltip
-                  title={
-                    <div style={{ maxWidth: 360 }}>
-                      <div style={{ marginBottom: 8 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>
-                      <div>{TOOLTIP_SHIPPED_REVENUE}</div>
-                    </div>
-                  }
-                >
+                <Tooltip title={<div style={{ maxWidth: 360 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>}>
                   <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.5 }} />
                 </Tooltip>
               </span>
             }
-            extra={
-              <Segmented
-                size="small"
-                value={revenueDayMode}
-                onChange={(v) => setRevenueDayMode(v as 'both' | 'operational')}
-                options={[
-                  { label: 'Две линии', value: 'both' },
-                  { label: 'Только операционная', value: 'operational' },
-                ]}
-              />
-            }
             bordered={false}
           >
             <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
-              Синяя линия — операционная выручка; зелёная — по сделкам «Отгружено» и «Закрыто». Переключатель сверху справа.
+              Сумма строк deal_items по сделкам в статусе «Закрыто»; день — по дате строки (или сделки), Ташкент.
             </Typography.Paragraph>
             {revenueDayChartData.length > 0 ? (
               <Line
                 data={revenueDayChartData}
                 xField="day"
                 yField="value"
-                seriesField="metric"
                 height={340}
                 shapeField="smooth"
-                style={{ lineWidth: 2.5 }}
-                scale={{
-                  color: {
-                    domain: [LEGEND_OPERATIONAL, LEGEND_SHIPPED_REVENUE],
-                    range: ['#1677ff', '#389e0d'],
-                  },
-                }}
+                style={{ lineWidth: 2.5, stroke: '#1677ff' }}
                 axis={{
                   y: {
                     labelFormatter: (v: number) => formatUZS(v),
@@ -732,7 +711,6 @@ export default function AnalyticsPage() {
                 tooltip={{
                   items: [{ field: 'value', channel: 'y', valueFormatter: (v: number) => formatUZS(v) }],
                 }}
-                legend={{ color: { position: 'top', itemLabelFill: token.colorText } }}
                 theme={chartTheme}
               />
             ) : (
@@ -769,7 +747,7 @@ export default function AnalyticsPage() {
             title={
               <span>
                 Топ 5 клиентов
-                <Tooltip title="Столбцы — операционная выручка за период. Рядом в карточках сверху — отгруженная выручка по всему периоду; по клиентам детализация «отгружено» в отчётах истории.">
+                <Tooltip title="Выручка по строкам закрытых сделок за выбранный период (как основной показатель выручки).">
                   <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.5 }} />
                 </Tooltip>
               </span>
@@ -779,7 +757,7 @@ export default function AnalyticsPage() {
             {clientBarData.length > 0 ? (
               <>
                 <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 8, fontSize: 12 }}>
-                  Операционная выручка (как на левом графике, синяя линия).
+                  Выручка по закрытым сделкам (как на графике слева).
                 </Typography.Paragraph>
                 <Bar
                   data={clientBarData}
@@ -2025,6 +2003,169 @@ export default function AnalyticsPage() {
     </div>
   );
 
+  const abcXyzAbcBorder = (abc: string) =>
+    abc === 'A' ? '#52c41a' : abc === 'B' ? '#faad14' : '#ff4d4f';
+
+  const abcXyzColumns = (entity: 'product' | 'client') => [
+    {
+      title: 'Название',
+      dataIndex: 'name',
+      key: 'name',
+      ellipsis: true,
+      render: (v: string, r: AbcXyzRow) =>
+        entity === 'product' ? (
+          <Link to={`/inventory/products/${r.entityId}`}>{v}</Link>
+        ) : (
+          <Link to={`/clients/${r.entityId}`}>{v}</Link>
+        ),
+    },
+    {
+      title: 'Выручка',
+      dataIndex: 'revenue',
+      key: 'revenue',
+      align: 'right' as const,
+      render: (v: number) => formatUZS(v),
+      sorter: (a: AbcXyzRow, b: AbcXyzRow) => a.revenue - b.revenue,
+    },
+    {
+      title: 'Доля, %',
+      dataIndex: 'sharePercent',
+      key: 'sharePercent',
+      align: 'right' as const,
+      render: (v: number) => (typeof v === 'number' ? v.toFixed(2) : '—'),
+    },
+    {
+      title: 'Накопл. %',
+      dataIndex: 'cumulativeSharePercent',
+      key: 'cumulativeSharePercent',
+      align: 'right' as const,
+      render: (v: number) => (typeof v === 'number' ? v.toFixed(2) : '—'),
+    },
+    {
+      title: 'ABC',
+      dataIndex: 'abc',
+      key: 'abc',
+      width: 76,
+      render: (v: string) => <Tag color={ABC_TAG_COLORS[v] ?? 'default'}>{v}</Tag>,
+    },
+    {
+      title: 'XYZ',
+      dataIndex: 'xyz',
+      key: 'xyz',
+      width: 88,
+      render: (v: string) => (
+        <Tag color={xyzTagColor(v)} style={xyzTagStyle(v)}>
+          {v}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Класс',
+      dataIndex: 'combined',
+      key: 'combined',
+      width: 100,
+      render: (_: string, r: AbcXyzRow) => {
+        const c = abcXyzAbcBorder(r.abc);
+        return (
+          <Tag bordered style={{ borderColor: c, color: c, background: token.colorBgContainer, ...xyzTagStyle(r.xyz) }}>
+            {r.combined}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Рекомендация',
+      dataIndex: 'recommendation',
+      key: 'recommendation',
+      ellipsis: true,
+      render: (v: string) => (
+        <Typography.Text style={{ fontSize: 12 }} ellipsis={{ tooltip: v }}>
+          {v}
+        </Typography.Text>
+      ),
+    },
+  ];
+
+  const abcXyzTab = (
+    <div>
+      <Typography.Paragraph type="secondary">
+        <strong>ABC:</strong> выручка по строкам закрытых сделок за период; накопленная доля — A до 80%, B до 95%, C остальное.
+        <br />
+        <strong>XYZ:</strong> по месячной выручке за 12 мес.: CV = σ/μ; X при CV ≤ 0,1; Y ≤ 0,25; Z выше. Меньше 3 месяцев с продажами —{' '}
+        <Tag color="processing" style={{ margin: 0 }}>
+          NEW
+        </Tag>
+        , не Z.
+        <br />
+        <strong>Порядок строк:</strong> по важности класса (AX → AY → AZ → ANEW → BX → …), затем по выручке.
+      </Typography.Paragraph>
+      {abcXyzLoading || !abcXyz ? (
+        <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />
+      ) : (
+        <>
+          <Card size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
+            <Space wrap align="center">
+              <Typography.Text type="secondary">Фильтры</Typography.Text>
+              <Select
+                allowClear
+                placeholder="ABC"
+                style={{ width: 96 }}
+                value={abcXyzFilterAbc}
+                onChange={(v) => setAbcXyzFilterAbc(v)}
+                options={[
+                  { value: 'A', label: 'A' },
+                  { value: 'B', label: 'B' },
+                  { value: 'C', label: 'C' },
+                ]}
+              />
+              <Select
+                allowClear
+                placeholder="XYZ"
+                style={{ width: 108 }}
+                value={abcXyzFilterXyz}
+                onChange={(v) => setAbcXyzFilterXyz(v)}
+                options={[
+                  { value: 'X', label: 'X' },
+                  { value: 'Y', label: 'Y' },
+                  { value: 'Z', label: 'Z' },
+                  { value: 'NEW', label: 'NEW' },
+                ]}
+              />
+              <Select
+                allowClear
+                placeholder="Класс (AX…)"
+                style={{ minWidth: 140 }}
+                value={abcXyzFilterCombined}
+                onChange={(v) => setAbcXyzFilterCombined(v)}
+                options={abcXyzCombinedSelectOptions}
+              />
+            </Space>
+          </Card>
+          <Card title="Товары" style={{ marginBottom: 16 }} bordered={false}>
+            <Table
+              columns={abcXyzColumns('product')}
+              dataSource={abcXyzSortedProducts}
+              rowKey="entityId"
+              pagination={{ pageSize: 15, showSizeChanger: true }}
+              scroll={{ x: 1120 }}
+              size="small"
+            />
+          </Card>
+          <Card title="Клиенты" bordered={false}>
+            <Table
+              columns={abcXyzColumns('client')}
+              dataSource={abcXyzSortedClients}
+              rowKey="entityId"
+              pagination={{ pageSize: 15, showSizeChanger: true }}
+              scroll={{ x: 1120 }}
+              size="small"
+            />
+          </Card>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -2040,6 +2181,7 @@ export default function AnalyticsPage() {
         defaultActiveKey="sales"
         items={[
           { key: 'sales', label: 'Продажи', children: salesTab },
+          { key: 'abc-xyz', label: 'ABC / XYZ', children: abcXyzTab },
           { key: 'finance', label: 'Финансы', children: financeTab },
           { key: 'clients', label: 'Клиенты', icon: <TeamOutlined />, children: clientsTab },
           { key: 'products', label: 'Товары+', icon: <ShoppingOutlined />, children: productsTab },

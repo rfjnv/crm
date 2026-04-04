@@ -439,6 +439,25 @@ export interface AnalyticsProfitability {
   expensesByCategory: { category: string; total: number }[];
 }
 
+/** ABC/XYZ классификация: выручка = закрытые сделки, строки deal_items за период; XYZ — CV по месяцам за 12 мес. */
+export interface AbcXyzRow {
+  entityId: string;
+  name: string;
+  revenue: number;
+  sharePercent: number;
+  cumulativeSharePercent: number;
+  abc: 'A' | 'B' | 'C';
+  xyz: 'X' | 'Y' | 'Z' | 'NEW';
+  combined: string;
+  recommendation: string;
+}
+
+export interface AbcXyzResponse {
+  period: string;
+  products: AbcXyzRow[];
+  clients: AbcXyzRow[];
+}
+
 export interface AnalyticsData {
   sales: AnalyticsSales;
   finance: AnalyticsFinance;
