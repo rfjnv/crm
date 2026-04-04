@@ -44,6 +44,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import BottomTabBar from './BottomTabBar';
+import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission } from '../types';
@@ -464,7 +465,12 @@ export default function Layout() {
             )}
           </div>
         </Header>
-        <Content style={{ margin: isMobile ? 12 : 24, paddingBottom: isMobile ? 60 : 0 }}>
+        <Content
+          style={{
+            margin: isMobile ? 12 : 24,
+            paddingBottom: isMobile ? mobileMainContentBottomPadding() : 0,
+          }}
+        >
           <Outlet />
         </Content>
         <NotificationPermissionBanner />

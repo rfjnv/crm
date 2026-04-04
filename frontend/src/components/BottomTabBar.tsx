@@ -1,78 +1,94 @@
+import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
-import {
-  DashboardOutlined,
-  FundProjectionScreenOutlined,
-  TeamOutlined,
-  ShopOutlined,
-  SwapOutlined,
-} from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
-
-const TABS = [
-  { key: '/dashboard', icon: DashboardOutlined, label: 'Главная' },
-  { key: '/deals', icon: FundProjectionScreenOutlined, label: 'Сделки' },
-  { key: '/clients', icon: TeamOutlined, label: 'Клиенты' },
-  { key: '/inventory/warehouse', icon: ShopOutlined, label: 'Склад' },
-  { key: '/inventory/movements', icon: SwapOutlined, label: 'Движение' },
-];
+import {
+  getMobileBottomNavItems,
+  resolveActiveMobileNavPath,
+  MOBILE_TAB_BAR_BASE_PX,
+} from '../config/mobileBottomNav';
+import type { UserRole, Permission } from '../types';
 
 export default function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { token } = theme.useToken();
-  const role = useAuthStore((s) => s.user?.role);
+  const user = useAuthStore((s) => s.user);
 
-  const tabs = TABS.map((tab) =>
-    tab.key === '/deals' && role === 'MANAGER'
-      ? { ...tab, label: 'Заявки' }
-      : tab,
-  );
+  const items = useMemo(() => {
+    if (!user?.role) return [];
+    const role = user.role as UserRole;
+    const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+    const hasPermission = (p: Permission) =>
+      isAdmin || (user.permissions ?? []).includes(p);
+    return getMobileBottomNavItems({ role, isAdmin, hasPermission });
+  }, [user]);
 
-  const activeKey = tabs.find(t => location.pathname.startsWith(t.key))?.key;
+  const activePath = resolveActiveMobileNavPath(location.pathname, items);
+
+  if (items.length === 0) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 56,
-      background: token.colorBgContainer,
-      borderTop: `1px solid ${token.colorBorderSecondary}`,
-      display: 'flex',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      zIndex: 1000,
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      {tabs.map(tab => {
-        const isActive = activeKey === tab.key;
-        const color = isActive ? token.colorPrimary : token.colorTextSecondary;
-        const Icon = tab.icon;
-        return (
-          <div
-            key={tab.key}
-            onClick={() => navigate(tab.key)}
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color,
-              fontSize: 10,
-              gap: 2,
-              height: '100%',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            <Icon style={{ fontSize: 20 }} />
-            <span>{tab.label}</span>
-          </div>
-        );
-      })}
-    </div>
+    <nav
+      aria-label="Основная навигация"
+      style={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        background: token.colorBgContainer,
+        borderTop: `1px solid ${token.colorBorderSecondary}`,
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        boxShadow: token.boxShadowSecondary,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          alignItems: 'stretch',
+          minHeight: MOBILE_TAB_BAR_BASE_PX,
+          maxWidth: 560,
+          margin: '0 auto',
+        }}
+      >
+        {items.map((tab) => {
+          const isActive = activePath === tab.path;
+          const color = isActive ? token.colorPrimary : token.colorTextSecondary;
+          const Icon = tab.Icon;
+          return (
+            <button
+              key={tab.path}
+              type="button"
+              onClick={() => navigate(tab.path)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                minHeight: MOBILE_TAB_BAR_BASE_PX,
+                padding: '6px 4px',
+                border: 'none',
+                background: isActive ? token.colorPrimaryBg : 'transparent',
+                color,
+                cursor: 'pointer',
+                fontSize: 10,
+                lineHeight: 1.15,
+                WebkitTapHighlightColor: 'transparent',
+                borderRadius: isActive ? 8 : 0,
+                margin: '4px 2px',
+                maxWidth: 88,
+              }}
+            >
+              <Icon style={{ fontSize: 22 }} />
+              <span style={{ fontWeight: isActive ? 600 : 400 }}>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -25,6 +25,8 @@ export default function ProductsPage() {
   const [activeFilter, setActiveFilter] = useState<string>('active');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [mobilePage, setMobilePage] = useState(1);
+  const mobilePageSize = 20;
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -41,6 +43,15 @@ export default function ProductsPage() {
     const id = window.setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
     return () => window.clearTimeout(id);
   }, [searchInput]);
+
+  useEffect(() => {
+    setMobilePage(1);
+  }, [debouncedSearch, categoryFilter, countryFilter, stockFilter, activeFilter]);
+
+  const filteredMobileSlice = useMemo(() => {
+    const start = (mobilePage - 1) * mobilePageSize;
+    return filtered.slice(start, start + mobilePageSize);
+  }, [filtered, mobilePage, mobilePageSize]);
 
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
@@ -216,8 +227,18 @@ export default function ProductsPage() {
           style={{ width: '100%', maxWidth: isMobile ? '100%' : 420 }}
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Space>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          alignItems: isMobile ? 'stretch' : 'flex-start',
+          justifyContent: 'space-between',
+          gap: isMobile ? 12 : 16,
+          marginBottom: 16,
+        }}
+      >
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 8 : 12} style={{ width: isMobile ? '100%' : 'auto' }}>
           <Typography.Title level={4} style={{ margin: 0 }}>Товары</Typography.Title>
           <Select
             allowClear
@@ -240,9 +261,10 @@ export default function ProductsPage() {
             onChange={(v) => setStockFilter(v as string)}
             options={[
               { label: 'Все', value: 'all' },
-              { label: 'Мало на складе', value: 'low' },
-              { label: 'Нет на складе', value: 'zero' },
+              { label: 'Мало', value: 'low' },
+              { label: 'Нет', value: 'zero' },
             ]}
+            block={isMobile}
           />
           <Select
             value={activeFilter}
@@ -255,26 +277,93 @@ export default function ProductsPage() {
             ]}
           />
         </Space>
-        <Space>
+        <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
           {isSuperAdmin && (
-            <Button onClick={() => setAuditOpen(true)}>История аудита</Button>
+            <Button onClick={() => setAuditOpen(true)} block={isMobile}>
+              История аудита
+            </Button>
           )}
           {canManageProducts && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} block={isMobile}>
+              Добавить
+            </Button>
           )}
         </Space>
       </div>
 
-      <Table
-        dataSource={filtered}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-        size="middle"
-        bordered={false}
-        scroll={{ x: 600 }}
-      />
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filteredMobileSlice.map((p) => {
+            const stock = Number(p.stock);
+            const min = Number(p.minStock || 10);
+            const stockColor =
+              stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess;
+            return (
+              <Card
+                key={p.id}
+                size="small"
+                hoverable
+                styles={{ body: { padding: 12 } }}
+                onClick={() => navigate(`/inventory/products/${p.id}`)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Typography.Text strong ellipsis style={{ display: 'block' }}>
+                      {p.name}
+                    </Typography.Text>
+                    <Tag style={{ marginTop: 4 }}>{p.sku}</Tag>
+                    {p.category && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                        {p.category}
+                      </Typography.Text>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <Typography.Text strong style={{ fontSize: 16, color: stockColor }}>
+                      {stock}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                      мин {min}
+                    </Typography.Text>
+                    {p.salePrice != null && (
+                      <Typography.Text style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                        {formatUZS(Number(p.salePrice))}
+                      </Typography.Text>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+          {filtered.length === 0 && !isLoading && (
+            <Typography.Text type="secondary">Нет товаров по фильтрам</Typography.Text>
+          )}
+          {filtered.length > mobilePageSize && (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}>
+              <Pagination
+                size="small"
+                current={mobilePage}
+                pageSize={mobilePageSize}
+                total={filtered.length}
+                onChange={setMobilePage}
+                showSizeChanger={false}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <Table
+          dataSource={filtered}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          size="middle"
+          bordered={false}
+          scroll={{ x: 600 }}
+        />
+      )}
 
       {/* Create Modal */}
       <Modal

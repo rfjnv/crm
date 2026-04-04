@@ -1,0 +1,153 @@
+import type { ComponentType, CSSProperties } from 'react';
+import {
+  DashboardOutlined,
+  FundProjectionScreenOutlined,
+  TeamOutlined,
+  ShopOutlined,
+  BarChartOutlined,
+  ProjectOutlined,
+  StarOutlined,
+  SolutionOutlined,
+  AuditOutlined,
+  DollarOutlined,
+  CheckSquareOutlined,
+  TruckOutlined,
+  CarOutlined,
+  AppstoreOutlined,
+} from '@ant-design/icons';
+import type { UserRole, Permission } from '../types';
+
+export type MobileNavIcon = ComponentType<{ style?: CSSProperties }>;
+
+export interface MobileNavItem {
+  path: string;
+  label: string;
+  Icon: MobileNavIcon;
+  /** Shown in docs / debug only */
+  rationale?: string;
+}
+
+type NavCtx = {
+  role: UserRole;
+  isAdmin: boolean;
+  hasPermission: (p: Permission) => boolean;
+};
+
+function hasRole(role: UserRole | undefined, ...allowed: UserRole[]): boolean {
+  return role ? allowed.includes(role) : false;
+}
+
+/**
+ * Role-based primary mobile destinations (max 5). Rules mirror `Layout.tsx` sidebar access.
+ * Order = daily frequency for that persona; rare items stay in the drawer menu.
+ */
+export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
+  const { role, isAdmin, hasPermission } = ctx;
+
+  const dealsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
+  const clientsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER'];
+  const productsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
+  const warehouseRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
+
+  const dealsLabel = role === 'MANAGER' ? 'Заявки' : 'Сделки';
+
+  // ── OPERATOR: no deals/products/warehouse in sidebar — front office + cashbox
+  if (role === 'OPERATOR') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Сводка дня' },
+      { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'Основная работа оператора' },
+      { path: '/reviews', label: 'Отзывы', Icon: StarOutlined, rationale: 'Бот-отзывы из меню' },
+      { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'Операционные задачи' },
+      { path: '/finance/cashbox', label: 'Касса', Icon: DollarOutlined, rationale: 'Единственный фин. пункт в меню' },
+    ];
+  }
+
+  // ── ACCOUNTANT
+  if (role === 'ACCOUNTANT') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Контекст' },
+      { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Сделки / оплаты' },
+      { path: '/contracts', label: 'Договоры', Icon: SolutionOutlined, rationale: 'Юр. блок' },
+      { path: '/finance/review', label: 'Проверка', Icon: AuditOutlined, rationale: 'Очередь «На проверке»' },
+      { path: '/finance/debts', label: 'Долги', Icon: DollarOutlined, rationale: 'Задолженность' },
+    ];
+  }
+
+  // ── WAREHOUSE (без отгрузки менеджера)
+  if (role === 'WAREHOUSE') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Проблемные остатки' },
+      { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Статусы для комплектации' },
+      { path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined, rationale: 'Остатки' },
+      { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
+      { path: '/warehouse/shipments', label: 'Накладные', Icon: TruckOutlined, rationale: 'Отгрузочные документы' },
+    ];
+  }
+
+  // ── WAREHOUSE_MANAGER
+  if (role === 'WAREHOUSE_MANAGER') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Сводка' },
+      { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Сделки' },
+      { path: '/shipment', label: 'Отгрузка', Icon: CarOutlined, rationale: 'Точка отгрузки' },
+      { path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined, rationale: 'Остатки' },
+      { path: '/warehouse/shipments', label: 'Накладные', Icon: TruckOutlined, rationale: 'Логистика' },
+    ];
+  }
+
+  // ── MANAGER (sales): нет склада в sidebar — убираем из нижней панели
+  if (role === 'MANAGER') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Пульс продаж' },
+      { path: '/deals', label: 'Заявки', Icon: FundProjectionScreenOutlined, rationale: 'Основной конвейер' },
+      { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'База и визиты' },
+      { path: '/inventory/products', label: 'Товары', Icon: AppstoreOutlined, rationale: 'Прайс / наличие для КП' },
+      { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'Ежедневные задачи' },
+    ];
+  }
+
+  // ── SUPER_ADMIN / ADMIN
+  if (isAdmin) {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'KPI и алерты' },
+      { path: '/deals', label: 'Сделки', Icon: FundProjectionScreenOutlined, rationale: 'Полный контур' },
+      { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'Управление базой' },
+      { path: '/analytics', label: 'Аналитика', Icon: BarChartOutlined, rationale: 'Отчёты (только ADMIN*)' },
+      { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'Кросс-функционально' },
+    ];
+  }
+
+  // Fallback: any role that reached Layout but not listed above — safe minimal set
+  const out: MobileNavItem[] = [
+    { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined },
+  ];
+  if (hasRole(role, ...dealsRoles)) {
+    out.push({ path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined });
+  }
+  if (hasRole(role, ...clientsRoles)) {
+    out.push({ path: '/clients', label: 'Клиенты', Icon: TeamOutlined });
+  }
+  if (hasRole(role, ...productsRoles)) {
+    out.push({ path: '/inventory/products', label: 'Товары', Icon: AppstoreOutlined });
+  }
+  if (hasRole(role, ...warehouseRoles)) {
+    out.push({ path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined });
+  }
+  if (hasPermission('manage_expenses')) {
+    out.push({ path: '/finance/expenses', label: 'Расходы', Icon: DollarOutlined });
+  }
+  return out.slice(0, 5);
+}
+
+/** Longest matching path wins (e.g. /inventory/products vs /inventory). */
+export function resolveActiveMobileNavPath(pathname: string, items: MobileNavItem[]): string | undefined {
+  const sorted = [...items].sort((a, b) => b.path.length - a.path.length);
+  const hit = sorted.find((t) => pathname === t.path || pathname.startsWith(`${t.path}/`));
+  return hit?.path;
+}
+
+/** Space reserved under main content on mobile (tab bar + safe area). */
+export const MOBILE_TAB_BAR_BASE_PX = 52;
+export function mobileMainContentBottomPadding(): string {
+  return `calc(${MOBILE_TAB_BAR_BASE_PX}px + env(safe-area-inset-bottom, 0px) + 8px)`;
+}
