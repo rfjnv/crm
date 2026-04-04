@@ -14,6 +14,11 @@ export const createClientDto = z.object({
   mfo: z.string().optional(),
   vatRegCode: z.string().optional(),
   oked: z.string().optional(),
+  portraitProfile: z.string().max(20000).optional(),
+  portraitGoals: z.string().max(20000).optional(),
+  portraitPains: z.string().max(20000).optional(),
+  portraitFears: z.string().max(20000).optional(),
+  portraitObjections: z.string().max(20000).optional(),
 });
 
 export const updateClientDto = z.object({
@@ -30,6 +35,11 @@ export const updateClientDto = z.object({
   mfo: z.string().optional(),
   vatRegCode: z.string().optional(),
   oked: z.string().optional(),
+  portraitProfile: z.string().max(20000).optional(),
+  portraitGoals: z.string().max(20000).optional(),
+  portraitPains: z.string().max(20000).optional(),
+  portraitFears: z.string().max(20000).optional(),
+  portraitObjections: z.string().max(20000).optional(),
 });
 
 export type CreateClientDto = z.infer<typeof createClientDto>;

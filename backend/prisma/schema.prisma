@@ -182,6 +182,11 @@ model Client {
   mfo         String?
   vatRegCode  String?  @map("vat_reg_code")
   oked        String?
+  portraitProfile     String?  @map("portrait_profile") @db.Text
+  portraitGoals       String?  @map("portrait_goals") @db.Text
+  portraitPains       String?  @map("portrait_pains") @db.Text
+  portraitFears       String?  @map("portrait_fears") @db.Text
+  portraitObjections  String?  @map("portrait_objections") @db.Text
   managerId   String   @map("manager_id")
   isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now()) @map("created_at")

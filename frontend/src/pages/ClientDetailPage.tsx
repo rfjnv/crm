@@ -4,12 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse,
+  message, theme, Collapse, Dropdown,
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
-  CommentOutlined,
+  CommentOutlined, IdcardOutlined,
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
@@ -22,6 +22,11 @@ import ClientNotesPanel from '../components/ClientNotesPanel';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, DealShort, PaymentStatus, PaymentRecord } from '../types';
 import type { CreateClientData } from '../api/clients.api';
+import {
+  CLIENT_PORTRAIT_TEMPLATES,
+  appendPortraitSnippet,
+  type ClientPortraitField,
+} from '../constants/clientPortraitTemplates';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -53,6 +58,8 @@ export default function ClientDetailPage() {
   const [contractForm] = Form.useForm();
   const [editOpen, setEditOpen] = useState(false);
   const [editForm] = Form.useForm();
+  const [portraitOpen, setPortraitOpen] = useState(false);
+  const [portraitForm] = Form.useForm();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -116,6 +123,7 @@ export default function ClientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       message.success('Клиент обновлён');
       setEditOpen(false);
+      setPortraitOpen(false);
     },
     onError: () => message.error('Ошибка обновления клиента'),
   });
@@ -132,6 +140,36 @@ export default function ClientDetailPage() {
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const canEdit = isAdmin || user?.permissions?.includes('edit_client');
+
+  const openPortraitEdit = () => {
+    portraitForm.setFieldsValue({
+      portraitProfile: client.portraitProfile || '',
+      portraitGoals: client.portraitGoals || '',
+      portraitPains: client.portraitPains || '',
+      portraitFears: client.portraitFears || '',
+      portraitObjections: client.portraitObjections || '',
+    });
+    setPortraitOpen(true);
+  };
+
+  const portraitTemplateMenu = (field: ClientPortraitField) => ({
+    items: CLIENT_PORTRAIT_TEMPLATES[field].map((t, i) => ({
+      key: `${field}-${i}`,
+      label: t.label,
+      onClick: () => {
+        const cur = portraitForm.getFieldValue(field) as string | undefined;
+        portraitForm.setFieldValue(field, appendPortraitSnippet(cur, t.text));
+      },
+    })),
+  });
+
+  const portraitBlocks: { field: keyof CreateClientData; title: string; hint: string }[] = [
+    { field: 'portraitProfile', title: 'Кто клиент', hint: 'Сегмент, роль ЛПР, контекст бизнеса' },
+    { field: 'portraitGoals', title: 'Цели', hint: 'Чего хотят достичь в закупке / проекте' },
+    { field: 'portraitPains', title: 'Боли', hint: 'Что сейчас не устраивает' },
+    { field: 'portraitFears', title: 'Страхи', hint: 'Чего опасаются при смене поставщика или крупной сделке' },
+    { field: 'portraitObjections', title: 'Возражения', hint: 'Типичные ответы «нет» и формулировки' },
+  ];
 
   const openEdit = () => {
     editForm.setFieldsValue({
@@ -265,6 +303,45 @@ export default function ClientDetailPage() {
                   />
                 </Card>
               </Space>
+            ),
+          },
+          {
+            key: 'portrait',
+            label: (
+              <span>
+                <IdcardOutlined /> Портрет клиента
+              </span>
+            ),
+            children: (
+              <Card
+                bordered={false}
+                extra={
+                  canEdit ? (
+                    <Button type="primary" icon={<EditOutlined />} onClick={openPortraitEdit}>
+                      Редактировать
+                    </Button>
+                  ) : null
+                }
+              >
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                  Отдельно от заметок: фиксированные блоки для подготовки к звонкам, КП и сделкам.
+                </Typography.Paragraph>
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {portraitBlocks.map(({ field, title, hint }) => {
+                    const text = client[field as keyof typeof client] as string | null | undefined;
+                    return (
+                      <Card key={field} size="small" title={title}>
+                        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                          {hint}
+                        </Typography.Text>
+                        <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                          {text?.trim() ? text : '—'}
+                        </Typography.Paragraph>
+                      </Card>
+                    );
+                  })}
+                </Space>
+              </Card>
             ),
           },
           {
@@ -529,6 +606,53 @@ export default function ClientDetailPage() {
           <Form.Item name="notes" label="Примечание">
             <Input.TextArea rows={2} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Портрет клиента"
+        open={portraitOpen}
+        onCancel={() => setPortraitOpen(false)}
+        onOk={() => portraitForm.submit()}
+        confirmLoading={updateClientMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+        width={720}
+      >
+        <Form
+          form={portraitForm}
+          layout="vertical"
+          onFinish={(v) =>
+            updateClientMut.mutate({
+              portraitProfile: v.portraitProfile,
+              portraitGoals: v.portraitGoals,
+              portraitPains: v.portraitPains,
+              portraitFears: v.portraitFears,
+              portraitObjections: v.portraitObjections,
+            })
+          }
+        >
+          {portraitBlocks.map(({ field, title, hint }) => (
+            <Form.Item
+              key={field}
+              name={field}
+              label={
+                <Space wrap size="small" align="baseline">
+                  <Typography.Text strong>{title}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+                    {hint}
+                  </Typography.Text>
+                  <Dropdown menu={portraitTemplateMenu(field as ClientPortraitField)} trigger={['click']}>
+                    <Button type="link" size="small" style={{ padding: 0, height: 'auto' }}>
+                      Вставить шаблон
+                    </Button>
+                  </Dropdown>
+                </Space>
+              }
+            >
+              <Input.TextArea rows={4} placeholder="Кратко, для себя и команды…" />
+            </Form.Item>
+          ))}
         </Form>
       </Modal>
 

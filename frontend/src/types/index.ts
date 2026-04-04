@@ -110,6 +110,11 @@ export interface Client {
   mfo?: string | null;
   vatRegCode?: string | null;
   oked?: string | null;
+  portraitProfile?: string | null;
+  portraitGoals?: string | null;
+  portraitPains?: string | null;
+  portraitFears?: string | null;
+  portraitObjections?: string | null;
   managerId: string;
   isArchived: boolean;
   createdAt: string;

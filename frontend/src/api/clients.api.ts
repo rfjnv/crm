@@ -15,6 +15,11 @@ export interface CreateClientData {
   mfo?: string;
   vatRegCode?: string;
   oked?: string;
+  portraitProfile?: string;
+  portraitGoals?: string;
+  portraitPains?: string;
+  portraitFears?: string;
+  portraitObjections?: string;
 }
 
 export const clientsApi = {
