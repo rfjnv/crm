@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { PropsWithChildren, TdHTMLAttributes } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space } from 'antd';
@@ -22,6 +23,7 @@ import { productsApi } from '../api/products.api';
 import { dealsApi } from '../api/deals.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
+import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
 import { formatUZS } from '../utils/currency';
 import { LEGEND_OPERATIONAL, TOOLTIP_OPERATIONAL_REVENUE } from '../constants/analyticsRevenueTooltips';
 import {
@@ -40,6 +42,17 @@ import type {
   Product,
   AbcXyzRow,
 } from '../types';
+
+function AbcXyzTableBodyCell(props: PropsWithChildren<TdHTMLAttributes<HTMLTableCellElement>>) {
+  const { children, style, ...rest } = props;
+  return (
+    <td {...rest} style={{ ...style, verticalAlign: 'top', padding: '12px 16px' }}>
+      {children}
+    </td>
+  );
+}
+
+const abcXyzTableComponents = { body: { cell: AbcXyzTableBodyCell } };
 
 const statusColorMap: Record<string, string> = {
   NEW: '#6b9bd2',
@@ -2075,33 +2088,8 @@ export default function AnalyticsPage() {
     {
       title: 'Рекомендация',
       key: 'recommendation',
-      width: 340,
-      render: (_: unknown, r: AbcXyzRow) => {
-        const rec = r.recommendation;
-        return (
-          <div style={{ maxWidth: 340 }}>
-            <Typography.Text strong style={{ display: 'block', fontSize: 13 }}>
-              {rec.title}
-            </Typography.Text>
-            <Typography.Paragraph
-              type="secondary"
-              style={{ fontSize: 12, margin: '6px 0 4px' }}
-              ellipsis={{ rows: 2, tooltip: rec.description }}
-            >
-              {rec.description}
-            </Typography.Paragraph>
-            <Typography.Text style={{ fontSize: 12, display: 'block' }}>
-              <span style={{ color: token.colorTextSecondary }}>Действие: </span>
-              {rec.action}
-            </Typography.Text>
-            {rec.risk ? (
-              <Tag color="warning" style={{ marginTop: 6, whiteSpace: 'normal', lineHeight: 1.35, display: 'block' }}>
-                Риск: {rec.risk}
-              </Tag>
-            ) : null}
-          </div>
-        );
-      },
+      width: 352,
+      render: (_: unknown, r: AbcXyzRow) => <AbcXyzRecommendationCell recommendation={r.recommendation} />,
     },
   ];
 
@@ -2122,6 +2110,11 @@ export default function AnalyticsPage() {
         <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />
       ) : (
         <>
+          <style>{`
+            .analytics-abc-xyz-table .ant-table-tbody > tr > td:last-child {
+              padding-right: 20px;
+            }
+          `}</style>
           <Card size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
             <Space wrap align="center">
               <Typography.Text type="secondary">Фильтры</Typography.Text>
@@ -2160,23 +2153,32 @@ export default function AnalyticsPage() {
               />
             </Space>
           </Card>
-          <Card title="Товары" style={{ marginBottom: 16 }} bordered={false}>
+          <Card
+            title="Товары"
+            style={{ marginBottom: 16 }}
+            bordered={false}
+            styles={{ body: { paddingLeft: 12, paddingRight: 24 } }}
+          >
             <Table
+              className="analytics-abc-xyz-table"
+              components={abcXyzTableComponents}
               columns={abcXyzColumns('product')}
               dataSource={abcXyzSortedProducts}
               rowKey="entityId"
               pagination={{ pageSize: 15, showSizeChanger: true }}
-              scroll={{ x: 1320 }}
+              scroll={{ x: 1280 }}
               size="small"
             />
           </Card>
-          <Card title="Клиенты" bordered={false}>
+          <Card title="Клиенты" bordered={false} styles={{ body: { paddingLeft: 12, paddingRight: 24 } }}>
             <Table
+              className="analytics-abc-xyz-table"
+              components={abcXyzTableComponents}
               columns={abcXyzColumns('client')}
               dataSource={abcXyzSortedClients}
               rowKey="entityId"
               pagination={{ pageSize: 15, showSizeChanger: true }}
-              scroll={{ x: 1320 }}
+              scroll={{ x: 1280 }}
               size="small"
             />
           </Card>
