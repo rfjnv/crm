@@ -392,8 +392,8 @@ export default function SuperOverrideModal({ open, deal, payments, products, use
                     <thead>
                       <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                         <th style={{ padding: '4px 6px', fontSize: 12 }}>Товар</th>
-                        <th style={{ padding: '4px 6px', fontSize: 12, width: 90 }}>Кол-во</th>
-                        <th style={{ padding: '4px 6px', fontSize: 12, width: 120 }}>Цена</th>
+                        <th style={{ padding: '4px 6px', fontSize: 12, width: 96 }}>Кол-во</th>
+                        <th style={{ padding: '4px 6px', fontSize: 12, width: 144 }}>Цена</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 100 }}>Сумма</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 180 }}>Deal Date</th>
                         <th style={{ padding: '4px 6px', fontSize: 12, width: 180 }}>Confirmed At</th>
@@ -425,17 +425,27 @@ export default function SuperOverrideModal({ open, deal, payments, products, use
                                 }))}
                               />
                             </td>
-                            <td style={{ padding: '4px 6px' }}>
+                            <td style={{ padding: '4px 6px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                               <InputNumber
-                                min={0.001} step={1} style={{ width: '100%' }}
+                                min={0.001}
+                                step={1}
+                                styles={{
+                                  root: { width: 84, minWidth: 70 },
+                                  input: { paddingInline: 8 },
+                                }}
                                 value={item.requestedQty}
                                 onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
                               />
                             </td>
-                            <td style={{ padding: '4px 6px' }}>
+                            <td style={{ padding: '4px 6px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                               <InputNumber
-                                min={0} style={{ width: '100%' }}
-                                formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
+                                min={0}
+                                styles={{
+                                  root: { width: 128, minWidth: 100 },
+                                  input: { paddingInline: 8 },
+                                }}
+                                formatter={moneyFormatter}
+                                parser={(v) => moneyParser(v) as unknown as number}
                                 value={item.price}
                                 onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
                               />
