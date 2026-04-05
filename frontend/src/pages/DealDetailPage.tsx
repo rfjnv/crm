@@ -15,7 +15,6 @@ import { dealsApi } from '../api/deals.api';
 import { adminApi } from '../api/admin.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
-import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
@@ -165,12 +164,6 @@ export default function DealDetailPage() {
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const canSuperOverride = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const canDeleteAnyDeal = isSuperAdmin;
-
-  const { data: clients } = useQuery({
-    queryKey: ['clients'],
-    queryFn: clientsApi.list,
-    enabled: canSuperOverride,
-  });
 
   const { data: clientContracts } = useQuery({
     queryKey: ['client-contracts', dealData?.clientId],
