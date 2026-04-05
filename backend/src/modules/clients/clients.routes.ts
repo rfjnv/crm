@@ -15,6 +15,7 @@ router.get('/', asyncHandler(clientsController.findAll.bind(clientsController)))
 router.get('/:id', asyncHandler(clientsController.findById.bind(clientsController)));
 router.post('/', validate(createClientDto), asyncHandler(clientsController.create.bind(clientsController)));
 router.patch('/:id', requirePermission('edit_client'), validate(updateClientDto), asyncHandler(clientsController.update.bind(clientsController)));
+router.post('/normalize-phones', authorize('SUPER_ADMIN'), asyncHandler(clientsController.normalizePhones.bind(clientsController)));
 router.patch('/:id/archive', asyncHandler(clientsController.archive.bind(clientsController)));
 router.get('/:id/history', asyncHandler(clientsController.getHistory.bind(clientsController)));
 router.get('/:id/payments', asyncHandler(clientsController.getPayments.bind(clientsController)));

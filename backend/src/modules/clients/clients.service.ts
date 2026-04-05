@@ -266,6 +266,36 @@ export class ClientsService {
     return updated;
   }
 
+  async normalizeAllPhones(): Promise<{ total: number; updated: number; details: string[] }> {
+    const clients = await prisma.client.findMany({
+      where: { phone: { not: null } },
+      select: { id: true, companyName: true, phone: true },
+    });
+
+    const details: string[] = [];
+    let updated = 0;
+
+    for (const c of clients) {
+      const raw = (c.phone ?? '').trim();
+      if (!raw) continue;
+
+      let digits = raw.replace(/[^0-9]/g, '');
+      if (digits.length === 12 && digits.startsWith('998')) digits = digits.slice(3);
+      if (digits.length > 9 && digits.startsWith('998')) digits = digits.slice(3);
+      if (digits.length > 9) digits = digits.slice(-9);
+      if (digits.length !== 9) continue;
+
+      const formatted = `+998 ${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 7)} ${digits.slice(7, 9)}`;
+      if (formatted === raw) continue;
+
+      await prisma.client.update({ where: { id: c.id }, data: { phone: formatted } });
+      details.push(`${c.companyName}: ${raw} → ${formatted}`);
+      updated++;
+    }
+
+    return { total: clients.length, updated, details };
+  }
+
   async archive(id: string, user: AuthUser) {
     // Only ADMIN can archive
     if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {

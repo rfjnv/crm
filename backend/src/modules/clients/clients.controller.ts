@@ -34,6 +34,11 @@ export class ClientsController {
     res.json(client);
   }
 
+  async normalizePhones(_req: Request, res: Response): Promise<void> {
+    const result = await clientsService.normalizeAllPhones();
+    res.json(result);
+  }
+
   async archive(req: Request, res: Response): Promise<void> {
     const client = await clientsService.archive(req.params.id as string, getUser(req));
     res.json(client);
