@@ -19,6 +19,11 @@ const ALL_STATUSES: DealStatus[] = [
   'SHIPMENT_ON_HOLD', 'CLOSED', 'CANCELED', 'REJECTED',
 ];
 
+/** Above this row count, only the table body scrolls (70vh); summary and actions stay outside. */
+const PRODUCTS_TABLE_SCROLL_AFTER_ROWS = 10;
+
+const productsCellPad = '8px 10px';
+
 export interface SuperOverridePanelProps {
   deal: Deal;
   payments: PaymentRecord[];
@@ -298,6 +303,120 @@ export default function SuperOverridePanel({
     items.reduce((s, i) => s + (i.requestedQty || 0) * (i.price || 0), 0),
     [items]);
 
+  const manyProductRows = items.length > PRODUCTS_TABLE_SCROLL_AFTER_ROWS;
+
+  function renderProductsTable() {
+    return (
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          tableLayout: 'auto',
+        }}
+      >
+        <thead>
+          <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
+            <th style={{ padding: productsCellPad, fontSize: 13, width: '32%', minWidth: 180 }}>Товар</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, width: 88 }}>Кол-во</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, width: 128 }}>Цена</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, width: 120 }}>Сумма</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Deal Date</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Confirmed At</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Item Created</th>
+            <th style={{ padding: productsCellPad, width: 40 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const lineTotal = (item.requestedQty || 0) * (item.price || 0);
+            return (
+              <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Товар"
+                    style={{ width: '100%', minWidth: 160 }}
+                    value={item.productId || undefined}
+                    onChange={(v) => {
+                      const p = productMap.get(v);
+                      updateItem(item.key, {
+                        productId: v,
+                        price: p?.salePrice ? Number(p.salePrice) : item.price,
+                      });
+                    }}
+                    options={(products ?? []).filter((p) => p.isActive).map((p) => ({
+                      label: `${p.name} (${p.sku})`,
+                      value: p.id,
+                    }))}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                  <InputNumber
+                    min={0.001}
+                    step={1}
+                    styles={{
+                      root: { width: 80, minWidth: 70, maxWidth: 90 },
+                      input: { paddingInline: 8 },
+                    }}
+                    value={item.requestedQty}
+                    onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                  <InputNumber
+                    min={0}
+                    styles={{
+                      root: { width: 120, minWidth: 100, maxWidth: 140 },
+                      input: { paddingInline: 8 },
+                    }}
+                    formatter={moneyFormatter}
+                    parser={(v) => moneyParser(v) as unknown as number}
+                    value={item.price}
+                    onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, whiteSpace: 'nowrap', verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums' }}>
+                  {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', minWidth: 148 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={item.dealDate}
+                    onChange={(v) => updateItem(item.key, { dealDate: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', minWidth: 148 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={item.confirmedAt}
+                    onChange={(v) => updateItem(item.key, { confirmedAt: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', minWidth: 148 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={item.createdAt}
+                    onChange={(v) => updateItem(item.key, { createdAt: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
+
   const footerBottomPad = isMobile ? mobileMainContentBottomPadding() : 12;
 
   return (
@@ -365,7 +484,7 @@ export default function SuperOverridePanel({
             children: (
               <div style={{ width: '100%' }}>
                 {!editItems ? (
-                  <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+                  <div style={{ textAlign: 'center', padding: '24px 12px' }}>
                     <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
                       Редактирование товаров полностью заменит текущий список.
                     </Typography.Text>
@@ -374,116 +493,38 @@ export default function SuperOverridePanel({
                     </Button>
                   </div>
                 ) : (
-                  <div style={{ width: '100%', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', marginBottom: 12 }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                          <th style={{ padding: '10px 12px', fontSize: 13, minWidth: 220 }}>Товар</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, width: 96 }}>Кол-во</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, width: 144 }}>Цена</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, width: 112 }}>Сумма</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, minWidth: 168 }}>Deal Date</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, minWidth: 168 }}>Confirmed At</th>
-                          <th style={{ padding: '10px 12px', fontSize: 13, minWidth: 168 }}>Item Created</th>
-                          <th style={{ width: 44 }} />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item) => {
-                          const lineTotal = (item.requestedQty || 0) * (item.price || 0);
-                          return (
-                            <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
-                                <Select
-                                  showSearch optionFilterProp="label"
-                                  placeholder="Товар"
-                                  style={{ width: '100%', minWidth: 200 }}
-                                  value={item.productId || undefined}
-                                  onChange={(v) => {
-                                    const p = productMap.get(v);
-                                    updateItem(item.key, {
-                                      productId: v,
-                                      price: p?.salePrice ? Number(p.salePrice) : item.price,
-                                    });
-                                  }}
-                                  options={(products ?? []).filter((p) => p.isActive).map((p) => ({
-                                    label: `${p.name} (${p.sku})`,
-                                    value: p.id,
-                                  }))}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                <InputNumber
-                                  min={0.001}
-                                  step={1}
-                                  styles={{
-                                    root: { width: 88, minWidth: 76 },
-                                    input: { paddingInline: 10 },
-                                  }}
-                                  value={item.requestedQty}
-                                  onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                <InputNumber
-                                  min={0}
-                                  styles={{
-                                    root: { width: 132, minWidth: 108 },
-                                    input: { paddingInline: 10 },
-                                  }}
-                                  formatter={moneyFormatter}
-                                  parser={(v) => moneyParser(v) as unknown as number}
-                                  value={item.price}
-                                  onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                                {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
-                                <DatePicker
-                                  showTime
-                                  style={{ width: '100%', minWidth: 160 }}
-                                  format="DD.MM.YYYY HH:mm"
-                                  value={item.dealDate}
-                                  onChange={(v) => updateItem(item.key, { dealDate: v ?? undefined })}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
-                                <DatePicker
-                                  showTime
-                                  style={{ width: '100%', minWidth: 160 }}
-                                  format="DD.MM.YYYY HH:mm"
-                                  value={item.confirmedAt}
-                                  onChange={(v) => updateItem(item.key, { confirmedAt: v ?? undefined })}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
-                                <DatePicker
-                                  showTime
-                                  style={{ width: '100%', minWidth: 160 }}
-                                  format="DD.MM.YYYY HH:mm"
-                                  value={item.createdAt}
-                                  onChange={(v) => updateItem(item.key, { createdAt: v ?? undefined })}
-                                />
-                              </td>
-                              <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
-                                <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {itemsTotal > 0 && (
-                      <Typography.Text strong style={{ display: 'block', textAlign: 'right', marginBottom: 12 }}>
-                        Итого: {formatUZS(itemsTotal)}
-                      </Typography.Text>
+                  <>
+                    {manyProductRows ? (
+                      <div
+                        style={{
+                          width: '100%',
+                          maxHeight: '70vh',
+                          overflow: 'auto',
+                          scrollbarGutter: 'stable',
+                        }}
+                      >
+                        {renderProductsTable()}
+                      </div>
+                    ) : (
+                      renderProductsTable()
                     )}
-                    <Button type="dashed" block icon={<PlusOutlined />} onClick={addItem}>
+                    {itemsTotal > 0 && (
+                      <div
+                        style={{
+                          textAlign: 'right',
+                          padding: manyProductRows ? '8px 2px 6px' : '6px 2px 4px',
+                          marginTop: manyProductRows ? 0 : 4,
+                          borderTop: `1px solid ${tk.colorBorderSecondary}`,
+                          ...(manyProductRows ? { background: tk.colorBgContainer } : {}),
+                        }}
+                      >
+                        <Typography.Text strong>Итого: {formatUZS(itemsTotal)}</Typography.Text>
+                      </div>
+                    )}
+                    <Button type="dashed" block icon={<PlusOutlined />} onClick={addItem} style={{ marginTop: 8 }}>
                       Добавить товар
                     </Button>
-                  </div>
+                  </>
                 )}
               </div>
             ),

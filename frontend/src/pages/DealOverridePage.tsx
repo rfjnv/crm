@@ -95,8 +95,6 @@ export default function DealOverridePage() {
     <div
       style={{
         width: '100%',
-        maxWidth: 1320,
-        margin: '0 auto',
         paddingBottom: bottomPad,
         boxSizing: 'border-box',
       }}
