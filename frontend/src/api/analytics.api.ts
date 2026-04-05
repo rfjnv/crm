@@ -18,9 +18,41 @@ import type {
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
+export type CallActivityRange = 'today' | 'week' | 'month';
+
+export type CallActivitySummaryRow = {
+  userId: string;
+  fullName: string;
+  contactCount: number;
+  lastActivityAt: string;
+};
+
+export type CallActivityResponse = {
+  range: { key: CallActivityRange; start: string; end: string };
+  summary: CallActivitySummaryRow[];
+  lineChart: { day: string; manager: string; userId: string; count: number }[];
+  barChart: { manager: string; userId: string; total: number }[];
+  feed: {
+    id: string;
+    userId: string;
+    managerName: string;
+    clientId: string;
+    companyName: string;
+    preview: string;
+    createdAt: string;
+  }[];
+};
+
 export const analyticsApi = {
   getData: (period: AnalyticsPeriod = 'month') =>
     client.get<AnalyticsData>('/analytics', { params: { period } }).then((r) => r.data),
+
+  getCallActivity: (params: {
+    range?: CallActivityRange;
+    managerId?: string;
+    clientSearch?: string;
+  }) =>
+    client.get<CallActivityResponse>('/analytics/call-activity', { params }).then((r) => r.data),
 
   getAbcXyz: (period: AnalyticsPeriod = 'month') =>
     client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: { period } }).then((r) => r.data),

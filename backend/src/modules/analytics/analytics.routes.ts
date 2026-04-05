@@ -12,6 +12,7 @@ import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
+import { authorize } from '../../middleware/authorize';
 
 const router = Router();
 
@@ -19,6 +20,157 @@ router.use(authenticate);
 
 // Tashkent = UTC+5
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
+
+/** Calendar day in Asia/Tashkent (YYYY-MM-DD) for a UTC instant. */
+function utcInstantToTashkentDayKey(utc: Date): string {
+  const t = new Date(utc.getTime() + TASHKENT_OFFSET);
+  const yy = t.getUTCFullYear();
+  const mm = String(t.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(t.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** All Tashkent calendar days touched by [start, end) (end exclusive). */
+function enumerateTashkentDaysInRange(start: Date, end: Date): string[] {
+  const set = new Set<string>();
+  for (let t = start.getTime(); t < end.getTime(); t += 3600000) {
+    set.add(utcInstantToTashkentDayKey(new Date(t)));
+  }
+  return [...set].sort();
+}
+
+function getCallActivityRange(range: string): { start: Date; end: Date } {
+  const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
+  const y = nowTashkent.getUTCFullYear();
+  const m = nowTashkent.getUTCMonth();
+  const d = nowTashkent.getUTCDate();
+  const startOfTodayUtc = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
+  const endExclusive = new Date(startOfTodayUtc.getTime() + 86400000);
+
+  switch (range) {
+    case 'week':
+      return { start: new Date(endExclusive.getTime() - 7 * 86400000), end: endExclusive };
+    case 'month':
+      return { start: new Date(Date.UTC(y, m, 1) - TASHKENT_OFFSET), end: endExclusive };
+    case 'today':
+    default:
+      return { start: startOfTodayUtc, end: endExclusive };
+  }
+}
+
+router.get(
+  '/call-activity',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const rangeParam = (req.query.range as string) || 'today';
+    const range = rangeParam === 'week' || rangeParam === 'month' ? rangeParam : 'today';
+    const managerId =
+      typeof req.query.managerId === 'string' && req.query.managerId.length > 0 ? req.query.managerId : undefined;
+    const clientSearch =
+      typeof req.query.clientSearch === 'string' ? req.query.clientSearch.trim() : '';
+
+    const { start, end } = getCallActivityRange(range);
+
+    const where: Prisma.ClientNoteWhereInput = {
+      deletedAt: null,
+      createdAt: { gte: start, lt: end },
+      ...(managerId ? { userId: managerId } : {}),
+      ...(clientSearch.length > 0
+        ? { client: { companyName: { contains: clientSearch, mode: 'insensitive' } } }
+        : {}),
+    };
+
+    const [aggRows, feedRows] = await Promise.all([
+      prisma.clientNote.findMany({
+        where,
+        select: {
+          userId: true,
+          createdAt: true,
+          user: { select: { fullName: true } },
+        },
+      }),
+      prisma.clientNote.findMany({
+        where,
+        select: {
+          id: true,
+          userId: true,
+          clientId: true,
+          content: true,
+          createdAt: true,
+          user: { select: { fullName: true } },
+          client: { select: { id: true, companyName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 120,
+      }),
+    ]);
+
+    type SummaryRow = { userId: string; fullName: string; contactCount: number; lastActivityAt: string };
+    const summaryMap = new Map<string, { fullName: string; contactCount: number; lastActivityAt: Date }>();
+
+    for (const row of aggRows) {
+      const uid = row.userId;
+      const name = row.user.fullName;
+      const existing = summaryMap.get(uid);
+      if (!existing) {
+        summaryMap.set(uid, { fullName: name, contactCount: 1, lastActivityAt: row.createdAt });
+      } else {
+        existing.contactCount += 1;
+        if (row.createdAt > existing.lastActivityAt) existing.lastActivityAt = row.createdAt;
+      }
+    }
+
+    const summary: SummaryRow[] = [...summaryMap.entries()]
+      .map(([userId, v]) => ({
+        userId,
+        fullName: v.fullName,
+        contactCount: v.contactCount,
+        lastActivityAt: v.lastActivityAt.toISOString(),
+      }))
+      .sort((a, b) => b.contactCount - a.contactCount);
+
+    const byManagerDay = new Map<string, Map<string, number>>();
+    for (const row of aggRows) {
+      const day = utcInstantToTashkentDayKey(row.createdAt);
+      if (!byManagerDay.has(row.userId)) byManagerDay.set(row.userId, new Map());
+      const dm = byManagerDay.get(row.userId)!;
+      dm.set(day, (dm.get(day) ?? 0) + 1);
+    }
+
+    const dayList = enumerateTashkentDaysInRange(start, end);
+    const lineChart: { day: string; manager: string; userId: string; count: number }[] = [];
+    for (const [uid, dm] of byManagerDay) {
+      const name = summaryMap.get(uid)?.fullName ?? '—';
+      for (const day of dayList) {
+        lineChart.push({ day, manager: name, userId: uid, count: dm.get(day) ?? 0 });
+      }
+    }
+
+    const barChart = summary.map((s) => ({
+      manager: s.fullName,
+      userId: s.userId,
+      total: s.contactCount,
+    }));
+
+    const feed = feedRows.map((n) => ({
+      id: n.id,
+      userId: n.userId,
+      managerName: n.user.fullName,
+      clientId: n.clientId,
+      companyName: n.client.companyName,
+      preview: n.content.length > 160 ? `${n.content.slice(0, 160)}…` : n.content,
+      createdAt: n.createdAt.toISOString(),
+    }));
+
+    res.json({
+      range: { key: range, start: start.toISOString(), end: end.toISOString() },
+      summary,
+      lineChart,
+      barChart,
+      feed,
+    });
+  }),
+);
 
 function getPeriodRange(period: string): { start: Date; end: Date } {
   // Compute "now" in Tashkent timezone

@@ -33,6 +33,7 @@ import {
   SettingOutlined,
   SafetyCertificateOutlined,
   StarOutlined,
+  PhoneOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -288,6 +289,11 @@ export default function Layout() {
           key: '/history-analytics',
           icon: <FieldTimeOutlined />,
           label: <Link to="/history-analytics">Аналитика (история)</Link>,
+        },
+        {
+          key: '/analytics/calls',
+          icon: <PhoneOutlined />,
+          label: <Link to="/analytics/calls">Обзвоны</Link>,
         },
           ]
           : []),

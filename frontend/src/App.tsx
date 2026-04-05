@@ -39,6 +39,7 @@ import PowerOfAttorneyPage from './pages/PowerOfAttorneyPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
+import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import ReviewsPage from './pages/ReviewsPage';
 import { useThemeStore } from './store/themeStore';
@@ -111,6 +112,7 @@ export default function App() {
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
+                  <Route path="/analytics/calls" element={<CallActivityPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 </Route>
