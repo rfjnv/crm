@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme } from 'antd';
 import {
@@ -425,7 +425,13 @@ export default function Layout() {
         </Sider>
       )}
 
-      <AntLayout style={{ marginLeft: isMobile ? 0 : siderWidth, transition: 'margin-left 0.2s' }}>
+      <AntLayout
+        style={{
+          marginLeft: isMobile ? 0 : siderWidth,
+          transition: 'margin-left 0.2s',
+          ...({ '--app-sider-width': isMobile ? '0px' : `${siderWidth}px` } as CSSProperties),
+        }}
+      >
         <Header
           style={{
             padding: isMobile ? '0 12px' : '0 24px',

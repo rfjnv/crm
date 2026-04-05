@@ -19,7 +19,6 @@ import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
-import SuperOverrideModal from '../components/SuperOverrideModal';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
@@ -86,7 +85,6 @@ export default function DealDetailPage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
-  const [overrideModal, setOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
@@ -671,7 +669,7 @@ export default function DealDetailPage() {
         <Button
           key="override"
           icon={<ThunderboltOutlined />}
-          onClick={() => setOverrideModal(true)}
+          onClick={() => navigate(`/deals/${id}/override`)}
           style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
         >
           Super Override
@@ -2035,20 +2033,6 @@ export default function DealDetailPage() {
           Создать новый договор
         </Button>
       </Modal>
-
-      {/* Override Modal */}
-      {canSuperOverride && (
-        <SuperOverrideModal
-          open={overrideModal}
-          deal={deal}
-          payments={dealPayments ?? []}
-          products={products ?? []}
-          users={users ?? []}
-          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
-          onClose={() => setOverrideModal(false)}
-          onSuccess={() => invalidate()}
-        />
-      )}
 
       {/* SUPER_ADMIN: Delete Confirm Modal */}
       <Modal

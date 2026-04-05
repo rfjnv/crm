@@ -12,6 +12,7 @@ import ClientDetailPage from './pages/ClientDetailPage';
 import DealsPage from './pages/DealsPage';
 import DealCreatePage from './pages/DealCreatePage';
 import DealDetailPage from './pages/DealDetailPage';
+import DealOverridePage from './pages/DealOverridePage';
 import ClosedDealsPage from './pages/ClosedDealsPage';
 import DealApprovalPage from './pages/DealApprovalPage';
 import ApprovalsPage from './pages/ApprovalsPage';
@@ -110,6 +111,7 @@ export default function App() {
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
