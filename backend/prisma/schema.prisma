@@ -680,8 +680,9 @@ model CompanySettings {
   director     String   @default("")
   logoPath     String?  @map("logo_path")
   vatRegCode   String   @default("") @map("vat_reg_code")
-  oked         String   @default("")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  oked                String   @default("")
+  monthlyRevenueGoal  Float    @default(250000000) @map("monthly_revenue_goal")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("company_settings")
 }

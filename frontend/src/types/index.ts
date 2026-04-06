@@ -779,6 +779,7 @@ export interface CompanySettings {
   vatRegCode: string;
   oked: string;
   logoPath: string | null;
+  monthlyRevenueGoal: number;
   updatedAt: string;
 }
 

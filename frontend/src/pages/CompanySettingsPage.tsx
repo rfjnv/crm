@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Form, Input, Button, Card, Upload, message, Spin, Space, Divider, Image,
+  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image,
 } from 'antd';
 import { UploadOutlined, SaveOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
@@ -39,8 +39,8 @@ export default function CompanySettingsPage() {
     onError: () => message.error('Ошибка загрузки логотипа'),
   });
 
-  const handleSave = (values: Record<string, string>) => {
-    updateMut.mutate(values);
+  const handleSave = (values: Record<string, unknown>) => {
+    updateMut.mutate(values as Partial<CompanySettings>);
   };
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
@@ -109,6 +109,20 @@ export default function CompanySettingsPage() {
               <Input placeholder="info@company.uz" />
             </Form.Item>
           </div>
+
+          <Divider />
+          <Typography.Title level={5} style={{ marginBottom: 16 }}>KPI</Typography.Title>
+
+          <Form.Item label="Цель выручки за месяц (сум)" name="monthlyRevenueGoal">
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              step={10_000_000}
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+              parser={(v) => Number((v || '').replace(/\s/g, '')) as unknown as 0}
+              placeholder="250 000 000"
+            />
+          </Form.Item>
 
           <Divider />
           <Typography.Title level={5} style={{ marginBottom: 16 }}>Банковские реквизиты</Typography.Title>

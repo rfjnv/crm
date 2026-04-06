@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
 import { analyticsApi } from '../api/analytics.api';
+import { settingsApi } from '../api/settings.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
@@ -18,7 +19,7 @@ import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import type { UserRole, DealStatus } from '../types';
 
-const MONTHLY_REVENUE_GOAL_UZS = 250_000_000;
+const DEFAULT_GOAL = 250_000_000;
 
 function pctChange(curr: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -48,6 +49,12 @@ export default function DashboardPage() {
     queryKey: ['finance-debts-total'],
     queryFn: () => financeApi.getDebts(),
     refetchInterval: 30_000,
+  });
+
+  const { data: companySettings } = useQuery({
+    queryKey: ['company-settings'],
+    queryFn: settingsApi.getCompanySettings,
+    staleTime: 300_000,
   });
 
   const user = useAuthStore((s) => s.user);
@@ -96,7 +103,8 @@ export default function DashboardPage() {
   const totalDebt = debtsData?.totals?.totalDebtOwed ?? data.totalDebt;
   const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
   const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
-  const goalPct = Math.min(100, Math.round(((data.revenueMonth || 0) / MONTHLY_REVENUE_GOAL_UZS) * 100));
+  const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
+  const goalPct = Math.min(100, Math.round(((data.revenueMonth || 0) / revenueGoal) * 100));
 
   const allStockIssues = [
     ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
@@ -211,7 +219,7 @@ export default function DashboardPage() {
               format={(p) => `${p}%`}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              {formatUZS(data.revenueMonth || 0)} / {formatUZS(MONTHLY_REVENUE_GOAL_UZS)}
+              {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
             </Typography.Text>
           </div>
         </Card>
