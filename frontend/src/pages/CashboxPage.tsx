@@ -217,7 +217,7 @@ export default function CashboxPage() {
     }
     const pay = Number(activePayAmountWatch);
     if (pay <= 0) return null;
-    const { amount: dealAmt, paidAmount, remaining } = activePayContext.deal;
+    const { amount: dealAmt, paidAmount } = activePayContext.deal;
     const creditCap = activePayContext.creditFromOtherDeals;
 
     if (activePayMode === 'credit') {
