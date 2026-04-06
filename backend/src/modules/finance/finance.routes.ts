@@ -183,7 +183,7 @@ router.get(
       paymentStatus: paymentStatus
         ? { equals: paymentStatus as 'UNPAID' | 'PARTIAL' }
         : { in: ['UNPAID', 'PARTIAL'] },
-      status: { notIn: ['CANCELED', 'REJECTED'] },
+      status: 'CLOSED',
       isArchived: false,
     };
     if (managerId) where.managerId = managerId;
@@ -221,6 +221,7 @@ router.get(
     for (const deal of deals) {
       const cid = deal.clientId;
       const debt = Number(deal.amount) - Number(deal.paidAmount);
+      if (debt <= 0) continue;
 
       if (!clientMap.has(cid)) {
         clientMap.set(cid, {
@@ -280,7 +281,7 @@ router.get(
       by: ['clientId'],
       where: {
         ...dealScope,
-        status: { notIn: ['CANCELED', 'REJECTED'] },
+        status: 'CLOSED',
         isArchived: false,
         ...(managerId ? { managerId } : {}),
       },
@@ -320,7 +321,7 @@ router.get(
 
         const managerAgg = await prisma.deal.groupBy({
           by: ['managerId'],
-          where: { clientId: pc.id, isArchived: false, status: { notIn: ['CANCELED', 'REJECTED'] } },
+          where: { clientId: pc.id, isArchived: false, status: 'CLOSED' },
           _count: true,
           orderBy: { _count: { managerId: 'desc' } },
           take: 1,
@@ -412,6 +413,69 @@ router.get(
   }),
 );
 
+// ──── ACTIVE (NON-CLOSED) DEALS — суммы по сделкам в работе ────
+router.get(
+  '/active-deals',
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+    };
+    const dealScope = ownerScope(user);
+    const managerId = req.query.managerId as string | undefined;
+
+    const where: Prisma.DealWhereInput = {
+      ...dealScope,
+      status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
+      isArchived: false,
+    };
+    if (managerId) where.managerId = managerId;
+
+    const rows = await prisma.deal.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        amount: true,
+        paidAmount: true,
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const deals = rows.map((d) => {
+      const amount = Number(d.amount);
+      const paidAmount = Number(d.paidAmount);
+      return {
+        dealId: d.id,
+        title: d.title,
+        status: d.status,
+        clientId: d.client.id,
+        clientName: d.client.companyName,
+        amount,
+        paidAmount,
+        remaining: amount - paidAmount,
+        manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
+      };
+    });
+
+    const totals = deals.reduce(
+      (acc, d) => {
+        acc.totalAmount += d.amount;
+        acc.totalPaid += d.paidAmount;
+        acc.totalRemaining += d.remaining;
+        return acc;
+      },
+      { totalAmount: 0, totalPaid: 0, totalRemaining: 0 },
+    );
+
+    res.json({ deals, totals, count: deals.length });
+  }),
+);
+
 // ──── CLIENT DEBT DETAIL ────
 router.get(
   '/debts/client/:clientId',
@@ -427,6 +491,7 @@ router.get(
     const deals = await prisma.deal.findMany({
       where: {
         clientId,
+        status: 'CLOSED',
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         isArchived: false,
       },

@@ -26,7 +26,7 @@ export default function DashboardPage() {
     refetchInterval: 10_000,
   });
 
-  // Берём долг с той же страницы должников — чтобы цифра всегда совпадала
+  // Долг по закрытым сделкам (как на кассе / «Долги»)
   const { data: debtsData } = useQuery({
     queryKey: ['finance-debts-total'],
     queryFn: () => financeApi.getDebts(),

@@ -8,12 +8,13 @@ import {
 import { DollarOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
-import { financeApi, type CashboxPayment } from '../api/finance.api';
+import { financeApi, type CashboxPayment, type ActiveDealRow } from '../api/finance.api';
+import DealStatusTag from '../components/DealStatusTag';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { ClientDebtRow } from '../types';
+import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
@@ -96,6 +97,18 @@ export default function CashboxPage() {
     enabled: activeTab === 'debtors',
   });
 
+  const activeDealsParams = useMemo(
+    () => (managerId ? { managerId } : undefined),
+    [managerId],
+  );
+
+  const { data: activeDealsData, isLoading: activeDealsLoading } = useQuery({
+    queryKey: ['finance-active-deals', activeDealsParams],
+    queryFn: () => financeApi.getActiveDeals(activeDealsParams),
+    enabled: activeTab === 'active',
+    refetchInterval: 15_000,
+  });
+
   const { data: clientDetail, isLoading: clientDetailLoading } = useQuery({
     queryKey: ['client-debt-detail', selectedClient?.clientId],
     queryFn: () => financeApi.clientDebtDetail(selectedClient!.clientId),
@@ -113,6 +126,7 @@ export default function CashboxPage() {
       setSelectedClient(null);
       queryClient.invalidateQueries({ queryKey: ['cashbox'] });
       queryClient.invalidateQueries({ queryKey: ['finance-debts'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-active-deals'] });
       queryClient.invalidateQueries({ queryKey: ['client-debt-detail'] });
     },
     onError: (err: any) => {
@@ -254,6 +268,54 @@ export default function CashboxPage() {
       ),
     },
     ...paymentColumns.slice(5),
+  ];
+
+  const activeDealColumns = [
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (v: string, r: ActiveDealRow) => (
+        <Link to={`/deals/${r.dealId}`}>{v || r.dealId.slice(0, 8)}</Link>
+      ),
+    },
+    {
+      title: 'Клиент',
+      dataIndex: 'clientName',
+      render: (v: string, r: ActiveDealRow) => (
+        <Link to={`/clients/${r.clientId}`}>{v}</Link>
+      ),
+    },
+    {
+      title: 'Сумма сделки',
+      dataIndex: 'amount',
+      align: 'right' as const,
+      render: (v: number) => formatUZS(v),
+    },
+    {
+      title: 'Оплачено',
+      dataIndex: 'paidAmount',
+      align: 'right' as const,
+      render: (v: number) => formatUZS(v),
+    },
+    {
+      title: 'Остаток',
+      dataIndex: 'remaining',
+      align: 'right' as const,
+      render: (v: number) => (
+        <span style={{ color: v > 0 ? '#fa8c16' : tk.colorTextSecondary }}>{formatUZS(v)}</span>
+      ),
+    },
+    {
+      title: 'Менеджер',
+      dataIndex: ['manager', 'fullName'],
+      render: (_: unknown, r: ActiveDealRow) => r.manager?.fullName ?? '—',
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 160,
+      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+    },
   ];
 
   const debtorColumns = [
@@ -455,8 +517,71 @@ export default function CashboxPage() {
           ),
         },
         {
+          key: 'active',
+          label: `Активные${activeDealsData !== undefined ? ` (${activeDealsData.count})` : ''}`,
+          children: (
+            <>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                Сделки не в статусе «Закрыта»: сумма, оплаты и остаток по каждой сделке.
+              </Typography.Paragraph>
+              <Space wrap style={{ marginBottom: 16 }}>
+                <Select
+                  value={managerId}
+                  onChange={(v) => setManagerId(v)}
+                  allowClear
+                  placeholder="Менеджер"
+                  style={{ width: isMobile ? '100%' : 200 }}
+                  options={managers}
+                />
+              </Space>
+              <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+                <Col xs={24} sm={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Сумма сделок"
+                      value={activeDealsData?.totals.totalAmount ?? 0}
+                      formatter={(v) => formatUZS(Number(v))}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Оплачено"
+                      value={activeDealsData?.totals.totalPaid ?? 0}
+                      formatter={(v) => formatUZS(Number(v))}
+                      valueStyle={{ color: '#52c41a' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Остаток к оплате"
+                      value={activeDealsData?.totals.totalRemaining ?? 0}
+                      formatter={(v) => formatUZS(Number(v))}
+                      valueStyle={{ color: '#fa8c16' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+              <Table
+                dataSource={activeDealsData?.deals}
+                columns={activeDealColumns}
+                rowKey="dealId"
+                loading={activeDealsLoading}
+                pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['20', '30', '50', '100'] }}
+                size="middle"
+                bordered={false}
+                scroll={{ x: 720 }}
+                locale={{ emptyText: 'Нет активных сделок' }}
+              />
+            </>
+          ),
+        },
+        {
           key: 'debtors',
-          label: `Должники${debtorClients.length > 0 ? ` (${debtorClients.length})` : ''}`,
+          label: `Долги${debtorClients.length > 0 ? ` (${debtorClients.length})` : ''}`,
           children: (
             <>
               <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

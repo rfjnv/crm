@@ -26,6 +26,24 @@ export interface CashboxResponse {
   fromDate: string;
 }
 
+export interface ActiveDealRow {
+  dealId: string;
+  title: string;
+  status: string;
+  clientId: string;
+  clientName: string;
+  amount: number;
+  paidAmount: number;
+  remaining: number;
+  manager: { id: string; fullName: string } | null;
+}
+
+export interface ActiveDealsResponse {
+  deals: ActiveDealRow[];
+  totals: { totalAmount: number; totalPaid: number; totalRemaining: number };
+  count: number;
+}
+
 export const financeApi = {
   cashbox: (params?: {
     period?: string;
@@ -45,6 +63,9 @@ export const financeApi = {
     paymentStatus?: string;
   }) =>
     client.get('/finance/debts', { params }).then((r) => r.data),
+
+  getActiveDeals: (params?: { managerId?: string }) =>
+    client.get<ActiveDealsResponse>('/finance/active-deals', { params }).then((r) => r.data),
 
   clientDebtDetail: (clientId: string) =>
     client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),
