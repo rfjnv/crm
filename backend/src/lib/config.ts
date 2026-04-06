@@ -61,6 +61,10 @@ export const config = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     clientBotToken: process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN || '',
-    crmUrl: 'https://www.polygraphbusinesscrm.app',
+    crmUrl: process.env.TELEGRAM_CRM_URL || process.env.CRM_PUBLIC_URL || 'https://www.polygraphbusinesscrm.app',
+    /** Supergroup/channel IDs (e.g. -1001234567890). Empty = disabled. */
+    groupWarehouseChatId: process.env.TELEGRAM_GROUP_WAREHOUSE_CHAT_ID || '',
+    groupProductionChatId: process.env.TELEGRAM_GROUP_PRODUCTION_CHAT_ID || '',
+    groupFinanceChatId: process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID || '',
   },
 } as const;

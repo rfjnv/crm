@@ -315,6 +315,13 @@ model Deal {
   version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
+  /** CRM → Telegram group: warehouse queue (once per deal) */
+  sentToWarehouse   Boolean @default(false) @map("sent_to_warehouse_tg")
+  /** CRM → Telegram group: production / quantities (once per deal) */
+  sentToProduction  Boolean @default(false) @map("sent_to_production_tg")
+  /** CRM → Telegram group: finance review (once per deal) */
+  sentToFinance     Boolean @default(false) @map("sent_to_finance_tg")
+
   client             Client              @relation(fields: [clientId], references: [id])
   manager            User                @relation("DealManager", fields: [managerId], references: [id])
   contract           Contract?           @relation(fields: [contractId], references: [id])

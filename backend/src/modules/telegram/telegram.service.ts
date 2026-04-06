@@ -98,6 +98,23 @@ class TelegramService {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  /**
+   * Send HTML to a group/supergroup. chatId from env (often negative), e.g. -100xxxxxxxxxx.
+   */
+  async sendGroupHtmlMessage(chatId: string, html: string, linkPath?: string): Promise<void> {
+    if (!this.bot || !chatId) return;
+    try {
+      const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
+      await this.bot.sendMessage(chatId, html, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup,
+      });
+    } catch (err) {
+      console.error(`Telegram sendGroupHtmlMessage ${chatId}:`, (err as Error).message);
+    }
+  }
+
   private buildInlineKeyboard(url?: string) {
     if (!url) return undefined;
     const fullUrl = url.startsWith('http') ? url : `${config.telegram.crmUrl}${url}`;

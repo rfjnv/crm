@@ -6,6 +6,12 @@ import { AuthUser, ownerScope } from '../../lib/scope';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import {
+  onDealCreated,
+  onDealStatusChanged,
+  trySendFinanceTelegram,
+  trySendProductionTelegram,
+} from '../telegram/telegram-deal-groups.service';
+import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
   ShipmentDto, FinanceRejectDto, SendToFinanceDto,
@@ -244,6 +250,8 @@ export class DealsService {
       },
     });
 
+    void onDealCreated(deal.id, deal.status as DealStatus, allHaveQty).catch(() => {});
+
     // Return with includes
     return prisma.deal.findUnique({
       where: { id: deal.id },
@@ -342,6 +350,7 @@ export class DealsService {
       throw new AppError(400, 'Нет данных для обновления');
     }
 
+    const prevStatusForTg = deal.status as DealStatus;
     const updated = await prisma.deal.update({
       where: { id },
       data,
@@ -351,6 +360,10 @@ export class DealsService {
         contract: { select: { id: true, contractNumber: true } },
       },
     });
+
+    if (dto.status !== undefined && dto.status !== prevStatusForTg) {
+      void onDealStatusChanged(id, prevStatusForTg, dto.status as DealStatus).catch(() => {});
+    }
 
     // If discount changed, recalculate amount
     if (dto.discount !== undefined) {
@@ -447,6 +460,10 @@ export class DealsService {
       before: { status: deal.status },
       after: { status: targetStatus, paymentMethod: dto.paymentMethod },
     });
+
+    if (targetStatus === 'WAITING_FINANCE') {
+      void trySendFinanceTelegram(dealId).catch(() => {});
+    }
 
     // Notify accountants when deal needs finance review
     if (targetStatus === 'WAITING_FINANCE') {
@@ -682,6 +699,10 @@ export class DealsService {
       before: { amount: Number(deal.amount), paidAmount: Number(deal.paidAmount), status: deal.status },
       after: { amount: finalAmount, paidAmount, paymentStatus, discount, status: newStatus },
     });
+
+    if (newStatus === 'IN_PROGRESS') {
+      void trySendProductionTelegram(dealId).catch(() => {});
+    }
 
     return this.findById(dealId, user);
   }
