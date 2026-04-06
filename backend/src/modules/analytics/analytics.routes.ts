@@ -60,12 +60,17 @@ function getCallActivityRange(range: string): { start: Date; end: Date } {
 
 router.get(
   '/call-activity',
-  authorize('SUPER_ADMIN', 'ADMIN'),
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER'),
   asyncHandler(async (req: Request, res: Response) => {
+    const role = req.user!.role as Role;
+    const isManager = role === 'MANAGER';
+
     const rangeParam = (req.query.range as string) || 'today';
     const range = rangeParam === 'week' || rangeParam === 'month' ? rangeParam : 'today';
-    const managerId =
+    const managerIdFromQuery =
       typeof req.query.managerId === 'string' && req.query.managerId.length > 0 ? req.query.managerId : undefined;
+    /** Managers always see all authors; filter by manager is admin-only. */
+    const managerId = isManager ? undefined : managerIdFromQuery;
     const clientSearch =
       typeof req.query.clientSearch === 'string' ? req.query.clientSearch.trim() : '';
 
@@ -79,6 +84,42 @@ router.get(
         ? { client: { companyName: { contains: clientSearch, mode: 'insensitive' } } }
         : {}),
     };
+
+    if (isManager) {
+      const feedRows = await prisma.clientNote.findMany({
+        where,
+        select: {
+          id: true,
+          userId: true,
+          clientId: true,
+          content: true,
+          createdAt: true,
+          user: { select: { fullName: true } },
+          client: { select: { id: true, companyName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 120,
+      });
+
+      const feed = feedRows.map((n) => ({
+        id: n.id,
+        userId: n.userId,
+        managerName: n.user.fullName,
+        clientId: n.clientId,
+        companyName: n.client.companyName,
+        preview: n.content.length > 160 ? `${n.content.slice(0, 160)}…` : n.content,
+        createdAt: n.createdAt.toISOString(),
+      }));
+
+      res.json({
+        range: { key: range, start: start.toISOString(), end: end.toISOString() },
+        summary: [],
+        lineChart: [],
+        barChart: [],
+        feed,
+      });
+      return;
+    }
 
     const [aggRows, feedRows] = await Promise.all([
       prisma.clientNote.findMany({

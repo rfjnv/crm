@@ -109,12 +109,12 @@ export default function App() {
                 <Route path="/users" element={<UsersPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
+                  <Route path="/analytics/calls" element={<CallActivityPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
-                  <Route path="/analytics/calls" element={<CallActivityPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 </Route>

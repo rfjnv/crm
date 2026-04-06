@@ -21,11 +21,15 @@ import { Line, Bar } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { analyticsApi, type CallActivityRange } from '../api/analytics.api';
 import { usersApi } from '../api/users.api';
+import { useAuthStore } from '../store/authStore';
+import type { UserRole } from '../types';
 
 const { Title, Text } = Typography;
 
 export default function CallActivityPage() {
   const { token } = theme.useToken();
+  const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
+  const isManager = role === 'MANAGER';
   const [range, setRange] = useState<CallActivityRange>('today');
   const [managerId, setManagerId] = useState<string | undefined>();
   const [clientSearchInput, setClientSearchInput] = useState('');
@@ -49,6 +53,7 @@ export default function CallActivityPage() {
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: usersApi.list,
+    enabled: !isManager,
   });
 
   const managerOptions = useMemo(
@@ -149,7 +154,11 @@ export default function CallActivityPage() {
             <PhoneOutlined style={{ marginRight: 8 }} />
             Обзвоны
           </Title>
-          <Text type="secondary">Активность по заметкам к клиентам (одна заметка = один контакт)</Text>
+          <Text type="secondary">
+            {isManager
+              ? 'Лента заметок по клиентам от всех менеджеров (без сводок и графиков)'
+              : 'Активность по заметкам к клиентам (одна заметка = один контакт)'}
+          </Text>
         </Col>
         <Col>
           <Segmented
@@ -165,18 +174,20 @@ export default function CallActivityPage() {
       </Row>
 
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} sm={12} md={8}>
-          <Select
-            allowClear
-            placeholder="Все менеджеры"
-            style={{ width: '100%' }}
-            options={managerOptions}
-            value={managerId}
-            onChange={(v) => setManagerId(v)}
-            suffixIcon={<UserOutlined />}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={10}>
+        {!isManager ? (
+          <Col xs={24} sm={12} md={8}>
+            <Select
+              allowClear
+              placeholder="Все менеджеры"
+              style={{ width: '100%' }}
+              options={managerOptions}
+              value={managerId}
+              onChange={(v) => setManagerId(v)}
+              suffixIcon={<UserOutlined />}
+            />
+          </Col>
+        ) : null}
+        <Col xs={24} sm={12} md={isManager ? 24 : 10}>
           <Input.Search
             allowClear
             placeholder="Поиск по названию клиента"
@@ -185,7 +196,7 @@ export default function CallActivityPage() {
             onSearch={(v) => setDebouncedClientSearch(v.trim())}
           />
         </Col>
-        {managerId ? (
+        {!isManager && managerId ? (
           <Col xs={24} md={6}>
             <Button type="link" onClick={() => setManagerId(undefined)}>
               Сбросить фильтр менеджера
@@ -207,44 +218,48 @@ export default function CallActivityPage() {
             </Text>
           </Card>
 
-          <Card size="small" title="Сводка по менеджерам" style={{ marginBottom: 12 }}>
-            <Table
-              size="small"
-              rowKey="userId"
-              pagination={false}
-              dataSource={data.summary}
-              columns={summaryColumns}
-              locale={{ emptyText: 'Нет заметок за период' }}
-              onRow={(record) => ({
-                onClick: () => setManagerId((prev) => (prev === record.userId ? undefined : record.userId)),
-                style: {
-                  cursor: 'pointer',
-                  background: managerId === record.userId ? token.colorPrimaryBg : undefined,
-                },
-              })}
-            />
-          </Card>
+          {!isManager ? (
+            <Card size="small" title="Сводка по менеджерам" style={{ marginBottom: 12 }}>
+              <Table
+                size="small"
+                rowKey="userId"
+                pagination={false}
+                dataSource={data.summary}
+                columns={summaryColumns}
+                locale={{ emptyText: 'Нет заметок за период' }}
+                onRow={(record) => ({
+                  onClick: () => setManagerId((prev) => (prev === record.userId ? undefined : record.userId)),
+                  style: {
+                    cursor: 'pointer',
+                    background: managerId === record.userId ? token.colorPrimaryBg : undefined,
+                  },
+                })}
+              />
+            </Card>
+          ) : null}
 
-          <Row gutter={[12, 12]}>
-            <Col xs={24} lg={14}>
-              <Card size="small" title="Контакты по дням" style={{ marginBottom: 12 }}>
-                {lineConfig && data.summary.length > 0 ? (
-                  <Line {...lineConfig} />
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет данных для графика" />
-                )}
-              </Card>
-            </Col>
-            <Col xs={24} lg={10}>
-              <Card size="small" title="Сравнение менеджеров" style={{ marginBottom: 12 }}>
-                {barConfig && data.barChart.length > 0 ? (
-                  <Bar {...barConfig} />
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет данных" />
-                )}
-              </Card>
-            </Col>
-          </Row>
+          {!isManager ? (
+            <Row gutter={[12, 12]}>
+              <Col xs={24} lg={14}>
+                <Card size="small" title="Контакты по дням" style={{ marginBottom: 12 }}>
+                  {lineConfig && data.summary.length > 0 ? (
+                    <Line {...lineConfig} />
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет данных для графика" />
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} lg={10}>
+                <Card size="small" title="Сравнение менеджеров" style={{ marginBottom: 12 }}>
+                  {barConfig && data.barChart.length > 0 ? (
+                    <Bar {...barConfig} />
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет данных" />
+                  )}
+                </Card>
+              </Col>
+            </Row>
+          ) : null}
 
           <Card size="small" title="Лента заметок">
             <List

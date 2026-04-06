@@ -278,23 +278,23 @@ export default function Layout() {
           icon: <CalendarOutlined />,
           label: <Link to="/manager/client-activity">Матрица активности клиентов</Link>,
         },
-        ...(hasRole('SUPER_ADMIN', 'ADMIN')
-          ? [
-        {
-          key: '/analytics',
-          icon: <BarChartOutlined />,
-          label: <Link to="/analytics">Аналитика</Link>,
-        },
-        {
-          key: '/history-analytics',
-          icon: <FieldTimeOutlined />,
-          label: <Link to="/history-analytics">Аналитика (история)</Link>,
-        },
         {
           key: '/analytics/calls',
           icon: <PhoneOutlined />,
           label: <Link to="/analytics/calls">Обзвоны</Link>,
         },
+        ...(hasRole('SUPER_ADMIN', 'ADMIN')
+          ? [
+            {
+              key: '/analytics',
+              icon: <BarChartOutlined />,
+              label: <Link to="/analytics">Аналитика</Link>,
+            },
+            {
+              key: '/history-analytics',
+              icon: <FieldTimeOutlined />,
+              label: <Link to="/history-analytics">Аналитика (история)</Link>,
+            },
           ]
           : []),
       ]
