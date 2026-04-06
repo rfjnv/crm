@@ -185,11 +185,11 @@ export default function DashboardPage() {
         <Card
           size="small"
           style={{
+            ...cardLift,
             marginBottom: SECTION_GAP,
             borderRadius: 12,
             border: `1px solid ${themeToken.colorPrimaryBorder}`,
             background: isDark ? themeToken.colorFillQuaternary : themeToken.colorPrimaryBg,
-            ...cardLift,
           }}
           styles={{ body: { padding: '16px 20px' } }}
         >
@@ -222,12 +222,12 @@ export default function DashboardPage() {
               bordered={false}
               hoverable
               style={{
+                ...cardLift,
                 cursor: 'pointer',
                 background: heroGradient,
                 border: `1px solid ${isDark ? 'rgba(82,196,26,0.35)' : 'rgba(82,196,26,0.45)'}`,
                 boxShadow: isDark ? '0 4px 18px rgba(0,0,0,0.4)' : '0 6px 20px rgba(82,196,26,0.18)',
                 borderRadius: 14,
-                ...cardLift,
               }}
               styles={{ body: standardCardBody }}
               {...cardHover}
@@ -658,10 +658,10 @@ export default function DashboardPage() {
                 key={item.id}
                 size="small"
                 style={{
+                  ...cardLift,
                   borderLeft: `4px solid ${item.issue === 'zero' ? themeToken.colorError : themeToken.colorWarning}`,
                   cursor: 'pointer',
                   borderRadius: 10,
-                  ...cardLift,
                 }}
                 {...cardHover}
                 onClick={() => navigate(`/inventory/products/${item.id}`)}
