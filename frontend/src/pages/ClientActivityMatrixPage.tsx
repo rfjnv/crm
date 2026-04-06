@@ -218,6 +218,35 @@ export default function ClientActivityMatrixPage() {
         <a onClick={() => navigate(`/clients/${r.clientId}`)}>{r.companyName}</a>
       ),
     },
+    {
+      title: 'Последний контакт',
+      key: 'lastContact',
+      width: 168,
+      fixed: 'left' as const,
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => {
+        const ta = a.lastContactAt ? dayjs(a.lastContactAt).valueOf() : 0;
+        const tb = b.lastContactAt ? dayjs(b.lastContactAt).valueOf() : 0;
+        return ta - tb;
+      },
+      render: (_: unknown, r: HistoryClientActivity) => {
+        if (!r.lastContactAt) {
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        const when = dayjs(r.lastContactAt);
+        const label = when.format('DD.MM.YYYY HH:mm');
+        const who = r.lastContactByName || '—';
+        return (
+          <Tooltip title={`${label} — ${who}`}>
+            <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+              <div>{label}</div>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis>
+                {who}
+              </Typography.Text>
+            </div>
+          </Tooltip>
+        );
+      },
+    },
     ...displayedMonths.map((m) => ({
       title: MONTH_LABELS[m],
       key: `m${m}`,
@@ -378,7 +407,7 @@ export default function ClientActivityMatrixPage() {
               showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
               onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
             }}
-            scroll={{ x: 1000 }}
+            scroll={{ x: 1200 }}
           />
         )}
       </Card>

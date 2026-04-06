@@ -1,6 +1,7 @@
 import { useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
 import {
   Card, Col, Row, Statistic, Table, Typography, Spin, theme, Input, Select, Segmented,
   Tooltip, Tag, Tabs, Drawer, Button, message,
@@ -392,6 +393,30 @@ export default function HistoryAnalyticsPage() {
   // ── Activity matrix columns (revenue gradient + clickable) ──
   const activityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
+    {
+      title: 'Последний контакт',
+      key: 'lastContact',
+      width: 150,
+      fixed: 'left' as const,
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => {
+        const ta = a.lastContactAt ? dayjs(a.lastContactAt).valueOf() : 0;
+        const tb = b.lastContactAt ? dayjs(b.lastContactAt).valueOf() : 0;
+        return ta - tb;
+      },
+      render: (_: unknown, r: HistoryClientActivity) => {
+        if (!r.lastContactAt) return <span style={{ color: token.colorTextSecondary }}>—</span>;
+        const when = dayjs(r.lastContactAt);
+        const who = r.lastContactByName || '—';
+        return (
+          <Tooltip title={`${when.format('DD.MM.YYYY HH:mm')} — ${who}`}>
+            <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+              <div>{when.format('DD.MM.YYYY')}</div>
+              <span style={{ fontSize: 11, color: token.colorTextSecondary }}>{who}</span>
+            </div>
+          </Tooltip>
+        );
+      },
+    },
     ...visibleMonths.map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
       render: (_: unknown, record: HistoryClientActivity) => {

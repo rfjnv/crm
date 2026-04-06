@@ -958,6 +958,9 @@ export interface HistoryClientActivity {
   companyName: string;
   activeMonths: number[];
   monthlyData: { month: number; revenue: number }[];
+  /** ISO: последняя заметка по клиенту (любой пользователь CRM) */
+  lastContactAt?: string | null;
+  lastContactByName?: string | null;
 }
 
 export interface HistoryData {

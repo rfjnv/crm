@@ -528,7 +528,36 @@ router.get(
         });
       }
     }
-    const clientActivity = Array.from(activityMap.values());
+
+    const activityClientIds = Array.from(activityMap.keys());
+    const lastNoteByClient = new Map<string, { at: Date; authorName: string }>();
+    if (activityClientIds.length > 0) {
+      const lastNotes = await prisma.$queryRaw<
+        { client_id: string; last_contact_at: Date; author_name: string }[]
+      >(
+        Prisma.sql`SELECT DISTINCT ON (cn.client_id)
+          cn.client_id,
+          cn.created_at AS last_contact_at,
+          u.full_name AS author_name
+        FROM client_notes cn
+        INNER JOIN users u ON u.id = cn.user_id
+        WHERE cn.deleted_at IS NULL
+          AND cn.client_id IN (${Prisma.join(activityClientIds)})
+        ORDER BY cn.client_id, cn.created_at DESC`,
+      );
+      for (const r of lastNotes) {
+        lastNoteByClient.set(r.client_id, { at: r.last_contact_at, authorName: r.author_name });
+      }
+    }
+
+    const clientActivity = Array.from(activityMap.values()).map((row) => {
+      const note = lastNoteByClient.get(row.clientId);
+      return {
+        ...row,
+        lastContactAt: note ? note.at.toISOString() : null,
+        lastContactByName: note?.authorName ?? null,
+      };
+    });
 
     const responseData = {
       overview,
