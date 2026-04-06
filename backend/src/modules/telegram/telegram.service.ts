@@ -217,6 +217,71 @@ class TelegramService {
   getBotUsername(): string | null {
     return this.botUsername;
   }
+
+  /**
+   * Тест доставки в группы (склад / производство / финансы). Только для диагностики.
+   */
+  async sendTestGroupMessages(): Promise<
+    Array<{ label: string; chatId: string; ok: boolean; error?: string }>
+  > {
+    const targets: { label: string; chatId: string; envKey: string }[] = [
+      { label: 'warehouse', chatId: config.telegram.groupWarehouseChatId, envKey: 'TELEGRAM_GROUP_WAREHOUSE_CHAT_ID' },
+      { label: 'production', chatId: config.telegram.groupProductionChatId, envKey: 'TELEGRAM_GROUP_PRODUCTION_CHAT_ID' },
+      { label: 'finance', chatId: config.telegram.groupFinanceChatId, envKey: 'TELEGRAM_GROUP_FINANCE_CHAT_ID' },
+    ];
+
+    const results: Array<{ label: string; chatId: string; ok: boolean; error?: string }> = [];
+
+    for (const t of targets) {
+      if (!t.chatId) {
+        results.push({
+          label: t.label,
+          chatId: '(пусто)',
+          ok: false,
+          error: `Не задан ${t.envKey}`,
+        });
+        continue;
+      }
+
+      if (!this.bot) {
+        results.push({
+          label: t.label,
+          chatId: t.chatId,
+          ok: false,
+          error: 'TELEGRAM_BOT_TOKEN не задан — бот не запущен',
+        });
+        continue;
+      }
+
+      const text = [
+        '🧪 <b>Тест CRM Polygraph</b>',
+        '',
+        `Канал: <b>${this.escapeHtml(t.label)}</b>`,
+        `chat_id: <code>${this.escapeHtml(t.chatId)}</code>`,
+        `Время (UTC): <code>${this.escapeHtml(new Date().toISOString())}</code>`,
+        '',
+        'Если видите это сообщение — бот доходит до группы.',
+      ].join('\n');
+
+      try {
+        const target = /^-?\d+$/.test(String(t.chatId)) ? Number(t.chatId) : t.chatId;
+        await this.bot.sendMessage(target, text, { parse_mode: 'HTML', disable_web_page_preview: true });
+        results.push({ label: t.label, chatId: t.chatId, ok: true });
+      } catch (err: unknown) {
+        const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+        const body = e.response?.body;
+        const msg = body?.description || e.message || 'Unknown error';
+        results.push({
+          label: t.label,
+          chatId: t.chatId,
+          ok: false,
+          error: body?.error_code != null ? `${msg} (code ${body.error_code})` : msg,
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
 export const telegramService = new TelegramService();

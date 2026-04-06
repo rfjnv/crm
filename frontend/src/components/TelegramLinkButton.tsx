@@ -1,19 +1,47 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Space, Typography, theme, message, Input } from 'antd';
-import { SendOutlined, DisconnectOutlined, CheckCircleOutlined, CopyOutlined } from '@ant-design/icons';
+import { Button, Space, Typography, theme, message, Input, notification } from 'antd';
+import { SendOutlined, DisconnectOutlined, CheckCircleOutlined, CopyOutlined, ExperimentOutlined } from '@ant-design/icons';
 import { telegramApi } from '../api/telegram.api';
+import { useAuthStore } from '../store/authStore';
 
 export default function TelegramLinkButton() {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkCommand, setLinkCommand] = useState<string | null>(null);
   const { token: tk } = theme.useToken();
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.user?.role);
+  const canTestGroups = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   const { data: status, isLoading } = useQuery({
     queryKey: ['telegram-status'],
     queryFn: telegramApi.getStatus,
     refetchInterval: 10_000,
+  });
+
+  const testGroupsMut = useMutation({
+    mutationFn: telegramApi.testGroupNotifications,
+    onSuccess: (data) => {
+      notification.info({
+        message: data.message,
+        description: (
+          <pre style={{ fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+            {data.results
+              .map((r) => `${r.label}: ${r.ok ? '✓' : '✗'} ${r.chatId}${r.error ? ` — ${r.error}` : ''}`)
+              .join('\n')}
+          </pre>
+        ),
+        duration: 14,
+        placement: 'topRight',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error ||
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Ошибка запроса';
+      message.error(msg);
+    },
   });
 
   const unlinkMut = useMutation({
@@ -118,6 +146,22 @@ export default function TelegramLinkButton() {
             size="small"
             style={{ maxWidth: 400 }}
           />
+        </div>
+      )}
+
+      {canTestGroups && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${tk.colorBorderSecondary}` }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            Диагностика: отправить тестовое сообщение в группы склада, производства и финансов (если заданы в env на сервере).
+          </Typography.Text>
+          <Button
+            size="small"
+            icon={<ExperimentOutlined />}
+            loading={testGroupsMut.isPending}
+            onClick={() => testGroupsMut.mutate()}
+          >
+            Тест групп Telegram
+          </Button>
         </div>
       )}
     </div>

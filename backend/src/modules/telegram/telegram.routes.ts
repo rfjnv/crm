@@ -1,5 +1,6 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../../middleware/authenticate';
+import { authorize } from '../../middleware/authorize';
 import prisma from '../../lib/prisma';
 import { telegramService } from './telegram.service';
 
@@ -42,5 +43,27 @@ router.get('/status', authenticate, async (req: Request, res: Response) => {
     botUsername: telegramService.getBotUsername(),
   });
 });
+
+// POST /api/telegram/test-group-notifications — тест сообщений в группы (ADMIN / SUPER_ADMIN)
+router.post(
+  '/test-group-notifications',
+  authenticate,
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const results = await telegramService.sendTestGroupMessages();
+      const allOk = results.length > 0 && results.every((r) => r.ok);
+      res.json({
+        ok: allOk,
+        message: allOk
+          ? 'Все настроенные группы получили тестовое сообщение.'
+          : 'Часть каналов не настроена или Telegram вернул ошибку — см. results.',
+        results,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 export default router;

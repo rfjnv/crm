@@ -9,4 +9,14 @@ export const telegramApi = {
 
   unlink: () =>
     client.delete('/telegram/unlink').then((r) => r.data),
+
+  /** ADMIN / SUPER_ADMIN: тест сообщений в Telegram-группы (склад / производство / финансы) */
+  testGroupNotifications: () =>
+    client
+      .post<{
+        ok: boolean;
+        message: string;
+        results: Array<{ label: string; chatId: string; ok: boolean; error?: string }>;
+      }>('/telegram/test-group-notifications')
+      .then((r) => r.data),
 };
