@@ -250,7 +250,9 @@ export class DealsService {
       },
     });
 
-    void onDealCreated(deal.id, deal.status as DealStatus, allHaveQty).catch(() => {});
+    void onDealCreated(deal.id, deal.status as DealStatus, allHaveQty).catch((err) => {
+      console.error('[Telegram deal groups] onDealCreated:', err);
+    });
 
     // Return with includes
     return prisma.deal.findUnique({
@@ -362,7 +364,9 @@ export class DealsService {
     });
 
     if (dto.status !== undefined && dto.status !== prevStatusForTg) {
-      void onDealStatusChanged(id, prevStatusForTg, dto.status as DealStatus).catch(() => {});
+      void onDealStatusChanged(id, prevStatusForTg, dto.status as DealStatus).catch((err) => {
+        console.error('[Telegram deal groups] onDealStatusChanged:', err);
+      });
     }
 
     // If discount changed, recalculate amount
@@ -462,7 +466,9 @@ export class DealsService {
     });
 
     if (targetStatus === 'WAITING_FINANCE') {
-      void trySendFinanceTelegram(dealId).catch(() => {});
+      void trySendFinanceTelegram(dealId).catch((err) => {
+        console.error('[Telegram deal groups] trySendFinanceTelegram:', err);
+      });
     }
 
     // Notify accountants when deal needs finance review
@@ -701,7 +707,9 @@ export class DealsService {
     });
 
     if (newStatus === 'IN_PROGRESS') {
-      void trySendProductionTelegram(dealId).catch(() => {});
+      void trySendProductionTelegram(dealId).catch((err) => {
+        console.error('[Telegram deal groups] trySendProductionTelegram:', err);
+      });
     }
 
     return this.findById(dealId, user);

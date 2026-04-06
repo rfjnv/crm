@@ -1,6 +1,12 @@
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
 
+/** Убираем пробелы и кавычки из env (частая причина «не работает» на Render). */
+function trimEnv(value: string | undefined): string {
+  if (!value) return '';
+  return value.trim().replace(/^['"]+|['"]+$/g, '');
+}
+
 // Validate critical env vars in production
 if (isProduction) {
   if (!process.env.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET === 'change-me-access-secret') {
@@ -59,12 +65,15 @@ export const config = {
   },
 
   telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    clientBotToken: process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN || '',
-    crmUrl: process.env.TELEGRAM_CRM_URL || process.env.CRM_PUBLIC_URL || 'https://www.polygraphbusinesscrm.app',
-    /** Supergroup/channel IDs (e.g. -1001234567890). Empty = disabled. */
-    groupWarehouseChatId: process.env.TELEGRAM_GROUP_WAREHOUSE_CHAT_ID || '',
-    groupProductionChatId: process.env.TELEGRAM_GROUP_PRODUCTION_CHAT_ID || '',
-    groupFinanceChatId: process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID || '',
+    botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
+    clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),
+    crmUrl: trimEnv(process.env.TELEGRAM_CRM_URL) || trimEnv(process.env.CRM_PUBLIC_URL) || 'https://www.polygraphbusinesscrm.app',
+    /**
+     * ID супергрупп: обычно формат -100xxxxxxxxxx (не путать с коротким -4956…).
+     * Узнать: добавить @RawDataBot в группу → поле chat.id.
+     */
+    groupWarehouseChatId: trimEnv(process.env.TELEGRAM_GROUP_WAREHOUSE_CHAT_ID),
+    groupProductionChatId: trimEnv(process.env.TELEGRAM_GROUP_PRODUCTION_CHAT_ID),
+    groupFinanceChatId: trimEnv(process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID),
   },
 } as const;

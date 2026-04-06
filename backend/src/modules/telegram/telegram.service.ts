@@ -20,6 +20,14 @@ class TelegramService {
   constructor() {
     if (!config.telegram.botToken) {
       console.log('Telegram bot token not set, skipping bot init');
+      const w = !!config.telegram.groupWarehouseChatId;
+      const p = !!config.telegram.groupProductionChatId;
+      const f = !!config.telegram.groupFinanceChatId;
+      if (w || p || f) {
+        console.warn(
+          '[Telegram] В Environment заданы TELEGRAM_GROUP_* но нет TELEGRAM_BOT_TOKEN — в группы ничего не отправится.',
+        );
+      }
       return;
     }
     this.bot = new TelegramBot(config.telegram.botToken, { polling: true });
@@ -27,6 +35,16 @@ class TelegramService {
     this.bot.getMe().then((me) => {
       this.botUsername = me.username || null;
       console.log(`Telegram bot @${this.botUsername} started`);
+      const w = !!config.telegram.groupWarehouseChatId;
+      const p = !!config.telegram.groupProductionChatId;
+      const f = !!config.telegram.groupFinanceChatId;
+      if (!w && !p && !f) {
+        console.warn(
+          '[Telegram] Уведомления в группы ВЫКЛЮЧЕНЫ: задайте TELEGRAM_GROUP_WAREHOUSE_CHAT_ID / PRODUCTION / FINANCE на сервере (Render → Environment).',
+        );
+      } else {
+        console.log(`[Telegram] Групповые алерты: склад=${w} производство=${p} финансы=${f}`);
+      }
     }).catch((err) => {
       console.error('Telegram bot getMe failed:', err.message);
     });
@@ -102,16 +120,29 @@ class TelegramService {
    * Send HTML to a group/supergroup. chatId from env (often negative), e.g. -100xxxxxxxxxx.
    */
   async sendGroupHtmlMessage(chatId: string, html: string, linkPath?: string): Promise<void> {
-    if (!this.bot || !chatId) return;
+    if (!this.bot) {
+      console.warn('[Telegram] sendGroupHtmlMessage: бот не инициализирован (нет TELEGRAM_BOT_TOKEN?)');
+      return;
+    }
+    if (!chatId) return;
     try {
       const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
-      await this.bot.sendMessage(chatId, html, {
+      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      await this.bot.sendMessage(target, html, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
         reply_markup,
       });
-    } catch (err) {
-      console.error(`Telegram sendGroupHtmlMessage ${chatId}:`, (err as Error).message);
+    } catch (err: unknown) {
+      const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+      const body = e.response?.body;
+      console.error(
+        '[Telegram] sendGroupHtmlMessage failed chat_id=',
+        chatId,
+        body?.description || e.message,
+        body?.error_code != null ? `(code ${body.error_code})` : '',
+        body && typeof body === 'object' ? JSON.stringify(body) : '',
+      );
     }
   }
 
