@@ -105,23 +105,18 @@ export default function DashboardPage() {
 
   /* ── shared styles ── */
   const card: CSSProperties = {
-    borderRadius: 16,
+    borderRadius: 10,
     border: `1px solid ${tk.colorBorderSecondary}`,
     boxShadow: 'none',
-    transition: 'box-shadow .2s',
   };
-  const cardBody = { padding: '20px 24px' };
-
-  const accentBg = isDark
-    ? 'linear-gradient(135deg, #162312 0%, #1d3712 100%)'
-    : 'linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%)';
+  const cardBody = { padding: '16px 20px' };
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', paddingBottom: 40 }}>
+    <div style={{ paddingBottom: 32 }}>
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: 28 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Дашборд</Typography.Title>
+      <div style={{ marginBottom: 20 }}>
+        <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
         {user?.fullName && (
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             Добро пожаловать, {user.fullName.split(' ')[0]}
@@ -137,17 +132,17 @@ export default function DashboardPage() {
             <Card
               bordered={false}
               hoverable
-              style={{ ...card, background: accentBg, cursor: 'pointer', height: '100%' }}
+              style={{ ...card, cursor: 'pointer', height: '100%', borderLeft: '3px solid #52c41a' }}
               styles={{ body: cardBody }}
             >
-              <Typography.Text style={{ fontSize: 13, color: isDark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.45)' }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                 Выручка сегодня
               </Typography.Text>
-              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4, color: isDark ? '#b7eb8f' : '#135200', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {formatUZS(data.revenueToday || 0)}
               </div>
               {isAdmin && (
-                <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 6 }}>
                   <DeltaBadge value={revPct} suffix="к вчера" />
                 </div>
               )}
@@ -160,7 +155,7 @@ export default function DashboardPage() {
           <Link to={isAdmin ? '/deals/closed' : '#'} style={{ display: 'block', height: '100%' }}>
             <Card bordered={false} hoverable={isAdmin} style={{ ...card, cursor: isAdmin ? 'pointer' : 'default', height: '100%' }} styles={{ body: cardBody }}>
               <Typography.Text type="secondary" style={{ fontSize: 13 }}>Закрыто сделок</Typography.Text>
-              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4, lineHeight: 1.2 }}>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {data.closedDealsToday}
               </div>
               {isAdmin && (
@@ -175,7 +170,7 @@ export default function DashboardPage() {
           <Link to="/deals" style={{ display: 'block', height: '100%' }}>
             <Card bordered={false} hoverable style={{ ...card, cursor: 'pointer', height: '100%' }} styles={{ body: cardBody }}>
               <Typography.Text type="secondary" style={{ fontSize: 13 }}>Активные сделки</Typography.Text>
-              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4, color: '#fa8c16', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: '#fa8c16', lineHeight: 1.3 }}>
                 {data.activeDealsCount}
               </div>
             </Card>
@@ -187,7 +182,7 @@ export default function DashboardPage() {
           <Link to="/finance/debts" style={{ display: 'block', height: '100%' }}>
             <Card bordered={false} hoverable style={{ ...card, cursor: 'pointer', height: '100%' }} styles={{ body: cardBody }}>
               <Typography.Text type="secondary" style={{ fontSize: 13 }}>Общий долг</Typography.Text>
-              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4, color: '#cf1322', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: '#cf1322', lineHeight: 1.3 }}>
                 {formatUZS(totalDebt)}
               </div>
             </Card>
