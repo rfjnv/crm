@@ -1,4 +1,4 @@
-import { DealStatus, Role } from '@prisma/client';
+import { DealStatus, Prisma, Role } from '@prisma/client';
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
@@ -6,7 +6,8 @@ import { pushService } from '../push/push.service';
 
 const PAGE_SIZE = 6;
 const TASHKENT_TIME_ZONE = 'Asia/Tashkent';
-const REVIEWABLE_DEAL_STATUSES: DealStatus[] = ['CLOSED', 'SHIPPED'];
+/** Сделки, по которым клиенту разрешён отзыв (должны совпадать с реальным процессом у вас в CRM) */
+const REVIEWABLE_DEAL_STATUSES: DealStatus[] = ['CLOSED', 'SHIPPED', 'REOPENED'];
 
 type SessionMode =
   | 'IDLE'
@@ -1301,7 +1302,7 @@ export class TelegramCustomerService {
       where: {
         isArchived: false,
         status: { in: REVIEWABLE_DEAL_STATUSES },
-        client: { phone },
+        client: this.buildReviewClientFilter(phone, chatId),
       },
       select: {
         id: true,
@@ -1386,7 +1387,7 @@ export class TelegramCustomerService {
         id: dealId,
         isArchived: false,
         status: { in: REVIEWABLE_DEAL_STATUSES },
-        client: { phone: session.phone },
+        client: this.buildReviewClientFilter(session.phone, chatId),
       },
       select: { id: true, title: true },
     });
@@ -1454,7 +1455,7 @@ export class TelegramCustomerService {
         id: draft.dealId,
         isArchived: false,
         status: { in: REVIEWABLE_DEAL_STATUSES },
-        client: session.phone ? { phone: session.phone } : undefined,
+        client: this.buildReviewClientFilter(session.phone, chatId),
       },
       select: { id: true, title: true, managerId: true },
     });
@@ -1469,17 +1470,29 @@ export class TelegramCustomerService {
     const systemActorId = await this.getSystemActorId(deal.managerId);
     const textBody = reviewText || 'Без текстового комментария.';
 
-    await prisma.dealComment.create({
-      data: {
-        dealId: deal.id,
-        authorId: systemActorId,
-        text: [
-          `Отзыв клиента из Telegram: ${draft.rating}/5`,
-          `Телефон клиента: ${session.phone || 'не указан'}`,
-          `Текст: ${textBody}`,
-        ].join('\n'),
-      },
-    });
+    try {
+      await prisma.dealComment.create({
+        data: {
+          dealId: deal.id,
+          authorId: systemActorId,
+          text: [
+            `Отзыв клиента из Telegram: ${draft.rating}/5`,
+            `Телефон клиента: ${session.phone || 'не указан'}`,
+            `Текст: ${textBody}`,
+          ].join('\n'),
+        },
+      });
+    } catch (err) {
+      console.error('[Telegram customer bot] saveReview dealComment failed:', err);
+      session.mode = 'IDLE';
+      session.reviewDraft = undefined;
+      await bot.sendMessage(
+        chatId,
+        'Не удалось сохранить отзыв в CRM. Попробуйте позже или обратитесь к менеджеру.',
+        { reply_markup: this.buildHomeKeyboard() },
+      );
+      return;
+    }
 
     await prisma.notification.create({
       data: {
@@ -1652,6 +1665,37 @@ export class TelegramCustomerService {
     if (digits.length === 12 && digits.startsWith('998')) return `+${digits}`;
     if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
     return null;
+  }
+
+  /** Варианты записи телефона в CRM, чтобы находить клиента при отзыве */
+  private phoneSearchVariants(normalizedPhone: string | null | undefined): string[] {
+    if (!normalizedPhone?.trim()) return [];
+    const raw = normalizedPhone.trim();
+    const digits = raw.replace(/\D/g, '');
+    const set = new Set<string>();
+    set.add(raw);
+    if (digits) {
+      set.add(digits);
+      set.add(`+${digits}`);
+      if (digits.startsWith('998') && digits.length === 12) {
+        set.add(digits.slice(3));
+      }
+    }
+    return [...set].filter(Boolean);
+  }
+
+  /**
+   * Клиент «свой» для отзыва: совпадение телефона (в любом из форматов) или тег Telegram-чата в notes
+   * (как при оформлении заказа через бота).
+   */
+  private buildReviewClientFilter(phone: string | null | undefined, chatId: number): Prisma.ClientWhereInput {
+    const variants = this.phoneSearchVariants(phone ?? undefined);
+    const tag = this.buildClientTelegramNote(chatId);
+    const or: Prisma.ClientWhereInput[] = [{ notes: { contains: tag } }];
+    if (variants.length > 0) {
+      or.unshift({ phone: { in: variants } });
+    }
+    return { OR: or };
   }
 
   private parseQty(raw: string): number | null {
