@@ -101,7 +101,7 @@ export default function DashboardPage() {
   const allStockIssues = [
     ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
     ...(data.lowStockProducts || []).map((p) => ({ ...p, issue: 'low' as const })),
-  ];
+  ].filter((p) => !p.sku?.startsWith('TARGET'));
 
   /* ── shared styles ── */
   const card: CSSProperties = {
