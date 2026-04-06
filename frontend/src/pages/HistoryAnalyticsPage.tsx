@@ -55,15 +55,45 @@ const METHOD_COLORS: Record<string, string> = {
   'Не указан': '#c8c8c8',
 };
 
+/** Revenue ABC + sub-tiers (backend `assignRevenueBasedSegments`). Legacy keys for old snapshots. */
 const SEGMENT_COLORS_LIGHT: Record<string, string> = {
-  VIP: '#722ed1', Regular: '#1677ff', New: '#52c41a', 'At-Risk': '#fa8c16', Churned: '#ff4d4f',
+  VIP: '#531dab',
+  GOLD: '#d48806',
+  SILVER: '#595959',
+  BRONZE: '#a97142',
+  B: '#1677ff',
+  C: '#8c8c8c',
+  Regular: '#1677ff',
+  New: '#52c41a',
+  'At-Risk': '#fa8c16',
+  Churned: '#ff4d4f',
 };
 const SEGMENT_COLORS_DARK: Record<string, string> = {
-  VIP: '#9254de', Regular: '#4096ff', New: '#73d13d', 'At-Risk': '#ffc069', Churned: '#ff7875',
+  VIP: '#b37feb',
+  GOLD: '#ffc53d',
+  SILVER: '#bfbfbf',
+  BRONZE: '#d4a574',
+  B: '#4096ff',
+  C: '#a3a3a3',
+  Regular: '#4096ff',
+  New: '#73d13d',
+  'At-Risk': '#ffc069',
+  Churned: '#ff7875',
 };
 const SEGMENT_LABELS: Record<string, string> = {
-  VIP: 'VIP', Regular: 'Постоянный', New: 'Новый', 'At-Risk': 'В зоне риска', Churned: 'Ушедший',
+  VIP: 'VIP (A)',
+  GOLD: 'Золото (A)',
+  SILVER: 'Серебро (A)',
+  BRONZE: 'Бронза (A)',
+  B: 'Класс B',
+  C: 'Класс C',
+  Regular: 'Постоянный',
+  New: 'Новый',
+  'At-Risk': 'В зоне риска',
+  Churned: 'Ушедший',
 };
+
+const SEGMENT_FILTER_ORDER = ['VIP', 'GOLD', 'SILVER', 'BRONZE', 'B', 'C'] as const;
 
 const OP_TYPE_LABELS: Record<string, string> = {
   K: 'Карз (к)', N: 'Наличные (н)', NK: 'Н/К', P: 'Перечисление (п)',
@@ -449,8 +479,10 @@ export default function HistoryAnalyticsPage() {
   const segmentActivityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
     {
-      title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 120,
-      render: (v: string) => <Tag color={SEGMENT_COLORS[v]}>{SEGMENT_LABELS[v] || v}</Tag>,
+      title: 'Сегмент', dataIndex: 'segment', key: 'segment', width: 138,
+      render: (v: string) => (
+        <Tag color={SEGMENT_COLORS[v] || 'default'}>{SEGMENT_LABELS[v] || v}</Tag>
+      ),
     },
     ...visibleMonths.map((m) => ({
       title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
@@ -1003,6 +1035,10 @@ export default function HistoryAnalyticsPage() {
   // ── TAB 3: Segments ──
   const segmentsTab = extended ? (
     <>
+      <Paragraph type="secondary" style={{ marginBottom: 16, fontSize: 13 }}>
+        Клиенты отсортированы по выручке за год. Класс A — около 20% с наибольшей выручкой, B — около 30%, C — остальные.
+        Внутри A: VIP (верхние по рангу, обычно 5–10 позиций), затем Золото, Серебро и Бронза. Порогов в деньгах нет — только место в рейтинге.
+      </Paragraph>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {(extended.segmentSummary || []).map((seg) => (
           <Col xs={12} sm={8} lg={4} key={seg.segment}>
@@ -1069,7 +1105,7 @@ export default function HistoryAnalyticsPage() {
         extra={
           <Select mode="multiple" placeholder="Фильтр по сегменту" allowClear style={{ minWidth: 200 }} maxTagCount={2}
             value={segmentFilter} onChange={setSegmentFilter}
-            options={Object.entries(SEGMENT_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
+            options={SEGMENT_FILTER_ORDER.map((k) => ({ label: SEGMENT_LABELS[k], value: k }))} />
         }
       >
         <Table dataSource={filteredSegments} columns={segmentActivityCols} rowKey="clientId" size="small"

@@ -11,6 +11,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { getSnapshot, saveSnapshot, isPastMonth, isPastYear } from '../../lib/snapshots';
+import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
 
 const router = Router();
 
@@ -1246,39 +1247,17 @@ router.get(
       else clientMonthsMap.set(row.client_id, [row.month]);
     }
 
-    // Calculate revenue threshold for VIP (top 20%)
-    const revenues = segmentRaw.map((r) => Number(r.total_revenue)).sort((a, b) => b - a);
-    const vipThreshold = revenues[Math.floor(revenues.length * 0.2)] || 0;
-
-    // Scale segment thresholds proportionally to elapsed months (fixes partial-year like early 2026)
-    const segNow = new Date();
-    const segTashkent = new Date(segNow.getTime() + 5 * 60 * 60 * 1000);
-    const segCurrentYear = segTashkent.getUTCFullYear();
-    const segCurrentMonth = segTashkent.getUTCMonth() + 1;
-    const maxElapsedMonth = year < segCurrentYear ? 12 : Math.min(segCurrentMonth, 12);
-
-    function computeSegment(dealsCount: number, totalRevenue: number, lastMonth: number, monthsCount: number): string {
-      const scaledVipDeals = Math.max(2, Math.ceil(5 * maxElapsedMonth / 12));
-      if (totalRevenue >= vipThreshold && dealsCount >= scaledVipDeals) return 'VIP';
-
-      const regularThreshold = Math.max(2, Math.ceil(maxElapsedMonth / 3));
-      if (monthsCount >= regularThreshold) return 'Regular';
-
-      const newThreshold = Math.max(1, Math.ceil(maxElapsedMonth * 3 / 4));
-      if (monthsCount <= 2 && lastMonth >= newThreshold) return 'New';
-
-      const churnedThreshold = Math.max(1, Math.ceil(maxElapsedMonth / 2));
-      if (monthsCount <= 2 && lastMonth <= churnedThreshold) return 'Churned';
-
-      return 'At-Risk';
-    }
+    // Position-based ABC + A-tier split (VIP / Gold / Silver / Bronze) — no revenue thresholds
+    const segmentByClient = assignRevenueBasedSegments(
+      segmentRaw.map((r) => ({ id: r.id, revenue: Number(r.total_revenue) })),
+    );
 
     const clientSegments = segmentRaw.map((r) => {
       const months = clientMonthsMap.get(r.id) || [];
       return {
         clientId: r.id,
         companyName: r.company_name,
-        segment: computeSegment(Number(r.deals_count), Number(r.total_revenue), r.last_active_month, months.length),
+        segment: segmentByClient.get(r.id) ?? 'C',
         totalRevenue: Number(r.total_revenue),
         dealsCount: Number(r.deals_count),
         lastActiveMonth: r.last_active_month,
@@ -1286,7 +1265,7 @@ router.get(
       };
     });
 
-    // Segment summary
+    // Segment summary (stable order for UI)
     const segmentCounts = new Map<string, { count: number; totalRevenue: number }>();
     for (const cs of clientSegments) {
       const existing = segmentCounts.get(cs.segment);
@@ -1297,11 +1276,13 @@ router.get(
         segmentCounts.set(cs.segment, { count: 1, totalRevenue: cs.totalRevenue });
       }
     }
-    const segmentSummary = Array.from(segmentCounts.entries()).map(([segment, data]) => ({
-      segment,
-      count: data.count,
-      totalRevenue: data.totalRevenue,
-    }));
+    const segmentSummary = sortSegmentSummaryKeys(
+      Array.from(segmentCounts.entries()).map(([segment, data]) => ({
+        segment,
+        count: data.count,
+        totalRevenue: data.totalRevenue,
+      })),
+    );
 
     const responseData = {
       retention,

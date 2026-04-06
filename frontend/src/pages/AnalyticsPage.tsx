@@ -72,7 +72,12 @@ const statusColorMap: Record<string, string> = {
 };
 
 const segmentColorMap: Record<string, string> = {
-  VIP: '#722ed1',
+  VIP: '#531dab',
+  GOLD: '#d48806',
+  SILVER: '#595959',
+  BRONZE: '#a97142',
+  B: '#1677ff',
+  C: '#8c8c8c',
   Regular: '#1677ff',
   New: '#52c41a',
   'At-Risk': '#fa8c16',
@@ -80,7 +85,12 @@ const segmentColorMap: Record<string, string> = {
 };
 
 const segmentLabelMap: Record<string, string> = {
-  VIP: 'VIP',
+  VIP: 'VIP (A)',
+  GOLD: 'Золото (A)',
+  SILVER: 'Серебро (A)',
+  BRONZE: 'Бронза (A)',
+  B: 'Класс B',
+  C: 'Класс C',
   Regular: 'Постоянные',
   New: 'Новые',
   'At-Risk': 'Под угрозой',
