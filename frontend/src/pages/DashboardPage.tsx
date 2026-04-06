@@ -190,9 +190,15 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      {/* ── Monthly goal (compact) ── */}
+      {/* ── Monthly goal (compact, clickable → settings) ── */}
       {isAdmin && (
-        <Card bordered={false} style={{ ...card, marginTop: 20 }} styles={{ body: { padding: '14px 24px' } }}>
+        <Card
+          bordered={false}
+          hoverable
+          style={{ ...card, marginTop: 16, cursor: 'pointer' }}
+          styles={{ body: { padding: '12px 20px' } }}
+          onClick={() => navigate('/settings/company')}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
               Цель месяца
@@ -287,9 +293,18 @@ export default function DashboardPage() {
       {showExtras && (
         <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
           {[
-            { title: 'Топ товаров', items: topProducts.map((p) => ({ label: p.name, value: formatUZS(p.revenue) })) },
-            { title: 'Топ менеджеров', items: topManagers.map((m) => ({ label: m.fullName, value: formatUZS(m.totalRevenue) })) },
-            { title: 'Топ клиентов', items: topClients.map((c) => ({ label: c.companyName, value: formatUZS(c.totalRevenue), id: c.clientId })) },
+            {
+              title: 'Топ товаров',
+              items: topProducts.map((p) => ({ label: p.name, value: formatUZS(p.revenue), href: `/inventory/products/${p.entityId}` })),
+            },
+            {
+              title: 'Топ менеджеров',
+              items: topManagers.map((m) => ({ label: m.fullName, value: formatUZS(m.totalRevenue), href: `/analytics` })),
+            },
+            {
+              title: 'Топ клиентов',
+              items: topClients.map((c) => ({ label: c.companyName, value: formatUZS(c.totalRevenue), href: `/clients/${c.clientId}` })),
+            },
           ].map((block) => (
             <Col xs={24} md={8} key={block.title}>
               <Card
@@ -312,12 +327,9 @@ export default function DashboardPage() {
                           gap: 8,
                           padding: '7px 0',
                           borderBottom: i < block.items.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
-                          cursor: (row as { id?: string }).id ? 'pointer' : 'default',
+                          cursor: 'pointer',
                         }}
-                        onClick={() => {
-                          const id = (row as { id?: string }).id;
-                          if (id) navigate(`/clients/${id}`);
-                        }}
+                        onClick={() => navigate(row.href)}
                       >
                         <span style={{
                           width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
