@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
@@ -19,6 +19,51 @@ const CLIENT_SORT_OPTIONS: { value: ClientSortMode; label: string }[] = [
   { value: 'created_desc', label: 'По дате создания' },
   { value: 'contact_desc', label: 'По последнему контакту' },
 ];
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+function parseSortParam(v: string | null): ClientSortMode {
+  const x = v ?? '';
+  if (x === 'name_desc' || x === 'created_desc' || x === 'contact_desc' || x === 'name_asc') return x;
+  return 'name_asc';
+}
+
+function parseClientsListParams(sp: URLSearchParams) {
+  const rawPage = parseInt(sp.get('page') || '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const rawPs = parseInt(sp.get('pageSize') || '20', 10);
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : 20;
+  return {
+    page,
+    pageSize,
+    q: sp.get('q') ?? '',
+    manager: sp.get('manager') || undefined,
+    sort: parseSortParam(sp.get('sort')),
+  };
+}
+
+function mergeClientsListSearchParams(
+  prev: URLSearchParams,
+  patch: Partial<{ page: number; pageSize: number; q: string; manager: string | undefined; sort: ClientSortMode }>,
+): URLSearchParams {
+  const cur = parseClientsListParams(prev);
+  const next = {
+    page: patch.page ?? cur.page,
+    pageSize: patch.pageSize ?? cur.pageSize,
+    q: patch.q !== undefined ? patch.q : cur.q,
+    manager: Object.prototype.hasOwnProperty.call(patch, 'manager')
+      ? (patch.manager || undefined)
+      : cur.manager,
+    sort: patch.sort ?? cur.sort,
+  };
+  const n = new URLSearchParams();
+  if (next.page !== 1) n.set('page', String(next.page));
+  if (next.pageSize !== 20) n.set('pageSize', String(next.pageSize));
+  if (next.q.trim()) n.set('q', next.q.trim());
+  if (next.manager) n.set('manager', next.manager);
+  if (next.sort !== 'name_asc') n.set('sort', next.sort);
+  return n;
+}
 
 function compareCompanyName(a: string, b: string): number {
   return a.localeCompare(b, 'ru', { sensitivity: 'base' });
@@ -80,17 +125,39 @@ function PhoneInput({ value, onChange }: { value?: string; onChange?: (v: string
 }
 
 export default function ClientsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listState = useMemo(() => parseClientsListParams(searchParams), [searchParams]);
+  const { page, pageSize, q: qUrl, manager: managerFilter, sort: sortMode } = listState;
+
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [search, setSearch] = useState('');
-  const [managerFilter, setManagerFilter] = useState<string>();
-  const [sortMode, setSortMode] = useState<ClientSortMode>('name_asc');
+  const [searchDraft, setSearchDraft] = useState(listState.q);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    setSearchDraft(qUrl);
+  }, [qUrl]);
+
+  const patchListParams = useCallback(
+    (patch: Parameters<typeof mergeClientsListSearchParams>[1], nav?: { replace?: boolean }) => {
+      setSearchParams((prev) => mergeClientsListSearchParams(prev, patch), nav);
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const trimmed = searchDraft.trim();
+      if (trimmed === qUrl.trim()) return;
+      patchListParams({ q: trimmed, page: 1 }, { replace: true });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchDraft, qUrl, patchListParams]);
 
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
@@ -105,8 +172,8 @@ export default function ClientsPage() {
 
   const filteredClients = useMemo(() => {
     let list = clients ?? [];
-    if (search) {
-      const q = search.toLowerCase();
+    const q = searchDraft.trim().toLowerCase();
+    if (q) {
       list = list.filter(c =>
         c.companyName.toLowerCase().includes(q) ||
         c.contactName.toLowerCase().includes(q) ||
@@ -118,7 +185,17 @@ export default function ClientsPage() {
       list = list.filter(c => c.managerId === managerFilter);
     }
     return sortClients(list, sortMode);
-  }, [clients, search, managerFilter, sortMode]);
+  }, [clients, searchDraft, managerFilter, sortMode]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+
+  useEffect(() => {
+    if (filteredClients.length === 0) return;
+    if (page !== safePage) {
+      patchListParams({ page: safePage }, { replace: true });
+    }
+  }, [filteredClients.length, page, safePage, patchListParams]);
 
   const createMut = useMutation({
     mutationFn: (data: CreateClientData) => clientsApi.create(data),
@@ -294,8 +371,13 @@ export default function ClientsPage() {
             placeholder="Поиск (компания, контакт, телефон, email)..."
             style={{ width: isMobile ? '100%' : 300 }}
             allowClear
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onSearch={(v) => {
+              const t = v.trim();
+              setSearchDraft(t);
+              patchListParams({ q: t, page: 1 }, { replace: true });
+            }}
           />
           {isAdmin && (
             <Select
@@ -305,13 +387,13 @@ export default function ClientsPage() {
               placeholder="Менеджер"
               style={{ width: isMobile ? '100%' : 200 }}
               value={managerFilter}
-              onChange={setManagerFilter}
+              onChange={(v) => patchListParams({ manager: v, page: 1 })}
               options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: u.fullName, value: u.id }))}
             />
           )}
           <Select<ClientSortMode>
             value={sortMode}
-            onChange={setSortMode}
+            onChange={(v) => patchListParams({ sort: v, page: 1 })}
             style={{ width: isMobile ? '100%' : 260 }}
             options={CLIENT_SORT_OPTIONS}
             popupMatchSelectWidth={false}
@@ -325,6 +407,11 @@ export default function ClientsPage() {
           data={filteredClients}
           rowKey="id"
           loading={isLoading}
+          pagination={{
+            current: safePage,
+            pageSize,
+            onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
+          }}
           renderCard={(client: Client) => (
             <Card size="small" style={{ marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -377,7 +464,15 @@ export default function ClientsPage() {
           columns={columns}
           rowKey="id"
           loading={isLoading}
-          pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+          pagination={{
+            current: safePage,
+            pageSize,
+            total: filteredClients.length,
+            showSizeChanger: true,
+            pageSizeOptions: [...PAGE_SIZE_OPTIONS],
+            showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
+            onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
+          }}
           size="middle"
           bordered={false}
         />

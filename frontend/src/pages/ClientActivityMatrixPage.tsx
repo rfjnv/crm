@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker } from 'antd';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
@@ -25,13 +25,80 @@ const MONTH_LABELS: Record<number, string> = {
   12: 'Дек',
 };
 
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+function parseMatrixListParams(sp: URLSearchParams) {
+  const cy = new Date().getFullYear();
+  const rawY = parseInt(sp.get('year') || String(cy), 10);
+  const year = Number.isFinite(rawY) && rawY >= 2020 && rawY <= 2035 ? rawY : cy;
+
+  const monthsPart = sp.get('months');
+  const selectedMonths = monthsPart
+    ? [...new Set(
+        monthsPart.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n >= 1 && n <= 12),
+      )].sort((a, b) => a - b)
+    : [];
+
+  const clientsPart = sp.get('clients');
+  const selectedClients = clientsPart
+    ? [...new Set(clientsPart.split(',').map((s) => s.trim()).filter(Boolean))]
+    : [];
+
+  const rawPage = parseInt(sp.get('page') || '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
+
+  return { year, selectedMonths, selectedClients, page, pageSize };
+}
+
+function buildMatrixListSearchParams(state: {
+  year: number;
+  selectedMonths: number[];
+  selectedClients: string[];
+  page: number;
+  pageSize: number;
+}): URLSearchParams {
+  const cy = new Date().getFullYear();
+  const n = new URLSearchParams();
+  if (state.year !== cy) n.set('year', String(state.year));
+  if (state.selectedMonths.length) n.set('months', state.selectedMonths.join(','));
+  if (state.selectedClients.length) n.set('clients', state.selectedClients.join(','));
+  if (state.page !== 1) n.set('page', String(state.page));
+  if (state.pageSize !== DEFAULT_PAGE_SIZE) n.set('pageSize', String(state.pageSize));
+  return n;
+}
+
+function mergeMatrixListSearchParams(
+  prev: URLSearchParams,
+  patch: Partial<{
+    year: number;
+    selectedMonths: number[];
+    selectedClients: string[];
+    page: number;
+    pageSize: number;
+  }>,
+): URLSearchParams {
+  const cur = parseMatrixListParams(prev);
+  const next = {
+    year: patch.year ?? cur.year,
+    selectedMonths: patch.selectedMonths !== undefined ? patch.selectedMonths : cur.selectedMonths,
+    selectedClients: patch.selectedClients !== undefined ? patch.selectedClients : cur.selectedClients,
+    page: patch.page ?? cur.page,
+    pageSize: patch.pageSize ?? cur.pageSize,
+  };
+  return buildMatrixListSearchParams(next);
+}
+
 export default function ClientActivityMatrixPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listState = useMemo(() => parseMatrixListParams(searchParams), [searchParams]);
+  const { year, selectedMonths, selectedClients, page, pageSize } = listState;
+
   const isMobile = useIsMobile();
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
-  const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
   const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
   const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
@@ -65,6 +132,28 @@ export default function ClientActivityMatrixPage() {
     if (selectedClients.length === 0) return clientActivity;
     return clientActivity.filter((c) => selectedClients.includes(c.clientId));
   }, [clientActivity, selectedClients]);
+
+  const patchListParams = useCallback(
+    (patch: Parameters<typeof mergeMatrixListSearchParams>[1], nav?: { replace?: boolean }) => {
+      setSearchParams((prev) => mergeMatrixListSearchParams(prev, patch), nav);
+    },
+    [setSearchParams],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredActivity.length / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+
+  useEffect(() => {
+    if (filteredActivity.length === 0) return;
+    if (page !== safePage) {
+      patchListParams({ page: safePage }, { replace: true });
+    }
+  }, [filteredActivity.length, page, safePage, patchListParams]);
+
+  const pagedActivity = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredActivity.slice(start, start + pageSize);
+  }, [filteredActivity, safePage, pageSize]);
 
   useEffect(() => {
     if (!cellDrawer) return;
@@ -185,10 +274,7 @@ export default function ClientActivityMatrixPage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Select
               value={year}
-              onChange={(nextYear) => {
-                setYear(nextYear);
-                setSelectedMonths([]);
-              }}
+              onChange={(nextYear) => patchListParams({ year: nextYear, selectedMonths: [], page: 1 })}
               style={{ width: 110 }}
               options={[2024, 2025, 2026, 2027].map((y) => ({ label: y, value: y }))}
             />
@@ -199,7 +285,7 @@ export default function ClientActivityMatrixPage() {
               style={{ width: isMobile ? 220 : 220 }}
               maxTagCount={2}
               value={selectedMonths}
-              onChange={(vals) => setSelectedMonths(vals.sort((a, b) => a - b))}
+              onChange={(vals) => patchListParams({ selectedMonths: [...vals].sort((a, b) => a - b), page: 1 })}
               options={visibleMonths.map((m) => ({ label: MONTH_LABELS[m], value: m }))}
             />
             <Select
@@ -210,7 +296,7 @@ export default function ClientActivityMatrixPage() {
               style={{ width: isMobile ? 220 : 320 }}
               maxTagCount={2}
               value={selectedClients}
-              onChange={setSelectedClients}
+              onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
               options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
               filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
             />
@@ -224,8 +310,9 @@ export default function ClientActivityMatrixPage() {
         </div>
 
         {isMobile ? (
-          <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filteredActivity.map((record) => (
+          <div>
+            <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pagedActivity.map((record) => (
               <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>
                   <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
@@ -260,7 +347,21 @@ export default function ClientActivityMatrixPage() {
                   })}
                 </div>
               </div>
-            ))}
+              ))}
+            </div>
+            {filteredActivity.length > pageSize && (
+              <div style={{ textAlign: 'center', marginTop: 12 }}>
+                <Pagination
+                  current={safePage}
+                  total={filteredActivity.length}
+                  pageSize={pageSize}
+                  showSizeChanger
+                  pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+                  onChange={(p, ps) => patchListParams({ page: p, pageSize: ps })}
+                  size="small"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <Table
@@ -268,7 +369,15 @@ export default function ClientActivityMatrixPage() {
             columns={activityCols}
             rowKey="clientId"
             size="small"
-            pagination={{ defaultPageSize: 20 }}
+            pagination={{
+              current: safePage,
+              pageSize,
+              total: filteredActivity.length,
+              showSizeChanger: true,
+              pageSizeOptions: [...PAGE_SIZE_OPTIONS],
+              showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
+              onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
+            }}
             scroll={{ x: 1000 }}
           />
         )}

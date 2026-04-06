@@ -2,13 +2,22 @@ import type { ReactNode } from 'react';
 import { Spin, Empty, Pagination } from 'antd';
 import { useState } from 'react';
 
+export interface MobileCardListPagination {
+  current: number;
+  pageSize: number;
+  onChange: (page: number, pageSize: number) => void;
+}
+
 interface MobileCardListProps<T> {
   data: T[];
   loading?: boolean;
   renderCard: (item: T, index: number) => ReactNode;
   rowKey: keyof T | ((item: T) => string);
   emptyText?: string;
+  /** Default page size when pagination is not controlled */
   pageSize?: number;
+  /** URL-driven or external pagination */
+  pagination?: MobileCardListPagination;
 }
 
 export default function MobileCardList<T>({
@@ -17,9 +26,12 @@ export default function MobileCardList<T>({
   renderCard,
   rowKey,
   emptyText = 'Нет данных',
-  pageSize = 20,
+  pageSize: defaultPageSize = 20,
+  pagination: controlledPagination,
 }: MobileCardListProps<T>) {
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
+  const pageSize = controlledPagination?.pageSize ?? defaultPageSize;
+  const page = controlledPagination?.current ?? internalPage;
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
@@ -50,9 +62,16 @@ export default function MobileCardList<T>({
             current={page}
             total={data.length}
             pageSize={pageSize}
-            onChange={setPage}
+            onChange={(p, ps) => {
+              if (controlledPagination) {
+                controlledPagination.onChange(p, ps);
+              } else {
+                setInternalPage(p);
+              }
+            }}
             size="small"
-            showSizeChanger={false}
+            showSizeChanger={!!controlledPagination}
+            pageSizeOptions={controlledPagination ? ['10', '20', '50', '100'] : undefined}
           />
         </div>
       )}
