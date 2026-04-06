@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Statistic, Row, Col, Tag, Space, Segmented,
-  Tabs, Input, Button, Modal, Form, InputNumber, message, Spin,
+  Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker,
 } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
@@ -58,6 +58,10 @@ export default function CashboxPage() {
   const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [payForm] = Form.useForm();
+  const [activePayModalOpen, setActivePayModalOpen] = useState(false);
+  const [activePayDeal, setActivePayDeal] = useState<ActiveDealRow | null>(null);
+  const [activePayMode, setActivePayMode] = useState<'cash' | 'credit'>('cash');
+  const [activePayForm] = Form.useForm();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -109,6 +113,14 @@ export default function CashboxPage() {
     refetchInterval: 15_000,
   });
 
+  const { data: activePayContext, isLoading: activePayContextLoading } = useQuery({
+    queryKey: ['deal-payment-context', activePayDeal?.dealId],
+    queryFn: () => financeApi.getDealPaymentContext(activePayDeal!.dealId),
+    enabled: !!activePayDeal?.dealId && activePayModalOpen,
+  });
+
+  const activePayAmountWatch = Form.useWatch('amount', activePayForm);
+
   const { data: clientDetail, isLoading: clientDetailLoading } = useQuery({
     queryKey: ['client-debt-detail', selectedClient?.clientId],
     queryFn: () => financeApi.clientDebtDetail(selectedClient!.clientId),
@@ -133,6 +145,127 @@ export default function CashboxPage() {
       message.error(err?.response?.data?.message || 'Ошибка при добавлении платежа');
     },
   });
+
+  const invalidateAfterActivePayment = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['cashbox'] });
+    queryClient.invalidateQueries({ queryKey: ['finance-debts'] });
+    queryClient.invalidateQueries({ queryKey: ['finance-active-deals'] });
+    queryClient.invalidateQueries({ queryKey: ['deal-payment-context'] });
+    queryClient.invalidateQueries({ queryKey: ['client-debt-detail'] });
+  }, [queryClient]);
+
+  const activeCashPaymentMut = useMutation({
+    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string; paidAt?: string }) =>
+      dealsApi.createPayment(vals.dealId, {
+        amount: vals.amount,
+        method: vals.method,
+        note: vals.note,
+        paidAt: vals.paidAt,
+      }),
+    onSuccess: () => {
+      message.success('Платёж добавлен');
+      activePayForm.resetFields();
+      setActivePayModalOpen(false);
+      setActivePayDeal(null);
+      setActivePayMode('cash');
+      invalidateAfterActivePayment();
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.message || 'Ошибка при добавлении платежа');
+    },
+  });
+
+  const applyCreditMut = useMutation({
+    mutationFn: (vals: { dealId: string; amount: number; note?: string; paidAt?: string }) =>
+      financeApi.applyClientCreditToDeal(vals.dealId, {
+        amount: vals.amount,
+        note: vals.note,
+        paidAt: vals.paidAt,
+      }),
+    onSuccess: () => {
+      message.success('Переплата зачтена');
+      activePayForm.resetFields();
+      setActivePayModalOpen(false);
+      setActivePayDeal(null);
+      setActivePayMode('cash');
+      invalidateAfterActivePayment();
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.message || 'Не удалось зачесть переплату');
+    },
+  });
+
+  const openActivePayModal = useCallback(
+    (row: ActiveDealRow) => {
+      setActivePayDeal(row);
+      setActivePayMode('cash');
+      activePayForm.resetFields();
+      activePayForm.setFieldsValue({
+        paidAt: dayjs(),
+        amount: undefined,
+        method: undefined,
+        note: undefined,
+      });
+      setActivePayModalOpen(true);
+    },
+    [activePayForm],
+  );
+
+  const activePayPreview = useMemo(() => {
+    if (!activePayContext?.deal || activePayAmountWatch == null || Number.isNaN(Number(activePayAmountWatch))) {
+      return null;
+    }
+    const pay = Number(activePayAmountWatch);
+    if (pay <= 0) return null;
+    const { amount: dealAmt, paidAmount, remaining } = activePayContext.deal;
+    const creditCap = activePayContext.creditFromOtherDeals;
+
+    if (activePayMode === 'credit') {
+      const applied = Math.min(pay, creditCap);
+      const newPaid = paidAmount + applied;
+      const newRemaining = dealAmt - newPaid;
+      const dealOverAfter = newRemaining < 0 ? -newRemaining : 0;
+      return {
+        applied,
+        newRemaining: Math.max(0, newRemaining),
+        dealOverAfter,
+        label: 'Зачёт переплаты',
+      };
+    }
+
+    const newPaid = paidAmount + pay;
+    const newRemaining = dealAmt - newPaid;
+    const dealOverAfter = newRemaining < 0 ? -newRemaining : 0;
+    return {
+      applied: pay,
+      newRemaining: Math.max(0, newRemaining),
+      dealOverAfter,
+      label: 'Внесение средств',
+    };
+  }, [activePayContext, activePayAmountWatch, activePayMode]);
+
+  const submitActivePay = async () => {
+    if (!activePayDeal) return;
+    const vals = await activePayForm.validateFields();
+    const paidAtStr = vals.paidAt ? dayjs(vals.paidAt).toISOString() : undefined;
+    const amt = Number(vals.amount);
+    if (activePayMode === 'credit') {
+      await applyCreditMut.mutateAsync({
+        dealId: activePayDeal.dealId,
+        amount: amt,
+        note: vals.note,
+        paidAt: paidAtStr,
+      });
+    } else {
+      await activeCashPaymentMut.mutateAsync({
+        dealId: activePayDeal.dealId,
+        amount: amt,
+        method: vals.method,
+        note: vals.note,
+        paidAt: paidAtStr,
+      });
+    }
+  };
 
   const clientOptions = useMemo(
     () => (clients ?? []).map((c) => ({ label: c.companyName, value: c.id })),
@@ -315,6 +448,17 @@ export default function CashboxPage() {
       dataIndex: 'status',
       width: 160,
       render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+    },
+    {
+      title: '',
+      key: 'pay',
+      width: 130,
+      fixed: 'right' as const,
+      render: (_: unknown, r: ActiveDealRow) => (
+        <Button type="link" size="small" onClick={() => openActivePayModal(r)}>
+          Внести платёж
+        </Button>
+      ),
     },
   ];
 
@@ -573,7 +717,7 @@ export default function CashboxPage() {
                 pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['20', '30', '50', '100'] }}
                 size="middle"
                 bordered={false}
-                scroll={{ x: 720 }}
+                scroll={{ x: 860 }}
                 locale={{ emptyText: 'Нет активных сделок' }}
               />
             </>
@@ -761,6 +905,161 @@ export default function CashboxPage() {
                   <Input.TextArea rows={2} />
                 </Form.Item>
               </Form>
+            )}
+          </>
+        )}
+      </Modal>
+
+      {/* Платёж по активной сделке (касса) */}
+      <Modal
+        title={activePayDeal ? `Платёж — ${activePayDeal.title || activePayDeal.dealId.slice(0, 8)}` : 'Платёж'}
+        open={activePayModalOpen}
+        onCancel={() => {
+          setActivePayModalOpen(false);
+          setActivePayDeal(null);
+          setActivePayMode('cash');
+          activePayForm.resetFields();
+        }}
+        onOk={submitActivePay}
+        okText={activePayMode === 'credit' ? 'Зачесть переплату' : 'Сохранить платёж'}
+        confirmLoading={activeCashPaymentMut.isPending || applyCreditMut.isPending}
+        width={isMobile ? '100%' : 520}
+        destroyOnClose
+      >
+        {activePayContextLoading || !activePayContext ? (
+          <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
+        ) : (
+          <>
+            <Typography.Paragraph style={{ marginBottom: 8 }} type="secondary">
+              <Link to={`/clients/${activePayContext.deal.clientId}`}>{activePayContext.deal.clientName}</Link>
+              {' · '}
+              <Link to={`/deals/${activePayContext.deal.dealId}`}>открыть сделку</Link>
+            </Typography.Paragraph>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 12 }}>
+              <span style={{ color: tk.colorTextSecondary }}>Сумма сделки</span>
+              <span style={{ textAlign: 'right' }}>{formatUZS(activePayContext.deal.amount)}</span>
+              <span style={{ color: tk.colorTextSecondary }}>Уже оплачено</span>
+              <span style={{ textAlign: 'right' }}>{formatUZS(activePayContext.deal.paidAmount)}</span>
+              <span style={{ color: tk.colorTextSecondary }}>Остаток по сделке</span>
+              <span style={{ textAlign: 'right', color: activePayContext.deal.remaining > 0 ? '#fa8c16' : undefined }}>
+                {formatUZS(activePayContext.deal.remaining)}
+              </span>
+              {activePayContext.deal.overpaymentOnThisDeal > 0 && (
+                <>
+                  <span style={{ color: tk.colorTextSecondary }}>Переплата на этой сделке</span>
+                  <span style={{ textAlign: 'right', color: '#52c41a' }}>
+                    {formatUZS(activePayContext.deal.overpaymentOnThisDeal)}
+                  </span>
+                </>
+              )}
+              <span style={{ color: tk.colorTextSecondary }}>Переплата на других сделках</span>
+              <span style={{ textAlign: 'right', color: activePayContext.creditFromOtherDeals > 0 ? '#52c41a' : undefined }}>
+                {activePayContext.creditFromOtherDeals > 0 ? formatUZS(activePayContext.creditFromOtherDeals) : '—'}
+              </span>
+            </div>
+
+            <Space wrap size="small" style={{ marginBottom: 12 }}>
+              <Button
+                size="small"
+                type={activePayMode === 'cash' && activePayContext.deal.remaining > 0 ? 'primary' : 'default'}
+                onClick={() => {
+                  setActivePayMode('cash');
+                  activePayForm.setFieldsValue({
+                    amount: Math.max(0, activePayContext.deal.remaining),
+                  });
+                }}
+                disabled={activePayContext.deal.remaining <= 0}
+              >
+                Погасить весь остаток
+              </Button>
+              <Button
+                size="small"
+                type={activePayMode === 'credit' ? 'primary' : 'default'}
+                onClick={() => {
+                  const credit = activePayContext.creditFromOtherDeals;
+                  if (credit <= 0) {
+                    message.info('Нет переплаты на других сделках клиента (в вашей зоне видимости)');
+                    return;
+                  }
+                  setActivePayMode('credit');
+                  const rem = activePayContext.deal.remaining;
+                  const amt = rem > 0 ? Math.min(rem, credit) : credit;
+                  activePayForm.setFieldsValue({ amount: amt });
+                }}
+                disabled={activePayContext.creditFromOtherDeals <= 0}
+              >
+                Использовать переплату
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setActivePayMode('cash');
+                  activePayForm.setFieldsValue({ amount: undefined });
+                }}
+              >
+                Частичная оплата
+              </Button>
+            </Space>
+
+            <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              {activePayMode === 'credit'
+                ? 'Сумма спишется с переплаты на других сделках (проводка «Перечисление» в истории).'
+                : 'Сумма выше остатка не блокируется — лишнее останется как переплата на этой сделке.'}
+            </Typography.Text>
+
+            <Form form={activePayForm} layout="vertical" size="small">
+              <Form.Item
+                name="amount"
+                label="Сумма"
+                rules={[{ required: true, message: 'Введите сумму' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={1}
+                  formatter={moneyFormatter}
+                  parser={(v) => Number(moneyParser(v))}
+                />
+              </Form.Item>
+              <Form.Item name="paidAt" label="Дата оплаты" initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))} />
+              </Form.Item>
+              {activePayMode === 'cash' && (
+                <Form.Item name="method" label="Способ оплаты">
+                  <Select
+                    allowClear
+                    placeholder="Выберите способ"
+                    options={[
+                      { label: 'Наличные', value: 'CASH' },
+                      { label: 'Перечисление', value: 'TRANSFER' },
+                      { label: 'Payme', value: 'PAYME' },
+                      { label: 'QR', value: 'QR' },
+                      { label: 'Click', value: 'CLICK' },
+                      { label: 'Терминал', value: 'TERMINAL' },
+                      { label: 'Рассрочка', value: 'INSTALLMENT' },
+                    ]}
+                  />
+                </Form.Item>
+              )}
+              <Form.Item name="note" label="Комментарий">
+                <Input.TextArea rows={2} placeholder="Необязательно" />
+              </Form.Item>
+            </Form>
+
+            {activePayPreview && (
+              <Card size="small" style={{ marginTop: 8, background: tk.colorFillAlter }}>
+                <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+                  Итого до сохранения
+                </Typography.Text>
+                <div style={{ fontSize: 13 }}>
+                  <div>{activePayPreview.label}: <strong>{formatUZS(activePayPreview.applied)}</strong></div>
+                  <div>Остаток по сделке после: <strong>{formatUZS(activePayPreview.newRemaining)}</strong></div>
+                  {activePayPreview.dealOverAfter > 0 && (
+                    <div style={{ color: '#52c41a' }}>
+                      Переплата на сделке: <strong>{formatUZS(activePayPreview.dealOverAfter)}</strong>
+                    </div>
+                  )}
+                </div>
+              </Card>
             )}
           </>
         )}

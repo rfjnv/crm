@@ -1598,10 +1598,9 @@ export class DealsService {
         throw new AppError(404, 'Сделка не найдена');
       }
 
-      // Оплата доступна только с момента отгрузки
-      const allowedForPayment: DealStatus[] = ['IN_PROGRESS', 'WAITING_FINANCE', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED', 'CLOSED'];
-      if (!allowedForPayment.includes(deal.status)) {
-        throw new AppError(400, 'Оплата доступна только со статуса "В работе" и далее');
+      // Оплата для всех сделок, кроме окончательно снятых с учёта
+      if (deal.status === 'CANCELED' || deal.status === 'REJECTED') {
+        throw new AppError(400, 'Оплата недоступна для отменённых и отклонённых сделок');
       }
 
       const amount = Number(deal.amount);

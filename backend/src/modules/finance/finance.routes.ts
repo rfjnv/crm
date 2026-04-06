@@ -1,11 +1,18 @@
 import { Router, Request, Response } from 'express';
-import { Role, Prisma } from '@prisma/client';
+import { Role, Prisma, PaymentStatus as PrismaPaymentStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope } from '../../lib/scope';
+import { ownerScope, type AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
+import { auditLog } from '../../lib/logger';
+
+function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
+  if (paid <= 0) return 'UNPAID';
+  if (paid >= dealAmount) return 'PAID';
+  return 'PARTIAL';
+}
 
 const router = Router();
 
@@ -473,6 +480,208 @@ router.get(
     );
 
     res.json({ deals, totals, count: deals.length });
+  }),
+);
+
+// ──── ACTIVE DEAL PAYMENT CONTEXT (касса / «Активные») ────
+router.get(
+  '/deals/:dealId/payment-context',
+  asyncHandler(async (req: Request, res: Response) => {
+    const dealId = req.params.dealId as string;
+    const user: AuthUser = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+    };
+    const dealScope = ownerScope(user);
+
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...dealScope, isArchived: false },
+      include: { client: { select: { id: true, companyName: true } } },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+    const siblings = await prisma.deal.findMany({
+      where: {
+        clientId: deal.clientId,
+        id: { not: dealId },
+        ...dealScope,
+        isArchived: false,
+        status: { notIn: ['CANCELED', 'REJECTED'] },
+      },
+      select: { amount: true, paidAmount: true },
+    });
+
+    const creditFromOtherDeals = siblings.reduce(
+      (s, d) => s + Math.max(0, Number(d.paidAmount) - Number(d.amount)),
+      0,
+    );
+
+    const amount = Number(deal.amount);
+    const paidAmount = Number(deal.paidAmount);
+    const remaining = amount - paidAmount;
+    const overpaymentOnThisDeal = Math.max(0, paidAmount - amount);
+
+    res.json({
+      deal: {
+        dealId: deal.id,
+        title: deal.title,
+        status: deal.status,
+        clientId: deal.clientId,
+        clientName: deal.client.companyName,
+        amount,
+        paidAmount,
+        remaining,
+        overpaymentOnThisDeal,
+      },
+      creditFromOtherDeals,
+    });
+  }),
+);
+
+/** Зачёт переплаты с других сделок клиента (в пределах ownerScope) на выбранную сделку */
+router.post(
+  '/deals/:dealId/apply-client-credit',
+  asyncHandler(async (req: Request, res: Response) => {
+    const dealId = req.params.dealId as string;
+    const user: AuthUser = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+    };
+    const dealScope = ownerScope(user);
+
+    const rawAmount = req.body?.amount;
+    const amount = typeof rawAmount === 'number' ? rawAmount : Number(rawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new AppError(400, 'Укажите положительную сумму');
+    }
+
+    const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 500) : undefined;
+    let paidAt = new Date();
+    if (req.body?.paidAt) {
+      paidAt = new Date(req.body.paidAt as string);
+      if (Number.isNaN(paidAt.getTime())) throw new AppError(400, 'Некорректная дата оплаты');
+    }
+    if (paidAt > new Date()) throw new AppError(400, 'Дата оплаты не может быть в будущем');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const target = await tx.deal.findFirst({
+        where: { id: dealId, ...dealScope, isArchived: false },
+      });
+      if (!target) throw new AppError(404, 'Сделка не найдена');
+      if (target.status === 'CANCELED' || target.status === 'REJECTED') {
+        throw new AppError(400, 'Нельзя зачесть переплату на отменённую сделку');
+      }
+
+      const siblings = await tx.deal.findMany({
+        where: {
+          clientId: target.clientId,
+          id: { not: dealId },
+          ...dealScope,
+          isArchived: false,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+        select: {
+          id: true,
+          title: true,
+          amount: true,
+          paidAmount: true,
+          version: true,
+        },
+      });
+
+      const pool = siblings.reduce(
+        (s, d) => s + Math.max(0, Number(d.paidAmount) - Number(d.amount)),
+        0,
+      );
+      const applyTotal = Math.min(amount, pool);
+      if (applyTotal <= 0) {
+        throw new AppError(400, 'Нет доступной переплаты на других сделках клиента (в вашей зоне видимости)');
+      }
+
+      const sourcesSorted = siblings
+        .map((d) => ({
+          ...d,
+          surplus: Math.max(0, Number(d.paidAmount) - Number(d.amount)),
+        }))
+        .filter((d) => d.surplus > 0)
+        .sort((a, b) => b.surplus - a.surplus);
+
+      let left = applyTotal;
+      for (const src of sourcesSorted) {
+        if (left <= 0) break;
+        const take = Math.min(src.surplus, left);
+        const newPaid = Number(src.paidAmount) - take;
+        const amt = Number(src.amount);
+        const ps = paymentStatusFromAmounts(amt, newPaid);
+
+        const upd = await tx.deal.updateMany({
+          where: { id: src.id, version: src.version },
+          data: {
+            paidAmount: newPaid,
+            paymentStatus: ps,
+            version: { increment: 1 },
+          },
+        });
+        if (upd.count === 0) {
+          throw new AppError(409, 'Сделка-источник была изменена. Обновите страницу и повторите.');
+        }
+        left -= take;
+      }
+
+      if (left > 0.01) {
+        throw new AppError(500, 'Не удалось завершить зачёт переплаты');
+      }
+
+      const tgtAmt = Number(target.amount);
+      const newTgtPaid = Number(target.paidAmount) + applyTotal;
+      const tgtPs = paymentStatusFromAmounts(tgtAmt, newTgtPaid);
+
+      const tgtUpd = await tx.deal.updateMany({
+        where: { id: target.id, version: target.version },
+        data: {
+          paidAmount: newTgtPaid,
+          paymentStatus: tgtPs,
+          version: { increment: 1 },
+        },
+      });
+      if (tgtUpd.count === 0) {
+        throw new AppError(409, 'Сделка была изменена. Обновите страницу и повторите.');
+      }
+
+      const created = await tx.payment.create({
+        data: {
+          dealId: target.id,
+          clientId: target.clientId,
+          amount: applyTotal,
+          paidAt,
+          method: 'TRANSFER',
+          note: note || 'Зачёт переплаты с других сделок клиента',
+          createdBy: user.userId,
+        },
+        include: {
+          creator: { select: { id: true, fullName: true } },
+        },
+      });
+
+      return { created, applyTotal, newTargetPaid: newTgtPaid };
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'PAYMENT_CREATE',
+      entityType: 'deal',
+      entityId: dealId,
+      after: {
+        paymentId: result.created.id,
+        kind: 'CLIENT_CREDIT_APPLY',
+        amount: result.applyTotal,
+        newPaidAmount: result.newTargetPaid,
+      },
+    });
+
+    res.status(201).json(result.created);
   }),
 );
 

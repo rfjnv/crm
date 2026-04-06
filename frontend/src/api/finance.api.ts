@@ -44,6 +44,23 @@ export interface ActiveDealsResponse {
   count: number;
 }
 
+export interface DealPaymentContextDeal {
+  dealId: string;
+  title: string;
+  status: string;
+  clientId: string;
+  clientName: string;
+  amount: number;
+  paidAmount: number;
+  remaining: number;
+  overpaymentOnThisDeal: number;
+}
+
+export interface DealPaymentContextResponse {
+  deal: DealPaymentContextDeal;
+  creditFromOtherDeals: number;
+}
+
 export const financeApi = {
   cashbox: (params?: {
     period?: string;
@@ -66,6 +83,12 @@ export const financeApi = {
 
   getActiveDeals: (params?: { managerId?: string }) =>
     client.get<ActiveDealsResponse>('/finance/active-deals', { params }).then((r) => r.data),
+
+  getDealPaymentContext: (dealId: string) =>
+    client.get<DealPaymentContextResponse>(`/finance/deals/${dealId}/payment-context`).then((r) => r.data),
+
+  applyClientCreditToDeal: (dealId: string, body: { amount: number; note?: string; paidAt?: string }) =>
+    client.post(`/finance/deals/${dealId}/apply-client-credit`, body).then((r) => r.data),
 
   clientDebtDetail: (clientId: string) =>
     client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),
