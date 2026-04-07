@@ -984,6 +984,14 @@ export class DealsService {
       after: { status: targetStatus },
     });
 
+    void sendProductionPaymentSubmitTelegram(dealId).catch((err) => {
+      console.error('[Telegram deal groups] sendProductionPaymentSubmitTelegram (admin approve):', err);
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (admin approve):', err);
+    });
+
     return this.findById(dealId, user);
   }
 

@@ -214,6 +214,9 @@ function productionSyncHeader(
   if (status === 'ADMIN_APPROVED') {
     return { header: '📋 <b>Производство — к админу</b>', paymentMethodPending: false };
   }
+  if (status === 'READY_FOR_SHIPMENT') {
+    return { header: '✅ <b>Админ одобрил — можно на отгрузку товара</b>', paymentMethodPending: false };
+  }
   return null;
 }
 
@@ -815,7 +818,10 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
     select: { id: true, status: true, productionTelegramMessageId: true },
   });
 
-  if (!snap || (snap.status !== 'WAITING_FINANCE' && snap.status !== 'ADMIN_APPROVED')) {
+  if (
+    !snap ||
+    (snap.status !== 'WAITING_FINANCE' && snap.status !== 'ADMIN_APPROVED' && snap.status !== 'READY_FOR_SHIPMENT')
+  ) {
     return;
   }
 
@@ -839,9 +845,11 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
   if (!full) return;
 
   const header =
-    full.status === 'ADMIN_APPROVED'
-      ? '📋 <b>Производство — к админу</b>'
-      : '📋 <b>Производство — на проверке в финансах</b>';
+    full.status === 'READY_FOR_SHIPMENT'
+      ? '✅ <b>Админ одобрил — можно на отгрузку товара</b>'
+      : full.status === 'ADMIN_APPROVED'
+        ? '📋 <b>Производство — к админу</b>'
+        : '📋 <b>Производство — на проверке в финансах</b>';
 
   const body = buildProductionGroupHtml(full, header, false);
   const path = dealLinkPath(dealId);
