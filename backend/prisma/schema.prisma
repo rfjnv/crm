@@ -323,6 +323,10 @@ model Deal {
   productionTelegramMessageId String? @map("production_telegram_message_id")
   /** CRM → Telegram group: finance review (once per deal) */
   sentToFinance     Boolean @default(false) @map("sent_to_finance_tg")
+  /** message_id поста в группе финансов (для правок после действий бухгалтера) */
+  financeTelegramMessageId String? @map("finance_telegram_message_id")
+  /** Накопленный текст событий внизу того же сообщения (plain, экранируется при отправке) */
+  financeTelegramAppendix  String? @map("finance_telegram_appendix") @db.Text
 
   client             Client              @relation(fields: [clientId], references: [id])
   manager            User                @relation("DealManager", fields: [managerId], references: [id])

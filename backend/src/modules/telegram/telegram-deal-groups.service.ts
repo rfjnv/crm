@@ -2,6 +2,7 @@ import { DealStatus, PaymentMethod, PaymentStatus, PaymentType } from '@prisma/c
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { telegramService } from './telegram.service';
+import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX } from './telegram-admin.constants';
 
 const TASHKENT_TZ = 'Asia/Tashkent';
 
@@ -158,7 +159,7 @@ type DealRowForProductionTg = {
   }>;
 };
 
-function buildProductionGroupHtml(
+export function buildProductionGroupHtml(
   deal: DealRowForProductionTg,
   headerLine: string,
   paymentMethodPending: boolean,
@@ -327,6 +328,131 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
   }
 }
 
+type DealForFinanceTg = {
+  transferDocuments: string | null;
+  amount: unknown;
+  paidAmount: unknown;
+  paymentStatus: PaymentStatus;
+  paymentType: PaymentType;
+  paymentMethod: PaymentMethod | null;
+  dueDate: Date | null;
+  terms: string | null;
+  title: string;
+  transferType: string | null;
+  transferInn: string | null;
+  client: { companyName: string; contactName: string | null; inn: string | null };
+  manager: { fullName: string };
+  contract: { contractNumber: string; contractType: string } | null;
+  comments: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
+};
+
+export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
+  const docs = parseTransferDocumentsJson(deal.transferDocuments);
+  const docsBlock = docs.length ? docs.map((d) => `☑ ${esc(d)}`).join('\n') : '—';
+
+  const amount = Number(deal.amount);
+  const paid = Number(deal.paidAmount);
+  const dueLine = formatDueDateRu(deal.dueDate);
+  const termsBlock = deal.terms?.trim()
+    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
+    : '';
+  const commentsBlock = buildDealCommentsBlock(deal.comments);
+
+  return [
+    '💰 <b>Финансы — сделка на проверку</b>',
+    '',
+    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
+    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
+    `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
+    '',
+    '<b>Суммы и факт оплаты:</b>',
+    `Тип оплаты: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
+    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
+    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
+    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
+    paymentSituationLine(deal.paymentStatus, amount, paid),
+    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
+    ...(termsBlock ? [termsBlock] : []),
+    '',
+    '<b>Отмеченные документы:</b>',
+    docsBlock,
+    '',
+    `<b>Тип перечисления:</b> ${transferTypeLabel(deal.transferType)}`,
+    `<b>Договор в CRM:</b> ${deal.contract ? `${esc(deal.contract.contractNumber)} (${contractTypeLabel(deal.contract.contractType)})` : 'не привязан'}`,
+    '',
+    `Сделка: <b>${esc(deal.title)}</b>`,
+    ...(commentsBlock ? [commentsBlock] : []),
+  ].join('\n');
+}
+
+function buildFinanceHtmlWithAppendix(
+  deal: DealForFinanceTg & { financeTelegramAppendix: string | null },
+): string {
+  const base = buildFinanceQueueTelegramHtml(deal);
+  const apx = deal.financeTelegramAppendix?.trim();
+  if (!apx) return base;
+  const lines = apx.split('\n').filter(Boolean).map((l) => `• ${esc(l)}`);
+  return `${base}\n\n📌 <b>События (бухгалтерия)</b>\n${lines.join('\n')}`;
+}
+
+const MAX_FINANCE_APPENDIX_LEN = 1400;
+
+function mergeFinanceAppendix(prev: string | null | undefined, line: string): string {
+  const lines = (prev?.trim() ? prev.split('\n') : []).filter(Boolean);
+  lines.push(line);
+  let joined = lines.join('\n');
+  while (joined.length > MAX_FINANCE_APPENDIX_LEN && lines.length > 1) {
+    lines.shift();
+    joined = lines.join('\n');
+  }
+  return joined;
+}
+
+/**
+ * Добавить строку в низ сообщения группы «финансы» и пересобрать текст (актуальные суммы из БД).
+ */
+export async function appendFinanceTelegramLog(dealId: string, plainLine: string): Promise<void> {
+  const chatId = config.telegram.groupFinanceChatId;
+  if (!chatId || !plainLine.trim()) return;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.deal.findUnique({
+      where: { id: dealId },
+      select: { financeTelegramMessageId: true, financeTelegramAppendix: true },
+    });
+    if (!row?.financeTelegramMessageId) return null;
+    const next = mergeFinanceAppendix(row.financeTelegramAppendix, plainLine.trim());
+    await tx.deal.update({ where: { id: dealId }, data: { financeTelegramAppendix: next } });
+    return { messageIdStr: row.financeTelegramMessageId };
+  });
+
+  if (!updated) return;
+  const msgId = parseStoredTelegramMessageId(updated.messageIdStr);
+  if (msgId == null) return;
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true, inn: true } },
+      manager: { select: { fullName: true } },
+      contract: { select: { contractNumber: true, contractType: true } },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
+    },
+  });
+  if (!deal) return;
+
+  const html = buildFinanceHtmlWithAppendix(deal);
+  const ok = await telegramService.editGroupHtmlMessage(chatId, msgId, html, dealLinkPath(dealId));
+  if (!ok) {
+    console.warn('[Telegram deal groups] appendFinanceTelegramLog: editMessage failed dealId=', dealId);
+  }
+}
+
 /**
  * Финансы: сделка в WAITING_FINANCE (после отправки на проверку перечисления/рассрочки).
  * Один раз на сделку.
@@ -360,45 +486,19 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
     return;
   }
 
-  const docs = parseTransferDocumentsJson(deal.transferDocuments);
-  const docsBlock = docs.length ? docs.map((d) => `☑ ${esc(d)}`).join('\n') : '—';
+  const body = buildFinanceQueueTelegramHtml(deal);
 
-  const amount = Number(deal.amount);
-  const paid = Number(deal.paidAmount);
-  const dueLine = formatDueDateRu(deal.dueDate);
-  const termsBlock = deal.terms?.trim()
-    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
-    : '';
-  const commentsBlock = buildDealCommentsBlock(deal.comments);
-
-  const body = [
-    '💰 <b>Финансы — сделка на проверку</b>',
-    '',
-    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
-    `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
-    `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
-    '',
-    '<b>Суммы и факт оплаты:</b>',
-    `Тип оплаты: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
-    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
-    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
-    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
-    paymentSituationLine(deal.paymentStatus, amount, paid),
-    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
-    ...(termsBlock ? [termsBlock] : []),
-    '',
-    '<b>Отмеченные документы:</b>',
-    docsBlock,
-    '',
-    `<b>Тип перечисления:</b> ${transferTypeLabel(deal.transferType)}`,
-    `<b>Договор в CRM:</b> ${deal.contract ? `${esc(deal.contract.contractNumber)} (${contractTypeLabel(deal.contract.contractType)})` : 'не привязан'}`,
-    '',
-    `Сделка: <b>${esc(deal.title)}</b>`,
-    ...(commentsBlock ? [commentsBlock] : []),
-  ].join('\n');
-
-  await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  const messageId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  if (messageId != null) {
+    await prisma.deal
+      .update({
+        where: { id: dealId },
+        data: { financeTelegramMessageId: String(messageId), financeTelegramAppendix: null },
+      })
+      .catch((err) => {
+        console.error('[Telegram deal groups] save financeTelegramMessageId:', err);
+      });
+  }
 }
 
 /**
@@ -457,6 +557,63 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
   const body = buildProductionGroupHtml(full, header, false);
 
   await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+}
+
+/**
+ * Личка админам (ADMIN / SUPER_ADMIN с привязанным Telegram): сделка ADMIN_APPROVED, кнопки Подтвердить / Отклонить.
+ */
+export async function trySendAdminApprovalTelegram(dealId: string): Promise<void> {
+  const full = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true } },
+      manager: { select: { fullName: true } },
+      items: {
+        include: { product: { select: { name: true, unit: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
+    },
+  });
+
+  if (!full || full.status !== 'ADMIN_APPROVED') return;
+
+  const admins = await prisma.user.findMany({
+    where: {
+      role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+      isActive: true,
+      telegramChatId: { not: null },
+    },
+    select: { telegramChatId: true },
+  });
+
+  const chatIds = admins.map((a) => a.telegramChatId).filter((id): id is string => !!id?.trim());
+  if (chatIds.length === 0) {
+    console.warn('[Telegram] trySendAdminApprovalTelegram: нет ADMIN/SUPER_ADMIN с привязанным Telegram');
+    return;
+  }
+
+  const body = buildProductionGroupHtml(full, '✅ <b>Админ — подтвердите сделку</b>', false);
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '✅ Подтвердить', callback_data: `${TG_ADMIN_APPROVE_PREFIX}${dealId}` },
+        { text: '❌ Отклонить', callback_data: `${TG_ADMIN_REJECT_PREFIX}${dealId}` },
+      ],
+    ],
+  };
+
+  const path = dealLinkPath(dealId);
+  await Promise.allSettled(
+    chatIds.map((chatId) =>
+      telegramService.sendHtmlMessageWithKeyboard(chatId.trim(), body, keyboard, path),
+    ),
+  );
 }
 
 /** После создания сделки */

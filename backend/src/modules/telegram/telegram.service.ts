@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import type { PushPayload } from '../push/push.service';
+import { registerTelegramAdminCallbacks } from './telegram-admin-callback.handler';
 
 const LINK_SECRET = config.jwt.accessSecret + '_tg';
 
@@ -104,6 +105,8 @@ class TelegramService {
       await prisma.user.update({ where: { id: user.id }, data: { telegramChatId: null } });
       this.bot!.sendMessage(chatId, '\u2705 \u0410\u043A\u043A\u0430\u0443\u043D\u0442 \u043E\u0442\u0432\u044F\u0437\u0430\u043D. \u0412\u044B \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0431\u0443\u0434\u0435\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F.');
     });
+
+    registerTelegramAdminCallbacks(this.bot);
   }
 
   private formatMessage(payload: PushPayload): string {
@@ -146,6 +149,81 @@ class TelegramService {
         body && typeof body === 'object' ? JSON.stringify(body) : '',
       );
       return null;
+    }
+  }
+
+  /**
+   * HTML в любой чат (личка или группа) + inline-кнопки. Опционально строка со ссылкой в CRM.
+   */
+  async sendHtmlMessageWithKeyboard(
+    chatId: string,
+    html: string,
+    keyboard: TelegramBot.InlineKeyboardMarkup,
+    linkPath?: string,
+  ): Promise<number | null> {
+    if (!this.bot) {
+      console.warn('[Telegram] sendHtmlMessageWithKeyboard: бот не инициализирован');
+      return null;
+    }
+    if (!chatId) return null;
+    try {
+      const rows = [...(keyboard.inline_keyboard || [])];
+      if (linkPath) {
+        const fullUrl = linkPath.startsWith('http') ? linkPath : `${config.telegram.crmUrl}${linkPath}`;
+        rows.push([{ text: '\u{1F4CB} \u041E\u0442\u043A\u0440\u044B\u0442\u044C CRM', url: fullUrl }]);
+      }
+      const reply_markup: TelegramBot.InlineKeyboardMarkup = { inline_keyboard: rows };
+      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const sent = await this.bot.sendMessage(target, html, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup,
+      });
+      return typeof sent.message_id === 'number' ? sent.message_id : null;
+    } catch (err: unknown) {
+      const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+      const body = e.response?.body;
+      console.error(
+        '[Telegram] sendHtmlMessageWithKeyboard failed chat_id=',
+        chatId,
+        body?.description || e.message,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Обновить текст сообщения в группе (кнопка CRM сохраняется при переданном linkPath).
+   */
+  async editGroupHtmlMessage(
+    chatId: string,
+    messageId: number,
+    html: string,
+    linkPath?: string,
+  ): Promise<boolean> {
+    if (!this.bot) return false;
+    if (!chatId || !Number.isFinite(messageId)) return false;
+    try {
+      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
+      await this.bot.editMessageText(html, {
+        chat_id: target,
+        message_id: messageId,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup,
+      });
+      return true;
+    } catch (err: unknown) {
+      const e = err as { message?: string; response?: { body?: { description?: string } } };
+      console.warn(
+        '[Telegram] editGroupHtmlMessage failed chat_id=',
+        chatId,
+        'msg=',
+        messageId,
+        e.response?.body?.description || e.message,
+      );
+      return false;
     }
   }
 

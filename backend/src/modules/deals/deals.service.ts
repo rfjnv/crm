@@ -11,6 +11,8 @@ import {
   trySendFinanceTelegram,
   trySendProductionTelegram,
   sendProductionPaymentSubmitTelegram,
+  trySendAdminApprovalTelegram,
+  appendFinanceTelegramLog,
 } from '../telegram/telegram-deal-groups.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
@@ -543,6 +545,10 @@ export class DealsService {
           severity: 'WARNING',
         }).catch(() => {});
       }
+
+      void trySendAdminApprovalTelegram(dealId).catch((err) => {
+        console.error('[Telegram deal groups] trySendAdminApprovalTelegram:', err);
+      });
     }
 
     return this.findById(dealId, user);
@@ -833,6 +839,23 @@ export class DealsService {
         severity: 'WARNING',
       }).catch(() => {});
     }
+
+    void trySendAdminApprovalTelegram(dealId).catch((err) => {
+      console.error('[Telegram deal groups] trySendAdminApprovalTelegram:', err);
+    });
+
+    const [actor, dealAfter] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.userId }, select: { fullName: true } }),
+      prisma.deal.findUnique({
+        where: { id: dealId },
+        include: { contract: { select: { contractNumber: true } } },
+      }),
+    ]);
+    const contractNo = dealAfter?.contract?.contractNumber?.trim() || 'не привязан';
+    const approveLine = `${actor?.fullName?.trim() || 'Бухгалтер'} подтвердил(а) финансовую проверку. Договор: №${contractNo}`;
+    void appendFinanceTelegramLog(dealId, approveLine).catch((err) => {
+      console.error('[Telegram deal groups] appendFinanceTelegramLog (approve):', err);
+    });
 
     return this.findById(dealId, user);
   }
@@ -1696,6 +1719,26 @@ export class DealsService {
         paymentStatus: payment.paymentStatus,
       },
     });
+
+    if (user.role === 'ACCOUNTANT' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+      const [actor, dealRow] = await Promise.all([
+        prisma.user.findUnique({ where: { id: user.userId }, select: { fullName: true } }),
+        prisma.deal.findUnique({
+          where: { id: dealId },
+          include: { contract: { select: { contractNumber: true } } },
+        }),
+      ]);
+      const contractNo = dealRow?.contract?.contractNumber?.trim() || 'не привязан';
+      const sumStr = new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(dto.amount);
+      const notePart = dto.note?.trim() ? ` Примечание: ${dto.note.trim()}` : '';
+      const payLine = `${actor?.fullName?.trim() || '—'} добавил(а) платёж ${sumStr} сум.${notePart} Договор: №${contractNo}`;
+      void appendFinanceTelegramLog(dealId, payLine).catch((err) => {
+        console.error('[Telegram deal groups] appendFinanceTelegramLog (payment):', err);
+      });
+    }
 
     return payment.created;
   }
