@@ -411,6 +411,7 @@ class TelegramService {
     const targets: { label: string; chatId: string; envKey: string }[] = [
       { label: 'warehouse', chatId: config.telegram.groupWarehouseChatId, envKey: 'TELEGRAM_GROUP_WAREHOUSE_CHAT_ID' },
       { label: 'production', chatId: config.telegram.groupProductionChatId, envKey: 'TELEGRAM_GROUP_PRODUCTION_CHAT_ID' },
+      { label: 'ready_for_shipment', chatId: config.telegram.groupReadyForShipmentChatId, envKey: 'TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID' },
       { label: 'finance', chatId: config.telegram.groupFinanceChatId, envKey: 'TELEGRAM_GROUP_FINANCE_CHAT_ID' },
     ];
 

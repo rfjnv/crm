@@ -74,6 +74,8 @@ export const config = {
      */
     groupWarehouseChatId: trimEnv(process.env.TELEGRAM_GROUP_WAREHOUSE_CHAT_ID),
     groupProductionChatId: trimEnv(process.env.TELEGRAM_GROUP_PRODUCTION_CHAT_ID),
+    /** Статус «готово к отгрузке»: одно сообщение переносится сюда из группы производства (если задано). */
+    groupReadyForShipmentChatId: trimEnv(process.env.TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID),
     groupFinanceChatId: trimEnv(process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID),
   },
 } as const;

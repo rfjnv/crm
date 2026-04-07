@@ -292,6 +292,107 @@ export function buildProductionGroupHtml(
   ].join('\n');
 }
 
+/** В какой группе править единый пост производства (после переноса в RFS — там). */
+function resolveProductionBoardChatId(deal: {
+  status: DealStatus;
+  productionTelegramMessageInRfsChat: boolean;
+}): string | null {
+  const prod = config.telegram.groupProductionChatId?.trim();
+  const rfs = config.telegram.groupReadyForShipmentChatId?.trim();
+  if (deal.status === 'READY_FOR_SHIPMENT' && rfs && deal.productionTelegramMessageInRfsChat) {
+    return rfs;
+  }
+  return prod || null;
+}
+
+/**
+ * Статус READY_FOR_SHIPMENT + задан TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID:
+ * дублируем пост в чат отгрузки, удаляем из производства, помечаем productionTelegramMessageInRfsChat.
+ */
+async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<void> {
+  const prod = config.telegram.groupProductionChatId?.trim();
+  const rfs = config.telegram.groupReadyForShipmentChatId?.trim();
+  if (!prod || !rfs) return;
+
+  const row = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: {
+      status: true,
+      productionTelegramMessageId: true,
+      productionTelegramMessageInRfsChat: true,
+    },
+  });
+  if (
+    !row ||
+    row.status !== 'READY_FOR_SHIPMENT' ||
+    row.productionTelegramMessageInRfsChat ||
+    !row.productionTelegramMessageId?.trim()
+  ) {
+    return;
+  }
+
+  const mid = parseStoredTelegramMessageId(row.productionTelegramMessageId);
+  if (mid == null) return;
+
+  const full = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true } },
+      manager: { select: { fullName: true } },
+      items: {
+        include: { product: { select: { name: true, unit: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
+    },
+  });
+  if (!full) return;
+
+  const hdr = productionSyncHeader(full.status, full.items);
+  if (!hdr) return;
+
+  const fullProd: DealRowForProductionTg = {
+    title: full.title,
+    paymentMethod: full.paymentMethod,
+    paymentType: full.paymentType,
+    amount: full.amount,
+    paidAmount: full.paidAmount,
+    paymentStatus: full.paymentStatus,
+    dueDate: full.dueDate,
+    terms: full.terms,
+    client: full.client,
+    manager: full.manager,
+    items: full.items.map((it) => ({
+      requestedQty: it.requestedQty,
+      product: { name: it.product.name, unit: it.product.unit },
+    })),
+    comments: full.comments,
+  };
+  const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
+  const path = dealLinkPath(dealId);
+
+  const newId = await telegramService.sendGroupHtmlMessage(rfs, body, path);
+  if (newId == null) {
+    console.warn('[Telegram deal groups] migrate RFS: send failed dealId=', dealId);
+    return;
+  }
+
+  await telegramService.deleteGroupMessage(prod, mid);
+  await prisma.deal
+    .update({
+      where: { id: dealId },
+      data: {
+        productionTelegramMessageId: String(newId),
+        productionTelegramMessageInRfsChat: true,
+      },
+    })
+    .catch((err) => console.error('[Telegram deal groups] migrate RFS save:', err));
+}
+
 /**
  * Склад: сделка в «Ожидает подтверждения склада» (аналог NEW → WAITING_WAREHOUSE в вашем ТЗ).
  * Один раз на сделку.
@@ -360,7 +461,7 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
 
 /**
  * Производство / комплектация: сделка в IN_PROGRESS и есть количества по позициям.
- * Один раз на сделку.
+ * Один пост на сделку: если уже был короткий «intake» в этой группе — превращаем его в полное сообщение, без второго поста.
  */
 export async function trySendProductionTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
@@ -368,12 +469,60 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
 
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
-    include: {
+    select: {
+      status: true,
+      productionIntakeTelegramMessageId: true,
+      productionTelegramMessageId: true,
       items: { select: { requestedQty: true } },
     },
   });
   if (!deal || deal.status !== 'IN_PROGRESS' || !itemsHavePositiveQty(deal.items)) {
     return;
+  }
+
+  const intakeMid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
+  if (intakeMid != null && !deal.productionTelegramMessageId?.trim()) {
+    const full = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: {
+        client: { select: { companyName: true, contactName: true } },
+        manager: { select: { fullName: true } },
+        items: {
+          include: { product: { select: { name: true, sku: true, unit: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        comments: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          include: { author: { select: { fullName: true } } },
+        },
+      },
+    });
+    if (full && full.status === 'IN_PROGRESS' && itemsHavePositiveQty(full.items)) {
+      const body = buildProductionGroupHtml(full, '⚙️ <b>Производство — сделка в работе</b>', true);
+      const ok = await telegramService.editGroupHtmlMessage(chatId, intakeMid, body, dealLinkPath(dealId));
+      if (ok) {
+        await prisma.deal
+          .update({
+            where: { id: dealId },
+            data: {
+              productionTelegramMessageId: String(intakeMid),
+              productionIntakeTelegramMessageId: null,
+              sentToProduction: true,
+              sentProductionIntakeTg: true,
+            },
+          })
+          .catch((err) => console.error('[Telegram deal groups] intake→production save:', err));
+        return;
+      }
+      await telegramService.deleteGroupMessage(chatId, intakeMid);
+      await prisma.deal
+        .update({
+          where: { id: dealId },
+          data: { productionIntakeTelegramMessageId: null, sentProductionIntakeTg: false },
+        })
+        .catch(() => {});
+    }
   }
 
   const claimed = await prisma.deal.updateMany({
@@ -411,7 +560,7 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
     await prisma.deal
       .update({
         where: { id: dealId },
-        data: { productionTelegramMessageId: String(messageId) },
+        data: { productionTelegramMessageId: String(messageId), productionTelegramMessageInRfsChat: false },
       })
       .catch((err) => {
         console.error('[Telegram deal groups] save productionTelegramMessageId:', err);
@@ -707,6 +856,8 @@ export async function cleanupStockWaitTelegramMessages(
  * (склад, intake, производство, финансы).
  */
 export async function syncDealTelegramGroupMessages(dealId: string): Promise<void> {
+  await migrateProductionMessageToRfsIfNeeded(dealId);
+
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
     include: {
@@ -773,7 +924,8 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
     }
   }
 
-  if (chatPr && deal.productionTelegramMessageId?.trim()) {
+  const chatProd = resolveProductionBoardChatId(deal);
+  if (chatProd && deal.productionTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
     if (mid != null) {
       const hdr = productionSyncHeader(deal.status, deal.items);
@@ -796,7 +948,7 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
           comments: deal.comments,
         };
         const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
-        const ok = await telegramService.editGroupHtmlMessage(chatPr, mid, body, path);
+        const ok = await telegramService.editGroupHtmlMessage(chatProd, mid, body, path);
         if (!ok) {
           console.warn('[Telegram deal groups] sync: production edit failed dealId=', dealId);
         }
@@ -806,16 +958,23 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
 }
 
 /**
- * После выбора способа оплаты: обновляем одно сообщение в группе производства
- * (позиции + оплата), без удаления.
+ * После выбора способа оплаты / смены статуса: правим тот же пост (одно сообщение на сделку).
+ * При неудаче правки — удаляем старое и шлём одно новое (без «второго» лишнего поста в типичном сценарии).
  */
 export async function sendProductionPaymentSubmitTelegram(dealId: string): Promise<void> {
-  const chatId = config.telegram.groupProductionChatId;
-  if (!chatId) return;
+  await migrateProductionMessageToRfsIfNeeded(dealId);
+
+  const prodChat = config.telegram.groupProductionChatId?.trim();
+  if (!prodChat) return;
 
   const snap = await prisma.deal.findUnique({
     where: { id: dealId },
-    select: { id: true, status: true, productionTelegramMessageId: true },
+    select: {
+      id: true,
+      status: true,
+      productionTelegramMessageId: true,
+      productionTelegramMessageInRfsChat: true,
+    },
   });
 
   if (
@@ -855,16 +1014,30 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
   const path = dealLinkPath(dealId);
   const msgId = parseStoredTelegramMessageId(snap.productionTelegramMessageId);
 
+  const chatId = resolveProductionBoardChatId({
+    status: snap.status,
+    productionTelegramMessageInRfsChat: snap.productionTelegramMessageInRfsChat,
+  });
+  if (!chatId) return;
+
+  const rfsId = config.telegram.groupReadyForShipmentChatId?.trim();
+
   if (msgId != null) {
     const ok = await telegramService.editGroupHtmlMessage(chatId, msgId, body, path);
     if (ok) return;
-    await prisma.deal.update({ where: { id: dealId }, data: { productionTelegramMessageId: null } }).catch(() => {});
+    await telegramService.deleteGroupMessage(chatId, msgId);
   }
 
   const newId = await telegramService.sendGroupHtmlMessage(chatId, body, path);
   if (newId != null) {
     await prisma.deal
-      .update({ where: { id: dealId }, data: { productionTelegramMessageId: String(newId) } })
+      .update({
+        where: { id: dealId },
+        data: {
+          productionTelegramMessageId: String(newId),
+          productionTelegramMessageInRfsChat: !!(rfsId && chatId === rfsId),
+        },
+      })
       .catch((err) => console.error('[Telegram deal groups] sendProductionPaymentSubmit save message id:', err));
   }
 }

@@ -323,6 +323,8 @@ model Deal {
   sentToProduction  Boolean @default(false) @map("sent_to_production_tg")
   /** message_id последнего сообщения в группе производства (удаляем при уточнении способа оплаты) */
   productionTelegramMessageId String? @map("production_telegram_message_id")
+  /** true — productionTelegramMessageId относится к TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID, иначе к группе производства */
+  productionTelegramMessageInRfsChat Boolean @default(false) @map("production_telegram_message_in_rfs")
   /** CRM → Telegram группа производства: короткое «сделка принята» при ожидании склада (не ждём буха) */
   sentProductionIntakeTg Boolean @default(false) @map("sent_production_intake_tg")
   /** message_id того же поста «сделка принята» (для правок) */
