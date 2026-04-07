@@ -1,7 +1,9 @@
-import { DealStatus } from '@prisma/client';
+import { DealStatus, PaymentStatus, PaymentType } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { telegramService } from './telegram.service';
+
+const TASHKENT_TZ = 'Asia/Tashkent';
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -51,6 +53,71 @@ function paymentMethodLabel(m: string | null | undefined): string {
     TERMINAL: 'Терминал',
   };
   return m ? map[m] || esc(m) : '—';
+}
+
+function formatSum(n: unknown): string {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '—';
+  return `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x)} сум`;
+}
+
+function paymentTypeLabelRu(t: PaymentType | string | null | undefined): string {
+  if (t === 'FULL') return 'Полная оплата';
+  if (t === 'PARTIAL') return 'Частичная оплата';
+  if (t === 'INSTALLMENT') return 'Рассрочка';
+  return t ? esc(String(t)) : '—';
+}
+
+function formatDueDateRu(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  try {
+    return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeZone: TASHKENT_TZ }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+/** Краткая строка: оплачено / частично / не оплатили (долг). */
+function paymentSituationLine(status: PaymentStatus, amount: number, paid: number): string {
+  const debt = Math.max(0, amount - paid);
+  if (amount <= 0) {
+    if (status === 'PAID') return 'Ситуация по оплате: <b>отмечено как оплачено</b> (сумма сделки 0)';
+    return 'Ситуация по оплате: <b>сумма сделки не задана</b>';
+  }
+  if (status === 'PAID' || paid >= amount) {
+    return 'Ситуация по оплате: <b>Оплачено полностью</b>';
+  }
+  if (status === 'PARTIAL' || (paid > 0 && paid < amount)) {
+    return `Ситуация по оплате: <b>Частично оплачено</b>, долг: <b>${formatSum(debt)}</b>`;
+  }
+  return `Ситуация по оплате: <b>Не оплатили</b> (долг: <b>${formatSum(debt)}</b>)`;
+}
+
+function truncateTelegramText(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
+/** Последние комментарии к сделке (CRM), для группы. */
+function buildDealCommentsBlock(
+  comments: { text: string; createdAt: Date; author: { fullName: string } }[],
+  maxComments = 5,
+  maxLen = 400,
+): string {
+  const slice = comments.slice(0, maxComments);
+  if (slice.length === 0) return '';
+  const lines = slice.map((c) => {
+    const who = esc(c.author.fullName || '—');
+    const when = new Intl.DateTimeFormat('ru-RU', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: TASHKENT_TZ,
+    }).format(c.createdAt);
+    const body = esc(truncateTelegramText(c.text, maxLen));
+    return `• <i>${who}</i> (${esc(when)})\n${body}`;
+  });
+  return ['', '<b>Комментарии в CRM:</b>', ...lines].join('\n');
 }
 
 function itemsHavePositiveQty(items: { requestedQty: unknown }[]): boolean {
@@ -152,6 +219,11 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
         include: { product: { select: { name: true, sku: true, unit: true } } },
         orderBy: { createdAt: 'asc' },
       },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
     },
   });
 
@@ -168,6 +240,14 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
       return `• ${esc(it.product.name)} — <b>${esc(String(qty))}</b>${u}`;
     });
 
+  const amount = Number(full.amount);
+  const paid = Number(full.paidAmount);
+  const dueLine = formatDueDateRu(full.dueDate);
+  const commentsBlock = buildDealCommentsBlock(full.comments);
+  const termsBlock = full.terms?.trim()
+    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(full.terms.trim(), 800))}`
+    : '';
+
   const body = [
     '⚙️ <b>Производство — сделка в работе</b>',
     '',
@@ -177,6 +257,17 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
     '',
     '<b>Позиции с количествами:</b>',
     lines.length ? lines.join('\n') : '—',
+    '',
+    '<b>Оплата:</b>',
+    `Способ: <b>${full.paymentMethod ? paymentMethodLabel(full.paymentMethod) : '— (менеджер укажет при отправке)'}</b>`,
+    `Тип: <b>${paymentTypeLabelRu(full.paymentType)}</b>`,
+    `Сумма сделки: <b>${formatSum(full.amount)}</b>`,
+    `Внесено: <b>${formatSum(full.paidAmount)}</b>`,
+    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
+    paymentSituationLine(full.paymentStatus, amount, paid),
+    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
+    ...(termsBlock ? [termsBlock] : []),
+    ...(commentsBlock ? [commentsBlock] : []),
   ].join('\n');
 
   await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
@@ -202,6 +293,11 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
       client: { select: { companyName: true, contactName: true, inn: true } },
       manager: { select: { fullName: true } },
       contract: { select: { contractNumber: true, contractType: true } },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
     },
   });
 
@@ -213,6 +309,14 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
   const docs = parseTransferDocumentsJson(deal.transferDocuments);
   const docsBlock = docs.length ? docs.map((d) => `☑ ${esc(d)}`).join('\n') : '—';
 
+  const amount = Number(deal.amount);
+  const paid = Number(deal.paidAmount);
+  const dueLine = formatDueDateRu(deal.dueDate);
+  const termsBlock = deal.terms?.trim()
+    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
+    : '';
+  const commentsBlock = buildDealCommentsBlock(deal.comments);
+
   const body = [
     '💰 <b>Финансы — сделка на проверку</b>',
     '',
@@ -221,6 +325,15 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
     `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
     `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
     '',
+    '<b>Суммы и факт оплаты:</b>',
+    `Тип оплаты: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
+    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
+    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
+    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
+    paymentSituationLine(deal.paymentStatus, amount, paid),
+    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
+    ...(termsBlock ? [termsBlock] : []),
+    '',
     '<b>Отмеченные документы:</b>',
     docsBlock,
     '',
@@ -228,6 +341,67 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
     `<b>Договор в CRM:</b> ${deal.contract ? `${esc(deal.contract.contractNumber)} (${contractTypeLabel(deal.contract.contractType)})` : 'не привязан'}`,
     '',
     `Сделка: <b>${esc(deal.title)}</b>`,
+    ...(commentsBlock ? [commentsBlock] : []),
+  ].join('\n');
+
+  await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+}
+
+/**
+ * После выбора способа оплаты (отправка к админу или в финансы): в первом сообщении «в работе»
+ * способ часто ещё неизвестен — дублируем блок оплаты в группу производства.
+ */
+export async function sendProductionPaymentSubmitTelegram(dealId: string): Promise<void> {
+  const chatId = config.telegram.groupProductionChatId;
+  if (!chatId) return;
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true } },
+      manager: { select: { fullName: true } },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
+    },
+  });
+
+  if (!deal || (deal.status !== 'WAITING_FINANCE' && deal.status !== 'ADMIN_APPROVED')) {
+    return;
+  }
+
+  const amount = Number(deal.amount);
+  const paid = Number(deal.paidAmount);
+  const dueLine = formatDueDateRu(deal.dueDate);
+  const header =
+    deal.status === 'ADMIN_APPROVED'
+      ? '📋 <b>Производство — к админу (оплата)</b>'
+      : '📋 <b>Производство — на проверке в финансах (оплата)</b>';
+
+  const termsBlock = deal.terms?.trim()
+    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
+    : '';
+  const commentsBlock = buildDealCommentsBlock(deal.comments);
+
+  const body = [
+    header,
+    '',
+    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
+    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Сделка: <b>${esc(deal.title)}</b>`,
+    '',
+    '<b>Как платит клиент:</b>',
+    `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
+    `Тип: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
+    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
+    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
+    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
+    paymentSituationLine(deal.paymentStatus, amount, paid),
+    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
+    ...(termsBlock ? [termsBlock] : []),
+    ...(commentsBlock ? [commentsBlock] : []),
   ].join('\n');
 
   await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));

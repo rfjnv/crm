@@ -10,6 +10,7 @@ import {
   onDealStatusChanged,
   trySendFinanceTelegram,
   trySendProductionTelegram,
+  sendProductionPaymentSubmitTelegram,
 } from '../telegram/telegram-deal-groups.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
@@ -470,6 +471,10 @@ export class DealsService {
         console.error('[Telegram deal groups] trySendFinanceTelegram:', err);
       });
     }
+
+    void sendProductionPaymentSubmitTelegram(dealId).catch((err) => {
+      console.error('[Telegram deal groups] sendProductionPaymentSubmitTelegram:', err);
+    });
 
     // Notify accountants when deal needs finance review
     if (targetStatus === 'WAITING_FINANCE') {
