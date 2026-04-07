@@ -84,6 +84,12 @@ function requiresContract(method: PaymentMethod | null): boolean {
   return !!method && CONTRACT_REQUIRED_METHODS.includes(method);
 }
 
+function isDilnozaIdentity(login?: string | null, fullName?: string | null): boolean {
+  const l = (login || '').trim().toLowerCase();
+  const f = (fullName || '').trim().toLowerCase();
+  return l === 'dilnoza' || f === 'dilnoza' || f.includes('дилноза');
+}
+
 function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Role): void {
   const allowed = STATUS_TRANSITIONS[from];
   if (!allowed || !allowed.includes(to)) {
@@ -188,6 +194,15 @@ export class DealsService {
     const allHaveQty = dto.items.every((i) => i.requestedQty && i.requestedQty > 0);
     const initialStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
 
+    // Custom payment method at create is enabled only for Dilnoza.
+    const creator = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { login: true, fullName: true },
+    });
+    const canUseDilnozaCreatePayment = isDilnozaIdentity(creator?.login, creator?.fullName);
+    const paymentMethodAtCreate: PaymentMethod | null =
+      canUseDilnozaCreatePayment && dto.paymentMethod ? (dto.paymentMethod as PaymentMethod) : null;
+
     // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
@@ -198,6 +213,7 @@ export class DealsService {
           status: initialStatus as any,
           clientId: dto.clientId,
           managerId: user.userId,
+          paymentMethod: paymentMethodAtCreate,
           paymentType: 'FULL',
           paidAmount: 0,
           paymentStatus: 'UNPAID',

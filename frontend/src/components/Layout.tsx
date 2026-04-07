@@ -55,6 +55,12 @@ const { Header, Sider, Content } = AntLayout;
 const SIDER_WIDTH = 220;
 const SIDER_COLLAPSED_WIDTH = 64;
 
+function isDilnozaUser(fullName?: string, login?: string): boolean {
+  const f = (fullName || '').trim().toLowerCase();
+  const l = (login || '').trim().toLowerCase();
+  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
+}
+
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -79,6 +85,7 @@ export default function Layout() {
   };
 
   const role = user?.role as UserRole | undefined;
+  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
 
@@ -149,6 +156,37 @@ export default function Layout() {
         icon: <FundProjectionScreenOutlined />,
         label: <Link to="/deals">{role === 'MANAGER' ? 'Заявки' : 'Сделки'}</Link>,
       }]
+      : []),
+    ...(isDilnoza && hasRole('MANAGER')
+      ? [
+        { type: 'divider' as const },
+        ...(showGroupLabels ? [{ type: 'group' as const, label: 'СДЕЛКИ (DILNOZA)' }] : []),
+        {
+          key: '/deals',
+          icon: <FundProjectionScreenOutlined />,
+          label: <Link to="/deals">Все</Link>,
+        },
+        {
+          key: '/deals?dilnozaPayment=CASH',
+          icon: <DollarOutlined />,
+          label: <Link to="/deals?dilnozaPayment=CASH">Наличные</Link>,
+        },
+        {
+          key: '/deals?dilnozaPayment=CLICK',
+          icon: <WalletOutlined />,
+          label: <Link to="/deals?dilnozaPayment=CLICK">Click</Link>,
+        },
+        {
+          key: '/deals?dilnozaPayment=TRANSFER',
+          icon: <SolutionOutlined />,
+          label: <Link to="/deals?dilnozaPayment=TRANSFER">Перечисление</Link>,
+        },
+        {
+          key: '/deals?dilnozaPayment=ACCOUNTING',
+          icon: <AuditOutlined />,
+          label: <Link to="/deals?dilnozaPayment=ACCOUNTING">Бухгалтерия</Link>,
+        },
+      ]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
@@ -344,7 +382,10 @@ export default function Layout() {
     },
   ];
 
-  const selectedKey = '/' + location.pathname.split('/').slice(1, 3).join('/');
+  const selectedPath = '/' + location.pathname.split('/').slice(1, 3).join('/');
+  const selectedDilnoza = location.pathname === '/deals' && location.search.includes('dilnozaPayment=')
+    ? `/deals?dilnozaPayment=${new URLSearchParams(location.search).get('dilnozaPayment')}`
+    : selectedPath;
 
   const menuContent = (
     <>
@@ -378,7 +419,7 @@ export default function Layout() {
       </Link>
       <Menu
         mode="inline"
-        selectedKeys={[selectedKey]}
+        selectedKeys={[selectedDilnoza]}
         items={menuItems}
         style={{ borderRight: 0, paddingTop: 12 }}
       />

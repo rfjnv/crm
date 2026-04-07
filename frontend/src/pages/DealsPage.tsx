@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
 import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
@@ -76,8 +76,15 @@ function KanbanColumn({ status, deals, openLabel }: { status: DealStatus; deals:
 const STORAGE_KEY_VIEW = 'dealsViewMode';
 const STORAGE_KEY_STATUS = 'dealsStatusFilter';
 
+function isDilnozaUser(fullName?: string, login?: string): boolean {
+  const f = (fullName || '').trim().toLowerCase();
+  const l = (login || '').trim().toLowerCase();
+  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
+}
+
 export default function DealsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_VIEW);
     return saved === 'kanban' ? 'kanban' : 'table';
@@ -89,6 +96,8 @@ export default function DealsPage() {
 
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
+  const paymentFilter = new URLSearchParams(location.search).get('dilnozaPayment');
   const isManager = user?.role === 'MANAGER';
   const entityLabel = isManager ? 'Заявки' : 'Сделки';
   const oneEntityLabel = isManager ? 'Заявка' : 'Сделка';
@@ -114,7 +123,17 @@ export default function DealsPage() {
   });
 
   const hideIfEmpty: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED'];
-  const statusesWithDeals = new Set((allDeals ?? []).map((d) => d.status));
+  const filteredDeals = (deals ?? []).filter((d) => {
+    if (!isDilnoza || !paymentFilter) return true;
+    if (paymentFilter === 'ACCOUNTING') return d.paymentMethod === 'TRANSFER' || d.paymentMethod === 'INSTALLMENT';
+    return d.paymentMethod === paymentFilter;
+  });
+  const filteredAllDeals = (allDeals ?? []).filter((d) => {
+    if (!isDilnoza || !paymentFilter) return true;
+    if (paymentFilter === 'ACCOUNTING') return d.paymentMethod === 'TRANSFER' || d.paymentMethod === 'INSTALLMENT';
+    return d.paymentMethod === paymentFilter;
+  });
+  const statusesWithDeals = new Set(filteredAllDeals.map((d) => d.status));
 
   const archiveMut = useMutation({
     mutationFn: (id: string) => dealsApi.archive(id),
@@ -129,7 +148,7 @@ export default function DealsPage() {
   });
 
   const dealsByStatus = kanbanStatuses.reduce((acc, status) => {
-    acc[status] = (deals ?? []).filter((d) => d.status === status);
+    acc[status] = filteredDeals.filter((d) => d.status === status);
     return acc;
   }, {} as Record<DealStatus, Deal[]>);
 
@@ -178,6 +197,20 @@ export default function DealsPage() {
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Space wrap>
           <Typography.Title level={4} style={{ margin: 0 }}>{entityLabel}</Typography.Title>
+          {isDilnoza && (
+            <Select
+              style={{ width: isMobile ? '100%' : 220 }}
+              value={paymentFilter || 'ALL'}
+              onChange={(v) => navigate(v === 'ALL' ? '/deals' : `/deals?dilnozaPayment=${v}`)}
+              options={[
+                { label: 'Все оплаты', value: 'ALL' },
+                { label: 'Наличные', value: 'CASH' },
+                { label: 'Click', value: 'CLICK' },
+                { label: 'Перечисление', value: 'TRANSFER' },
+                { label: 'Бухгалтерия', value: 'ACCOUNTING' },
+              ]}
+            />
+          )}
           {viewMode === 'table' && (
             <Select
               allowClear
@@ -212,14 +245,14 @@ export default function DealsPage() {
       {viewMode === 'table' ? (
         isMobile ? (
           <MobileCardList
-            data={deals ?? []}
+            data={filteredDeals}
             rowKey="id"
             loading={isLoading}
             renderCard={(deal) => <DealCard deal={deal} openLabel={openLabel} />}
           />
         ) : (
           <Table
-            dataSource={deals}
+            dataSource={filteredDeals}
             columns={columns}
             rowKey="id"
             loading={isLoading}

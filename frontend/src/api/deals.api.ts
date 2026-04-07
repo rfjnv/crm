@@ -11,6 +11,7 @@ export const dealsApi = {
     title?: string;
     clientId: string;
     comment?: string;
+    paymentMethod?: PaymentMethod;
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),

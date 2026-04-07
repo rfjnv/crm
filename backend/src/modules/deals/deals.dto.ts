@@ -10,6 +10,7 @@ export const createDealDto = z.object({
   title: z.string().optional().default(''),
   clientId: z.string().uuid('Некорректный ID клиента'),
   comment: z.string().optional(),
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),

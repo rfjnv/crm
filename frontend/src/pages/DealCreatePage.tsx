@@ -15,7 +15,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
-import type { Product, DealStatus } from '../types';
+import type { Product, DealStatus, PaymentMethod } from '../types';
 import dayjs from 'dayjs';
 
 interface DraftItem {
@@ -80,6 +80,12 @@ function isDraftEmpty(d: DraftData): boolean {
   return true;
 }
 
+function isDilnozaUser(fullName?: string, login?: string): boolean {
+  const f = (fullName || '').trim().toLowerCase();
+  const l = (login || '').trim().toLowerCase();
+  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
+}
+
 export default function DealCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -93,7 +99,9 @@ export default function DealCreatePage() {
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
   const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
   const [showVat, setShowVat] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
+  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
   // On mount: check for existing draft
   const initRef = useRef(false);
@@ -236,6 +244,7 @@ export default function DealCreatePage() {
         price: i.price || undefined,
         requestComment: i.requestComment || undefined,
       })),
+      ...(isDilnoza ? { paymentMethod } : {}),
     });
   }
 
@@ -288,6 +297,33 @@ export default function DealCreatePage() {
               <DealStatusTag status={previewStatus} />
             </div>
           </div>
+          {isDilnoza && (
+            <div style={{ marginTop: 16 }}>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                Тип оплаты (быстрый выбор)
+              </Typography.Text>
+              <Space wrap>
+                <Button
+                  type={paymentMethod === 'CASH' ? 'primary' : 'default'}
+                  onClick={() => setPaymentMethod('CASH')}
+                >
+                  💵 Наличные
+                </Button>
+                <Button
+                  type={paymentMethod === 'CLICK' ? 'primary' : 'default'}
+                  onClick={() => setPaymentMethod('CLICK')}
+                >
+                  📱 Click
+                </Button>
+                <Button
+                  type={paymentMethod === 'TRANSFER' ? 'primary' : 'default'}
+                  onClick={() => setPaymentMethod('TRANSFER')}
+                >
+                  🧾 Бухгалтерия
+                </Button>
+              </Space>
+            </div>
+          )}
         </Card>
 
         <Card
