@@ -136,7 +136,7 @@ function parseStoredTelegramMessageId(raw: string | null | undefined): number | 
   return Number.isSafeInteger(n) ? n : null;
 }
 
-/** Склад + intake: список позиций с комментариями к заявке. */
+/** Склад + intake: позиции, комментарии к строкам, последние комментарии к сделке в CRM. */
 type DealRowWarehouseIntakeTg = {
   title: string;
   client: { companyName: string; contactName: string | null };
@@ -145,6 +145,7 @@ type DealRowWarehouseIntakeTg = {
     requestComment: string | null;
     product: { name: string; sku: string | null; unit: string | null };
   }>;
+  comments?: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
 };
 
 function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string {
@@ -158,6 +159,8 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     return `• ${name}${sku}${unit}${comment}`;
   });
 
+  const commentsBlock = buildDealCommentsBlock(deal.comments ?? []);
+
   return [
     '📦 <b>Склад — новая сделка на проверку</b>',
     '',
@@ -167,6 +170,7 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     '',
     '<b>Товары:</b>',
     lines.length ? lines.join('\n') : '—',
+    ...(commentsBlock ? [commentsBlock] : []),
   ].join('\n');
 }
 
@@ -181,6 +185,8 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
     return `• ${name}${sku}${unit}${comment}`;
   });
 
+  const commentsBlock = buildDealCommentsBlock(deal.comments ?? []);
+
   return [
     '📥 <b>Сделка принята в CRM</b> <i>(ожидает склад — не финансы)</i>',
     '',
@@ -190,6 +196,7 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
     '',
     '<b>Товары:</b>',
     lines.length ? lines.join('\n') : '—',
+    ...(commentsBlock ? [commentsBlock] : []),
   ].join('\n');
 }
 
@@ -322,6 +329,11 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
         include: { product: { select: { name: true, sku: true, unit: true } } },
         orderBy: { createdAt: 'asc' },
       },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
     },
   });
 
@@ -445,6 +457,11 @@ export async function trySendProductionIntakeTelegram(dealId: string): Promise<v
       items: {
         include: { product: { select: { name: true, sku: true, unit: true } } },
         orderBy: { createdAt: 'asc' },
+      },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
       },
     },
   });
