@@ -1,4 +1,4 @@
-import { DealStatus, PaymentStatus, PaymentType } from '@prisma/client';
+import { DealStatus, PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { telegramService } from './telegram.service';
@@ -127,6 +127,86 @@ function itemsHavePositiveQty(items: { requestedQty: unknown }[]): boolean {
   });
 }
 
+function parseStoredTelegramMessageId(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** Данные сделки для одного сообщения в группу производства (позиции + оплата + комменты). */
+type DealRowForProductionTg = {
+  title: string;
+  paymentMethod: PaymentMethod | null;
+  paymentType: PaymentType;
+  amount: unknown;
+  paidAmount: unknown;
+  paymentStatus: PaymentStatus;
+  dueDate: Date | null;
+  terms: string | null;
+  client: { companyName: string; contactName: string | null };
+  manager: { fullName: string };
+  items: Array<{
+    requestedQty: unknown;
+    product: { name: string; unit: string | null };
+  }>;
+  comments: Array<{
+    text: string;
+    createdAt: Date;
+    author: { fullName: string };
+  }>;
+};
+
+function buildProductionGroupHtml(
+  deal: DealRowForProductionTg,
+  headerLine: string,
+  paymentMethodPending: boolean,
+): string {
+  const lines = deal.items
+    .filter((it) => Number(it.requestedQty) > 0)
+    .map((it) => {
+      const qty = Number(it.requestedQty);
+      const u = it.product.unit ? ` ${esc(it.product.unit)}` : '';
+      return `• ${esc(it.product.name)} — <b>${esc(String(qty))}</b>${u}`;
+    });
+
+  const amount = Number(deal.amount);
+  const paid = Number(deal.paidAmount);
+  const dueLine = formatDueDateRu(deal.dueDate);
+  const commentsBlock = buildDealCommentsBlock(deal.comments);
+  const termsBlock = deal.terms?.trim()
+    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
+    : '';
+
+  const methodDisplay =
+    paymentMethodPending && !deal.paymentMethod
+      ? '— (менеджер укажет при отправке)'
+      : paymentMethodLabel(deal.paymentMethod);
+
+  return [
+    headerLine,
+    '',
+    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
+    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Сделка: <b>${esc(deal.title)}</b>`,
+    '',
+    '<b>Позиции с количествами:</b>',
+    lines.length ? lines.join('\n') : '—',
+    '',
+    '<b>Оплата:</b>',
+    `Способ: <b>${methodDisplay}</b>`,
+    `Тип: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
+    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
+    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
+    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
+    paymentSituationLine(deal.paymentStatus, amount, paid),
+    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
+    ...(termsBlock ? [termsBlock] : []),
+    ...(commentsBlock ? [commentsBlock] : []),
+  ].join('\n');
+}
+
 /**
  * Склад: сделка в «Ожидает подтверждения склада» (аналог NEW → WAITING_WAREHOUSE в вашем ТЗ).
  * Один раз на сделку.
@@ -232,45 +312,19 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
     return;
   }
 
-  const lines = full.items
-    .filter((it) => Number(it.requestedQty) > 0)
-    .map((it) => {
-      const qty = Number(it.requestedQty);
-      const u = it.product.unit ? ` ${esc(it.product.unit)}` : '';
-      return `• ${esc(it.product.name)} — <b>${esc(String(qty))}</b>${u}`;
-    });
+  const body = buildProductionGroupHtml(full, '⚙️ <b>Производство — сделка в работе</b>', true);
 
-  const amount = Number(full.amount);
-  const paid = Number(full.paidAmount);
-  const dueLine = formatDueDateRu(full.dueDate);
-  const commentsBlock = buildDealCommentsBlock(full.comments);
-  const termsBlock = full.terms?.trim()
-    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(full.terms.trim(), 800))}`
-    : '';
-
-  const body = [
-    '⚙️ <b>Производство — сделка в работе</b>',
-    '',
-    `Клиент: <b>${esc(clientDisplayName(full.client.companyName, full.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(full.manager.fullName)}</b>`,
-    `Сделка: <b>${esc(full.title)}</b>`,
-    '',
-    '<b>Позиции с количествами:</b>',
-    lines.length ? lines.join('\n') : '—',
-    '',
-    '<b>Оплата:</b>',
-    `Способ: <b>${full.paymentMethod ? paymentMethodLabel(full.paymentMethod) : '— (менеджер укажет при отправке)'}</b>`,
-    `Тип: <b>${paymentTypeLabelRu(full.paymentType)}</b>`,
-    `Сумма сделки: <b>${formatSum(full.amount)}</b>`,
-    `Внесено: <b>${formatSum(full.paidAmount)}</b>`,
-    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
-    paymentSituationLine(full.paymentStatus, amount, paid),
-    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
-    ...(termsBlock ? [termsBlock] : []),
-    ...(commentsBlock ? [commentsBlock] : []),
-  ].join('\n');
-
-  await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  const messageId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  if (messageId != null) {
+    await prisma.deal
+      .update({
+        where: { id: dealId },
+        data: { productionTelegramMessageId: String(messageId) },
+      })
+      .catch((err) => {
+        console.error('[Telegram deal groups] save productionTelegramMessageId:', err);
+      });
+  }
 }
 
 /**
@@ -348,18 +402,43 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
 }
 
 /**
- * После выбора способа оплаты (отправка к админу или в финансы): в первом сообщении «в работе»
- * способ часто ещё неизвестен — дублируем блок оплаты в группу производства.
+ * После выбора способа оплаты: удаляем первое сообщение «в работе» в группе производства
+ * и отправляем одно актуальное (позиции + оплата), чтобы не было дублей.
  */
 export async function sendProductionPaymentSubmitTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
   if (!chatId) return;
 
-  const deal = await prisma.deal.findUnique({
+  const snap = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { id: true, status: true, productionTelegramMessageId: true },
+  });
+
+  if (!snap || (snap.status !== 'WAITING_FINANCE' && snap.status !== 'ADMIN_APPROVED')) {
+    return;
+  }
+
+  const prevId = parseStoredTelegramMessageId(snap.productionTelegramMessageId);
+  if (prevId != null) {
+    await telegramService.deleteGroupMessage(chatId, prevId);
+  }
+
+  await prisma.deal
+    .update({
+      where: { id: dealId },
+      data: { productionTelegramMessageId: null },
+    })
+    .catch(() => {});
+
+  const full = await prisma.deal.findUnique({
     where: { id: dealId },
     include: {
       client: { select: { companyName: true, contactName: true } },
       manager: { select: { fullName: true } },
+      items: {
+        include: { product: { select: { name: true, unit: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
       comments: {
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -368,41 +447,14 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
     },
   });
 
-  if (!deal || (deal.status !== 'WAITING_FINANCE' && deal.status !== 'ADMIN_APPROVED')) {
-    return;
-  }
+  if (!full) return;
 
-  const amount = Number(deal.amount);
-  const paid = Number(deal.paidAmount);
-  const dueLine = formatDueDateRu(deal.dueDate);
   const header =
-    deal.status === 'ADMIN_APPROVED'
-      ? '📋 <b>Производство — к админу (оплата)</b>'
-      : '📋 <b>Производство — на проверке в финансах (оплата)</b>';
+    full.status === 'ADMIN_APPROVED'
+      ? '📋 <b>Производство — к админу</b>'
+      : '📋 <b>Производство — на проверке в финансах</b>';
 
-  const termsBlock = deal.terms?.trim()
-    ? `\n<b>Условия / комментарий к оплате:</b>\n${esc(truncateTelegramText(deal.terms.trim(), 800))}`
-    : '';
-  const commentsBlock = buildDealCommentsBlock(deal.comments);
-
-  const body = [
-    header,
-    '',
-    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
-    `Сделка: <b>${esc(deal.title)}</b>`,
-    '',
-    '<b>Как платит клиент:</b>',
-    `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
-    `Тип: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
-    `Сумма сделки: <b>${formatSum(deal.amount)}</b>`,
-    `Внесено: <b>${formatSum(deal.paidAmount)}</b>`,
-    `Остаток (долг): <b>${formatSum(Math.max(0, amount - paid))}</b>`,
-    paymentSituationLine(deal.paymentStatus, amount, paid),
-    ...(dueLine ? [`Срок оплаты: <b>${esc(dueLine)}</b>`] : []),
-    ...(termsBlock ? [termsBlock] : []),
-    ...(commentsBlock ? [commentsBlock] : []),
-  ].join('\n');
+  const body = buildProductionGroupHtml(full, header, false);
 
   await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
 }

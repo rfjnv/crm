@@ -118,21 +118,23 @@ class TelegramService {
 
   /**
    * Send HTML to a group/supergroup. chatId from env (often negative), e.g. -100xxxxxxxxxx.
+   * @returns Telegram message_id или null при ошибке / нет бота.
    */
-  async sendGroupHtmlMessage(chatId: string, html: string, linkPath?: string): Promise<void> {
+  async sendGroupHtmlMessage(chatId: string, html: string, linkPath?: string): Promise<number | null> {
     if (!this.bot) {
       console.warn('[Telegram] sendGroupHtmlMessage: бот не инициализирован (нет TELEGRAM_BOT_TOKEN?)');
-      return;
+      return null;
     }
-    if (!chatId) return;
+    if (!chatId) return null;
     try {
       const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
       const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
-      await this.bot.sendMessage(target, html, {
+      const sent = await this.bot.sendMessage(target, html, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
         reply_markup,
       });
+      return typeof sent.message_id === 'number' ? sent.message_id : null;
     } catch (err: unknown) {
       const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
       const body = e.response?.body;
@@ -143,6 +145,32 @@ class TelegramService {
         body?.error_code != null ? `(code ${body.error_code})` : '',
         body && typeof body === 'object' ? JSON.stringify(body) : '',
       );
+      return null;
+    }
+  }
+
+  /**
+   * Удалить сообщение бота в группе (нужны права администратора у бота).
+   */
+  async deleteGroupMessage(chatId: string, messageId: number): Promise<boolean> {
+    if (!this.bot || !chatId || !Number.isFinite(messageId)) {
+      return false;
+    }
+    try {
+      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      await this.bot.deleteMessage(target, messageId);
+      return true;
+    } catch (err: unknown) {
+      const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+      const body = e.response?.body;
+      console.warn(
+        '[Telegram] deleteGroupMessage failed chat_id=',
+        chatId,
+        'msg=',
+        messageId,
+        body?.description || e.message,
+      );
+      return false;
     }
   }
 

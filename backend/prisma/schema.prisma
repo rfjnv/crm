@@ -319,6 +319,8 @@ model Deal {
   sentToWarehouse   Boolean @default(false) @map("sent_to_warehouse_tg")
   /** CRM → Telegram group: production / quantities (once per deal) */
   sentToProduction  Boolean @default(false) @map("sent_to_production_tg")
+  /** message_id последнего сообщения в группе производства (удаляем при уточнении способа оплаты) */
+  productionTelegramMessageId String? @map("production_telegram_message_id")
   /** CRM → Telegram group: finance review (once per deal) */
   sentToFinance     Boolean @default(false) @map("sent_to_finance_tg")
 
