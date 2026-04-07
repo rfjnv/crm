@@ -264,7 +264,11 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
     lines.length ? lines.join('\n') : '—',
   ].join('\n');
 
-  await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  if (sentId == null) {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentToWarehouse: false } }).catch(() => {});
+    console.warn('[Telegram deal groups] trySendWarehouseTelegram: send failed, флаг сброшен dealId=', dealId);
+  }
 }
 
 /**
@@ -325,6 +329,72 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
       .catch((err) => {
         console.error('[Telegram deal groups] save productionTelegramMessageId:', err);
       });
+  } else {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentToProduction: false } }).catch(() => {});
+    console.warn('[Telegram deal groups] trySendProductionTelegram: send failed, флаг сброшен dealId=', dealId);
+  }
+}
+
+/**
+ * Производство: сразу после создания сделки в статусе «ожидает склад» — чтобы не ждать бухгалтера/финансов.
+ * Отдельно от полного сообщения «в работе» (после количеств).
+ */
+export async function trySendProductionIntakeTelegram(dealId: string): Promise<void> {
+  const chatId = config.telegram.groupProductionChatId;
+  if (!chatId) return;
+
+  const claimed = await prisma.deal.updateMany({
+    where: {
+      id: dealId,
+      sentProductionIntakeTg: false,
+      status: 'WAITING_STOCK_CONFIRMATION',
+    },
+    data: { sentProductionIntakeTg: true },
+  });
+  if (claimed.count === 0) return;
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true } },
+      manager: { select: { fullName: true } },
+      items: {
+        include: { product: { select: { name: true, sku: true, unit: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+
+  if (!deal || deal.status !== 'WAITING_STOCK_CONFIRMATION') {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentProductionIntakeTg: false } }).catch(() => {});
+    return;
+  }
+
+  const lines = deal.items.map((it) => {
+    const name = esc(it.product.name);
+    const sku = it.product.sku ? ` · ${esc(it.product.sku)}` : '';
+    const unit = it.product.unit ? ` ${esc(it.product.unit)}` : '';
+    const comment = it.requestComment?.trim()
+      ? `\n   💬 ${esc(it.requestComment.trim())}`
+      : '';
+    return `• ${name}${sku}${unit}${comment}`;
+  });
+
+  const body = [
+    '📥 <b>Сделка принята в CRM</b> <i>(ожидает склад — не финансы)</i>',
+    '',
+    `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
+    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Сделка: <b>${esc(deal.title)}</b>`,
+    '',
+    '<b>Товары:</b>',
+    lines.length ? lines.join('\n') : '—',
+  ].join('\n');
+
+  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  if (sentId == null) {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentProductionIntakeTg: false } }).catch(() => {});
+    console.warn('[Telegram deal groups] trySendProductionIntakeTelegram: send failed, флаг сброшен dealId=', dealId);
   }
 }
 
@@ -498,6 +568,9 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
       .catch((err) => {
         console.error('[Telegram deal groups] save financeTelegramMessageId:', err);
       });
+  } else {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentToFinance: false } }).catch(() => {});
+    console.warn('[Telegram deal groups] trySendFinanceTelegram: send failed, флаг сброшен dealId=', dealId);
   }
 }
 
@@ -620,6 +693,7 @@ export async function trySendAdminApprovalTelegram(dealId: string): Promise<void
 export async function onDealCreated(dealId: string, initialStatus: DealStatus, allItemsHaveQty: boolean): Promise<void> {
   if (initialStatus === 'WAITING_STOCK_CONFIRMATION') {
     await trySendWarehouseTelegram(dealId);
+    await trySendProductionIntakeTelegram(dealId);
   }
   if (initialStatus === 'IN_PROGRESS' && allItemsHaveQty) {
     await trySendProductionTelegram(dealId);
@@ -634,6 +708,7 @@ export async function onDealStatusChanged(
 ): Promise<void> {
   if (newStatus === 'WAITING_STOCK_CONFIRMATION' && previousStatus === 'NEW') {
     await trySendWarehouseTelegram(dealId);
+    await trySendProductionIntakeTelegram(dealId);
   }
   if (newStatus === 'IN_PROGRESS' && previousStatus !== 'IN_PROGRESS') {
     await trySendProductionTelegram(dealId);
