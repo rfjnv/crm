@@ -324,14 +324,14 @@ export function buildProductionGroupHtml(
   ].join('\n');
 }
 
-/** В какой группе править единый пост производства (после переноса в RFS — там). */
+/** В какой группе править единый пост производства (после переноса в RFS — там, пока есть message_id). */
 function resolveProductionBoardChatId(deal: {
   status: DealStatus;
   productionTelegramMessageInRfsChat: boolean;
 }): string | null {
   const prod = config.telegram.groupProductionChatId?.trim();
   const rfs = config.telegram.groupReadyForShipmentChatId?.trim();
-  if (deal.status === 'READY_FOR_SHIPMENT' && rfs && deal.productionTelegramMessageInRfsChat) {
+  if (deal.productionTelegramMessageInRfsChat && rfs) {
     return rfs;
   }
   return prod || null;
@@ -912,11 +912,7 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
   const path = dealLinkPath(dealId);
 
   const chatWh = config.telegram.groupWarehouseChatId;
-  if (
-    chatWh &&
-    deal.warehouseTelegramMessageId &&
-    deal.status === 'WAITING_STOCK_CONFIRMATION'
-  ) {
+  if (chatWh && deal.warehouseTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.warehouseTelegramMessageId);
     if (mid != null) {
       const html = buildWarehouseQueueTelegramHtml(deal);
@@ -928,11 +924,7 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
   }
 
   const chatPr = config.telegram.groupProductionChatId;
-  if (
-    chatPr &&
-    deal.productionIntakeTelegramMessageId &&
-    deal.status === 'WAITING_STOCK_CONFIRMATION'
-  ) {
+  if (chatPr && deal.productionIntakeTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
     if (mid != null) {
       const html = buildProductionIntakeTelegramHtml(deal);
@@ -944,7 +936,7 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
   }
 
   const chatFi = config.telegram.groupFinanceChatId;
-  if (chatFi && deal.financeTelegramMessageId?.trim() && deal.status === 'WAITING_FINANCE') {
+  if (chatFi && deal.financeTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.financeTelegramMessageId);
     if (mid != null) {
       const html = buildFinanceHtmlWithAppendix(deal);

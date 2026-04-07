@@ -1000,6 +1000,10 @@ export class DealsService {
       severity: 'URGENT',
     }).catch(() => {});
 
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (rejectFinance):', err);
+    });
+
     return this.findById(dealId, user);
   }
 
@@ -1249,6 +1253,10 @@ export class DealsService {
       entityId: dealId,
       before: { status: deal.status },
       after: { status: 'SHIPMENT_ON_HOLD', reason: dto.reason },
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (holdShipment):', err);
     });
 
     return this.findById(dealId, user);
@@ -1623,6 +1631,10 @@ export class DealsService {
         severity: 'WARNING',
       }).catch(() => {});
     }
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (rejectDeal):', err);
+    });
 
     return this.findById(dealId, user);
   }
