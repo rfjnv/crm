@@ -16,6 +16,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
 import type { Product, DealStatus, PaymentMethod } from '../types';
+import { DILNOZA_PAYMENT_METHOD_OPTIONS, needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
 
 interface DraftItem {
@@ -56,6 +57,9 @@ interface DraftData {
   commentText: string;
   items: Omit<DraftItem, 'key'>[];
   paymentMethod?: PaymentMethod;
+  /** единое поле деталей по оплате (номер операции, комментарий) */
+  paymentNote?: string;
+  /** миграция со старых черновиков */
   cashNote?: string;
   clickTransactionId?: string;
   transferInn?: string;
@@ -84,6 +88,7 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.clientId) return false;
   if (d.title) return false;
   if (d.commentText) return false;
+  if (d.paymentNote?.trim()) return false;
   if (d.cashNote?.trim()) return false;
   if (d.clickTransactionId?.trim()) return false;
   if (d.transferInn?.trim()) return false;
@@ -112,8 +117,7 @@ export default function DealCreatePage() {
   const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
   const [showVat, setShowVat] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [cashNote, setCashNote] = useState('');
-  const [clickTransactionId, setClickTransactionId] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
   const [transferInn, setTransferInn] = useState('');
   const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
@@ -136,8 +140,11 @@ export default function DealCreatePage() {
     setTitle(draft.title);
     setCommentText(draft.commentText);
     if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
-    setCashNote(draft.cashNote ?? '');
-    setClickTransactionId(draft.clickTransactionId ?? '');
+    setPaymentNote(
+      draft.paymentNote?.trim()
+        || [draft.cashNote, draft.clickTransactionId].filter((x) => x?.trim()).join(' ').trim()
+        || '',
+    );
     setTransferInn(draft.transferInn ?? '');
     setTransferDocuments(draft.transferDocuments?.length ? [...draft.transferDocuments] : [...DEFAULT_TRANSFER_DOCUMENTS]);
     setTransferType(draft.transferType ?? 'ONE_TIME');
@@ -167,8 +174,7 @@ export default function DealCreatePage() {
       commentText,
       items: draftItems.map(({ key: _key, ...rest }) => rest),
       paymentMethod,
-      cashNote,
-      clickTransactionId,
+      paymentNote,
       transferInn,
       transferDocuments,
       transferType,
@@ -179,7 +185,7 @@ export default function DealCreatePage() {
     } else {
       saveDraft(data);
     }
-  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, cashNote, clickTransactionId, transferInn, transferDocuments, transferType]);
+  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -263,7 +269,7 @@ export default function DealCreatePage() {
       }
     }
 
-    if (isDilnoza && paymentMethod === 'TRANSFER') {
+    if (isDilnoza && needsDilnozaTransferFields(paymentMethod)) {
       if (!transferInn.trim()) {
         message.error('Укажите ИНН компании для перечисления');
         return;
@@ -287,15 +293,13 @@ export default function DealCreatePage() {
       ...(isDilnoza
         ? {
             paymentMethod,
-            ...(paymentMethod === 'CASH' ? { cashNote: cashNote.trim() || undefined } : {}),
-            ...(paymentMethod === 'CLICK' ? { clickTransactionId: clickTransactionId.trim() || undefined } : {}),
-            ...(paymentMethod === 'TRANSFER'
+            ...(needsDilnozaTransferFields(paymentMethod)
               ? {
                   transferInn: transferInn.trim(),
                   transferDocuments,
                   transferType,
                 }
-              : {}),
+              : { paymentNote: paymentNote.trim() || undefined }),
           }
         : {}),
     });
@@ -353,54 +357,32 @@ export default function DealCreatePage() {
           {isDilnoza && (
             <div style={{ marginTop: 16 }}>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                Тип оплаты (быстрый выбор)
+                Способ оплаты
               </Typography.Text>
-              <Space wrap>
-                <Button
-                  type={paymentMethod === 'CASH' ? 'primary' : 'default'}
-                  onClick={() => setPaymentMethod('CASH')}
-                >
-                  💵 Наличные
-                </Button>
-                <Button
-                  type={paymentMethod === 'CLICK' ? 'primary' : 'default'}
-                  onClick={() => setPaymentMethod('CLICK')}
-                >
-                  📱 Click
-                </Button>
-                <Button
-                  type={paymentMethod === 'TRANSFER' ? 'primary' : 'default'}
-                  onClick={() => setPaymentMethod('TRANSFER')}
-                >
-                  🧾 Бухгалтерия
-                </Button>
-              </Space>
-              {paymentMethod === 'CASH' && (
+              <Select
+                style={{ width: '100%', maxWidth: 420 }}
+                value={paymentMethod}
+                onChange={(v) => setPaymentMethod(v as PaymentMethod)}
+                options={DILNOZA_PAYMENT_METHOD_OPTIONS}
+              />
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                Наличные, Payme, QR, Click, терминал — при необходимости укажите комментарий или номер операции.
+                Перечисление и рассрочка — ИНН и комплект документов для бухгалтерии.
+              </Typography.Paragraph>
+              {!needsDilnozaTransferFields(paymentMethod) && (
                 <div style={{ marginTop: 12 }}>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    Комментарий по оплате (необязательно)
+                    Комментарий / номер операции (необязательно)
                   </Typography.Text>
                   <Input.TextArea
                     rows={2}
-                    placeholder="Например: предоплата наличными, касса…"
-                    value={cashNote}
-                    onChange={(e) => setCashNote(e.target.value)}
+                    placeholder="Например: ID транзакции, касса, уточнение по оплате…"
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value)}
                   />
                 </div>
               )}
-              {paymentMethod === 'CLICK' && (
-                <div style={{ marginTop: 12 }}>
-                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    Номер операции / ID Click (необязательно)
-                  </Typography.Text>
-                  <Input
-                    placeholder="Например: ID транзакции или комментарий из банка"
-                    value={clickTransactionId}
-                    onChange={(e) => setClickTransactionId(e.target.value)}
-                  />
-                </div>
-              )}
-              {paymentMethod === 'TRANSFER' && (
+              {needsDilnozaTransferFields(paymentMethod) && (
                 <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
                   <div>
                     <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>

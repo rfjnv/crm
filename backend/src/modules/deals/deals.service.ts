@@ -210,13 +210,8 @@ export class DealsService {
 
     if (canUseDilnozaCreatePayment && dto.paymentMethod) {
       const pm = dto.paymentMethod as PaymentMethod;
-      if (pm === 'CASH') {
-        const n = dto.cashNote?.trim();
-        dilnozaTerms = n || null;
-      } else if (pm === 'CLICK') {
-        const id = dto.clickTransactionId?.trim();
-        dilnozaTerms = id ? `Click: ${id}` : null;
-      } else if (pm === 'TRANSFER') {
+      const isTransferLike = pm === 'TRANSFER' || pm === 'INSTALLMENT';
+      if (isTransferLike) {
         const transferInn = dto.transferInn?.trim();
         const transferDocuments = normalizeTransferDocuments(dto.transferDocuments);
         if (!transferInn) {
@@ -228,6 +223,15 @@ export class DealsService {
         dilnozaTransferInn = transferInn;
         dilnozaTransferDocuments = JSON.stringify(transferDocuments);
         dilnozaTransferType = dto.transferType ?? 'ONE_TIME';
+      } else {
+        const note = dto.paymentNote?.trim() || dto.cashNote?.trim();
+        if (note) {
+          dilnozaTerms = note;
+        } else if (pm === 'CLICK' && dto.clickTransactionId?.trim()) {
+          dilnozaTerms = `Click: ${dto.clickTransactionId.trim()}`;
+        } else {
+          dilnozaTerms = null;
+        }
       }
     }
 
@@ -246,7 +250,9 @@ export class DealsService {
           paidAmount: 0,
           paymentStatus: 'UNPAID',
           ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
-          ...(canUseDilnozaCreatePayment && dto.paymentMethod === 'TRANSFER'
+          ...(canUseDilnozaCreatePayment &&
+            dto.paymentMethod &&
+            (dto.paymentMethod === 'TRANSFER' || dto.paymentMethod === 'INSTALLMENT')
             ? {
                 transferInn: dilnozaTransferInn,
                 transferDocuments: dilnozaTransferDocuments,

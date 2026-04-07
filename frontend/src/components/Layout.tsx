@@ -49,6 +49,7 @@ import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission } from '../types';
+import { DILNOZA_PAYMENT_METHOD_OPTIONS } from '../constants/dilnozaPayments';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -161,26 +162,11 @@ export default function Layout() {
       ? [
         { type: 'divider' as const },
         ...(showGroupLabels ? [{ type: 'group' as const, label: 'СДЕЛКИ (DILNOZA)' }] : []),
-        {
-          key: '/deals',
-          icon: <FundProjectionScreenOutlined />,
-          label: <Link to="/deals">Все</Link>,
-        },
-        {
-          key: '/deals?dilnozaPayment=CASH',
-          icon: <DollarOutlined />,
-          label: <Link to="/deals?dilnozaPayment=CASH">Наличные</Link>,
-        },
-        {
-          key: '/deals?dilnozaPayment=CLICK',
+        ...DILNOZA_PAYMENT_METHOD_OPTIONS.map(({ value, label }) => ({
+          key: `/deals?dilnozaPayment=${value}`,
           icon: <WalletOutlined />,
-          label: <Link to="/deals?dilnozaPayment=CLICK">Click</Link>,
-        },
-        {
-          key: '/deals?dilnozaPayment=TRANSFER',
-          icon: <SolutionOutlined />,
-          label: <Link to="/deals?dilnozaPayment=TRANSFER">Перечисление</Link>,
-        },
+          label: <Link to={`/deals?dilnozaPayment=${value}`}>{label}</Link>,
+        })),
         {
           key: '/deals?dilnozaPayment=ACCOUNTING',
           icon: <AuditOutlined />,

@@ -12,6 +12,7 @@ export const dealsApi = {
     clientId: string;
     comment?: string;
     paymentMethod?: PaymentMethod;
+    paymentNote?: string;
     cashNote?: string;
     clickTransactionId?: string;
     transferInn?: string;

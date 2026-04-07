@@ -6,6 +6,7 @@ import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, L
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
+import { DILNOZA_DEALS_FILTER_OPTIONS } from '../constants/dilnozaPayments';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
@@ -202,13 +203,7 @@ export default function DealsPage() {
               style={{ width: isMobile ? '100%' : 220 }}
               value={paymentFilter || 'ALL'}
               onChange={(v) => navigate(v === 'ALL' ? '/deals' : `/deals?dilnozaPayment=${v}`)}
-              options={[
-                { label: 'Все оплаты', value: 'ALL' },
-                { label: 'Наличные', value: 'CASH' },
-                { label: 'Click', value: 'CLICK' },
-                { label: 'Перечисление', value: 'TRANSFER' },
-                { label: 'Бухгалтерия', value: 'ACCOUNTING' },
-              ]}
+              options={DILNOZA_DEALS_FILTER_OPTIONS}
             />
           )}
           {viewMode === 'table' && (
