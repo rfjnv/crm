@@ -220,6 +220,38 @@ function productionSyncHeader(
   return null;
 }
 
+/**
+ * Заголовок для правки единого поста в Telegram (в т.ч. при новых комментариях в CRM).
+ * Расширяет productionSyncHeader: если для статуса нет строки в основном списке, всё равно возвращаем текст,
+ * иначе syncDealTelegramGroupMessages не вызывает edit — комментарии не попадают в группу.
+ */
+function productionSyncHeaderForEdit(
+  status: DealStatus,
+  items: { requestedQty: unknown }[],
+): { header: string; paymentMethodPending: boolean } {
+  const primary = productionSyncHeader(status, items);
+  if (primary) return primary;
+
+  const labels: Partial<Record<DealStatus, string>> = {
+    FINANCE_APPROVED: '📋 <b>Производство — финансы одобрили</b>',
+    STOCK_CONFIRMED: '📋 <b>Производство — склад подтвердил</b>',
+    WAITING_STOCK_CONFIRMATION: '📥 <b>Производство — ожидает склад</b>',
+    SHIPMENT_ON_HOLD: '⏸ <b>Отгрузка на паузе</b>',
+    NEW: '📋 <b>Производство — новая заявка</b>',
+    REOPENED: '📋 <b>Производство — сделка</b>',
+    SHIPPED: '📋 <b>Производство — отгружено</b>',
+    CLOSED: '📋 <b>Производство — закрыта</b>',
+    CANCELED: '📋 <b>Производство — отменена</b>',
+    REJECTED: '📋 <b>Производство — отклонена</b>',
+    PENDING_APPROVAL: '📋 <b>Производство — на согласовании</b>',
+  };
+  const line = labels[status];
+  if (line) {
+    return { header: line, paymentMethodPending: status === 'WAITING_STOCK_CONFIRMATION' };
+  }
+  return { header: '📋 <b>Производство — сделка</b>', paymentMethodPending: false };
+}
+
 /** Данные сделки для одного сообщения в группу производства (позиции + оплата + комменты). */
 type DealRowForProductionTg = {
   title: string;
@@ -352,8 +384,7 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
   });
   if (!full) return;
 
-  const hdr = productionSyncHeader(full.status, full.items);
-  if (!hdr) return;
+  const hdr = productionSyncHeaderForEdit(full.status, full.items);
 
   const fullProd: DealRowForProductionTg = {
     title: full.title,
@@ -928,30 +959,28 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
   if (chatProd && deal.productionTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
     if (mid != null) {
-      const hdr = productionSyncHeader(deal.status, deal.items);
-      if (hdr) {
-        const fullProd: DealRowForProductionTg = {
-          title: deal.title,
-          paymentMethod: deal.paymentMethod,
-          paymentType: deal.paymentType,
-          amount: deal.amount,
-          paidAmount: deal.paidAmount,
-          paymentStatus: deal.paymentStatus,
-          dueDate: deal.dueDate,
-          terms: deal.terms,
-          client: deal.client,
-          manager: deal.manager,
-          items: deal.items.map((it) => ({
-            requestedQty: it.requestedQty,
-            product: { name: it.product.name, unit: it.product.unit },
-          })),
-          comments: deal.comments,
-        };
-        const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
-        const ok = await telegramService.editGroupHtmlMessage(chatProd, mid, body, path);
-        if (!ok) {
-          console.warn('[Telegram deal groups] sync: production edit failed dealId=', dealId);
-        }
+      const hdr = productionSyncHeaderForEdit(deal.status, deal.items);
+      const fullProd: DealRowForProductionTg = {
+        title: deal.title,
+        paymentMethod: deal.paymentMethod,
+        paymentType: deal.paymentType,
+        amount: deal.amount,
+        paidAmount: deal.paidAmount,
+        paymentStatus: deal.paymentStatus,
+        dueDate: deal.dueDate,
+        terms: deal.terms,
+        client: deal.client,
+        manager: deal.manager,
+        items: deal.items.map((it) => ({
+          requestedQty: it.requestedQty,
+          product: { name: it.product.name, unit: it.product.unit },
+        })),
+        comments: deal.comments,
+      };
+      const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
+      const ok = await telegramService.editGroupHtmlMessage(chatProd, mid, body, path);
+      if (!ok) {
+        console.warn('[Telegram deal groups] sync: production edit failed dealId=', dealId);
       }
     }
   }
