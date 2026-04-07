@@ -257,7 +257,7 @@ export default function Layout() {
         },
       ]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'OPERATOR')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR')
       ? [{
         key: '/finance/cashbox',
         icon: <DollarOutlined />,
