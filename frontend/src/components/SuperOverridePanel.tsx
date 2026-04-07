@@ -182,7 +182,11 @@ export default function SuperOverridePanel({
       if (values.status !== deal.status) data.status = values.status;
       if (values.clientId !== deal.clientId) data.clientId = values.clientId;
       if (values.managerId !== deal.managerId) data.managerId = values.managerId;
-      if ((values.contractId || null) !== (deal.contractId || null)) data.contractId = values.contractId || null;
+      // contractId задаётся в setFieldsValue, но поля договора в форме нет — values.contractId с validateFields не приходит,
+      // иначе (undefined vs uuid) уходило contractId: null и договор откреплялся. Шлём только если поле реально в форме.
+      if (values.contractId !== undefined && (values.contractId || null) !== (deal.contractId || null)) {
+        data.contractId = values.contractId || null;
+      }
       if ((values.paymentMethod || null) !== (deal.paymentMethod || null)) data.paymentMethod = values.paymentMethod || null;
       if (values.paymentType !== deal.paymentType) data.paymentType = values.paymentType;
       if (values.paidAmount !== Number(deal.paidAmount)) data.paidAmount = values.paidAmount;
