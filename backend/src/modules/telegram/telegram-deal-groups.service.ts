@@ -273,7 +273,37 @@ type DealRowForProductionTg = {
     createdAt: Date;
     author: { fullName: string };
   }>;
+  /** Для блока «отгрузка»: бухгалтерия и договор. */
+  status?: DealStatus;
+  sentToFinance?: boolean;
+  contract?: { contractNumber: string; contractType: string } | null;
 };
+
+/** Согласовано с deals.service: перечисление / рассрочка — очередь в финансы. */
+const FINANCE_REVIEW_PAYMENT_METHODS: ReadonlyArray<PaymentMethod> = ['TRANSFER', 'INSTALLMENT'];
+
+function paymentMethodRequiresFinanceReview(pm: PaymentMethod | null): boolean {
+  return pm != null && FINANCE_REVIEW_PAYMENT_METHODS.includes(pm);
+}
+
+/** После строки «Сделка:» для READY_FOR_SHIPMENT — бух (если была очередь в финансы) + договор. */
+function buildReadyForShipmentExtraLines(deal: DealRowForProductionTg): string[] {
+  if (deal.status !== 'READY_FOR_SHIPMENT') return [];
+  const lines: string[] = [];
+  const financeApproved =
+    paymentMethodRequiresFinanceReview(deal.paymentMethod) || deal.sentToFinance === true;
+  if (financeApproved) {
+    lines.push(`✅ <b>Бухгалтерия:</b> одобрено`);
+  }
+  const c = deal.contract;
+  if (c?.contractNumber?.trim()) {
+    const num = esc(c.contractNumber.trim());
+    const typ = contractTypeLabel(c.contractType);
+    lines.push(`📄 <b>Договор:</b> №${num} (${typ})`);
+  }
+  if (lines.length === 0) return [];
+  return ['', ...lines];
+}
 
 export function buildProductionGroupHtml(
   deal: DealRowForProductionTg,
@@ -301,12 +331,15 @@ export function buildProductionGroupHtml(
       ? '— (менеджер укажет при отправке)'
       : paymentMethodLabel(deal.paymentMethod);
 
+  const rfsExtra = buildReadyForShipmentExtraLines(deal);
+
   return [
     headerLine,
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
+    ...rfsExtra,
     '',
     '<b>Позиции с количествами:</b>',
     lines.length ? lines.join('\n') : '—',
@@ -371,6 +404,7 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
     include: {
       client: { select: { companyName: true, contactName: true } },
       manager: { select: { fullName: true } },
+      contract: { select: { contractNumber: true, contractType: true } },
       items: {
         include: { product: { select: { name: true, unit: true } } },
         orderBy: { createdAt: 'asc' },
@@ -402,6 +436,11 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
       product: { name: it.product.name, unit: it.product.unit },
     })),
     comments: full.comments,
+    status: full.status,
+    sentToFinance: full.sentToFinance,
+    contract: full.contract
+      ? { contractNumber: full.contract.contractNumber, contractType: full.contract.contractType }
+      : null,
   };
   const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
   const path = dealLinkPath(dealId);
@@ -968,6 +1007,11 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
           product: { name: it.product.name, unit: it.product.unit },
         })),
         comments: deal.comments,
+        status: deal.status,
+        sentToFinance: deal.sentToFinance,
+        contract: deal.contract
+          ? { contractNumber: deal.contract.contractNumber, contractType: deal.contract.contractType }
+          : null,
       };
       const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
       const ok = await telegramService.editGroupHtmlMessage(chatProd, mid, body, path);
@@ -1010,6 +1054,7 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
     include: {
       client: { select: { companyName: true, contactName: true } },
       manager: { select: { fullName: true } },
+      contract: { select: { contractNumber: true, contractType: true } },
       items: {
         include: { product: { select: { name: true, unit: true } } },
         orderBy: { createdAt: 'asc' },
