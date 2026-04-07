@@ -290,6 +290,19 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupWarehouseChatId;
   if (!chatId) return;
 
+  // Самовосстановление: флаг «отправлено» без message_id (сбой/старые данные) — снова разрешаем отправку
+  const snap = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { status: true, sentToWarehouse: true, warehouseTelegramMessageId: true },
+  });
+  if (
+    snap?.status === 'WAITING_STOCK_CONFIRMATION' &&
+    snap.sentToWarehouse &&
+    !snap.warehouseTelegramMessageId?.trim()
+  ) {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentToWarehouse: false } }).catch(() => {});
+  }
+
   const claimed = await prisma.deal.updateMany({
     where: {
       id: dealId,
@@ -401,6 +414,18 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
 export async function trySendProductionIntakeTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
   if (!chatId) return;
+
+  const snapIn = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { status: true, sentProductionIntakeTg: true, productionIntakeTelegramMessageId: true },
+  });
+  if (
+    snapIn?.status === 'WAITING_STOCK_CONFIRMATION' &&
+    snapIn.sentProductionIntakeTg &&
+    !snapIn.productionIntakeTelegramMessageId?.trim()
+  ) {
+    await prisma.deal.update({ where: { id: dealId }, data: { sentProductionIntakeTg: false } }).catch(() => {});
+  }
 
   const claimed = await prisma.deal.updateMany({
     where: {
@@ -647,7 +672,12 @@ export async function cleanupStockWaitTelegramMessages(
   await prisma.deal
     .update({
       where: { id: dealId },
-      data: { warehouseTelegramMessageId: null, productionIntakeTelegramMessageId: null },
+      data: {
+        warehouseTelegramMessageId: null,
+        productionIntakeTelegramMessageId: null,
+        sentToWarehouse: false,
+        sentProductionIntakeTg: false,
+      },
     })
     .catch(() => {});
 }
@@ -890,7 +920,8 @@ export async function onDealStatusChanged(
 ): Promise<void> {
   await cleanupStockWaitTelegramMessages(dealId, previousStatus, newStatus);
 
-  if (newStatus === 'WAITING_STOCK_CONFIRMATION' && previousStatus === 'NEW') {
+  // Любой вход в «ожидает склад», не только из NEW (напр. IN_PROGRESS / STOCK_CONFIRMED → склад)
+  if (newStatus === 'WAITING_STOCK_CONFIRMATION' && previousStatus !== 'WAITING_STOCK_CONFIRMATION') {
     await trySendWarehouseTelegram(dealId);
     await trySendProductionIntakeTelegram(dealId);
   }

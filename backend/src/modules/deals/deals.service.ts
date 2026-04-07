@@ -2519,6 +2519,12 @@ export class DealsService {
       reason: dto.reason,
     });
 
+    if (dto.status !== undefined && dto.status !== deal.status) {
+      void onDealStatusChanged(id, deal.status as DealStatus, dto.status as DealStatus).catch((err) => {
+        console.error('[Telegram deal groups] onDealStatusChanged (override):', err);
+      });
+    }
+
     void syncDealTelegramGroupMessages(id).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
