@@ -13,6 +13,8 @@ import {
   sendProductionPaymentSubmitTelegram,
   trySendAdminApprovalTelegram,
   appendFinanceTelegramLog,
+  syncDealTelegramGroupMessages,
+  cleanupStockWaitTelegramMessages,
 } from '../telegram/telegram-deal-groups.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
@@ -397,6 +399,10 @@ export class DealsService {
       });
     }
 
+    void syncDealTelegramGroupMessages(id).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
+
     return updated;
   }
 
@@ -468,15 +474,10 @@ export class DealsService {
       after: { status: targetStatus, paymentMethod: dto.paymentMethod },
     });
 
-    if (targetStatus === 'WAITING_FINANCE') {
-      void trySendFinanceTelegram(dealId).catch((err) => {
-        console.error('[Telegram deal groups] trySendFinanceTelegram:', err);
-      });
-    }
-
-    void sendProductionPaymentSubmitTelegram(dealId).catch((err) => {
-      console.error('[Telegram deal groups] sendProductionPaymentSubmitTelegram:', err);
-    });
+    await Promise.allSettled([
+      sendProductionPaymentSubmitTelegram(dealId),
+      ...(targetStatus === 'WAITING_FINANCE' ? [trySendFinanceTelegram(dealId)] : []),
+    ]);
 
     // Notify accountants when deal needs finance review
     if (targetStatus === 'WAITING_FINANCE') {
@@ -546,10 +547,14 @@ export class DealsService {
         }).catch(() => {});
       }
 
-      void trySendAdminApprovalTelegram(dealId).catch((err) => {
+      await trySendAdminApprovalTelegram(dealId).catch((err) => {
         console.error('[Telegram deal groups] trySendAdminApprovalTelegram:', err);
       });
     }
+
+    await syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
 
     return this.findById(dealId, user);
   }
@@ -607,6 +612,14 @@ export class DealsService {
       entityId: dealId,
       before: { status: deal.status },
       after: { status: 'STOCK_CONFIRMED', respondedItems: dto.items.length },
+    });
+
+    void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED').catch((err) => {
+      console.error('[Telegram deal groups] cleanupStockWaitTelegramMessages:', err);
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
     return this.findById(dealId, user);
@@ -722,6 +735,10 @@ export class DealsService {
         console.error('[Telegram deal groups] trySendProductionTelegram:', err);
       });
     }
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
 
     return this.findById(dealId, user);
   }
@@ -853,9 +870,11 @@ export class DealsService {
     ]);
     const contractNo = dealAfter?.contract?.contractNumber?.trim() || 'не привязан';
     const approveLine = `${actor?.fullName?.trim() || 'Бухгалтер'} подтвердил(а) финансовую проверку. Договор: №${contractNo}`;
-    void appendFinanceTelegramLog(dealId, approveLine).catch((err) => {
-      console.error('[Telegram deal groups] appendFinanceTelegramLog (approve):', err);
-    });
+    void appendFinanceTelegramLog(dealId, approveLine)
+      .then(() => syncDealTelegramGroupMessages(dealId))
+      .catch((err) => {
+        console.error('[Telegram deal groups] appendFinanceTelegramLog / sync (approve):', err);
+      });
 
     return this.findById(dealId, user);
   }
@@ -1639,6 +1658,10 @@ export class DealsService {
       },
     });
 
+    void syncDealTelegramGroupMessages(id).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
+
     return updated;
   }
 
@@ -1735,8 +1758,14 @@ export class DealsService {
       }).format(dto.amount);
       const notePart = dto.note?.trim() ? ` Примечание: ${dto.note.trim()}` : '';
       const payLine = `${actor?.fullName?.trim() || '—'} добавил(а) платёж ${sumStr} сум.${notePart} Договор: №${contractNo}`;
-      void appendFinanceTelegramLog(dealId, payLine).catch((err) => {
-        console.error('[Telegram deal groups] appendFinanceTelegramLog (payment):', err);
+      void appendFinanceTelegramLog(dealId, payLine)
+        .then(() => syncDealTelegramGroupMessages(dealId))
+        .catch((err) => {
+          console.error('[Telegram deal groups] appendFinanceTelegramLog / sync (payment):', err);
+        });
+    } else {
+      void syncDealTelegramGroupMessages(dealId).catch((err) => {
+        console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
       });
     }
 
@@ -1794,6 +1823,10 @@ export class DealsService {
       after: { paymentId, ...dto },
     });
 
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
+
     return result;
   }
 
@@ -1830,6 +1863,10 @@ export class DealsService {
     await auditLog({
       userId: user.userId, action: 'PAYMENT_DELETE', entityType: 'deal', entityId: dealId,
       after: { paymentId, removedAmount: result.removedAmount },
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
     return result;
@@ -1915,6 +1952,10 @@ export class DealsService {
       include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
     });
 
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
+
     return item;
   }
 
@@ -1939,6 +1980,10 @@ export class DealsService {
 
     // Recalculate deal amount
     await this.recalcAmount(dealId);
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
 
     return { success: true };
   }
@@ -2091,6 +2136,10 @@ export class DealsService {
       include: {
         author: { select: { id: true, fullName: true } },
       },
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
     return comment;
@@ -2468,6 +2517,10 @@ export class DealsService {
       before: beforeSnapshot,
       after: afterSnapshot,
       reason: dto.reason,
+    });
+
+    void syncDealTelegramGroupMessages(id).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
     return this.findById(id, user);
