@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
-  message, Alert,
+  message, Alert, Checkbox, Radio,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
@@ -48,11 +48,19 @@ function formatQty(value: number | string | null | undefined): string {
 
 const DRAFT_STORAGE_KEY = 'deal_create_draft';
 
+const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
+
 interface DraftData {
   clientId?: string;
   title: string;
   commentText: string;
   items: Omit<DraftItem, 'key'>[];
+  paymentMethod?: PaymentMethod;
+  cashNote?: string;
+  clickTransactionId?: string;
+  transferInn?: string;
+  transferDocuments?: string[];
+  transferType?: 'ONE_TIME' | 'ANNUAL';
   savedAt: number;
 }
 
@@ -76,6 +84,10 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.clientId) return false;
   if (d.title) return false;
   if (d.commentText) return false;
+  if (d.cashNote?.trim()) return false;
+  if (d.clickTransactionId?.trim()) return false;
+  if (d.transferInn?.trim()) return false;
+  if (d.transferDocuments && d.transferDocuments.length > 0) return false;
   if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
   return true;
 }
@@ -100,6 +112,11 @@ export default function DealCreatePage() {
   const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
   const [showVat, setShowVat] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [cashNote, setCashNote] = useState('');
+  const [clickTransactionId, setClickTransactionId] = useState('');
+  const [transferInn, setTransferInn] = useState('');
+  const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
+  const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
@@ -118,6 +135,12 @@ export default function DealCreatePage() {
     setClientId(draft.clientId);
     setTitle(draft.title);
     setCommentText(draft.commentText);
+    if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
+    setCashNote(draft.cashNote ?? '');
+    setClickTransactionId(draft.clickTransactionId ?? '');
+    setTransferInn(draft.transferInn ?? '');
+    setTransferDocuments(draft.transferDocuments?.length ? [...draft.transferDocuments] : [...DEFAULT_TRANSFER_DOCUMENTS]);
+    setTransferType(draft.transferType ?? 'ONE_TIME');
     setDraftItems(
       draft.items.length > 0
         ? draft.items.map((i) => ({ ...i, key: makeKey() }))
@@ -143,6 +166,12 @@ export default function DealCreatePage() {
       title,
       commentText,
       items: draftItems.map(({ key: _key, ...rest }) => rest),
+      paymentMethod,
+      cashNote,
+      clickTransactionId,
+      transferInn,
+      transferDocuments,
+      transferType,
       savedAt: Date.now(),
     };
     if (isDraftEmpty(data)) {
@@ -150,7 +179,7 @@ export default function DealCreatePage() {
     } else {
       saveDraft(data);
     }
-  }, [clientId, title, commentText, draftItems, draftBanner]);
+  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, cashNote, clickTransactionId, transferInn, transferDocuments, transferType]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -234,6 +263,17 @@ export default function DealCreatePage() {
       }
     }
 
+    if (isDilnoza && paymentMethod === 'TRANSFER') {
+      if (!transferInn.trim()) {
+        message.error('Укажите ИНН компании для перечисления');
+        return;
+      }
+      if (transferDocuments.length === 0) {
+        message.error('Выберите минимум один документ');
+        return;
+      }
+    }
+
     createMut.mutate({
       title: title || undefined,
       clientId,
@@ -244,7 +284,20 @@ export default function DealCreatePage() {
         price: i.price || undefined,
         requestComment: i.requestComment || undefined,
       })),
-      ...(isDilnoza ? { paymentMethod } : {}),
+      ...(isDilnoza
+        ? {
+            paymentMethod,
+            ...(paymentMethod === 'CASH' ? { cashNote: cashNote.trim() || undefined } : {}),
+            ...(paymentMethod === 'CLICK' ? { clickTransactionId: clickTransactionId.trim() || undefined } : {}),
+            ...(paymentMethod === 'TRANSFER'
+              ? {
+                  transferInn: transferInn.trim(),
+                  transferDocuments,
+                  transferType,
+                }
+              : {}),
+          }
+        : {}),
     });
   }
 
@@ -322,6 +375,71 @@ export default function DealCreatePage() {
                   🧾 Бухгалтерия
                 </Button>
               </Space>
+              {paymentMethod === 'CASH' && (
+                <div style={{ marginTop: 12 }}>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                    Комментарий по оплате (необязательно)
+                  </Typography.Text>
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="Например: предоплата наличными, касса…"
+                    value={cashNote}
+                    onChange={(e) => setCashNote(e.target.value)}
+                  />
+                </div>
+              )}
+              {paymentMethod === 'CLICK' && (
+                <div style={{ marginTop: 12 }}>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                    Номер операции / ID Click (необязательно)
+                  </Typography.Text>
+                  <Input
+                    placeholder="Например: ID транзакции или комментарий из банка"
+                    value={clickTransactionId}
+                    onChange={(e) => setClickTransactionId(e.target.value)}
+                  />
+                </div>
+              )}
+              {paymentMethod === 'TRANSFER' && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                      ИНН компании *
+                    </Typography.Text>
+                    <Input
+                      placeholder="ИНН клиента"
+                      value={transferInn}
+                      onChange={(e) => setTransferInn(e.target.value)}
+                      maxLength={50}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                      Документы *
+                    </Typography.Text>
+                    <Checkbox.Group
+                      value={transferDocuments}
+                      onChange={(vals) => setTransferDocuments(vals as string[])}
+                      options={[
+                        { label: 'Договор', value: 'Договор' },
+                        { label: 'Спецификация', value: 'Спецификация' },
+                        { label: 'Счет', value: 'Счет' },
+                        { label: 'Счет-фактура', value: 'Счет-фактура' },
+                        { label: 'Накладная', value: 'Накладная' },
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                      Тип документа
+                    </Typography.Text>
+                    <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)}>
+                      <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+                      <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+                    </Radio.Group>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </Card>

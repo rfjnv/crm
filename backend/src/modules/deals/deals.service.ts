@@ -203,6 +203,34 @@ export class DealsService {
     const paymentMethodAtCreate: PaymentMethod | null =
       canUseDilnozaCreatePayment && dto.paymentMethod ? (dto.paymentMethod as PaymentMethod) : null;
 
+    let dilnozaTerms: string | null = null;
+    let dilnozaTransferInn: string | null = null;
+    let dilnozaTransferDocuments: string | null = null;
+    let dilnozaTransferType: string | null = null;
+
+    if (canUseDilnozaCreatePayment && dto.paymentMethod) {
+      const pm = dto.paymentMethod as PaymentMethod;
+      if (pm === 'CASH') {
+        const n = dto.cashNote?.trim();
+        dilnozaTerms = n || null;
+      } else if (pm === 'CLICK') {
+        const id = dto.clickTransactionId?.trim();
+        dilnozaTerms = id ? `Click: ${id}` : null;
+      } else if (pm === 'TRANSFER') {
+        const transferInn = dto.transferInn?.trim();
+        const transferDocuments = normalizeTransferDocuments(dto.transferDocuments);
+        if (!transferInn) {
+          throw new AppError(400, 'Укажите ИНН компании для перечисления');
+        }
+        if (transferDocuments.length === 0) {
+          throw new AppError(400, 'Выберите минимум один документ для перечисления');
+        }
+        dilnozaTransferInn = transferInn;
+        dilnozaTransferDocuments = JSON.stringify(transferDocuments);
+        dilnozaTransferType = dto.transferType ?? 'ONE_TIME';
+      }
+    }
+
     // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
@@ -217,6 +245,14 @@ export class DealsService {
           paymentType: 'FULL',
           paidAmount: 0,
           paymentStatus: 'UNPAID',
+          ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
+          ...(canUseDilnozaCreatePayment && dto.paymentMethod === 'TRANSFER'
+            ? {
+                transferInn: dilnozaTransferInn,
+                transferDocuments: dilnozaTransferDocuments,
+                transferType: dilnozaTransferType,
+              }
+            : {}),
         },
       });
 

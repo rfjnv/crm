@@ -11,6 +11,14 @@ export const createDealDto = z.object({
   clientId: z.string().uuid('Некорректный ID клиента'),
   comment: z.string().optional(),
   paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
+  /** Dilnoza: заметка по наличным (в terms) */
+  cashNote: z.string().optional(),
+  /** Dilnoza: номер/ID операции Click (в terms) */
+  clickTransactionId: z.string().optional(),
+  /** Dilnoza: перечисление — как send-to-finance */
+  transferInn: z.string().optional(),
+  transferDocuments: z.array(z.string()).optional(),
+  transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),

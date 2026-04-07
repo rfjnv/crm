@@ -12,6 +12,11 @@ export const dealsApi = {
     clientId: string;
     comment?: string;
     paymentMethod?: PaymentMethod;
+    cashNote?: string;
+    clickTransactionId?: string;
+    transferInn?: string;
+    transferDocuments?: string[];
+    transferType?: 'ONE_TIME' | 'ANNUAL';
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
