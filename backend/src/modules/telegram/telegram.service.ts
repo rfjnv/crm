@@ -119,6 +119,19 @@ class TelegramService {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  private toTelegramTarget(chatId: string | number): string | number {
+    return typeof chatId === 'number'
+      ? chatId
+      : (/^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId);
+  }
+
+  private getMigrateToChatId(err: unknown): string | null {
+    const e = err as { response?: { body?: { parameters?: { migrate_to_chat_id?: number | string } } } };
+    const migrated = e.response?.body?.parameters?.migrate_to_chat_id;
+    if (migrated == null) return null;
+    return String(migrated);
+  }
+
   /**
    * Send HTML to a group/supergroup. chatId from env (often negative), e.g. -100xxxxxxxxxx.
    * @returns Telegram message_id или null при ошибке / нет бота.
@@ -131,7 +144,7 @@ class TelegramService {
     if (!chatId) return null;
     try {
       const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
-      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const target = this.toTelegramTarget(chatId);
       const sent = await this.bot.sendMessage(target, html, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
@@ -139,6 +152,24 @@ class TelegramService {
       });
       return typeof sent.message_id === 'number' ? sent.message_id : null;
     } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
+          const resent = await this.bot.sendMessage(this.toTelegramTarget(migratedChatId), html, {
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            reply_markup,
+          });
+          console.warn(`[Telegram] sendGroupHtmlMessage: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return typeof resent.message_id === 'number' ? resent.message_id : null;
+        } catch (retryErr: unknown) {
+          const re = retryErr as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+          const rb = re.response?.body;
+          console.error('[Telegram] sendGroupHtmlMessage retry after migration failed chat_id=', migratedChatId, rb?.description || re.message);
+          return null;
+        }
+      }
       const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
       const body = e.response?.body;
       console.error(
@@ -173,7 +204,7 @@ class TelegramService {
         rows.push([{ text: '\u{1F4CB} \u041E\u0442\u043A\u0440\u044B\u0442\u044C CRM', url: fullUrl }]);
       }
       const reply_markup: TelegramBot.InlineKeyboardMarkup = { inline_keyboard: rows };
-      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const target = this.toTelegramTarget(chatId);
       const sent = await this.bot.sendMessage(target, html, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
@@ -181,6 +212,26 @@ class TelegramService {
       });
       return typeof sent.message_id === 'number' ? sent.message_id : null;
     } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          const rows = [...(keyboard.inline_keyboard || [])];
+          if (linkPath) {
+            const fullUrl = linkPath.startsWith('http') ? linkPath : `${config.telegram.crmUrl}${linkPath}`;
+            rows.push([{ text: '\u{1F4CB} Открыть CRM', url: fullUrl }]);
+          }
+          const reply_markup: TelegramBot.InlineKeyboardMarkup = { inline_keyboard: rows };
+          const resent = await this.bot.sendMessage(this.toTelegramTarget(migratedChatId), html, {
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            reply_markup,
+          });
+          console.warn(`[Telegram] sendHtmlMessageWithKeyboard: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return typeof resent.message_id === 'number' ? resent.message_id : null;
+        } catch {
+          return null;
+        }
+      }
       const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
       const body = e.response?.body;
       console.error(
@@ -204,7 +255,7 @@ class TelegramService {
     if (!this.bot) return false;
     if (!chatId || !Number.isFinite(messageId)) return false;
     try {
-      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const target = this.toTelegramTarget(chatId);
       const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
       await this.bot.editMessageText(html, {
         chat_id: target,
@@ -215,6 +266,23 @@ class TelegramService {
       });
       return true;
     } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          const reply_markup = linkPath ? this.buildInlineKeyboard(linkPath) : undefined;
+          await this.bot.editMessageText(html, {
+            chat_id: this.toTelegramTarget(migratedChatId),
+            message_id: messageId,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            reply_markup,
+          });
+          console.warn(`[Telegram] editGroupHtmlMessage: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return true;
+        } catch {
+          // fall through
+        }
+      }
       const e = err as { message?: string; response?: { body?: { description?: string } } };
       console.warn(
         '[Telegram] editGroupHtmlMessage failed chat_id=',
@@ -235,10 +303,20 @@ class TelegramService {
       return false;
     }
     try {
-      const target = /^-?\d+$/.test(String(chatId)) ? Number(chatId) : chatId;
+      const target = this.toTelegramTarget(chatId);
       await this.bot.deleteMessage(target, messageId);
       return true;
     } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          await this.bot.deleteMessage(this.toTelegramTarget(migratedChatId), messageId);
+          console.warn(`[Telegram] deleteGroupMessage: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return true;
+        } catch {
+          // fall through
+        }
+      }
       const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
       const body = e.response?.body;
       console.warn(
@@ -370,10 +448,25 @@ class TelegramService {
       ].join('\n');
 
       try {
-        const target = /^-?\d+$/.test(String(t.chatId)) ? Number(t.chatId) : t.chatId;
+        const target = this.toTelegramTarget(t.chatId);
         await this.bot.sendMessage(target, text, { parse_mode: 'HTML', disable_web_page_preview: true });
         results.push({ label: t.label, chatId: t.chatId, ok: true });
       } catch (err: unknown) {
+        const migratedChatId = this.getMigrateToChatId(err);
+        if (migratedChatId) {
+          try {
+            await this.bot.sendMessage(this.toTelegramTarget(migratedChatId), text, { parse_mode: 'HTML', disable_web_page_preview: true });
+            results.push({
+              label: t.label,
+              chatId: t.chatId,
+              ok: true,
+              error: `chat migrated to ${migratedChatId} (update ${t.envKey})`,
+            });
+            continue;
+          } catch {
+            // continue to regular error formatting
+          }
+        }
         const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
         const body = e.response?.body;
         const msg = body?.description || e.message || 'Unknown error';
