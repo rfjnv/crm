@@ -3013,7 +3013,7 @@ export class DealsService {
     void syncDealTelegramGroupMessages(dealId).catch(() => {});
   }
 
-  /** Сотрудник: «Отгружено» → CLOSED (самовызов/яндекс) или IN_DELIVERY (доставка, водитель уже назначен) */
+  /** Сотрудник: «Отгружено» — сразу списание со склада; затем CLOSED (самовывоз/яндекс) или IN_DELIVERY (доставка). */
   async markLoaded(dealId: string, user: AuthUser) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, status: 'LOADING_ASSIGNED', isArchived: false },
@@ -3031,8 +3031,8 @@ export class DealsService {
     const targetStatus: DealStatus = isDelivery ? 'IN_DELIVERY' : 'CLOSED';
 
     await prisma.$transaction(async (tx) => {
+      await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при отметке «Отгружено»');
       if (targetStatus === 'CLOSED') {
-        await this.deductInventoryForDealInTx(tx, dealId, user.userId);
         await tx.deal.update({
           where: { id: dealId },
           data: { status: 'CLOSED', closedAt: new Date() },
@@ -3068,7 +3068,7 @@ export class DealsService {
     return { departedCount: deals.length };
   }
 
-  /** Водитель/зав.склада/супер-админ: «Доставлено» — закрывает одну сделку */
+  /** Водитель/зав.склада/супер-админ: «Доставлено» — закрывает сделку (склад уже списан при «Отгружено»). */
   async deliverDeal(dealId: string, user: AuthUser) {
     const canActAny = user.role === 'WAREHOUSE_MANAGER' || user.role === 'SUPER_ADMIN';
     const deal = await prisma.deal.findFirst({
@@ -3081,12 +3081,9 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или нет прав для завершения доставки');
 
-    await prisma.$transaction(async (tx) => {
-      await this.deductInventoryForDealInTx(tx, deal.id, user.userId);
-      await tx.deal.update({
-        where: { id: deal.id },
-        data: { status: 'CLOSED', closedAt: new Date() },
-      });
+    await prisma.deal.update({
+      where: { id: deal.id },
+      data: { status: 'CLOSED', closedAt: new Date() },
     });
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });
     void syncDealTelegramGroupMessages(deal.id).catch(() => {});
