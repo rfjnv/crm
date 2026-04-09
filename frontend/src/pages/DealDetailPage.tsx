@@ -932,6 +932,9 @@ export default function DealDetailPage() {
               {deal.vehicleType && (
                 <Descriptions.Item label="Тип машины">{deal.vehicleType}</Descriptions.Item>
               )}
+              {deal.deliveryComment && (
+                <Descriptions.Item label="Комментарий доставки">{deal.deliveryComment}</Descriptions.Item>
+              )}
               {deal.paymentMethod && (
                 <Descriptions.Item label="Способ оплаты">
                   <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
@@ -957,6 +960,16 @@ export default function DealDetailPage() {
                     </Descriptions.Item>
                   )}
                 </>
+              )}
+              {(deal as any).loadingAssignee && (
+                <Descriptions.Item label="Грузил">
+                  <Tag color="cyan">{(deal as any).loadingAssignee.fullName}</Tag>
+                </Descriptions.Item>
+              )}
+              {deal.deliveryDriver && (
+                <Descriptions.Item label="Водитель доставки">
+                  <Tag color="green">{deal.deliveryDriver.fullName}</Tag>
+                </Descriptions.Item>
               )}
               <Descriptions.Item label="Статус">
                 <DealStatusTag status={deal.status} />
@@ -1241,7 +1254,7 @@ export default function DealDetailPage() {
               children: (
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <Card bordered={false}>
-                    <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+                    <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} size="small">
                       <Descriptions.Item label="Клиент">
                         <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
                       </Descriptions.Item>
@@ -1260,6 +1273,9 @@ export default function DealDetailPage() {
                           deal.manager?.fullName
                         )}
                       </Descriptions.Item>
+                      <Descriptions.Item label="Статус">
+                        <DealStatusTag status={deal.status} />
+                      </Descriptions.Item>
                       <Descriptions.Item label="Сумма">
                         {hasQuantities ? formatUZS(deal.amount) : <Typography.Text type="secondary">Не установлено</Typography.Text>}
                       </Descriptions.Item>
@@ -1275,9 +1291,51 @@ export default function DealDetailPage() {
                           <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
                         </Descriptions.Item>
                       )}
-                      <Descriptions.Item label="Статус">
-                        <DealStatusTag status={deal.status} />
-                      </Descriptions.Item>
+                      {deal.paymentMethod === 'TRANSFER' && deal.transferInn && (
+                        <Descriptions.Item label="ИНН (перечисление)">
+                          <Typography.Text code>{deal.transferInn}</Typography.Text>
+                        </Descriptions.Item>
+                      )}
+                      {deal.paymentMethod === 'TRANSFER' && deal.transferDocuments && Array.isArray(deal.transferDocuments) && (
+                        <Descriptions.Item label="Документы">
+                          <Space wrap>
+                            {(deal.transferDocuments as unknown as string[]).map((doc: string) => (
+                              <Tag key={doc} color="cyan">{doc}</Tag>
+                            ))}
+                          </Space>
+                        </Descriptions.Item>
+                      )}
+                      {deal.paymentMethod === 'TRANSFER' && deal.transferType && (
+                        <Descriptions.Item label="Тип документа">
+                          <Tag color="magenta">{deal.transferType === 'ONE_TIME' ? 'Разовый' : 'Годовой'}</Tag>
+                        </Descriptions.Item>
+                      )}
+                      {deal.deliveryType && (
+                        <Descriptions.Item label="Доставка">
+                          <Tag color={deal.deliveryType === 'DELIVERY' ? 'orange' : deal.deliveryType === 'YANDEX' ? 'purple' : 'blue'}>
+                            {{ SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' }[deal.deliveryType] || deal.deliveryType}
+                          </Tag>
+                        </Descriptions.Item>
+                      )}
+                      {deal.vehicleNumber && (
+                        <Descriptions.Item label="Номер машины">{deal.vehicleNumber}</Descriptions.Item>
+                      )}
+                      {deal.vehicleType && (
+                        <Descriptions.Item label="Тип машины">{deal.vehicleType}</Descriptions.Item>
+                      )}
+                      {deal.deliveryComment && (
+                        <Descriptions.Item label="Комментарий доставки">{deal.deliveryComment}</Descriptions.Item>
+                      )}
+                      {(deal as any).loadingAssignee && (
+                        <Descriptions.Item label="Грузил">
+                          <Tag color="cyan">{(deal as any).loadingAssignee.fullName}</Tag>
+                        </Descriptions.Item>
+                      )}
+                      {deal.deliveryDriver && (
+                        <Descriptions.Item label="Водитель доставки">
+                          <Tag color="green">{deal.deliveryDriver.fullName}</Tag>
+                        </Descriptions.Item>
+                      )}
                     </Descriptions>
                   </Card>
 
