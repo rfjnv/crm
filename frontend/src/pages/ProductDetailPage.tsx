@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import { useQuery } from '@tanstack/react-query';
 import {
   Typography, Card, Descriptions, Tag, Segmented, Spin, Row, Col,
-  Statistic, Table, Space, Button, theme,
+  Statistic, Table, Space, theme,
 } from 'antd';
-import { ArrowLeftOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Column } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { inventoryApi } from '../api/warehouse.api';
@@ -41,7 +41,6 @@ function formatMovementChartBucket(isoDay: string, g: ChartGranularity): string 
 export default function ProductDetailPage() {
   const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { token: tk } = theme.useToken();
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const chartTheme = isDark ? 'classicDark' : 'classic';
