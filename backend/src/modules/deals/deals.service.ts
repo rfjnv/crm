@@ -1,4 +1,5 @@
 import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, Role } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -127,6 +128,53 @@ function parseOptionalDate(value?: string | null): Date | null | undefined {
 // ==================== SERVICE ====================
 
 export class DealsService {
+  /**
+   * Списание товара при закрытии. Если уже есть OUT по сделке (накладная submitShipment) — не дублируем.
+   */
+  private async deductInventoryForDealInTx(
+    tx: Prisma.TransactionClient,
+    dealId: string,
+    userId: string,
+    movementNote = 'Автосписание при закрытии сделки',
+  ) {
+    const existing = await tx.inventoryMovement.findFirst({
+      where: { dealId, type: 'OUT' },
+    });
+    if (existing) return;
+
+    const dealItems = await tx.dealItem.findMany({
+      where: { dealId },
+      include: { product: true },
+    });
+
+    for (const item of dealItems) {
+      const qty = Number(item.requestedQty ?? 0);
+      if (qty <= 0) continue;
+
+      const result = await tx.product.updateMany({
+        where: { id: item.productId, stock: { gte: qty } },
+        data: { stock: { decrement: qty } },
+      });
+
+      if (result.count === 0) {
+        throw new AppError(400,
+          `Недостаточно товара "${item.product.name}" на складе. Остаток: ${Number(item.product.stock)}, требуется: ${qty}`,
+        );
+      }
+
+      await tx.inventoryMovement.create({
+        data: {
+          productId: item.productId,
+          type: 'OUT',
+          quantity: qty,
+          dealId,
+          note: movementNote,
+          createdBy: userId,
+        },
+      });
+    }
+  }
+
   async findAll(user: AuthUser, filters?: { status?: DealStatus; includeClosed?: boolean }) {
     const where: Record<string, unknown> = {
       ...ownerScope(user),
@@ -1162,7 +1210,7 @@ export class DealsService {
             },
           },
         },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: [{ closedAt: 'desc' }, { updatedAt: 'desc' }],
         skip,
         take: limit,
       }),
@@ -1369,34 +1417,7 @@ export class DealsService {
     });
 
     await prisma.$transaction(async (tx) => {
-      // Deduct stock for each item atomically
-      for (const item of dealItems) {
-        const qty = Number(item.requestedQty ?? 0);
-        if (qty <= 0) continue;
-
-        const result = await tx.product.updateMany({
-          where: { id: item.productId, stock: { gte: qty } },
-          data: { stock: { decrement: qty } },
-        });
-
-        if (result.count === 0) {
-          throw new AppError(400,
-            `Недостаточно товара "${item.product.name}" на складе. Остаток: ${Number(item.product.stock)}, требуется: ${qty}`,
-          );
-        }
-
-        // Create inventory movement (OUT)
-        await tx.inventoryMovement.create({
-          data: {
-            productId: item.productId,
-            type: 'OUT',
-            quantity: qty,
-            dealId,
-            note: 'Автосписание при отгрузке',
-            createdBy: user.userId,
-          },
-        });
-      }
+      await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при отгрузке');
 
       // Create shipment record
       await tx.shipment.create({
@@ -1415,7 +1436,7 @@ export class DealsService {
       // Update deal status to CLOSED
       await tx.deal.update({
         where: { id: dealId },
-        data: { status: targetStatus },
+        data: { status: targetStatus, closedAt: new Date() },
       });
     });
 
@@ -2574,6 +2595,11 @@ export class DealsService {
         });
       }
 
+      if (dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
+        await this.deductInventoryForDealInTx(tx, id, user.userId);
+        data.closedAt = new Date();
+      }
+
       if (Object.keys(data).length > 0) {
         await tx.deal.update({ where: { id }, data });
       }
@@ -3004,7 +3030,17 @@ export class DealsService {
     const isDelivery = deal.deliveryType === 'DELIVERY';
     const targetStatus: DealStatus = isDelivery ? 'IN_DELIVERY' : 'CLOSED';
 
-    await prisma.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
+    await prisma.$transaction(async (tx) => {
+      if (targetStatus === 'CLOSED') {
+        await this.deductInventoryForDealInTx(tx, dealId, user.userId);
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { status: 'CLOSED', closedAt: new Date() },
+        });
+      } else {
+        await tx.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
+      }
+    });
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: targetStatus } });
 
@@ -3045,7 +3081,13 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или нет прав для завершения доставки');
 
-    await prisma.deal.update({ where: { id: deal.id }, data: { status: 'CLOSED' } });
+    await prisma.$transaction(async (tx) => {
+      await this.deductInventoryForDealInTx(tx, deal.id, user.userId);
+      await tx.deal.update({
+        where: { id: deal.id },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      });
+    });
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });
     void syncDealTelegramGroupMessages(deal.id).catch(() => {});
   }

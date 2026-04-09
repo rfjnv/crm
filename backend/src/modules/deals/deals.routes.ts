@@ -19,7 +19,7 @@ router.use(authenticate);
 // Workflow Queues (MUST be before /:id to avoid param conflicts)
 router.get('/finance-queue', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForFinanceReview.bind(dealsController)));
 router.get('/shipment-queue', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForShipment.bind(dealsController)));
-router.get('/closed-deals', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findClosedDeals.bind(dealsController)));
+router.get('/closed-deals', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findClosedDeals.bind(dealsController)));
 router.get('/shipments', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findShipments.bind(dealsController)));
 router.get('/all-deals-debug', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getAllDealsWithShipmentInfo.bind(dealsController)));
 router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));

@@ -12,7 +12,6 @@ import {
   DollarOutlined,
   CheckSquareOutlined,
   TruckOutlined,
-  CarOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
 import type { UserRole, Permission } from '../types';
@@ -80,7 +79,7 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
       { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Статусы для комплектации' },
       { path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined, rationale: 'Остатки' },
       { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
-      { path: '/warehouse/shipments', label: 'Накладные', Icon: TruckOutlined, rationale: 'Отгрузочные документы' },
+      { path: '/shipment', label: 'Накладные', Icon: TruckOutlined, rationale: 'Отгрузочные документы' },
     ];
   }
 
@@ -89,9 +88,9 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
     return [
       { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Сводка' },
       { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Сделки' },
-      { path: '/shipment', label: 'Отгрузка', Icon: CarOutlined, rationale: 'Точка отгрузки' },
+      { path: '/shipment', label: 'Накладные', Icon: TruckOutlined, rationale: 'Отгрузочные документы' },
       { path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined, rationale: 'Остатки' },
-      { path: '/warehouse/shipments', label: 'Накладные', Icon: TruckOutlined, rationale: 'Логистика' },
+      { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
     ];
   }
 

@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Table, Typography, Tag, Space, Drawer, Descriptions, Badge, Card,
-  Button, Input,
+  Button, Input, Tabs, Pagination,
 } from 'antd';
 import { EyeOutlined, TruckOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import DealStatusTag from '../components/DealStatusTag';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
+import BackButton from '../components/BackButton';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
@@ -19,6 +21,9 @@ export default function WarehouseShipmentsPage() {
   const [search, setSearch] = useState('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<'shipments' | 'closed'>('shipments');
+  const [closedPage, setClosedPage] = useState(1);
+  const [closedSearch, setClosedSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['warehouse-shipments', page, limit],
@@ -32,18 +37,40 @@ export default function WarehouseShipmentsPage() {
     enabled: !!selectedDeal?.id,
   });
 
+  const { data: closedResult, isLoading: closedLoading } = useQuery({
+    queryKey: ['closed-deals', closedPage],
+    queryFn: () => dealsApi.closedDeals(closedPage, 50),
+    enabled: mainTab === 'closed',
+    refetchInterval: 30_000,
+  });
+
   const shipments = data?.data ?? [];
   const pagination = data?.pagination;
+
+  const closedDeals = closedResult?.data ?? [];
+  const closedPagination = closedResult?.pagination;
 
   const filteredShipments = shipments.filter((deal) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
       deal.title.toLowerCase().includes(q) ||
-      deal.client?.companyName.toLowerCase().includes(q) ||
-      deal.shipment?.deliveryNoteNumber.toLowerCase().includes(q) ||
-      deal.shipment?.vehicleNumber.toLowerCase().includes(q) ||
-      deal.manager?.fullName.toLowerCase().includes(q)
+      (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
+      (deal.shipment?.deliveryNoteNumber ?? '').toLowerCase().includes(q) ||
+      (deal.shipment?.vehicleNumber ?? '').toLowerCase().includes(q) ||
+      (deal.manager?.fullName ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
+
+  const filteredClosed = closedDeals.filter((deal) => {
+    if (!closedSearch) return true;
+    const q = closedSearch.toLowerCase();
+    return (
+      deal.title.toLowerCase().includes(q) ||
+      (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
+      (deal.manager?.fullName ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -171,51 +198,186 @@ export default function WarehouseShipmentsPage() {
     },
   ];
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          <TruckOutlined style={{ marginRight: 8 }} />
-          Накладные
-          {pagination?.total ? (
-            <Tag style={{ marginLeft: 8, fontSize: 14 }}>{pagination.total}</Tag>
-          ) : null}
-        </Typography.Title>
+  const closedColumns = [
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+    },
+    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
+    {
+      title: 'Доставка',
+      dataIndex: 'deliveryType',
+      width: 110,
+      render: (v: string | undefined) =>
+        v ? <Tag color={v === 'DELIVERY' ? 'orange' : v === 'YANDEX' ? 'purple' : 'blue'}>{deliveryLabels[v] || v}</Tag> : '—',
+    },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    {
+      title: 'Водитель',
+      key: 'driver',
+      width: 140,
+      render: (_: unknown, r: Deal) => (r.deliveryDriver ? <Tag color="green">{r.deliveryDriver.fullName}</Tag> : '—'),
+    },
+    {
+      title: 'Грузил',
+      key: 'loader',
+      width: 140,
+      render: (_: unknown, r: Deal) =>
+        (r.loadingAssignee?.fullName ? <Tag color="cyan">{r.loadingAssignee.fullName}</Tag> : '—'),
+    },
+    {
+      title: 'Товары',
+      key: 'items',
+      render: (_: unknown, r: Deal) => <Badge count={r.items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />,
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 100,
+      render: (s: Deal['status']) => <DealStatusTag status={s} />,
+    },
+    {
+      title: 'Закрыта',
+      dataIndex: 'updatedAt',
+      width: 120,
+      render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm'),
+    },
+  ];
 
-        <Input.Search
-          placeholder="Поиск по накладной, клиенту, транспорту..."
-          style={{ width: isMobile ? '100%' : 350 }}
-          allowClear
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+  return (
+    <div style={{ padding: isMobile ? 12 : undefined }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <Space wrap>
+          <BackButton fallback="/dashboard" />
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            <TruckOutlined style={{ marginRight: 8 }} />
+            Отгрузки и закрытые
+          </Typography.Title>
+        </Space>
       </div>
 
-      <Table
-        dataSource={filteredShipments}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        scroll={{ x: 600 }}
-        pagination={{
-          current: page,
-          pageSize: limit,
-          total: pagination?.total,
-          showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-          showSizeChanger: true,
-          pageSizeOptions: ['20', '50', '100'],
-          onChange: (newPage, newPageSize) => {
-            setPage(newPage);
-            setLimit(newPageSize || limit);
+      <Tabs
+        activeKey={mainTab}
+        onChange={(k) => setMainTab(k as 'shipments' | 'closed')}
+        items={[
+          {
+            key: 'shipments',
+            label: (
+              <span>
+                Накладные
+                {pagination?.total != null ? (
+                  <Tag style={{ marginLeft: 8 }}>{pagination.total}</Tag>
+                ) : null}
+              </span>
+            ),
+            children: (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Input.Search
+                    placeholder="Поиск по накладной, клиенту, транспорту..."
+                    style={{ width: isMobile ? '100%' : 350 }}
+                    allowClear
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Table
+                  dataSource={filteredShipments}
+                  columns={columns}
+                  rowKey="id"
+                  loading={isLoading}
+                  scroll={{ x: 600 }}
+                  pagination={{
+                    current: page,
+                    pageSize: limit,
+                    total: pagination?.total,
+                    showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['20', '50', '100'],
+                    onChange: (newPage, newPageSize) => {
+                      setPage(newPage);
+                      setLimit(newPageSize || limit);
+                    },
+                  }}
+                  size="middle"
+                  bordered={false}
+                  locale={{ emptyText: 'Нет накладных' }}
+                  onRow={(record) => ({
+                    style: { cursor: 'pointer' },
+                    onClick: () => openDetail(record),
+                  })}
+                />
+              </>
+            ),
           },
-        }}
-        size="middle"
-        bordered={false}
-        locale={{ emptyText: 'Нет накладных' }}
-        onRow={(record) => ({
-          style: { cursor: 'pointer' },
-          onClick: () => openDetail(record),
-        })}
+          {
+            key: 'closed',
+            label: (
+              <span>
+                Все закрытые
+                {closedPagination?.total != null ? (
+                  <Tag style={{ marginLeft: 8 }}>{closedPagination.total}</Tag>
+                ) : null}
+              </span>
+            ),
+            children: (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Input.Search
+                    placeholder="Поиск по сделке, клиенту, менеджеру..."
+                    style={{ width: isMobile ? '100%' : 350 }}
+                    allowClear
+                    value={closedSearch}
+                    onChange={(e) => setClosedSearch(e.target.value)}
+                  />
+                </div>
+                <Table
+                  dataSource={filteredClosed}
+                  columns={closedColumns}
+                  rowKey="id"
+                  loading={closedLoading}
+                  scroll={{ x: 900 }}
+                  pagination={false}
+                  size="middle"
+                  bordered={false}
+                  locale={{ emptyText: 'Нет закрытых сделок' }}
+                  expandable={{
+                    expandedRowRender: (record: Deal) => {
+                      const items = record.items ?? [];
+                      if (items.length === 0) return <Typography.Text type="secondary">Нет позиций</Typography.Text>;
+                      return (
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {items.map((it) => (
+                            <li key={it.id}>
+                              {it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    },
+                  }}
+                  onRow={(record) => ({
+                    style: { cursor: 'pointer' },
+                    onClick: () => openDetail(record),
+                  })}
+                />
+                {closedPagination && closedPagination.pages > 1 && (
+                  <div style={{ textAlign: 'center', marginTop: 12 }}>
+                    <Pagination
+                      current={closedPage}
+                      total={closedPagination.total}
+                      pageSize={50}
+                      onChange={(p) => setClosedPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
+              </>
+            ),
+          },
+        ]}
       />
 
       {/* Detail Drawer */}

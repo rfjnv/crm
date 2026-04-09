@@ -26,7 +26,6 @@ import DebtsPage from './pages/DebtsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import BroadcastPage from './pages/BroadcastPage';
 import FinanceReviewPage from './pages/FinanceReviewPage';
-import ShipmentPage from './pages/ShipmentPage';
 import WarehouseShipmentsPage from './pages/WarehouseShipmentsPage';
 import StockConfirmationPage from './pages/StockConfirmationPage';
 import MessagesPage from './pages/MessagesPage';
@@ -45,7 +44,6 @@ import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import ReviewsPage from './pages/ReviewsPage';
 import WarehouseManagerPage from './pages/WarehouseManagerPage';
-import PendingAdminPage from './pages/PendingAdminPage';
 import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
 import { useThemeStore } from './store/themeStore';
@@ -129,11 +127,11 @@ export default function App() {
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
                 <Route path="/finance/cashbox" element={<CashboxPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
-                <Route path="/shipment" element={<ShipmentPage />} />
-                <Route path="/warehouse/shipments" element={<WarehouseShipmentsPage />} />
+                <Route path="/shipment" element={<WarehouseShipmentsPage />} />
+                <Route path="/warehouse/shipments" element={<Navigate to="/shipment" replace />} />
                 <Route path="/stock-confirmation" element={<StockConfirmationPage />} />
                 <Route path="/warehouse-manager" element={<WarehouseManagerPage />} />
-                <Route path="/pending-admin" element={<PendingAdminPage />} />
+                <Route path="/pending-admin" element={<Navigate to="/deals/approval?tab=wm" replace />} />
                 <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
                 <Route path="/messages" element={<MessagesPage />} />

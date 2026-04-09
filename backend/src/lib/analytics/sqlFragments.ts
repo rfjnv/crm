@@ -14,9 +14,9 @@ export const SQL_ANALYTICS_TZ = Prisma.sql`'Asia/Tashkent'`;
 export const SQL_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.requested_qty * di.price, 0)`;
 
 /**
- * Effective timestamp for bucketing line revenue: business deal_date when set, else deal creation time.
+ * Effective timestamp for bucketing line revenue: Excel/import deal_date → день закрытия сделки → создание сделки.
  */
-export const SQL_EFFECTIVE_ITEM_TS = Prisma.sql`COALESCE(di.deal_date, d.created_at)`;
+export const SQL_EFFECTIVE_ITEM_TS = Prisma.sql`COALESCE(di.deal_date, d.closed_at, d.created_at)`;
 
 /**
  * Calendar date in Asia/Tashkent for grouping/filtering by local business day.

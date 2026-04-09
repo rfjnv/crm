@@ -330,6 +330,8 @@ model Deal {
   archivedAt    DateTime?     @map("archived_at")
   archivedById  String?       @map("archived_by_id")
   createdAt     DateTime      @default(now()) @map("created_at")
+  /** Момент перевода в CLOSED — для выручки по дню закрытия (если нет deal_date у позиций) */
+  closedAt      DateTime?     @map("closed_at")
   version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
@@ -380,6 +382,7 @@ model Deal {
   @@index([clientId])
   @@index([contractId])
   @@index([status])
+  @@index([closedAt])
   @@index([isArchived])
   @@index([paymentStatus])
   @@index([loadingAssigneeId])

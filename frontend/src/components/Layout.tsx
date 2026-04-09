@@ -188,18 +188,11 @@ export default function Layout() {
         label: <Link to="/inventory/warehouse">Склад</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
-      ? [{
-        key: '/shipment',
-        icon: <CarOutlined />,
-        label: <Link to="/shipment">Отгрузка</Link>,
-      }]
-      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
-        key: '/warehouse/shipments',
+        key: '/shipment',
         icon: <TruckOutlined />,
-        label: <Link to="/warehouse/shipments">Накладные</Link>,
+        label: <Link to="/shipment">Накладные</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
@@ -213,7 +206,7 @@ export default function Layout() {
       ? [{
         key: '/deals/approval',
         icon: <SafetyCertificateOutlined />,
-        label: <Link to="/deals/approval">Одобрение сделок</Link>,
+        label: <Link to="/deals/approval">Одобрение</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
@@ -221,13 +214,6 @@ export default function Layout() {
         key: '/warehouse-manager',
         icon: <AppstoreOutlined />,
         label: <Link to="/warehouse-manager">Зав. склада</Link>,
-      }]
-      : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
-      ? [{
-        key: '/pending-admin',
-        icon: <SafetyCertificateOutlined />,
-        label: <Link to="/pending-admin">Ожидает одобрения</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER')
