@@ -42,7 +42,7 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   READY_FOR_DELIVERY: ['IN_DELIVERY', 'CANCELED'],
   IN_DELIVERY: ['CLOSED'],
   // Legacy (kept for backward compat)
-  ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
+  ADMIN_APPROVED: ['READY_FOR_LOADING', 'READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
   READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
   SHIPPED: [],
@@ -1047,8 +1047,7 @@ export class DealsService {
       throw new AppError(400, 'Для перечисления/рассрочки необходимо привязать договор к сделке');
     }
 
-    // For deals already at ADMIN_APPROVED, move to READY_FOR_SHIPMENT
-    const targetStatus: DealStatus = 'READY_FOR_SHIPMENT';
+    const targetStatus: DealStatus = 'READY_FOR_LOADING';
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -1483,11 +1482,11 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает потв. Админа"');
     }
 
-    validateStatusTransition(deal.status, 'READY_FOR_SHIPMENT', user.role);
+    validateStatusTransition(deal.status, 'READY_FOR_LOADING', user.role);
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { status: 'READY_FOR_SHIPMENT' },
+      data: { status: 'READY_FOR_LOADING' },
     });
 
     await auditLog({
@@ -1496,7 +1495,7 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'READY_FOR_SHIPMENT' },
+      after: { status: 'READY_FOR_LOADING' },
     });
 
     await prisma.notification.create({
