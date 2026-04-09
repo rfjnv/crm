@@ -915,6 +915,19 @@ export default function DealDetailPage() {
               {deal.contract && (
                 <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
               )}
+              {deal.deliveryType && (
+                <Descriptions.Item label="Доставка">
+                  <Tag color={deal.deliveryType === 'DELIVERY' ? 'orange' : deal.deliveryType === 'YANDEX' ? 'purple' : 'blue'}>
+                    {{ SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' }[deal.deliveryType] || deal.deliveryType}
+                  </Tag>
+                </Descriptions.Item>
+              )}
+              {deal.vehicleNumber && (
+                <Descriptions.Item label="Номер машины">{deal.vehicleNumber}</Descriptions.Item>
+              )}
+              {deal.vehicleType && (
+                <Descriptions.Item label="Тип машины">{deal.vehicleType}</Descriptions.Item>
+              )}
               {deal.paymentMethod && (
                 <Descriptions.Item label="Способ оплаты">
                   <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>

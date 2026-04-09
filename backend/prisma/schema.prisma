@@ -18,6 +18,8 @@ enum Role {
   ACCOUNTANT
   WAREHOUSE
   WAREHOUSE_MANAGER
+  DRIVER
+  LOADER
 }
 
 enum DealStatus {
@@ -36,6 +38,19 @@ enum DealStatus {
   CANCELED
   REJECTED
   REOPENED
+  // New workflow statuses
+  WAITING_WAREHOUSE_MANAGER
+  PENDING_ADMIN
+  READY_FOR_LOADING
+  LOADING_ASSIGNED
+  READY_FOR_DELIVERY
+  IN_DELIVERY
+}
+
+enum DeliveryType {
+  SELF_PICKUP
+  YANDEX
+  DELIVERY
 }
 
 enum ConversationType {
@@ -143,6 +158,8 @@ model User {
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
   clientNotes         ClientNote[]
+  loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
+  deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
 
   @@map("users")
 }
@@ -188,6 +205,7 @@ model Client {
   portraitFears       String?  @map("portrait_fears") @db.Text
   portraitObjections  String?  @map("portrait_objections") @db.Text
   managerId   String   @map("manager_id")
+  isSvip      Boolean  @default(false) @map("is_svip")
   isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -336,10 +354,20 @@ model Deal {
   /** Накопленный текст событий внизу того же сообщения (plain, экранируется при отправке) */
   financeTelegramAppendix  String? @map("finance_telegram_appendix") @db.Text
 
+  // ── Delivery / loading / driver workflow ──
+  deliveryType       DeliveryType?     @map("delivery_type")
+  vehicleNumber      String?           @map("delivery_vehicle_number")
+  vehicleType        String?           @map("delivery_vehicle_type")
+  deliveryComment    String?           @map("delivery_comment")
+  loadingAssigneeId  String?           @map("loading_assignee_id")
+  deliveryDriverId   String?           @map("delivery_driver_id")
+
   client             Client              @relation(fields: [clientId], references: [id])
   manager            User                @relation("DealManager", fields: [managerId], references: [id])
   contract           Contract?           @relation(fields: [contractId], references: [id])
   archivedBy         User?               @relation("DealArchivedBy", fields: [archivedById], references: [id])
+  loadingAssignee    User?               @relation("DealLoadingAssignee", fields: [loadingAssigneeId], references: [id])
+  deliveryDriver     User?               @relation("DealDeliveryDriver", fields: [deliveryDriverId], references: [id])
   comments           DealComment[]
   items              DealItem[]
   movements          InventoryMovement[]
@@ -353,6 +381,8 @@ model Deal {
   @@index([status])
   @@index([isArchived])
   @@index([paymentStatus])
+  @@index([loadingAssigneeId])
+  @@index([deliveryDriverId])
   @@map("deals")
 }
 

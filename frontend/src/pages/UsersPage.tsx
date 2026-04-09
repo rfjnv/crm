@@ -19,6 +19,8 @@ const roleLabels: Record<string, string> = {
   ACCOUNTANT: 'Бухгалтер',
   WAREHOUSE: 'Склад',
   WAREHOUSE_MANAGER: 'Зав. складом',
+  DRIVER: 'Водитель',
+  LOADER: 'Грузчик',
 };
 const roleColors: Record<string, string> = {
   SUPER_ADMIN: 'red',
@@ -28,6 +30,8 @@ const roleColors: Record<string, string> = {
   ACCOUNTANT: 'purple',
   WAREHOUSE: 'green',
   WAREHOUSE_MANAGER: 'lime',
+  DRIVER: 'orange',
+  LOADER: 'volcano',
 };
 
 export default function UsersPage() {
@@ -279,6 +283,8 @@ export default function UsersPage() {
                 { label: 'Бухгалтер', value: 'ACCOUNTANT' },
                 { label: 'Склад', value: 'WAREHOUSE' },
                 { label: 'Зав. складом', value: 'WAREHOUSE_MANAGER' },
+                { label: 'Водитель', value: 'DRIVER' },
+                { label: 'Грузчик', value: 'LOADER' },
                 { label: 'Администратор', value: 'ADMIN' },
               ]}
               onChange={handleRoleChange}

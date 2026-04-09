@@ -35,6 +35,8 @@ export const clientsApi = {
 
   archive: (id: string) => client.patch<Client>(`/clients/${id}/archive`).then((r) => r.data),
 
+  toggleSvip: (id: string) => client.patch<Client>(`/clients/${id}/svip`).then((r) => r.data),
+
   history: (id: string) => client.get<AuditLog[]>(`/clients/${id}/history`).then((r) => r.data),
 
   payments: (id: string) => client.get<PaymentRecord[]>(`/clients/${id}/payments`).then((r) => r.data),

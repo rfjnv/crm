@@ -1,0 +1,124 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { Table, Typography, Button, Card, Checkbox, message, Alert, Space, Tag, Popconfirm } from 'antd';
+import { CarOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { dealsApi } from '../api/deals.api';
+import { formatUZS } from '../utils/currency';
+import type { Deal } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuthStore } from '../store/authStore';
+
+export default function MyVehiclePage() {
+  const isMobile = useIsMobile();
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<string[]>([]);
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+
+  const { data: deals = [], isLoading } = useQuery({
+    queryKey: ['my-vehicle'],
+    queryFn: dealsApi.myVehicle,
+    refetchInterval: 10_000,
+  });
+
+  const startMut = useMutation({
+    mutationFn: (dealIds: string[]) => dealsApi.startDelivery(dealIds),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['my-vehicle'] });
+      setSelected([]);
+      message.success(`Выехали! Сделок: ${data.departedCount}`);
+    },
+  });
+
+  const deliverMut = useMutation({
+    mutationFn: (dealId: string) => dealsApi.deliverDeal(dealId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-vehicle'] });
+      message.success('Доставлено!');
+    },
+  });
+
+  const allIds = deals.map((d) => d.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.includes(id));
+
+  return (
+    <div style={{ padding: isMobile ? 12 : 24 }}>
+      <Typography.Title level={3}>
+        <CarOutlined style={{ marginRight: 8 }} />
+        Моя машина ({deals.length})
+      </Typography.Title>
+
+      {deals.length === 0 && !isLoading && (
+        <Alert message="Нет товаров для доставки" type="info" showIcon style={{ marginBottom: 16 }} />
+      )}
+
+      {deals.length > 0 && !isAdmin && (
+        <Space style={{ marginBottom: 16 }}>
+          <Checkbox
+            checked={allSelected}
+            indeterminate={selected.length > 0 && !allSelected}
+            onChange={(e) => setSelected(e.target.checked ? allIds : [])}
+          >
+            Выбрать все
+          </Checkbox>
+          <Button
+            icon={<CarOutlined />}
+            disabled={selected.length === 0}
+            loading={startMut.isPending}
+            onClick={() => startMut.mutate(selected)}
+          >
+            Поехали! ({selected.length})
+          </Button>
+        </Space>
+      )}
+
+      <Card>
+        <Table
+          dataSource={deals}
+          rowKey="id"
+          loading={isLoading}
+          size="small"
+          pagination={false}
+          scroll={{ x: 600 }}
+          rowSelection={{
+            selectedRowKeys: selected,
+            onChange: (keys) => setSelected(keys as string[]),
+          }}
+          columns={[
+            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+            ...(isAdmin ? [{
+              title: 'Водитель', key: 'driver', width: 140,
+              render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
+            }] : []),
+            { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+            { title: 'Адрес', dataIndex: ['client', 'address'], render: (v: string) => v || '—' },
+            { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+            {
+              title: 'Позиции', key: 'items',
+              render: (_: unknown, r: Deal) => (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {(r as any).items?.map((it: any) => (
+                    <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+                  ))}
+                </ul>
+              ),
+            },
+            {
+              title: '', key: 'actions', width: 140,
+              render: (_: unknown, r: Deal) => (
+                isAdmin ? <Tag>Наблюдение</Tag> : (
+                  <Popconfirm title="Товар доставлен клиенту?" onConfirm={() => deliverMut.mutate(r.id)}>
+                    <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
+                      Доставлено
+                    </Button>
+                  </Popconfirm>
+                )
+              ),
+            },
+          ]}
+        />
+      </Card>
+    </div>
+  );
+}

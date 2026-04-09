@@ -32,6 +32,7 @@ function clientAuditSnapshot(c: Client) {
     portraitFears: c.portraitFears,
     portraitObjections: c.portraitObjections,
     managerId: c.managerId,
+    isSvip: c.isSvip,
     isArchived: c.isArchived,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -261,6 +262,33 @@ export class ClientsService {
       entityId: id,
       before,
       after: clientAuditSnapshot(updated),
+    });
+
+    return updated;
+  }
+
+  async toggleSvip(id: string, user: AuthUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только администратор может менять статус SVIP');
+    }
+
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+
+    const updated = await prisma.client.update({
+      where: { id },
+      data: { isSvip: !client.isSvip },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: id,
+      before: { isSvip: client.isSvip },
+      after: { isSvip: updated.isSvip },
     });
 
     return updated;

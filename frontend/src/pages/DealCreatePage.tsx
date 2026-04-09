@@ -116,6 +116,10 @@ export default function DealCreatePage() {
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
   const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
   const [showVat, setShowVat] = useState(false);
+  const [deliveryType, setDeliveryType] = useState<'SELF_PICKUP' | 'YANDEX' | 'DELIVERY'>('SELF_PICKUP');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [vehicleType, setVehicleType] = useState('');
+  const [deliveryComment, setDeliveryComment] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [paymentNote, setPaymentNote] = useState('');
   const [transferInn, setTransferInn] = useState('');
@@ -284,6 +288,12 @@ export default function DealCreatePage() {
       title: title || undefined,
       clientId,
       comment: commentText || undefined,
+      deliveryType,
+      ...(deliveryType !== 'DELIVERY' ? {
+        vehicleNumber: vehicleNumber.trim() || undefined,
+        vehicleType: vehicleType.trim() || undefined,
+        deliveryComment: deliveryComment.trim() || undefined,
+      } : {}),
       items: validItems.map((i) => ({
         productId: i.productId!,
         requestedQty: i.requestedQty || undefined,
@@ -354,6 +364,33 @@ export default function DealCreatePage() {
               <DealStatusTag status={previewStatus} />
             </div>
           </div>
+          <div style={{ marginTop: 16 }}>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              Как доставим? *
+            </Typography.Text>
+            <Radio.Group value={deliveryType} onChange={(e) => setDeliveryType(e.target.value)}>
+              <Radio.Button value="SELF_PICKUP">Самовывоз</Radio.Button>
+              <Radio.Button value="YANDEX">Яндекс</Radio.Button>
+              <Radio.Button value="DELIVERY">Доставка</Radio.Button>
+            </Radio.Group>
+            {deliveryType !== 'DELIVERY' && (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Номер машины</Typography.Text>
+                  <Input placeholder="01 A 123 AA" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Тип машины</Typography.Text>
+                  <Input placeholder="Газель, Ларгус…" value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Комментарий</Typography.Text>
+                  <Input placeholder="Примечание…" value={deliveryComment} onChange={(e) => setDeliveryComment(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+
           {isDilnoza && (
             <div style={{ marginTop: 16 }}>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>

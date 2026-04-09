@@ -4,12 +4,18 @@ const dealStatuses = [
   'NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED',
   'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
   'SHIPMENT_ON_HOLD', 'CLOSED', 'CANCELED', 'REJECTED',
+  'WAITING_WAREHOUSE_MANAGER', 'PENDING_ADMIN', 'READY_FOR_LOADING',
+  'LOADING_ASSIGNED', 'READY_FOR_DELIVERY', 'IN_DELIVERY',
 ] as const;
 
 export const createDealDto = z.object({
   title: z.string().optional().default(''),
   clientId: z.string().uuid('Некорректный ID клиента'),
   comment: z.string().optional(),
+  deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).optional(),
+  vehicleNumber: z.string().optional(),
+  vehicleType: z.string().optional(),
+  deliveryComment: z.string().optional(),
   paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
   /** Dilnoza: комментарий / номер операции для способов без перечисления (в terms) */
   paymentNote: z.string().optional(),
@@ -185,5 +191,35 @@ export const superDeleteDealDto = z.object({
   reason: z.string().min(3, 'Укажите причину удаления (мин. 3 символа)'),
 });
 
+// ──── Warehouse Manager: confirm deal for admin ────
+export const warehouseManagerConfirmDto = z.object({
+  comment: z.string().optional(),
+});
+
+// ──── Warehouse Manager: assign loading employee ────
+export const assignLoadingDto = z.object({
+  assigneeId: z.string().uuid('Укажите сотрудника'),
+});
+
+// ──── Employee: mark as loaded ────
+export const markLoadedDto = z.object({
+  comment: z.string().optional(),
+});
+
+// ──── Warehouse Manager: assign delivery driver ────
+export const assignDriverDto = z.object({
+  driverId: z.string().uuid('Укажите водителя'),
+});
+
+// ──── Driver: start delivery ────
+export const startDeliveryDto = z.object({
+  dealIds: z.array(z.string().uuid()).min(1, 'Укажите хотя бы одну сделку'),
+});
+
 export type SuperOverrideDealDto = z.infer<typeof superOverrideDealDto>;
 export type SuperDeleteDealDto = z.infer<typeof superDeleteDealDto>;
+export type WarehouseManagerConfirmDto = z.infer<typeof warehouseManagerConfirmDto>;
+export type AssignLoadingDto = z.infer<typeof assignLoadingDto>;
+export type MarkLoadedDto = z.infer<typeof markLoadedDto>;
+export type AssignDriverDto = z.infer<typeof assignDriverDto>;
+export type StartDeliveryDto = z.infer<typeof startDeliveryDto>;

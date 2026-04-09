@@ -7,8 +7,11 @@ const pipelineSteps: { status: DealStatus; label: string }[] = [
   { status: 'WAITING_STOCK_CONFIRMATION', label: 'Склад' },
   { status: 'IN_PROGRESS', label: 'В работе' },
   { status: 'WAITING_FINANCE', label: 'Финансы' },
-  { status: 'ADMIN_APPROVED', label: 'Админ' },
-  { status: 'READY_FOR_SHIPMENT', label: 'Отгрузка' },
+  { status: 'WAITING_WAREHOUSE_MANAGER', label: 'Зав. склада' },
+  { status: 'PENDING_ADMIN', label: 'Админ' },
+  { status: 'READY_FOR_LOADING', label: 'На отгрузку' },
+  { status: 'LOADING_ASSIGNED', label: 'Отгрузка' },
+  { status: 'IN_DELIVERY', label: 'Доставка' },
   { status: 'CLOSED', label: 'Закрыта' },
 ];
 
@@ -16,6 +19,9 @@ const pipelineSteps: { status: DealStatus; label: string }[] = [
 const statusToStep: Partial<Record<DealStatus, DealStatus>> = {
   STOCK_CONFIRMED: 'WAITING_STOCK_CONFIRMATION',
   FINANCE_APPROVED: 'WAITING_FINANCE',
+  READY_FOR_DELIVERY: 'IN_DELIVERY',
+  ADMIN_APPROVED: 'PENDING_ADMIN',
+  READY_FOR_SHIPMENT: 'LOADING_ASSIGNED',
 };
 
 function MobilePipeline({ status }: { status: DealStatus }) {

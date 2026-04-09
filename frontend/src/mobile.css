@@ -3,3 +3,7 @@
     display: none !important;
   }
 }
+
+.svip-row td {
+  background: linear-gradient(90deg, rgba(250, 173, 20, 0.08) 0%, transparent 100%) !important;
+}

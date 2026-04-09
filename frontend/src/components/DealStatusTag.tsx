@@ -15,6 +15,12 @@ const statusConfig: Record<DealStatus, { color: string; label: string }> = {
   CANCELED: { color: 'volcano', label: 'Отменена' },
   REJECTED: { color: 'red', label: 'Отклонена' },
   REOPENED: { color: 'magenta', label: 'Возвращена' },
+  WAITING_WAREHOUSE_MANAGER: { color: 'gold', label: 'У зав. склада' },
+  PENDING_ADMIN: { color: 'geekblue', label: 'Ожидает админа' },
+  READY_FOR_LOADING: { color: 'purple', label: 'Готова к отгрузке' },
+  LOADING_ASSIGNED: { color: 'processing', label: 'На отгрузке' },
+  READY_FOR_DELIVERY: { color: 'orange', label: 'Ожидает водителя' },
+  IN_DELIVERY: { color: 'cyan', label: 'В доставке' },
 };
 
 export default function DealStatusTag({ status }: { status: DealStatus }) {

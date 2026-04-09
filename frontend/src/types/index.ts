@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER';
 
 export type Permission =
   | 'manage_users'
@@ -23,7 +23,9 @@ export type Permission =
   | 'super_deal_override'
   | 'delete_any_deal'
   | 'view_audit_history'
-  | 'manage_expenses';
+  | 'manage_expenses'
+  | 'loading_execute'
+  | 'delivery_execute';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -49,6 +51,8 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'delete_any_deal', label: 'Удаление любых сделок' },
   { key: 'view_audit_history', label: 'Просмотр истории аудита' },
   { key: 'manage_expenses', label: 'Управление расходами' },
+  { key: 'loading_execute', label: 'Выполнение отгрузки' },
+  { key: 'delivery_execute', label: 'Выполнение доставки' },
 ];
 
 const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history'];
@@ -59,7 +63,9 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
   ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses'],
   WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals', 'create_inventory_in'],
-  WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute', 'manage_expenses'],
+  WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute', 'manage_expenses', 'loading_execute'],
+  DRIVER: ['view_all_deals', 'loading_execute', 'delivery_execute'],
+  LOADER: ['view_all_deals', 'loading_execute'],
 };
 
 export interface User {
@@ -116,6 +122,7 @@ export interface Client {
   portraitFears?: string | null;
   portraitObjections?: string | null;
   managerId: string;
+  isSvip: boolean;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -152,7 +159,15 @@ export type DealStatus =
   | 'CLOSED'
   | 'CANCELED'
   | 'REJECTED'
-  | 'REOPENED';
+  | 'REOPENED'
+  | 'WAITING_WAREHOUSE_MANAGER'
+  | 'PENDING_ADMIN'
+  | 'READY_FOR_LOADING'
+  | 'LOADING_ASSIGNED'
+  | 'READY_FOR_DELIVERY'
+  | 'IN_DELIVERY';
+
+export type DeliveryType = 'SELF_PICKUP' | 'YANDEX' | 'DELIVERY';
 
 export type PaymentType = 'FULL' | 'PARTIAL' | 'INSTALLMENT';
 export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'CLICK' | 'TERMINAL' | 'INSTALLMENT';
@@ -280,6 +295,14 @@ export interface Deal {
   transferInn?: string | null;
   transferDocuments?: string[] | null;
   transferType?: 'ONE_TIME' | 'ANNUAL' | null;
+  deliveryType?: DeliveryType | null;
+  vehicleNumber?: string | null;
+  vehicleType?: string | null;
+  deliveryComment?: string | null;
+  loadingAssigneeId?: string | null;
+  deliveryDriverId?: string | null;
+  loadingAssignee?: { id: string; fullName: string } | null;
+  deliveryDriver?: { id: string; fullName: string } | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

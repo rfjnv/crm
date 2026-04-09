@@ -9,6 +9,7 @@ import {
   addDealItemDto, warehouseResponseDto, setItemQuantitiesDto,
   shipmentDto, financeRejectDto, sendToFinanceDto,
   createPaymentRecordDto, updatePaymentRecordDto, shipmentHoldDto,
+  assignLoadingDto, assignDriverDto, startDeliveryDto,
 } from './deals.dto';
 
 const router = Router();
@@ -23,6 +24,17 @@ router.get('/all-deals-debug', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMI
 router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
 router.get('/deal-approval-queue', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDealApproval.bind(dealsController)));
 router.get('/archived', asyncHandler(dealsController.findArchived.bind(dealsController)));
+
+// New workflow queues
+router.get('/wm/incoming', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForWarehouseManager.bind(dealsController)));
+router.get('/wm/approved', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findApprovedForLoading.bind(dealsController)));
+router.get('/wm/delivery', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDeliveryAssignment.bind(dealsController)));
+router.get('/wm/pending-admin', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findPendingAdmin.bind(dealsController)));
+router.get('/loading-staff', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getLoadingStaff.bind(dealsController)));
+router.get('/drivers-list', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getDrivers.bind(dealsController)));
+router.get('/my-loading-tasks', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyLoadingTasks.bind(dealsController)));
+router.get('/my-vehicle', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyVehicle.bind(dealsController)));
+router.post('/start-delivery', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), validate(startDeliveryDto), asyncHandler(dealsController.startDelivery.bind(dealsController)));
 
 router.get('/', asyncHandler(dealsController.findAll.bind(dealsController)));
 router.get('/:id', asyncHandler(dealsController.findById.bind(dealsController)));
@@ -72,5 +84,14 @@ router.post('/:id/payments', validate(createPaymentRecordDto), asyncHandler(deal
 router.patch('/:id/payments/:paymentId', validate(updatePaymentRecordDto), asyncHandler(dealsController.updatePaymentRecord.bind(dealsController)));
 router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
+
+// New Workflow: per-deal actions
+router.post('/:id/wm-confirm', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.warehouseManagerConfirm.bind(dealsController)));
+router.post('/:id/admin-approve-new', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveByAdmin.bind(dealsController)));
+router.post('/:id/admin-reject-new', authorize('ADMIN', 'SUPER_ADMIN'), validate(financeRejectDto), asyncHandler(dealsController.rejectByAdmin.bind(dealsController)));
+router.post('/:id/assign-loading', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignLoadingDto), asyncHandler(dealsController.assignLoading.bind(dealsController)));
+router.post('/:id/mark-loaded', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.markLoaded.bind(dealsController)));
+router.post('/:id/assign-driver', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignDriverDto), asyncHandler(dealsController.assignDriver.bind(dealsController)));
+router.post('/:id/deliver', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.deliverDeal.bind(dealsController)));
 
 export default router;

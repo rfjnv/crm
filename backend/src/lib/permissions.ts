@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   DELETE_ANY_DEAL: 'delete_any_deal',
   VIEW_AUDIT_HISTORY: 'view_audit_history',
   MANAGE_EXPENSES: 'manage_expenses',
+  LOADING_EXECUTE: 'loading_execute',
+  DELIVERY_EXECUTE: 'delivery_execute',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -68,5 +70,15 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.CREATE_INVENTORY_IN,
     PERMISSIONS.SHIPMENT_EXECUTE,
     PERMISSIONS.MANAGE_EXPENSES,
+    PERMISSIONS.LOADING_EXECUTE,
+  ],
+  DRIVER: [
+    PERMISSIONS.VIEW_ALL_DEALS,
+    PERMISSIONS.LOADING_EXECUTE,
+    PERMISSIONS.DELIVERY_EXECUTE,
+  ],
+  LOADER: [
+    PERMISSIONS.VIEW_ALL_DEALS,
+    PERMISSIONS.LOADING_EXECUTE,
   ],
 };

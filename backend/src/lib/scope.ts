@@ -6,7 +6,7 @@ export interface AuthUser {
   permissions: string[];
 }
 
-const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'OPERATOR'];
+const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'OPERATOR', 'DRIVER', 'LOADER'];
 
 export function ownerScope(user: AuthUser): { managerId?: string } {
   if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_deals')) {

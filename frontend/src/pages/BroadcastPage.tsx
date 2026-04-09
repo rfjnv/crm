@@ -19,6 +19,8 @@ const roleLabels: Record<string, string> = {
   ACCOUNTANT: 'Бухгалтер',
   WAREHOUSE: 'Склад',
   WAREHOUSE_MANAGER: 'Зав. складом',
+  DRIVER: 'Водитель',
+  LOADER: 'Грузчик',
 };
 
 const operatorLabels = [

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse } from 'antd';
-import { PlusOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, InboxOutlined, EditOutlined, CrownFilled } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
@@ -228,6 +228,15 @@ export default function ClientsPage() {
     onError: () => message.error('Ошибка архивирования'),
   });
 
+  const svipMut = useMutation({
+    mutationFn: (id: string) => clientsApi.toggleSvip(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success(data.isSvip ? 'Клиент отмечен как SVIP' : 'Статус SVIP снят');
+    },
+    onError: () => message.error('Ошибка изменения статуса'),
+  });
+
   const openEdit = (client: Client) => {
     setEditingClient(client);
     editForm.setFieldsValue({
@@ -249,7 +258,12 @@ export default function ClientsPage() {
   };
 
   const columns = [
-    { title: 'Компания', dataIndex: 'companyName', render: (v: string, r: Client) => <Link to={`/clients/${r.id}`}>{v}</Link> },
+    { title: 'Компания', dataIndex: 'companyName', render: (v: string, r: Client) => (
+      <Space size={4}>
+        {r.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 16 }} />}
+        <Link to={`/clients/${r.id}`} style={r.isSvip ? { fontWeight: 600 } : undefined}>{v}</Link>
+      </Space>
+    ) },
     { title: 'Контакт', dataIndex: 'contactName' },
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Email', dataIndex: 'email' },
@@ -278,11 +292,20 @@ export default function ClientsPage() {
     ...(isAdmin || user?.permissions?.includes('edit_client')
       ? [{
         title: '',
-        width: 100,
+        width: 140,
         render: (_: unknown, r: Client) => {
           const canEdit = isAdmin || user?.permissions?.includes('edit_client');
           return (
             <Space>
+              {isAdmin && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CrownFilled style={{ color: r.isSvip ? '#faad14' : '#d9d9d9' }} />}
+                  onClick={() => svipMut.mutate(r.id)}
+                  title={r.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
+                />
+              )}
               {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
               {isAdmin && (
                 <Popconfirm title="Архивировать клиента?" onConfirm={() => archiveMut.mutate(r.id)}>
@@ -413,12 +436,15 @@ export default function ClientsPage() {
             onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
           }}
           renderCard={(client: Client) => (
-            <Card size="small" style={{ marginBottom: 0 }}>
+            <Card size="small" style={{ marginBottom: 0, ...(client.isSvip ? { borderLeft: '3px solid #faad14' } : {}) }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Link to={`/clients/${client.id}`}>
-                    <Typography.Text strong>{client.companyName}</Typography.Text>
-                  </Link>
+                  <Space size={4}>
+                    {client.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 14 }} />}
+                    <Link to={`/clients/${client.id}`}>
+                      <Typography.Text strong>{client.companyName}</Typography.Text>
+                    </Link>
+                  </Space>
                   <div style={{ marginTop: 2 }}>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>{client.contactName}</Typography.Text>
                   </div>
@@ -446,6 +472,14 @@ export default function ClientsPage() {
                 </div>
                 {(isAdmin || user?.permissions?.includes('edit_client')) && (
                   <Space size={4}>
+                    {isAdmin && (
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CrownFilled style={{ color: client.isSvip ? '#faad14' : '#d9d9d9' }} />}
+                        onClick={() => svipMut.mutate(client.id)}
+                      />
+                    )}
                     <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(client)} />
                     {isAdmin && (
                       <Popconfirm title="Архивировать клиента?" onConfirm={() => archiveMut.mutate(client.id)}>
@@ -464,6 +498,7 @@ export default function ClientsPage() {
           columns={columns}
           rowKey="id"
           loading={isLoading}
+          rowClassName={(r: Client) => r.isSvip ? 'svip-row' : ''}
           pagination={{
             current: safePage,
             pageSize,

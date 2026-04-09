@@ -207,6 +207,88 @@ export class DealsController {
     const payments = await dealsService.getDealPayments(req.params.id as string, getUser(req));
     res.json(payments);
   }
+
+  // ── New workflow: Warehouse Manager / Loading / Delivery ──
+
+  async findForWarehouseManager(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findForWarehouseManager(getUser(req));
+    res.json(deals);
+  }
+
+  async findApprovedForLoading(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findApprovedForLoading(getUser(req));
+    res.json(deals);
+  }
+
+  async findForDeliveryAssignment(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findForDeliveryAssignment(getUser(req));
+    res.json(deals);
+  }
+
+  async findMyLoadingTasks(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findMyLoadingTasks(getUser(req));
+    res.json(deals);
+  }
+
+  async findMyVehicle(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findMyVehicle(getUser(req));
+    res.json(deals);
+  }
+
+  async warehouseManagerConfirm(req: Request, res: Response): Promise<void> {
+    await dealsService.warehouseManagerConfirm(req.params.id as string, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async approveByAdmin(req: Request, res: Response): Promise<void> {
+    await dealsService.approveByAdmin(req.params.id as string, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async rejectByAdmin(req: Request, res: Response): Promise<void> {
+    await dealsService.rejectByAdmin(req.params.id as string, req.body.reason, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async assignLoading(req: Request, res: Response): Promise<void> {
+    await dealsService.assignLoading(req.params.id as string, req.body, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async markLoaded(req: Request, res: Response): Promise<void> {
+    await dealsService.markLoaded(req.params.id as string, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async assignDriver(req: Request, res: Response): Promise<void> {
+    await dealsService.assignDriver(req.params.id as string, req.body, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async startDelivery(req: Request, res: Response): Promise<void> {
+    const result = await dealsService.startDelivery(req.body, getUser(req));
+    res.json(result);
+  }
+
+  async deliverDeal(req: Request, res: Response): Promise<void> {
+    await dealsService.deliverDeal(req.params.id as string, getUser(req));
+    res.json({ ok: true });
+  }
+
+  async getLoadingStaff(_req: Request, res: Response): Promise<void> {
+    const staff = await dealsService.getLoadingStaff();
+    res.json(staff);
+  }
+
+  async getDrivers(_req: Request, res: Response): Promise<void> {
+    const drivers = await dealsService.getDrivers();
+    res.json(drivers);
+  }
+
+  async findPendingAdmin(req: Request, res: Response): Promise<void> {
+    const deals = await dealsService.findPendingAdmin(getUser(req));
+    res.json(deals);
+  }
 }
 
 export const dealsController = new DealsController();

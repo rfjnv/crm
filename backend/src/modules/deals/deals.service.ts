@@ -22,6 +22,7 @@ import {
   ShipmentDto, FinanceRejectDto, SendToFinanceDto,
   CreatePaymentRecordDto, UpdatePaymentRecordDto, ShipmentHoldDto,
   SuperOverrideDealDto,
+  AssignLoadingDto, AssignDriverDto, StartDeliveryDto,
 } from './deals.dto';
 
 // ==================== STATUS WORKFLOW ====================
@@ -30,14 +31,22 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   NEW: ['WAITING_STOCK_CONFIRMATION', 'CANCELED'],
   WAITING_STOCK_CONFIRMATION: ['STOCK_CONFIRMED', 'NEW', 'CANCELED'],
   STOCK_CONFIRMED: ['IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'CANCELED'],
-  IN_PROGRESS: ['WAITING_FINANCE', 'ADMIN_APPROVED', 'WAITING_STOCK_CONFIRMATION', 'REJECTED', 'CANCELED'],
-  WAITING_FINANCE: ['ADMIN_APPROVED', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
-  FINANCE_APPROVED: ['ADMIN_APPROVED', 'CANCELED'],
+  IN_PROGRESS: ['WAITING_FINANCE', 'WAITING_WAREHOUSE_MANAGER', 'WAITING_STOCK_CONFIRMATION', 'REJECTED', 'CANCELED'],
+  WAITING_FINANCE: ['WAITING_WAREHOUSE_MANAGER', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
+  FINANCE_APPROVED: ['WAITING_WAREHOUSE_MANAGER', 'CANCELED'],
+  // New workflow
+  WAITING_WAREHOUSE_MANAGER: ['PENDING_ADMIN', 'CANCELED'],
+  PENDING_ADMIN: ['READY_FOR_LOADING', 'REJECTED', 'CANCELED'],
+  READY_FOR_LOADING: ['LOADING_ASSIGNED', 'CANCELED'],
+  LOADING_ASSIGNED: ['CLOSED', 'READY_FOR_DELIVERY', 'CANCELED'],
+  READY_FOR_DELIVERY: ['IN_DELIVERY', 'CANCELED'],
+  IN_DELIVERY: ['CLOSED'],
+  // Legacy (kept for backward compat)
   ADMIN_APPROVED: ['READY_FOR_SHIPMENT', 'IN_PROGRESS', 'CANCELED'],
   READY_FOR_SHIPMENT: ['CLOSED', 'SHIPMENT_ON_HOLD', 'CANCELED'],
   SHIPMENT_ON_HOLD: ['READY_FOR_SHIPMENT', 'CANCELED'],
-  SHIPPED: [],      // deprecated
-  PENDING_APPROVAL: [], // deprecated
+  SHIPPED: [],
+  PENDING_APPROVAL: [],
   CLOSED: [],
   CANCELED: [],
   REJECTED: ['IN_PROGRESS'],
@@ -51,10 +60,17 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   IN_PROGRESS: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   WAITING_FINANCE: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   FINANCE_APPROVED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
+  WAITING_WAREHOUSE_MANAGER: ['MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
+  PENDING_ADMIN: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  READY_FOR_LOADING: ['ADMIN', 'SUPER_ADMIN'],
+  LOADING_ASSIGNED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  READY_FOR_DELIVERY: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  IN_DELIVERY: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  // Legacy
   ADMIN_APPROVED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT'],
   READY_FOR_SHIPMENT: ['ADMIN', 'SUPER_ADMIN'],
   SHIPMENT_ON_HOLD: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
-  CLOSED: ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  CLOSED: ['WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'],
   CANCELED: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   REJECTED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
   REOPENED: ['ADMIN', 'SUPER_ADMIN'],
@@ -141,6 +157,8 @@ export class DealsService {
         client: { select: { id: true, companyName: true, contactName: true, inn: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
+        loadingAssignee: { select: { id: true, fullName: true } },
+        deliveryDriver: { select: { id: true, fullName: true } },
         items: {
           include: {
             product: { select: { id: true, name: true, sku: true, unit: true, stock: true, salePrice: true } },
@@ -249,6 +267,10 @@ export class DealsService {
           paymentType: 'FULL',
           paidAmount: 0,
           paymentStatus: 'UNPAID',
+          ...(dto.deliveryType ? { deliveryType: dto.deliveryType as any } : {}),
+          ...(dto.vehicleNumber ? { vehicleNumber: dto.vehicleNumber } : {}),
+          ...(dto.vehicleType ? { vehicleType: dto.vehicleType } : {}),
+          ...(dto.deliveryComment ? { deliveryComment: dto.deliveryComment } : {}),
           ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
           ...(canUseDilnozaCreatePayment &&
             dto.paymentMethod &&
@@ -486,7 +508,7 @@ export class DealsService {
 
     // Determine target status based on payment method
     const needsFinanceReview = requiresFinanceReview(dto.paymentMethod as PaymentMethod);
-    const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'ADMIN_APPROVED';
+    const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'WAITING_WAREHOUSE_MANAGER';
 
     validateStatusTransition(deal.status, targetStatus, user.role);
 
@@ -572,42 +594,38 @@ export class DealsService {
       }
     }
 
-    // Notify admins when deal goes directly to ADMIN_APPROVED (cash payments)
-    if (targetStatus === 'ADMIN_APPROVED') {
-      const admins = await prisma.user.findMany({
-        where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true },
+    // Notify warehouse managers when deal goes directly to them (non-finance payments)
+    if (targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
+      const whManagers = await prisma.user.findMany({
+        where: { role: 'WAREHOUSE_MANAGER', isActive: true },
         select: { id: true },
       });
 
-      if (admins.length > 0) {
+      if (whManagers.length > 0) {
         await prisma.notification.createMany({
-          data: admins.map((admin) => ({
-            userId: admin.id,
-            title: 'Сделка ожидает проверки',
-            body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+          data: whManagers.map((wm) => ({
+            userId: wm.id,
+            title: 'Новая сделка на обработку',
+            body: `Сделка "${deal.title}" ожидает обработки`,
             severity: 'WARNING' as const,
             link: `/deals/${dealId}`,
             createdByUserId: user.userId,
           })),
         });
 
-        pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
-          title: 'Сделка ожидает проверки',
-          body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+        pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${deal.title}" ожидает обработки`,
           url: `/deals/${dealId}`,
           severity: 'WARNING',
         }).catch(() => {});
-        telegramService.sendToRoles(['ADMIN', 'SUPER_ADMIN'], {
-          title: 'Сделка ожидает проверки',
-          body: `Сделка "${deal.title}" ожидает вашего одобрения`,
+        telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${deal.title}" ожидает обработки`,
           url: `/deals/${dealId}`,
           severity: 'WARNING',
         }).catch(() => {});
       }
-
-      await trySendAdminApprovalTelegram(dealId).catch((err) => {
-        console.error('[Telegram deal groups] trySendAdminApprovalTelegram:', err);
-      });
     }
 
     await syncDealTelegramGroupMessages(dealId).catch((err) => {
@@ -836,8 +854,8 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает финансы" для финансового одобрения');
     }
 
-    // For WAITING_FINANCE → go to ADMIN_APPROVED (finance approved, now needs admin)
-    const targetStatus: DealStatus = 'ADMIN_APPROVED';
+    // After finance approval → warehouse manager for processing
+    const targetStatus: DealStatus = 'WAITING_WAREHOUSE_MANAGER';
 
     // TRANSFER/INSTALLMENT deals require a contract
     if (requiresContract(deal.paymentMethod) && !deal.contractId) {
@@ -883,40 +901,40 @@ export class DealsService {
       severity: 'INFO',
     }).catch(() => {});
 
-    // Notify admins that deal needs their approval after finance review
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true },
+    // Notify warehouse managers about incoming deal
+    const whManagers = await prisma.user.findMany({
+      where: { role: 'WAREHOUSE_MANAGER', isActive: true },
       select: { id: true },
     });
 
-    if (admins.length > 0) {
+    if (whManagers.length > 0) {
       await prisma.notification.createMany({
-        data: admins.map((admin) => ({
-          userId: admin.id,
-          title: 'Сделка прошла финансовую проверку',
-          body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+        data: whManagers.map((wm) => ({
+          userId: wm.id,
+          title: 'Новая сделка после финансовой проверки',
+          body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает обработки`,
           severity: 'WARNING' as const,
           link: `/deals/${dealId}`,
           createdByUserId: user.userId,
         })),
       });
 
-      pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], {
-        title: 'Сделка прошла финансовую проверку',
-        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+      pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+        title: 'Новая сделка после финансовой проверки',
+        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает обработки`,
         url: `/deals/${dealId}`,
         severity: 'WARNING',
       }).catch(() => {});
-      telegramService.sendToRoles(['ADMIN', 'SUPER_ADMIN'], {
-        title: 'Сделка прошла финансовую проверку',
-        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает вашего одобрения`,
+      telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
+        title: 'Новая сделка после финансовой проверки',
+        body: `Сделка "${deal.title}" одобрена бухгалтером — ожидает обработки`,
         url: `/deals/${dealId}`,
         severity: 'WARNING',
       }).catch(() => {});
     }
 
-    void trySendAdminApprovalTelegram(dealId).catch((err) => {
-      console.error('[Telegram deal groups] trySendAdminApprovalTelegram:', err);
+    void sendProductionPaymentSubmitTelegram(dealId).catch((err) => {
+      console.error('[Telegram deal groups] sendProductionPaymentSubmitTelegram:', err);
     });
 
     const [actor, dealAfter] = await Promise.all([
@@ -2732,6 +2750,276 @@ export class DealsService {
         transferDocuments: null,
       } as T & { transferDocuments?: string[] | null };
     }
+  }
+
+  // ==================== NEW WORKFLOW: Warehouse Manager / Loading / Delivery ====================
+
+  async findForWarehouseManager(_user: AuthUser) {
+    return prisma.deal.findMany({
+      where: { status: 'WAITING_WAREHOUSE_MANAGER', isArchived: false },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true } },
+        manager: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findApprovedForLoading(_user: AuthUser) {
+    return prisma.deal.findMany({
+      where: { status: 'READY_FOR_LOADING', isArchived: false },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true } },
+        manager: { select: { id: true, fullName: true } },
+        deliveryDriver: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findForDeliveryAssignment(_user: AuthUser) {
+    return prisma.deal.findMany({
+      where: { status: 'READY_FOR_DELIVERY', isArchived: false },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true, address: true } },
+        manager: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findMyLoadingTasks(user: AuthUser) {
+    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+    return prisma.deal.findMany({
+      where: {
+        status: 'LOADING_ASSIGNED',
+        ...(!isAdmin ? { loadingAssigneeId: user.userId } : {}),
+        isArchived: false,
+      },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true } },
+        manager: { select: { id: true, fullName: true } },
+        loadingAssignee: { select: { id: true, fullName: true } },
+        deliveryDriver: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findMyVehicle(user: AuthUser) {
+    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+    return prisma.deal.findMany({
+      where: {
+        status: 'IN_DELIVERY',
+        ...(!isAdmin ? { deliveryDriverId: user.userId } : {}),
+        isArchived: false,
+      },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true, address: true } },
+        manager: { select: { id: true, fullName: true } },
+        deliveryDriver: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /** Зав.склада: «Пришли за товарами» / «Машина готова» → PENDING_ADMIN */
+  async warehouseManagerConfirm(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'WAITING_WAREHOUSE_MANAGER', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
+
+    validateStatusTransition(deal.status, 'PENDING_ADMIN', user.role);
+
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'PENDING_ADMIN' } });
+
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'PENDING_ADMIN' } });
+
+    const admins = await prisma.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true }, select: { id: true } });
+    if (admins.length > 0) {
+      await prisma.notification.createMany({ data: admins.map((a) => ({ userId: a.id, title: 'Сделка ожидает одобрения', body: `Сделка "${deal.title}" готова — ожидает вашего одобрения`, severity: 'WARNING' as const, link: `/deals/${dealId}`, createdByUserId: user.userId })) });
+      pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], { title: 'Сделка ожидает одобрения', body: `Сделка "${deal.title}" готова`, url: `/deals/${dealId}`, severity: 'WARNING' }).catch(() => {});
+    }
+
+    void trySendAdminApprovalTelegram(dealId).catch(() => {});
+    void syncDealTelegramGroupMessages(dealId).catch(() => {});
+  }
+
+  /** Админ: одобрить → READY_FOR_LOADING */
+  async approveByAdmin(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'PENDING_ADMIN', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
+
+    validateStatusTransition(deal.status, 'READY_FOR_LOADING', user.role);
+
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'READY_FOR_LOADING' } });
+
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'READY_FOR_LOADING' } });
+
+    const whManagers = await prisma.user.findMany({ where: { role: 'WAREHOUSE_MANAGER', isActive: true }, select: { id: true } });
+    if (whManagers.length > 0) {
+      await prisma.notification.createMany({ data: whManagers.map((wm) => ({ userId: wm.id, title: 'Сделка одобрена', body: `Сделка "${deal.title}" одобрена админом — назначьте сотрудника на отгрузку`, severity: 'WARNING' as const, link: `/deals/${dealId}`, createdByUserId: user.userId })) });
+      pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], { title: 'Сделка одобрена', body: `Сделка "${deal.title}" одобрена — назначьте на отгрузку`, url: `/deals/${dealId}`, severity: 'WARNING' }).catch(() => {});
+    }
+
+    void syncDealTelegramGroupMessages(dealId).catch(() => {});
+  }
+
+  /** Админ: отклонить из PENDING_ADMIN → REJECTED */
+  async rejectByAdmin(dealId: string, reason: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'PENDING_ADMIN', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
+
+    validateStatusTransition(deal.status, 'REJECTED', user.role);
+
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'REJECTED' } });
+    await prisma.dealComment.create({ data: { dealId, authorId: user.userId, text: `Отклонено админом: ${reason}` } });
+
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'REJECTED' } });
+
+    pushService.sendPushToUser(deal.managerId, { title: 'Сделка отклонена', body: `Сделка "${deal.title}" отклонена: ${reason}`, url: `/deals/${dealId}`, severity: 'URGENT' }).catch(() => {});
+
+    void syncDealTelegramGroupMessages(dealId).catch(() => {});
+  }
+
+  /** Зав.склада: назначить водителя для DELIVERY (до назначения грузчика) — статус НЕ меняется */
+  async assignDriver(dealId: string, dto: AssignDriverDto, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'READY_FOR_LOADING', deliveryType: 'DELIVERY', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в статусе READY_FOR_LOADING / не доставка');
+
+    const driver = await prisma.user.findFirst({
+      where: { id: dto.driverId, role: 'DRIVER', isActive: true },
+    });
+    if (!driver) throw new AppError(400, 'Водитель не найден или не активен');
+
+    await prisma.deal.update({ where: { id: dealId }, data: { deliveryDriverId: dto.driverId } });
+
+    await auditLog({ userId: user.userId, action: 'UPDATE', entityType: 'deal', entityId: dealId, before: { deliveryDriverId: null }, after: { deliveryDriverId: dto.driverId } });
+
+    await prisma.notification.create({ data: { userId: dto.driverId, title: 'Назначена доставка', body: `Сделка "${deal.title}" — товар будет загружен в вашу машину`, severity: 'INFO', link: `/my-vehicle`, createdByUserId: user.userId } });
+  }
+
+  /** Зав.склада: назначить сотрудника на отгрузку */
+  async assignLoading(dealId: string, dto: AssignLoadingDto, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'READY_FOR_LOADING', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
+
+    if (deal.deliveryType === 'DELIVERY' && !deal.deliveryDriverId) {
+      throw new AppError(400, 'Сначала назначьте водителя, потом грузчика');
+    }
+
+    const assignee = await prisma.user.findFirst({
+      where: { id: dto.assigneeId, role: { in: ['WAREHOUSE', 'DRIVER', 'LOADER'] }, isActive: true },
+    });
+    if (!assignee) throw new AppError(400, 'Сотрудник не найден или не может быть назначен');
+
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'LOADING_ASSIGNED', loadingAssigneeId: dto.assigneeId } });
+
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'LOADING_ASSIGNED', loadingAssigneeId: dto.assigneeId } });
+
+    await prisma.notification.create({ data: { userId: dto.assigneeId, title: 'Новое поручение на отгрузку', body: `Сделка "${deal.title}" — нужно отгрузить`, severity: 'WARNING', link: `/my-loading-tasks`, createdByUserId: user.userId } });
+    pushService.sendPushToUser(dto.assigneeId, { title: 'Новое поручение на отгрузку', body: `Сделка "${deal.title}" — нужно отгрузить`, url: `/my-loading-tasks`, severity: 'WARNING' }).catch(() => {});
+
+    void syncDealTelegramGroupMessages(dealId).catch(() => {});
+  }
+
+  /** Сотрудник: «Отгружено» → CLOSED (самовызов/яндекс) или IN_DELIVERY (доставка, водитель уже назначен) */
+  async markLoaded(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'LOADING_ASSIGNED', isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
+
+    if (deal.loadingAssigneeId !== user.userId && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только назначенный сотрудник может отметить отгрузку');
+    }
+
+    const isDelivery = deal.deliveryType === 'DELIVERY';
+    const targetStatus: DealStatus = isDelivery ? 'IN_DELIVERY' : 'CLOSED';
+
+    await prisma.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
+
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: targetStatus } });
+
+    if (isDelivery && deal.deliveryDriverId) {
+      await prisma.notification.create({ data: { userId: deal.deliveryDriverId, title: 'Товар загружен', body: `Сделка "${deal.title}" загружена в вашу машину`, severity: 'WARNING', link: `/my-vehicle`, createdByUserId: user.userId } });
+      pushService.sendPushToUser(deal.deliveryDriverId, { title: 'Товар загружен', body: `Сделка "${deal.title}" загружена в вашу машину`, url: `/my-vehicle`, severity: 'WARNING' }).catch(() => {});
+    }
+
+    void syncDealTelegramGroupMessages(dealId).catch(() => {});
+  }
+
+  /** Водитель: «Поехали» — отмечает выезд (НЕ закрывает) */
+  async startDelivery(dto: StartDeliveryDto, user: AuthUser) {
+    const deals = await prisma.deal.findMany({
+      where: { id: { in: dto.dealIds }, status: 'IN_DELIVERY', deliveryDriverId: user.userId, isArchived: false },
+    });
+
+    if (deals.length === 0) throw new AppError(400, 'Нет доступных сделок для отправки');
+
+    for (const deal of deals) {
+      await prisma.dealComment.create({ data: { dealId: deal.id, authorId: user.userId, text: '🚗 Водитель выехал на доставку' } });
+      await auditLog({ userId: user.userId, action: 'UPDATE', entityType: 'deal', entityId: deal.id, before: {}, after: { departed: true } });
+    }
+
+    return { departedCount: deals.length };
+  }
+
+  /** Водитель: «Доставлено» — закрывает одну сделку */
+  async deliverDeal(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, status: 'IN_DELIVERY', deliveryDriverId: user.userId, isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена или вы не назначенный водитель');
+
+    await prisma.deal.update({ where: { id: deal.id }, data: { status: 'CLOSED' } });
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });
+    void syncDealTelegramGroupMessages(deal.id).catch(() => {});
+  }
+
+  /** Список сотрудников, доступных для назначения на отгрузку */
+  async getLoadingStaff() {
+    return prisma.user.findMany({
+      where: { role: { in: ['WAREHOUSE', 'DRIVER', 'LOADER'] }, isActive: true },
+      select: { id: true, fullName: true, role: true },
+      orderBy: { fullName: 'asc' },
+    });
+  }
+
+  /** Список водителей */
+  async getDrivers() {
+    return prisma.user.findMany({
+      where: { role: 'DRIVER', isActive: true },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+    });
+  }
+
+  /** Сделки PENDING_ADMIN для одобрения */
+  async findPendingAdmin(_user: AuthUser) {
+    return prisma.deal.findMany({
+      where: { status: 'PENDING_ADMIN', isArchived: false },
+      include: {
+        client: { select: { id: true, companyName: true, contactName: true } },
+        manager: { select: { id: true, fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 }
 

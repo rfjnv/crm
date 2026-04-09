@@ -39,6 +39,11 @@ export class ClientsController {
     res.json(result);
   }
 
+  async toggleSvip(req: Request, res: Response): Promise<void> {
+    const client = await clientsService.toggleSvip(req.params.id as string, getUser(req));
+    res.json(client);
+  }
+
   async archive(req: Request, res: Response): Promise<void> {
     const client = await clientsService.archive(req.params.id as string, getUser(req));
     res.json(client);

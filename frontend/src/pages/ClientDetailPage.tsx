@@ -9,7 +9,7 @@ import {
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
-  CommentOutlined, IdcardOutlined,
+  CommentOutlined, IdcardOutlined, CrownFilled,
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
@@ -126,6 +126,16 @@ export default function ClientDetailPage() {
       setPortraitOpen(false);
     },
     onError: () => message.error('Ошибка обновления клиента'),
+  });
+
+  const svipMut = useMutation({
+    mutationFn: () => clientsApi.toggleSvip(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', id] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success(client?.isSvip ? 'Статус SVIP снят' : 'Клиент отмечен как SVIP');
+    },
+    onError: () => message.error('Ошибка изменения статуса'),
   });
 
   // Client-side filtering of deals by payment status
@@ -250,9 +260,24 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>{client.companyName}</Typography.Title>
-        {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <Space size={8} align="center">
+          {client.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 22 }} />}
+          <Typography.Title level={4} style={{ margin: 0 }}>{client.companyName}</Typography.Title>
+          {client.isSvip && <Tag color="gold">SVIP</Tag>}
+        </Space>
+        <Space>
+          {isAdmin && (
+            <Button
+              icon={<CrownFilled style={{ color: client.isSvip ? '#faad14' : '#d9d9d9' }} />}
+              onClick={() => svipMut.mutate()}
+              loading={svipMut.isPending}
+            >
+              {client.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
+            </Button>
+          )}
+          {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
+        </Space>
       </div>
 
       <Tabs

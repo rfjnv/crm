@@ -20,6 +20,11 @@ setInterval(() => {
 
 export function rateLimiter(windowMs: number, maxAttempts: number) {
   return (req: Request, _res: Response, next: NextFunction): void => {
+    if (process.env.NODE_ENV === 'development') {
+      next();
+      return;
+    }
+
     const key = `${req.ip}:${req.path}`;
     const now = Date.now();
 

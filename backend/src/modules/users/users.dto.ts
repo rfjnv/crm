@@ -3,7 +3,7 @@ import { ALL_PERMISSIONS } from '../../lib/permissions';
 
 const permissionValues = ALL_PERMISSIONS as unknown as readonly [string, ...string[]];
 
-const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER'] as const;
+const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'DRIVER', 'LOADER'] as const;
 
 export const createUserDto = z.object({
   login: z.string().min(1, 'Логин обязателен').max(50),

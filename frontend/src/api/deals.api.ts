@@ -11,6 +11,10 @@ export const dealsApi = {
     title?: string;
     clientId: string;
     comment?: string;
+    deliveryType?: 'SELF_PICKUP' | 'YANDEX' | 'DELIVERY';
+    vehicleNumber?: string;
+    vehicleType?: string;
+    deliveryComment?: string;
     paymentMethod?: PaymentMethod;
     paymentNote?: string;
     cashNote?: string;
@@ -151,4 +155,23 @@ export const dealsApi = {
 
   releaseShipmentHold: (dealId: string) =>
     client.post<Deal>(`/deals/${dealId}/shipment-release`).then((r) => r.data),
+
+  // ── New workflow: Warehouse Manager / Loading / Delivery ──
+  wmIncoming: () => client.get<Deal[]>('/deals/wm/incoming').then((r) => r.data),
+  wmApproved: () => client.get<Deal[]>('/deals/wm/approved').then((r) => r.data),
+  wmDelivery: () => client.get<Deal[]>('/deals/wm/delivery').then((r) => r.data),
+  wmPendingAdmin: () => client.get<Deal[]>('/deals/wm/pending-admin').then((r) => r.data),
+  loadingStaff: () => client.get<{ id: string; fullName: string; role: string }[]>('/deals/loading-staff').then((r) => r.data),
+  driversList: () => client.get<{ id: string; fullName: string }[]>('/deals/drivers-list').then((r) => r.data),
+  myLoadingTasks: () => client.get<Deal[]>('/deals/my-loading-tasks').then((r) => r.data),
+  myVehicle: () => client.get<Deal[]>('/deals/my-vehicle').then((r) => r.data),
+
+  wmConfirm: (dealId: string) => client.post(`/deals/${dealId}/wm-confirm`).then((r) => r.data),
+  adminApproveNew: (dealId: string) => client.post(`/deals/${dealId}/admin-approve-new`).then((r) => r.data),
+  adminRejectNew: (dealId: string, reason: string) => client.post(`/deals/${dealId}/admin-reject-new`, { reason }).then((r) => r.data),
+  assignLoading: (dealId: string, assigneeId: string) => client.post(`/deals/${dealId}/assign-loading`, { assigneeId }).then((r) => r.data),
+  markLoaded: (dealId: string) => client.post(`/deals/${dealId}/mark-loaded`).then((r) => r.data),
+  assignDriver: (dealId: string, driverId: string) => client.post(`/deals/${dealId}/assign-driver`, { driverId }).then((r) => r.data),
+  startDelivery: (dealIds: string[]) => client.post('/deals/start-delivery', { dealIds }).then((r) => r.data),
+  deliverDeal: (dealId: string) => client.post(`/deals/${dealId}/deliver`).then((r) => r.data),
 };

@@ -216,6 +216,34 @@ export default function Layout() {
         label: <Link to="/deals/approval">Одобрение сделок</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
+      ? [{
+        key: '/warehouse-manager',
+        icon: <AppstoreOutlined />,
+        label: <Link to="/warehouse-manager">Зав. склада</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/pending-admin',
+        icon: <SafetyCertificateOutlined />,
+        label: <Link to="/pending-admin">Ожидает одобрения</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'DRIVER', 'LOADER')
+      ? [{
+        key: '/my-loading-tasks',
+        icon: <CheckSquareOutlined />,
+        label: <Link to="/my-loading-tasks">Мои отгрузки</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'DRIVER')
+      ? [{
+        key: '/my-vehicle',
+        icon: <CarOutlined />,
+        label: <Link to="/my-vehicle">Моя машина</Link>,
+      }]
+      : []),
 
     // ── ЗАДАЧИ ──
     { type: 'divider' as const },

@@ -1,0 +1,50 @@
+node_modules/
+dist/
+.env
+*.log
+uploads/
+*.xlsx
+*.dump
+
+# Temp/debug scripts
+_*.ts
+_*.js
+_*.py
+tmpclaude-*
+nul
+0
+
+# Backups & reports
+backend/backups/
+backend/reports/
+backend/tmp/
+backend/output*.txt
+backend/deals_list.txt
+backend/tsconfig.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# Misc artifacts
+*.csv
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
+!prisma/migrations/**/*.json
+AUDIT_*.json
+AUDIT_*.md
+companies.md
+bot-pic.png
+new-*.png
+telegram-banner.png
+satock.xlsx
+clients.csv
+
+# Documents
+Documents/
+
+# Frontend build artifacts
+frontend/.env

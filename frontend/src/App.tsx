@@ -43,6 +43,10 @@ import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import ReviewsPage from './pages/ReviewsPage';
+import WarehouseManagerPage from './pages/WarehouseManagerPage';
+import PendingAdminPage from './pages/PendingAdminPage';
+import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
+import MyVehiclePage from './pages/MyVehiclePage';
 import { useThemeStore } from './store/themeStore';
 
 const queryClient = new QueryClient({
@@ -126,6 +130,10 @@ export default function App() {
                 <Route path="/shipment" element={<ShipmentPage />} />
                 <Route path="/warehouse/shipments" element={<WarehouseShipmentsPage />} />
                 <Route path="/stock-confirmation" element={<StockConfirmationPage />} />
+                <Route path="/warehouse-manager" element={<WarehouseManagerPage />} />
+                <Route path="/pending-admin" element={<PendingAdminPage />} />
+                <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
+                <Route path="/my-vehicle" element={<MyVehiclePage />} />
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />
