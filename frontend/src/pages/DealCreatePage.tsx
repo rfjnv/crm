@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
@@ -318,7 +319,10 @@ export default function DealCreatePage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Новая сделка</Typography.Title>
+        <Space align="center">
+          <BackButton fallback="/deals" />
+          <Typography.Title level={4} style={{ margin: 0 }}>Новая сделка</Typography.Title>
+        </Space>
         <Space>
           <Button onClick={() => navigate('/deals')}>Отмена</Button>
           <Button type="primary" loading={createMut.isPending} onClick={handleSubmit}>Сохранить сделку</Button>

@@ -7,6 +7,7 @@ import { formatUZS } from '../utils/currency';
 import type { Deal } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
+import BackButton from '../components/BackButton';
 
 const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 
@@ -29,7 +30,10 @@ export default function MyLoadingTasksPage() {
 
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
-      <Typography.Title level={3}>Мои отгрузки ({deals.length})</Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={3} style={{ margin: 0 }}>Мои отгрузки ({deals.length})</Typography.Title>
+      </div>
       <Card>
         <Table
           dataSource={deals}

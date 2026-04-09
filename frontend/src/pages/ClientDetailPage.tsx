@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
+import BackButton from '../components/BackButton';
 import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -262,6 +263,7 @@ export default function ClientDetailPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space size={8} align="center">
+          <BackButton fallback="/clients" />
           {client.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 22 }} />}
           <Typography.Title level={4} style={{ margin: 0 }}>{client.companyName}</Typography.Title>
           {client.isSvip && <Tag color="gold">SVIP</Tag>}

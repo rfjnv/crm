@@ -16,6 +16,7 @@ import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import BackButton from '../components/BackButton';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
 type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
@@ -536,7 +537,10 @@ export default function CashboxPage() {
 
   return (
     <div>
-      <Typography.Title level={4} style={{ margin: '0 0 16px' }}>Касса</Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={4} style={{ margin: 0 }}>Касса</Typography.Title>
+      </div>
 
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
         {

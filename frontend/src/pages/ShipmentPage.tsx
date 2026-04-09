@@ -11,6 +11,7 @@ import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
+import BackButton from '../components/BackButton';
 
 export default function ShipmentPage() {
   const isMobile = useIsMobile();
@@ -118,10 +119,13 @@ export default function ShipmentPage() {
 
   return (
     <div>
-      <Typography.Title level={4} style={{ marginBottom: 16 }}>
-        Отгрузка
-        {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
-      </Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          Отгрузка
+          {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
+        </Typography.Title>
+      </div>
 
       <Table
         dataSource={list}

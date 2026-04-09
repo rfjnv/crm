@@ -8,6 +8,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { Deal } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import BackButton from '../components/BackButton';
 
 export default function PendingAdminPage() {
   const isMobile = useIsMobile();
@@ -33,7 +34,10 @@ export default function PendingAdminPage() {
 
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
-      <Typography.Title level={3}>Ожидает одобрения ({deals.length})</Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={3} style={{ margin: 0 }}>Ожидает одобрения ({deals.length})</Typography.Title>
+      </div>
       <Card>
         <Table
           dataSource={deals}

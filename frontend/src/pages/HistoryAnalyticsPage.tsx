@@ -25,6 +25,7 @@ import {
 } from '../constants/analyticsRevenueTooltips';
 import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
+import BackButton from '../components/BackButton';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
@@ -1279,9 +1280,12 @@ export default function HistoryAnalyticsPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <Title level={4} style={{ margin: 0 }}>
-          <BarChartOutlined /> Аналитика {year} (Исторические данные)
-        </Title>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <BackButton fallback="/analytics" />
+          <Title level={4} style={{ margin: 0 }}>
+            <BarChartOutlined /> Аналитика {year} (Исторические данные)
+          </Title>
+        </div>
         <Segmented
           value={year}
           onChange={(val) => setYear(val as number)}

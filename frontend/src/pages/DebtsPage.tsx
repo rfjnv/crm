@@ -6,6 +6,7 @@ import { financeApi } from '../api/finance.api';
 import { usersApi } from '../api/users.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import BackButton from '../components/BackButton';
 import { formatUZS } from '../utils/currency';
 import type { ClientDebtRow } from '../types';
 import dayjs from 'dayjs';
@@ -164,7 +165,10 @@ export default function DebtsPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Долги</Typography.Title>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <BackButton fallback="/dashboard" />
+          <Typography.Title level={4} style={{ margin: 0 }}>Долги</Typography.Title>
+        </div>
         <Input.Search
           placeholder="Поиск по клиенту или менеджеру..."
           style={{ width: isMobile ? '100%' : 300 }}

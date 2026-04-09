@@ -8,6 +8,7 @@ import { formatUZS } from '../utils/currency';
 import type { Deal } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
+import BackButton from '../components/BackButton';
 
 export default function MyVehiclePage() {
   const isMobile = useIsMobile();
@@ -44,10 +45,13 @@ export default function MyVehiclePage() {
 
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
-      <Typography.Title level={3}>
-        <CarOutlined style={{ marginRight: 8 }} />
-        Моя машина ({deals.length})
-      </Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          <CarOutlined style={{ marginRight: 8 }} />
+          Моя машина ({deals.length})
+        </Typography.Title>
+      </div>
 
       {deals.length === 0 && !isLoading && (
         <Alert message="Нет товаров для доставки" type="info" showIcon style={{ marginBottom: 16 }} />

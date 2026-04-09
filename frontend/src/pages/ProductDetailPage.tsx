@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useQuery } from '@tanstack/react-query';
 import {
   Typography, Card, Descriptions, Tag, Segmented, Spin, Row, Col,
@@ -162,7 +163,7 @@ export default function ProductDetailPage() {
     <div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', marginBottom: 16, gap: 8 }}>
         <Space wrap>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/inventory/products')} />
+          <BackButton fallback="/inventory/products" />
           <Typography.Title level={4} style={{ margin: 0 }}>{p.name}</Typography.Title>
           <Tag>{p.sku}</Tag>
           <Tag color={p.isActive ? 'green' : 'red'}>{p.isActive ? 'Активен' : 'Неактивен'}</Tag>

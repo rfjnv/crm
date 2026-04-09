@@ -23,6 +23,7 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import BackButton from '../components/BackButton';
 import type { Expense } from '../types';
 
 const EXPENSE_CATEGORIES = [
@@ -241,9 +242,12 @@ export default function ExpensesPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Расходы
-        </Typography.Title>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <BackButton fallback="/dashboard" />
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Расходы
+          </Typography.Title>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
           {isMobile ? '' : isAdmin ? 'Добавить расход' : 'Новая заявка'}
         </Button>

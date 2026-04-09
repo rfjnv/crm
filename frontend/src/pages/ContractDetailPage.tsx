@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography, Descriptions, Tag, Table, Card, Statistic, Row, Col, Space,
@@ -238,9 +239,12 @@ export default function ContractDetailPage() {
       </Space>
 
       <div>
-        <Typography.Title level={4} style={{ marginBottom: 16 }}>
-          Договор {contract.contractNumber}
-        </Typography.Title>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <BackButton fallback="/contracts" />
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Договор {contract.contractNumber}
+          </Typography.Title>
+        </div>
 
         <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small" style={{ marginBottom: 24 }}>
           <Descriptions.Item label="Клиент">

@@ -8,6 +8,7 @@ import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import BackButton from '../components/BackButton';
 import type { Deal } from '../types';
 import dayjs from 'dayjs';
 
@@ -154,10 +155,13 @@ export default function FinanceReviewPage() {
 
   return (
     <div>
-      <Typography.Title level={4} style={{ marginBottom: 8 }}>
-        Финансы на проверке
-        {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
-      </Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          Финансы на проверке
+          {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
+        </Typography.Title>
+      </div>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         Здесь только обзор. Полную проверку и решение удобнее делать внутри самой сделки.
       </Typography.Text>

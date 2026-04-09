@@ -1,8 +1,8 @@
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Spin, Typography, Tag, Space } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import BackButton from '../components/BackButton';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
@@ -109,9 +109,7 @@ export default function DealOverridePage() {
             rowGap: 8,
           }}
         >
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={back}>
-            Назад
-          </Button>
+          <BackButton fallback="/deals" />
           <Typography.Title level={3} style={{ margin: 0, flex: '1 1 240px' }}>
             Override сделки от {dayjs(deal.createdAt).format('DD.MM.YYYY')}
           </Typography.Title>

@@ -12,6 +12,7 @@ import {
   FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import BackButton from '../components/BackButton';
 import { adminApi } from '../api/admin.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
@@ -832,7 +833,10 @@ export default function DealDetailPage() {
 
   return (
     <div>
-      <Typography.Title level={4}>{deal.title}</Typography.Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+        <BackButton fallback="/deals" />
+        <Typography.Title level={4} style={{ margin: 0 }}>{deal.title}</Typography.Title>
+      </div>
 
       <Card bordered={false} style={{ marginBottom: 16 }}>
         <DealPipeline status={deal.status} />

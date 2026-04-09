@@ -7,6 +7,7 @@ import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import BackButton from '../components/BackButton';
 import type { Deal, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -152,6 +153,7 @@ export default function DealApprovalPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Space>
+          <BackButton fallback="/deals" />
           <Typography.Title level={4} style={{ margin: 0 }}>Одобрение сделок</Typography.Title>
           {count > 0 && <Badge count={count} style={{ backgroundColor: '#faad14' }} />}
         </Space>
