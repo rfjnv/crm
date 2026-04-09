@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Button, Card, Popconfirm, message, Tag, Descriptions } from 'antd';
+import { Table, Typography, Button, Card, Popconfirm, message, Tag, Descriptions, Space } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
@@ -10,6 +10,18 @@ import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 
 const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
+const deliveryColors: Record<string, string> = { SELF_PICKUP: 'blue', YANDEX: 'purple', DELIVERY: 'orange' };
+
+function DeliveryTag({ type }: { type?: string | null }) {
+  if (!type) return <Tag>—</Tag>;
+  return <Tag color={deliveryColors[type] || 'default'}>{deliveryLabels[type] || type}</Tag>;
+}
+
+function TargetTag({ deal }: { deal: Deal }) {
+  if (deal.deliveryType !== 'DELIVERY') return <Tag color="blue">Клиенту</Tag>;
+  if (deal.deliveryDriver) return <Tag color="green">Машина: {deal.deliveryDriver.fullName}</Tag>;
+  return <span>—</span>;
+}
 
 export default function MyLoadingTasksPage() {
   const isMobile = useIsMobile();
@@ -28,78 +40,134 @@ export default function MyLoadingTasksPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-loading-tasks'] }); message.success('Отгружено!'); },
   });
 
+  const renderMobileCard = (r: Deal) => (
+    <Card size="small" style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Link to={`/deals/${r.id}`}>
+            <Typography.Text strong>{r.title}</Typography.Text>
+          </Link>
+          <div style={{ marginTop: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {(r as any).client?.companyName}
+            </Typography.Text>
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <Space size={4} wrap>
+              <DeliveryTag type={r.deliveryType} />
+              <TargetTag deal={r} />
+            </Space>
+          </div>
+          {isAdmin && (r as any).loadingAssignee && (
+            <div style={{ marginTop: 4 }}>
+              <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag>
+            </div>
+          )}
+          {r.deliveryType === 'DELIVERY' && r.deliveryDriver && (
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              <Tag color="blue">{r.deliveryDriver.fullName}</Tag>
+              {r.vehicleNumber && <Typography.Text type="secondary"> {r.vehicleType} {r.vehicleNumber}</Typography.Text>}
+            </div>
+          )}
+          <div style={{ marginTop: 4 }}>
+            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
+              {(r as any).items?.map((it: any) => (
+                <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ marginBottom: 8 }}>
+            <Typography.Text strong>{formatUZS(Number(r.amount))}</Typography.Text>
+          </div>
+          {isAdmin ? <Tag>Наблюдение</Tag> : (
+            <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
+              <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
+                Отгружено
+              </Button>
+            </Popconfirm>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <BackButton fallback="/dashboard" />
         <Typography.Title level={3} style={{ margin: 0 }}>Мои отгрузки ({deals.length})</Typography.Title>
       </div>
-      <Card>
-        <Table
-          dataSource={deals}
-          rowKey="id"
-          loading={isLoading}
-          size="small"
-          pagination={false}
-          scroll={{ x: 600 }}
-          expandable={{
-            expandedRowRender: (r: Deal) => (
-              <Descriptions size="small" column={isMobile ? 1 : 2} bordered>
-                <Descriptions.Item label="Позиции">
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {(r as any).items?.map((it: any) => (
-                      <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
-                    ))}
-                  </ul>
-                </Descriptions.Item>
-                {r.deliveryType === 'DELIVERY' && r.deliveryDriver && (
-                  <Descriptions.Item label="Загрузить в машину">
-                    <Tag color="blue">{r.deliveryDriver.fullName}</Tag>
-                    {r.vehicleNumber && <> — {r.vehicleType} {r.vehicleNumber}</>}
+
+      {isMobile ? (
+        isLoading ? (
+          <Card loading />
+        ) : deals.length === 0 ? (
+          <Card><Typography.Text type="secondary">Нет задач</Typography.Text></Card>
+        ) : (
+          <div>{deals.map((d) => renderMobileCard(d))}</div>
+        )
+      ) : (
+        <Card>
+          <Table
+            dataSource={deals}
+            rowKey="id"
+            loading={isLoading}
+            size="small"
+            pagination={false}
+            scroll={{ x: 600 }}
+            expandable={{
+              expandedRowRender: (r: Deal) => (
+                <Descriptions size="small" column={2} bordered>
+                  <Descriptions.Item label="Позиции">
+                    <ul style={{ margin: 0, paddingLeft: 16 }}>
+                      {(r as any).items?.map((it: any) => (
+                        <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+                      ))}
+                    </ul>
                   </Descriptions.Item>
-                )}
-              </Descriptions>
-            ),
-          }}
-          columns={[
-            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-            { title: 'Клиент', dataIndex: ['client', 'companyName'] },
-            { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
-            {
-              title: 'Доставка', dataIndex: 'deliveryType', width: 110,
-              render: (v: string) => {
-                const cfg = deliveryLabels[v];
-                const colors: Record<string, string> = { SELF_PICKUP: 'blue', YANDEX: 'purple', DELIVERY: 'orange' };
-                return cfg ? <Tag color={colors[v]}>{cfg}</Tag> : <Tag>—</Tag>;
-              },
-            },
-            ...(isAdmin ? [{
-              title: 'Исполнитель', key: 'assignee', width: 140,
-              render: (_: unknown, r: Deal) => r.loadingAssignee ? <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag> : '—',
-            }] : []),
-            {
-              title: 'Куда грузить', key: 'target', width: 180,
-              render: (_: unknown, r: Deal) => {
-                if (r.deliveryType !== 'DELIVERY') return <Tag color="blue">Клиенту</Tag>;
-                if (r.deliveryDriver) return <Tag color="green">Машина: {r.deliveryDriver.fullName}</Tag>;
-                return '—';
-              },
-            },
-            {
-              title: '', key: 'actions', width: 140,
-              render: (_: unknown, r: Deal) => (
-                isAdmin ? <Tag>Наблюдение</Tag> : (
-                  <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
-                    <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
-                      Отгружено
-                    </Button>
-                  </Popconfirm>
-                )
+                  {r.deliveryType === 'DELIVERY' && r.deliveryDriver && (
+                    <Descriptions.Item label="Загрузить в машину">
+                      <Tag color="blue">{r.deliveryDriver.fullName}</Tag>
+                      {r.vehicleNumber && <> — {r.vehicleType} {r.vehicleNumber}</>}
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
               ),
-            },
-          ]}
-        />
-      </Card>
+            }}
+            columns={[
+              { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+              { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+              { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+              {
+                title: 'Доставка', dataIndex: 'deliveryType', width: 110,
+                render: (v: string) => <DeliveryTag type={v} />,
+              },
+              ...(isAdmin ? [{
+                title: 'Исполнитель', key: 'assignee', width: 140,
+                render: (_: unknown, r: Deal) => r.loadingAssignee ? <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag> : '—',
+              }] : []),
+              {
+                title: 'Куда грузить', key: 'target', width: 180,
+                render: (_: unknown, r: Deal) => <TargetTag deal={r} />,
+              },
+              {
+                title: '', key: 'actions', width: 140,
+                render: (_: unknown, r: Deal) => (
+                  isAdmin ? <Tag>Наблюдение</Tag> : (
+                    <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
+                      <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
+                        Отгружено
+                      </Button>
+                    </Popconfirm>
+                  )
+                ),
+              },
+            ]}
+          />
+        </Card>
+      )}
     </div>
   );
 }

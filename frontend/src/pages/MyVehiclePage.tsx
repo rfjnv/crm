@@ -43,6 +43,74 @@ export default function MyVehiclePage() {
   const allIds = deals.map((d) => d.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.includes(id));
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const renderMobileCard = (r: Deal) => {
+    const isSelected = selected.includes(r.id);
+    return (
+      <Card
+        size="small"
+        style={{
+          marginBottom: 8,
+          borderLeft: isSelected ? '3px solid #1677ff' : undefined,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {!isAdmin && (
+              <Checkbox
+                checked={isSelected}
+                onChange={() => toggleSelect(r.id)}
+                style={{ marginRight: 8 }}
+              />
+            )}
+            <Link to={`/deals/${r.id}`}>
+              <Typography.Text strong>{r.title}</Typography.Text>
+            </Link>
+
+            {isAdmin && r.deliveryDriver && (
+              <div style={{ marginTop: 4 }}>
+                <Tag color="orange">{r.deliveryDriver.fullName}</Tag>
+              </div>
+            )}
+
+            <div style={{ marginTop: 4 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {(r as any).client?.companyName}
+              </Typography.Text>
+            </div>
+            <div style={{ marginTop: 2 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {(r as any).client?.address || 'Адрес не указан'}
+              </Typography.Text>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <Typography.Text strong style={{ fontSize: 13 }}>{formatUZS(Number(r.amount))}</Typography.Text>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
+                {(r as any).items?.map((it: any) => (
+                  <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            {isAdmin ? <Tag>Наблюдение</Tag> : (
+              <Popconfirm title="Товар доставлен?" onConfirm={() => deliverMut.mutate(r.id)}>
+                <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
+                  Доставлено
+                </Button>
+              </Popconfirm>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
@@ -58,7 +126,7 @@ export default function MyVehiclePage() {
       )}
 
       {deals.length > 0 && !isAdmin && (
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16 }} wrap>
           <Checkbox
             checked={allSelected}
             indeterminate={selected.length > 0 && !allSelected}
@@ -77,52 +145,60 @@ export default function MyVehiclePage() {
         </Space>
       )}
 
-      <Card>
-        <Table
-          dataSource={deals}
-          rowKey="id"
-          loading={isLoading}
-          size="small"
-          pagination={false}
-          scroll={{ x: 600 }}
-          rowSelection={{
-            selectedRowKeys: selected,
-            onChange: (keys) => setSelected(keys as string[]),
-          }}
-          columns={[
-            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-            ...(isAdmin ? [{
-              title: 'Водитель', key: 'driver', width: 140,
-              render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
-            }] : []),
-            { title: 'Клиент', dataIndex: ['client', 'companyName'] },
-            { title: 'Адрес', dataIndex: ['client', 'address'], render: (v: string) => v || '—' },
-            { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
-            {
-              title: 'Позиции', key: 'items',
-              render: (_: unknown, r: Deal) => (
-                <ul style={{ margin: 0, paddingLeft: 16 }}>
-                  {(r as any).items?.map((it: any) => (
-                    <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
-                  ))}
-                </ul>
-              ),
-            },
-            {
-              title: '', key: 'actions', width: 140,
-              render: (_: unknown, r: Deal) => (
-                isAdmin ? <Tag>Наблюдение</Tag> : (
-                  <Popconfirm title="Товар доставлен клиенту?" onConfirm={() => deliverMut.mutate(r.id)}>
-                    <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
-                      Доставлено
-                    </Button>
-                  </Popconfirm>
-                )
-              ),
-            },
-          ]}
-        />
-      </Card>
+      {isMobile ? (
+        isLoading ? (
+          <Card loading />
+        ) : (
+          <div>{deals.map((d) => renderMobileCard(d))}</div>
+        )
+      ) : (
+        <Card>
+          <Table
+            dataSource={deals}
+            rowKey="id"
+            loading={isLoading}
+            size="small"
+            pagination={false}
+            scroll={{ x: 600 }}
+            rowSelection={isAdmin ? undefined : {
+              selectedRowKeys: selected,
+              onChange: (keys) => setSelected(keys as string[]),
+            }}
+            columns={[
+              { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+              ...(isAdmin ? [{
+                title: 'Водитель', key: 'driver', width: 140,
+                render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
+              }] : []),
+              { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+              { title: 'Адрес', dataIndex: ['client', 'address'], render: (v: string) => v || '—' },
+              { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+              {
+                title: 'Позиции', key: 'items',
+                render: (_: unknown, r: Deal) => (
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {(r as any).items?.map((it: any) => (
+                      <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+                    ))}
+                  </ul>
+                ),
+              },
+              {
+                title: '', key: 'actions', width: 140,
+                render: (_: unknown, r: Deal) => (
+                  isAdmin ? <Tag>Наблюдение</Tag> : (
+                    <Popconfirm title="Товар доставлен клиенту?" onConfirm={() => deliverMut.mutate(r.id)}>
+                      <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
+                        Доставлено
+                      </Button>
+                    </Popconfirm>
+                  )
+                ),
+              },
+            ]}
+          />
+        </Card>
+      )}
     </div>
   );
 }
