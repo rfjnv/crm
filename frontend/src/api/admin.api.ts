@@ -15,6 +15,12 @@ export interface OverrideDealData {
   createdAt?: string | null;
   discount?: number;
   terms?: string | null;
+  deliveryType?: string | null;
+  vehicleNumber?: string | null;
+  vehicleType?: string | null;
+  deliveryComment?: string | null;
+  loadingAssigneeId?: string | null;
+  deliveryDriverId?: string | null;
   items?: {
     id?: string;
     productId: string;

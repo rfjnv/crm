@@ -156,6 +156,12 @@ export const superOverrideDealDto = z.object({
   createdAt: z.string().nullable().optional(),
   discount: z.number().min(0).optional(),
   terms: z.string().nullable().optional(),
+  deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).nullable().optional(),
+  vehicleNumber: z.string().nullable().optional(),
+  vehicleType: z.string().nullable().optional(),
+  deliveryComment: z.string().nullable().optional(),
+  loadingAssigneeId: z.string().uuid().nullable().optional(),
+  deliveryDriverId: z.string().uuid().nullable().optional(),
   items: z.array(z.object({
     id: z.string().uuid().optional(),
     productId: z.string().uuid(),

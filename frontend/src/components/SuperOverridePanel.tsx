@@ -16,7 +16,10 @@ import dayjs from 'dayjs';
 const ALL_STATUSES: DealStatus[] = [
   'NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS',
   'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
-  'SHIPMENT_ON_HOLD', 'CLOSED', 'CANCELED', 'REJECTED',
+  'SHIPMENT_ON_HOLD',
+  'WAITING_WAREHOUSE_MANAGER', 'PENDING_ADMIN', 'READY_FOR_LOADING',
+  'LOADING_ASSIGNED', 'READY_FOR_DELIVERY', 'IN_DELIVERY',
+  'CLOSED', 'CANCELED', 'REJECTED',
 ];
 
 /** Above this row count, only the table body scrolls (70vh); summary and actions stay outside. */
@@ -101,6 +104,12 @@ export default function SuperOverridePanel({
       dueDate: deal.dueDate ? dayjs(deal.dueDate) : undefined,
       createdAt: deal.createdAt ? dayjs(deal.createdAt) : undefined,
       terms: deal.terms || '',
+      deliveryType: deal.deliveryType || undefined,
+      vehicleNumber: deal.vehicleNumber || '',
+      vehicleType: deal.vehicleType || '',
+      deliveryComment: deal.deliveryComment || '',
+      loadingAssigneeId: deal.loadingAssigneeId || undefined,
+      deliveryDriverId: deal.deliveryDriverId || undefined,
     });
 
     const dealItems: OverrideItem[] = (deal.items ?? []).map((i) => ({
@@ -192,6 +201,13 @@ export default function SuperOverridePanel({
       if (values.paidAmount !== Number(deal.paidAmount)) data.paidAmount = values.paidAmount;
       if (values.discount !== Number(deal.discount || 0)) data.discount = values.discount;
       if (values.terms !== (deal.terms || '')) data.terms = values.terms || null;
+
+      if ((values.deliveryType || null) !== (deal.deliveryType || null)) data.deliveryType = values.deliveryType || null;
+      if ((values.vehicleNumber || '') !== (deal.vehicleNumber || '')) data.vehicleNumber = values.vehicleNumber || null;
+      if ((values.vehicleType || '') !== (deal.vehicleType || '')) data.vehicleType = values.vehicleType || null;
+      if ((values.deliveryComment || '') !== (deal.deliveryComment || '')) data.deliveryComment = values.deliveryComment || null;
+      if ((values.loadingAssigneeId || null) !== (deal.loadingAssigneeId || null)) data.loadingAssigneeId = values.loadingAssigneeId || null;
+      if ((values.deliveryDriverId || null) !== (deal.deliveryDriverId || null)) data.deliveryDriverId = values.deliveryDriverId || null;
 
       const formDueDate = values.dueDate ? values.dueDate.toISOString() : null;
       const dealDueDate = deal.dueDate ? dayjs(deal.dueDate).toISOString() : null;
@@ -476,6 +492,32 @@ export default function SuperOverridePanel({
                   <Form.Item name="managerId" label="Менеджер">
                     <Select showSearch optionFilterProp="label"
                       options={(users ?? []).filter((u) => u.isActive).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
+                    />
+                  </Form.Item>
+                  <Form.Item name="deliveryType" label="Тип доставки">
+                    <Select allowClear placeholder="Не указан" options={[
+                      { label: 'Самовывоз', value: 'SELF_PICKUP' },
+                      { label: 'Яндекс', value: 'YANDEX' },
+                      { label: 'Доставка', value: 'DELIVERY' },
+                    ]} />
+                  </Form.Item>
+                  <Form.Item name="vehicleNumber" label="Номер машины">
+                    <Input placeholder="01 A 123 AA" />
+                  </Form.Item>
+                  <Form.Item name="vehicleType" label="Тип машины">
+                    <Input placeholder="Газель, Фура..." />
+                  </Form.Item>
+                  <Form.Item name="deliveryComment" label="Комментарий доставки">
+                    <Input placeholder="Комментарий..." />
+                  </Form.Item>
+                  <Form.Item name="loadingAssigneeId" label="Грузил (исполнитель)">
+                    <Select allowClear showSearch optionFilterProp="label" placeholder="Не назначен"
+                      options={(users ?? []).filter((u) => u.isActive && ['WAREHOUSE', 'DRIVER', 'LOADER'].includes(u.role)).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
+                    />
+                  </Form.Item>
+                  <Form.Item name="deliveryDriverId" label="Водитель доставки">
+                    <Select allowClear showSearch optionFilterProp="label" placeholder="Не назначен"
+                      options={(users ?? []).filter((u) => u.isActive && u.role === 'DRIVER').map((u) => ({ label: u.fullName, value: u.id }))}
                     />
                   </Form.Item>
                 </div>

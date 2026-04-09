@@ -2386,6 +2386,13 @@ export class DealsService {
         data.contractId = dto.contractId;
       }
 
+      if (dto.deliveryType !== undefined) data.deliveryType = dto.deliveryType;
+      if (dto.vehicleNumber !== undefined) data.vehicleNumber = dto.vehicleNumber;
+      if (dto.vehicleType !== undefined) data.vehicleType = dto.vehicleType;
+      if (dto.deliveryComment !== undefined) data.deliveryComment = dto.deliveryComment;
+      if (dto.loadingAssigneeId !== undefined) data.loadingAssigneeId = dto.loadingAssigneeId;
+      if (dto.deliveryDriverId !== undefined) data.deliveryDriverId = dto.deliveryDriverId;
+
       // Items full replacement
       if (dto.items !== undefined) {
         // Check if deal has been shipped (has OUT movements) — adjust stock accordingly
