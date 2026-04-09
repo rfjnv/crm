@@ -33,9 +33,9 @@ router.get('/wm/delivery', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'
 router.get('/wm/pending-admin', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findPendingAdmin.bind(dealsController)));
 router.get('/loading-staff', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getLoadingStaff.bind(dealsController)));
 router.get('/drivers-list', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getDrivers.bind(dealsController)));
-router.get('/my-loading-tasks', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyLoadingTasks.bind(dealsController)));
-router.get('/my-vehicle', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyVehicle.bind(dealsController)));
-router.post('/start-delivery', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), validate(startDeliveryDto), asyncHandler(dealsController.startDelivery.bind(dealsController)));
+router.get('/my-loading-tasks', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyLoadingTasks.bind(dealsController)));
+router.get('/my-vehicle', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyVehicle.bind(dealsController)));
+router.post('/start-delivery', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(startDeliveryDto), asyncHandler(dealsController.startDelivery.bind(dealsController)));
 
 router.get('/', asyncHandler(dealsController.findAll.bind(dealsController)));
 router.get('/:id', asyncHandler(dealsController.findById.bind(dealsController)));
@@ -91,8 +91,8 @@ router.post('/:id/wm-confirm', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_AD
 router.post('/:id/admin-approve-new', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveByAdmin.bind(dealsController)));
 router.post('/:id/admin-reject-new', authorize('ADMIN', 'SUPER_ADMIN'), validate(financeRejectDto), asyncHandler(dealsController.rejectByAdmin.bind(dealsController)));
 router.post('/:id/assign-loading', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignLoadingDto), asyncHandler(dealsController.assignLoading.bind(dealsController)));
-router.post('/:id/mark-loaded', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.markLoaded.bind(dealsController)));
+router.post('/:id/mark-loaded', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.markLoaded.bind(dealsController)));
 router.post('/:id/assign-driver', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignDriverDto), asyncHandler(dealsController.assignDriver.bind(dealsController)));
-router.post('/:id/deliver', authorize('DRIVER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.deliverDeal.bind(dealsController)));
+router.post('/:id/deliver', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.deliverDeal.bind(dealsController)));
 
 export default router;

@@ -15,7 +15,8 @@ export default function MyVehiclePage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const observeOnly = user?.role === 'ADMIN';
+  const seeAll = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_MANAGER';
 
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['my-vehicle'],
@@ -59,7 +60,7 @@ export default function MyVehiclePage() {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {!isAdmin && (
+            {!observeOnly && (
               <Checkbox
                 checked={isSelected}
                 onChange={() => toggleSelect(r.id)}
@@ -70,7 +71,7 @@ export default function MyVehiclePage() {
               <Typography.Text strong>{r.title}</Typography.Text>
             </Link>
 
-            {isAdmin && r.deliveryDriver && (
+            {seeAll && r.deliveryDriver && (
               <div style={{ marginTop: 4 }}>
                 <Tag color="orange">{r.deliveryDriver.fullName}</Tag>
               </div>
@@ -98,7 +99,7 @@ export default function MyVehiclePage() {
             </div>
           </div>
           <div style={{ flexShrink: 0 }}>
-            {isAdmin ? <Tag>Наблюдение</Tag> : (
+            {observeOnly ? <Tag>Наблюдение</Tag> : (
               <Popconfirm title="Товар доставлен?" onConfirm={() => deliverMut.mutate(r.id)}>
                 <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
                   Доставлено
@@ -125,7 +126,7 @@ export default function MyVehiclePage() {
         <Alert message="Нет товаров для доставки" type="info" showIcon style={{ marginBottom: 16 }} />
       )}
 
-      {deals.length > 0 && !isAdmin && (
+      {deals.length > 0 && !observeOnly && (
         <Space style={{ marginBottom: 16 }} wrap>
           <Checkbox
             checked={allSelected}
@@ -160,13 +161,13 @@ export default function MyVehiclePage() {
             size="small"
             pagination={false}
             scroll={{ x: 600 }}
-            rowSelection={isAdmin ? undefined : {
+            rowSelection={observeOnly ? undefined : {
               selectedRowKeys: selected,
               onChange: (keys) => setSelected(keys as string[]),
             }}
             columns={[
               { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-              ...(isAdmin ? [{
+              ...(seeAll ? [{
                 title: 'Водитель', key: 'driver', width: 140,
                 render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
               }] : []),
@@ -186,7 +187,7 @@ export default function MyVehiclePage() {
               {
                 title: '', key: 'actions', width: 140,
                 render: (_: unknown, r: Deal) => (
-                  isAdmin ? <Tag>Наблюдение</Tag> : (
+                  observeOnly ? <Tag>Наблюдение</Tag> : (
                     <Popconfirm title="Товар доставлен клиенту?" onConfirm={() => deliverMut.mutate(r.id)}>
                       <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={deliverMut.isPending}>
                         Доставлено

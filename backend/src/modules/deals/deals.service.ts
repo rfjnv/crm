@@ -2825,11 +2825,11 @@ export class DealsService {
   }
 
   async findMyLoadingTasks(user: AuthUser) {
-    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+    const seeAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'WAREHOUSE_MANAGER';
     return prisma.deal.findMany({
       where: {
         status: 'LOADING_ASSIGNED',
-        ...(!isAdmin ? { loadingAssigneeId: user.userId } : {}),
+        ...(!seeAll ? { loadingAssigneeId: user.userId } : {}),
         isArchived: false,
       },
       include: {
@@ -2844,11 +2844,11 @@ export class DealsService {
   }
 
   async findMyVehicle(user: AuthUser) {
-    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+    const seeAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'WAREHOUSE_MANAGER';
     return prisma.deal.findMany({
       where: {
         status: 'IN_DELIVERY',
-        ...(!isAdmin ? { deliveryDriverId: user.userId } : {}),
+        ...(!seeAll ? { deliveryDriverId: user.userId } : {}),
         isArchived: false,
       },
       include: {
@@ -2977,8 +2977,11 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    if (deal.loadingAssigneeId !== user.userId && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-      throw new AppError(403, 'Только назначенный сотрудник может отметить отгрузку');
+    const canAct = deal.loadingAssigneeId === user.userId
+      || user.role === 'WAREHOUSE_MANAGER'
+      || user.role === 'SUPER_ADMIN';
+    if (!canAct) {
+      throw new AppError(403, 'Только назначенный сотрудник, зав. склада или супер-админ может отметить отгрузку');
     }
 
     const isDelivery = deal.deliveryType === 'DELIVERY';
@@ -3012,12 +3015,18 @@ export class DealsService {
     return { departedCount: deals.length };
   }
 
-  /** Водитель: «Доставлено» — закрывает одну сделку */
+  /** Водитель/зав.склада/супер-админ: «Доставлено» — закрывает одну сделку */
   async deliverDeal(dealId: string, user: AuthUser) {
+    const canActAny = user.role === 'WAREHOUSE_MANAGER' || user.role === 'SUPER_ADMIN';
     const deal = await prisma.deal.findFirst({
-      where: { id: dealId, status: 'IN_DELIVERY', deliveryDriverId: user.userId, isArchived: false },
+      where: {
+        id: dealId,
+        status: 'IN_DELIVERY',
+        ...(!canActAny ? { deliveryDriverId: user.userId } : {}),
+        isArchived: false,
+      },
     });
-    if (!deal) throw new AppError(404, 'Сделка не найдена или вы не назначенный водитель');
+    if (!deal) throw new AppError(404, 'Сделка не найдена или нет прав для завершения доставки');
 
     await prisma.deal.update({ where: { id: deal.id }, data: { status: 'CLOSED' } });
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });

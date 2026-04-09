@@ -27,7 +27,8 @@ export default function MyLoadingTasksPage() {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const observeOnly = user?.role === 'ADMIN';
+  const seeAll = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'WAREHOUSE_MANAGER';
 
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['my-loading-tasks'],
@@ -58,7 +59,7 @@ export default function MyLoadingTasksPage() {
               <TargetTag deal={r} />
             </Space>
           </div>
-          {isAdmin && (r as any).loadingAssignee && (
+          {seeAll && (r as any).loadingAssignee && (
             <div style={{ marginTop: 4 }}>
               <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag>
             </div>
@@ -81,7 +82,7 @@ export default function MyLoadingTasksPage() {
           <div style={{ marginBottom: 8 }}>
             <Typography.Text strong>{formatUZS(Number(r.amount))}</Typography.Text>
           </div>
-          {isAdmin ? <Tag>Наблюдение</Tag> : (
+          {observeOnly ? <Tag>Наблюдение</Tag> : (
             <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
               <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
                 Отгружено
@@ -144,7 +145,7 @@ export default function MyLoadingTasksPage() {
                 title: 'Доставка', dataIndex: 'deliveryType', width: 110,
                 render: (v: string) => <DeliveryTag type={v} />,
               },
-              ...(isAdmin ? [{
+              ...(seeAll ? [{
                 title: 'Исполнитель', key: 'assignee', width: 140,
                 render: (_: unknown, r: Deal) => r.loadingAssignee ? <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag> : '—',
               }] : []),
@@ -155,7 +156,7 @@ export default function MyLoadingTasksPage() {
               {
                 title: '', key: 'actions', width: 140,
                 render: (_: unknown, r: Deal) => (
-                  isAdmin ? <Tag>Наблюдение</Tag> : (
+                  observeOnly ? <Tag>Наблюдение</Tag> : (
                     <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
                       <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
                         Отгружено

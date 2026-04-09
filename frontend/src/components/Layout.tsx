@@ -230,14 +230,14 @@ export default function Layout() {
         label: <Link to="/pending-admin">Ожидает одобрения</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'DRIVER', 'LOADER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER')
       ? [{
         key: '/my-loading-tasks',
         icon: <CheckSquareOutlined />,
         label: <Link to="/my-loading-tasks">Мои отгрузки</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'DRIVER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'DRIVER')
       ? [{
         key: '/my-vehicle',
         icon: <CarOutlined />,
