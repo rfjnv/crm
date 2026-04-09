@@ -53,6 +53,12 @@ type LatestNoteRow = {
   authorName: string;
 };
 
+type LatestDealManagerRow = {
+  clientId: string;
+  managerId: string;
+  managerName: string;
+};
+
 export class ClientsService {
   /**
    * Client list: 1 query for clients + manager, then 3 batched queries (latest note per client,
@@ -71,7 +77,7 @@ export class ClientsService {
       return [];
     }
 
-    const [noteRows, dealsAgg, paysAgg] = await Promise.all([
+    const [noteRows, dealsAgg, paysAgg, latestDealManagers] = await Promise.all([
       prisma.$queryRaw<LatestNoteRow[]>(Prisma.sql`
         SELECT DISTINCT ON (cn.client_id)
           cn.id,
@@ -95,6 +101,17 @@ export class ClientsService {
         where: { clientId: { in: ids } },
         _max: { paidAt: true },
       }),
+      prisma.$queryRaw<LatestDealManagerRow[]>(Prisma.sql`
+        SELECT DISTINCT ON (d.client_id)
+          d.client_id AS "clientId",
+          u.id AS "managerId",
+          u.full_name AS "managerName"
+        FROM deals d
+        INNER JOIN users u ON u.id = d.manager_id
+        WHERE d.is_archived = false
+          AND d.client_id IN (${Prisma.join(ids)})
+        ORDER BY d.client_id, d.created_at DESC
+      `),
     ]);
 
     const noteByClient = new Map(noteRows.map((n) => [n.clientId, n]));
@@ -103,6 +120,9 @@ export class ClientsService {
     );
     const payMaxByClient = new Map(
       paysAgg.map((p) => [p.clientId, p._max.paidAt?.getTime() ?? 0]),
+    );
+    const dealManagerByClient = new Map(
+      latestDealManagers.map((dm) => [dm.clientId, { id: dm.managerId, fullName: dm.managerName }]),
     );
 
     return rows.map((client) => {
@@ -119,8 +139,12 @@ export class ClientsService {
         latestNote && latestNote.content.length > 140
           ? `${latestNote.content.slice(0, 140)}…`
           : latestNote?.content ?? null;
+
+      const latestDealManager = dealManagerByClient.get(client.id);
+
       return {
         ...client,
+        manager: latestDealManager ?? client.manager,
         lastContactAt: new Date(lastMs).toISOString(),
         lastNote: latestNote
           ? {
