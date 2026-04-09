@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { Table, Typography, Button, Card, Tabs, Tag, Space, Modal, Select, message, Popconfirm, Descriptions } from 'antd';
 import { CheckOutlined, CarOutlined, UserAddOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
-import DealStatusTag from '../components/DealStatusTag';
 import { formatUZS } from '../utils/currency';
 import type { Deal, DeliveryType } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
