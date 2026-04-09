@@ -106,11 +106,11 @@ router.get(
       // 3. Revenue this month
       revenueTotalInRange(startOfMonth, startOfTomorrow),
 
-      // 4. Active deals count
+      // 4. Active deals count (все не завершённые статусы, включая новый контур склада/доставки)
       prisma.deal.count({
         where: {
           ...dealScope,
-          status: { in: ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD'] },
+          status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
           isArchived: false,
         },
       }),

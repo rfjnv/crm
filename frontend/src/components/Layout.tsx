@@ -134,7 +134,7 @@ export default function Layout() {
       ? [{
         key: '/reviews',
         icon: <StarOutlined />,
-        label: <Link to="/reviews">Отзывы (Бот)</Link>,
+        label: <Link to="/reviews">Отзывы</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT')

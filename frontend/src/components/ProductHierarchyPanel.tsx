@@ -233,6 +233,14 @@ export default function ProductHierarchyPanel({
     },
   });
 
+  const clearDragCursor = useCallback(() => {
+    setActiveDrag(null);
+    if (typeof document !== 'undefined') {
+      document.body.style.removeProperty('cursor');
+      document.documentElement.style.removeProperty('cursor');
+    }
+  }, []);
+
   const onDragStart = useCallback((e: DragStartEvent) => {
     const id = String(e.active.id);
     const p = products.find((x) => x.id === id);
@@ -241,7 +249,7 @@ export default function ProductHierarchyPanel({
 
   const onDragEnd = useCallback(
     (e: DragEndEvent) => {
-      setActiveDrag(null);
+      clearDragCursor();
       const { active, over } = e;
       if (!over || !canManage) return;
       const target = parseDropId(String(over.id));
@@ -257,8 +265,12 @@ export default function ProductHierarchyPanel({
         { onSuccess: () => message.success('Товар перенесён') },
       );
     },
-    [canManage, products, updateMut],
+    [canManage, products, updateMut, clearDragCursor],
   );
+
+  const onDragCancel = useCallback(() => {
+    clearDragCursor();
+  }, [clearDragCursor]);
 
   const openMove = (p: Product) => {
     const c = normCategory(p.category);
@@ -454,7 +466,7 @@ export default function ProductHierarchyPanel({
         переместить.
       </Typography.Paragraph>
 
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
         {namedGroups.length === 0 ? null : (
           <Collapse
             bordered={false}
