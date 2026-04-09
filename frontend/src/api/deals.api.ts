@@ -134,6 +134,9 @@ export const dealsApi = {
   shipmentQueue: () =>
     client.get<Deal[]>('/deals/shipment-queue').then((r) => r.data),
 
+  closedDeals: (page = 1, limit = 50) =>
+    client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/deals/closed-deals?page=${page}&limit=${limit}`).then((r) => r.data),
+
   getShipments: (page = 1, limit = 50) =>
     client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/deals/shipments?page=${page}&limit=${limit}`).then((r) => r.data),
 

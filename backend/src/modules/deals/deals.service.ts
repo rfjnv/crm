@@ -1139,6 +1139,39 @@ export class DealsService {
     });
   }
 
+  async findClosedDeals(user: AuthUser, options: { page: number; limit: number }) {
+    const { page, limit } = options;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      status: 'CLOSED' as DealStatus,
+      isArchived: false,
+    };
+
+    const [deals, total] = await Promise.all([
+      prisma.deal.findMany({
+        where,
+        include: {
+          client: { select: { id: true, companyName: true } },
+          manager: { select: { id: true, fullName: true } },
+          deliveryDriver: { select: { id: true, fullName: true } },
+          loadingAssignee: { select: { id: true, fullName: true } },
+          items: {
+            include: {
+              product: { select: { id: true, name: true, sku: true, unit: true, stock: true } },
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.deal.count({ where }),
+    ]);
+
+    return { data: deals, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  }
+
   async findShipments(user: AuthUser, options: { page: number; limit: number }) {
     const { page, limit } = options;
     const skip = (page - 1) * limit;

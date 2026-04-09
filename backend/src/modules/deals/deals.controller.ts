@@ -160,6 +160,13 @@ export class DealsController {
     res.json(shipments);
   }
 
+  async findClosedDeals(req: Request, res: Response): Promise<void> {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await dealsService.findClosedDeals(getUser(req), { page, limit });
+    res.json(result);
+  }
+
   async getAllDealsWithShipmentInfo(req: Request, res: Response): Promise<void> {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
