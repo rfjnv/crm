@@ -1,4 +1,5 @@
 import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, Role } from '@prisma/client';
+import crypto from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -2844,6 +2845,7 @@ export class DealsService {
         loadingAssignee: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+        rating: { select: { token: true, rating: true, ratedAt: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -2862,6 +2864,7 @@ export class DealsService {
         manager: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
+        rating: { select: { token: true, rating: true, ratedAt: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -2967,6 +2970,14 @@ export class DealsService {
     if (!assignee) throw new AppError(400, 'Сотрудник не найден или не может быть назначен');
 
     await prisma.deal.update({ where: { id: dealId }, data: { status: 'LOADING_ASSIGNED', loadingAssigneeId: dto.assigneeId } });
+
+    // Create rating token for QR code (if not yet created)
+    const existingRating = await prisma.dealRating.findUnique({ where: { dealId } });
+    if (!existingRating) {
+      await prisma.dealRating.create({
+        data: { dealId, token: crypto.randomBytes(16).toString('hex') },
+      });
+    }
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'LOADING_ASSIGNED', loadingAssigneeId: dto.assigneeId } });
 

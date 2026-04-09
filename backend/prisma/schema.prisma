@@ -374,6 +374,7 @@ model Deal {
   shipment           Shipment?
   payments           Payment[]
   messages           Message[]
+  rating             DealRating?
 
   @@index([managerId, isArchived])
   @@index([clientId])
@@ -707,6 +708,23 @@ model TaskAttachment {
 
   @@index([taskId])
   @@map("task_attachments")
+}
+
+// ==================== DEAL RATINGS (QR-based customer feedback) ====================
+
+model DealRating {
+  id        String    @id @default(uuid())
+  dealId    String    @unique @map("deal_id")
+  token     String    @unique
+  rating    Int?
+  comment   String?
+  ratedAt   DateTime? @map("rated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("deal_ratings")
 }
 
 // ==================== COMPANY SETTINGS ====================

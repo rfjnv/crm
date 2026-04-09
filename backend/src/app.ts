@@ -30,6 +30,7 @@ import telegramRoutes from './modules/telegram/telegram.routes';
 import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
 import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
+import ratingsRoutes from './modules/ratings/ratings.routes';
 import './modules/telegram/telegram.customer-bot.service';
 
 const app = express();
@@ -76,6 +77,9 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.use('/api', debugRoutes);
+
+// Public routes (no auth)
+app.use('/api/public/rate', ratingsRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);

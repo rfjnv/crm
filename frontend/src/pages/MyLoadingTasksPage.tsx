@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Button, Card, Popconfirm, message, Tag, Descriptions, Space } from 'antd';
-import { CheckCircleOutlined } from '@ant-design/icons';
+import { Table, Typography, Button, Card, Popconfirm, message, Tag, Descriptions, Space, Modal } from 'antd';
+import { CheckCircleOutlined, QrcodeOutlined } from '@ant-design/icons';
+import { QRCodeCanvas } from 'qrcode.react';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import type { Deal } from '../types';
@@ -36,10 +38,18 @@ export default function MyLoadingTasksPage() {
     refetchInterval: 10_000,
   });
 
+  const [qrDeal, setQrDeal] = useState<Deal | null>(null);
+
   const markLoadedMut = useMutation({
     mutationFn: (dealId: string) => dealsApi.markLoaded(dealId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-loading-tasks'] }); message.success('Отгружено!'); },
   });
+
+  const getQrUrl = (deal: Deal) => {
+    const token = (deal as any).rating?.token;
+    if (!token) return null;
+    return `${window.location.origin}/rate/${token}`;
+  };
 
   const renderMobileCard = (r: Deal) => (
     <Card size="small" style={{ marginBottom: 8 }}>
@@ -82,6 +92,9 @@ export default function MyLoadingTasksPage() {
           <div style={{ marginBottom: 8 }}>
             <Typography.Text strong>{formatUZS(Number(r.amount))}</Typography.Text>
           </div>
+          {getQrUrl(r) && (
+            <Button size="small" icon={<QrcodeOutlined />} onClick={() => setQrDeal(r)} style={{ marginBottom: 4 }}>QR</Button>
+          )}
           {observeOnly ? <Tag>Наблюдение</Tag> : (
             <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
               <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
@@ -154,21 +167,49 @@ export default function MyLoadingTasksPage() {
                 render: (_: unknown, r: Deal) => <TargetTag deal={r} />,
               },
               {
-                title: '', key: 'actions', width: 140,
+                title: '', key: 'actions', width: 200,
                 render: (_: unknown, r: Deal) => (
-                  observeOnly ? <Tag>Наблюдение</Tag> : (
-                    <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
-                      <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
-                        Отгружено
-                      </Button>
-                    </Popconfirm>
-                  )
+                  <Space size={4}>
+                    {getQrUrl(r) && (
+                      <Button size="small" icon={<QrcodeOutlined />} onClick={() => setQrDeal(r)}>QR</Button>
+                    )}
+                    {observeOnly ? <Tag>Наблюдение</Tag> : (
+                      <Popconfirm title="Подтвердить отгрузку?" onConfirm={() => markLoadedMut.mutate(r.id)}>
+                        <Button type="primary" size="small" icon={<CheckCircleOutlined />} loading={markLoadedMut.isPending}>
+                          Отгружено
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
                 ),
               },
             ]}
           />
         </Card>
       )}
+
+      <Modal
+        open={!!qrDeal}
+        onCancel={() => setQrDeal(null)}
+        footer={null}
+        centered
+        width={340}
+      >
+        {qrDeal && getQrUrl(qrDeal) && (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <Typography.Title level={4} style={{ marginBottom: 16 }}>Покажите клиенту</Typography.Title>
+            <QRCodeCanvas value={getQrUrl(qrDeal)!} size={250} level="M" />
+            <div style={{ marginTop: 16 }}>
+              <Typography.Text type="secondary">{qrDeal.title}</Typography.Text>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Клиент сканирует и оценивает обслуживание
+              </Typography.Text>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
