@@ -3,23 +3,22 @@ import prisma from '../../lib/prisma';
 
 const router = Router();
 
+function normalizeToken(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (Array.isArray(value) && typeof value[0] === 'string' && value[0].trim()) return value[0];
+  return null;
+}
+
 router.get('/:token', async (req: Request, res: Response) => {
   try {
-    const { token } = req.params;
+    const token = normalizeToken(req.params.token);
+    if (!token) {
+      res.status(400).json({ error: 'Некорректный токен' });
+      return;
+    }
 
     const rating = await prisma.dealRating.findUnique({
       where: { token },
-      include: {
-        deal: {
-          select: {
-            title: true,
-            createdAt: true,
-            deliveryDriver: { select: { fullName: true } },
-            loadingAssignee: { select: { fullName: true } },
-            client: { select: { companyName: true } },
-          },
-        },
-      },
     });
 
     if (!rating) {
@@ -27,11 +26,26 @@ router.get('/:token', async (req: Request, res: Response) => {
       return;
     }
 
+    const deal = await prisma.deal.findUnique({
+      where: { id: rating.dealId },
+      select: {
+        title: true,
+        createdAt: true,
+        deliveryDriver: { select: { fullName: true } },
+        loadingAssignee: { select: { fullName: true } },
+      },
+    });
+
+    if (!deal) {
+      res.status(404).json({ error: 'Сделка не найдена' });
+      return;
+    }
+
     res.json({
-      dealTitle: rating.deal.title,
-      dealDate: rating.deal.createdAt,
-      driverName: rating.deal.deliveryDriver?.fullName ?? null,
-      loaderName: rating.deal.loadingAssignee?.fullName ?? null,
+      dealTitle: deal.title,
+      dealDate: deal.createdAt,
+      driverName: deal.deliveryDriver?.fullName ?? null,
+      loaderName: deal.loadingAssignee?.fullName ?? null,
       alreadyRated: !!rating.ratedAt,
       rating: rating.rating,
     });
@@ -43,7 +57,12 @@ router.get('/:token', async (req: Request, res: Response) => {
 
 router.post('/:token', async (req: Request, res: Response) => {
   try {
-    const { token } = req.params;
+    const token = normalizeToken(req.params.token);
+    if (!token) {
+      res.status(400).json({ error: 'Некорректный токен' });
+      return;
+    }
+
     const { rating, comment } = req.body;
 
     if (!rating || typeof rating !== 'number' || rating < 1 || rating > 5) {
