@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button, theme } from 'antd';
+import { APP_BUTTON } from './ui/AppClassNames';
 import { BellOutlined, CloseOutlined } from '@ant-design/icons';
 
 /**
@@ -87,10 +88,10 @@ export default function NotificationPermissionBanner() {
         Получайте уведомления о новых сделках, платежах и задачах — даже когда браузер свернут. Как в Telegram.
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <Button type="primary" onClick={handleAllow} block>
+        <Button type="primary" className={APP_BUTTON} onClick={handleAllow} block>
           Разрешить
         </Button>
-        <Button onClick={handleDismiss}>
+        <Button className={APP_BUTTON} onClick={handleDismiss}>
           Позже
         </Button>
       </div>

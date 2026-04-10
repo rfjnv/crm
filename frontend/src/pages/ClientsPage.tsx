@@ -8,6 +8,7 @@ import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
 
@@ -391,6 +392,7 @@ export default function ClientsPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>Клиенты</Typography.Title>
         <Space wrap>
           <Input.Search
+            className={APP_INPUT}
             placeholder="Поиск (компания, контакт, телефон, email)..."
             style={{ width: isMobile ? '100%' : 300 }}
             allowClear
@@ -404,6 +406,7 @@ export default function ClientsPage() {
           />
           {isAdmin && (
             <Select
+              className={APP_INPUT}
               allowClear
               showSearch
               optionFilterProp="label"
@@ -415,13 +418,14 @@ export default function ClientsPage() {
             />
           )}
           <Select<ClientSortMode>
+            className={APP_INPUT}
             value={sortMode}
             onChange={(v) => patchListParams({ sort: v, page: 1 })}
             style={{ width: isMobile ? '100%' : 260 }}
             options={CLIENT_SORT_OPTIONS}
             popupMatchSelectWidth={false}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+          <Button type="primary" className={APP_BUTTON} icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
         </Space>
       </div>
 

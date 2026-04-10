@@ -1,10 +1,27 @@
 /**
- * Mobile + PWA (standalone): dynamic viewport height and overflow.
- * 100vh на iOS / Android WebView часто ≠ видимой области; 100dvh ближе к правде.
+ * Canonical width: `--mobile-breakpoint` in `:root`.
+ * PWA: `--app-vh`.
  */
 
 :root {
+  --mobile-breakpoint: 768px;
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 40px;
+  /* Page blocks / hero spacing: prefer var(--space-5) or var(--space-6) in components */
+  --mobile-inline-pad: var(--space-3);
+  --mobile-section-gap: var(--space-4);
+  --mobile-element-gap: var(--space-2);
   --app-vh: 100vh;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 @supports (height: 100dvh) {
@@ -17,7 +34,6 @@ html {
   height: 100%;
 }
 
-/* iOS Safari / installed PWA: корректная высота без «обрезания» под адресной строкой */
 @supports (-webkit-touch-callout: none) {
   html {
     height: -webkit-fill-available;
@@ -29,14 +45,266 @@ body {
   min-height: 100%;
   min-height: -webkit-fill-available;
   min-height: var(--app-vh);
-  overflow-x: hidden;
 }
 
 #root {
   min-height: var(--app-vh);
+  min-width: 0;
 }
 
-@media (max-width: 767px) {
+/* MUST MATCH --mobile-breakpoint defined in :root */
+@media (max-width: 768px) {
+  body {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  #root,
+  .ant-layout {
+    min-width: 0;
+  }
+
+  h1.ant-typography,
+  .ant-typography h1.ant-typography {
+    font-size: 26px !important;
+    line-height: 1.28 !important;
+  }
+
+  h2.ant-typography,
+  .ant-typography h2.ant-typography {
+    font-size: 22px !important;
+    line-height: 1.32 !important;
+  }
+
+  h3.ant-typography,
+  .ant-typography h3.ant-typography {
+    font-size: 19px !important;
+    line-height: 1.4 !important;
+  }
+
+  h4.ant-typography,
+  .ant-typography h4.ant-typography {
+    font-size: 16px !important;
+    line-height: 1.4 !important;
+  }
+
+  h5.ant-typography,
+  .ant-typography h5.ant-typography {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+  }
+
+  h1.ant-typography,
+  h2.ant-typography,
+  h3.ant-typography,
+  h4.ant-typography {
+    margin-bottom: var(--space-2);
+  }
+
+  .ant-typography {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .app-main-content {
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .mobile-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--mobile-section-gap);
+    min-width: 0;
+  }
+
+  .mobile-stack-tight {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--mobile-element-gap);
+    min-width: 0;
+  }
+
+  /*
+   * Primary: `.app-button` / `.app-input` (see `AppClassNames.ts`).
+   * TODO(remove): `.ant-btn` / `.ant-input` fallbacks once pages pass `className`.
+   */
+  .app-main-content .app-button.ant-btn:not(.ant-btn-icon-only),
+  .app-main-content .ant-btn:not(.ant-btn-icon-only) {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3) !important;
+    line-height: 1.4;
+  }
+
+  .app-main-content .app-button.ant-btn-icon-only,
+  .app-main-content button.ant-btn-icon-only {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 !important;
+  }
+
+  .app-main-content .app-input.ant-input-affix-wrapper,
+  .app-main-content .ant-input-affix-wrapper,
+  .app-main-content .app-input.ant-input,
+  .app-main-content .ant-input:not(textarea),
+  .app-main-content .app-input.ant-input-number,
+  .app-main-content .ant-input-number,
+  .app-main-content .ant-input-number-input,
+  .app-main-content .app-input.ant-select .ant-select-selector,
+  .app-main-content .ant-select:not(.ant-select-multiple) .ant-select-selector,
+  .app-main-content .app-input.ant-picker,
+  .app-main-content .ant-picker {
+    min-height: 44px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .app-main-content .ant-select-multiple .ant-select-selector {
+    min-height: 44px;
+    padding-block: 4px;
+  }
+
+  .app-main-content .ant-form .app-button:not(.ant-btn-icon-only),
+  .app-main-content .ant-form .ant-btn:not(.ant-btn-icon-only) {
+    width: 100%;
+  }
+
+  /* Horizontal table scroll + dynamic fades (`useTableScrollFade` adds `table-scroll-container` + `scroll-*`) */
+  .app-main-content .ant-table-wrapper,
+  .table-scroll-container {
+    position: relative;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-main-content .ant-table-wrapper.table-scroll-container::before,
+  .app-main-content .ant-table-wrapper.table-scroll-container::after,
+  .table-scroll-container::before,
+  .table-scroll-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 24px;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .app-main-content .ant-table-wrapper.table-scroll-container::before,
+  .table-scroll-container::before {
+    left: 0;
+    background: linear-gradient(
+      to right,
+      var(--ant-color-bg-container, #ffffff) 0%,
+      transparent 100%
+    );
+  }
+
+  .app-main-content .ant-table-wrapper.table-scroll-container::after,
+  .table-scroll-container::after {
+    right: 0;
+    background: linear-gradient(
+      to left,
+      var(--ant-color-bg-container, #ffffff) 0%,
+      transparent 100%
+    );
+  }
+
+  .table-scroll-container.scroll-no-overflow::before,
+  .table-scroll-container.scroll-no-overflow::after,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-no-overflow::before,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-no-overflow::after {
+    opacity: 0;
+  }
+
+  .table-scroll-container.scroll-start::before,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-start::before {
+    opacity: 0;
+  }
+
+  .table-scroll-container.scroll-start::after,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-start::after {
+    opacity: 1;
+  }
+
+  .table-scroll-container.scroll-middle::before,
+  .table-scroll-container.scroll-middle::after,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-middle::before,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-middle::after {
+    opacity: 1;
+  }
+
+  .table-scroll-container.scroll-end::before,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-end::before {
+    opacity: 1;
+  }
+
+  .table-scroll-container.scroll-end::after,
+  .app-main-content .ant-table-wrapper.table-scroll-container.scroll-end::after {
+    opacity: 0;
+  }
+
+  .app-main-content .ant-table {
+    min-width: 0;
+  }
+
+  .app-main-content .ant-table .app-button:not(.ant-btn-icon-only),
+  .app-main-content .ant-table .ant-btn:not(.ant-btn-icon-only) {
+    width: auto;
+    min-height: 44px;
+    padding: 4px var(--space-2) !important;
+  }
+
+  .ant-modal-root .ant-modal-footer .app-button,
+  .ant-modal-root .ant-modal-footer .ant-btn {
+    width: 100%;
+    margin-inline: 0 !important;
+  }
+
+  .ant-modal-root .ant-modal-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mobile-element-gap);
+  }
+
+  .login-page {
+    padding-inline: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .login-page .ant-card {
+    max-width: 100%;
+  }
+
+  .login-page .ant-card .ant-card-body {
+    padding: var(--space-3);
+  }
+
+  .login-page .app-button:not(.ant-btn-icon-only),
+  .login-page .ant-btn:not(.ant-btn-icon-only) {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3) !important;
+  }
+
+  .login-page .app-input.ant-input-affix-wrapper,
+  .login-page .ant-input-affix-wrapper,
+  .login-page .app-input.ant-input,
+  .login-page .ant-input {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
   .hide-on-mobile {
     display: none !important;
   }

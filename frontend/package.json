@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "build": "node scripts/check-mobile-breakpoint.mjs && tsc -b && vite build",
+    "lint": "eslint . && node scripts/check-mobile-breakpoint.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

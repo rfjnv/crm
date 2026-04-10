@@ -7,6 +7,7 @@ import {
   CheckOutlined, RightOutlined,
 } from '@ant-design/icons';
 import { notificationsApi } from '../api/notifications.api';
+import { APP_BUTTON } from './ui/AppClassNames';
 import type { AppNotification, NotificationSeverity } from '../types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -128,6 +129,7 @@ export default function NotificationBell() {
       <Badge count={unreadCount} size="small" offset={[-2, 4]} overflowCount={99}>
         <Button
           type="text"
+          className={APP_BUTTON}
           icon={<BellOutlined style={{ fontSize: 18 }} />}
           onClick={() => setOpen(true)}
           style={unreadCount > 0 ? { animation: 'bellPulse 2s infinite' } : undefined}
@@ -146,6 +148,7 @@ export default function NotificationBell() {
             {unreadCount > 0 && (
               <Button
                 type="link"
+                className={APP_BUTTON}
                 size="small"
                 icon={<CheckOutlined />}
                 onClick={() => markAllReadMut.mutate()}
@@ -223,7 +226,7 @@ export default function NotificationBell() {
           }}
         />
         <div style={{ padding: '12px 20px', borderTop: `1px solid ${themeToken.colorBorderSecondary}`, textAlign: 'center' }}>
-          <Button type="link" onClick={() => { setOpen(false); navigate('/notifications'); }}>
+          <Button type="link" className={APP_BUTTON} onClick={() => { setOpen(false); navigate('/notifications'); }}>
             Все уведомления
           </Button>
         </div>

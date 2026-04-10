@@ -40,8 +40,6 @@ export default function BottomTabBar() {
         background: token.colorBgContainer,
         borderTop: `1px solid ${token.colorBorderSecondary}`,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        paddingLeft: 'env(safe-area-inset-left, 0px)',
-        paddingRight: 'env(safe-area-inset-right, 0px)',
         boxShadow: token.boxShadowSecondary,
       }}
     >
@@ -50,43 +48,61 @@ export default function BottomTabBar() {
           display: 'flex',
           justifyContent: 'space-around',
           alignItems: 'stretch',
+          gap: 'var(--space-2)',
           minHeight: MOBILE_TAB_BAR_BASE_PX,
           maxWidth: 560,
           margin: '0 auto',
+          paddingLeft: 'calc(var(--space-3) + env(safe-area-inset-left, 0px))',
+          paddingRight: 'calc(var(--space-3) + env(safe-area-inset-right, 0px))',
+          boxSizing: 'border-box',
         }}
       >
         {items.map((tab) => {
           const isActive = activePath === tab.path;
-          const color = isActive ? token.colorPrimary : token.colorTextSecondary;
+          const inactiveColor = token.colorTextSecondary;
+          const activeColor = token.colorPrimary;
+          const fg = isActive ? activeColor : inactiveColor;
           const Icon = tab.Icon;
           return (
             <button
               key={tab.path}
               type="button"
               onClick={() => navigate(tab.path)}
+              aria-current={isActive ? 'page' : undefined}
               style={{
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 2,
-                minHeight: MOBILE_TAB_BAR_BASE_PX,
-                padding: '6px 4px',
+                gap: 4,
+                minHeight: 44,
+                padding: 'var(--space-1)',
                 border: 'none',
-                background: isActive ? token.colorPrimaryBg : 'transparent',
-                color,
+                background: 'transparent',
+                color: fg,
                 cursor: 'pointer',
-                fontSize: 10,
-                lineHeight: 1.15,
+                fontSize: 11,
+                lineHeight: 1.35,
+                fontWeight: 500,
                 WebkitTapHighlightColor: 'transparent',
-                borderRadius: isActive ? 8 : 0,
-                margin: '4px 2px',
-                maxWidth: 88,
+                minWidth: 0,
+                maxWidth: 'none',
               }}
             >
-              <Icon style={{ fontSize: 22 }} />
-              <span style={{ fontWeight: isActive ? 600 : 400 }}>{tab.label}</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transform: isActive ? 'scale(1.08)' : 'scale(1)',
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.15s ease',
+                }}
+              >
+                <Icon style={{ fontSize: 22, color: fg }} />
+              </span>
+              <span>{tab.label}</span>
             </button>
           );
         })}

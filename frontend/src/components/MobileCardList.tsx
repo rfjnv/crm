@@ -51,7 +51,7 @@ export default function MobileCardList<T>({
 
   return (
     <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {pageData.map((item, i) => (
           <div key={getKey(item, start + i)}>{renderCard(item, start + i)}</div>
         ))}

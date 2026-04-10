@@ -42,6 +42,8 @@ import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useTableScrollFade } from '../hooks/useTableScrollFade';
+import { APP_BUTTON } from './ui/AppClassNames';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import BottomTabBar from './BottomTabBar';
@@ -97,6 +99,8 @@ export default function Layout() {
   const { mode, toggle } = useThemeStore();
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  useTableScrollFade(mainScrollRef);
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -463,7 +467,7 @@ export default function Layout() {
   );
 
   return (
-    <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)' }}>
+    <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)', minWidth: 0 }}>
       {isMobile ? (
         <Drawer
           placement="left"
@@ -473,8 +477,8 @@ export default function Layout() {
           styles={{ body: { padding: 0 } }}
         >
           {menuContent}
-          <div style={{ padding: '16px', borderTop: `1px solid ${themeToken.colorBorderSecondary}` }}>
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} block>
+          <div style={{ padding: 'var(--space-3)', borderTop: `1px solid ${themeToken.colorBorderSecondary}` }}>
+            <Button type="text" className={APP_BUTTON} icon={<LogoutOutlined />} onClick={handleLogout} block>
               Выход
             </Button>
           </div>
@@ -505,13 +509,14 @@ export default function Layout() {
       <AntLayout
         style={{
           marginLeft: isMobile ? 0 : siderWidth,
+          minWidth: 0,
           transition: 'margin-left 0.2s',
           ...({ '--app-sider-width': isMobile ? '0px' : `${siderWidth}px` } as CSSProperties),
         }}
       >
         <Header
           style={{
-            padding: isMobile ? '0 12px' : '0 24px',
+            padding: isMobile ? `0 var(--space-3)` : '0 24px',
             paddingTop: isMobile ? 'max(env(safe-area-inset-top, 0px), 0px)' : undefined,
             background: themeToken.colorBgContainer,
             display: 'flex',
@@ -529,12 +534,15 @@ export default function Layout() {
           {isMobile ? (
             <Button
               type="text"
+              className={APP_BUTTON}
               icon={<MenuOutlined />}
               onClick={() => setMobileMenuOpen(true)}
+              style={{ minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             />
           ) : (
             <Button
               type="text"
+              className={APP_BUTTON}
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
             />
@@ -550,19 +558,26 @@ export default function Layout() {
             />
             {!isMobile && <Typography.Text strong>{user?.fullName}</Typography.Text>}
             {!isMobile && (
-              <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
+              <Button type="text" className={APP_BUTTON} icon={<LogoutOutlined />} onClick={handleLogout}>
                 Выход
               </Button>
             )}
           </div>
         </Header>
         <Content
+          className="app-main-content"
           style={{
-            margin: isMobile ? 12 : 24,
+            margin: isMobile ? 0 : 24,
+            paddingLeft: isMobile ? 'var(--space-3)' : undefined,
+            paddingRight: isMobile ? 'var(--space-3)' : undefined,
+            paddingTop: isMobile ? 0 : undefined,
             paddingBottom: isMobile ? mobileMainContentBottomPadding() : 0,
+            minWidth: 0,
           }}
         >
-          <Outlet />
+          <div ref={mainScrollRef} style={{ minWidth: 0 }}>
+            <Outlet />
+          </div>
         </Content>
         <NotificationPermissionBanner />
       </AntLayout>

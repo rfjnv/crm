@@ -4,6 +4,7 @@ import { Form, Input, Button, Card, Typography, message, Space, theme } from 'an
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { authApi } from '../api/auth.api';
 import { useAuthStore } from '../store/authStore';
+import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -29,8 +30,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
-      <Card style={{ width: '100%', maxWidth: 400, margin: '0 16px' }} bordered={false}>
+    <div
+      className="login-page"
+      style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}
+    >
+      <Card style={{ width: '100%', maxWidth: 400 }} bordered={false}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 0, color: token.colorTextHeading }}>
             CRM System
@@ -40,13 +44,13 @@ export default function LoginPage() {
           </Typography.Text>
           <Form layout="vertical" onFinish={onFinish} autoComplete="off">
             <Form.Item name="login" rules={[{ required: true, message: 'Введите логин' }]}>
-              <Input prefix={<UserOutlined />} placeholder="Логин" size="large" />
+              <Input className={APP_INPUT} prefix={<UserOutlined />} placeholder="Логин" size="large" />
             </Form.Item>
             <Form.Item name="password" rules={[{ required: true, message: 'Введите пароль' }]}>
-              <Input.Password prefix={<LockOutlined />} placeholder="Пароль" size="large" />
+              <Input.Password className={APP_INPUT} prefix={<LockOutlined />} placeholder="Пароль" size="large" />
             </Form.Item>
             <Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block size="large">
+              <Button type="primary" className={APP_BUTTON} htmlType="submit" loading={loading} block size="large">
                 Войти
               </Button>
             </Form.Item>
