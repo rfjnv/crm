@@ -158,7 +158,7 @@ export function resolveActiveMobileNavPath(pathname: string, items: MobileNavIte
  * Vertical space reserved above the home indicator so content clears the floating tab bar.
  * Matches `.app-main-content--mobile-shell` in `mobile.css`.
  */
-export const MOBILE_MAIN_BOTTOM_PADDING_PX = 88;
+export const MOBILE_MAIN_BOTTOM_PADDING_PX = 96;
 
 /** @deprecated Use MOBILE_MAIN_BOTTOM_PADDING_PX */
 export const MOBILE_TAB_BAR_BASE_PX = MOBILE_MAIN_BOTTOM_PADDING_PX;

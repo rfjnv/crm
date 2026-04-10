@@ -41,7 +41,7 @@ export default function BottomTabBar() {
               <span className="tab-item__icon" aria-hidden>
                 <Icon style={{ fontSize: 22, color: 'inherit' }} />
               </span>
-              {isActive && <span className="tab-item__label">{tab.label}</span>}
+              <span className="tab-label">{tab.label}</span>
             </button>
           );
         })}
