@@ -1,6 +1,6 @@
 // Polygraph CRM Service Worker — push notifications + offline shell
 
-const CACHE_NAME = 'crm-v1';
+const CACHE_NAME = 'crm-v2';
 
 // Install: cache shell assets
 self.addEventListener('install', () => {
@@ -27,8 +27,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: body || '',
-    icon: '/logo-icon.png',
-    badge: '/logo-icon.png',
+    icon: '/logo-for-applications.png',
+    badge: '/logo-for-applications.png',
     tag: url || 'crm-notification',
     data: { url: url || '/notifications' },
     requireInteraction: true,

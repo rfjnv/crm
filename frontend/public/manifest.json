@@ -1,39 +1,23 @@
 {
-  "name": "Polygraph CRM",
-  "short_name": "CRM",
-  "description": "Polygraph Business CRM",
-  "start_url": "/dashboard",
+  "name": "Polygraph Business CRM",
+  "short_name": "Polygraph CRM",
+  "description": "CRM для полиграфического бизнеса: сделки, склад, финансы, отгрузки.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#22609A",
+  "orientation": "any",
+  "lang": "ru",
   "icons": [
     {
-      "src": "/logo-icon.png",
-      "sizes": "192x192",
+      "src": "/logo-for-applications.png",
+      "sizes": "192x192 512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo-icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-icon.png",
-      "sizes": "1024x1024",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/logo-icon.png",
+      "src": "/logo-for-applications.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
