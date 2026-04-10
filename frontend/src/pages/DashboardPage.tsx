@@ -19,6 +19,7 @@ import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Permission, UserRole, DealStatus } from '../types';
+import './DashboardPage.css';
 
 const DEFAULT_GOAL = 250_000_000;
 
@@ -28,13 +29,13 @@ function pctChange(curr: number, prev: number): number | null {
 }
 
 function DeltaBadge({ value, suffix }: { value: number | null; suffix?: string }) {
-  if (value === null) return <span style={{ fontSize: 12, opacity: 0.4 }}>—</span>;
+  if (value === null) return <span className="dashboard-delta-empty">—</span>;
   const up = value >= 0;
   return (
-    <span style={{ fontSize: 12, fontWeight: 500, color: up ? '#389e0d' : '#cf1322' }}>
+    <span className={`dashboard-delta-badge ${up ? 'dashboard-delta-badge--up' : 'dashboard-delta-badge--down'}`}>
       {up ? <ArrowUpOutlined /> : <ArrowDownOutlined />}{' '}
       {up ? '+' : ''}{value.toFixed(1)}%
-      {suffix && <span style={{ opacity: 0.6, marginLeft: 3 }}>{suffix}</span>}
+      {suffix && <span className="dashboard-delta-suffix">{suffix}</span>}
     </span>
   );
 }
@@ -123,12 +124,14 @@ export default function DashboardPage() {
     boxShadow: 'none',
   };
   const cardBody = { padding: '16px 20px' };
+  const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
+  const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
 
   return (
-    <div style={{ paddingBottom: 32 }}>
+    <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: isMobile ? 16 : 20 }}>
         <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
         {user?.fullName && (
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
@@ -138,27 +141,26 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI cards ── */}
-      <Row gutter={[16, 16]}>
+      <Row className="dashboard-kpi-row" gutter={kpiGutter}>
         {/* Revenue — accent */}
         <Col xs={24} sm={12} lg={6}>
           <Link to="/revenue/today" style={{ display: 'block', height: '100%' }}>
             <Card
+              className="dashboard-metric-card"
               bordered={false}
               hoverable
               style={{ ...card, cursor: 'pointer', height: '100%', borderLeft: '3px solid #52c41a' }}
-              styles={{ body: cardBody }}
+              styles={{ body: isMobile ? undefined : cardBody }}
             >
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>
                 Выручка сегодня
               </Typography.Text>
-              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {formatUZS(data.revenueToday || 0)}
               </div>
-              {isAdmin && (
-                <div style={{ marginTop: 6 }}>
-                  <DeltaBadge value={revPct} suffix="к вчера" />
-                </div>
-              )}
+              <div className="dashboard-card-delta">
+                {isAdmin ? <DeltaBadge value={revPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+              </div>
             </Card>
           </Link>
         </Col>
@@ -167,18 +169,19 @@ export default function DashboardPage() {
         <Col xs={24} sm={12} lg={6}>
           <Link to={canViewClosedDealsHistory ? '/deals/closed' : '#'} style={{ display: 'block', height: '100%' }}>
             <Card
+              className="dashboard-metric-card"
               bordered={false}
               hoverable={canViewClosedDealsHistory}
               style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
-              styles={{ body: cardBody }}
+              styles={{ body: isMobile ? undefined : cardBody }}
             >
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>Закрыто сделок</Typography.Text>
-              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Закрыто сделок</Typography.Text>
+              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {data.closedDealsToday}
               </div>
-              {isAdmin && (
-                <div style={{ marginTop: 8 }}><DeltaBadge value={dealPct} suffix="к вчера" /></div>
-              )}
+              <div className="dashboard-card-delta">
+                {isAdmin ? <DeltaBadge value={dealPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+              </div>
             </Card>
           </Link>
         </Col>
@@ -186,22 +189,40 @@ export default function DashboardPage() {
         {/* Active deals */}
         <Col xs={24} sm={12} lg={6}>
           <Link to="/deals" style={{ display: 'block', height: '100%' }}>
-            <Card bordered={false} hoverable style={{ ...card, cursor: 'pointer', height: '100%' }} styles={{ body: cardBody }}>
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>Активные сделки</Typography.Text>
-              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: '#fa8c16', lineHeight: 1.3 }}>
+            <Card
+              className="dashboard-metric-card"
+              bordered={false}
+              hoverable
+              style={{ ...card, cursor: 'pointer', height: '100%' }}
+              styles={{ body: isMobile ? undefined : cardBody }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Активные сделки</Typography.Text>
+              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {data.activeDealsCount}
+              </div>
+              <div className="dashboard-card-delta">
+                <span className="dashboard-card-delta-placeholder" aria-hidden />
               </div>
             </Card>
           </Link>
         </Col>
 
-        {/* Debt */}
+        {/* Debt — value uses default text color; red only on negative deltas elsewhere */}
         <Col xs={24} sm={12} lg={6}>
           <Link to="/finance/debts" style={{ display: 'block', height: '100%' }}>
-            <Card bordered={false} hoverable style={{ ...card, cursor: 'pointer', height: '100%' }} styles={{ body: cardBody }}>
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>Общий долг</Typography.Text>
-              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: '#cf1322', lineHeight: 1.3 }}>
+            <Card
+              className="dashboard-metric-card"
+              bordered={false}
+              hoverable
+              style={{ ...card, cursor: 'pointer', height: '100%' }}
+              styles={{ body: isMobile ? undefined : cardBody }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Общий долг</Typography.Text>
+              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {formatUZS(totalDebt)}
+              </div>
+              <div className="dashboard-card-delta">
+                <span className="dashboard-card-delta-placeholder" aria-hidden />
               </div>
             </Card>
           </Link>
@@ -211,33 +232,53 @@ export default function DashboardPage() {
       {/* ── Monthly goal (compact, clickable → settings) ── */}
       {isAdmin && (
         <Card
+          className="dashboard-goal-card"
           bordered={false}
           hoverable
           style={{ ...card, marginTop: 16, cursor: 'pointer' }}
-          styles={{ body: { padding: '12px 20px' } }}
+          styles={{ body: isMobile ? undefined : { padding: '12px 20px' } }}
           onClick={() => navigate('/settings/company')}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-              Цель месяца
-            </Typography.Text>
-            <Progress
-              percent={goalPct}
-              strokeColor={isDark ? '#52c41a' : '#389e0d'}
-              trailColor={tk.colorFillSecondary}
-              style={{ flex: 1, minWidth: 120, margin: 0 }}
-              format={(p) => `${p}%`}
-            />
-            <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
-            </Typography.Text>
-          </div>
+          {isMobile ? (
+            <div className="goal-card">
+              <div className="goal-header">
+                <Typography.Text className="goal-title">Цель месяца</Typography.Text>
+                <span className="goal-pct">{goalPct}%</span>
+              </div>
+              <Progress
+                className="goal-progress"
+                percent={goalPct}
+                showInfo={false}
+                strokeColor={isDark ? '#52c41a' : '#389e0d'}
+                trailColor={tk.colorFillSecondary}
+              />
+              <div className="goal-meta">
+                {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                Цель месяца
+              </Typography.Text>
+              <Progress
+                percent={goalPct}
+                strokeColor={isDark ? '#52c41a' : '#389e0d'}
+                trailColor={tk.colorFillSecondary}
+                style={{ flex: 1, minWidth: 120, margin: 0 }}
+                format={(p) => `${p}%`}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
+              </Typography.Text>
+            </div>
+          )}
         </Card>
       )}
 
       {/* ── Chart + Statuses ── */}
       {isAdmin && (
-        <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Row gutter={blockGutter} style={{ marginTop: 24 }}>
           <Col xs={24} lg={14}>
             <Card
               bordered={false}
@@ -309,7 +350,7 @@ export default function DashboardPage() {
 
       {/* ── Tops ── */}
       {showExtras && (
-        <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Row gutter={blockGutter} style={{ marginTop: 24 }}>
           {[
             {
               title: 'Топ товаров',
@@ -340,7 +381,10 @@ export default function DashboardPage() {
                 title={<Typography.Text strong style={{ fontSize: 14 }}>{block.title}</Typography.Text>}
               >
                 {extLoading ? <Spin size="small" /> : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div
+                    className={isMobile ? 'dashboard-top-list' : undefined}
+                    style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? undefined : 2 }}
+                  >
                     {block.items.length === 0 && (
                       <Typography.Text type="secondary" style={{ fontSize: 13 }}>Нет данных</Typography.Text>
                     )}
@@ -399,7 +443,7 @@ export default function DashboardPage() {
             Все товары в достаточном количестве
           </Typography.Text>
         ) : isMobile ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="dashboard-stock-mobile" style={{ display: 'flex', flexDirection: 'column' }}>
             {allStockIssues.map((item) => (
               <div
                 key={item.id}
