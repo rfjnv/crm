@@ -397,7 +397,13 @@ export default function MessagesPage() {
 
   // ── Render ──
   return (
-    <div style={{ display: 'flex', height: isMobile ? 'calc(100vh - 186px)' : 'calc(100vh - 130px)', gap: 0 }}>
+    <div
+      style={{
+        display: 'flex',
+        height: isMobile ? 'calc(var(--app-vh, 100vh) - 186px)' : 'calc(var(--app-vh, 100vh) - 130px)',
+        gap: 0,
+      }}
+    >
       {/* Left Panel */}
       {(!isMobile || !showChat) && (
         <div

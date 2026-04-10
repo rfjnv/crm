@@ -34,7 +34,7 @@ export default function RatePage() {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--app-vh, 100vh)', background: '#f5f5f5' }}>
         <Spin size="large" />
       </div>
     );
@@ -42,7 +42,7 @@ export default function RatePage() {
 
   if (isError || !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--app-vh, 100vh)', background: '#f5f5f5' }}>
         <Result status="404" title="Ссылка не найдена" subTitle="Возможно, ссылка устарела или недействительна." />
       </div>
     );
@@ -50,7 +50,7 @@ export default function RatePage() {
 
   if (data.alreadyRated || submitted) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5', padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--app-vh, 100vh)', background: '#f5f5f5', padding: 16 }}>
         <Card style={{ maxWidth: 420, width: '100%', textAlign: 'center', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
           <CheckCircleFilled style={{ fontSize: 56, color: '#52c41a', marginBottom: 16 }} />
           <Typography.Title level={3} style={{ marginBottom: 8 }}>Спасибо за оценку!</Typography.Title>
@@ -66,7 +66,7 @@ export default function RatePage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: 16 }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--app-vh, 100vh)', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: 16 }}>
       <Card style={{ maxWidth: 420, width: '100%', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <Typography.Title level={3} style={{ marginBottom: 4 }}>Оцените доставку</Typography.Title>

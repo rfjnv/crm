@@ -600,7 +600,7 @@ export default function SuperOverridePanel({
                       <div
                         style={{
                           width: '100%',
-                          maxHeight: '70vh',
+                          maxHeight: 'min(70dvh, 85vh)',
                           overflow: 'auto',
                           scrollbarGutter: 'stable',
                         }}

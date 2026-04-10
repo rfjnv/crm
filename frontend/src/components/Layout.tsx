@@ -463,7 +463,7 @@ export default function Layout() {
   );
 
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)' }}>
       {isMobile ? (
         <Drawer
           placement="left"
@@ -512,6 +512,7 @@ export default function Layout() {
         <Header
           style={{
             padding: isMobile ? '0 12px' : '0 24px',
+            paddingTop: isMobile ? 'max(env(safe-area-inset-top, 0px), 0px)' : undefined,
             background: themeToken.colorBgContainer,
             display: 'flex',
             alignItems: 'center',
@@ -520,8 +521,9 @@ export default function Layout() {
             position: 'sticky',
             top: 0,
             zIndex: 99,
-            height: 56,
-            lineHeight: '56px',
+            minHeight: isMobile ? 'calc(56px + env(safe-area-inset-top, 0px))' : 56,
+            height: isMobile ? undefined : 56,
+            lineHeight: isMobile ? undefined : '56px',
           }}
         >
           {isMobile ? (

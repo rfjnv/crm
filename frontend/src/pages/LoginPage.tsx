@@ -29,7 +29,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
+    <div style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
       <Card style={{ width: '100%', maxWidth: 400, margin: '0 16px' }} bordered={false}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 0, color: token.colorTextHeading }}>

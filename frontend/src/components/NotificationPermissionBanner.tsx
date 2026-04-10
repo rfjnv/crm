@@ -37,8 +37,8 @@ export default function NotificationPermissionBanner() {
           const reg = await navigator.serviceWorker.ready;
           await reg.showNotification('Уведомления включены!', {
             body: 'Теперь вы будете получать уведомления как в Telegram',
-            icon: '/logo-icon.png',
-            badge: '/logo-icon.png',
+            icon: '/logo-for-applications.png',
+            badge: '/logo-for-applications.png',
             tag: 'welcome',
             requireInteraction: true,
           } as NotificationOptions);
@@ -60,8 +60,8 @@ export default function NotificationPermissionBanner() {
   return (
     <div style={{
       position: 'fixed',
-      top: 12,
-      right: 12,
+      top: 'calc(12px + env(safe-area-inset-top, 0px))',
+      right: 'calc(12px + env(safe-area-inset-right, 0px))',
       zIndex: 1000,
       background: tk.colorBgElevated,
       border: `1px solid ${tk.colorBorderSecondary}`,

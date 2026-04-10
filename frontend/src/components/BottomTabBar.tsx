@@ -40,6 +40,8 @@ export default function BottomTabBar() {
         background: token.colorBgContainer,
         borderTop: `1px solid ${token.colorBorderSecondary}`,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
         boxShadow: token.boxShadowSecondary,
       }}
     >

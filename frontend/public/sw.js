@@ -1,6 +1,7 @@
 // Polygraph CRM Service Worker — push notifications + offline shell
 
-const CACHE_NAME = 'crm-v2';
+// Bump when deploying UI fixes so clients pick up new sw.js (push handler only; no HTML shell cache).
+const CACHE_NAME = 'crm-v3';
 
 // Install: cache shell assets
 self.addEventListener('install', () => {
