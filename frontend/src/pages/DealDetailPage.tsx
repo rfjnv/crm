@@ -510,7 +510,8 @@ export default function DealDetailPage() {
     }
 
     // WAITING_STOCK_CONFIRMATION → ответ склада / грузчика (только строки без количества)
-    const canRespondStock = ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'SUPER_ADMIN', 'ADMIN'].includes(role);
+    const stockResponderRoles: UserRole[] = ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'SUPER_ADMIN', 'ADMIN'];
+    const canRespondStock = role !== undefined && stockResponderRoles.includes(role);
     if (deal.status === 'WAITING_STOCK_CONFIRMATION' && canRespondStock) {
       const pendingStock = (deal.items ?? []).filter(dealItemNeedsWarehouseStock);
       if (pendingStock.length > 0) {
