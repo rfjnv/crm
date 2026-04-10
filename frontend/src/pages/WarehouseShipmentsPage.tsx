@@ -22,13 +22,14 @@ export default function WarehouseShipmentsPage() {
   const [search, setSearch] = useState('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [mainTab, setMainTab] = useState<'shipments' | 'closed'>('shipments');
+  const [mainTab, setMainTab] = useState<'today' | 'closed'>('today');
   const [closedPage, setClosedPage] = useState(1);
   const [closedSearch, setClosedSearch] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['warehouse-shipments', page, limit],
-    queryFn: () => dealsApi.getShipments(page, limit),
+    queryKey: ['warehouse-shipments-today', page, limit],
+    queryFn: () => dealsApi.getShipments(page, limit, { todayOnly: true }),
+    enabled: mainTab === 'today',
     refetchInterval: 30_000,
   });
 
@@ -257,20 +258,20 @@ export default function WarehouseShipmentsPage() {
           <BackButton fallback="/dashboard" />
           <Typography.Title level={4} style={{ margin: 0 }}>
             <TruckOutlined style={{ marginRight: 8 }} />
-            Отгрузки и закрытые
+            Накладные: сегодня и закрытые
           </Typography.Title>
         </Space>
       </div>
 
       <Tabs
         activeKey={mainTab}
-        onChange={(k) => setMainTab(k as 'shipments' | 'closed')}
+        onChange={(k) => setMainTab(k as 'today' | 'closed')}
         items={[
           {
-            key: 'shipments',
+            key: 'today',
             label: (
               <span>
-                Накладные
+                Сегодня
                 {pagination?.total != null ? (
                   <Tag style={{ marginLeft: 8 }}>{pagination.total}</Tag>
                 ) : null}
@@ -307,7 +308,7 @@ export default function WarehouseShipmentsPage() {
                   }}
                   size="middle"
                   bordered={false}
-                  locale={{ emptyText: 'Нет накладных' }}
+                  locale={{ emptyText: 'На сегодня (Ташкент) нет накладных по дате отправки' }}
                   onRow={(record) => ({
                     style: { cursor: 'pointer' },
                     onClick: () => openDetail(record),

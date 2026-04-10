@@ -20,7 +20,8 @@
     "db:cleanup-all": "tsx prisma/cleanup-all-data.ts",
     "db:cleanup-zero-deal-items": "tsx src/scripts/cleanup-zero-qty-price-deal-items.ts",
     "db:snapshots": "tsx src/scripts/generate-snapshots.ts",
-    "import-excel": "tsx src/scripts/import-excel-to-crm.ts"
+    "import-excel": "tsx src/scripts/import-excel-to-crm.ts",
+    "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",

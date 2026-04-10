@@ -170,8 +170,13 @@ export const dealsApi = {
   closedDeals: (page = 1, limit = 50) =>
     client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/deals/closed-deals?page=${page}&limit=${limit}`).then((r) => r.data),
 
-  getShipments: (page = 1, limit = 50) =>
-    client.get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/deals/shipments?page=${page}&limit=${limit}`).then((r) => r.data),
+  getShipments: (page = 1, limit = 50, opts?: { todayOnly?: boolean }) =>
+    client
+      .get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(
+        '/deals/shipments',
+        { params: { page, limit, ...(opts?.todayOnly ? { today: '1' } : {}) } },
+      )
+      .then((r) => r.data),
 
   // Debug endpoint to see all deals
   getAllDealsDebug: (page = 1, limit = 50) =>

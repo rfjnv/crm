@@ -6,6 +6,7 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
 import { PERMISSIONS } from '../../lib/permissions';
+import { currentTashkentYmd, resolveClosedAtForNewClose, tashkentDayBoundsFromYmd } from '../../lib/dealClosedAt';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import {
@@ -1384,14 +1385,21 @@ export class DealsService {
     return { data: deals, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
   }
 
-  async findShipments(user: AuthUser, options: { page: number; limit: number }) {
-    const { page, limit } = options;
+  async findShipments(user: AuthUser, options: { page: number; limit: number; todayOnly?: boolean }) {
+    const { page, limit, todayOnly } = options;
     const skip = (page - 1) * limit;
 
-    // Find deals with shipment records (delivered deals)
-    const where = {
+    const { start, end } = tashkentDayBoundsFromYmd(currentTashkentYmd());
+
+    const where: Prisma.DealWhereInput = {
       isArchived: false,
-      shipment: { isNot: null },
+      shipment: todayOnly
+        ? {
+            is: {
+              departureTime: { gte: start, lte: end },
+            },
+          }
+        : { isNot: null },
     };
 
     const [shipments, total] = await Promise.all([
@@ -1411,7 +1419,9 @@ export class DealsService {
             },
           },
         },
-        orderBy: [{ shipment: { shippedAt: 'desc' } }],
+        orderBy: todayOnly
+          ? [{ shipment: { departureTime: 'desc' } }]
+          : [{ shipment: { shippedAt: 'desc' } }],
         skip,
         take: limit,
       }),
@@ -1597,10 +1607,10 @@ export class DealsService {
         },
       });
 
-      // Update deal status to CLOSED
+      const closedAt = resolveClosedAtForNewClose(deal, new Date(dto.departureTime));
       await tx.deal.update({
         where: { id: dealId },
-        data: { status: targetStatus, closedAt: new Date() },
+        data: { status: targetStatus, closedAt },
       });
     });
 
@@ -2773,7 +2783,7 @@ export class DealsService {
         await this.deductInventoryForDealInTx(tx, id, user.userId);
       }
       if (dto.closedAt === undefined && dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
-        data.closedAt = new Date();
+        data.closedAt = resolveClosedAtForNewClose(deal, new Date());
       }
 
       if (Object.keys(data).length > 0) {
@@ -3212,9 +3222,10 @@ export class DealsService {
     await prisma.$transaction(async (tx) => {
       await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при отметке «Отгружено»');
       if (targetStatus === 'CLOSED') {
+        const closedAt = resolveClosedAtForNewClose(deal, new Date());
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'CLOSED', closedAt: new Date() },
+          data: { status: 'CLOSED', closedAt },
         });
       } else {
         await tx.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
@@ -3260,9 +3271,10 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или нет прав для завершения доставки');
 
+    const closedAt = resolveClosedAtForNewClose(deal, new Date());
     await prisma.deal.update({
       where: { id: deal.id },
-      data: { status: 'CLOSED', closedAt: new Date() },
+      data: { status: 'CLOSED', closedAt },
     });
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });
     void syncDealTelegramGroupMessages(deal.id).catch(() => {});

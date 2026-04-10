@@ -175,7 +175,8 @@ export class DealsController {
   async findShipments(req: Request, res: Response): Promise<void> {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
-    const shipments = await dealsService.findShipments(getUser(req), { page, limit });
+    const todayOnly = req.query.today === '1' || req.query.today === 'true';
+    const shipments = await dealsService.findShipments(getUser(req), { page, limit, todayOnly });
     res.json(shipments);
   }
 
