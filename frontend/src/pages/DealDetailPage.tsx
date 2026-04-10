@@ -23,6 +23,7 @@ import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
@@ -53,6 +54,21 @@ const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
 
 function getDefaultContractEndDate(start?: dayjs.Dayjs) {
   return dayjs(start ?? dayjs()).endOf('year');
+}
+
+/** Менеджер Дильноза: способ оплаты уже задаётся при создании сделки */
+function isDilnozaUser(fullName?: string, login?: string): boolean {
+  const f = (fullName || '').trim().toLowerCase();
+  const l = (login || '').trim().toLowerCase();
+  return l === 'dilnoza' || f === 'dilnoza' || f.includes('дилноза');
+}
+
+const DILNOZA_QUICK_FINANCE_METHODS: PaymentMethod[] = ['CASH', 'PAYME', 'QR', 'CLICK', 'TERMINAL'];
+
+function dilnozaHasCompleteTransferOnDeal(d: Deal): boolean {
+  const inn = d.transferInn?.trim();
+  const docs = d.transferDocuments;
+  return !!(inn && Array.isArray(docs) && docs.length > 0);
 }
 
 /** Format qty: integers without .0, decimals up to 3 digits */
@@ -238,7 +254,7 @@ export default function DealDetailPage() {
   });
 
   const warehouseResponseMut = useMutation({
-    mutationFn: (items: { dealItemId: string; warehouseComment: string }[]) =>
+    mutationFn: (items: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number }[]) =>
       dealsApi.submitWarehouseResponse(id!, items),
     onSuccess: () => { invalidate(); setWarehouseResponseModal(false); warehouseForm.resetFields(); message.success('Ответ склада отправлен'); },
     onError: (err: unknown) => {
@@ -493,6 +509,39 @@ export default function DealDetailPage() {
       );
     }
 
+    // WAITING_STOCK_CONFIRMATION → ответ склада / грузчика (только строки без количества)
+    const canRespondStock = ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'SUPER_ADMIN', 'ADMIN'].includes(role);
+    if (deal.status === 'WAITING_STOCK_CONFIRMATION' && canRespondStock) {
+      const pendingStock = (deal.items ?? []).filter(dealItemNeedsWarehouseStock);
+      if (pendingStock.length > 0) {
+        actions.push(
+          <Button
+            key="warehouse-respond-deal"
+            type="primary"
+            icon={<CheckCircleOutlined />}
+            loading={warehouseResponseMut.isPending}
+            onClick={() => {
+              const initialValues = pendingStock.map((item) => {
+                const defPrice = item.product?.salePrice ? Number(item.product.salePrice) : undefined;
+                return {
+                  dealItemId: item.id,
+                  productName: item.product?.name || 'Товар',
+                  unit: item.product?.unit || 'шт',
+                  requestComment: item.requestComment || '',
+                  warehouseComment: '',
+                  price: defPrice,
+                };
+              });
+              warehouseForm.setFieldsValue({ items: initialValues });
+              setWarehouseResponseModal(true);
+            }}
+          >
+            Ответить по складу
+          </Button>,
+        );
+      }
+    }
+
     // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
     if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
@@ -545,14 +594,89 @@ export default function DealDetailPage() {
 
     // IN_PROGRESS with quantities → Send to finance (payment method selection)
     if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
-      actions.push(
-        <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
-          setSelectedPaymentMethod(null);
-          setSendToFinanceModal(true);
-        }}>
-          Отправить в финансы
-        </Button>,
-      );
+      const dilnozaManager = isDilnozaUser(user?.fullName, user?.login) && role === 'MANAGER';
+      const presetPm = deal.paymentMethod;
+
+      const openFinanceMethodModal = () => {
+        setSelectedPaymentMethod(null);
+        setSendToFinanceModal(true);
+      };
+
+      const sendToFinanceUsingDealPreset = () => {
+        if (!presetPm) {
+          openFinanceMethodModal();
+          return;
+        }
+        if (DILNOZA_QUICK_FINANCE_METHODS.includes(presetPm)) {
+          sendToFinanceMut.mutate({ paymentMethod: presetPm });
+          return;
+        }
+        if (
+          (presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT')
+          && dilnozaHasCompleteTransferOnDeal(deal)
+        ) {
+          sendToFinanceMut.mutate({
+            paymentMethod: presetPm,
+            transferInn: deal.transferInn!.trim(),
+            transferDocuments: deal.transferDocuments!,
+            transferType: deal.transferType === 'ANNUAL' ? 'ANNUAL' : 'ONE_TIME',
+          });
+          return;
+        }
+        if (presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT') {
+          setSelectedPaymentMethod(presetPm);
+          openTransferPaymentModal();
+          return;
+        }
+        openFinanceMethodModal();
+      };
+
+      if (dilnozaManager && presetPm) {
+        const pmLabel = paymentMethodLabels[presetPm] || presetPm;
+        const canConfirmInOneStep =
+          DILNOZA_QUICK_FINANCE_METHODS.includes(presetPm)
+          || ((presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT') && dilnozaHasCompleteTransferOnDeal(deal));
+
+        actions.push(
+          <Space key="send-finance-dilnoza" wrap align="center">
+            {canConfirmInOneStep ? (
+              <Popconfirm
+                title={`Отправить в финансы со способом «${pmLabel}» (как при создании сделки)?`}
+                okText="Да, отправить"
+                cancelText="Отмена"
+                onConfirm={() => sendToFinanceUsingDealPreset()}
+              >
+                <Button type="primary" icon={<DollarOutlined />} loading={sendToFinanceMut.isPending}>
+                  Отправить в финансы
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Button
+                type="primary"
+                icon={<DollarOutlined />}
+                loading={sendToFinanceMut.isPending}
+                onClick={() => sendToFinanceUsingDealPreset()}
+              >
+                Отправить в финансы
+              </Button>
+            )}
+            <Button type="link" onClick={openFinanceMethodModal}>
+              Выбрать другой способ
+            </Button>
+          </Space>,
+        );
+      } else {
+        actions.push(
+          <Button
+            key="send-finance"
+            type="primary"
+            icon={<DollarOutlined />}
+            onClick={openFinanceMethodModal}
+          >
+            Отправить в финансы
+          </Button>,
+        );
+      }
     }
 
     // IN_PROGRESS → Go back to warehouse
@@ -1621,10 +1745,18 @@ export default function DealDetailPage() {
         width={isMobile ? '100%' : 700}
       >
         <Form form={warehouseForm} layout="vertical" onFinish={(values) => {
-          const items = values.items.map((item: Record<string, unknown>) => ({
-            dealItemId: item.dealItemId,
-            warehouseComment: item.warehouseComment as string,
-          }));
+          const items = (values.items as Record<string, unknown>[]).map((item) => {
+            const priceVal = item.price as number | null | undefined;
+            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
+              dealItemId: item.dealItemId as string,
+              warehouseComment: item.warehouseComment as string,
+              requestedQty: Number(item.requestedQty),
+            };
+            if (priceVal != null && priceVal > 0) {
+              row.price = priceVal;
+            }
+            return row;
+          });
           warehouseResponseMut.mutate(items);
         }}>
           <Form.List name="items">
@@ -1641,6 +1773,19 @@ export default function DealDetailPage() {
                           Запрос менеджера: {itemData.requestComment}
                         </Typography.Text>
                       )}
+                      <Form.Item
+                        name={[field.name, 'requestedQty']}
+                        label={`Количество (${itemData?.unit || 'шт'})`}
+                        rules={[{ required: true, message: 'Укажите количество' }]}
+                      >
+                        <InputNumber style={{ width: '100%' }} min={0.001} step={0.001} placeholder="Фактическое количество" />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'price']}
+                        label="Цена (пусто — из каталога)"
+                      >
+                        <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="По прайсу" />
+                      </Form.Item>
                       <Form.Item
                         name={[field.name, 'warehouseComment']}
                         label="Ответ склада"

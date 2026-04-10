@@ -67,11 +67,14 @@ export const addDealItemDto = z.object({
   requestComment: z.string().optional(),
 });
 
+/** Позиции без количества: склад указывает количество, цену (или берётся salePrice товара) и комментарий. Пустой массив — если все позиции уже с количеством. */
 export const warehouseResponseDto = z.object({
   items: z.array(z.object({
     dealItemId: z.string().uuid('Некорректный ID позиции'),
     warehouseComment: z.string().min(1, 'Укажите ответ'),
-  })).min(1, 'Укажите хотя бы одну позицию'),
+    requestedQty: z.number().positive('Количество должно быть положительным'),
+    price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
+  })),
 });
 
 export const setItemQuantitiesDto = z.object({

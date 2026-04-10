@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Typography, Button, Tag, Modal, Form, Input,
-  message, Badge, Card,
+  message, Badge, Card, InputNumber,
 } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
+import { moneyFormatter, moneyParser } from '../utils/currency';
+import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
 import dayjs from 'dayjs';
 
 export default function StockConfirmationPage() {
@@ -24,8 +26,13 @@ export default function StockConfirmationPage() {
   });
 
   const respondMut = useMutation({
-    mutationFn: ({ dealId, items }: { dealId: string; items: { dealItemId: string; warehouseComment: string }[] }) =>
-      dealsApi.submitWarehouseResponse(dealId, items),
+    mutationFn: ({
+      dealId,
+      items,
+    }: {
+      dealId: string;
+      items: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number }[];
+    }) => dealsApi.submitWarehouseResponse(dealId, items),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-confirmation-queue'] });
       message.success('Ответ отправлен');
@@ -52,7 +59,11 @@ export default function StockConfirmationPage() {
       title: 'Товары',
       dataIndex: 'items',
       render: (items: DealItem[] | undefined) => (
-        <Badge count={items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />
+        <Badge
+          count={(items ?? []).filter(dealItemNeedsWarehouseStock).length}
+          showZero
+          style={{ backgroundColor: '#52c41a' }}
+        />
       ),
     },
     {
@@ -73,14 +84,19 @@ export default function StockConfirmationPage() {
           size="small"
           icon={<CheckCircleOutlined />}
           onClick={() => {
-            const initialValues = (r.items ?? []).map((item) => ({
-              dealItemId: item.id,
-              productName: item.product?.name || 'Товар',
-              sku: item.product?.sku || '',
-              unit: item.product?.unit || 'шт',
-              requestComment: item.requestComment || '',
-              warehouseComment: '',
-            }));
+            const pending = (r.items ?? []).filter(dealItemNeedsWarehouseStock);
+            const initialValues = pending.map((item) => {
+              const defPrice = item.product?.salePrice ? Number(item.product.salePrice) : undefined;
+              return {
+                dealItemId: item.id,
+                productName: item.product?.name || 'Товар',
+                sku: item.product?.sku || '',
+                unit: item.product?.unit || 'шт',
+                requestComment: item.requestComment || '',
+                warehouseComment: '',
+                price: defPrice,
+              };
+            });
             respondForm.setFieldsValue({ items: initialValues });
             setRespondModal(r);
           }}
@@ -145,10 +161,18 @@ export default function StockConfirmationPage() {
       >
         <Form form={respondForm} layout="vertical" onFinish={(values) => {
           if (!respondModal) return;
-          const items = values.items.map((item: Record<string, unknown>) => ({
-            dealItemId: item.dealItemId as string,
-            warehouseComment: item.warehouseComment as string,
-          }));
+          const items = (values.items as Record<string, unknown>[]).map((item) => {
+            const priceVal = item.price as number | null | undefined;
+            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
+              dealItemId: item.dealItemId as string,
+              warehouseComment: item.warehouseComment as string,
+              requestedQty: Number(item.requestedQty),
+            };
+            if (priceVal != null && priceVal > 0) {
+              row.price = priceVal;
+            }
+            return row;
+          });
           respondMut.mutate({ dealId: respondModal.id, items });
         }}>
           <Form.List name="items">
@@ -167,6 +191,19 @@ export default function StockConfirmationPage() {
                           Запрос менеджера: {itemData.requestComment}
                         </Typography.Text>
                       )}
+                      <Form.Item
+                        name={[field.name, 'requestedQty']}
+                        label={`Количество (${itemData?.unit || 'шт'})`}
+                        rules={[{ required: true, message: 'Укажите количество' }]}
+                      >
+                        <InputNumber style={{ width: '100%' }} min={0.001} step={0.001} placeholder="Фактическое количество" />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'price']}
+                        label="Цена (пусто — из каталога)"
+                      >
+                        <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="По прайсу" />
+                      </Form.Item>
                       <Form.Item
                         name={[field.name, 'warehouseComment']}
                         label="Ответ склада"

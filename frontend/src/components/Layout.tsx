@@ -195,7 +195,7 @@ export default function Layout() {
         label: <Link to="/shipment">Накладные</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER')
       ? [{
         key: '/stock-confirmation',
         icon: <CheckSquareOutlined />,

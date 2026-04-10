@@ -59,10 +59,12 @@ export const dealsApi = {
   getHistory: (id: string) =>
     client.get<DealHistoryEntry[]>(`/deals/${id}/history`).then((r) => r.data),
 
-  // Workflow: Warehouse Response (comment-only)
+  // Workflow: Warehouse Response (количество + комментарий; цена опционально — иначе salePrice товара)
   submitWarehouseResponse: (dealId: string, items: {
     dealItemId: string;
     warehouseComment: string;
+    requestedQty: number;
+    price?: number;
   }[]) =>
     client.post<Deal>(`/deals/${dealId}/stock-confirm`, { items }).then((r) => r.data),
 

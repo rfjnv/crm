@@ -22,7 +22,7 @@ router.get('/shipment-queue', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADM
 router.get('/closed-deals', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findClosedDeals.bind(dealsController)));
 router.get('/shipments', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findShipments.bind(dealsController)));
 router.get('/all-deals-debug', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getAllDealsWithShipmentInfo.bind(dealsController)));
-router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
+router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
 router.get('/deal-approval-queue', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDealApproval.bind(dealsController)));
 router.get('/archived', asyncHandler(dealsController.findArchived.bind(dealsController)));
 
@@ -55,7 +55,7 @@ router.post('/:id/items', validate(addDealItemDto), asyncHandler(dealsController
 router.delete('/:id/items/:itemId', asyncHandler(dealsController.removeItem.bind(dealsController)));
 
 // Workflow: Warehouse Response
-router.post('/:id/stock-confirm', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(warehouseResponseDto), asyncHandler(dealsController.submitWarehouseResponse.bind(dealsController)));
+router.post('/:id/stock-confirm', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), validate(warehouseResponseDto), asyncHandler(dealsController.submitWarehouseResponse.bind(dealsController)));
 
 // Workflow: Set Item Quantities (Manager fills after warehouse response, accountant may adjust in finance step)
 router.post('/:id/set-quantities', authorize('MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), validate(setItemQuantitiesDto), asyncHandler(dealsController.setItemQuantities.bind(dealsController)));

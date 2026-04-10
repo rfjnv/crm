@@ -116,6 +116,15 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
     ];
   }
 
+  // ── LOADER: подтверждение склада + мои отгрузки
+  if (role === 'LOADER') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Сводка' },
+      { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
+      { path: '/my-loading-tasks', label: 'Отгрузки', Icon: TruckOutlined, rationale: 'Мои отгрузки' },
+    ];
+  }
+
   // Fallback: any role that reached Layout but not listed above — safe minimal set
   const out: MobileNavItem[] = [
     { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined },

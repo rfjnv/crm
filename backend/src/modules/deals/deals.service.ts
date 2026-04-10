@@ -58,7 +58,7 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
 const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
   NEW: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   WAITING_STOCK_CONFIRMATION: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
-  STOCK_CONFIRMED: ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+  STOCK_CONFIRMED: ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'],
   IN_PROGRESS: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   WAITING_FINANCE: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
   FINANCE_APPROVED: ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
@@ -96,6 +96,47 @@ function normalizeTransferDocuments(documents?: string[]): string[] {
 
 function requiresFinanceReview(method: PaymentMethod): boolean {
   return FINANCE_REVIEW_METHODS.includes(method);
+}
+
+/** Позиция ждёт количество от склада (менеджер не указал или указал ≤ 0). */
+function dealItemNeedsStockQty(item: { requestedQty: unknown }): boolean {
+  if (item.requestedQty == null) return true;
+  const n = Number(item.requestedQty);
+  return !Number.isFinite(n) || n <= 0;
+}
+
+async function recalcDealAmountFromItemsInTx(tx: Prisma.TransactionClient, dealId: string): Promise<void> {
+  const deal = await tx.deal.findUnique({
+    where: { id: dealId },
+    select: { discount: true, includeVat: true },
+  });
+  if (!deal) {
+    throw new AppError(404, 'Сделка не найдена');
+  }
+
+  const items = await tx.dealItem.findMany({ where: { dealId } });
+  let subtotal = 0;
+  for (const i of items) {
+    const q = i.requestedQty != null ? Number(i.requestedQty) : 0;
+    const p = i.price != null ? Number(i.price) : 0;
+    if (q > 0 && p > 0) {
+      subtotal += q * p;
+    }
+  }
+
+  const discount = Number(deal.discount) || 0;
+  let finalAmount = subtotal - discount;
+  if (!deal.includeVat) {
+    finalAmount = Math.round((finalAmount / 1.12) * 100) / 100;
+  }
+  if (finalAmount < 0) {
+    throw new AppError(400, 'Сумма сделки не может быть отрицательной');
+  }
+
+  await tx.deal.update({
+    where: { id: dealId },
+    data: { amount: finalAmount },
+  });
 }
 
 function requiresContract(method: PaymentMethod | null): boolean {
@@ -567,8 +608,10 @@ export class DealsService {
       paymentMethod: dto.paymentMethod as PaymentMethod,
     };
 
-    // Add transfer-specific fields if payment method is TRANSFER
-    if (dto.paymentMethod === 'TRANSFER') {
+    // Перечисление и рассрочка — одни и те же реквизиты для бухгалтерии
+    const methodNeedsTransferPayload =
+      dto.paymentMethod === 'TRANSFER' || dto.paymentMethod === 'INSTALLMENT';
+    if (methodNeedsTransferPayload) {
       const transferInn = dto.transferInn?.trim();
       const transferDocuments = normalizeTransferDocuments(dto.transferDocuments);
 
@@ -689,7 +732,13 @@ export class DealsService {
   async submitWarehouseResponse(dealId: string, dto: WarehouseResponseDto, user: AuthUser) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, isArchived: false },
-      include: { items: true },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, salePrice: true } },
+          },
+        },
+      },
     });
 
     if (!deal) {
@@ -702,33 +751,96 @@ export class DealsService {
 
     validateStatusTransition(deal.status, 'STOCK_CONFIRMED', user.role);
 
-    // Validate all items are covered
-    const dealItemIds = new Set(deal.items.map((i) => i.id));
-    for (const item of dto.items) {
-      if (!dealItemIds.has(item.dealItemId)) {
-        throw new AppError(400, `Позиция ${item.dealItemId} не найдена в сделке`);
-      }
-    }
+    const needsResponse = deal.items.filter((i) => dealItemNeedsStockQty(i));
+    const needsIds = new Set(needsResponse.map((i) => i.id));
 
-    await prisma.$transaction(async (tx) => {
-      // Update each DealItem with warehouse comment only
-      for (const item of dto.items) {
-        await tx.dealItem.update({
-          where: { id: item.dealItemId },
-          data: {
-            warehouseComment: item.warehouseComment,
-            confirmedBy: user.userId,
-            confirmedAt: new Date(),
-          },
+    if (needsResponse.length === 0) {
+      if (dto.items.length > 0) {
+        throw new AppError(400, 'Все позиции уже имеют количество; отправьте пустой список items');
+      }
+      await prisma.$transaction(async (tx) => {
+        const rows = await tx.dealItem.findMany({ where: { dealId } });
+        if (rows.length === 0) {
+          throw new AppError(400, 'В сделке нет позиций');
+        }
+        const incomplete = rows.find((i) => dealItemNeedsStockQty(i));
+        if (incomplete) {
+          throw new AppError(400, 'Не у всех позиций указано количество');
+        }
+        await recalcDealAmountFromItemsInTx(tx, dealId);
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { status: 'STOCK_CONFIRMED' },
         });
+      });
+    } else {
+      if (dto.items.length !== needsResponse.length) {
+        throw new AppError(
+          400,
+          `Нужно ответить ровно по ${needsResponse.length} позициям без количества (получено ${dto.items.length})`,
+        );
       }
 
-      // Update deal status (no amount recalculation — warehouse only comments)
-      await tx.deal.update({
-        where: { id: dealId },
-        data: { status: 'STOCK_CONFIRMED' },
+      const dtoIds = new Set(dto.items.map((i) => i.dealItemId));
+      for (const id of needsIds) {
+        if (!dtoIds.has(id)) {
+          throw new AppError(400, 'Укажите ответ по каждой позиции без количества');
+        }
+      }
+
+      const dealItemIds = new Set(deal.items.map((i) => i.id));
+      for (const item of dto.items) {
+        if (!dealItemIds.has(item.dealItemId)) {
+          throw new AppError(400, `Позиция ${item.dealItemId} не найдена в сделке`);
+        }
+        if (!needsIds.has(item.dealItemId)) {
+          throw new AppError(400, 'Нельзя менять позиции, у которых количество уже указано менеджером');
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
+        for (const item of dto.items) {
+          const row = deal.items.find((i) => i.id === item.dealItemId);
+          if (!row) {
+            throw new AppError(400, `Позиция ${item.dealItemId} не найдена`);
+          }
+
+          let price = item.price;
+          if (price == null || price <= 0) {
+            const sp = row.product?.salePrice;
+            price = sp != null ? Number(sp) : 0;
+          }
+          if (!price || price <= 0) {
+            throw new AppError(400, 'Укажите цену или задайте цену продажи у товара в каталоге');
+          }
+
+          const qty = item.requestedQty;
+          await tx.dealItem.update({
+            where: { id: item.dealItemId },
+            data: {
+              warehouseComment: item.warehouseComment,
+              requestedQty: qty,
+              price,
+              lineTotal: qty * price,
+              confirmedBy: user.userId,
+              confirmedAt: new Date(),
+            },
+          });
+        }
+
+        const afterRows = await tx.dealItem.findMany({ where: { dealId } });
+        const incomplete = afterRows.find((i) => dealItemNeedsStockQty(i));
+        if (incomplete) {
+          throw new AppError(400, 'После ответа у каждой позиции должно быть указано количество');
+        }
+
+        await recalcDealAmountFromItemsInTx(tx, dealId);
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { status: 'STOCK_CONFIRMED' },
+        });
       });
-    });
+    }
 
     await auditLog({
       userId: user.userId,
@@ -868,8 +980,8 @@ export class DealsService {
     return this.findById(dealId, user);
   }
 
-  async findForStockConfirmation(user: AuthUser) {
-    return prisma.deal.findMany({
+  async findForStockConfirmation(_user: AuthUser) {
+    const deals = await prisma.deal.findMany({
       where: {
         status: 'WAITING_STOCK_CONFIRMATION',
         isArchived: false,
@@ -879,12 +991,19 @@ export class DealsService {
         manager: { select: { id: true, fullName: true } },
         items: {
           include: {
-            product: { select: { id: true, name: true, sku: true, unit: true, stock: true } },
+            product: { select: { id: true, name: true, sku: true, unit: true, stock: true, salePrice: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return deals
+      .map((d) => ({
+        ...d,
+        items: d.items.filter((i) => dealItemNeedsStockQty(i)),
+      }))
+      .filter((d) => d.items.length > 0);
   }
 
   // ==================== FINANCE APPROVE / REJECT ====================
