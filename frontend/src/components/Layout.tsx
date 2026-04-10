@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme } from 'antd';
 import {
@@ -38,6 +38,7 @@ import {
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
+import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
 import { authApi } from '../api/auth.api';
 import { conversationsApi } from '../api/conversations.api';
@@ -67,7 +68,33 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, refreshToken, logout } = useAuthStore();
+  const { user, refreshToken, logout, setUser } = useAuthStore();
+  const syncedProfileOnce = useRef(false);
+
+  // Права и роль в меню берутся из localStorage; после правок в «Пользователях» подтягиваем актуальный профиль с сервера.
+  useEffect(() => {
+    if (!user || syncedProfileOnce.current) return;
+    syncedProfileOnce.current = true;
+    authApi
+      .me()
+      .then((fresh) => setUser(fresh))
+      .catch(() => {
+        syncedProfileOnce.current = false;
+      });
+  }, [user, setUser]);
+
+  useEffect(() => {
+    let lastFocusSync = 0;
+    const onFocus = () => {
+      if (!useAuthStore.getState().accessToken) return;
+      const now = Date.now();
+      if (now - lastFocusSync < 45_000) return;
+      lastFocusSync = now;
+      authApi.me().then((fresh) => setUser(fresh)).catch(() => {});
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [setUser]);
   const { mode, toggle } = useThemeStore();
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
