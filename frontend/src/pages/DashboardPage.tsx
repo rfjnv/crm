@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge } from 'antd';
 import {
@@ -22,24 +22,6 @@ import type { Permission, UserRole, DealStatus } from '../types';
 import './DashboardPage.css';
 
 const DEFAULT_GOAL = 250_000_000;
-
-/** Ant Tag color → hex for status stacked bar */
-const STATUS_STACK_COLORS: Record<string, string> = {
-  blue: '#1677ff',
-  processing: '#1677ff',
-  gold: '#faad14',
-  cyan: '#13c2c2',
-  orange: '#fa8c16',
-  lime: '#a0d911',
-  geekblue: '#2f54eb',
-  purple: '#722ed1',
-  warning: '#faad14',
-  success: '#52c41a',
-  volcano: '#ff7a45',
-  red: '#ff4d4f',
-  magenta: '#eb2f96',
-  default: '#1677ff',
-};
 
 function pctChange(curr: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -119,59 +101,6 @@ export default function DashboardPage() {
   const topClients = useMemo(() => {
     return (monthAnalytics?.sales?.topClients ?? []).slice(0, 5);
   }, [monthAnalytics]);
-
-  const chartThirtyDayStats = useMemo(() => {
-    const series = data?.revenueLast30Days;
-    if (!series?.length) {
-      return { total: 0, trend: null as number | null, lastDay: 0, lastDayLabel: '' };
-    }
-    const sorted = [...series].sort((a, b) => a.day.localeCompare(b.day));
-    const total = sorted.reduce((s, d) => s + (d.total || 0), 0);
-    const last = sorted[sorted.length - 1];
-    const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
-    const trend = prev ? pctChange(last.total ?? 0, prev.total ?? 0) : null;
-    return {
-      total,
-      trend,
-      lastDay: last?.total ?? 0,
-      lastDayLabel: last?.day ? last.day.slice(5) : '',
-    };
-  }, [data?.revenueLast30Days]);
-
-  const areaChartData = useMemo(() => {
-    const s = data?.revenueLast30Days ?? [];
-    return s.map((row, i, arr) => ({
-      ...row,
-      __lastPt: i === arr.length - 1 ? 1 : 0,
-    }));
-  }, [data?.revenueLast30Days]);
-
-  const statusStack = useMemo(() => {
-    const raw = data?.dealsByStatusCounts ?? [];
-    const rows = raw.filter((d) => d.count > 0).sort((a, b) => b.count - a.count);
-    const totalCount = rows.reduce((s, d) => s + d.count, 0) || 1;
-    return {
-      segments: rows.map((d) => {
-        const cfg = statusConfig[d.status as DealStatus];
-        const color = STATUS_STACK_COLORS[cfg?.color || ''] || STATUS_STACK_COLORS.default;
-        return {
-          status: d.status as DealStatus,
-          count: d.count,
-          widthPct: (d.count / totalCount) * 100,
-          color,
-          label: cfg?.label ?? d.status,
-        };
-      }),
-      totalDeals: rows.reduce((s, d) => s + d.count, 0),
-    };
-  }, [data?.dealsByStatusCounts]);
-
-  const [statusBarReady, setStatusBarReady] = useState(false);
-  useEffect(() => {
-    setStatusBarReady(false);
-    const id = window.requestAnimationFrame(() => setStatusBarReady(true));
-    return () => window.cancelAnimationFrame(id);
-  }, [data?.dealsByStatusCounts]);
 
   if (isLoading || !data) {
     return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
@@ -463,134 +392,66 @@ export default function DashboardPage() {
           <Col xs={24} lg={14}>
             <Card
               bordered={false}
-              className="dashboard-chart-card"
               style={{ ...card, height: '100%' }}
-              styles={{ body: { padding: 0 } }}
+              styles={{ body: { padding: '16px 12px 8px' } }}
+              title={<Typography.Text strong style={{ fontSize: 14 }}>Выручка за 30 дней</Typography.Text>}
             >
-              <div className="chart-card">
-                <Typography.Text strong className="chart-card__title">
-                  Выручка за 30 дней
-                </Typography.Text>
-                <div className="chart-summary">
-                  <div className="chart-summary__main">
-                    <Typography.Text type="secondary" className="chart-summary__label">
-                      Итого за период
-                    </Typography.Text>
-                    <div className="chart-summary__total">{formatUZS(chartThirtyDayStats.total)}</div>
-                  </div>
-                  <div className="chart-summary__side">
-                    {chartThirtyDayStats.trend !== null && (
-                      <span
-                        className={
-                          chartThirtyDayStats.trend >= 0 ? 'trend-positive' : 'trend-negative'
-                        }
-                      >
-                        {chartThirtyDayStats.trend >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}{' '}
-                        {chartThirtyDayStats.trend >= 0 ? '+' : ''}
-                        {chartThirtyDayStats.trend.toFixed(1)}%
-                      </span>
-                    )}
-                    <Typography.Text type="secondary" className="chart-summary__hint">
-                      к пред. дню · последний {chartThirtyDayStats.lastDayLabel || '—'}
-                    </Typography.Text>
-                    <div className="chart-summary__last">{formatUZS(chartThirtyDayStats.lastDay)}</div>
-                  </div>
-                </div>
-                <div className="chart-area">
-                  <Area
-                    data={areaChartData}
-                    xField="day"
-                    yField="total"
-                    shapeField="smooth"
-                    height={240}
-                    theme={chartTheme}
-                    padding={[12, 8, 8, 8]}
-                    style={{ fill: isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)' }}
-                    line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
-                    point={{
-                      sizeField: '__lastPt',
-                      size: [0, 10],
-                      shape: 'circle',
-                      style: { fill: '#52c41a', stroke: '#fff', lineWidth: 2 },
-                    }}
-                    axis={{
-                      y: {
-                        labelFormatter: (v: number) => Math.round(v).toLocaleString('ru-RU'),
-                        labelFill: tk.colorTextSecondary,
-                        grid: true,
-                        gridLineWidth: 1,
-                        gridLineDash: [4, 4],
-                        gridStroke: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
-                      },
-                      x: {
-                        labelFormatter: (v: string) => v.slice(5),
-                        labelFill: tk.colorTextSecondary,
-                        grid: false,
-                      },
-                    }}
-                    tooltip={{ items: [{ channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
-                  />
-                </div>
-              </div>
+              <Area
+                data={data.revenueLast30Days || []}
+                xField="day"
+                yField="total"
+                shapeField="smooth"
+                height={240}
+                theme={chartTheme}
+                style={{ fill: isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)' }}
+                line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
+                axis={{
+                  y: { labelFormatter: (v: number) => Math.round(v).toLocaleString('ru-RU'), labelFill: tk.colorTextSecondary, grid: false },
+                  x: { labelFormatter: (v: string) => v.slice(5), labelFill: tk.colorTextSecondary },
+                }}
+                tooltip={{ items: [{ channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
+              />
             </Card>
           </Col>
           <Col xs={24} lg={10}>
             <Card
               bordered={false}
-              className="dashboard-status-card"
               style={{ ...card, height: '100%' }}
-              styles={{ body: { padding: 0 } }}
+              styles={{ body: { padding: '16px 20px' } }}
+              title={<Typography.Text strong style={{ fontSize: 14 }}>Сделки по статусам</Typography.Text>}
             >
-              <div className="status-card">
-                <Typography.Text strong className="status-card__title">
-                  Сделки по статусам
-                </Typography.Text>
-                <div className="status-card__meta">
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    Всего активных
-                  </Typography.Text>
-                  <Typography.Text strong>{statusStack.totalDeals}</Typography.Text>
-                </div>
-                {statusStack.segments.length === 0 ? (
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                    Нет активных сделок по статусам
-                  </Typography.Text>
-                ) : (
-                  <>
-                    <div
-                      className="status-bar"
-                      role="img"
-                      aria-label={`Распределение по статусам, всего ${statusStack.totalDeals} сделок`}
-                    >
-                      {statusStack.segments.map((seg) => (
-                        <button
-                          key={seg.status}
-                          type="button"
-                          className="status-segment"
-                          title={`${seg.label}: ${seg.count}`}
-                          style={{
-                            width: statusBarReady ? `${seg.widthPct}%` : '0%',
-                            background: seg.color,
-                          }}
-                          onClick={() => navigate(`/deals?status=${seg.status}`)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 270, overflowY: 'auto' }}>
+                {(data.dealsByStatusCounts || [])
+                  .filter((d) => d.count > 0)
+                  .sort((a, b) => b.count - a.count)
+                  .map((d) => {
+                    const cfg = statusConfig[d.status as DealStatus];
+                    const hex: Record<string, string> = {
+                      blue: '#1677ff', processing: '#1677ff', gold: '#faad14', cyan: '#13c2c2',
+                      orange: '#fa8c16', lime: '#a0d911', geekblue: '#2f54eb', purple: '#722ed1',
+                      warning: '#faad14', success: '#52c41a', volcano: '#ff7a45', red: '#ff4d4f',
+                    };
+                    const maxC = Math.max(1, ...(data.dealsByStatusCounts || []).map((x) => x.count));
+                    return (
+                      <div
+                        key={d.status}
+                        style={{ cursor: 'pointer', padding: '6px 0' }}
+                        onClick={() => navigate(`/deals?status=${d.status}`)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <DealStatusTag status={d.status as DealStatus} />
+                          <Typography.Text strong style={{ fontSize: 13 }}>{d.count}</Typography.Text>
+                        </div>
+                        <Progress
+                          percent={Math.round((d.count / maxC) * 100)}
+                          showInfo={false}
+                          size="small"
+                          strokeColor={hex[cfg?.color || ''] || tk.colorPrimary}
+                          trailColor={tk.colorFillSecondary}
                         />
-                      ))}
-                    </div>
-                    <div className="status-list">
-                      {statusStack.segments.map((seg) => (
-                        <button
-                          key={seg.status}
-                          type="button"
-                          className="status-list__item"
-                          onClick={() => navigate(`/deals?status=${seg.status}`)}
-                        >
-                          <DealStatusTag status={seg.status} />
-                          <span className="status-list__count">{seg.count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+                      </div>
+                    );
+                  })}
               </div>
             </Card>
           </Col>
