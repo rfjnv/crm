@@ -1,21 +1,39 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Table, Typography, Tag, Space, Drawer, Descriptions, Badge, Card,
-  Button, Input, Tabs, Pagination,
+  Button, Input, Tabs, Pagination, Select, DatePicker,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import { EyeOutlined, TruckOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import DealStatusTag from '../components/DealStatusTag';
 import { dealsApi } from '../api/deals.api';
+import { usersApi } from '../api/users.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
-import type { Deal, DealItem } from '../types';
+import type { Deal, DealItem, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
 type WarehouseMainTab = 'shipmentsToday' | 'closedToday' | 'closedAll';
+
+/** Период закрытия для API «Все закрытые» (границы дня по Ташкенту). */
+function closedRangeToApiParams(range: [Dayjs, Dayjs] | null): { closedFrom?: string; closedTo?: string } {
+  if (!range?.[0] || !range[1]) return {};
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toIsoDay = (ymd: string, endOfDay: boolean) => {
+    const [y, m, d] = ymd.split('-').map((x) => parseInt(x, 10));
+    const iso = endOfDay
+      ? `${y}-${pad(m)}-${pad(d)}T23:59:59.999+05:00`
+      : `${y}-${pad(m)}-${pad(d)}T00:00:00.000+05:00`;
+    return new Date(iso).toISOString();
+  };
+  const a = range[0].format('YYYY-MM-DD');
+  const b = range[1].format('YYYY-MM-DD');
+  return { closedFrom: toIsoDay(a, false), closedTo: toIsoDay(b, true) };
+}
 
 export default function WarehouseShipmentsPage() {
   const isMobile = useIsMobile();
@@ -28,6 +46,40 @@ export default function WarehouseShipmentsPage() {
   const [closedPage, setClosedPage] = useState(1);
   const [closedTodayPage, setClosedTodayPage] = useState(1);
   const [closedSearch, setClosedSearch] = useState('');
+  const [closedAllSearch, setClosedAllSearch] = useState('');
+  const [closedAllPayment, setClosedAllPayment] = useState<PaymentStatus | 'all'>('all');
+  const [closedAllManagerId, setClosedAllManagerId] = useState<string | undefined>(undefined);
+  const [closedAllDateRange, setClosedAllDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+
+  const closedAllApiOpts = useMemo(() => {
+    const rangeParams = closedRangeToApiParams(closedAllDateRange);
+    const q = closedAllSearch.trim();
+    return {
+      paymentStatus: closedAllPayment === 'all' ? undefined : closedAllPayment,
+      managerId: closedAllManagerId,
+      ...rangeParams,
+      ...(q ? { q } : {}),
+    };
+  }, [closedAllPayment, closedAllManagerId, closedAllDateRange, closedAllSearch]);
+
+  useEffect(() => {
+    setClosedPage(1);
+  }, [closedAllPayment, closedAllManagerId, closedAllDateRange, closedAllSearch]);
+
+  const { data: usersForFilters } = useQuery({
+    queryKey: ['users-list-warehouse-closed'],
+    queryFn: usersApi.list,
+    enabled: mainTab === 'closedAll',
+  });
+
+  const warehouseManagers = useMemo(() => {
+    if (!usersForFilters) return [];
+    return usersForFilters
+      .filter((u: { role: string; isActive: boolean }) =>
+        ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
+      )
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+  }, [usersForFilters]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['warehouse-shipments-today', page, limit],
@@ -43,8 +95,8 @@ export default function WarehouseShipmentsPage() {
   });
 
   const { data: closedResult, isLoading: closedLoading } = useQuery({
-    queryKey: ['closed-deals', closedPage],
-    queryFn: () => dealsApi.closedDeals(closedPage, 50),
+    queryKey: ['closed-deals', closedPage, closedAllApiOpts],
+    queryFn: () => dealsApi.closedDeals(closedPage, 50, closedAllApiOpts),
     enabled: mainTab === 'closedAll',
     refetchInterval: 30_000,
   });
@@ -89,8 +141,15 @@ export default function WarehouseShipmentsPage() {
     ));
   };
 
-  const filteredClosed = filterClosedList(closedDeals);
   const filteredClosedToday = filterClosedList(closedTodayDeals);
+
+  const resetClosedAllFilters = () => {
+    setClosedAllSearch('');
+    setClosedAllPayment('all');
+    setClosedAllManagerId(undefined);
+    setClosedAllDateRange(null);
+    setClosedPage(1);
+  };
 
   const openDetail = (deal: Deal) => {
     setSelectedDeal(deal);
@@ -408,17 +467,46 @@ export default function WarehouseShipmentsPage() {
             ),
             children: (
               <>
-                <div style={{ marginBottom: 12 }}>
+                <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 12 }}>
+                  <Space wrap style={{ width: '100%' }} align="start">
+                    <Select<PaymentStatus | 'all'>
+                      value={closedAllPayment}
+                      onChange={setClosedAllPayment}
+                      style={{ width: isMobile ? '100%' : 200 }}
+                      options={[
+                        { value: 'all', label: 'Оплата: все' },
+                        { value: 'UNPAID', label: 'Не оплачено' },
+                        { value: 'PARTIAL', label: 'Частично' },
+                        { value: 'PAID', label: 'Оплачено' },
+                      ]}
+                    />
+                    <Select
+                      allowClear
+                      placeholder="Менеджер"
+                      style={{ width: isMobile ? '100%' : 220 }}
+                      value={closedAllManagerId}
+                      onChange={setClosedAllManagerId}
+                      options={warehouseManagers}
+                    />
+                    <DatePicker.RangePicker
+                      value={closedAllDateRange}
+                      onChange={(r) => setClosedAllDateRange(r as [Dayjs, Dayjs] | null)}
+                      format="DD.MM.YYYY"
+                      allowClear
+                      placeholder={['Закрыта с', 'по']}
+                    />
+                    <Button onClick={resetClosedAllFilters}>Сбросить фильтры</Button>
+                  </Space>
                   <Input.Search
-                    placeholder="Поиск по сделке, клиенту, менеджеру..."
-                    style={{ width: isMobile ? '100%' : 350 }}
+                    placeholder="Поиск: сделка, клиент, менеджер..."
+                    style={{ width: isMobile ? '100%' : 400 }}
                     allowClear
-                    value={closedSearch}
-                    onChange={(e) => setClosedSearch(e.target.value)}
+                    value={closedAllSearch}
+                    onChange={(e) => setClosedAllSearch(e.target.value)}
                   />
-                </div>
+                </Space>
                 <Table
-                  dataSource={filteredClosed}
+                  dataSource={closedDeals}
                   columns={closedColumns}
                   rowKey="id"
                   loading={closedLoading}
@@ -426,7 +514,7 @@ export default function WarehouseShipmentsPage() {
                   pagination={false}
                   size="middle"
                   bordered={false}
-                  locale={{ emptyText: 'Нет закрытых сделок' }}
+                  locale={{ emptyText: 'Нет закрытых сделок по фильтрам' }}
                   expandable={{
                     expandedRowRender: (record: Deal) => {
                       const items = record.items ?? [];

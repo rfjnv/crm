@@ -167,11 +167,33 @@ export const dealsApi = {
   shipmentQueue: () =>
     client.get<Deal[]>('/deals/shipment-queue').then((r) => r.data),
 
-  closedDeals: (page = 1, limit = 50, opts?: { todayOnly?: boolean }) =>
+  closedDeals: (
+    page = 1,
+    limit = 50,
+    opts?: {
+      todayOnly?: boolean;
+      paymentStatus?: PaymentStatus;
+      managerId?: string;
+      closedFrom?: string;
+      closedTo?: string;
+      q?: string;
+    },
+  ) =>
     client
       .get<{ data: Deal[]; pagination: { page: number; limit: number; total: number; pages: number } }>(
         '/deals/closed-deals',
-        { params: { page, limit, ...(opts?.todayOnly ? { today: '1' } : {}) } },
+        {
+          params: {
+            page,
+            limit,
+            ...(opts?.todayOnly ? { today: '1' } : {}),
+            ...(opts?.paymentStatus ? { paymentStatus: opts.paymentStatus } : {}),
+            ...(opts?.managerId ? { managerId: opts.managerId } : {}),
+            ...(opts?.closedFrom ? { closedFrom: opts.closedFrom } : {}),
+            ...(opts?.closedTo ? { closedTo: opts.closedTo } : {}),
+            ...(opts?.q ? { q: opts.q } : {}),
+          },
+        },
       )
       .then((r) => r.data),
 

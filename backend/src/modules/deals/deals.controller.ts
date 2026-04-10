@@ -184,7 +184,30 @@ export class DealsController {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
     const todayOnly = req.query.today === '1' || req.query.today === 'true';
-    const result = await dealsService.findClosedDeals(getUser(req), { page, limit, todayOnly });
+    const paymentStatusRaw = req.query.paymentStatus as string | undefined;
+    const paymentStatus =
+      paymentStatusRaw && PAYMENT_STATUS_QUERY.has(paymentStatusRaw as PaymentStatus)
+        ? (paymentStatusRaw as PaymentStatus)
+        : undefined;
+    const managerId =
+      typeof req.query.managerId === 'string' && req.query.managerId ? req.query.managerId : undefined;
+    const closedFromRaw =
+      typeof req.query.closedFrom === 'string' && req.query.closedFrom ? new Date(req.query.closedFrom) : undefined;
+    const closedToRaw =
+      typeof req.query.closedTo === 'string' && req.query.closedTo ? new Date(req.query.closedTo) : undefined;
+    const closedFrom = closedFromRaw && !Number.isNaN(closedFromRaw.getTime()) ? closedFromRaw : undefined;
+    const closedTo = closedToRaw && !Number.isNaN(closedToRaw.getTime()) ? closedToRaw : undefined;
+    const search = typeof req.query.q === 'string' && req.query.q.trim() ? req.query.q.trim() : undefined;
+    const result = await dealsService.findClosedDeals(getUser(req), {
+      page,
+      limit,
+      todayOnly,
+      paymentStatus,
+      managerId,
+      closedFrom,
+      closedTo,
+      search,
+    });
     res.json(result);
   }
 

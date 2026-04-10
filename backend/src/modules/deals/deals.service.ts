@@ -1373,8 +1373,20 @@ export class DealsService {
     });
   }
 
-  async findClosedDeals(user: AuthUser, options: { page: number; limit: number; todayOnly?: boolean }) {
-    const { page, limit, todayOnly } = options;
+  async findClosedDeals(
+    user: AuthUser,
+    options: {
+      page: number;
+      limit: number;
+      todayOnly?: boolean;
+      paymentStatus?: PrismaPaymentStatus;
+      managerId?: string;
+      closedFrom?: Date;
+      closedTo?: Date;
+      search?: string;
+    },
+  ) {
+    const { page, limit, todayOnly, paymentStatus, managerId, closedFrom, closedTo, search } = options;
     const skip = (page - 1) * limit;
 
     const where: Prisma.DealWhereInput = {
@@ -1382,9 +1394,33 @@ export class DealsService {
       isArchived: false,
     };
 
+    if (paymentStatus) {
+      where.paymentStatus = paymentStatus;
+    }
+    if (managerId) {
+      where.managerId = managerId;
+    }
+
     if (todayOnly) {
       const { start, end } = tashkentDayBoundsFromYmd(currentTashkentYmd());
       where.closedAt = { gte: start, lte: end };
+    } else if (closedFrom || closedTo) {
+      where.closedAt = {};
+      if (closedFrom) where.closedAt.gte = closedFrom;
+      if (closedTo) where.closedAt.lte = closedTo;
+    }
+
+    const q = search?.trim();
+    if (q) {
+      where.AND = [
+        {
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { client: { companyName: { contains: q, mode: 'insensitive' } } },
+            { manager: { fullName: { contains: q, mode: 'insensitive' } } },
+          ],
+        },
+      ];
     }
 
     const [deals, total] = await Promise.all([
