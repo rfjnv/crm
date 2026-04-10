@@ -40,7 +40,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
-import { authApi } from '../api/auth.api';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import NotificationBell from './NotificationBell';
