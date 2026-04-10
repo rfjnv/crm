@@ -156,8 +156,8 @@ export default function ClosedDealsPage() {
       </div>
 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 16, maxWidth: 720 }}>
-        В колонке «Сделка» в конце указана дата <strong>создания</strong> (Ташкент); «Дата закрытия» — когда сделку
-        перевели в «Закрыто».
+        В колонке «Сделка» в конце — календарная <strong>дата закрытия</strong> (Ташкент), в одной строке с колонкой
+        «Дата закрытия».
       </Typography.Paragraph>
 
       <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 16 }}>

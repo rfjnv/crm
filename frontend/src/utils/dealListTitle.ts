@@ -1,5 +1,8 @@
+import type { Deal } from '../types';
+
 /**
- * В списках показываем дату создания сделки (Ташкент), а не произвольную дату в хвосте названия.
+ * Убираем старый хвост « — DD.MM.YYYY» / « от DD.MM.YYYY» и подставляем одну дату из полей сделки (Ташкент).
+ * Для CLOSED — календарная дата закрытия (как в колонке «Дата закрытия»), иначе — дата создания.
  */
 
 export function stripDealTitleDateSuffix(title: string): string {
@@ -9,9 +12,13 @@ export function stripDealTitleDateSuffix(title: string): string {
   return t.trim() || (title || '').trim();
 }
 
-export function dealListTitle(deal: { title: string; createdAt: string }): string {
+export function dealListTitle(
+  deal: Pick<Deal, 'title' | 'createdAt' | 'updatedAt' | 'status'> & { closedAt?: string | null },
+): string {
   const base = stripDealTitleDateSuffix(deal.title);
-  const d = new Date(deal.createdAt);
+  const iso =
+    deal.status === 'CLOSED' ? (deal.closedAt ?? deal.updatedAt) : deal.createdAt;
+  const d = new Date(iso);
   const ymd = d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' });
   return `${base} — ${ymd}`;
 }
