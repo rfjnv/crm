@@ -24,7 +24,7 @@ router.get('/shipments', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'S
 router.get('/all-deals-debug', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.getAllDealsWithShipmentInfo.bind(dealsController)));
 router.get('/stock-confirmation-queue', authorize('WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForStockConfirmation.bind(dealsController)));
 router.get('/deal-approval-queue', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDealApproval.bind(dealsController)));
-router.get('/archived', asyncHandler(dealsController.findArchived.bind(dealsController)));
+router.get('/archived', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findArchived.bind(dealsController)));
 
 // New workflow queues
 router.get('/wm/incoming', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForWarehouseManager.bind(dealsController)));

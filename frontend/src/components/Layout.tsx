@@ -89,6 +89,10 @@ export default function Layout() {
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
+  const canViewClosedDealsHistory =
+    role === 'SUPER_ADMIN'
+    || role === 'ADMIN'
+    || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
 
   const hasRole = (...roles: UserRole[]) => role ? roles.includes(role) : false;
 
@@ -279,23 +283,29 @@ export default function Layout() {
       }]
       : []),
 
-    // ── АРХИВ ──
-    { type: 'divider' as const },
-    ...(showGroupLabels
-      ? [{ type: 'group' as const, label: 'АРХИВ' }]
+    // ── Сделки: история закрытых / архив (скрытые) ──
+    ...(canViewClosedDealsHistory || isAdmin
+      ? [
+        { type: 'divider' as const },
+        ...(showGroupLabels
+          ? [{ type: 'group' as const, label: 'СДЕЛКИ — АРХИВ' }]
+          : []),
+      ]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+    ...(canViewClosedDealsHistory
       ? [{
         key: '/deals/closed',
         icon: <ContainerOutlined />,
-        label: <Link to="/deals/closed">Архив закрытых сделок</Link>,
+        label: <Link to="/deals/closed">История закрытых сделок</Link>,
       }]
       : []),
-    {
-      key: '/deals/archived',
-      icon: <InboxOutlined />,
-      label: <Link to="/deals/archived">Архив сделок</Link>,
-    },
+    ...(isAdmin
+      ? [{
+        key: '/deals/archived',
+        icon: <InboxOutlined />,
+        label: <Link to="/deals/archived">Архив сделок</Link>,
+      }]
+      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/inventory/movements',

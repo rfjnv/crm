@@ -103,7 +103,6 @@ export default function App() {
                 <Route path="/deals" element={<DealsPage />} />
                 <Route path="/deals/new" element={<DealCreatePage />} />
                 <Route path="/deals/approval" element={<DealApprovalPage />} />
-                <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 <Route path="/deals/:id" element={<DealDetailPage />} />
                 <Route path="/inventory/products" element={<ProductsPage />} />
                 <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
@@ -115,12 +114,15 @@ export default function App() {
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
                 </Route>
+                <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
+                  <Route path="/deals/closed" element={<ClosedDealsPage />} />
+                </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
-                  <Route path="/deals/closed" element={<ClosedDealsPage />} />
+                  <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 </Route>
                 <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />

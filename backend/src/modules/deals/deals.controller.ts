@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
-import { DealStatus, Role } from '@prisma/client';
+import { DealStatus, PaymentStatus, Role } from '@prisma/client';
 import { dealsService } from './deals.service';
 import { AuthUser } from '../../lib/scope';
+
+const PAYMENT_STATUS_QUERY = new Set<PaymentStatus>(['UNPAID', 'PARTIAL', 'PAID']);
 
 function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
@@ -11,7 +13,24 @@ export class DealsController {
   async findAll(req: Request, res: Response): Promise<void> {
     const status = req.query.status as DealStatus | undefined;
     const includeClosed = req.query.includeClosed === 'true';
-    const deals = await dealsService.findAll(getUser(req), { status, includeClosed });
+    const paymentStatusRaw = req.query.paymentStatus as string | undefined;
+    const paymentStatus =
+      paymentStatusRaw && PAYMENT_STATUS_QUERY.has(paymentStatusRaw as PaymentStatus)
+        ? (paymentStatusRaw as PaymentStatus)
+        : undefined;
+    const managerId = typeof req.query.managerId === 'string' && req.query.managerId ? req.query.managerId : undefined;
+    const closedFrom =
+      typeof req.query.closedFrom === 'string' && req.query.closedFrom ? new Date(req.query.closedFrom) : undefined;
+    const closedTo =
+      typeof req.query.closedTo === 'string' && req.query.closedTo ? new Date(req.query.closedTo) : undefined;
+    const deals = await dealsService.findAll(getUser(req), {
+      status,
+      includeClosed,
+      paymentStatus,
+      managerId,
+      closedFrom: closedFrom && !Number.isNaN(closedFrom.getTime()) ? closedFrom : undefined,
+      closedTo: closedTo && !Number.isNaN(closedTo.getTime()) ? closedTo : undefined,
+    });
     res.json(deals);
   }
 

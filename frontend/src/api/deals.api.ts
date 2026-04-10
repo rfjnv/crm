@@ -1,9 +1,40 @@
 import client from './client';
-import type { Deal, DealItem, DealComment, AuditLog, DealStatus, DealHistoryEntry, Shipment, PaymentRecord, PaymentMethod } from '../types';
+import type {
+  Deal,
+  DealItem,
+  DealComment,
+  AuditLog,
+  DealStatus,
+  DealHistoryEntry,
+  Shipment,
+  PaymentRecord,
+  PaymentMethod,
+  PaymentStatus,
+} from '../types';
 
 export const dealsApi = {
-  list: (status?: DealStatus, includeClosed?: boolean) =>
-    client.get<Deal[]>('/deals', { params: { ...(status ? { status } : {}), ...(includeClosed ? { includeClosed: 'true' } : {}) } }).then((r) => r.data),
+  list: (
+    status?: DealStatus,
+    includeClosed?: boolean,
+    filters?: {
+      paymentStatus?: PaymentStatus;
+      managerId?: string;
+      closedFrom?: string;
+      closedTo?: string;
+    },
+  ) =>
+    client
+      .get<Deal[]>('/deals', {
+        params: {
+          ...(status ? { status } : {}),
+          ...(includeClosed ? { includeClosed: 'true' } : {}),
+          ...(filters?.paymentStatus ? { paymentStatus: filters.paymentStatus } : {}),
+          ...(filters?.managerId ? { managerId: filters.managerId } : {}),
+          ...(filters?.closedFrom ? { closedFrom: filters.closedFrom } : {}),
+          ...(filters?.closedTo ? { closedTo: filters.closedTo } : {}),
+        },
+      })
+      .then((r) => r.data),
 
   getById: (id: string) => client.get<Deal>(`/deals/${id}`).then((r) => r.data),
 

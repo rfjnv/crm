@@ -7,6 +7,7 @@ export type Permission =
   | 'manage_leads'
   | 'close_deals'
   | 'archive_deals'
+  | 'view_closed_deals_history'
   | 'stock_confirm'
   | 'finance_approve'
   | 'admin_approve'
@@ -34,6 +35,7 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_leads', label: 'Управление лидами' },
   { key: 'close_deals', label: 'Закрытие сделок' },
   { key: 'archive_deals', label: 'Архивирование сделок' },
+  { key: 'view_closed_deals_history', label: 'История закрытых сделок' },
   { key: 'stock_confirm', label: 'Подтверждение склада' },
   { key: 'finance_approve', label: 'Финансовое одобрение' },
   { key: 'admin_approve', label: 'Админ одобрение' },

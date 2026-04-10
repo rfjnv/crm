@@ -18,7 +18,7 @@ import { useThemeStore } from '../store/themeStore';
 import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
-import type { UserRole, DealStatus } from '../types';
+import type { Permission, UserRole, DealStatus } from '../types';
 
 const DEFAULT_GOAL = 250_000_000;
 
@@ -67,6 +67,10 @@ export default function DashboardPage() {
 
   const role = user?.role as UserRole | undefined;
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const canViewClosedDealsHistory =
+    role === 'SUPER_ADMIN'
+    || role === 'ADMIN'
+    || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
   const showExtras = isAdmin || role === 'MANAGER';
 
   const { data: monthAnalytics, isLoading: extLoading } = useQuery({
@@ -161,8 +165,13 @@ export default function DashboardPage() {
 
         {/* Closed deals */}
         <Col xs={24} sm={12} lg={6}>
-          <Link to={isAdmin ? '/deals/closed' : '#'} style={{ display: 'block', height: '100%' }}>
-            <Card bordered={false} hoverable={isAdmin} style={{ ...card, cursor: isAdmin ? 'pointer' : 'default', height: '100%' }} styles={{ body: cardBody }}>
+          <Link to={canViewClosedDealsHistory ? '/deals/closed' : '#'} style={{ display: 'block', height: '100%' }}>
+            <Card
+              bordered={false}
+              hoverable={canViewClosedDealsHistory}
+              style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
+              styles={{ body: cardBody }}
+            >
               <Typography.Text type="secondary" style={{ fontSize: 13 }}>Закрыто сделок</Typography.Text>
               <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
                 {data.closedDealsToday}

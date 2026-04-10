@@ -5,6 +5,8 @@ export const PERMISSIONS = {
   MANAGE_LEADS: 'manage_leads',
   CLOSE_DEALS: 'close_deals',
   ARCHIVE_DEALS: 'archive_deals',
+  /** Просмотр страницы «История закрытых сделок» и выборки status=CLOSED через API */
+  VIEW_CLOSED_DEALS_HISTORY: 'view_closed_deals_history',
   STOCK_CONFIRM: 'stock_confirm',
   FINANCE_APPROVE: 'finance_approve',
   ADMIN_APPROVE: 'admin_approve',

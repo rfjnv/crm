@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
+import { PERMISSIONS } from '../../lib/permissions';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import {
@@ -216,8 +217,28 @@ export class DealsService {
     }
   }
 
-  async findAll(user: AuthUser, filters?: { status?: DealStatus; includeClosed?: boolean }) {
-    const where: Record<string, unknown> = {
+  async findAll(
+    user: AuthUser,
+    filters?: {
+      status?: DealStatus;
+      includeClosed?: boolean;
+      paymentStatus?: PrismaPaymentStatus;
+      managerId?: string;
+      closedFrom?: Date;
+      closedTo?: Date;
+    },
+  ) {
+    if (filters?.status === 'CLOSED') {
+      const allowed =
+        user.role === 'SUPER_ADMIN'
+        || user.role === 'ADMIN'
+        || (user.permissions || []).includes(PERMISSIONS.VIEW_CLOSED_DEALS_HISTORY);
+      if (!allowed) {
+        throw new AppError(403, 'Недостаточно прав для просмотра истории закрытых сделок');
+      }
+    }
+
+    const where: Prisma.DealWhereInput = {
       ...ownerScope(user),
       isArchived: false,
     };
@@ -225,7 +246,28 @@ export class DealsService {
     if (filters?.status) {
       where.status = filters.status;
     } else if (!filters?.includeClosed) {
-      where.status = { notIn: ['CLOSED'] as DealStatus[] };
+      where.status = { notIn: ['CLOSED'] };
+    }
+
+    if (filters?.paymentStatus) {
+      where.paymentStatus = filters.paymentStatus;
+    }
+    if (filters?.managerId) {
+      where.managerId = filters.managerId;
+    }
+
+    if (filters?.closedFrom || filters?.closedTo) {
+      const dt: Prisma.DateTimeFilter = {};
+      if (filters.closedFrom) dt.gte = filters.closedFrom;
+      if (filters.closedTo) dt.lte = filters.closedTo;
+      const dateClause: Prisma.DealWhereInput = {
+        OR: [{ closedAt: dt }, { AND: [{ closedAt: null }, { updatedAt: dt }] }],
+      };
+      const existingAnd = where.AND;
+      where.AND = [
+        ...(existingAnd === undefined ? [] : Array.isArray(existingAnd) ? existingAnd : [existingAnd]),
+        dateClause,
+      ];
     }
 
     return prisma.deal.findMany({
@@ -236,7 +278,10 @@ export class DealsService {
         contract: { select: { id: true, contractNumber: true } },
         _count: { select: { comments: true, items: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy:
+        filters?.status === 'CLOSED'
+          ? [{ closedAt: 'desc' }, { updatedAt: 'desc' }]
+          : { createdAt: 'desc' },
     });
   }
 
