@@ -10,6 +10,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
+import { dealListTitle } from '../utils/dealListTitle';
 import type { Deal, PaymentStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -95,11 +96,22 @@ export default function ClosedDealsPage() {
   const filtered = (deals ?? []).filter((d) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return d.title.toLowerCase().includes(q) || (d.client?.companyName ?? '').toLowerCase().includes(q);
+    const listTitle = dealListTitle(d).toLowerCase();
+    return (
+      listTitle.includes(q) ||
+      d.title.toLowerCase().includes(q) ||
+      (d.client?.companyName ?? '').toLowerCase().includes(q)
+    );
   });
 
   const columns = [
-    { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (_v: string, r: Deal) => (
+        <Link to={`/deals/${r.id}`}>{dealListTitle(r)}</Link>
+      ),
+    },
     {
       title: 'Клиент',
       key: 'client',
@@ -142,6 +154,11 @@ export default function ClosedDealsPage() {
           История закрытых сделок
         </Typography.Title>
       </div>
+
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 16, maxWidth: 720 }}>
+        В колонке «Сделка» в конце указана дата <strong>создания</strong> (Ташкент); «Дата закрытия» — когда сделку
+        перевели в «Закрыто».
+      </Typography.Paragraph>
 
       <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 16 }}>
         <div>

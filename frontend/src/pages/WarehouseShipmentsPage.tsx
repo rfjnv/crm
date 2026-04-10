@@ -14,6 +14,9 @@ import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
+import { dealListTitle } from '../utils/dealListTitle';
+
+type WarehouseMainTab = 'shipmentsToday' | 'closedToday' | 'closedAll';
 
 export default function WarehouseShipmentsPage() {
   const isMobile = useIsMobile();
@@ -22,14 +25,15 @@ export default function WarehouseShipmentsPage() {
   const [search, setSearch] = useState('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [mainTab, setMainTab] = useState<'today' | 'closed'>('today');
+  const [mainTab, setMainTab] = useState<WarehouseMainTab>('shipmentsToday');
   const [closedPage, setClosedPage] = useState(1);
+  const [closedTodayPage, setClosedTodayPage] = useState(1);
   const [closedSearch, setClosedSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['warehouse-shipments-today', page, limit],
     queryFn: () => dealsApi.getShipments(page, limit, { todayOnly: true }),
-    enabled: mainTab === 'today',
+    enabled: mainTab === 'shipmentsToday',
     refetchInterval: 30_000,
   });
 
@@ -42,7 +46,14 @@ export default function WarehouseShipmentsPage() {
   const { data: closedResult, isLoading: closedLoading } = useQuery({
     queryKey: ['closed-deals', closedPage],
     queryFn: () => dealsApi.closedDeals(closedPage, 50),
-    enabled: mainTab === 'closed',
+    enabled: mainTab === 'closedAll',
+    refetchInterval: 30_000,
+  });
+
+  const { data: closedTodayResult, isLoading: closedTodayLoading } = useQuery({
+    queryKey: ['warehouse-closed-today', closedTodayPage],
+    queryFn: () => dealsApi.closedDeals(closedTodayPage, 50, { todayOnly: true }),
+    enabled: mainTab === 'closedToday',
     refetchInterval: 30_000,
   });
 
@@ -52,10 +63,14 @@ export default function WarehouseShipmentsPage() {
   const closedDeals = closedResult?.data ?? [];
   const closedPagination = closedResult?.pagination;
 
+  const closedTodayDeals = closedTodayResult?.data ?? [];
+  const closedTodayPagination = closedTodayResult?.pagination;
+
   const filteredShipments = shipments.filter((deal) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
+      dealListTitle(deal).toLowerCase().includes(q) ||
       deal.title.toLowerCase().includes(q) ||
       (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
       (deal.shipment?.deliveryNoteNumber ?? '').toLowerCase().includes(q) ||
@@ -66,15 +81,19 @@ export default function WarehouseShipmentsPage() {
 
   const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 
-  const filteredClosed = closedDeals.filter((deal) => {
-    if (!closedSearch) return true;
+  const filterClosedList = (deals: Deal[]) => {
+    if (!closedSearch) return deals;
     const q = closedSearch.toLowerCase();
-    return (
+    return deals.filter((deal) => (
+      dealListTitle(deal).toLowerCase().includes(q) ||
       deal.title.toLowerCase().includes(q) ||
       (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
       (deal.manager?.fullName ?? '').toLowerCase().includes(q)
-    );
-  });
+    ));
+  };
+
+  const filteredClosed = filterClosedList(closedDeals);
+  const filteredClosedToday = filterClosedList(closedTodayDeals);
 
   const openDetail = (deal: Deal) => {
     setSelectedDeal(deal);
@@ -100,9 +119,9 @@ export default function WarehouseShipmentsPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (v: string, record: Deal) => (
+      render: (_v: string, record: Deal) => (
         <Link to={`/deals/${record.id}`} style={{ fontWeight: 500 }}>
-          {v}
+          {dealListTitle(record)}
         </Link>
       ),
     },
@@ -200,7 +219,7 @@ export default function WarehouseShipmentsPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+      render: (_v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{dealListTitle(r)}</Link>,
     },
     {
       title: 'Клиент',
@@ -263,15 +282,20 @@ export default function WarehouseShipmentsPage() {
         </Space>
       </div>
 
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12, maxWidth: 720 }}>
+        «Отправка сегодня» — накладные по дате <strong>отправки</strong> (Ташкент). Сделка может быть закрыта сегодня,
+        но не попасть сюда, если отгрузка была в другой день — тогда смотрите «Закрыты сегодня».
+      </Typography.Paragraph>
+
       <Tabs
         activeKey={mainTab}
-        onChange={(k) => setMainTab(k as 'today' | 'closed')}
+        onChange={(k) => setMainTab(k as WarehouseMainTab)}
         items={[
           {
-            key: 'today',
+            key: 'shipmentsToday',
             label: (
               <span>
-                Сегодня
+                Отправка сегодня
                 {pagination?.total != null ? (
                   <Tag style={{ marginLeft: 8 }}>{pagination.total}</Tag>
                 ) : null}
@@ -308,7 +332,7 @@ export default function WarehouseShipmentsPage() {
                   }}
                   size="middle"
                   bordered={false}
-                  locale={{ emptyText: 'На сегодня (Ташкент) нет накладных по дате отправки' }}
+                  locale={{ emptyText: 'Нет накладных с датой отправки сегодня (Ташкент)' }}
                   onRow={(record) => ({
                     style: { cursor: 'pointer' },
                     onClick: () => openDetail(record),
@@ -318,7 +342,72 @@ export default function WarehouseShipmentsPage() {
             ),
           },
           {
-            key: 'closed',
+            key: 'closedToday',
+            label: (
+              <span>
+                Закрыты сегодня
+                {closedTodayPagination?.total != null ? (
+                  <Tag style={{ marginLeft: 8 }}>{closedTodayPagination.total}</Tag>
+                ) : null}
+              </span>
+            ),
+            children: (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Input.Search
+                    placeholder="Поиск по сделке, клиенту, менеджеру..."
+                    style={{ width: isMobile ? '100%' : 350 }}
+                    allowClear
+                    value={closedSearch}
+                    onChange={(e) => setClosedSearch(e.target.value)}
+                  />
+                </div>
+                <Table
+                  dataSource={filteredClosedToday}
+                  columns={closedColumns}
+                  rowKey="id"
+                  loading={closedTodayLoading}
+                  scroll={{ x: 900 }}
+                  pagination={false}
+                  size="middle"
+                  bordered={false}
+                  locale={{ emptyText: 'Нет сделок, закрытых сегодня (Ташкент)' }}
+                  expandable={{
+                    expandedRowRender: (record: Deal) => {
+                      const items = record.items ?? [];
+                      if (items.length === 0) return <Typography.Text type="secondary">Нет позиций</Typography.Text>;
+                      return (
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {items.map((it) => (
+                            <li key={it.id}>
+                              {it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    },
+                  }}
+                  onRow={(record) => ({
+                    style: { cursor: 'pointer' },
+                    onClick: () => openDetail(record),
+                  })}
+                />
+                {closedTodayPagination && closedTodayPagination.pages > 1 && (
+                  <div style={{ textAlign: 'center', marginTop: 12 }}>
+                    <Pagination
+                      current={closedTodayPage}
+                      total={closedTodayPagination.total}
+                      pageSize={50}
+                      onChange={(p) => setClosedTodayPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'closedAll',
             label: (
               <span>
                 Все закрытые
@@ -406,7 +495,7 @@ export default function WarehouseShipmentsPage() {
             <Card size="small" style={{ marginBottom: 16 }}>
               <Descriptions size="small" column={2}>
                 <Descriptions.Item label="Сделка">
-                  <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
+                  <Link to={`/deals/${dealDetail.id}`}>{dealListTitle(dealDetail)}</Link>
                 </Descriptions.Item>
                 <Descriptions.Item label="Клиент">
                   <ClientCompanyDisplay client={dealDetail.client} link variant="full" />

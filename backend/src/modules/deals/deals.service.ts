@@ -1352,14 +1352,26 @@ export class DealsService {
     });
   }
 
-  async findClosedDeals(user: AuthUser, options: { page: number; limit: number }) {
-    const { page, limit } = options;
+  async findClosedDeals(user: AuthUser, options: { page: number; limit: number; todayOnly?: boolean }) {
+    const { page, limit, todayOnly } = options;
     const skip = (page - 1) * limit;
 
-    const where = {
+    const where: Prisma.DealWhereInput = {
       status: 'CLOSED' as DealStatus,
       isArchived: false,
     };
+
+    if (todayOnly) {
+      const { start, end } = tashkentDayBoundsFromYmd(currentTashkentYmd());
+      where.AND = [
+        {
+          OR: [
+            { closedAt: { gte: start, lte: end } },
+            { AND: [{ closedAt: null }, { updatedAt: { gte: start, lte: end } }] },
+          ],
+        },
+      ];
+    }
 
     const [deals, total] = await Promise.all([
       prisma.deal.findMany({

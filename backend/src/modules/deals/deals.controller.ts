@@ -183,7 +183,8 @@ export class DealsController {
   async findClosedDeals(req: Request, res: Response): Promise<void> {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
-    const result = await dealsService.findClosedDeals(getUser(req), { page, limit });
+    const todayOnly = req.query.today === '1' || req.query.today === 'true';
+    const result = await dealsService.findClosedDeals(getUser(req), { page, limit, todayOnly });
     res.json(result);
   }
 
