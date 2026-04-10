@@ -1,0 +1,46 @@
+/**
+ * Theme tokens: fallbacks match `theme/tokens.ts` (light) before JS runs.
+ * Runtime values are set by `applyDocumentTheme`.
+ */
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f7fa;
+  --card-bg: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: rgba(15, 23, 42, 0.65);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --app-body-bg: #f5f7fa;
+}
+
+[data-theme='dark'] {
+  --bg-primary: #0b0f14;
+  --bg-secondary: #11161c;
+  --card-bg: #11161c;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --app-body-bg: #0b0f14;
+}
+
+html,
+body {
+  background: var(--app-body-bg);
+}
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Surfaces (Ant Design cards + app “card” surfaces) */
+.ant-card {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: var(--shadow-soft) !important;
+}

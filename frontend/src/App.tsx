@@ -47,6 +47,9 @@ import WarehouseManagerPage from './pages/WarehouseManagerPage';
 import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
 import { useThemeStore } from './store/themeStore';
+import { applyDocumentTheme } from './theme/applyDocumentTheme';
+import { antDesignTokens } from './theme/tokens';
+import type { ThemeMode } from './theme/tokens';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,10 +61,7 @@ export default function App() {
   const mode = useThemeStore((s) => s.mode);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = mode;
-    const bg = mode === 'dark' ? '#0B0F14' : '#f5f6f8';
-    document.documentElement.style.background = bg;
-    document.body.style.background = bg;
+    applyDocumentTheme(mode as ThemeMode);
   }, [mode]);
 
   return (
@@ -71,10 +71,7 @@ export default function App() {
         algorithm: mode === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
           colorPrimary: '#22609A',
-          colorBgLayout: mode === 'dark' ? '#0B0F14' : '#f5f6f8',
-          colorBgContainer: mode === 'dark' ? '#11161C' : '#ffffff',
-          colorBorderSecondary: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
-          colorSplit: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+          ...antDesignTokens[mode as ThemeMode],
         },
         components: {
           Menu: {
