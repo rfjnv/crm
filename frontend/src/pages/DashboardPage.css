@@ -141,3 +141,38 @@
     gap: var(--space-2) !important;
   }
 }
+
+/* Dark mode: contrast + KPI hierarchy (data-theme set in App.tsx) */
+[data-theme='dark'] .dashboard-page .dashboard-card-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  opacity: 1;
+}
+
+[data-theme='dark'] .dashboard-page .dashboard-card-value {
+  color: #ffffff !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+}
+
+[data-theme='dark'] .dashboard-page .dashboard-delta-badge--down {
+  color: #ff4d4f;
+}
+
+[data-theme='dark'] .dashboard-page .dashboard-delta-badge--up {
+  color: #73d13d;
+}
+
+[data-theme='dark'] .dashboard-page .dashboard-subtitle.ant-typography {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+[data-theme='dark'] .dashboard-page .goal-title {
+  color: rgba(255, 255, 255, 0.6);
+  opacity: 1;
+}
+
+[data-theme='dark'] .dashboard-page .goal-meta {
+  color: rgba(255, 255, 255, 0.65);
+  opacity: 1;
+}

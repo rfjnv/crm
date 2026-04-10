@@ -140,7 +140,11 @@ export default function DashboardPage() {
           <div>
             <div className="dashboard-title">Дашборд</div>
             {user?.fullName && (
-              <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4 }}>
+              <Typography.Text
+                type="secondary"
+                className="dashboard-subtitle"
+                style={{ fontSize: 13, display: 'block', marginTop: 4 }}
+              >
                 Добро пожаловать, {user.fullName.split(' ')[0]}
               </Typography.Text>
             )}
@@ -150,7 +154,7 @@ export default function DashboardPage() {
         <div style={{ marginBottom: 20 }}>
           <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
           {user?.fullName && (
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            <Typography.Text type="secondary" className="dashboard-subtitle" style={{ fontSize: 13 }}>
               Добро пожаловать, {user.fullName.split(' ')[0]}
             </Typography.Text>
           )}
@@ -173,7 +177,10 @@ export default function DashboardPage() {
               <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>
                 Выручка сегодня
               </Typography.Text>
-              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <div
+                className="dashboard-card-value"
+                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+              >
                 {formatUZS(data.revenueToday || 0)}
               </div>
               <div className="dashboard-card-delta">
@@ -194,7 +201,10 @@ export default function DashboardPage() {
               styles={{ body: isMobile ? undefined : cardBody }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Закрыто сделок</Typography.Text>
-              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <div
+                className="dashboard-card-value"
+                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+              >
                 {data.closedDealsToday}
               </div>
               <div className="dashboard-card-delta">
@@ -215,7 +225,10 @@ export default function DashboardPage() {
               styles={{ body: isMobile ? undefined : cardBody }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Активные сделки</Typography.Text>
-              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <div
+                className="dashboard-card-value"
+                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+              >
                 {data.activeDealsCount}
               </div>
               <div className="dashboard-card-delta">
@@ -236,7 +249,10 @@ export default function DashboardPage() {
               styles={{ body: isMobile ? undefined : cardBody }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Общий долг</Typography.Text>
-              <div className={isMobile ? 'dashboard-card-value' : undefined} style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}>
+              <div
+                className="dashboard-card-value"
+                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+              >
                 {formatUZS(totalDebt)}
               </div>
               <div className="dashboard-card-delta">

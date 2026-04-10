@@ -58,7 +58,8 @@ export default function App() {
   const mode = useThemeStore((s) => s.mode);
 
   useEffect(() => {
-    const bg = mode === 'dark' ? '#1e1e1e' : '#f5f6f8';
+    document.documentElement.dataset.theme = mode;
+    const bg = mode === 'dark' ? '#0B0F14' : '#f5f6f8';
     document.documentElement.style.background = bg;
     document.body.style.background = bg;
   }, [mode]);
@@ -70,7 +71,8 @@ export default function App() {
         algorithm: mode === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
           colorPrimary: '#22609A',
-          colorBgLayout: mode === 'dark' ? '#1e1e1e' : '#f5f6f8',
+          colorBgLayout: mode === 'dark' ? '#0B0F14' : '#f5f6f8',
+          colorBgContainer: mode === 'dark' ? '#11161C' : '#ffffff',
           colorBorderSecondary: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
           colorSplit: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
         },
