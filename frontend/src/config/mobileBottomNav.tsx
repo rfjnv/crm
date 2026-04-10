@@ -154,8 +154,15 @@ export function resolveActiveMobileNavPath(pathname: string, items: MobileNavIte
   return hit?.path;
 }
 
-/** Space reserved under main content on mobile (tab bar + safe area). */
-export const MOBILE_TAB_BAR_BASE_PX = 52;
+/**
+ * Vertical space reserved above the home indicator so content clears the floating tab bar.
+ * Matches `.app-main-content--mobile-shell` in `mobile.css`.
+ */
+export const MOBILE_MAIN_BOTTOM_PADDING_PX = 88;
+
+/** @deprecated Use MOBILE_MAIN_BOTTOM_PADDING_PX */
+export const MOBILE_TAB_BAR_BASE_PX = MOBILE_MAIN_BOTTOM_PADDING_PX;
+
 export function mobileMainContentBottomPadding(): string {
-  return `calc(${MOBILE_TAB_BAR_BASE_PX}px + env(safe-area-inset-bottom, 0px) + var(--space-1))`;
+  return `calc(${MOBILE_MAIN_BOTTOM_PADDING_PX}px + env(safe-area-inset-bottom, 0px))`;
 }

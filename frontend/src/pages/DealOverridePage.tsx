@@ -87,9 +87,7 @@ export default function DealOverridePage() {
     );
   }
 
-  const bottomPad = isMobile
-    ? `calc(88px + ${mobileMainContentBottomPadding()})`
-    : 88;
+  const bottomPad = isMobile ? mobileMainContentBottomPadding() : 88;
 
   return (
     <div
