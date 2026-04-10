@@ -14,7 +14,6 @@ import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
-import { dealListTitle } from '../utils/dealListTitle';
 
 type WarehouseMainTab = 'shipmentsToday' | 'closedToday' | 'closedAll';
 
@@ -70,7 +69,6 @@ export default function WarehouseShipmentsPage() {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
-      dealListTitle(deal).toLowerCase().includes(q) ||
       deal.title.toLowerCase().includes(q) ||
       (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
       (deal.shipment?.deliveryNoteNumber ?? '').toLowerCase().includes(q) ||
@@ -85,7 +83,6 @@ export default function WarehouseShipmentsPage() {
     if (!closedSearch) return deals;
     const q = closedSearch.toLowerCase();
     return deals.filter((deal) => (
-      dealListTitle(deal).toLowerCase().includes(q) ||
       deal.title.toLowerCase().includes(q) ||
       (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
       (deal.manager?.fullName ?? '').toLowerCase().includes(q)
@@ -119,9 +116,9 @@ export default function WarehouseShipmentsPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (_v: string, record: Deal) => (
+      render: (v: string, record: Deal) => (
         <Link to={`/deals/${record.id}`} style={{ fontWeight: 500 }}>
-          {dealListTitle(record)}
+          {v}
         </Link>
       ),
     },
@@ -219,7 +216,7 @@ export default function WarehouseShipmentsPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (_v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{dealListTitle(r)}</Link>,
+      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
     },
     {
       title: 'Клиент',
@@ -263,10 +260,8 @@ export default function WarehouseShipmentsPage() {
       title: 'Закрыта',
       key: 'closedAt',
       width: 120,
-      render: (_: unknown, r: Deal) => {
-        const d = r.closedAt ?? r.updatedAt;
-        return d ? dayjs(d).format('DD.MM.YYYY HH:mm') : '—';
-      },
+      render: (_: unknown, r: Deal) =>
+        r.closedAt ? dayjs(r.closedAt).format('DD.MM.YYYY HH:mm') : '—',
     },
   ];
 
@@ -281,11 +276,6 @@ export default function WarehouseShipmentsPage() {
           </Typography.Title>
         </Space>
       </div>
-
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 12, maxWidth: 720 }}>
-        «Отправка сегодня» — накладные по дате <strong>отправки</strong> (Ташкент). Сделка может быть закрыта сегодня,
-        но не попасть сюда, если отгрузка была в другой день — тогда смотрите «Закрыты сегодня».
-      </Typography.Paragraph>
 
       <Tabs
         activeKey={mainTab}
@@ -495,7 +485,7 @@ export default function WarehouseShipmentsPage() {
             <Card size="small" style={{ marginBottom: 16 }}>
               <Descriptions size="small" column={2}>
                 <Descriptions.Item label="Сделка">
-                  <Link to={`/deals/${dealDetail.id}`}>{dealListTitle(dealDetail)}</Link>
+                  <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
                 </Descriptions.Item>
                 <Descriptions.Item label="Клиент">
                   <ClientCompanyDisplay client={dealDetail.client} link variant="full" />

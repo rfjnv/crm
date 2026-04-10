@@ -45,7 +45,7 @@ export function parseClosedDateFromDealTitle(title: string): Date | null {
   return dt;
 }
 
-/** Фактическое время закрытия/отгрузки — не из даты в названии (она про дату создания сделки). */
-export function resolveClosedAtForNewClose(_deal: { title: string }, fallback: Date): Date {
-  return fallback;
+/** При переводе в CLOSED: дата из хвоста названия (DD.MM.YYYY), иначе фактическое время (отгрузка/сейчас). */
+export function resolveClosedAtForNewClose(deal: { title: string }, fallback: Date): Date {
+  return parseClosedDateFromDealTitle(deal.title) ?? fallback;
 }

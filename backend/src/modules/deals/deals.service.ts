@@ -6,7 +6,12 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
 import { PERMISSIONS } from '../../lib/permissions';
-import { currentTashkentYmd, resolveClosedAtForNewClose, tashkentDayBoundsFromYmd } from '../../lib/dealClosedAt';
+import {
+  currentTashkentYmd,
+  parseClosedDateFromDealTitle,
+  resolveClosedAtForNewClose,
+  tashkentDayBoundsFromYmd,
+} from '../../lib/dealClosedAt';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import {
@@ -218,6 +223,18 @@ export class DealsService {
     }
   }
 
+  /** Для CLOSED: после платежа подтягиваем closedAt к дате в названии (DD.MM.YYYY), чтобы не «плавала» из‑за updatedAt. */
+  private async syncClosedAtFromTitleIfClosed(dealId: string) {
+    const row = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { title: true, status: true },
+    });
+    if (row?.status !== 'CLOSED') return;
+    const fromTitle = parseClosedDateFromDealTitle(row.title);
+    if (!fromTitle) return;
+    await prisma.deal.update({ where: { id: dealId }, data: { closedAt: fromTitle } });
+  }
+
   async findAll(
     user: AuthUser,
     filters?: {
@@ -261,9 +278,13 @@ export class DealsService {
       const dt: Prisma.DateTimeFilter = {};
       if (filters.closedFrom) dt.gte = filters.closedFrom;
       if (filters.closedTo) dt.lte = filters.closedTo;
-      const dateClause: Prisma.DealWhereInput = {
-        OR: [{ closedAt: dt }, { AND: [{ closedAt: null }, { updatedAt: dt }] }],
-      };
+      // История CLOSED: только closedAt. updatedAt трогают платежи — иначе в «Сегодня» попадают лишние сделки.
+      const dateClause: Prisma.DealWhereInput =
+        filters.status === 'CLOSED'
+          ? { closedAt: dt }
+          : {
+              OR: [{ closedAt: dt }, { AND: [{ closedAt: null }, { updatedAt: dt }] }],
+            };
       const existingAnd = where.AND;
       where.AND = [
         ...(existingAnd === undefined ? [] : Array.isArray(existingAnd) ? existingAnd : [existingAnd]),
@@ -1363,14 +1384,7 @@ export class DealsService {
 
     if (todayOnly) {
       const { start, end } = tashkentDayBoundsFromYmd(currentTashkentYmd());
-      where.AND = [
-        {
-          OR: [
-            { closedAt: { gte: start, lte: end } },
-            { AND: [{ closedAt: null }, { updatedAt: { gte: start, lte: end } }] },
-          ],
-        },
-      ];
+      where.closedAt = { gte: start, lte: end };
     }
 
     const [deals, total] = await Promise.all([
@@ -2066,6 +2080,8 @@ export class DealsService {
       return { created, newTotal, paymentStatus };
     });
 
+    await this.syncClosedAtFromTitleIfClosed(dealId);
+
     await auditLog({
       userId: user.userId,
       action: 'PAYMENT_CREATE',
@@ -2154,6 +2170,8 @@ export class DealsService {
       return updated;
     });
 
+    await this.syncClosedAtFromTitleIfClosed(dealId);
+
     await auditLog({
       userId: user.userId, action: 'PAYMENT_UPDATE', entityType: 'deal', entityId: dealId,
       after: { paymentId, ...dto },
@@ -2195,6 +2213,8 @@ export class DealsService {
 
       return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus };
     });
+
+    await this.syncClosedAtFromTitleIfClosed(dealId);
 
     await auditLog({
       userId: user.userId, action: 'PAYMENT_DELETE', entityType: 'deal', entityId: dealId,
