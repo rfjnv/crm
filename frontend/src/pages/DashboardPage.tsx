@@ -110,7 +110,9 @@ export default function DashboardPage() {
   const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
   const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
-  const goalPct = Math.min(100, Math.round(((data.revenueMonth || 0) / revenueGoal) * 100));
+  const revenueMonth = data.revenueMonth || 0;
+  const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
+  const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
 
   const allStockIssues = [
     ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
@@ -163,6 +165,71 @@ export default function DashboardPage() {
 
       {/* ── KPI cards ── */}
       <div className={isMobile ? 'section' : undefined}>
+      {isMobile ? (
+        <div className="cards-grid">
+          <Link to="/revenue/today" className="cards-grid__link cards-grid__link--hero">
+            <Card
+              className="dashboard-metric-card card card-hero"
+              bordered={false}
+              hoverable
+              style={{ ...card, cursor: 'pointer', height: '100%', borderLeft: '3px solid #52c41a' }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label">
+                Выручка сегодня
+              </Typography.Text>
+              <div className="dashboard-card-value">{formatUZS(data.revenueToday || 0)}</div>
+              <div className="dashboard-card-delta">
+                {isAdmin ? <DeltaBadge value={revPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+              </div>
+            </Card>
+          </Link>
+
+          <Link to={canViewClosedDealsHistory ? '/deals/closed' : '#'} className="cards-grid__link">
+            <Card
+              className="dashboard-metric-card card"
+              bordered={false}
+              hoverable={canViewClosedDealsHistory}
+              style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label">Закрыто сделок</Typography.Text>
+              <div className="dashboard-card-value">{data.closedDealsToday}</div>
+              <div className="dashboard-card-delta">
+                {isAdmin ? <DeltaBadge value={dealPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+              </div>
+            </Card>
+          </Link>
+
+          <Link to="/deals" className="cards-grid__link">
+            <Card
+              className="dashboard-metric-card card"
+              bordered={false}
+              hoverable
+              style={{ ...card, cursor: 'pointer', height: '100%' }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label">Активные сделки</Typography.Text>
+              <div className="dashboard-card-value">{data.activeDealsCount}</div>
+              <div className="dashboard-card-delta">
+                <span className="dashboard-card-delta-placeholder" aria-hidden />
+              </div>
+            </Card>
+          </Link>
+
+          <Link to="/finance/debts" className="cards-grid__link cards-grid__link--full">
+            <Card
+              className="dashboard-metric-card card card-full"
+              bordered={false}
+              hoverable
+              style={{ ...card, cursor: 'pointer', height: '100%' }}
+            >
+              <Typography.Text type="secondary" className="dashboard-card-label">Общий долг</Typography.Text>
+              <div className="dashboard-card-value">{formatUZS(totalDebt)}</div>
+              <div className="dashboard-card-delta">
+                <span className="dashboard-card-delta-placeholder" aria-hidden />
+              </div>
+            </Card>
+          </Link>
+        </div>
+      ) : (
       <Row className="dashboard-kpi-row" gutter={kpiGutter}>
         {/* Revenue — accent */}
         <Col xs={24} sm={12} lg={6}>
@@ -172,14 +239,14 @@ export default function DashboardPage() {
               bordered={false}
               hoverable
               style={{ ...card, cursor: 'pointer', height: '100%', borderLeft: '3px solid #52c41a' }}
-              styles={{ body: isMobile ? undefined : cardBody }}
+              styles={{ body: cardBody }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>
                 Выручка сегодня
               </Typography.Text>
               <div
                 className="dashboard-card-value"
-                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+                style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
                 {formatUZS(data.revenueToday || 0)}
               </div>
@@ -198,12 +265,12 @@ export default function DashboardPage() {
               bordered={false}
               hoverable={canViewClosedDealsHistory}
               style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
-              styles={{ body: isMobile ? undefined : cardBody }}
+              styles={{ body: cardBody }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Закрыто сделок</Typography.Text>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>Закрыто сделок</Typography.Text>
               <div
                 className="dashboard-card-value"
-                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+                style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
                 {data.closedDealsToday}
               </div>
@@ -222,12 +289,12 @@ export default function DashboardPage() {
               bordered={false}
               hoverable
               style={{ ...card, cursor: 'pointer', height: '100%' }}
-              styles={{ body: isMobile ? undefined : cardBody }}
+              styles={{ body: cardBody }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Активные сделки</Typography.Text>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>Активные сделки</Typography.Text>
               <div
                 className="dashboard-card-value"
-                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+                style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
                 {data.activeDealsCount}
               </div>
@@ -246,12 +313,12 @@ export default function DashboardPage() {
               bordered={false}
               hoverable
               style={{ ...card, cursor: 'pointer', height: '100%' }}
-              styles={{ body: isMobile ? undefined : cardBody }}
+              styles={{ body: cardBody }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label" style={isMobile ? undefined : { fontSize: 13 }}>Общий долг</Typography.Text>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>Общий долг</Typography.Text>
               <div
                 className="dashboard-card-value"
-                style={isMobile ? undefined : { fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
+                style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
                 {formatUZS(totalDebt)}
               </div>
@@ -262,6 +329,7 @@ export default function DashboardPage() {
           </Link>
         </Col>
       </Row>
+      )}
       </div>
 
       {/* ── Monthly goal (compact, clickable → settings) ── */}
@@ -279,17 +347,21 @@ export default function DashboardPage() {
             <div className="goal-card">
               <div className="goal-header">
                 <Typography.Text className="goal-title">Цель месяца</Typography.Text>
-                <span className="goal-pct">{goalPct}%</span>
+                <span className="goal-percent">{goalPct}%</span>
               </div>
               <Progress
                 className="goal-progress"
                 percent={goalPct}
                 showInfo={false}
+                strokeWidth={8}
                 strokeColor={isDark ? '#52c41a' : '#389e0d'}
                 trailColor={tk.colorFillSecondary}
               />
+              <div className="goal-remaining">
+                Осталось: {formatUZS(goalRemaining)}
+              </div>
               <div className="goal-meta">
-                {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
+                {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
               </div>
             </div>
           ) : (
@@ -305,7 +377,7 @@ export default function DashboardPage() {
                 format={(p) => `${p}%`}
               />
               <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                {formatUZS(data.revenueMonth || 0)} / {formatUZS(revenueGoal)}
+                {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
               </Typography.Text>
             </div>
           )}
