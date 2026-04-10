@@ -31,12 +31,18 @@ export function useDashboardChartRange(): {
   maxDays: number;
   titleLabel: string;
   tickStep: number;
+  /** True when viewport ≤480px — use `formatShortNumber` on Y-axis only */
+  useShortYAxis: boolean;
 } {
   const tier = useSyncExternalStore(subscribe, getTier, () => 'desktop' as ChartTier);
 
   return useMemo(() => {
-    if (tier === 'narrow') return { maxDays: 7, titleLabel: '7', tickStep: 2 };
-    if (tier === 'tablet') return { maxDays: 15, titleLabel: '15', tickStep: 2 };
-    return { maxDays: 30, titleLabel: '30', tickStep: 3 };
+    if (tier === 'narrow') {
+      return { maxDays: 7, titleLabel: '7', tickStep: 2, useShortYAxis: true };
+    }
+    if (tier === 'tablet') {
+      return { maxDays: 15, titleLabel: '15', tickStep: 2, useShortYAxis: false };
+    }
+    return { maxDays: 30, titleLabel: '30', tickStep: 3, useShortYAxis: false };
   }, [tier]);
 }

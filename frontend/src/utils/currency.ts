@@ -1,34 +1,43 @@
-/** Trim trailing .0 from compact amounts */
-function trimCompactDecimals(x: number): string {
-  const s = x % 1 === 0 ? x.toFixed(0) : x.toFixed(1);
-  return s.replace(/\.0$/, '');
-}
-
 /**
- * Short Russian labels for chart axes / tooltips (тыс. / млн / млрд).
- * Example: 250_000_000 → "250 млн"
+ * Full-value Uzbek soum display (spaced thousands + so'm).
+ * Independent from `formatShortNumber` — used for tooltips, tables, summaries.
  */
-export function formatUzCompact(value: number): string {
-  if (!Number.isFinite(value)) return '0';
-  const sign = value < 0 ? '−' : '';
-  const v = Math.abs(Math.round(value));
-  if (v >= 1_000_000_000) {
-    return `${sign}${trimCompactDecimals(v / 1_000_000_000)} млрд`;
-  }
-  if (v >= 1_000_000) {
-    return `${sign}${trimCompactDecimals(v / 1_000_000)} млн`;
-  }
-  if (v >= 1_000) {
-    return `${sign}${trimCompactDecimals(v / 1_000)} тыс`;
-  }
-  return `${sign}${v}`;
-}
-
-export function formatUZS(value: number | string): string {
+export function formatFullNumber(value: number | string): string {
   const num = typeof value === 'string' ? Number(value) : value;
   if (isNaN(num)) return '0 so\u2019m';
   const rounded = Math.round(num);
   return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' so\u2019m';
+}
+
+/**
+ * Compact axis labels for narrow mobile only (тыс. / млн / млрд).
+ * Independent from `formatFullNumber` — do not use for tooltips.
+ */
+export function formatShortNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const sign = value < 0 ? '−' : '';
+  const v = Math.abs(Math.round(value));
+  let n: number;
+  let suffix: string;
+  if (v >= 1_000_000_000) {
+    n = v / 1_000_000_000;
+    suffix = ' млрд';
+  } else if (v >= 1_000_000) {
+    n = v / 1_000_000;
+    suffix = ' млн';
+  } else if (v >= 1_000) {
+    n = v / 1_000;
+    suffix = ' тыс.';
+  } else {
+    return `${sign}${v}`;
+  }
+  const raw = n % 1 === 0 ? n.toFixed(0) : n.toFixed(1);
+  const trimmed = raw.replace(/\.0$/, '');
+  return `${sign}${trimmed}${suffix}`;
+}
+
+export function formatUZS(value: number | string): string {
+  return formatFullNumber(value);
 }
 
 /** Formatter for Ant Design InputNumber — displays spaces between thousands */

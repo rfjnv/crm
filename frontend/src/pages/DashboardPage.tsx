@@ -11,7 +11,7 @@ import { dashboardApi } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
 import { analyticsApi } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
-import { formatUZS, formatUzCompact } from '../utils/currency';
+import { formatUZS, formatFullNumber, formatShortNumber } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
@@ -436,7 +436,8 @@ export default function DashboardPage() {
                   line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
                   axis={{
                     y: {
-                      labelFormatter: (v: number) => formatUzCompact(v),
+                      labelFormatter: (v: number) =>
+                        chartRange.useShortYAxis ? formatShortNumber(v) : formatFullNumber(v),
                       labelFill: tk.colorTextSecondary,
                       grid: true,
                       gridLineWidth: 1,
@@ -457,7 +458,7 @@ export default function DashboardPage() {
                     items: [{
                       channel: 'y',
                       name: 'Выручка',
-                      valueFormatter: (v: number) => formatUzCompact(v),
+                      valueFormatter: (v: number) => formatFullNumber(v),
                     }],
                   }}
                 />
