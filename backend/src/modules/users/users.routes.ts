@@ -38,7 +38,7 @@ router.get(
           where: { managerId: userId, createdAt: { gte: from } },
         }),
         prisma.deal.count({
-          where: { managerId: userId, status: 'CLOSED', updatedAt: { gte: from } },
+          where: { managerId: userId, status: 'CLOSED', closedAt: { gte: from } },
         }),
         prisma.payment.aggregate({
           where: {
@@ -51,8 +51,8 @@ router.get(
           where: { shippedBy: userId, shippedAt: { gte: from } },
         }),
         prisma.deal.findMany({
-          where: { managerId: userId, status: 'CLOSED', updatedAt: { gte: from } },
-          select: { createdAt: true, updatedAt: true },
+          where: { managerId: userId, status: 'CLOSED', closedAt: { gte: from } },
+          select: { createdAt: true, closedAt: true },
         }),
         prisma.$queryRaw<{ day: string; count: bigint }[]>(
           Prisma.sql`SELECT DATE(created_at) as day, COUNT(*)::bigint as count
@@ -68,7 +68,9 @@ router.get(
     let avgDealDays = 0;
     if (allCompletedDeals.length > 0) {
       const totalDays = allCompletedDeals.reduce((sum, d) => {
-        const diffMs = d.updatedAt.getTime() - d.createdAt.getTime();
+        const closed = d.closedAt;
+        if (!closed) return sum;
+        const diffMs = closed.getTime() - d.createdAt.getTime();
         return sum + diffMs / 86400000;
       }, 0);
       avgDealDays = Math.round(totalDays / allCompletedDeals.length);

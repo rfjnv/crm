@@ -169,13 +169,13 @@ router.get(
          ORDER BY stock ASC`
       ),
 
-      // 8. Closed deals today
+      // 8. Closed deals today (по closedAt в календарный день Ташкент; updatedAt трогают платежи и миграции)
       prisma.deal.count({
         where: {
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          updatedAt: { gte: startOfToday, lt: startOfTomorrow },
+          closedAt: { gte: startOfToday, lt: startOfTomorrow },
         },
       }),
 
@@ -185,7 +185,7 @@ router.get(
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          updatedAt: { gte: startOfYesterday, lt: startOfToday },
+          closedAt: { gte: startOfYesterday, lt: startOfToday },
         },
       }),
 
