@@ -30,6 +30,18 @@
   margin-top: 6px;
 }
 
+/* Revenue area chart: breathing room + horizontal date labels */
+.dashboard-page .chart-container {
+  padding: 8px 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.dashboard-page .chart-container svg text {
+  transform: none !important;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   .dashboard-page {
     padding-bottom: 0;

@@ -11,8 +11,9 @@ import { dashboardApi } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
 import { analyticsApi } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
-import { formatUZS } from '../utils/currency';
+import { formatUZS, formatUzCompact } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { Area } from '@ant-design/charts';
@@ -101,6 +102,28 @@ export default function DashboardPage() {
   const topClients = useMemo(() => {
     return (monthAnalytics?.sales?.topClients ?? []).slice(0, 5);
   }, [monthAnalytics]);
+
+  const chartRange = useDashboardChartRange();
+
+  const revenueChartSlice = useMemo(() => {
+    const raw = data?.revenueLast30Days;
+    if (!raw?.length) {
+      return {
+        rows: [] as { day: string; total: number }[],
+        xLabelFormatter: (v: string) => (v ? v.slice(5) : ''),
+      };
+    }
+    const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
+    const sliced = sorted.slice(-chartRange.maxDays);
+    const step = chartRange.tickStep;
+    const xLabelFormatter = (v: string) => {
+      const idx = sliced.findIndex((d) => d.day === v);
+      if (idx < 0) return v.slice(5);
+      if (idx === sliced.length - 1 || idx % step === 0) return v.slice(5);
+      return '';
+    };
+    return { rows: sliced, xLabelFormatter };
+  }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep]);
 
   if (isLoading || !data) {
     return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
@@ -394,23 +417,51 @@ export default function DashboardPage() {
               bordered={false}
               style={{ ...card, height: '100%' }}
               styles={{ body: { padding: '16px 12px 8px' } }}
-              title={<Typography.Text strong style={{ fontSize: 14 }}>Выручка за 30 дней</Typography.Text>}
+              title={(
+                <Typography.Text strong style={{ fontSize: 14 }}>
+                  Выручка за {chartRange.titleLabel} дн.
+                </Typography.Text>
+              )}
             >
-              <Area
-                data={data.revenueLast30Days || []}
-                xField="day"
-                yField="total"
-                shapeField="smooth"
-                height={240}
-                theme={chartTheme}
-                style={{ fill: isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)' }}
-                line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
-                axis={{
-                  y: { labelFormatter: (v: number) => Math.round(v).toLocaleString('ru-RU'), labelFill: tk.colorTextSecondary, grid: false },
-                  x: { labelFormatter: (v: string) => v.slice(5), labelFill: tk.colorTextSecondary },
-                }}
-                tooltip={{ items: [{ channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }] }}
-              />
+              <div className="chart-container">
+                <Area
+                  data={revenueChartSlice.rows}
+                  xField="day"
+                  yField="total"
+                  shapeField="smooth"
+                  height={isMobile ? 220 : 240}
+                  padding={[16, 8, 12, 8]}
+                  theme={chartTheme}
+                  style={{ fill: isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)' }}
+                  line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
+                  axis={{
+                    y: {
+                      labelFormatter: (v: number) => formatUzCompact(v),
+                      labelFill: tk.colorTextSecondary,
+                      grid: true,
+                      gridLineWidth: 1,
+                      gridLineDash: [4, 4],
+                      gridStroke: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
+                      title: false,
+                    },
+                    x: {
+                      labelFormatter: revenueChartSlice.xLabelFormatter,
+                      labelFill: tk.colorTextSecondary,
+                      labelAutoRotate: false,
+                      labelAutoHide: true,
+                      tickCount: Math.min(8, chartRange.maxDays),
+                      title: false,
+                    },
+                  }}
+                  tooltip={{
+                    items: [{
+                      channel: 'y',
+                      name: 'Выручка',
+                      valueFormatter: (v: number) => formatUzCompact(v),
+                    }],
+                  }}
+                />
+              </div>
             </Card>
           </Col>
           <Col xs={24} lg={10}>
