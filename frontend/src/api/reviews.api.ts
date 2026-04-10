@@ -5,8 +5,10 @@ export interface ReviewDealRef {
   title: string;
   client: {
     id: string;
+    companyName: string;
     contactName: string;
     phone: string;
+    isSvip?: boolean;
   };
   manager: {
     id: string;

@@ -54,6 +54,7 @@ function getPeriodRange(period: string): { start: Date; end: Date } {
 interface ClientRow {
   id: string;
   company_name: string;
+  is_svip: boolean;
   completed_deals: string;
   ltv: string;
   avg_deal: string;
@@ -116,7 +117,7 @@ router.get(
 
     const clientRows = dealScope.managerId
       ? await prisma.$queryRaw<ClientRow[]>(
-          Prisma.sql`SELECT c.id, c.company_name,
+          Prisma.sql`SELECT c.id, c.company_name, c.is_svip as is_svip,
             COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
             COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
             COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
@@ -129,10 +130,10 @@ router.get(
             FROM deal_items GROUP BY deal_id
           ) di_rev ON di_rev.deal_id = d.id
           WHERE c.is_archived = false AND (d.manager_id = ${dealScope.managerId} OR d.id IS NULL)
-          GROUP BY c.id, c.company_name`,
+          GROUP BY c.id, c.company_name, c.is_svip`,
         )
       : await prisma.$queryRaw<ClientRow[]>(
-          Prisma.sql`SELECT c.id, c.company_name,
+          Prisma.sql`SELECT c.id, c.company_name, c.is_svip as is_svip,
             COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
             COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
             COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
@@ -145,7 +146,7 @@ router.get(
             FROM deal_items GROUP BY deal_id
           ) di_rev ON di_rev.deal_id = d.id
           WHERE c.is_archived = false
-          GROUP BY c.id, c.company_name`,
+          GROUP BY c.id, c.company_name, c.is_svip`,
         );
 
     // Compute LTV threshold (top 10%)
@@ -177,6 +178,7 @@ router.get(
       .map((r) => ({
         clientId: r.id,
         companyName: r.company_name,
+        isSvip: !!r.is_svip,
         ltv: Number(r.ltv),
         dealsCount: Number(r.completed_deals),
         avgDealAmount: Number(r.avg_deal),

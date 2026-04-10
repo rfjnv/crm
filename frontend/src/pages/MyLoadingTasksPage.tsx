@@ -10,6 +10,7 @@ import type { Deal } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 const deliveryColors: Record<string, string> = { SELF_PICKUP: 'blue', YANDEX: 'purple', DELIVERY: 'orange' };
@@ -58,10 +59,8 @@ export default function MyLoadingTasksPage() {
           <Link to={`/deals/${r.id}`}>
             <Typography.Text strong>{r.title}</Typography.Text>
           </Link>
-          <div style={{ marginTop: 4 }}>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {(r as any).client?.companyName}
-            </Typography.Text>
+          <div style={{ marginTop: 4, fontSize: 12 }}>
+            <ClientCompanyDisplay client={r.client} secondary />
           </div>
           <div style={{ marginTop: 4 }}>
             <Space size={4} wrap>
@@ -152,7 +151,11 @@ export default function MyLoadingTasksPage() {
             }}
             columns={[
               { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-              { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+              {
+                title: 'Клиент',
+                key: 'client',
+                render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+              },
               { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
               {
                 title: 'Доставка', dataIndex: 'deliveryType', width: 110,

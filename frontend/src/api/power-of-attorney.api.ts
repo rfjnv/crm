@@ -22,7 +22,7 @@ export interface PowerOfAttorney {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
-  contract?: { id: string; contractNumber: string; client?: { id: string; companyName: string } };
+  contract?: { id: string; contractNumber: string; client?: { id: string; companyName: string; isSvip?: boolean } };
 }
 
 export interface CreatePoaData {

@@ -121,7 +121,7 @@ export default function DealOverridePage() {
           payments={dealPayments ?? []}
           products={products ?? []}
           users={users ?? []}
-          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
+          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName, isSvip: c.isSvip }))}
           onCancel={back}
           onSuccess={() => {
             invalidateDeal();

@@ -8,6 +8,7 @@ import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
 import type { Deal } from '../types';
 import dayjs from 'dayjs';
@@ -91,7 +92,7 @@ export default function FinanceReviewPage() {
             <Typography.Text strong>{deal.title}</Typography.Text>
           </Link>
           <div style={{ marginTop: 4 }}>
-            <Typography.Text type="secondary">{deal.client?.companyName || '—'}</Typography.Text>
+            <ClientCompanyDisplay client={deal.client} link secondary />
           </div>
           <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
@@ -178,10 +179,8 @@ export default function FinanceReviewPage() {
                   <Link to={`/deals/${deal.id}`}>
                     <Typography.Text strong>{deal.title}</Typography.Text>
                   </Link>
-                  <div style={{ marginTop: 4 }}>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {deal.client?.companyName || '—'}
-                    </Typography.Text>
+                  <div style={{ marginTop: 4, fontSize: 12 }}>
+                    <ClientCompanyDisplay client={deal.client} link secondary />
                   </div>
                 </div>
                 <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>

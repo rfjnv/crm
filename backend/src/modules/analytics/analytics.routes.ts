@@ -95,7 +95,7 @@ router.get(
           content: true,
           createdAt: true,
           user: { select: { fullName: true } },
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isSvip: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: 120,
@@ -139,7 +139,7 @@ router.get(
           content: true,
           createdAt: true,
           user: { select: { fullName: true } },
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isSvip: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: 120,
@@ -382,10 +382,11 @@ router.get(
         ? prisma.$queryRaw<{
             client_id: string;
             company_name: string;
+            is_svip: boolean;
             operational_revenue: string;
             shipped_revenue: string;
           }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name,
+            Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
                  COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
                  COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
@@ -395,17 +396,18 @@ router.get(
                  AND d.manager_id = ${dealScope.managerId}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
-               GROUP BY c.id, c.company_name
+               GROUP BY c.id, c.company_name, c.is_svip
                ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           )
         : prisma.$queryRaw<{
             client_id: string;
             company_name: string;
+            is_svip: boolean;
             operational_revenue: string;
             shipped_revenue: string;
           }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name,
+            Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
                  COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
                  COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
@@ -414,7 +416,7 @@ router.get(
                WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
                  AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
-               GROUP BY c.id, c.company_name
+               GROUP BY c.id, c.company_name, c.is_svip
                ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           );
@@ -508,6 +510,7 @@ router.get(
       topClients: topClientsRaw.map((c) => ({
         clientId: c.client_id,
         companyName: c.company_name,
+        isSvip: !!c.is_svip,
         totalRevenue: Number(c.operational_revenue),
         shippedRevenue: Number(c.shipped_revenue),
       })),
@@ -539,30 +542,30 @@ router.get(
           dueDate: { lt: new Date() },
           isArchived: false,
         },
-        include: { client: { select: { id: true, companyName: true } } },
+        include: { client: { select: { id: true, companyName: true, isSvip: true } } },
         orderBy: { dueDate: 'asc' },
         take: 20,
       }),
       dealScope.managerId
-        ? prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
+        ? prisma.$queryRaw<{ client_id: string; company_name: string; is_svip: boolean; total_debt: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
              WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY c.id, c.company_name
+             GROUP BY c.id, c.company_name, c.is_svip
              HAVING SUM(d.amount - d.paid_amount) > 0
              ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
           )
-        : prisma.$queryRaw<{ client_id: string; company_name: string; total_debt: string }[]>(
-            Prisma.sql`SELECT c.id as client_id, c.company_name, SUM(d.amount - d.paid_amount)::text as total_debt
+        : prisma.$queryRaw<{ client_id: string; company_name: string; is_svip: boolean; total_debt: string }[]>(
+            Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip, SUM(d.amount - d.paid_amount)::text as total_debt
              FROM deals d
              JOIN clients c ON c.id = d.client_id
              WHERE d.status NOT IN ('CANCELED', 'REJECTED')
                AND d.is_archived = false
-             GROUP BY c.id, c.company_name
+             GROUP BY c.id, c.company_name, c.is_svip
              HAVING SUM(d.amount - d.paid_amount) > 0
              ORDER BY SUM(d.amount - d.paid_amount) DESC
              LIMIT 10`
@@ -602,13 +605,16 @@ router.get(
       overdueDebts: overdueDeals.map((d) => ({
         dealId: d.id,
         title: d.title,
+        clientId: d.clientId,
         clientName: d.client.companyName,
+        clientIsSvip: !!d.client?.isSvip,
         debt: Number(d.amount) - Number(d.paidAmount),
         dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
       })),
       topDebtors: topDebtorsRaw.map((d) => ({
         clientId: d.client_id,
         companyName: d.company_name,
+        isSvip: !!d.is_svip,
         totalDebt: Number(d.total_debt),
       })),
       realTurnover: realTurnoverAgg._sum.paidAmount ? Number(realTurnoverAgg._sum.paidAmount) : 0,

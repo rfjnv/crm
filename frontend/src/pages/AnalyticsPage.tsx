@@ -24,6 +24,7 @@ import { dealsApi } from '../api/deals.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
 import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import { LEGEND_OPERATIONAL, TOOLTIP_OPERATIONAL_REVENUE } from '../constants/analyticsRevenueTooltips';
 import {
@@ -617,7 +618,7 @@ export default function AnalyticsPage() {
   }));
 
   const clientBarData = sales.topClients.map((c) => ({
-    name: c.companyName,
+    name: `${c.isSvip ? '👑 ' : ''}${c.companyName}`,
     value: c.totalRevenue,
     clientId: c.clientId,
   }));
@@ -913,7 +914,18 @@ export default function AnalyticsPage() {
                 onRow={(r) => ({ onClick: () => navigate(`/deals/${r.dealId}`), style: { cursor: 'pointer' } })}
                 columns={[
                   { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.dealId}`}>{v}</Link> },
-                  { title: 'Клиент', dataIndex: 'clientName' },
+                  {
+                    title: 'Клиент',
+                    key: 'client',
+                    render: (_: unknown, r: (typeof finance.overdueDebts)[number]) => (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <ClientCompanyDisplay
+                          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }}
+                          link
+                        />
+                      </div>
+                    ),
+                  },
                   { title: 'Долг', dataIndex: 'debt', align: 'right' as const, render: (v: number) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(v)}</span> },
                   { title: 'Срок', dataIndex: 'dueDate' },
                 ]}
@@ -933,7 +945,15 @@ export default function AnalyticsPage() {
                 size="small"
                 onRow={(r) => ({ onClick: () => navigate(`/clients/${r.clientId}`), style: { cursor: 'pointer' } })}
                 columns={[
-                  { title: 'Клиент', dataIndex: 'companyName', render: (v: string, r) => <Link to={`/clients/${r.clientId}`}>{v}</Link> },
+                  {
+                    title: 'Клиент',
+                    key: 'client',
+                    render: (_: unknown, r: (typeof finance.topDebtors)[number]) => (
+                      <ClientCompanyDisplay
+                        client={{ id: r.clientId, companyName: r.companyName, isSvip: r.isSvip }}
+                      />
+                    ),
+                  },
                   { title: 'Общий долг', dataIndex: 'totalDebt', align: 'right' as const, render: (v: number) => <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{formatUZS(v)}</span> },
                 ]}
               />
@@ -1098,8 +1118,13 @@ export default function AnalyticsPage() {
               onRow={(r) => ({ onClick: () => navigate(`/clients/${r.clientId}`), style: { cursor: 'pointer' } })}
               columns={[
                 {
-                  title: 'Компания', dataIndex: 'companyName',
-                  render: (v: string, r: ClientLTVRow) => <Link to={`/clients/${r.clientId}`}>{v}</Link>,
+                  title: 'Компания',
+                  key: 'company',
+                  render: (_: unknown, r: ClientLTVRow) => (
+                    <ClientCompanyDisplay
+                      client={{ id: r.clientId, companyName: r.companyName, isSvip: r.isSvip }}
+                    />
+                  ),
                 },
                 { title: 'LTV', dataIndex: 'ltv', align: 'right' as const, render: (v: number) => formatUZS(v), sorter: (a: ClientLTVRow, b: ClientLTVRow) => a.ltv - b.ltv },
                 { title: 'Сделок', dataIndex: 'dealsCount', align: 'center' as const, width: 80 },

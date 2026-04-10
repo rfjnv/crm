@@ -11,6 +11,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import { moneyFormatter, moneyParser } from '../utils/currency';
 import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import dayjs from 'dayjs';
 
 export default function StockConfirmationPage() {
@@ -53,7 +54,8 @@ export default function StockConfirmationPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
     {
       title: 'Товары',

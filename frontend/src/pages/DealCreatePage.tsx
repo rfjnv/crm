@@ -12,6 +12,7 @@ import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
 import { inventoryApi } from '../api/warehouse.api';
 import DealStatusTag from '../components/DealStatusTag';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
@@ -350,9 +351,32 @@ export default function DealCreatePage() {
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
-              <Select showSearch placeholder="Выберите клиента" optionFilterProp="label" style={{ width: '100%' }}
-                value={clientId} onChange={setClientId}
-                options={(clients ?? []).map((c) => ({ label: `${c.companyName}${c.manager ? ` (${c.manager.fullName})` : ''}`, value: c.id }))}
+              <Select
+                showSearch
+                placeholder="Выберите клиента"
+                style={{ width: '100%' }}
+                value={clientId}
+                onChange={setClientId}
+                options={(clients ?? []).map((c) => ({
+                  value: c.id,
+                  label: (
+                    <Space size={6} align="center">
+                      <ClientCompanyDisplay client={c} />
+                      {c.manager && (
+                        <Typography.Text type="secondary">({c.manager.fullName})</Typography.Text>
+                      )}
+                    </Space>
+                  ),
+                }))}
+                filterOption={(input, option) => {
+                  const c = clients?.find((x) => x.id === option?.value);
+                  if (!c) return false;
+                  const q = input.toLowerCase();
+                  return (
+                    c.companyName.toLowerCase().includes(q) ||
+                    (c.manager?.fullName ?? '').toLowerCase().includes(q)
+                  );
+                }}
               />
             </div>
             <div>

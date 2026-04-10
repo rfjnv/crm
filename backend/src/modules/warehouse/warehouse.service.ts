@@ -203,7 +203,7 @@ export class WarehouseService {
         },
         include: {
           product: { select: { id: true, name: true, sku: true, stock: true } },
-          deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
+          deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true } } } },
         },
       });
 
@@ -232,7 +232,7 @@ export class WarehouseService {
       where: productId ? { productId } : {},
       include: {
         product: { select: { id: true, name: true, sku: true } },
-        deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
+        deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true } } } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -248,7 +248,7 @@ export class WarehouseService {
     return prisma.inventoryMovement.findMany({
       where: { productId },
       include: {
-        deal: { select: { id: true, title: true, client: { select: { companyName: true } } } },
+        deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -364,9 +364,9 @@ export class WarehouseService {
         },
         select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
       }),
-      prisma.$queryRaw<{ client_id: string; company_name: string; total_qty: number }[]>(
+      prisma.$queryRaw<{ client_id: string; company_name: string; is_svip: boolean; total_qty: number }[]>(
         Prisma.sql`
-          SELECT c.id as client_id, c.company_name, COALESCE(SUM(di.requested_qty), 0)::int as total_qty
+          SELECT c.id as client_id, c.company_name, c.is_svip as is_svip, COALESCE(SUM(di.requested_qty), 0)::int as total_qty
           FROM deal_items di
           JOIN deals d ON d.id = di.deal_id
           JOIN clients c ON c.id = d.client_id
@@ -374,7 +374,7 @@ export class WarehouseService {
             ${dealDateFilter}
             AND d.status = 'CLOSED'
             AND di.requested_qty > 0
-          GROUP BY c.id, c.company_name
+          GROUP BY c.id, c.company_name, c.is_svip
           ORDER BY total_qty DESC
           LIMIT 10
         `,
@@ -430,6 +430,7 @@ export class WarehouseService {
       topClients: topClientsRaw.map((r) => ({
         clientId: r.client_id,
         companyName: r.company_name,
+        isSvip: !!r.is_svip,
         totalQty: Number(r.total_qty),
       })),
     };

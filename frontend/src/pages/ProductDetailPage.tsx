@@ -15,6 +15,7 @@ import { useThemeStore } from '../store/themeStore';
 import { formatUZS, moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 type PeriodChoice = 30 | 90 | 365 | 'all';
 
@@ -318,8 +319,10 @@ export default function ProductDetailPage() {
               columns={[
                 {
                   title: 'Клиент',
-                  dataIndex: 'companyName',
-                  render: (v: string, r: { clientId: string }) => <Link to={`/clients/${r.clientId}`}>{v}</Link>,
+                  key: 'client',
+                  render: (_: unknown, r: { clientId: string; companyName: string; isSvip?: boolean }) => (
+                    <ClientCompanyDisplay client={{ id: r.clientId, companyName: r.companyName, isSvip: r.isSvip }} link />
+                  ),
                 },
                 {
                   title: `Кол-во (${p.unit})`,

@@ -10,6 +10,7 @@ import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import DealStatusTag from './DealStatusTag';
+import { ClientCompanyDisplay } from './ClientCompanyDisplay';
 import type { Deal, Product, DealStatus, User, PaymentRecord, DealComment } from '../types';
 import dayjs from 'dayjs';
 
@@ -32,7 +33,7 @@ export interface SuperOverridePanelProps {
   payments: PaymentRecord[];
   products: Product[];
   users: User[];
-  clients: { id: string; companyName: string }[];
+  clients: { id: string; companyName: string; isSvip?: boolean }[];
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -531,8 +532,17 @@ export default function SuperOverridePanel({
                     </Select>
                   </Form.Item>
                   <Form.Item name="clientId" label="Клиент">
-                    <Select showSearch optionFilterProp="label"
-                      options={clients.map((c) => ({ label: c.companyName, value: c.id }))}
+                    <Select
+                      showSearch
+                      options={clients.map((c) => ({
+                        value: c.id,
+                        label: <ClientCompanyDisplay client={c} />,
+                      }))}
+                      filterOption={(input, option) => {
+                        const c = clients.find((x) => x.id === option?.value);
+                        if (!c) return false;
+                        return c.companyName.toLowerCase().includes(input.toLowerCase());
+                      }}
                     />
                   </Form.Item>
                   <Form.Item name="managerId" label="Менеджер">

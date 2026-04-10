@@ -10,6 +10,7 @@ import type { Deal } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 export default function MyVehiclePage() {
   const isMobile = useIsMobile();
@@ -86,10 +87,8 @@ export default function MyVehiclePage() {
               </div>
             )}
 
-            <div style={{ marginTop: 4 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {(r as any).client?.companyName}
-              </Typography.Text>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              <ClientCompanyDisplay client={r.client} secondary />
             </div>
             <div style={{ marginTop: 2 }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -185,7 +184,11 @@ export default function MyVehiclePage() {
                 title: 'Водитель', key: 'driver', width: 140,
                 render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
               }] : []),
-              { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+              {
+                title: 'Клиент',
+                key: 'client',
+                render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+              },
               { title: 'Адрес', dataIndex: ['client', 'address'], render: (v: string) => v || '—' },
               { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
               {

@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import type { RevenueTodayPayment } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 export default function RevenueTodayPage() {
   const isMobile = useIsMobile();
@@ -30,7 +31,8 @@ export default function RevenueTodayPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
+      key: 'client',
+      render: (_: unknown, r: RevenueTodayPayment) => <ClientCompanyDisplay client={r.client} link />,
     },
     {
       title: 'Сделка',
@@ -83,7 +85,10 @@ export default function RevenueTodayPage() {
                   <div style={{ marginTop: 4 }}>
                     <Link to={`/deals/${p.deal.id}`}><Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text></Link>
                   </div>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{p.client?.companyName} · {p.method || '—'}</Typography.Text>
+                  <div style={{ fontSize: 11 }}>
+                    <ClientCompanyDisplay client={p.client} secondary />
+                    <Typography.Text type="secondary"> · {p.method || '—'}</Typography.Text>
+                  </div>
                 </Card>
               )}
             />

@@ -231,7 +231,7 @@ export class DealsService {
     return prisma.deal.findMany({
       where,
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         _count: { select: { comments: true, items: true } },
@@ -244,7 +244,7 @@ export class DealsService {
     const deal = await prisma.deal.findFirst({
       where: { id, ...ownerScope(user) },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, inn: true } },
+        client: { select: { id: true, companyName: true, contactName: true, inn: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         loadingAssignee: { select: { id: true, fullName: true } },
@@ -433,7 +433,7 @@ export class DealsService {
     return prisma.deal.findUnique({
       where: { id: deal.id },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         items: {
@@ -532,7 +532,7 @@ export class DealsService {
       where: { id },
       data,
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
       },
@@ -987,7 +987,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         items: {
           include: {
@@ -1251,7 +1251,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         items: {
@@ -1293,7 +1293,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         items: {
@@ -1319,7 +1319,7 @@ export class DealsService {
       prisma.deal.findMany({
         where,
         include: {
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isSvip: true } },
           manager: { select: { id: true, fullName: true } },
           deliveryDriver: { select: { id: true, fullName: true } },
           loadingAssignee: { select: { id: true, fullName: true } },
@@ -1353,7 +1353,7 @@ export class DealsService {
       prisma.deal.findMany({
         where,
         include: {
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isSvip: true } },
           manager: { select: { id: true, fullName: true } },
           shipment: {
             include: {
@@ -1398,7 +1398,7 @@ export class DealsService {
       prisma.deal.findMany({
         where,
         include: {
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isSvip: true } },
           manager: { select: { id: true, fullName: true } },
           shipment: {
             include: {
@@ -1599,7 +1599,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         shipment: {
@@ -1907,7 +1907,7 @@ export class DealsService {
     const updated = await prisma.deal.findUnique({
       where: { id },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
       },
     });
@@ -2330,7 +2330,7 @@ export class DealsService {
         isArchived: true,
       },
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         archivedBy: { select: { id: true, fullName: true } },
@@ -2440,7 +2440,7 @@ export class DealsService {
         comments: true,
         payments: true,
         shipment: true,
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
       },
     });
@@ -2837,7 +2837,7 @@ export class DealsService {
         comments: true,
         payments: true,
         movements: true,
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
       },
     });
@@ -2958,7 +2958,7 @@ export class DealsService {
     return prisma.deal.findMany({
       where: { status: 'WAITING_WAREHOUSE_MANAGER', isArchived: false },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },
@@ -2970,7 +2970,7 @@ export class DealsService {
     return prisma.deal.findMany({
       where: { status: 'READY_FOR_LOADING', isArchived: false },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
@@ -2983,7 +2983,7 @@ export class DealsService {
     return prisma.deal.findMany({
       where: { status: 'READY_FOR_DELIVERY', isArchived: false },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, address: true } },
+        client: { select: { id: true, companyName: true, contactName: true, address: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },
@@ -3000,7 +3000,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         loadingAssignee: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
@@ -3020,7 +3020,7 @@ export class DealsService {
         isArchived: false,
       },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, address: true } },
+        client: { select: { id: true, companyName: true, contactName: true, address: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
@@ -3246,7 +3246,7 @@ export class DealsService {
     return prisma.deal.findMany({
       where: { status: 'PENDING_ADMIN', isArchived: false },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },

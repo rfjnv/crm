@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { reviewsApi } from '../api/reviews.api';
 import type { ReviewRow } from '../api/reviews.api';
 import dayjs from 'dayjs';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const { Title } = Typography;
 
@@ -48,13 +49,13 @@ export default function ReviewsPage() {
       key: 'client',
       render: (_: unknown, record: ReviewRow) => (
         <div>
-          <Link to={`/clients/${record.deal.client.id}`}>
-            {record.deal.client.contactName}
-          </Link>
-          <div style={{ fontSize: 12, color: 'gray' }}>{record.deal.client.phone}</div>
+          <ClientCompanyDisplay client={record.deal.client} link />
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+            {[record.deal.client.contactName, record.deal.client.phone].filter(Boolean).join(' · ') || '—'}
+          </div>
         </div>
       ),
-      width: 200,
+      width: 220,
     },
     {
       title: 'Менеджер',

@@ -90,7 +90,7 @@ router.get(
             paymentStatus: true,
           },
         },
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         creator: { select: { id: true, fullName: true } },
         receivedBy: { select: { id: true, fullName: true } },
       },
@@ -145,6 +145,7 @@ router.get(
         dealTitle: p.deal?.title,
         clientId: p.clientId,
         clientName: p.client?.companyName,
+        clientIsSvip: !!p.client?.isSvip,
         amount: Number(p.amount),
         paidAt: p.paidAt,
         method: p.method,
@@ -198,7 +199,7 @@ router.get(
     const deals = await prisma.deal.findMany({
       where,
       include: {
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
         payments: {
           select: { paidAt: true },
@@ -213,6 +214,7 @@ router.get(
     const clientMap = new Map<string, {
       clientId: string;
       clientName: string;
+      isSvip: boolean;
       totalDebt: number;
       totalAmount: number;
       totalPaid: number;
@@ -234,6 +236,7 @@ router.get(
         clientMap.set(cid, {
           clientId: cid,
           clientName: deal.client?.companyName || '',
+          isSvip: !!deal.client?.isSvip,
           totalDebt: 0,
           totalAmount: 0,
           totalPaid: 0,
@@ -248,6 +251,7 @@ router.get(
       }
 
       const entry = clientMap.get(cid)!;
+      if (deal.client?.isSvip) entry.isSvip = true;
       entry.totalDebt += debt;
       entry.totalAmount += Number(deal.amount);
       entry.totalPaid += Number(deal.paidAmount);
@@ -316,7 +320,7 @@ router.get(
     if (missingClientIds.length > 0) {
       const prepClients = await prisma.client.findMany({
         where: { id: { in: missingClientIds } },
-        select: { id: true, companyName: true },
+        select: { id: true, companyName: true, isSvip: true },
       });
 
       for (const pc of prepClients) {
@@ -349,6 +353,7 @@ router.get(
         clientMap.set(pc.id, {
           clientId: pc.id,
           clientName: pc.companyName || '',
+          isSvip: !!pc.isSvip,
           totalDebt: 0,
           totalAmount: 0,
           totalPaid: 0,
@@ -376,6 +381,7 @@ router.get(
       return {
         clientId: c.clientId,
         clientName: c.clientName,
+        isSvip: c.isSvip,
         totalDebt: effectiveDebt,
         totalAmount: c.totalAmount,
         totalPaid: c.totalPaid,
@@ -447,7 +453,7 @@ router.get(
         status: true,
         amount: true,
         paidAmount: true,
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, isSvip: true } },
         manager: { select: { id: true, fullName: true } },
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -462,6 +468,7 @@ router.get(
         status: d.status,
         clientId: d.client.id,
         clientName: d.client.companyName,
+        clientIsSvip: !!d.client.isSvip,
         amount,
         paidAmount,
         remaining: amount - paidAmount,
@@ -497,7 +504,7 @@ router.get(
 
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, ...dealScope, isArchived: false },
-      include: { client: { select: { id: true, companyName: true } } },
+      include: { client: { select: { id: true, companyName: true, isSvip: true } } },
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена');
 
@@ -529,6 +536,7 @@ router.get(
         status: deal.status,
         clientId: deal.clientId,
         clientName: deal.client.companyName,
+        clientIsSvip: !!deal.client.isSvip,
         amount,
         paidAmount,
         remaining,
@@ -693,7 +701,7 @@ router.get(
 
     const client = await prisma.client.findUnique({
       where: { id: clientId },
-      select: { id: true, companyName: true, contactName: true, phone: true },
+      select: { id: true, companyName: true, contactName: true, phone: true, isSvip: true },
     });
     if (!client) throw new AppError(404, 'Клиент не найден');
 

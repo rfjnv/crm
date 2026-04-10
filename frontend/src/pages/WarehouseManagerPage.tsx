@@ -8,6 +8,7 @@ import { formatUZS } from '../utils/currency';
 import type { Deal, DeliveryType } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const deliveryLabels: Record<string, string> = {
   SELF_PICKUP: 'Самовывоз',
@@ -84,10 +85,8 @@ export default function WarehouseManagerPage() {
             <Link to={`/deals/${r.id}`}>
               <Typography.Text strong>{r.title}</Typography.Text>
             </Link>
-            <div style={{ marginTop: 4 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {(r as any).client?.companyName}
-              </Typography.Text>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              <ClientCompanyDisplay client={r.client} secondary />
             </div>
             <div style={{ marginTop: 4 }}>
               <Space size={4} wrap>
@@ -133,10 +132,8 @@ export default function WarehouseManagerPage() {
             <Link to={`/deals/${r.id}`}>
               <Typography.Text strong>{r.title}</Typography.Text>
             </Link>
-            <div style={{ marginTop: 4 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {(r as any).client?.companyName}
-              </Typography.Text>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              <ClientCompanyDisplay client={r.client} secondary />
             </div>
             <div style={{ marginTop: 4 }}>
               <Space size={4} wrap>
@@ -201,7 +198,11 @@ export default function WarehouseManagerPage() {
                 expandable={{ expandedRowRender: expandedRow }}
                 columns={[
                   { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-                  { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+                  {
+                    title: 'Клиент',
+                    key: 'client',
+                    render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+                  },
                   { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
                   { title: 'Машина', key: 'vehicle', render: (_: unknown, r: Deal) => r.vehicleNumber ? `${r.vehicleType || ''} ${r.vehicleNumber}`.trim() : '—', width: 160 },
                   { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
@@ -242,7 +243,11 @@ export default function WarehouseManagerPage() {
                 expandable={{ expandedRowRender: expandedRow }}
                 columns={[
                   { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-                  { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+                  {
+                    title: 'Клиент',
+                    key: 'client',
+                    render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+                  },
                   { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
                   {
                     title: 'Водитель', key: 'driver', width: 140,

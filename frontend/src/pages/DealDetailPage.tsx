@@ -24,6 +24,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
@@ -1005,7 +1006,9 @@ export default function DealDetailPage() {
         >
           <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
             <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
-            <Descriptions.Item label="Клиент">{deal.client?.companyName}</Descriptions.Item>
+            <Descriptions.Item label="Клиент">
+              <ClientCompanyDisplay client={deal.client} link variant="full" />
+            </Descriptions.Item>
             <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
           </Descriptions>
         </Card>
@@ -1017,7 +1020,7 @@ export default function DealDetailPage() {
           <Card bordered={false} size="small">
             <Descriptions column={1} size="small">
               <Descriptions.Item label="Клиент">
-                <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
+                <ClientCompanyDisplay client={deal.client} link variant="full" />
               </Descriptions.Item>
               <Descriptions.Item label="Менеджер">
                 {isAdmin ? (
@@ -1381,7 +1384,7 @@ export default function DealDetailPage() {
                   <Card bordered={false}>
                     <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} size="small">
                       <Descriptions.Item label="Клиент">
-                        <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
+                        <ClientCompanyDisplay client={deal.client} link variant="full" />
                       </Descriptions.Item>
                       <Descriptions.Item label="Менеджер">
                         {isAdmin ? (

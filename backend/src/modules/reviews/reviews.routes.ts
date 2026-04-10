@@ -21,8 +21,10 @@ reviewsRoutes.get('/', async (req, res, next) => {
               client: {
                 select: {
                   id: true,
+                  companyName: true,
                   contactName: true,
                   phone: true,
+                  isSvip: true,
                 },
               },
               manager: {
@@ -49,8 +51,10 @@ reviewsRoutes.get('/', async (req, res, next) => {
               client: {
                 select: {
                   id: true,
+                  companyName: true,
                   contactName: true,
                   phone: true,
+                  isSvip: true,
                 },
               },
               manager: {

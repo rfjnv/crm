@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { Table, Typography, Input, Tag, Select, Space, InputNumber, Card } from 'antd';
 import { financeApi } from '../api/finance.api';
 import { usersApi } from '../api/users.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import type { ClientDebtRow } from '../types';
 import dayjs from 'dayjs';
@@ -90,12 +90,12 @@ export default function DebtsPage() {
   const columns = [
     {
       title: 'Клиент',
-      dataIndex: 'clientName',
       key: 'clientName',
-      render: (v: string, r: ClientDebtRow) => (
-        <Link to={`/clients/${r.clientId}`}>
-          {v}
-        </Link>
+      render: (_: unknown, r: ClientDebtRow) => (
+        <ClientCompanyDisplay
+          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.isSvip }}
+          link
+        />
       ),
     },
     {
@@ -258,10 +258,11 @@ export default function DebtsPage() {
           emptyText="Нет задолженностей"
           renderCard={(record) => (
             <Card size="small">
-              <div style={{ marginBottom: 8 }}>
-                <Link to={`/clients/${record.clientId}`} style={{ fontWeight: 600, fontSize: 15 }}>
-                  {record.clientName}
-                </Link>
+              <div style={{ marginBottom: 8, fontSize: 15 }}>
+                <ClientCompanyDisplay
+                  client={{ id: record.clientId, companyName: record.clientName, isSvip: record.isSvip }}
+                  link
+                />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Typography.Text type="secondary">Общий долг</Typography.Text>

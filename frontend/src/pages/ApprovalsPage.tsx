@@ -7,6 +7,7 @@ import { dealsApi } from '../api/deals.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -40,7 +41,11 @@ export default function ApprovalsPage() {
 
   const columns = [
     { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+    },
     { title: 'Статус', dataIndex: 'status', render: (s: Deal['status']) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Позиций', dataIndex: ['_count', 'items'], align: 'center' as const },
@@ -67,7 +72,9 @@ export default function ApprovalsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
-                  <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                  <div style={{ fontSize: 12 }}>
+                    <ClientCompanyDisplay client={deal.client} secondary />
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>

@@ -17,6 +17,7 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
 type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
@@ -56,7 +57,7 @@ export default function CashboxPage() {
   const [managerId, setManagerId] = useState<string | undefined>(undefined);
   const [sortBy, setSortBy] = useState<SortOption>('debt_desc');
   const [payModalOpen, setPayModalOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string } | null>(null);
+  const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string; isSvip?: boolean } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [payForm] = Form.useForm();
   const [activePayModalOpen, setActivePayModalOpen] = useState(false);
@@ -269,7 +270,15 @@ export default function CashboxPage() {
   };
 
   const clientOptions = useMemo(
-    () => (clients ?? []).map((c) => ({ label: c.companyName, value: c.id })),
+    () =>
+      (clients ?? []).map((c) => ({
+        value: c.id,
+        label: (
+          <Space size={4} align="center">
+            <ClientCompanyDisplay client={c} />
+          </Space>
+        ),
+      })),
     [clients],
   );
 
@@ -311,7 +320,7 @@ export default function CashboxPage() {
   }, [debtorClients, debtSearch, sortBy]);
 
   const openPayModal = (row: ClientDebtRow) => {
-    setSelectedClient({ clientId: row.clientId, clientName: row.clientName });
+    setSelectedClient({ clientId: row.clientId, clientName: row.clientName, isSvip: row.isSvip });
     setSelectedDealId(null);
     payForm.resetFields();
     setPayModalOpen(true);
@@ -345,9 +354,12 @@ export default function CashboxPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: 'clientName',
-      render: (v: string, r: CashboxPayment) => (
-        <Link to={`/clients/${r.clientId}`}>{v}</Link>
+      key: 'client',
+      render: (_: unknown, r: CashboxPayment) => (
+        <ClientCompanyDisplay
+          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }}
+          link
+        />
       ),
     },
     {
@@ -414,9 +426,12 @@ export default function CashboxPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: 'clientName',
-      render: (v: string, r: ActiveDealRow) => (
-        <Link to={`/clients/${r.clientId}`}>{v}</Link>
+      key: 'client',
+      render: (_: unknown, r: ActiveDealRow) => (
+        <ClientCompanyDisplay
+          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }}
+          link
+        />
       ),
     },
     {
@@ -466,9 +481,12 @@ export default function CashboxPage() {
   const debtorColumns = [
     {
       title: 'Клиент',
-      dataIndex: 'clientName',
-      render: (v: string, r: ClientDebtRow) => (
-        <Link to={`/clients/${r.clientId}`}>{v}</Link>
+      key: 'client',
+      render: (_: unknown, r: ClientDebtRow) => (
+        <ClientCompanyDisplay
+          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.isSvip }}
+          link
+        />
       ),
     },
     {
@@ -562,12 +580,20 @@ export default function CashboxPage() {
                 <Select
                   allowClear
                   showSearch
-                  optionFilterProp="label"
                   placeholder="Клиент"
                   style={{ width: isMobile ? '100%' : 200 }}
                   value={clientId}
                   onChange={setClientId}
                   options={clientOptions}
+                  filterOption={(input, option) => {
+                    const c = clients?.find((x) => x.id === option?.value);
+                    if (!c) return false;
+                    const q = input.toLowerCase();
+                    return (
+                      c.companyName.toLowerCase().includes(q) ||
+                      (c.contactName ?? '').toLowerCase().includes(q)
+                    );
+                  }}
                 />
                 <Select
                   allowClear
@@ -824,7 +850,23 @@ export default function CashboxPage() {
 
       {/* Quick payment modal */}
       <Modal
-        title={`Оплата — ${selectedClient?.clientName ?? ''}`}
+        title={
+          selectedClient ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              Оплата —
+              <ClientCompanyDisplay
+                client={{
+                  id: selectedClient.clientId,
+                  companyName: selectedClient.clientName,
+                  isSvip: selectedClient.isSvip,
+                }}
+                link
+              />
+            </span>
+          ) : (
+            'Оплата'
+          )
+        }
         open={payModalOpen}
         onCancel={() => { setPayModalOpen(false); setSelectedClient(null); setSelectedDealId(null); payForm.resetFields(); }}
         onOk={handlePay}
@@ -935,7 +977,14 @@ export default function CashboxPage() {
         ) : (
           <>
             <Typography.Paragraph style={{ marginBottom: 8 }} type="secondary">
-              <Link to={`/clients/${activePayContext.deal.clientId}`}>{activePayContext.deal.clientName}</Link>
+              <ClientCompanyDisplay
+                client={{
+                  id: activePayContext.deal.clientId,
+                  companyName: activePayContext.deal.clientName,
+                  isSvip: activePayContext.deal.clientIsSvip,
+                }}
+                link
+              />
               {' · '}
               <Link to={`/deals/${activePayContext.deal.dealId}`}>открыть сделку</Link>
             </Typography.Paragraph>

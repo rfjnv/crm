@@ -17,6 +17,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { UserRole, DealStatus } from '../types';
 
 const DEFAULT_GOAL = 250_000_000;
@@ -311,7 +312,15 @@ export default function DashboardPage() {
             },
             {
               title: 'Топ клиентов',
-              items: topClients.map((c) => ({ label: c.companyName, value: formatUZS(c.totalRevenue), href: `/clients/${c.clientId}` })),
+              items: topClients.map((c) => ({
+                label: (
+                  <ClientCompanyDisplay
+                    client={{ id: c.clientId, companyName: c.companyName, isSvip: c.isSvip }}
+                  />
+                ),
+                value: formatUZS(c.totalRevenue),
+                href: `/clients/${c.clientId}`,
+              })),
             },
           ].map((block) => (
             <Col xs={24} md={8} key={block.title}>
@@ -347,9 +356,9 @@ export default function DashboardPage() {
                         }}>
                           {i + 1}
                         </span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
+                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', fontSize: 13 }}>
                           {row.label}
-                        </span>
+                        </div>
                         <Typography.Text strong style={{ fontSize: 13, flexShrink: 0 }}>{row.value}</Typography.Text>
                       </div>
                     ))}

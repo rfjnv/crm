@@ -8,6 +8,7 @@ import { formatUZS } from '../utils/currency';
 import type { Deal, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -32,7 +33,11 @@ export default function ClosedDealsPage() {
 
   const columns = [
     { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+    },
     { title: 'Статус', dataIndex: 'status', render: () => <DealStatusTag status="CLOSED" /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {

@@ -7,6 +7,7 @@ import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
 import DealStatusTag from '../components/DealStatusTag';
 import type { Deal, PaymentStatus } from '../types';
@@ -131,7 +132,8 @@ export default function DealApprovalPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
     {
       title: 'Менеджер',
@@ -200,7 +202,11 @@ export default function DealApprovalPage() {
 
   const wmColumns = [
     { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+    },
     { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)) },
     { title: 'Статус', dataIndex: 'status', render: (v: Deal['status']) => <DealStatusTag status={v} /> },
     {
@@ -274,7 +280,7 @@ export default function DealApprovalPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
-                        <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                        <div style={{ fontSize: 12 }}><ClientCompanyDisplay client={deal.client} secondary /></div>
                       </div>
                       <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
                     </div>
@@ -315,7 +321,7 @@ export default function DealApprovalPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
-                        <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text></div>
+                        <div style={{ fontSize: 12 }}><ClientCompanyDisplay client={deal.client} secondary /></div>
                       </div>
                       <DealStatusTag status={deal.status} />
                     </div>

@@ -9,7 +9,8 @@ import { notificationsApi } from '../api/notifications.api';
 import { usersApi } from '../api/users.api';
 import { dealsApi } from '../api/deals.api';
 import { useIsMobile } from '../hooks/useIsMobile';
-import type { BroadcastTargets, UserRole } from '../types';
+import type { BroadcastTargets, UserRole, Deal } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Супер Админ',
@@ -147,10 +148,24 @@ export default function BroadcastPage() {
                   showSearch
                   allowClear
                   placeholder="Выберите сделку..."
-                  optionFilterProp="label"
                   suffixIcon={<LinkOutlined />}
+                  filterOption={(input, option) => {
+                    const d = (deals ?? []).find((x: Deal) => x.id === option?.value);
+                    if (!d) return false;
+                    const q = input.toLowerCase();
+                    return (
+                      d.title.toLowerCase().includes(q) ||
+                      (d.client?.companyName ?? '').toLowerCase().includes(q)
+                    );
+                  }}
                   options={(deals ?? []).map((d) => ({
-                    label: `${d.title} — ${d.client?.companyName ?? ''}`,
+                    label: (
+                      <Space size={6} wrap>
+                        <Typography.Text>{d.title}</Typography.Text>
+                        <Typography.Text type="secondary">—</Typography.Text>
+                        <ClientCompanyDisplay client={d.client} />
+                      </Space>
+                    ),
                     value: d.id,
                   }))}
                 />

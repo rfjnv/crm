@@ -11,6 +11,7 @@ import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealItem } from '../types';
 import dayjs from 'dayjs';
 
@@ -106,12 +107,8 @@ export default function WarehouseShipmentsPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
-      render: (v: string, record: Deal) => (
-        <Link to={`/clients/${record.clientId}`}>
-          {v}
-        </Link>
-      ),
+      key: 'client',
+      render: (_: unknown, record: Deal) => <ClientCompanyDisplay client={record.client} link />,
     },
     {
       title: 'Сумма',
@@ -204,7 +201,11 @@ export default function WarehouseShipmentsPage() {
       dataIndex: 'title',
       render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
     },
-    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
       title: 'Доставка',
@@ -407,7 +408,7 @@ export default function WarehouseShipmentsPage() {
                   <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
                 </Descriptions.Item>
                 <Descriptions.Item label="Клиент">
-                  <Link to={`/clients/${dealDetail.clientId}`}>{dealDetail.client?.companyName}</Link>
+                  <ClientCompanyDisplay client={dealDetail.client} link variant="full" />
                 </Descriptions.Item>
                 <Descriptions.Item label="Сумма">
                   {formatUZS(dealDetail.amount)}

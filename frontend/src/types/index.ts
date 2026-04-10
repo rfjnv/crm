@@ -190,7 +190,7 @@ export interface Contract {
   deleteReason?: string | null;
   createdAt: string;
   updatedAt: string;
-  client?: { id: string; companyName: string; contactName?: string; phone?: string | null; address?: string | null };
+  client?: { id: string; companyName: string; contactName?: string; phone?: string | null; address?: string | null; isSvip?: boolean };
   deals?: DealShort[];
 }
 
@@ -312,7 +312,7 @@ export interface Deal {
   updatedAt: string;
   /** Момент перевода в CLOSED (доставка / закрытие) */
   closedAt?: string | null;
-  client?: { id: string; companyName: string; contactName?: string; inn?: string | null };
+  client?: { id: string; companyName: string; contactName?: string; inn?: string | null; isSvip?: boolean; address?: string | null };
   manager?: { id: string; fullName: string };
   contract?: { id: string; contractNumber: string } | null;
   items?: DealItem[];
@@ -361,7 +361,7 @@ export interface InventoryMovement {
   createdBy: string;
   createdAt: string;
   product?: { id: string; name: string; sku: string; stock?: number };
-  deal?: { id: string; title: string; client?: { companyName: string } } | null;
+  deal?: { id: string; title: string; client?: { id?: string; companyName: string; isSvip?: boolean } } | null;
 }
 
 export interface AuditLog {
@@ -398,7 +398,7 @@ export interface RevenueTodayPayment {
   paidAt: string;
   method: string | null;
   deal: { id: string; title: string };
-  client: { id: string; companyName: string };
+  client: { id: string; companyName: string; isSvip?: boolean };
   creator: { id: string; fullName: string };
 }
 
@@ -426,6 +426,7 @@ export interface AnalyticsSales {
   topClients: {
     clientId: string;
     companyName: string;
+    isSvip?: boolean;
     totalRevenue: number;
     shippedRevenue: number;
   }[];
@@ -434,8 +435,8 @@ export interface AnalyticsSales {
 
 export interface AnalyticsFinance {
   totalDebt: number;
-  overdueDebts: { dealId: string; title: string; clientName: string; debt: number; dueDate: string | null }[];
-  topDebtors: { clientId: string; companyName: string; totalDebt: number }[];
+  overdueDebts: { dealId: string; title: string; clientId: string; clientName: string; clientIsSvip?: boolean; debt: number; dueDate: string | null }[];
+  topDebtors: { clientId: string; companyName: string; isSvip?: boolean; totalDebt: number }[];
   realTurnover: number;
   paperTurnover: number;
 }
@@ -508,6 +509,7 @@ export interface AnalyticsData {
 export interface ClientDebtRow {
   clientId: string;
   clientName: string;
+  isSvip?: boolean;
   totalDebt: number;
   totalAmount: number;
   totalPaid: number;
@@ -741,7 +743,7 @@ export interface Task {
 // ──── Client Debt Detail ────
 
 export interface ClientDebtDetail {
-  client: { id: string; companyName: string; contactName: string; phone: string | null };
+  client: { id: string; companyName: string; contactName: string; phone: string | null; isSvip?: boolean };
   deals: Deal[];
   payments: PaymentRecord[];
   totalDebt: number;
@@ -791,7 +793,7 @@ export interface ProductAnalytics {
     grossProfit: number;
     marginPercent: number;
   };
-  topClients: { clientId: string; companyName: string; totalQty: number }[];
+  topClients: { clientId: string; companyName: string; isSvip?: boolean; totalQty: number }[];
 }
 
 export interface CompanySettings {
@@ -822,6 +824,7 @@ export interface ClientSegmentRow {
 export interface ClientLTVRow {
   clientId: string;
   companyName: string;
+  isSvip?: boolean;
   ltv: number;
   dealsCount: number;
   avgDealAmount: number;

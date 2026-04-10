@@ -15,7 +15,8 @@ import { contractsApi } from '../api/contracts.api';
 import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { ContractListItem, ContractDetail, DealStatus } from '../types';
+import type { Client, ContractListItem, ContractDetail, DealStatus } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -172,9 +173,18 @@ export default function ContractsPage() {
   }
 
   const clientOptions = useMemo(
-    () => (clients ?? []).map((c) => ({ label: c.companyName, value: c.id })),
+    () =>
+      (clients ?? []).map((c: Client) => ({
+        value: c.id,
+        label: <ClientCompanyDisplay client={c} />,
+      })),
     [clients],
   );
+
+  const filterClientByName = (input: string, option: { value?: string } | undefined) => {
+    const c = (clients ?? []).find((x) => x.id === option?.value);
+    return (c?.companyName ?? '').toLowerCase().includes(input.toLowerCase());
+  };
 
   const filteredContracts = useMemo(() => {
     if (filterType === 'ALL') return contracts ?? [];
@@ -193,10 +203,8 @@ export default function ContractsPage() {
     },
     {
       title: 'Клиент',
-      dataIndex: ['client', 'companyName'],
-      render: (v: string, r: ContractListItem) => (
-        <Link to={`/clients/${r.clientId}`}>{v}</Link>
-      ),
+      key: 'client',
+      render: (_: unknown, r: ContractListItem) => <ClientCompanyDisplay client={r.client} link />,
     },
     {
       title: 'Дата начала',
@@ -284,12 +292,12 @@ export default function ContractsPage() {
           <Select
             allowClear
             showSearch
-            optionFilterProp="label"
             placeholder="Фильтр по клиенту"
             style={{ width: isMobile ? '100%' : 250 }}
             value={filterClient}
             onChange={setFilterClient}
             options={clientOptions}
+            filterOption={filterClientByName}
           />
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!canManageContracts}>Создать</Button>
         </Space>
@@ -355,7 +363,7 @@ export default function ContractsPage() {
           }}
         >
           <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
-            <Select showSearch optionFilterProp="label" placeholder="Выберите клиента" options={clientOptions} />
+            <Select showSearch placeholder="Выберите клиента" options={clientOptions} filterOption={filterClientByName} />
           </Form.Item>
           <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, message: 'Укажите номер' }]}>
             <Input />
@@ -477,7 +485,7 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Descriptions column={2} bordered size="small">
         <Descriptions.Item label="Клиент">
-          <Link to={`/clients/${detail.clientId}`}>{detail.client?.companyName}</Link>
+          <ClientCompanyDisplay client={detail.client} link variant="full" />
         </Descriptions.Item>
         <Descriptions.Item label="Статус">
           <Tag color={detail.isActive ? 'green' : 'red'}>{detail.isActive ? 'Активен' : 'Закрыт'}</Tag>

@@ -260,6 +260,7 @@ router.get(
       deal_title: string;
       client_id: string;
       company_name: string;
+      is_svip: boolean;
       manager_id: string;
       manager_name: string;
       product_name: string;
@@ -268,7 +269,7 @@ router.get(
                         ${SQL_LINE_REVENUE_DI}::text as line_total,
                         ${SQL_EFFECTIVE_ITEM_TS} as deal_date,
                         d.id as deal_id, d.title as deal_title,
-                        c.id as client_id, c.company_name,
+                        c.id as client_id, c.company_name, c.is_svip as is_svip,
                         u.id as manager_id, u.full_name as manager_name,
                         p.name as product_name
        FROM deal_items di
@@ -288,7 +289,7 @@ router.get(
       paidAt: r.deal_date,
       method: null,
       deal: { id: r.deal_id, title: r.deal_title },
-      client: { id: r.client_id, companyName: r.company_name },
+      client: { id: r.client_id, companyName: r.company_name, isSvip: !!r.is_svip },
       creator: { id: r.manager_id, fullName: r.manager_name },
       productName: r.product_name,
     }));

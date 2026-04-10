@@ -24,6 +24,7 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
   ? new URL(import.meta.env.VITE_API_URL).origin
@@ -248,7 +249,7 @@ export default function ContractDetailPage() {
 
         <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small" style={{ marginBottom: 24 }}>
           <Descriptions.Item label="Клиент">
-            <Link to={`/clients/${contract.clientId}`}>{contract.client?.companyName}</Link>
+            <ClientCompanyDisplay client={contract.client} link variant="full" />
           </Descriptions.Item>
           <Descriptions.Item label="Статус">
             <Tag color={contract.isActive ? 'green' : 'red'}>{contract.isActive ? 'Активен' : 'Закрыт'}</Tag>

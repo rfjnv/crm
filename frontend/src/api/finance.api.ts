@@ -6,6 +6,7 @@ export interface CashboxPayment {
   dealTitle: string;
   clientId: string;
   clientName: string;
+  clientIsSvip?: boolean;
   amount: number;
   paidAt: string;
   method: string | null;
@@ -32,6 +33,7 @@ export interface ActiveDealRow {
   status: string;
   clientId: string;
   clientName: string;
+  clientIsSvip?: boolean;
   amount: number;
   paidAmount: number;
   remaining: number;
@@ -50,6 +52,7 @@ export interface DealPaymentContextDeal {
   status: string;
   clientId: string;
   clientName: string;
+  clientIsSvip?: boolean;
   amount: number;
   paidAmount: number;
   remaining: number;

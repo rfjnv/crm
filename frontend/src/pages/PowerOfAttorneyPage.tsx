@@ -13,6 +13,8 @@ import { poaApi } from '../api/power-of-attorney.api';
 import type { PowerOfAttorney, CreatePoaData } from '../api/power-of-attorney.api';
 import { contractsApi } from '../api/contracts.api';
 import { useAuthStore } from '../store/authStore';
+import type { ContractListItem } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 export default function PowerOfAttorneyPage() {
   const queryClient = useQueryClient();
@@ -61,10 +63,23 @@ export default function PowerOfAttorneyPage() {
       .catch(() => message.error('Ошибка генерации PDF'));
   }
 
-  const contractOptions = (contracts ?? []).map((c) => ({
-    label: `${c.contractNumber} — ${c.client?.companyName || ''}`,
+  const contractOptions = (contracts ?? []).map((c: ContractListItem) => ({
     value: c.id,
+    label: (
+      <Space size={6} wrap>
+        <Typography.Text>{c.contractNumber}</Typography.Text>
+        <Typography.Text type="secondary">—</Typography.Text>
+        <ClientCompanyDisplay client={c.client} />
+      </Space>
+    ),
   }));
+
+  const filterContractOption = (input: string, option: { value?: string } | undefined) => {
+    const c = (contracts ?? []).find((x) => x.id === option?.value);
+    if (!c) return false;
+    const q = input.toLowerCase();
+    return c.contractNumber.toLowerCase().includes(q) || (c.client?.companyName ?? '').toLowerCase().includes(q);
+  };
 
   return (
     <div>
@@ -93,8 +108,10 @@ export default function PowerOfAttorneyPage() {
                 c ? <Link to={`/contracts/${c.id}`}>{c.contractNumber}</Link> : '—',
             },
             {
-              title: 'Клиент', dataIndex: ['contract', 'client', 'companyName'],
-              render: (v: string, r: PowerOfAttorney) => r.contract?.client ? <Link to={`/clients/${r.contract.client.id}`}>{v}</Link> : '—',
+              title: 'Клиент',
+              key: 'client',
+              render: (_: unknown, r: PowerOfAttorney) =>
+                r.contract?.client ? <ClientCompanyDisplay client={r.contract.client} link /> : '—',
             },
             { title: 'Доверенное лицо', dataIndex: 'authorizedPersonName' },
             { title: 'Должность', dataIndex: 'authorizedPersonPosition', render: (v: string | null) => v || '—' },
@@ -142,7 +159,7 @@ export default function PowerOfAttorneyPage() {
           })}
         >
           <Form.Item name="contractId" label="Договор" rules={[{ required: true, message: 'Выберите договор' }]}>
-            <Select showSearch optionFilterProp="label" placeholder="Выберите договор" options={contractOptions} />
+            <Select showSearch placeholder="Выберите договор" options={contractOptions} filterOption={filterContractOption} />
           </Form.Item>
           <Form.Item name="poaNumber" label="Номер доверенности" rules={[{ required: true, message: 'Обязательное поле' }]}>
             <Input placeholder="ДВР-001" />
