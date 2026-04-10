@@ -47,7 +47,6 @@ import { APP_BUTTON } from './ui/AppClassNames';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import BottomTabBar from './BottomTabBar';
-import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission } from '../types';
@@ -565,18 +564,30 @@ export default function Layout() {
           </div>
         </Header>
         <Content
-          className="app-main-content"
+          className={isMobile ? 'app-main-content app-main-content--mobile-shell' : 'app-main-content'}
           style={{
             margin: isMobile ? 0 : 24,
-            paddingLeft: isMobile ? 'var(--space-3)' : undefined,
-            paddingRight: isMobile ? 'var(--space-3)' : undefined,
+            paddingLeft: isMobile ? 0 : undefined,
+            paddingRight: isMobile ? 0 : undefined,
             paddingTop: isMobile ? 0 : undefined,
-            paddingBottom: isMobile ? mobileMainContentBottomPadding() : 0,
+            paddingBottom: isMobile ? undefined : 0,
             minWidth: 0,
+            background: isMobile ? 'transparent' : undefined,
           }}
         >
-          <div ref={mainScrollRef} style={{ minWidth: 0 }}>
-            <Outlet />
+          {isMobile && <div className="top-hero" aria-hidden />}
+          <div
+            ref={mainScrollRef}
+            className={isMobile ? 'main-scroll-wrap' : undefined}
+            style={{ minWidth: 0 }}
+          >
+            {isMobile ? (
+              <div className="main-container">
+                <Outlet />
+              </div>
+            ) : (
+              <Outlet />
+            )}
           </div>
         </Content>
         <NotificationPermissionBanner />

@@ -129,18 +129,36 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
+      <style>{`
+        .stock-row-zero td { background: rgba(255, 77, 79, 0.06) !important; }
+        .stock-row-low td { background: rgba(250, 140, 22, 0.06) !important; }
+      `}</style>
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: isMobile ? 16 : 20 }}>
-        <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
-        {user?.fullName && (
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            Добро пожаловать, {user.fullName.split(' ')[0]}
-          </Typography.Text>
-        )}
-      </div>
+      {isMobile ? (
+        <div className="dashboard-header">
+          <div>
+            <div className="dashboard-title">Дашборд</div>
+            {user?.fullName && (
+              <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4 }}>
+                Добро пожаловать, {user.fullName.split(' ')[0]}
+              </Typography.Text>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 20 }}>
+          <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
+          {user?.fullName && (
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              Добро пожаловать, {user.fullName.split(' ')[0]}
+            </Typography.Text>
+          )}
+        </div>
+      )}
 
       {/* ── KPI cards ── */}
+      <div className={isMobile ? 'section' : undefined}>
       <Row className="dashboard-kpi-row" gutter={kpiGutter}>
         {/* Revenue — accent */}
         <Col xs={24} sm={12} lg={6}>
@@ -228,14 +246,16 @@ export default function DashboardPage() {
           </Link>
         </Col>
       </Row>
+      </div>
 
       {/* ── Monthly goal (compact, clickable → settings) ── */}
       {isAdmin && (
+        <div className={isMobile ? 'section' : undefined}>
         <Card
           className="dashboard-goal-card"
           bordered={false}
           hoverable
-          style={{ ...card, marginTop: 16, cursor: 'pointer' }}
+          style={{ ...card, marginTop: isMobile ? 0 : 16, cursor: 'pointer' }}
           styles={{ body: isMobile ? undefined : { padding: '12px 20px' } }}
           onClick={() => navigate('/settings/company')}
         >
@@ -274,11 +294,13 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
+        </div>
       )}
 
       {/* ── Chart + Statuses ── */}
       {isAdmin && (
-        <Row gutter={blockGutter} style={{ marginTop: 24 }}>
+        <div className={isMobile ? 'section' : undefined}>
+        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 24 }}>
           <Col xs={24} lg={14}>
             <Card
               bordered={false}
@@ -346,11 +368,13 @@ export default function DashboardPage() {
             </Card>
           </Col>
         </Row>
+        </div>
       )}
 
       {/* ── Tops ── */}
       {showExtras && (
-        <Row gutter={blockGutter} style={{ marginTop: 24 }}>
+        <div className={isMobile ? 'section' : undefined}>
+        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 24 }}>
           {[
             {
               title: 'Топ товаров',
@@ -421,12 +445,14 @@ export default function DashboardPage() {
             </Col>
           ))}
         </Row>
+        </div>
       )}
 
       {/* ── Stock issues ── */}
+      <div className={isMobile ? 'section' : undefined}>
       <Card
         bordered={false}
-        style={{ ...card, marginTop: 24 }}
+        style={{ ...card, marginTop: isMobile ? 0 : 24 }}
         styles={{ body: { padding: '16px 20px' } }}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -488,11 +514,7 @@ export default function DashboardPage() {
           />
         )}
       </Card>
-
-      <style>{`
-        .stock-row-zero td { background: rgba(255, 77, 79, 0.06) !important; }
-        .stock-row-low td { background: rgba(250, 140, 22, 0.06) !important; }
-      `}</style>
+      </div>
     </div>
   );
 }
