@@ -42,7 +42,14 @@ export default function ClosedDealsPage() {
       }
     },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
-    { title: 'Дата закрытия', dataIndex: 'updatedAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+    {
+      title: 'Дата закрытия',
+      key: 'closedAt',
+      render: (_: unknown, r: Deal) => {
+        const d = r.closedAt ?? r.updatedAt;
+        return d ? dayjs(d).format('DD.MM.YYYY') : '—';
+      },
+    },
   ];
 
   return (

@@ -240,9 +240,12 @@ export default function WarehouseShipmentsPage() {
     },
     {
       title: 'Закрыта',
-      dataIndex: 'updatedAt',
+      key: 'closedAt',
       width: 120,
-      render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm'),
+      render: (_: unknown, r: Deal) => {
+        const d = r.closedAt ?? r.updatedAt;
+        return d ? dayjs(d).format('DD.MM.YYYY HH:mm') : '—';
+      },
     },
   ];
 
