@@ -2345,6 +2345,7 @@ export class DealsService {
       paymentStatus: deal.paymentStatus,
       dueDate: deal.dueDate,
       createdAt: deal.createdAt,
+      closedAt: deal.closedAt,
       terms: deal.terms,
       items: deal.items.map((i) => ({
         id: i.id,
@@ -2354,6 +2355,8 @@ export class DealsService {
         dealDate: i.dealDate,
         confirmedAt: i.confirmedAt,
         createdAt: i.createdAt,
+        shippedAt: i.shippedAt,
+        deliveredAt: i.deliveredAt,
       })),
       payments: deal.payments.map((p) => ({
         id: p.id,
@@ -2385,6 +2388,7 @@ export class DealsService {
       if (dto.paymentType !== undefined) data.paymentType = dto.paymentType;
       if (dto.dueDate !== undefined) data.dueDate = parseOptionalDate(dto.dueDate);
       if (dto.createdAt !== undefined && dto.createdAt !== null) data.createdAt = parseOptionalDate(dto.createdAt);
+      if (dto.closedAt !== undefined) data.closedAt = parseOptionalDate(dto.closedAt);
       if (dto.paidAmount !== undefined) data.paidAmount = dto.paidAmount;
 
       if (dto.clientId !== undefined && dto.clientId !== deal.clientId) {
@@ -2503,6 +2507,8 @@ export class DealsService {
             warehouseComment: item.warehouseComment,
             dealDate: parseOptionalDate(item.dealDate),
             confirmedAt: parseOptionalDate(item.confirmedAt),
+            shippedAt: parseOptionalDate(item.shippedAt),
+            deliveredAt: parseOptionalDate(item.deliveredAt),
             ...(item.createdAt !== undefined && item.createdAt !== null ? { createdAt: new Date(item.createdAt) } : {}),
           };
 
@@ -2570,6 +2576,10 @@ export class DealsService {
 
       // Shipment upsert
       if (dto.shipment !== undefined) {
+        const resolvedShippedAt =
+          dto.shipment.shippedAt === undefined
+            ? undefined
+            : (parseOptionalDate(dto.shipment.shippedAt) ?? deal.shipment?.shippedAt ?? new Date());
         await tx.shipment.upsert({
           where: { dealId: id },
           update: {
@@ -2579,7 +2589,7 @@ export class DealsService {
             departureTime: new Date(dto.shipment.departureTime),
             deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
             shipmentComment: dto.shipment.shipmentComment,
-            ...(dto.shipment.shippedAt !== undefined && dto.shipment.shippedAt !== null ? { shippedAt: parseOptionalDate(dto.shipment.shippedAt) ?? new Date() } : {}),
+            ...(dto.shipment.shippedAt !== undefined ? { shippedAt: resolvedShippedAt! } : {}),
           },
           create: {
             dealId: id,
@@ -2590,13 +2600,15 @@ export class DealsService {
             deliveryNoteNumber: dto.shipment.deliveryNoteNumber,
             shipmentComment: dto.shipment.shipmentComment,
             shippedBy: user.userId,
-            ...(dto.shipment.shippedAt !== undefined && dto.shipment.shippedAt !== null ? { shippedAt: parseOptionalDate(dto.shipment.shippedAt) ?? new Date() } : {}),
+            ...(dto.shipment.shippedAt !== undefined ? { shippedAt: resolvedShippedAt! } : {}),
           },
         });
       }
 
       if (dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
         await this.deductInventoryForDealInTx(tx, id, user.userId);
+      }
+      if (dto.closedAt === undefined && dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
         data.closedAt = new Date();
       }
 
@@ -2643,6 +2655,7 @@ export class DealsService {
       paymentStatus: updatedDeal!.paymentStatus,
       dueDate: updatedDeal!.dueDate,
       createdAt: updatedDeal!.createdAt,
+      closedAt: updatedDeal!.closedAt,
       items: updatedDeal!.items.map((i) => ({
         id: i.id,
         productId: i.productId,
@@ -2651,6 +2664,8 @@ export class DealsService {
         dealDate: i.dealDate,
         confirmedAt: i.confirmedAt,
         createdAt: i.createdAt,
+        shippedAt: i.shippedAt,
+        deliveredAt: i.deliveredAt,
       })),
       payments: updatedDeal!.payments.map((p) => ({
         id: p.id,

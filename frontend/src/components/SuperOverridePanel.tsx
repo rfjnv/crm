@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   Tabs, Form, Input, InputNumber, Select, DatePicker, Button, Alert,
-  Typography, Popconfirm, message, theme,
+  Typography, Popconfirm, message, theme, Tooltip,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type OverrideDealData } from '../api/admin.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
@@ -48,6 +48,8 @@ interface OverrideItem {
   dealDate?: dayjs.Dayjs;
   confirmedAt?: dayjs.Dayjs;
   createdAt?: dayjs.Dayjs;
+  shippedAt?: dayjs.Dayjs;
+  deliveredAt?: dayjs.Dayjs;
 }
 
 interface OverridePayment {
@@ -103,6 +105,7 @@ export default function SuperOverridePanel({
       discount: Number(deal.discount || 0),
       dueDate: deal.dueDate ? dayjs(deal.dueDate) : undefined,
       createdAt: deal.createdAt ? dayjs(deal.createdAt) : undefined,
+      closedAt: deal.closedAt ? dayjs(deal.closedAt) : undefined,
       terms: deal.terms || '',
       deliveryType: deal.deliveryType || undefined,
       vehicleNumber: deal.vehicleNumber || '',
@@ -123,6 +126,8 @@ export default function SuperOverridePanel({
       dealDate: i.dealDate ? dayjs(i.dealDate) : undefined,
       confirmedAt: i.confirmedAt ? dayjs(i.confirmedAt) : undefined,
       createdAt: i.createdAt ? dayjs(i.createdAt) : undefined,
+      shippedAt: i.shippedAt ? dayjs(i.shippedAt) : undefined,
+      deliveredAt: i.deliveredAt ? dayjs(i.deliveredAt) : undefined,
     }));
     setItems(dealItems);
 
@@ -217,12 +222,18 @@ export default function SuperOverridePanel({
       const dealCreatedAt = deal.createdAt ? dayjs(deal.createdAt).toISOString() : null;
       if (formCreatedAt !== dealCreatedAt) data.createdAt = formCreatedAt;
 
+      const formClosedAt = values.closedAt ? values.closedAt.toISOString() : null;
+      const dealClosedAt = deal.closedAt ? dayjs(deal.closedAt).toISOString() : null;
+      if (formClosedAt !== dealClosedAt) data.closedAt = formClosedAt;
+
       const hasItemDateChanges = items.some((item) => {
         const original = deal.items?.find((entry) => entry.id === item.id);
         return (
           (item.dealDate ? item.dealDate.toISOString() : null) !== (original?.dealDate ? dayjs(original.dealDate).toISOString() : null)
           || (item.confirmedAt ? item.confirmedAt.toISOString() : null) !== (original?.confirmedAt ? dayjs(original.confirmedAt).toISOString() : null)
           || (item.createdAt ? item.createdAt.toISOString() : null) !== (original?.createdAt ? dayjs(original.createdAt).toISOString() : null)
+          || (item.shippedAt ? item.shippedAt.toISOString() : null) !== (original?.shippedAt ? dayjs(original.shippedAt).toISOString() : null)
+          || (item.deliveredAt ? item.deliveredAt.toISOString() : null) !== (original?.deliveredAt ? dayjs(original.deliveredAt).toISOString() : null)
         );
       });
 
@@ -239,6 +250,8 @@ export default function SuperOverridePanel({
             dealDate: i.dealDate ? i.dealDate.toISOString() : null,
             confirmedAt: i.confirmedAt ? i.confirmedAt.toISOString() : null,
             createdAt: i.createdAt ? i.createdAt.toISOString() : null,
+            shippedAt: i.shippedAt ? i.shippedAt.toISOString() : null,
+            deliveredAt: i.deliveredAt ? i.deliveredAt.toISOString() : null,
           }));
       }
 
@@ -343,6 +356,8 @@ export default function SuperOverridePanel({
             <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Deal Date</th>
             <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Confirmed At</th>
             <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Item Created</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Отгружено</th>
+            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Доставлено</th>
             <th style={{ padding: productsCellPad, width: 40 }} />
           </tr>
         </thead>
@@ -427,6 +442,24 @@ export default function SuperOverridePanel({
                   />
                 </td>
                 <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', minWidth: 148 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={item.shippedAt}
+                    onChange={(v) => updateItem(item.key, { shippedAt: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
+                  <DatePicker
+                    showTime
+                    style={{ width: '100%', minWidth: 148 }}
+                    format="DD.MM.YYYY HH:mm"
+                    value={item.deliveredAt}
+                    onChange={(v) => updateItem(item.key, { deliveredAt: v ?? undefined })}
+                  />
+                </td>
+                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
                   <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} />
                 </td>
               </tr>
@@ -471,6 +504,19 @@ export default function SuperOverridePanel({
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
                   <Form.Item name="createdAt" label="Дата создания сделки">
                     <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+                  </Form.Item>
+                  <Form.Item
+                    name="closedAt"
+                    label={
+                      <span>
+                        Дата закрытия / доставки
+                        <Tooltip title="Момент статуса «Закрыто» (доставка клиенту). Не путать с датами по строкам в таблице товаров.">
+                          <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
                   </Form.Item>
                   <Form.Item name="title" label="Название">
                     <Input />
@@ -710,8 +756,8 @@ export default function SuperOverridePanel({
                       <Form.Item name="departureTime" label="Время отправления" rules={[{ required: true }]}>
                         <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
                       </Form.Item>
-                      <Form.Item name="shippedAt" label="Shipped At">
-                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+                      <Form.Item name="shippedAt" label="Дата отгрузки (факт по накладной)">
+                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
                       </Form.Item>
                       <Form.Item name="deliveryNoteNumber" label="Номер накладной" rules={[{ required: true }]}>
                         <Input placeholder="Номер накладной" />

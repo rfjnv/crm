@@ -406,6 +406,10 @@ model DealItem {
   confirmedAt      DateTime?       @map("confirmed_at")
   createdAt        DateTime        @default(now()) @map("created_at")
   dealDate         DateTime?       @map("deal_date")
+  /** Факт отгрузки со склада (позиция) */
+  shippedAt        DateTime?       @map("shipped_at")
+  /** Факт доставки клиенту (позиция) */
+  deliveredAt      DateTime?       @map("delivered_at")
 
   deal      Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
@@ -415,6 +419,8 @@ model DealItem {
   @@index([isProblem])
   @@index([sourceOpType])
   @@index([dealDate])
+  @@index([shippedAt])
+  @@index([deliveredAt])
   @@map("deal_items")
 }
 

@@ -154,6 +154,8 @@ export const superOverrideDealDto = z.object({
   paidAmount: z.number().min(0).optional(),
   dueDate: z.string().nullable().optional(),
   createdAt: z.string().nullable().optional(),
+  /** Дата закрытия / доставки сделки (факт) */
+  closedAt: z.string().nullable().optional(),
   discount: z.number().min(0).optional(),
   terms: z.string().nullable().optional(),
   deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).nullable().optional(),
@@ -172,6 +174,8 @@ export const superOverrideDealDto = z.object({
     dealDate: z.string().nullable().optional(),
     confirmedAt: z.string().nullable().optional(),
     createdAt: z.string().nullable().optional(),
+    shippedAt: z.string().nullable().optional(),
+    deliveredAt: z.string().nullable().optional(),
   })).optional(),
   payments: z.array(z.object({
     id: z.string().uuid(),

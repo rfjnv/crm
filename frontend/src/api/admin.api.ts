@@ -13,6 +13,7 @@ export interface OverrideDealData {
   paidAmount?: number;
   dueDate?: string | null;
   createdAt?: string | null;
+  closedAt?: string | null;
   discount?: number;
   terms?: string | null;
   deliveryType?: string | null;
@@ -31,6 +32,8 @@ export interface OverrideDealData {
     dealDate?: string | null;
     confirmedAt?: string | null;
     createdAt?: string | null;
+    shippedAt?: string | null;
+    deliveredAt?: string | null;
   }[];
   payments?: {
     id: string;

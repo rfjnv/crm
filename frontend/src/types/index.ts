@@ -258,6 +258,10 @@ export interface DealItem {
   confirmedAt?: string | null;
   createdAt: string;
   dealDate?: string | null;
+  /** Факт отгрузки позиции */
+  shippedAt?: string | null;
+  /** Факт доставки позиции */
+  deliveredAt?: string | null;
   product?: { id: string; name: string; sku: string; unit: string; stock?: number; salePrice?: string | null };
   confirmer?: { id: string; fullName: string } | null;
 }
@@ -306,6 +310,8 @@ export interface Deal {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Момент перевода в CLOSED (доставка / закрытие) */
+  closedAt?: string | null;
   client?: { id: string; companyName: string; contactName?: string; inn?: string | null };
   manager?: { id: string; fullName: string };
   contract?: { id: string; contractNumber: string } | null;
