@@ -84,27 +84,49 @@ export function printDealWaybillA5(deal: Deal, _company: CompanySettings | null)
   const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"/>
 <title>Заказ покупателя № ${escapeHtml(String(docNo))}</title>
 <style>
-  @page { size: A4 portrait; margin: 4mm 5mm 6mm 5mm; }
+  @page { size: A4 portrait; margin: 7mm 5mm 6mm 5mm; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #000; width: 100%; }
-  h1 { font-size: 12pt; text-align: center; margin: 0 0 6px; padding: 0; font-weight: bold; }
+  html, body { margin: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: calc(10pt - 1px);
+    color: #000;
+    width: 100%;
+    padding: 2mm 4px 0 1px;
+  }
+  h1 {
+    font-size: calc(12pt - 1px);
+    text-align: center;
+    margin: 0 0 6px;
+    padding: 1mm 0 0;
+    font-weight: bold;
+  }
   .rule { border-bottom: 1px solid #000; margin: 4px 0; }
-  .pair { margin: 3px 0; line-height: 1.35; }
+  .pair { margin: 3px 0; line-height: 1.35; font-size: calc(10pt - 1px); }
   .label { font-weight: bold; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9pt; table-layout: fixed; }
-  th, td { border: 1px solid #000; padding: 4px 5px; vertical-align: top; word-wrap: break-word; }
-  th { background: #f5f5f5; font-weight: bold; text-align: center; }
+  table {
+    width: calc(100% - 2px);
+    max-width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    margin-right: 2px;
+    font-size: calc(9pt - 1px);
+    table-layout: fixed;
+  }
+  th, td { border: 1px solid #000; padding: 3px 4px; vertical-align: top; word-wrap: break-word; }
+  th { background: #f5f5f5; font-weight: bold; text-align: center; font-size: calc(9pt - 1px); }
   td.num { text-align: right; white-space: nowrap; }
-  .totals { margin-top: 8px; text-align: right; font-size: 10pt; }
+  .totals { margin-top: 8px; text-align: right; font-size: calc(10pt - 1px); }
   .totals div { margin: 2px 0; }
-  .summary { margin-top: 8px; font-size: 9.5pt; line-height: 1.4; }
-  .words { font-weight: bold; margin-top: 4px; }
-  .sign-row { display: flex; justify-content: space-between; gap: 20px; margin-top: 14px; }
+  .summary { margin-top: 8px; font-size: calc(9.5pt - 1px); line-height: 1.4; }
+  .words { font-weight: bold; margin-top: 4px; font-size: calc(9.5pt - 1px); }
+  .sign-row { display: flex; justify-content: space-between; gap: 20px; margin-top: 14px; font-size: calc(10pt - 1px); }
   .sign-col { flex: 1; }
   .line { border-bottom: 1px solid #000; min-height: 22px; margin-top: 16px; }
-  .hint { font-size: 7.5pt; color: #444; margin-top: 2px; }
-  @media print { html, body { margin: 0 !important; padding: 0 !important; } }
+  .hint { font-size: calc(7.5pt - 1px); color: #444; margin-top: 2px; }
+  @media print {
+    body { padding: 2mm 4px 0 1px; }
+  }
 </style></head><body>
   <h1>Заказ покупателя № ${escapeHtml(String(docNo))} от ${escapeHtml(String(dateStr))}</h1>
   <div class="rule"></div>
