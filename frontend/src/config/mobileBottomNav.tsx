@@ -13,6 +13,7 @@ import {
   CheckSquareOutlined,
   TruckOutlined,
   AppstoreOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import type { UserRole, Permission } from '../types';
 
@@ -77,6 +78,7 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
     return [
       { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Проблемные остатки' },
       { path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined, rationale: 'Статусы для комплектации' },
+      { path: '/warehouse-manager', label: 'Входящие', Icon: InboxOutlined, rationale: 'Запрос одобрения у админа' },
       { path: '/inventory/warehouse', label: 'Склад', Icon: ShopOutlined, rationale: 'Остатки' },
       { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
       { path: '/shipment', label: 'Накладные', Icon: TruckOutlined, rationale: 'Отгрузочные документы' },
@@ -120,6 +122,7 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   if (role === 'LOADER') {
     return [
       { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Сводка' },
+      { path: '/warehouse-manager', label: 'Входящие', Icon: InboxOutlined, rationale: 'Запрос одобрения у админа' },
       { path: '/stock-confirmation', label: 'Подтвержд.', Icon: CheckSquareOutlined, rationale: 'Подтв. склада' },
       { path: '/my-loading-tasks', label: 'Отгрузки', Icon: TruckOutlined, rationale: 'Мои отгрузки' },
     ];

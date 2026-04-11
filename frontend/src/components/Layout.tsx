@@ -249,6 +249,13 @@ export default function Layout() {
         label: <Link to="/warehouse-manager">Зав. склада</Link>,
       }]
       : []),
+    ...(hasRole('WAREHOUSE', 'LOADER') && !hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
+      ? [{
+        key: '/warehouse-manager-incoming',
+        icon: <InboxOutlined />,
+        label: <Link to="/warehouse-manager">Входящие к админу</Link>,
+      }]
+      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER')
       ? [{
         key: '/my-loading-tasks',

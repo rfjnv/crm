@@ -27,7 +27,7 @@ router.get('/deal-approval-queue', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandl
 router.get('/archived', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findArchived.bind(dealsController)));
 
 // New workflow queues
-router.get('/wm/incoming', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForWarehouseManager.bind(dealsController)));
+router.get('/wm/incoming', authorize('WAREHOUSE_MANAGER', 'WAREHOUSE', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForWarehouseManager.bind(dealsController)));
 router.get('/wm/approved', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findApprovedForLoading.bind(dealsController)));
 router.get('/wm/delivery', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForDeliveryAssignment.bind(dealsController)));
 router.get('/wm/pending-admin', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findPendingAdmin.bind(dealsController)));
@@ -87,7 +87,7 @@ router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePay
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
 
 // New Workflow: per-deal actions
-router.post('/:id/wm-confirm', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.warehouseManagerConfirm.bind(dealsController)));
+router.post('/:id/wm-confirm', authorize('WAREHOUSE_MANAGER', 'WAREHOUSE', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.warehouseManagerConfirm.bind(dealsController)));
 router.post('/:id/admin-approve-new', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveByAdmin.bind(dealsController)));
 router.post('/:id/admin-reject-new', authorize('ADMIN', 'SUPER_ADMIN'), validate(financeRejectDto), asyncHandler(dealsController.rejectByAdmin.bind(dealsController)));
 router.post('/:id/assign-loading', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignLoadingDto), asyncHandler(dealsController.assignLoading.bind(dealsController)));

@@ -6,18 +6,21 @@ import {
   Button, Input, Tabs, Pagination, Select, DatePicker,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { EyeOutlined, TruckOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { TruckOutlined, UserOutlined, ClockCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import DealStatusTag from '../components/DealStatusTag';
 import { dealsApi } from '../api/deals.api';
 import { usersApi } from '../api/users.api';
+import { settingsApi } from '../api/settings.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
-import type { Deal, DealItem, PaymentStatus } from '../types';
+import type { Deal, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
+import { tashkentYmd, addDaysToTashkentYmd, isoRangeForTashkentYmd } from '../utils/tashkentCalendar';
+import { printDealWaybillA5 } from '../utils/waybillPrintA5';
 
-type WarehouseMainTab = 'shipmentsToday' | 'closedToday' | 'closedAll';
+type WarehouseMainTab = 'closedToday' | 'closedYesterday' | 'closedAll';
 
 /** Период закрытия для API «Все закрытые» (границы дня по Ташкенту). */
 function closedRangeToApiParams(range: [Dayjs, Dayjs] | null): { closedFrom?: string; closedTo?: string } {
@@ -35,21 +38,36 @@ function closedRangeToApiParams(range: [Dayjs, Dayjs] | null): { closedFrom?: st
   return { closedFrom: toIsoDay(a, false), closedTo: toIsoDay(b, true) };
 }
 
+function expandedItemsRow(record: Deal) {
+  const items = record.items ?? [];
+  if (items.length === 0) return <Typography.Text type="secondary">Нет позиций</Typography.Text>;
+  return (
+    <ul style={{ margin: 0, paddingLeft: 16 }}>
+      {items.map((it) => (
+        <li key={it.id}>
+          {it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function WarehouseShipmentsPage() {
   const isMobile = useIsMobile();
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
-  const [search, setSearch] = useState('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [mainTab, setMainTab] = useState<WarehouseMainTab>('shipmentsToday');
+  const [mainTab, setMainTab] = useState<WarehouseMainTab>('closedToday');
   const [closedPage, setClosedPage] = useState(1);
   const [closedTodayPage, setClosedTodayPage] = useState(1);
+  const [closedYesterdayPage, setClosedYesterdayPage] = useState(1);
   const [closedSearch, setClosedSearch] = useState('');
   const [closedAllSearch, setClosedAllSearch] = useState('');
   const [closedAllPayment, setClosedAllPayment] = useState<PaymentStatus | 'all'>('all');
   const [closedAllManagerId, setClosedAllManagerId] = useState<string | undefined>(undefined);
   const [closedAllDateRange, setClosedAllDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+
+  const yesterdayYmd = addDaysToTashkentYmd(tashkentYmd(), -1);
+  const yesterdayBounds = isoRangeForTashkentYmd(yesterdayYmd);
 
   const closedAllApiOpts = useMemo(() => {
     const rangeParams = closedRangeToApiParams(closedAllDateRange);
@@ -66,6 +84,16 @@ export default function WarehouseShipmentsPage() {
     setClosedPage(1);
   }, [closedAllPayment, closedAllManagerId, closedAllDateRange, closedAllSearch]);
 
+  useEffect(() => {
+    setClosedTodayPage(1);
+    setClosedYesterdayPage(1);
+  }, [closedSearch]);
+
+  const { data: companySettings } = useQuery({
+    queryKey: ['company-settings'],
+    queryFn: settingsApi.getCompanySettings,
+  });
+
   const { data: usersForFilters } = useQuery({
     queryKey: ['users-list-warehouse-closed'],
     queryFn: usersApi.list,
@@ -80,13 +108,6 @@ export default function WarehouseShipmentsPage() {
       )
       .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
   }, [usersForFilters]);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['warehouse-shipments-today', page, limit],
-    queryFn: () => dealsApi.getShipments(page, limit, { todayOnly: true }),
-    enabled: mainTab === 'shipmentsToday',
-    refetchInterval: 30_000,
-  });
 
   const { data: dealDetail, isLoading: detailLoading } = useQuery({
     queryKey: ['deal-detail', selectedDeal?.id],
@@ -108,8 +129,15 @@ export default function WarehouseShipmentsPage() {
     refetchInterval: 30_000,
   });
 
-  const shipments = data?.data ?? [];
-  const pagination = data?.pagination;
+  const { data: closedYesterdayResult, isLoading: closedYesterdayLoading } = useQuery({
+    queryKey: ['warehouse-closed-yesterday', closedYesterdayPage, yesterdayYmd],
+    queryFn: () => dealsApi.closedDeals(closedYesterdayPage, 50, {
+      closedFrom: yesterdayBounds.closedFrom,
+      closedTo: yesterdayBounds.closedTo,
+    }),
+    enabled: mainTab === 'closedYesterday',
+    refetchInterval: 30_000,
+  });
 
   const closedDeals = closedResult?.data ?? [];
   const closedPagination = closedResult?.pagination;
@@ -117,19 +145,8 @@ export default function WarehouseShipmentsPage() {
   const closedTodayDeals = closedTodayResult?.data ?? [];
   const closedTodayPagination = closedTodayResult?.pagination;
 
-  const filteredShipments = shipments.filter((deal) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      deal.title.toLowerCase().includes(q) ||
-      (deal.client?.companyName ?? '').toLowerCase().includes(q) ||
-      (deal.shipment?.deliveryNoteNumber ?? '').toLowerCase().includes(q) ||
-      (deal.shipment?.vehicleNumber ?? '').toLowerCase().includes(q) ||
-      (deal.manager?.fullName ?? '').toLowerCase().includes(q)
-    );
-  });
-
-  const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
+  const closedYesterdayDeals = closedYesterdayResult?.data ?? [];
+  const closedYesterdayPagination = closedYesterdayResult?.pagination;
 
   const filterClosedList = (deals: Deal[]) => {
     if (!closedSearch) return deals;
@@ -142,6 +159,7 @@ export default function WarehouseShipmentsPage() {
   };
 
   const filteredClosedToday = filterClosedList(closedTodayDeals);
+  const filteredClosedYesterday = filterClosedList(closedYesterdayDeals);
 
   const resetClosedAllFilters = () => {
     setClosedAllSearch('');
@@ -156,173 +174,93 @@ export default function WarehouseShipmentsPage() {
     setDrawerOpen(true);
   };
 
-  const columns = [
-    {
-      title: 'Накладная',
-      dataIndex: ['shipment', 'deliveryNoteNumber'],
-      width: 120,
-      render: (v: string, record: Deal) => (
-        <Button
-          type="link"
-          size="small"
-          onClick={() => openDetail(record)}
-          style={{ padding: 0, fontWeight: 600 }}
-        >
-          {v}
-        </Button>
-      ),
-    },
-    {
-      title: 'Сделка',
-      dataIndex: 'title',
-      render: (v: string, record: Deal) => (
-        <Link to={`/deals/${record.id}`} style={{ fontWeight: 500 }}>
-          {v}
-        </Link>
-      ),
-    },
-    {
-      title: 'Клиент',
-      key: 'client',
-      render: (_: unknown, record: Deal) => <ClientCompanyDisplay client={record.client} link />,
-    },
-    {
-      title: 'Сумма',
-      dataIndex: 'amount',
-      align: 'right' as const,
-      width: 120,
-      render: (v: string) => formatUZS(v),
-    },
-    {
-      title: 'Транспорт',
-      dataIndex: ['shipment', 'vehicleNumber'],
-      width: 100,
-      render: (v: string, record: Deal) => (
-        <Space direction="vertical" size={0}>
-          <Tag icon={<TruckOutlined />} color="blue">
-            {v}
-          </Tag>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {record.shipment?.vehicleType}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Водитель',
-      dataIndex: ['shipment', 'driverName'],
-      width: 120,
-      render: (v: string) => (
-        <Space>
-          <UserOutlined style={{ color: '#666' }} />
-          <span>{v}</span>
-        </Space>
-      ),
-    },
-    {
-      title: 'Время отправки',
-      dataIndex: ['shipment', 'departureTime'],
-      width: 140,
-      render: (v: string) => (
-        <Space direction="vertical" size={0}>
-          <span>{dayjs(v).format('DD.MM.YYYY')}</span>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {dayjs(v).format('HH:mm')}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Товаров',
-      dataIndex: 'items',
-      align: 'center' as const,
-      width: 80,
-      render: (items: DealItem[] | undefined) => (
-        <Badge count={items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />
-      ),
-    },
-    {
-      title: 'Менеджер',
-      dataIndex: ['manager', 'fullName'],
-      width: 120,
-    },
-    {
-      title: 'Отгружено',
-      dataIndex: ['shipment', 'shippedAt'],
-      width: 100,
-      render: (v: string) => (
-        <Typography.Text type="secondary">
-          {dayjs(v).format('DD.MM HH:mm')}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: '',
-      key: 'actions',
-      width: 60,
-      render: (_: unknown, record: Deal) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => openDetail(record)}
-        />
-      ),
-    },
-  ];
+  const closedColumns = useMemo(() => {
+    const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
+    return [
+      {
+        title: 'Сделка',
+        dataIndex: 'title',
+        render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+      },
+      {
+        title: 'Клиент',
+        key: 'client',
+        render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+      },
+      { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
+      {
+        title: 'Доставка',
+        dataIndex: 'deliveryType',
+        width: 110,
+        render: (v: string | undefined) =>
+          v ? <Tag color={v === 'DELIVERY' ? 'orange' : v === 'YANDEX' ? 'purple' : 'blue'}>{deliveryLabels[v] || v}</Tag> : '—',
+      },
+      { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+      {
+        title: 'Водитель',
+        key: 'driver',
+        width: 140,
+        render: (_: unknown, r: Deal) => (r.deliveryDriver ? <Tag color="green">{r.deliveryDriver.fullName}</Tag> : '—'),
+      },
+      {
+        title: 'Грузил',
+        key: 'loader',
+        width: 140,
+        render: (_: unknown, r: Deal) =>
+          (r.loadingAssignee?.fullName ? <Tag color="cyan">{r.loadingAssignee.fullName}</Tag> : '—'),
+      },
+      {
+        title: 'Товары',
+        key: 'items',
+        render: (_: unknown, r: Deal) => <Badge count={r.items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />,
+      },
+      {
+        title: 'Статус',
+        dataIndex: 'status',
+        width: 100,
+        render: (s: Deal['status']) => <DealStatusTag status={s} />,
+      },
+      {
+        title: 'Закрыта',
+        key: 'closedAt',
+        width: 120,
+        render: (_: unknown, r: Deal) =>
+          r.closedAt ? dayjs(r.closedAt).format('DD.MM.YYYY HH:mm') : '—',
+      },
+      {
+        title: '',
+        key: 'print',
+        width: 48,
+        render: (_: unknown, r: Deal) => (
+          <Button
+            type="text"
+            size="small"
+            icon={<PrinterOutlined />}
+            aria-label="Распечатать накладную"
+            onClick={(e) => {
+              e.stopPropagation();
+              printDealWaybillA5(r, companySettings ?? null);
+            }}
+          />
+        ),
+      },
+    ];
+  }, [companySettings]);
 
-  const closedColumns = [
-    {
-      title: 'Сделка',
-      dataIndex: 'title',
-      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+  const closedTableCommon = {
+    columns: closedColumns,
+    rowKey: 'id' as const,
+    pagination: false as const,
+    size: 'middle' as const,
+    bordered: false as const,
+    expandable: {
+      expandedRowRender: (record: Deal) => expandedItemsRow(record),
     },
-    {
-      title: 'Клиент',
-      key: 'client',
-      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
-    },
-    { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-    {
-      title: 'Доставка',
-      dataIndex: 'deliveryType',
-      width: 110,
-      render: (v: string | undefined) =>
-        v ? <Tag color={v === 'DELIVERY' ? 'orange' : v === 'YANDEX' ? 'purple' : 'blue'}>{deliveryLabels[v] || v}</Tag> : '—',
-    },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
-    {
-      title: 'Водитель',
-      key: 'driver',
-      width: 140,
-      render: (_: unknown, r: Deal) => (r.deliveryDriver ? <Tag color="green">{r.deliveryDriver.fullName}</Tag> : '—'),
-    },
-    {
-      title: 'Грузил',
-      key: 'loader',
-      width: 140,
-      render: (_: unknown, r: Deal) =>
-        (r.loadingAssignee?.fullName ? <Tag color="cyan">{r.loadingAssignee.fullName}</Tag> : '—'),
-    },
-    {
-      title: 'Товары',
-      key: 'items',
-      render: (_: unknown, r: Deal) => <Badge count={r.items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />,
-    },
-    {
-      title: 'Статус',
-      dataIndex: 'status',
-      width: 100,
-      render: (s: Deal['status']) => <DealStatusTag status={s} />,
-    },
-    {
-      title: 'Закрыта',
-      key: 'closedAt',
-      width: 120,
-      render: (_: unknown, r: Deal) =>
-        r.closedAt ? dayjs(r.closedAt).format('DD.MM.YYYY HH:mm') : '—',
-    },
-  ];
+    onRow: (record: Deal) => ({
+      style: { cursor: 'pointer' as const },
+      onClick: () => openDetail(record),
+    }),
+  };
 
   return (
     <div style={{ padding: isMobile ? 12 : undefined }}>
@@ -331,7 +269,7 @@ export default function WarehouseShipmentsPage() {
           <BackButton fallback="/dashboard" />
           <Typography.Title level={4} style={{ margin: 0 }}>
             <TruckOutlined style={{ marginRight: 8 }} />
-            Накладные: сегодня и закрытые
+            Накладные: закрытые
           </Typography.Title>
         </Space>
       </div>
@@ -340,56 +278,6 @@ export default function WarehouseShipmentsPage() {
         activeKey={mainTab}
         onChange={(k) => setMainTab(k as WarehouseMainTab)}
         items={[
-          {
-            key: 'shipmentsToday',
-            label: (
-              <span>
-                Отправка сегодня
-                {pagination?.total != null ? (
-                  <Tag style={{ marginLeft: 8 }}>{pagination.total}</Tag>
-                ) : null}
-              </span>
-            ),
-            children: (
-              <>
-                <div style={{ marginBottom: 12 }}>
-                  <Input.Search
-                    placeholder="Поиск по накладной, клиенту, транспорту..."
-                    style={{ width: isMobile ? '100%' : 350 }}
-                    allowClear
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <Table
-                  dataSource={filteredShipments}
-                  columns={columns}
-                  rowKey="id"
-                  loading={isLoading}
-                  scroll={{ x: 600 }}
-                  pagination={{
-                    current: page,
-                    pageSize: limit,
-                    total: pagination?.total,
-                    showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-                    showSizeChanger: true,
-                    pageSizeOptions: ['20', '50', '100'],
-                    onChange: (newPage, newPageSize) => {
-                      setPage(newPage);
-                      setLimit(newPageSize || limit);
-                    },
-                  }}
-                  size="middle"
-                  bordered={false}
-                  locale={{ emptyText: 'Нет накладных с датой отправки сегодня (Ташкент)' }}
-                  onRow={(record) => ({
-                    style: { cursor: 'pointer' },
-                    onClick: () => openDetail(record),
-                  })}
-                />
-              </>
-            ),
-          },
           {
             key: 'closedToday',
             label: (
@@ -412,34 +300,11 @@ export default function WarehouseShipmentsPage() {
                   />
                 </div>
                 <Table
+                  {...closedTableCommon}
                   dataSource={filteredClosedToday}
-                  columns={closedColumns}
-                  rowKey="id"
                   loading={closedTodayLoading}
-                  scroll={{ x: 900 }}
-                  pagination={false}
-                  size="middle"
-                  bordered={false}
+                  scroll={{ x: 960 }}
                   locale={{ emptyText: 'Нет сделок, закрытых сегодня (Ташкент)' }}
-                  expandable={{
-                    expandedRowRender: (record: Deal) => {
-                      const items = record.items ?? [];
-                      if (items.length === 0) return <Typography.Text type="secondary">Нет позиций</Typography.Text>;
-                      return (
-                        <ul style={{ margin: 0, paddingLeft: 16 }}>
-                          {items.map((it) => (
-                            <li key={it.id}>
-                              {it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    },
-                  }}
-                  onRow={(record) => ({
-                    style: { cursor: 'pointer' },
-                    onClick: () => openDetail(record),
-                  })}
                 />
                 {closedTodayPagination && closedTodayPagination.pages > 1 && (
                   <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -448,6 +313,48 @@ export default function WarehouseShipmentsPage() {
                       total={closedTodayPagination.total}
                       pageSize={50}
                       onChange={(p) => setClosedTodayPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'closedYesterday',
+            label: (
+              <span>
+                Закрыты вчера
+                {closedYesterdayPagination?.total != null ? (
+                  <Tag style={{ marginLeft: 8 }}>{closedYesterdayPagination.total}</Tag>
+                ) : null}
+              </span>
+            ),
+            children: (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Input.Search
+                    placeholder="Поиск по сделке, клиенту, менеджеру..."
+                    style={{ width: isMobile ? '100%' : 350 }}
+                    allowClear
+                    value={closedSearch}
+                    onChange={(e) => setClosedSearch(e.target.value)}
+                  />
+                </div>
+                <Table
+                  {...closedTableCommon}
+                  dataSource={filteredClosedYesterday}
+                  loading={closedYesterdayLoading}
+                  scroll={{ x: 960 }}
+                  locale={{ emptyText: 'Нет сделок, закрытых вчера (Ташкент)' }}
+                />
+                {closedYesterdayPagination && closedYesterdayPagination.pages > 1 && (
+                  <div style={{ textAlign: 'center', marginTop: 12 }}>
+                    <Pagination
+                      current={closedYesterdayPage}
+                      total={closedYesterdayPagination.total}
+                      pageSize={50}
+                      onChange={(p) => setClosedYesterdayPage(p)}
                       showSizeChanger={false}
                     />
                   </div>
@@ -506,34 +413,11 @@ export default function WarehouseShipmentsPage() {
                   />
                 </Space>
                 <Table
+                  {...closedTableCommon}
                   dataSource={closedDeals}
-                  columns={closedColumns}
-                  rowKey="id"
                   loading={closedLoading}
-                  scroll={{ x: 900 }}
-                  pagination={false}
-                  size="middle"
-                  bordered={false}
+                  scroll={{ x: 960 }}
                   locale={{ emptyText: 'Нет закрытых сделок по фильтрам' }}
-                  expandable={{
-                    expandedRowRender: (record: Deal) => {
-                      const items = record.items ?? [];
-                      if (items.length === 0) return <Typography.Text type="secondary">Нет позиций</Typography.Text>;
-                      return (
-                        <ul style={{ margin: 0, paddingLeft: 16 }}>
-                          {items.map((it) => (
-                            <li key={it.id}>
-                              {it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    },
-                  }}
-                  onRow={(record) => ({
-                    style: { cursor: 'pointer' },
-                    onClick: () => openDetail(record),
-                  })}
                 />
                 {closedPagination && closedPagination.pages > 1 && (
                   <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -552,13 +436,23 @@ export default function WarehouseShipmentsPage() {
         ]}
       />
 
-      {/* Detail Drawer */}
       <Drawer
         title={
           <Space>
             <TruckOutlined />
             {selectedDeal?.shipment?.deliveryNoteNumber ? `Накладная ${selectedDeal.shipment.deliveryNoteNumber}` : 'Детали накладной'}
           </Space>
+        }
+        extra={
+          dealDetail ? (
+            <Button
+              type="primary"
+              icon={<PrinterOutlined />}
+              onClick={() => printDealWaybillA5(dealDetail, companySettings ?? null)}
+            >
+              Распечатать накладную
+            </Button>
+          ) : undefined
         }
         open={drawerOpen}
         onClose={() => {

@@ -9,6 +9,7 @@ import type { Deal, DeliveryType } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { useAuthStore } from '../store/authStore';
 
 const deliveryLabels: Record<string, string> = {
   SELF_PICKUP: 'Самовывоз',
@@ -24,19 +25,26 @@ function DeliveryTag({ type }: { type?: DeliveryType | null }) {
 
 export default function WarehouseManagerPage() {
   const isMobile = useIsMobile();
+  const role = useAuthStore((s) => s.user?.role);
+  const fullWmAccess = role === 'WAREHOUSE_MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
   const [tab, setTab] = useState('incoming');
   const [assignModal, setAssignModal] = useState<{ dealId: string; type: 'loading' | 'driver' } | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: incoming = [], isLoading: l1 } = useQuery({ queryKey: ['wm-incoming'], queryFn: dealsApi.wmIncoming, refetchInterval: 10_000 });
-  const { data: approved = [], isLoading: l2 } = useQuery({ queryKey: ['wm-approved'], queryFn: dealsApi.wmApproved, refetchInterval: 10_000 });
-  const { data: staff = [] } = useQuery({ queryKey: ['loading-staff'], queryFn: dealsApi.loadingStaff });
-  const { data: drivers = [] } = useQuery({ queryKey: ['drivers-list'], queryFn: dealsApi.driversList });
+  const { data: approved = [], isLoading: l2 } = useQuery({
+    queryKey: ['wm-approved'],
+    queryFn: dealsApi.wmApproved,
+    refetchInterval: 10_000,
+    enabled: fullWmAccess,
+  });
+  const { data: staff = [] } = useQuery({ queryKey: ['loading-staff'], queryFn: dealsApi.loadingStaff, enabled: fullWmAccess });
+  const { data: drivers = [] } = useQuery({ queryKey: ['drivers-list'], queryFn: dealsApi.driversList, enabled: fullWmAccess });
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['wm-incoming'] });
-    qc.invalidateQueries({ queryKey: ['wm-approved'] });
+    if (fullWmAccess) qc.invalidateQueries({ queryKey: ['wm-approved'] });
   };
 
   const confirmMut = useMutation({
@@ -172,117 +180,120 @@ export default function WarehouseManagerPage() {
     );
   };
 
+  const pageTitle = fullWmAccess ? 'Зав. склада' : 'Входящие к админу';
+
+  const incomingTab = {
+    key: 'incoming',
+    label: `Входящие (${incoming.length})`,
+    children: isMobile ? (
+      l1 ? <Card loading /> : incoming.length === 0
+        ? <Card><Typography.Text type="secondary">Нет входящих сделок</Typography.Text></Card>
+        : <div>{incoming.map((d) => <div key={d.id}>{renderIncomingCard(d)}</div>)}</div>
+    ) : (
+      <Card>
+        <Table
+          dataSource={incoming}
+          rowKey="id"
+          loading={l1}
+          size="small"
+          pagination={false}
+          scroll={{ x: 700 }}
+          expandable={{ expandedRowRender: expandedRow }}
+          columns={[
+            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+            {
+              title: 'Клиент',
+              key: 'client',
+              render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+            },
+            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
+            { title: 'Машина', key: 'vehicle', render: (_: unknown, r: Deal) => r.vehicleNumber ? `${r.vehicleType || ''} ${r.vehicleNumber}`.trim() : '—', width: 160 },
+            { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+            {
+              title: '', key: 'actions', width: 200,
+              render: (_: unknown, r: Deal) => {
+                const isPickup = r.deliveryType === 'SELF_PICKUP' || r.deliveryType === 'YANDEX';
+                return (
+                  <Popconfirm title={isPickup ? 'Клиент пришёл за товарами?' : 'Машина готова?'} onConfirm={() => confirmMut.mutate(r.id)}>
+                    <Button type="primary" size="small" icon={isPickup ? <CheckOutlined /> : <CarOutlined />} loading={confirmMut.isPending}>
+                      {isPickup ? 'Пришли за товарами' : 'Машина готова'}
+                    </Button>
+                  </Popconfirm>
+                );
+              },
+            },
+          ]}
+        />
+      </Card>
+    ),
+  };
+
+  const approvedTab = {
+    key: 'approved',
+    label: `Одобренные (${approved.length})`,
+    children: isMobile ? (
+      l2 ? <Card loading /> : approved.length === 0
+        ? <Card><Typography.Text type="secondary">Нет одобренных сделок</Typography.Text></Card>
+        : <div>{approved.map((d) => <div key={d.id}>{renderApprovedCard(d)}</div>)}</div>
+    ) : (
+      <Card>
+        <Table
+          dataSource={approved}
+          rowKey="id"
+          loading={l2}
+          size="small"
+          pagination={false}
+          scroll={{ x: 700 }}
+          expandable={{ expandedRowRender: expandedRow }}
+          columns={[
+            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+            {
+              title: 'Клиент',
+              key: 'client',
+              render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
+            },
+            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
+            {
+              title: 'Водитель', key: 'driver', width: 140,
+              render: (_: unknown, r: Deal) => r.deliveryDriver
+                ? <Tag color="green">{r.deliveryDriver.fullName}</Tag>
+                : r.deliveryType === 'DELIVERY' ? <Tag color="red">Не назначен</Tag> : '—',
+            },
+            { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+            {
+              title: '', key: 'actions', width: 250,
+              render: (_: unknown, r: Deal) => {
+                const isDelivery = r.deliveryType === 'DELIVERY';
+                const needsDriver = isDelivery && !r.deliveryDriverId;
+                return (
+                  <Space wrap>
+                    {needsDriver && (
+                      <Button size="small" type="primary" icon={<CarOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'driver' }); setSelectedUserId(null); }}>
+                        Назначить водителя
+                      </Button>
+                    )}
+                    {!needsDriver && (
+                      <Button size="small" icon={<UserAddOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'loading' }); setSelectedUserId(null); }}>
+                        Назначить на отгрузку
+                      </Button>
+                    )}
+                  </Space>
+                );
+              },
+            },
+          ]}
+        />
+      </Card>
+    ),
+  };
+
   return (
     <div style={{ padding: isMobile ? 12 : 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <BackButton fallback="/dashboard" />
-        <Typography.Title level={3} style={{ margin: 0 }}>Зав. склада</Typography.Title>
+        <Typography.Title level={3} style={{ margin: 0 }}>{pageTitle}</Typography.Title>
       </div>
-      <Tabs activeKey={tab} onChange={setTab} items={[
-        {
-          key: 'incoming',
-          label: `Входящие (${incoming.length})`,
-          children: isMobile ? (
-            l1 ? <Card loading /> : incoming.length === 0
-              ? <Card><Typography.Text type="secondary">Нет входящих сделок</Typography.Text></Card>
-              : <div>{incoming.map((d) => <div key={d.id}>{renderIncomingCard(d)}</div>)}</div>
-          ) : (
-            <Card>
-              <Table
-                dataSource={incoming}
-                rowKey="id"
-                loading={l1}
-                size="small"
-                pagination={false}
-                scroll={{ x: 700 }}
-                expandable={{ expandedRowRender: expandedRow }}
-                columns={[
-                  { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-                  {
-                    title: 'Клиент',
-                    key: 'client',
-                    render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
-                  },
-                  { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
-                  { title: 'Машина', key: 'vehicle', render: (_: unknown, r: Deal) => r.vehicleNumber ? `${r.vehicleType || ''} ${r.vehicleNumber}`.trim() : '—', width: 160 },
-                  { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
-                  {
-                    title: '', key: 'actions', width: 200,
-                    render: (_: unknown, r: Deal) => {
-                      const isPickup = r.deliveryType === 'SELF_PICKUP' || r.deliveryType === 'YANDEX';
-                      return (
-                        <Popconfirm title={isPickup ? 'Клиент пришёл за товарами?' : 'Машина готова?'} onConfirm={() => confirmMut.mutate(r.id)}>
-                          <Button type="primary" size="small" icon={isPickup ? <CheckOutlined /> : <CarOutlined />} loading={confirmMut.isPending}>
-                            {isPickup ? 'Пришли за товарами' : 'Машина готова'}
-                          </Button>
-                        </Popconfirm>
-                      );
-                    },
-                  },
-                ]}
-              />
-            </Card>
-          ),
-        },
-        {
-          key: 'approved',
-          label: `Одобренные (${approved.length})`,
-          children: isMobile ? (
-            l2 ? <Card loading /> : approved.length === 0
-              ? <Card><Typography.Text type="secondary">Нет одобренных сделок</Typography.Text></Card>
-              : <div>{approved.map((d) => <div key={d.id}>{renderApprovedCard(d)}</div>)}</div>
-          ) : (
-            <Card>
-              <Table
-                dataSource={approved}
-                rowKey="id"
-                loading={l2}
-                size="small"
-                pagination={false}
-                scroll={{ x: 700 }}
-                expandable={{ expandedRowRender: expandedRow }}
-                columns={[
-                  { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-                  {
-                    title: 'Клиент',
-                    key: 'client',
-                    render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
-                  },
-                  { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
-                  {
-                    title: 'Водитель', key: 'driver', width: 140,
-                    render: (_: unknown, r: Deal) => r.deliveryDriver
-                      ? <Tag color="green">{r.deliveryDriver.fullName}</Tag>
-                      : r.deliveryType === 'DELIVERY' ? <Tag color="red">Не назначен</Tag> : '—',
-                  },
-                  { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
-                  {
-                    title: '', key: 'actions', width: 250,
-                    render: (_: unknown, r: Deal) => {
-                      const isDelivery = r.deliveryType === 'DELIVERY';
-                      const needsDriver = isDelivery && !r.deliveryDriverId;
-                      return (
-                        <Space wrap>
-                          {needsDriver && (
-                            <Button size="small" type="primary" icon={<CarOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'driver' }); setSelectedUserId(null); }}>
-                              Назначить водителя
-                            </Button>
-                          )}
-                          {!needsDriver && (
-                            <Button size="small" icon={<UserAddOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'loading' }); setSelectedUserId(null); }}>
-                              Назначить на отгрузку
-                            </Button>
-                          )}
-                        </Space>
-                      );
-                    },
-                  },
-                ]}
-              />
-            </Card>
-          ),
-        },
-      ]} />
+      <Tabs activeKey={tab} onChange={setTab} items={fullWmAccess ? [incomingTab, approvedTab] : [incomingTab]} />
 
       <Modal
         title={assignModal?.type === 'loading' ? 'Назначить на отгрузку' : 'Назначить водителя'}
