@@ -155,11 +155,16 @@ RESPONSE FORMAT (strict JSON):
 - Always include the SQL you generated in the "sql" field
 - When listing users, always mention their role (ADMIN, MANAGER, etc.) in the answer
 
+CONVERSATIONAL QUESTIONS:
+- If the user asks a non-data question (greetings, "what can you do?", "can you create tasks?", etc.) — do NOT generate SQL
+- Instead return: { "sql": null, "answer": "your conversational response in Russian", "entities": [] }
+- You are a READ-ONLY assistant: you can only QUERY data, you CANNOT create, edit, or delete anything
+- When asked what you can do, explain: you can answer questions about clients, deals, products, users, payments, debts, expenses — any data in the CRM
+
 IMPORTANT:
 - Think step by step
-- First generate the SQL query
-- The system will execute it and give you the results
-- Then generate the final answer based on the actual data`;
+- For data questions: first generate the SQL query, the system will execute it and give you the results, then generate the final answer
+- For non-data questions: respond directly without SQL`;
 
 function getOpenAIClient(): OpenAI {
   const apiKey = config.openai.apiKey;
@@ -342,9 +347,10 @@ async function executeAiQuery(question: string): Promise<AiAssistantResponse> {
         role: 'user',
         content: `Вопрос пользователя: "${question}"
 
-Generate the SQL query first. Return JSON with "sql" field containing the query. Do NOT include the final answer yet — I will execute the SQL and give you the results.
+If this is a DATA question — generate SQL. Return: { "sql": "SELECT ..." }
+If this is a CONVERSATIONAL question (greeting, capabilities, non-data) — return: { "sql": null, "answer": "ответ на русском", "entities": [] }
 
-Return ONLY valid JSON: { "sql": "SELECT ..." }`,
+Return ONLY valid JSON.`,
       },
     ],
     response_format: { type: 'json_object' },
@@ -355,18 +361,21 @@ Return ONLY valid JSON: { "sql": "SELECT ..." }`,
     throw new AppError(500, 'AI не смог сгенерировать запрос.');
   }
 
-  let parsedSql: { sql: string };
+  let parsedFirst: { sql?: string | null; answer?: string; entities?: any[] };
   try {
-    parsedSql = JSON.parse(sqlContent);
+    parsedFirst = JSON.parse(sqlContent);
   } catch {
     throw new AppError(500, 'AI вернул некорректный JSON.');
   }
 
-  const sql = parsedSql.sql?.trim();
-  if (!sql) {
-    throw new AppError(500, 'AI не вернул SQL запрос.');
+  if (!parsedFirst.sql) {
+    return {
+      answer: parsedFirst.answer || 'Я — AI-ассистент CRM. Я могу отвечать на вопросы по данным: клиенты, сделки, товары, платежи, пользователи и расходы.',
+      entities: Array.isArray(parsedFirst.entities) ? parsedFirst.entities : [],
+    };
   }
 
+  const sql = parsedFirst.sql.trim();
   validateSQL(sql);
 
   let queryResult: unknown;
