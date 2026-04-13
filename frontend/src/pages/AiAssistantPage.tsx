@@ -66,7 +66,7 @@ export default function AiAssistantPage() {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -99,7 +99,8 @@ export default function AiAssistantPage() {
   }, [chatMessages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   const renameMutation = useMutation({
@@ -322,7 +323,7 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+      <div ref={messagesContainerRef} style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
         {!activeChatId && messages.length === 0 ? (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
             <Empty
@@ -425,7 +426,6 @@ export default function AiAssistantPage() {
                 </div>
               </div>
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
       </div>
