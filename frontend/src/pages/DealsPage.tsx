@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
 import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
-import { DILNOZA_DEALS_FILTER_OPTIONS } from '../constants/dilnozaPayments';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
-import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -41,9 +39,7 @@ function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
     >
       <Link to={`/deals/${deal.id}`} style={{ textDecoration: 'none' }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>{deal.title}</Typography.Text>
-        <div style={{ fontSize: 12 }}>
-          <ClientCompanyDisplay client={deal.client} secondary />
-        </div>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text>
         <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
           <Tag color={paymentStatusLabels[deal.paymentStatus]?.color} style={{ fontSize: 11, marginRight: 0 }}>
@@ -80,15 +76,8 @@ function KanbanColumn({ status, deals, openLabel }: { status: DealStatus; deals:
 const STORAGE_KEY_VIEW = 'dealsViewMode';
 const STORAGE_KEY_STATUS = 'dealsStatusFilter';
 
-function isDilnozaUser(fullName?: string, login?: string): boolean {
-  const f = (fullName || '').trim().toLowerCase();
-  const l = (login || '').trim().toLowerCase();
-  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
-}
-
 export default function DealsPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_VIEW);
     return saved === 'kanban' ? 'kanban' : 'table';
@@ -100,8 +89,6 @@ export default function DealsPage() {
 
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
-  const paymentFilter = new URLSearchParams(location.search).get('dilnozaPayment');
   const isManager = user?.role === 'MANAGER';
   const entityLabel = isManager ? 'Заявки' : 'Сделки';
   const oneEntityLabel = isManager ? 'Заявка' : 'Сделка';
@@ -127,17 +114,7 @@ export default function DealsPage() {
   });
 
   const hideIfEmpty: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED'];
-  const filteredDeals = (deals ?? []).filter((d) => {
-    if (!isDilnoza || !paymentFilter) return true;
-    if (paymentFilter === 'ACCOUNTING') return d.paymentMethod === 'TRANSFER' || d.paymentMethod === 'INSTALLMENT';
-    return d.paymentMethod === paymentFilter;
-  });
-  const filteredAllDeals = (allDeals ?? []).filter((d) => {
-    if (!isDilnoza || !paymentFilter) return true;
-    if (paymentFilter === 'ACCOUNTING') return d.paymentMethod === 'TRANSFER' || d.paymentMethod === 'INSTALLMENT';
-    return d.paymentMethod === paymentFilter;
-  });
-  const statusesWithDeals = new Set(filteredAllDeals.map((d) => d.status));
+  const statusesWithDeals = new Set((allDeals ?? []).map((d) => d.status));
 
   const archiveMut = useMutation({
     mutationFn: (id: string) => dealsApi.archive(id),
@@ -152,17 +129,13 @@ export default function DealsPage() {
   });
 
   const dealsByStatus = kanbanStatuses.reduce((acc, status) => {
-    acc[status] = filteredDeals.filter((d) => d.status === status);
+    acc[status] = (deals ?? []).filter((d) => d.status === status);
     return acc;
   }, {} as Record<DealStatus, Deal[]>);
 
   const columns = [
     { title: oneEntityLabel, dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    {
-      title: 'Клиент',
-      key: 'client',
-      render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
-    },
+    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
@@ -205,14 +178,6 @@ export default function DealsPage() {
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Space wrap>
           <Typography.Title level={4} style={{ margin: 0 }}>{entityLabel}</Typography.Title>
-          {isDilnoza && (
-            <Select
-              style={{ width: isMobile ? '100%' : 220 }}
-              value={paymentFilter || 'ALL'}
-              onChange={(v) => navigate(v === 'ALL' ? '/deals' : `/deals?dilnozaPayment=${v}`)}
-              options={DILNOZA_DEALS_FILTER_OPTIONS}
-            />
-          )}
           {viewMode === 'table' && (
             <Select
               allowClear
@@ -247,14 +212,14 @@ export default function DealsPage() {
       {viewMode === 'table' ? (
         isMobile ? (
           <MobileCardList
-            data={filteredDeals}
+            data={deals ?? []}
             rowKey="id"
             loading={isLoading}
             renderCard={(deal) => <DealCard deal={deal} openLabel={openLabel} />}
           />
         ) : (
           <Table
-            dataSource={filteredDeals}
+            dataSource={deals}
             columns={columns}
             rowKey="id"
             loading={isLoading}

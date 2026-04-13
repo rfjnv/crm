@@ -6,7 +6,6 @@ import { inventoryApi } from '../api/warehouse.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { Link } from 'react-router-dom';
-import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import dayjs from 'dayjs';
 
 const typeConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
@@ -47,16 +46,9 @@ export default function MovementsPage() {
       title: 'Клиент',
       key: 'client',
       render: (_: unknown, record: any) => {
-        const d = record.deal;
-        if (!d?.id) return '—';
-        if (d.client?.companyName) {
-          return (
-            <Link to={`/deals/${d.id}`}>
-              <ClientCompanyDisplay client={d.client} />
-            </Link>
-          );
-        }
-        return <Link to={`/deals/${d.id}`}>{d.title}</Link>;
+        const clientName = record.deal?.client?.companyName || record.deal?.title;
+        if (!record.deal?.id || !clientName) return clientName || '—';
+        return <Link to={`/deals/${record.deal.id}`}>{clientName}</Link>;
       },
     },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
@@ -102,13 +94,7 @@ export default function MovementsPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>Клиент</Typography.Text>
-                      <div>
-                        {m.deal.client?.companyName ? (
-                          <ClientCompanyDisplay client={m.deal.client} />
-                        ) : (
-                          <Typography.Text strong>{m.deal.title}</Typography.Text>
-                        )}
-                      </div>
+                      <div><Typography.Text strong>{m.deal.client?.companyName || m.deal.title}</Typography.Text></div>
                       <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка: {m.deal.title}</Typography.Text></div>
                     </div>
                     <RightOutlined style={{ color: '#999' }} />
