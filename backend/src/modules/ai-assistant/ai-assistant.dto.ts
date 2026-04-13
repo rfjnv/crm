@@ -7,7 +7,7 @@ export const askQuestionDto = z.object({
 export type AskQuestionDto = z.infer<typeof askQuestionDto>;
 
 export interface AiAssistantEntity {
-  type: 'client' | 'deal' | 'product';
+  type: 'client' | 'deal' | 'product' | 'user';
   id: string;
   name: string;
 }

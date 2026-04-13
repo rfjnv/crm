@@ -124,19 +124,27 @@ RULES:
 - The user speaks Russian (Uzbek CRM), answer in Russian
 - Use company_name for client names, full_name for user/manager names
 
+ENTITY TYPES — use the correct type depending on context:
+- "client" — for clients (from clients table), use company_name as name
+- "deal" — for deals (from deals table), use title as name
+- "product" — for products (from products table), use name
+- "user" — for users/employees/managers (from users table), use full_name as name, and include their role in the answer
+
+CRITICAL: When the user asks about "пользователи", "сотрудники", "менеджеры" — these are USERS (from the users table), NOT clients. Always use type "user" for them. Clients are companies (from the clients table).
+
 RESPONSE FORMAT (strict JSON):
 {
   "sql": "SELECT ...",
   "answer": "human-readable answer in Russian",
   "entities": [
-    { "type": "client", "id": "uuid", "name": "company name" }
+    { "type": "client|deal|product|user", "id": "uuid", "name": "display name" }
   ]
 }
 
-- "entities" must include all relevant client/deal/product IDs for navigation
-- entity type can be: "client", "deal", "product"
+- "entities" must include all relevant IDs for navigation
 - If no entities are relevant, return empty array []
 - Always include the SQL you generated in the "sql" field
+- When listing users, always mention their role (ADMIN, MANAGER, etc.) in the answer
 
 IMPORTANT:
 - Think step by step
@@ -247,7 +255,7 @@ ${JSON.stringify(queryResult, null, 2)}
 {
   "sql": "${sql.replace(/"/g, '\\"')}",
   "answer": "понятный ответ на русском языке с конкретными цифрами",
-  "entities": [{ "type": "client|deal|product", "id": "uuid", "name": "название" }]
+  "entities": [{ "type": "client|deal|product|user", "id": "uuid", "name": "название" }]
 }
 
 Правила:

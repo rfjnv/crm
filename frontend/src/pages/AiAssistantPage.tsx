@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
-import { Card, Input, Button, Typography, Tag, Space, Spin, Empty, theme } from 'antd';
-import { SendOutlined, RobotOutlined, UserOutlined, CodeOutlined } from '@ant-design/icons';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Card, Input, Button, Typography, Tag, Space, Spin, Empty, theme, Tooltip } from 'antd';
+import { SendOutlined, RobotOutlined, UserOutlined, CodeOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { aiAssistantApi, type AiAssistantResponse, type AiEntity } from '../api/ai-assistant.api';
 
 const { Text, Paragraph } = Typography;
+
+const STORAGE_KEY = 'ai-assistant-history';
 
 interface ChatMessage {
   id: number;
@@ -22,11 +24,43 @@ const SUGGESTION_CHIPS = [
   'Топ 5 клиентов по сумме сделок',
   'Какие сделки были за последнюю неделю?',
   'Какие товары заканчиваются на складе?',
-  'Сколько выручка за этот месяц?',
+  'Какие пользователи есть у нас?',
 ];
 
+function loadHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    return parsed.filter((m) => !m.loading);
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(messages: ChatMessage[]) {
+  try {
+    const toSave = messages.filter((m) => !m.loading);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+const ENTITY_LABELS: Record<string, string> = {
+  client: 'Клиент',
+  deal: 'Сделка',
+  product: 'Товар',
+  user: 'Пользователь',
+};
+
+const ENTITY_COLORS: Record<string, string> = {
+  client: 'blue',
+  deal: 'green',
+  product: 'orange',
+  user: 'purple',
+};
+
 export default function AiAssistantPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadHistory);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSql, setShowSql] = useState<Record<number, boolean>>({});
@@ -39,7 +73,11 @@ export default function AiAssistantPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async (text?: string) => {
+  useEffect(() => {
+    saveHistory(messages);
+  }, [messages]);
+
+  const handleSend = useCallback(async (text?: string) => {
     const question = (text || input).trim();
     if (!question || loading) return;
 
@@ -82,7 +120,7 @@ export default function AiAssistantPage() {
       setLoading(false);
       inputRef.current?.focus();
     }
-  };
+  }, [input, loading]);
 
   const handleEntityClick = (entity: AiEntity) => {
     switch (entity.type) {
@@ -95,7 +133,15 @@ export default function AiAssistantPage() {
       case 'product':
         navigate(`/inventory/products/${entity.id}`);
         break;
+      case 'user':
+        navigate(`/users`);
+        break;
     }
+  };
+
+  const handleClearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const toggleSql = (msgId: number) => {
@@ -106,11 +152,21 @@ export default function AiAssistantPage() {
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
         <RobotOutlined style={{ fontSize: 28, color: themeToken.colorPrimary }} />
-        <div>
+        <div style={{ flex: 1 }}>
           <Text strong style={{ fontSize: 20 }}>AI Ассистент</Text>
           <br />
           <Text type="secondary" style={{ fontSize: 13 }}>Задавайте вопросы по данным CRM на естественном языке</Text>
         </div>
+        {messages.length > 0 && (
+          <Tooltip title="Очистить историю">
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
+              danger
+              onClick={handleClearHistory}
+            />
+          </Tooltip>
+        )}
       </div>
 
       <Card
@@ -195,11 +251,11 @@ export default function AiAssistantPage() {
                           {msg.entities.map((entity, idx) => (
                             <Tag
                               key={idx}
-                              color="blue"
+                              color={ENTITY_COLORS[entity.type] || 'blue'}
                               style={{ cursor: 'pointer', borderRadius: 8 }}
                               onClick={() => handleEntityClick(entity)}
                             >
-                              {entity.type === 'client' ? 'Клиент' : entity.type === 'deal' ? 'Сделка' : 'Товар'}: {entity.name}
+                              {ENTITY_LABELS[entity.type] || entity.type}: {entity.name}
                             </Tag>
                           ))}
                         </div>

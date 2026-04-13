@@ -1,7 +1,7 @@
 import client from './client';
 
 export interface AiEntity {
-  type: 'client' | 'deal' | 'product';
+  type: 'client' | 'deal' | 'product' | 'user';
   id: string;
   name: string;
 }
