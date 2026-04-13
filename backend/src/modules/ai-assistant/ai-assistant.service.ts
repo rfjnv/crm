@@ -101,6 +101,7 @@ SQL RULES (NEVER BREAK):
   - This week: date_trunc('week', NOW() AT TIME ZONE 'Asia/Tashkent')
   - This month: date_trunc('month', NOW() AT TIME ZONE 'Asia/Tashkent')
   - Last 30 days: (NOW() AT TIME ZONE 'Asia/Tashkent')::date - INTERVAL '30 days'
+  - Last N days (любое N из вопроса: 7, 90, 120, 365): use NOW() - INTERVAL 'N days' (substitute N, e.g. INTERVAL '120 days') on deal line time COALESCE(di.deal_date, di.created_at, d.created_at)
   - Last week: date_trunc('week', NOW() AT TIME ZONE 'Asia/Tashkent') - INTERVAL '7 days'
   - When comparing dates: created_at AT TIME ZONE 'Asia/Tashkent'
   - For display: to_char(created_at AT TIME ZONE 'Asia/Tashkent', 'DD.MM.YYYY HH24:MI')
@@ -161,6 +162,7 @@ REVENUE question -> queries for: total, deal count, avg check, top manager, top 
 MANAGER PERFORMANCE -> revenue per manager, deals, avg check, items per deal, comments per deal, share of total %, rank
 DEBT -> total debt, debtor count, top debtors, avg debt per client, debt aging (how old)
 PRODUCTS -> stock vs min_stock, top-selling (by deal_items), turnover rate (by inventory_movements)
+TOP CLIENTS FOR ONE PRODUCT -> GROUP BY client: deals_count, SUM(qty), SUM(line revenue), broad LIKE on p.name
 CLIENT ANALYSIS -> revenue per client, deal frequency, payment reliability (paid_amount/amount ratio), last activity
 DEAL PIPELINE -> deals by status, avg time in each stage (via audit_logs), bottleneck identification
 
@@ -198,6 +200,26 @@ FORMATTING (Markdown):
 PRODUCT SEARCH:
 ============================
 Fuzzy: LOWER(name) LIKE '%keyword%'. Split words. Also search sku, category.
+
+============================
+PRODUCT SALES / "КТО ПОКУПАЕТ ТОВАР" (CRITICAL):
+============================
+When user asks which clients buy product X most often, топ покупателей по товару, самоклеящая/ламинация/конкретный товар:
+- FROM deal_items di JOIN deals d ON d.id = di.deal_id JOIN clients c ON c.id = d.client_id JOIN products p ON p.id = di.product_id
+- d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED')
+- Do NOT filter to status = 'CLOSED' only unless user explicitly asks for revenue only from closed deals
+- Product name: use WIDE OR of LIKE patterns — Russian word forms differ (самоклеящаяся, самоклеящая, самоклейка, этикет). Example:
+  (LOWER(p.name) LIKE '%самокле%' OR LOWER(p.name) LIKE '%этикет%' OR LOWER(p.name) LIKE '%sticker%')
+  One narrow string often returns zero rows while data exists.
+- Period column: COALESCE(di.deal_date, di.created_at, d.created_at) for time window (not only closed_at)
+- In EVERY ranking query include ALL of:
+  COUNT(DISTINCT d.id)::int AS deals_count
+  SUM(COALESCE(di.requested_qty, 0))::numeric AS total_qty
+  SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::numeric AS total_amount_uzs
+  Include p.unit in SELECT or GROUP BY if needed for display
+- In the Markdown answer: table columns must show **deals**, **quantity (total_qty + unit)**, **sum in UZS (total_amount_uzs)** — not only "how many times" or count of lines unless user explicitly asked only for count
+- If result is empty: run a second query — list products WHERE LOWER(name) LIKE '%<shortest_stem>%' LIMIT 30 — to see real naming in DB; widen LIKE; only then say "no sales"
+- Follow-up "за последние 120 дней" after a product question: reuse same product filters from chat history, change only INTERVAL to 120 days
 
 ============================
 ENTITIES:
@@ -479,8 +501,8 @@ async function executeAiQuery(
 Generate your response:
 - DATA questions: { "queries": ["SELECT ...", ...], "plan": "brief explanation" }
   CRITICAL: EVERY query MUST have a WHERE date filter! Default to last 30 days if no period specified.
-  USE JOINs to get real names. Use history tables (audit_logs, deal_comments, client_notes, inventory_movements) when they add insight.
-  Prefer deep multi-table queries over simple single-table ones.
+  Product-by-client questions: include deals_count + total_qty + total_amount_uzs (not count-only). Use broad product LIKE. For "last N days" use NOW() - INTERVAL 'N days' on COALESCE(di.deal_date, di.created_at, d.created_at).
+  USE JOINs to get real names. Use history tables when they add insight.
 - CONVERSATIONAL questions: { "queries": null, "answer": "markdown response", "entities": [] }
 Return ONLY valid JSON.`,
       },
@@ -613,7 +635,9 @@ RULES:
 8. If comparing periods: show % change
 9. Explain WHY, not just WHAT
 10. entities array: ONLY include entities where "name" is a REAL human/company name from the SQL data. NEVER put a UUID as "name". If unsure of the name, omit that entity.
-11. Respond in the SAME language as the user's question (Russian or Uzbek)`,
+11. Respond in the SAME language as the user's question (Russian or Uzbek)
+12. Product / client rankings: table MUST show quantity sum and UZS sum columns if the SQL returned them — do not hide amounts and only show frequency
+13. If SQL returned empty rows but a sanity-check query listed similar products, say the product name might differ in the catalog and list matches — do not invent "no demand" without that check`,
       },
     ],
     response_format: { type: 'json_object' },
