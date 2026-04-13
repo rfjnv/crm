@@ -20,8 +20,10 @@ import {
 } from '../api/ai-assistant.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 const OpenAiSvg = () => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor">
@@ -400,9 +402,15 @@ export default function AiAssistantPage() {
                     <Space><Spin size="small" /><Text type="secondary">Анализирую данные...</Text></Space>
                   ) : (
                     <>
-                      <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', color: msg.role === 'user' ? '#fff' : undefined }}>
-                        {msg.content}
-                      </Paragraph>
+                      {msg.role === 'assistant' ? (
+                        <div className="ai-markdown">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#fff' }}>
+                          {msg.content}
+                        </div>
+                      )}
                       {msg.entities && msg.entities.length > 0 && (
                         <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {msg.entities.map((entity, idx) => (
@@ -511,6 +519,36 @@ export default function AiAssistantPage() {
       <style>{`
         .chat-actions { opacity: 0 !important; }
         *:hover > .chat-actions { opacity: 1 !important; }
+
+        .ai-markdown { font-size: 14px; line-height: 1.7; }
+        .ai-markdown p { margin: 0 0 8px 0; }
+        .ai-markdown p:last-child { margin-bottom: 0; }
+        .ai-markdown h3 { font-size: 15px; font-weight: 600; margin: 12px 0 6px 0; }
+        .ai-markdown h4 { font-size: 14px; font-weight: 600; margin: 10px 0 4px 0; }
+        .ai-markdown ul, .ai-markdown ol { margin: 4px 0 8px 0; padding-left: 20px; }
+        .ai-markdown li { margin-bottom: 2px; }
+        .ai-markdown strong { font-weight: 600; }
+        .ai-markdown hr { border: none; border-top: 1px solid rgba(0,0,0,0.06); margin: 10px 0; }
+        .ai-markdown table {
+          width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px;
+        }
+        .ai-markdown th, .ai-markdown td {
+          border: 1px solid rgba(0,0,0,0.08); padding: 6px 10px; text-align: left;
+        }
+        .ai-markdown th {
+          background: rgba(0,0,0,0.03); font-weight: 600;
+        }
+        .ai-markdown code {
+          background: rgba(0,0,0,0.04); padding: 1px 4px; border-radius: 3px; font-size: 12px;
+        }
+        .ai-markdown pre {
+          background: rgba(0,0,0,0.04); padding: 10px; border-radius: 8px;
+          overflow-x: auto; font-size: 12px; margin: 8px 0;
+        }
+        .ai-markdown blockquote {
+          border-left: 3px solid rgba(0,0,0,0.15); margin: 8px 0; padding: 4px 12px;
+          color: rgba(0,0,0,0.6);
+        }
       `}</style>
     </div>
   );

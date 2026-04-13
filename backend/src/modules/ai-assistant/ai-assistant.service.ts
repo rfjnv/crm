@@ -9,8 +9,10 @@ const FORBIDDEN_KEYWORDS = [
   'CREATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
 ];
 
+const MAX_CHAT_HISTORY = 20;
+
 const DB_SCHEMA = `
-Table: clients (mapped from Prisma model Client)
+Table: clients
   - id (uuid, PK)
   - company_name (text) — название компании
   - contact_name (text) — контактное лицо
@@ -24,7 +26,7 @@ Table: clients (mapped from Prisma model Client)
   - created_at (timestamp)
   - updated_at (timestamp)
 
-Table: deals (mapped from Prisma model Deal)
+Table: deals
   - id (uuid, PK)
   - title (text)
   - status (enum: NEW, IN_PROGRESS, WAITING_STOCK_CONFIRMATION, STOCK_CONFIRMED, WAITING_FINANCE, FINANCE_APPROVED, ADMIN_APPROVED, READY_FOR_SHIPMENT, SHIPMENT_ON_HOLD, SHIPPED, PENDING_APPROVAL, CLOSED, CANCELED, REJECTED, REOPENED, WAITING_WAREHOUSE_MANAGER, PENDING_ADMIN, READY_FOR_LOADING, LOADING_ASSIGNED, READY_FOR_DELIVERY, IN_DELIVERY)
@@ -41,7 +43,7 @@ Table: deals (mapped from Prisma model Deal)
   - created_at (timestamp)
   - updated_at (timestamp)
 
-Table: deal_items (mapped from Prisma model DealItem)
+Table: deal_items
   - id (uuid, PK)
   - deal_id (uuid, FK -> deals.id)
   - product_id (uuid, FK -> products.id)
@@ -51,7 +53,7 @@ Table: deal_items (mapped from Prisma model DealItem)
   - deal_date (timestamp, nullable)
   - created_at (timestamp)
 
-Table: products (mapped from Prisma model Product)
+Table: products
   - id (uuid, PK)
   - name (text)
   - sku (text, unique)
@@ -64,7 +66,7 @@ Table: products (mapped from Prisma model Product)
   - is_active (boolean)
   - created_at (timestamp)
 
-Table: payments (mapped from Prisma model Payment)
+Table: payments
   - id (uuid, PK)
   - deal_id (uuid, FK -> deals.id)
   - client_id (uuid, FK -> clients.id)
@@ -75,7 +77,7 @@ Table: payments (mapped from Prisma model Payment)
   - created_by (uuid, FK -> users.id)
   - created_at (timestamp)
 
-Table: users (mapped from Prisma model User)
+Table: users
   - id (uuid, PK)
   - login (text, unique)
   - full_name (text)
@@ -83,7 +85,7 @@ Table: users (mapped from Prisma model User)
   - is_active (boolean)
   - created_at (timestamp)
 
-Table: contracts (mapped from Prisma model Contract)
+Table: contracts
   - id (uuid, PK)
   - client_id (uuid, FK -> clients.id)
   - contract_number (text, unique)
@@ -94,7 +96,7 @@ Table: contracts (mapped from Prisma model Contract)
   - is_active (boolean)
   - created_at (timestamp)
 
-Table: expenses (mapped from Prisma model Expense)
+Table: expenses
   - id (uuid, PK)
   - date (date)
   - category (text)
@@ -105,66 +107,145 @@ Table: expenses (mapped from Prisma model Expense)
   - created_at (timestamp)
 `;
 
-const SYSTEM_PROMPT = `You are an AI data assistant for a CRM system (Polygraph Business).
-Your job is to answer user questions using real data from the PostgreSQL database.
+const SYSTEM_PROMPT = `You are a **senior business analytics AI** for Polygraph Business CRM.
+You don't just answer questions — you think like a CFO / Head of Sales. Every answer should provide *insight*, not just numbers.
 
 DATABASE SCHEMA:
 ${DB_SCHEMA}
 
-RULES:
+═══════════════════════════════════════
+CORE RULES:
+═══════════════════════════════════════
 - Generate ONLY valid PostgreSQL SELECT queries
 - NEVER use DELETE, UPDATE, INSERT, DROP, ALTER, TRUNCATE, CREATE, GRANT, REVOKE, EXEC
 - Always add LIMIT (max 100 rows)
-- Use ORDER BY when appropriate
-- Use JOINs when needed to connect related tables
-- Cast bigint counts to int: COUNT(*)::int
-- Cast decimal sums to numeric for JSON serialization
-- When calculating debt: SUM(d.amount - d.paid_amount) for unpaid deals
-- Filter out archived records (is_archived = false) by default unless user asks about archived
-- The user speaks Russian (Uzbek CRM), answer in Russian
-- Use company_name for client names, full_name for user/manager names
+- Cast bigint counts: COUNT(*)::int
+- Cast decimal sums: ::numeric
+- Filter archived records by default (is_archived = false)
+- Answer in Russian — the team speaks Russian
+- Use company_name for clients, full_name for users/managers
+- TODAY's date can be obtained with CURRENT_DATE, yesterday with CURRENT_DATE - 1, etc.
 
+═══════════════════════════════════════
+MULTI-QUERY ANALYTICS:
+═══════════════════════════════════════
+You can generate MULTIPLE SQL queries to build a comprehensive picture.
+Return them as an array:
+{ "queries": ["SELECT ...", "SELECT ...", "SELECT ..."] }
+
+WHEN TO USE MULTI-QUERY:
+- Revenue questions → query total + deal count + avg check + top manager + compare with previous period
+- Manager performance → query per-manager stats + totals for comparison
+- Debt analysis → query debt amounts + deal details + payment history
+- Any question where extra context makes the answer more valuable
+
+SINGLE QUERY is fine for simple lookups (find client, list products, etc.):
+{ "queries": ["SELECT ..."] }
+
+═══════════════════════════════════════
+ANALYTICS MINDSET — ALWAYS enrich answers:
+═══════════════════════════════════════
+When asked about REVENUE (выручка):
+- Total amount
+- Number of deals
+- Average check (total / deals)
+- Top contributing manager
+- Top contributing client
+- Compare with previous equivalent period if possible (yesterday vs day before, this week vs last week)
+- Show % change
+
+When asked about MANAGER PERFORMANCE:
+- Revenue per manager
+- Deal count per manager
+- Average deal size per manager
+- Rank managers from best to worst
+- Show the gap between top and bottom performer
+- Calculate each manager's share of total revenue (%)
+
+When asked about DEBT (задолженность):
+- Total debt
+- Number of debtors
+- Largest debtor
+- Average debt per client
+- Aging: how old are the debts (by created_at)
+
+When asked about PRODUCTS:
+- Stock level vs min_stock
+- Which are running low (stock < min_stock)
+- Top-selling products by deal_items
+
+═══════════════════════════════════════
+BUSINESS ADVISOR MODE:
+═══════════════════════════════════════
+When user asks "how to improve", "what to do", "why is X low":
+1. First gather data with queries
+2. Analyze the patterns
+3. Give 3-5 SPECIFIC, DATA-DRIVEN recommendations
+4. Each recommendation must reference actual numbers from the data
+5. Be direct and actionable, not generic
+
+Example good advice: "Менеджер Х имеет средний чек 15М vs 35М у лидера. Рекомендации: 1) Переключить на клиентов категории А (средний чек 40М+) 2) Увеличить допродажи — у него только 1.2 позиции на сделку vs 2.8 у лидера"
+Example bad advice: "Нужно больше стараться и работать усерднее" ← NEVER do this
+
+═══════════════════════════════════════
+RESPONSE FORMATTING (use Markdown):
+═══════════════════════════════════════
+Use rich Markdown formatting in the "answer" field:
+- **Bold** for key numbers and names
+- Use tables for comparisons:
+  | Менеджер | Выручка | Сделки | Ср. чек |
+  |----------|---------|--------|---------|
+- Use bullet points for lists and recommendations
+- Use 📊 📈 📉 ⚠️ ✅ 💡 emojis sparingly but effectively for visual accents
+- Format large numbers with spaces: 1 000 000
+- Always show currency context (the business uses UZS/сум by default unless training rules say otherwise)
+- Use --- horizontal rules to separate sections
+
+═══════════════════════════════════════
 SMART PRODUCT SEARCH:
-- When searching for products by name, ALWAYS use fuzzy matching: LOWER(p.name) LIKE LOWER('%keyword%')
-- Split user's search into individual words and match ALL of them: e.g. "ламинация 72" → LOWER(name) LIKE '%ламинация%' AND LOWER(name) LIKE '%72%'
-- Also search by SKU: OR LOWER(p.sku) LIKE LOWER('%keyword%')
-- Also search in category: OR LOWER(p.category) LIKE LOWER('%keyword%')
-- When user asks "найди товар X" or "есть ли X" or "поиск X" — search products table with fuzzy matching
-- Include stock, sale_price, unit in results so the user sees availability
-- If no exact match found, try broader search with fewer keywords
+═══════════════════════════════════════
+- Fuzzy matching: LOWER(p.name) LIKE LOWER('%keyword%')
+- Split words: "ламинация 72" → LIKE '%ламинация%' AND LIKE '%72%'
+- Also search by SKU and category
+- Include stock, sale_price, unit in results
 
-ENTITY TYPES — use the correct type depending on context:
-- "client" — for clients (from clients table), use company_name as name
-- "deal" — for deals (from deals table), use title as name
-- "product" — for products (from products table), use name
-- "user" — for users/employees/managers (from users table), use full_name as name, and include their role in the answer
+═══════════════════════════════════════
+ENTITY TYPES:
+═══════════════════════════════════════
+- "client" — from clients table, use company_name
+- "deal" — from deals table, use title
+- "product" — from products table, use name
+- "user" — from users table, use full_name (include role in answer)
+CRITICAL: "пользователи/сотрудники/менеджеры" = users table, NOT clients
 
-CRITICAL: When the user asks about "пользователи", "сотрудники", "менеджеры" — these are USERS (from the users table), NOT clients. Always use type "user" for them. Clients are companies (from the clients table).
+═══════════════════════════════════════
+CONVERSATIONAL QUESTIONS:
+═══════════════════════════════════════
+If the user asks a non-data question (greetings, "what can you do?", etc.):
+Return: { "queries": null, "answer": "...", "entities": [] }
+You are READ-ONLY. You can analyze all CRM data but cannot create/edit/delete anything.
+When describing capabilities, be impressive:
+- Revenue analytics and trends
+- Manager performance comparison and ranking
+- Debt analysis and risk assessment
+- Product demand and stock analysis
+- Client portfolio analysis
+- Business recommendations based on data patterns
 
+═══════════════════════════════════════
 RESPONSE FORMAT (strict JSON):
+═══════════════════════════════════════
 {
-  "sql": "SELECT ...",
-  "answer": "human-readable answer in Russian",
-  "entities": [
-    { "type": "client|deal|product|user", "id": "uuid", "name": "display name" }
-  ]
+  "queries": ["SELECT ...", "SELECT ..."] OR null,
+  "answer": "Markdown-formatted answer in Russian (only for conversational)",
+  "entities": [{ "type": "client|deal|product|user", "id": "uuid", "name": "display name" }]
 }
 
-- "entities" must include all relevant IDs for navigation
-- If no entities are relevant, return empty array []
-- Always include the SQL you generated in the "sql" field
-- When listing users, always mention their role (ADMIN, MANAGER, etc.) in the answer
-
-CONVERSATIONAL QUESTIONS:
-- If the user asks a non-data question (greetings, "what can you do?", "can you create tasks?", etc.) — do NOT generate SQL
-- Instead return: { "sql": null, "answer": "your conversational response in Russian", "entities": [] }
-- You are a READ-ONLY assistant: you can only QUERY data, you CANNOT create, edit, or delete anything
-- When asked what you can do, explain: you can answer questions about clients, deals, products, users, payments, debts, expenses — any data in the CRM
-
 IMPORTANT:
-- Think step by step
-- For data questions: first generate the SQL query, the system will execute it and give you the results, then generate the final answer
-- For non-data questions: respond directly without SQL`;
+- You receive CHAT HISTORY — use it to understand context and follow-up questions
+- If user says "а это за какой период?" — look at previous messages to understand what "это" refers to
+- If user says "а у кого лучше?" — understand they mean the topic from the previous exchange
+- Think step by step, be thorough, be insightful`;
 
 function getOpenAIClient(): OpenAI {
   const apiKey = config.openai.apiKey;
@@ -206,6 +287,21 @@ function generateTitle(question: string): string {
   const cleaned = question.replace(/[?!.]+$/, '').trim();
   if (cleaned.length <= 50) return cleaned;
   return cleaned.slice(0, 47) + '...';
+}
+
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+async function getChatHistory(chatId: string): Promise<ChatMessage[]> {
+  const messages = await prisma.aiChatMessage.findMany({
+    where: { chatId, isError: false },
+    orderBy: { createdAt: 'asc' },
+    select: { role: true, content: true },
+    take: MAX_CHAT_HISTORY,
+  });
+  return messages.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.role === 'assistant' ? m.content.slice(0, 500) : m.content,
+  }));
 }
 
 // ==================== TRAINING RULES CRUD ====================
@@ -322,7 +418,7 @@ export async function deleteChat(chatId: string, userId: string) {
   await prisma.aiChat.delete({ where: { id: chatId } });
 }
 
-// ==================== ASK QUESTION (with DB persistence) ====================
+// ==================== ASK QUESTION (with DB persistence + chat context) ====================
 
 export async function askQuestionInChat(
   chatId: string,
@@ -335,12 +431,12 @@ export async function askQuestionInChat(
   });
   if (!chat) throw new AppError(404, 'Чат не найден');
 
-  // Save user message
+  const chatHistory = await getChatHistory(chatId);
+
   await prisma.aiChatMessage.create({
     data: { chatId, role: 'user', content: question },
   });
 
-  // Auto-title on first message
   const isFirstMessage = chat._count.messages === 0;
   if (isFirstMessage) {
     await prisma.aiChat.update({
@@ -349,7 +445,6 @@ export async function askQuestionInChat(
     });
   }
 
-  // Touch updatedAt
   await prisma.aiChat.update({
     where: { id: chatId },
     data: { updatedAt: new Date() },
@@ -357,7 +452,7 @@ export async function askQuestionInChat(
 
   let result: AiAssistantResponse;
   try {
-    result = await executeAiQuery(question);
+    result = await executeAiQuery(question, chatHistory);
   } catch (err) {
     const errorMsg = err instanceof AppError ? err.message : 'Произошла ошибка при обработке запроса';
     await prisma.aiChatMessage.create({
@@ -366,7 +461,6 @@ export async function askQuestionInChat(
     throw err;
   }
 
-  // Save assistant message
   await prisma.aiChatMessage.create({
     data: {
       chatId,
@@ -382,85 +476,127 @@ export async function askQuestionInChat(
   return { ...result, chatTitle: updatedTitle };
 }
 
-// Core AI query logic (extracted from old askQuestion)
-async function executeAiQuery(question: string): Promise<AiAssistantResponse> {
+// ==================== CORE AI ENGINE ====================
+
+async function executeAiQuery(
+  question: string,
+  chatHistory: ChatMessage[] = [],
+): Promise<AiAssistantResponse> {
   const openai = getOpenAIClient();
   const customRules = await getActiveTrainingRules();
   const fullPrompt = SYSTEM_PROMPT + customRules;
 
-  const sqlResponse = await openai.chat.completions.create({
+  const historyMessages = chatHistory.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }));
+
+  // Step 1: Generate SQL queries (or conversational response)
+  const planResponse = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
     messages: [
       { role: 'system', content: fullPrompt },
+      ...historyMessages,
       {
         role: 'user',
-        content: `Вопрос пользователя: "${question}"
+        content: `${question}
 
-If this is a DATA question — generate SQL. Return: { "sql": "SELECT ..." }
-If this is a CONVERSATIONAL question (greeting, capabilities, non-data) — return: { "sql": null, "answer": "ответ на русском", "entities": [] }
-
+───
+Generate your response. Remember:
+- For DATA questions: return { "queries": ["SELECT ...", ...], "plan": "brief explanation of what each query does" }
+- For CONVERSATIONAL questions: return { "queries": null, "answer": "markdown response in Russian", "entities": [] }
+- Use the chat history above to understand context and follow-up questions.
 Return ONLY valid JSON.`,
       },
     ],
     response_format: { type: 'json_object' },
   });
 
-  const sqlContent = sqlResponse.choices[0]?.message?.content;
-  if (!sqlContent) {
-    throw new AppError(500, 'AI не смог сгенерировать запрос.');
+  const planContent = planResponse.choices[0]?.message?.content;
+  if (!planContent) {
+    throw new AppError(500, 'AI не смог сгенерировать план запроса.');
   }
 
-  let parsedFirst: { sql?: string | null; answer?: string; entities?: any[] };
+  let plan: { queries?: string[] | null; answer?: string; entities?: any[]; plan?: string };
   try {
-    parsedFirst = JSON.parse(sqlContent);
+    plan = JSON.parse(planContent);
   } catch {
     throw new AppError(500, 'AI вернул некорректный JSON.');
   }
 
-  if (!parsedFirst.sql) {
+  // Conversational response — no SQL needed
+  if (!plan.queries || !Array.isArray(plan.queries) || plan.queries.length === 0) {
     return {
-      answer: parsedFirst.answer || 'Я — AI-ассистент CRM. Я могу отвечать на вопросы по данным: клиенты, сделки, товары, платежи, пользователи и расходы.',
-      entities: Array.isArray(parsedFirst.entities) ? parsedFirst.entities : [],
+      answer: plan.answer || 'Я — AI-аналитик CRM Polygraph Business. Задайте вопрос по данным — выручка, менеджеры, клиенты, долги, товары — и я дам детальный анализ с рекомендациями.',
+      entities: Array.isArray(plan.entities) ? plan.entities : [],
     };
   }
 
-  const sql = parsedFirst.sql.trim();
-  validateSQL(sql);
+  // Step 2: Validate and execute all queries
+  const allResults: { query: string; result: unknown }[] = [];
+  const allSqls: string[] = [];
 
-  let queryResult: unknown;
-  try {
-    queryResult = await prisma.$queryRawUnsafe(sql);
-    queryResult = serialize(queryResult);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError(400, `Ошибка выполнения SQL: ${msg}`);
+  for (const rawSql of plan.queries.slice(0, 5)) {
+    const sql = rawSql.trim();
+    if (!sql) continue;
+
+    try {
+      validateSQL(sql);
+    } catch {
+      continue;
+    }
+
+    try {
+      const queryResult = await prisma.$queryRawUnsafe(sql);
+      allResults.push({ query: sql, result: serialize(queryResult) });
+      allSqls.push(sql);
+    } catch {
+      continue;
+    }
   }
+
+  if (allResults.length === 0) {
+    throw new AppError(400, 'Не удалось выполнить ни один SQL запрос.');
+  }
+
+  // Step 3: Generate rich analytical answer
+  const resultsText = allResults.map((r, i) =>
+    `--- Query ${i + 1} ---\nSQL: ${r.query}\nResult:\n${JSON.stringify(r.result, null, 2)}`
+  ).join('\n\n');
 
   const answerResponse = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.3,
+    temperature: 0.4,
     messages: [
       { role: 'system', content: fullPrompt },
-      { role: 'user', content: `Вопрос: "${question}"` },
-      { role: 'assistant', content: JSON.stringify({ sql }) },
+      ...historyMessages,
+      { role: 'user', content: question },
+      { role: 'assistant', content: JSON.stringify({ queries: allSqls, plan: plan.plan }) },
       {
         role: 'user',
-        content: `Результат SQL запроса:
-${JSON.stringify(queryResult, null, 2)}
+        content: `Here are the SQL results:
 
-Теперь сформируй финальный ответ. Верни JSON:
+${resultsText}
+
+Now generate the FINAL analytical answer. Return JSON:
 {
-  "sql": "${sql.replace(/"/g, '\\"')}",
-  "answer": "понятный ответ на русском языке с конкретными цифрами",
-  "entities": [{ "type": "client|deal|product|user", "id": "uuid", "name": "название" }]
+  "answer": "Rich Markdown answer in Russian with insights, comparisons, and recommendations",
+  "entities": [{ "type": "client|deal|product|user", "id": "uuid", "name": "display name" }]
 }
 
-Правила:
-- Форматируй числа с разделителями (1,000,000)
-- Упоминай конкретные имена и суммы
-- entities должны содержать id из результата запроса для навигации
-- Если результат пустой — скажи об этом`,
+FORMATTING RULES:
+- Use **bold** for key metrics and names
+- Use Markdown tables for comparisons (| Col1 | Col2 |)
+- Use bullet points (- ) for lists
+- Use numbered lists (1. 2. 3.) for recommendations
+- Add 📊📈📉⚠️✅💡 emojis for visual accents
+- Format numbers with spaces: 1 000 000
+- Structure long answers with sections using ### headers
+- If data allows comparison with previous period — include % change with 📈 or 📉
+- End analytical answers with a 💡 **Инсайт** or recommendation section
+- entities must contain ids from the query results for navigation
+- If results are empty — say so clearly`,
       },
     ],
     response_format: { type: 'json_object' },
@@ -471,7 +607,7 @@ ${JSON.stringify(queryResult, null, 2)}
     throw new AppError(500, 'AI не смог сформировать ответ.');
   }
 
-  let parsed: AiAssistantResponse;
+  let parsed: { answer?: string; entities?: any[] };
   try {
     parsed = JSON.parse(answerContent);
   } catch {
@@ -480,7 +616,7 @@ ${JSON.stringify(queryResult, null, 2)}
 
   return {
     answer: parsed.answer || 'Не удалось получить ответ.',
-    sql: sql,
+    sql: allSqls.join('\n;\n'),
     entities: Array.isArray(parsed.entities) ? parsed.entities : [],
   };
 }
