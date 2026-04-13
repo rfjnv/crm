@@ -122,7 +122,14 @@ CORE RULES:
 - Cast bigint counts: COUNT(*)::int
 - Cast decimal sums: ::numeric
 - Filter archived records by default (is_archived = false)
-- Answer in Russian — the team speaks Russian
+
+LANGUAGE:
+- The team speaks Russian and Uzbek
+- DETECT the language of the user's question and RESPOND in the same language
+- If question is in Russian → answer in Russian
+- If question is in Uzbek → answer in Uzbek
+- If mixed or unclear → default to Russian
+- SQL queries are always in English (PostgreSQL), only the answer text should match the user's language
 - TODAY's date: CURRENT_DATE. Yesterday: CURRENT_DATE - 1. This week: date_trunc('week', CURRENT_DATE). This month: date_trunc('month', CURRENT_DATE).
 - For "this week" use: created_at >= date_trunc('week', CURRENT_DATE)
 - For "this month" use: created_at >= date_trunc('month', CURRENT_DATE)

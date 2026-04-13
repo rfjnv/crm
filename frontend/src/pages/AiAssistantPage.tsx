@@ -6,7 +6,7 @@ import {
 import {
   SendOutlined, UserOutlined, CodeOutlined, DeleteOutlined,
   PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined,
-  MenuOutlined, MessageOutlined, SettingOutlined,
+  MenuOutlined, MessageOutlined, SettingOutlined, AudioOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -69,9 +69,11 @@ export default function AiAssistantPage() {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
   const sendingRef = useRef(false);
+  const recognitionRef = useRef<any>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { token: themeToken } = theme.useToken();
@@ -194,6 +196,63 @@ export default function AiAssistantPage() {
       case 'user': navigate('/users'); break;
     }
   };
+
+  const supportsVoice = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.maxAlternatives = 1;
+
+    let finalTranscript = '';
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interim = transcript;
+        }
+      }
+      setInput((prev) => {
+        const base = prev.replace(/🎤.*$/, '').trim();
+        const combined = (base ? base + ' ' : '') + finalTranscript + interim;
+        return combined.trim();
+      });
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setInput((prev) => prev.replace(/🎤.*$/, '').trim());
+      inputRef.current?.focus();
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    finalTranscript = '';
+    recognition.start();
+    setIsListening(true);
+  }, [isListening]);
+
+  useEffect(() => {
+    return () => { recognitionRef.current?.stop(); };
+  }, []);
 
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
@@ -454,7 +513,7 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Input */}
-      <div style={{ padding: '16px 24px 20px', borderTop: `1px solid ${themeToken.colorBorderSecondary}`, display: 'flex', gap: 8 }}>
+      <div style={{ padding: '16px 24px 20px', borderTop: `1px solid ${themeToken.colorBorderSecondary}`, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <Input.TextArea
           ref={inputRef}
           value={input}
@@ -465,10 +524,26 @@ export default function AiAssistantPage() {
           disabled={loading}
           style={{ borderRadius: 12 }}
         />
+        {supportsVoice && (
+          <Button
+            type={isListening ? 'primary' : 'default'}
+            danger={isListening}
+            icon={<AudioOutlined />}
+            onClick={toggleVoice}
+            disabled={loading}
+            style={{
+              height: 'auto',
+              borderRadius: 12,
+              minWidth: 48,
+              ...(isListening ? { animation: 'pulse-mic 1.5s infinite' } : {}),
+            }}
+            title={isListening ? 'Остановить запись' : 'Голосовой ввод'}
+          />
+        )}
         <Button
           type="primary"
           icon={<SendOutlined />}
-          onClick={() => handleSend()}
+          onClick={() => { if (isListening) { recognitionRef.current?.stop(); setIsListening(false); } handleSend(); }}
           loading={loading}
           style={{ height: 'auto', borderRadius: 12, minWidth: 48 }}
         />
@@ -519,6 +594,12 @@ export default function AiAssistantPage() {
       <style>{`
         .chat-actions { opacity: 0 !important; }
         *:hover > .chat-actions { opacity: 1 !important; }
+
+        @keyframes pulse-mic {
+          0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.5); }
+          70% { box-shadow: 0 0 0 10px rgba(255, 77, 79, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
+        }
 
         .ai-markdown { font-size: 14px; line-height: 1.7; }
         .ai-markdown p { margin: 0 0 8px 0; }
