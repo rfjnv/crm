@@ -34,6 +34,7 @@ import {
   SafetyCertificateOutlined,
   StarOutlined,
   PhoneOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -409,6 +410,14 @@ export default function Layout() {
           }]
           : []),
       ]
+      : []),
+    // ── AI-ассистент ──
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER')
+      ? [{
+        key: '/ai-assistant',
+        icon: <RobotOutlined />,
+        label: <Link to="/ai-assistant">AI Ассистент</Link>,
+      }]
       : []),
     // ── Уведомления (все роли) ──
     ...(role !== 'OPERATOR' ? [{

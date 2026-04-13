@@ -64,6 +64,10 @@ export const config = {
     subject: process.env.VAPID_SUBJECT || 'mailto:admin@polygraph.uz',
   },
 
+  openai: {
+    apiKey: trimEnv(process.env.OPENAI_API_KEY),
+  },
+
   telegram: {
     botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
     clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),

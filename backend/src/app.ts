@@ -31,6 +31,7 @@ import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
 import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
+import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
 import './modules/telegram/telegram.customer-bot.service';
 
 const app = express();
@@ -105,6 +106,7 @@ app.use('/api/push', pushRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/power-of-attorney', poaRoutes);
 app.use('/api/reviews', reviewsRoutes);
+app.use('/api/ai-assistant', aiAssistantRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

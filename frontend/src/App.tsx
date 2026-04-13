@@ -46,6 +46,7 @@ import ReviewsPage from './pages/ReviewsPage';
 import WarehouseManagerPage from './pages/WarehouseManagerPage';
 import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
+import AiAssistantPage from './pages/AiAssistantPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -135,6 +136,7 @@ export default function App() {
                 <Route path="/pending-admin" element={<Navigate to="/deals/approval?tab=wm" replace />} />
                 <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
+                <Route path="/ai-assistant" element={<AiAssistantPage />} />
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />
