@@ -118,13 +118,25 @@ CORE RULES:
 ═══════════════════════════════════════
 - Generate ONLY valid PostgreSQL SELECT queries
 - NEVER use DELETE, UPDATE, INSERT, DROP, ALTER, TRUNCATE, CREATE, GRANT, REVOKE, EXEC
-- Always add LIMIT (max 100 rows)
+- EVERY query MUST end with LIMIT N (max 100). No exceptions!
 - Cast bigint counts: COUNT(*)::int
 - Cast decimal sums: ::numeric
 - Filter archived records by default (is_archived = false)
 - Answer in Russian — the team speaks Russian
-- Use company_name for clients, full_name for users/managers
-- TODAY's date can be obtained with CURRENT_DATE, yesterday with CURRENT_DATE - 1, etc.
+- TODAY's date: CURRENT_DATE. Yesterday: CURRENT_DATE - 1. This week: date_trunc('week', CURRENT_DATE). This month: date_trunc('month', CURRENT_DATE).
+- For "this week" use: created_at >= date_trunc('week', CURRENT_DATE)
+- For "this month" use: created_at >= date_trunc('month', CURRENT_DATE)
+- For "yesterday" use: created_at >= CURRENT_DATE - 1 AND created_at < CURRENT_DATE
+
+═══════════════════════════════════════
+CRITICAL — REAL NAMES ONLY:
+═══════════════════════════════════════
+- ALWAYS SELECT real names in queries: u.full_name for managers, c.company_name for clients, p.name for products
+- NEVER anonymize data — ALWAYS use the actual names from the database: "Дилноза", "Фарход", "е гранд", etc.
+- NEVER write "Менеджер 1", "Клиент 1", "Клиент (ID: ...)" — use the REAL name
+- In entities: "name" must be the REAL human-readable name from the SQL result, NOT a UUID or placeholder
+- If your query result has full_name = "Дилноза" and id = "abc-123", entity must be: { "type": "user", "id": "abc-123", "name": "Дилноза" }
+- If your query result has company_name = "е гранд" and id = "xyz-456", entity must be: { "type": "client", "id": "xyz-456", "name": "е гранд" }
 
 ═══════════════════════════════════════
 MULTI-QUERY ANALYTICS:
@@ -141,6 +153,13 @@ WHEN TO USE MULTI-QUERY:
 
 SINGLE QUERY is fine for simple lookups (find client, list products, etc.):
 { "queries": ["SELECT ..."] }
+
+SQL BEST PRACTICES:
+- ALWAYS JOIN to get human-readable names: JOIN users u ON d.manager_id = u.id → SELECT u.full_name
+- ALWAYS include the id column alongside names for entity linking: SELECT u.id, u.full_name, ...
+- ALWAYS include LIMIT at the end of every query
+- For period comparisons, use two separate queries: one for current period, one for previous
+- When grouping by manager: GROUP BY u.id, u.full_name (include both id and name)
 
 ═══════════════════════════════════════
 ANALYTICS MINDSET — ALWAYS enrich answers:
@@ -536,6 +555,7 @@ Return ONLY valid JSON.`,
   // Step 2: Validate and execute all queries
   const allResults: { query: string; result: unknown }[] = [];
   const allSqls: string[] = [];
+  const failedQueries: { query: string; error: string }[] = [];
 
   for (const rawSql of plan.queries.slice(0, 5)) {
     const sql = rawSql.trim();
@@ -543,7 +563,8 @@ Return ONLY valid JSON.`,
 
     try {
       validateSQL(sql);
-    } catch {
+    } catch (err) {
+      failedQueries.push({ query: sql, error: err instanceof Error ? err.message : String(err) });
       continue;
     }
 
@@ -551,13 +572,57 @@ Return ONLY valid JSON.`,
       const queryResult = await prisma.$queryRawUnsafe(sql);
       allResults.push({ query: sql, result: serialize(queryResult) });
       allSqls.push(sql);
-    } catch {
+    } catch (err) {
+      failedQueries.push({ query: sql, error: err instanceof Error ? err.message : String(err) });
       continue;
     }
   }
 
+  // If all queries failed, try to auto-fix by asking AI to regenerate
+  if (allResults.length === 0 && failedQueries.length > 0) {
+    const retryResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      messages: [
+        { role: 'system', content: fullPrompt },
+        ...historyMessages,
+        { role: 'user', content: question },
+        {
+          role: 'user',
+          content: `Your previous SQL queries ALL failed. Here are the errors:
+${failedQueries.map((f) => `SQL: ${f.query}\nError: ${f.error}`).join('\n\n')}
+
+Fix the queries and return valid ones. Remember: EVERY query MUST have LIMIT. Use correct PostgreSQL syntax.
+Return: { "queries": ["SELECT ..."] }`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+    });
+
+    const retryContent = retryResponse.choices[0]?.message?.content;
+    if (retryContent) {
+      try {
+        const retryPlan = JSON.parse(retryContent);
+        if (Array.isArray(retryPlan.queries)) {
+          for (const rawSql of retryPlan.queries.slice(0, 5)) {
+            const sql = rawSql.trim();
+            if (!sql) continue;
+            try {
+              validateSQL(sql);
+              const queryResult = await prisma.$queryRawUnsafe(sql);
+              allResults.push({ query: sql, result: serialize(queryResult) });
+              allSqls.push(sql);
+            } catch {
+              continue;
+            }
+          }
+        }
+      } catch { /* ignore parse errors on retry */ }
+    }
+  }
+
   if (allResults.length === 0) {
-    throw new AppError(400, 'Не удалось выполнить ни один SQL запрос.');
+    throw new AppError(400, 'Не удалось выполнить SQL запросы. Попробуйте переформулировать вопрос.');
   }
 
   // Step 3: Generate rich analytical answer
@@ -581,22 +646,23 @@ ${resultsText}
 
 Now generate the FINAL analytical answer. Return JSON:
 {
-  "answer": "Rich Markdown answer in Russian with insights, comparisons, and recommendations",
-  "entities": [{ "type": "client|deal|product|user", "id": "uuid", "name": "display name" }]
+  "answer": "Rich Markdown answer in Russian",
+  "entities": [{ "type": "client|deal|product|user", "id": "uuid-from-data", "name": "real name from data" }]
 }
 
-FORMATTING RULES:
-- Use **bold** for key metrics and names
-- Use Markdown tables for comparisons (| Col1 | Col2 |)
-- Use bullet points (- ) for lists
-- Use numbered lists (1. 2. 3.) for recommendations
-- Add 📊📈📉⚠️✅💡 emojis for visual accents
-- Format numbers with spaces: 1 000 000
-- Structure long answers with sections using ### headers
-- If data allows comparison with previous period — include % change with 📈 or 📉
-- End analytical answers with a 💡 **Инсайт** or recommendation section
-- entities must contain ids from the query results for navigation
-- If results are empty — say so clearly`,
+ABSOLUTE RULES FOR THE ANSWER:
+1. Use REAL names from the SQL results — NEVER "Менеджер 1", "Клиент 1", or "ID: uuid..."
+2. If data has full_name="Дилноза" → write "**Дилноза**", NOT "Менеджер 1"
+3. If data has company_name="е гранд" → write "**е гранд**", NOT "Клиент 1 (ID: ...)"
+4. entities.name MUST be the real name from data, NEVER a uuid or placeholder
+5. Use **bold** for key metrics and names
+6. Use Markdown tables with real names: | Дилноза | 745 047 400 | 176 |
+7. Format numbers with spaces: 1 000 000
+8. Use 📊📈📉⚠️✅💡 emojis for visual accents
+9. Structure with ### headers
+10. End with 💡 **Инсайт** section with data-driven recommendation
+11. If comparing periods — show % change
+12. If data is empty — say so clearly`,
       },
     ],
     response_format: { type: 'json_object' },
