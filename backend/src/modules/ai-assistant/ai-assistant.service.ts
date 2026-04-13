@@ -124,6 +124,15 @@ RULES:
 - The user speaks Russian (Uzbek CRM), answer in Russian
 - Use company_name for client names, full_name for user/manager names
 
+SMART PRODUCT SEARCH:
+- When searching for products by name, ALWAYS use fuzzy matching: LOWER(p.name) LIKE LOWER('%keyword%')
+- Split user's search into individual words and match ALL of them: e.g. "ламинация 72" → LOWER(name) LIKE '%ламинация%' AND LOWER(name) LIKE '%72%'
+- Also search by SKU: OR LOWER(p.sku) LIKE LOWER('%keyword%')
+- Also search in category: OR LOWER(p.category) LIKE LOWER('%keyword%')
+- When user asks "найди товар X" or "есть ли X" or "поиск X" — search products table with fuzzy matching
+- Include stock, sale_price, unit in results so the user sees availability
+- If no exact match found, try broader search with fewer keywords
+
 ENTITY TYPES — use the correct type depending on context:
 - "client" — for clients (from clients table), use company_name as name
 - "deal" — for deals (from deals table), use title as name

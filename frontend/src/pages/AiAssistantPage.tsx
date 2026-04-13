@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, Input, Button, Typography, Tag, Space, Spin, Empty, theme, Tooltip } from 'antd';
-import { SendOutlined, RobotOutlined, UserOutlined, CodeOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SendOutlined, UserOutlined, CodeOutlined, DeleteOutlined } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
 const OpenAiSvg = () => (
