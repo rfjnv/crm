@@ -454,7 +454,12 @@ export default function AiAssistantPage() {
   );
 
   return (
-    <div style={{ height: 'calc(100vh - 64px)', display: 'flex', overflow: 'hidden' }}>
+    <div style={{
+      height: isMobile ? 'calc(100vh - 56px)' : 'calc(100vh - 56px)',
+      margin: isMobile ? 0 : -24,
+      display: 'flex',
+      overflow: 'hidden',
+    }}>
       {/* Sidebar - desktop */}
       {!isMobile && (
         <div
