@@ -8,6 +8,17 @@ export const renameChatDto = z.object({
   title: z.string().min(1).max(100),
 });
 
+export const createTrainingRuleDto = z.object({
+  title: z.string().min(1, 'Название обязательно').max(200),
+  content: z.string().min(1, 'Содержание обязательно').max(5000),
+});
+
+export const updateTrainingRuleDto = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).max(5000).optional(),
+  isActive: z.boolean().optional(),
+});
+
 export type AskQuestionDto = z.infer<typeof askQuestionDto>;
 
 export interface AiAssistantEntity {

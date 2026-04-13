@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { askQuestionDto, renameChatDto } from './ai-assistant.dto';
+import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto } from './ai-assistant.dto';
 import {
   listChats,
   createChat,
@@ -10,6 +10,10 @@ import {
   askQuestionInChat,
   renameChat,
   deleteChat,
+  listTrainingRules,
+  createTrainingRule,
+  updateTrainingRule,
+  deleteTrainingRule,
 } from './ai-assistant.service';
 
 const router = Router();
@@ -17,7 +21,49 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER'));
 
-// List chats
+// ==================== Training Rules (SUPER_ADMIN / ADMIN only) ====================
+// Must be defined BEFORE /:chatId routes to avoid "training-rules" matching as chatId
+
+router.get(
+  '/training-rules',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    const rules = await listTrainingRules();
+    res.json(rules);
+  }),
+);
+
+router.post(
+  '/training-rules',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = createTrainingRuleDto.parse(req.body);
+    const rule = await createTrainingRule(req.user!.userId, data);
+    res.status(201).json(rule);
+  }),
+);
+
+router.patch(
+  '/training-rules/:ruleId',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = updateTrainingRuleDto.parse(req.body);
+    const rule = await updateTrainingRule(req.params.ruleId as string, data);
+    res.json(rule);
+  }),
+);
+
+router.delete(
+  '/training-rules/:ruleId',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    await deleteTrainingRule(req.params.ruleId as string);
+    res.status(204).end();
+  }),
+);
+
+// ==================== Chat CRUD ====================
+
 router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
@@ -26,7 +72,6 @@ router.get(
   }),
 );
 
-// Create chat
 router.post(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
@@ -35,7 +80,6 @@ router.post(
   }),
 );
 
-// Get chat messages
 router.get(
   '/:chatId/messages',
   asyncHandler(async (req: Request, res: Response) => {
@@ -44,7 +88,6 @@ router.get(
   }),
 );
 
-// Ask question in chat
 router.post(
   '/:chatId/ask',
   asyncHandler(async (req: Request, res: Response) => {
@@ -54,7 +97,6 @@ router.post(
   }),
 );
 
-// Rename chat
 router.patch(
   '/:chatId',
   asyncHandler(async (req: Request, res: Response) => {
@@ -64,7 +106,6 @@ router.patch(
   }),
 );
 
-// Delete chat
 router.delete(
   '/:chatId',
   asyncHandler(async (req: Request, res: Response) => {

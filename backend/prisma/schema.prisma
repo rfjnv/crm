@@ -161,6 +161,7 @@ model User {
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
+  aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
 
   @@map("users")
 }
@@ -824,4 +825,18 @@ model AiChatMessage {
 
   @@index([chatId, createdAt])
   @@map("ai_chat_messages")
+}
+
+model AiTrainingRule {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  author User @relation("AiTrainingRuleAuthor", fields: [createdBy], references: [id])
+
+  @@map("ai_training_rules")
 }

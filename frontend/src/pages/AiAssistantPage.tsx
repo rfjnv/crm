@@ -6,7 +6,7 @@ import {
 import {
   SendOutlined, UserOutlined, CodeOutlined, DeleteOutlined,
   PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined,
-  MenuOutlined, MessageOutlined,
+  MenuOutlined, MessageOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,7 @@ import {
   type AiChatMessage,
 } from '../api/ai-assistant.api';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuthStore } from '../store/authStore';
 
 const { Text, Paragraph } = Typography;
 
@@ -68,10 +69,13 @@ export default function AiAssistantPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
+  const sendingRef = useRef(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { token: themeToken } = theme.useToken();
   const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
 
   const { data: chats = [], isLoading: chatsLoading } = useQuery({
     queryKey: ['ai-chats'],
@@ -86,7 +90,7 @@ export default function AiAssistantPage() {
   });
 
   useEffect(() => {
-    if (chatMessages) {
+    if (chatMessages && !sendingRef.current) {
       setMessages(chatMessages.map((m: AiChatMessage) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
@@ -146,6 +150,7 @@ export default function AiAssistantPage() {
     const userMsg: LocalMsg = { id: tempUserId, role: 'user', content: question, isError: false };
     const loadingMsg: LocalMsg = { id: tempAsstId, role: 'assistant', content: '', isError: false, loading: true };
 
+    sendingRef.current = true;
     setMessages((prev) => [...prev, userMsg, loadingMsg]);
     setInput('');
     setLoading(true);
@@ -172,7 +177,9 @@ export default function AiAssistantPage() {
         ),
       );
     } finally {
+      sendingRef.current = false;
       setLoading(false);
+      queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', chatId] });
       inputRef.current?.focus();
     }
   }, [input, loading, activeChatId, queryClient]);
@@ -320,6 +327,14 @@ export default function AiAssistantPage() {
             {activeChatId ? chats.find((c: AiChat) => c.id === activeChatId)?.title || 'Чат' : 'AI Ассистент'}
           </Text>
         </div>
+        {isAdmin && (
+          <Button
+            type="text"
+            icon={<SettingOutlined />}
+            onClick={() => navigate('/ai-assistant/training')}
+            title="Обучение AI"
+          />
+        )}
       </div>
 
       {/* Messages */}

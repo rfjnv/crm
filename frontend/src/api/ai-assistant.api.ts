@@ -31,6 +31,31 @@ export interface AiAssistantResponse {
   chatTitle?: string;
 }
 
+export interface AiTrainingRule {
+  id: string;
+  title: string;
+  content: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; fullName: string };
+}
+
+export const aiTrainingApi = {
+  list: () =>
+    client.get<AiTrainingRule[]>('/ai-assistant/training-rules').then((r) => r.data),
+
+  create: (data: { title: string; content: string }) =>
+    client.post<AiTrainingRule>('/ai-assistant/training-rules', data).then((r) => r.data),
+
+  update: (ruleId: string, data: { title?: string; content?: string; isActive?: boolean }) =>
+    client.patch<AiTrainingRule>(`/ai-assistant/training-rules/${ruleId}`, data).then((r) => r.data),
+
+  delete: (ruleId: string) =>
+    client.delete(`/ai-assistant/training-rules/${ruleId}`),
+};
+
 export const aiAssistantApi = {
   listChats: () =>
     client.get<AiChat[]>('/ai-assistant').then((r) => r.data),

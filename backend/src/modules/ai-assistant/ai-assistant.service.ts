@@ -208,6 +208,54 @@ function generateTitle(question: string): string {
   return cleaned.slice(0, 47) + '...';
 }
 
+// ==================== TRAINING RULES CRUD ====================
+
+export async function listTrainingRules() {
+  return prisma.aiTrainingRule.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { author: { select: { id: true, fullName: true } } },
+  });
+}
+
+export async function createTrainingRule(userId: string, data: { title: string; content: string }) {
+  return prisma.aiTrainingRule.create({
+    data: { ...data, createdBy: userId },
+    include: { author: { select: { id: true, fullName: true } } },
+  });
+}
+
+export async function updateTrainingRule(
+  ruleId: string,
+  data: { title?: string; content?: string; isActive?: boolean },
+) {
+  const rule = await prisma.aiTrainingRule.findUnique({ where: { id: ruleId } });
+  if (!rule) throw new AppError(404, 'Правило не найдено');
+
+  return prisma.aiTrainingRule.update({
+    where: { id: ruleId },
+    data,
+    include: { author: { select: { id: true, fullName: true } } },
+  });
+}
+
+export async function deleteTrainingRule(ruleId: string) {
+  const rule = await prisma.aiTrainingRule.findUnique({ where: { id: ruleId } });
+  if (!rule) throw new AppError(404, 'Правило не найдено');
+
+  await prisma.aiTrainingRule.delete({ where: { id: ruleId } });
+}
+
+async function getActiveTrainingRules(): Promise<string> {
+  const rules = await prisma.aiTrainingRule.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: 'asc' },
+    select: { title: true, content: true },
+  });
+  if (rules.length === 0) return '';
+  return '\n\nCUSTOM BUSINESS RULES (set by admin):\n' +
+    rules.map((r, i) => `${i + 1}. [${r.title}]: ${r.content}`).join('\n');
+}
+
 // ==================== CHAT CRUD ====================
 
 export async function listChats(userId: string) {
@@ -337,12 +385,14 @@ export async function askQuestionInChat(
 // Core AI query logic (extracted from old askQuestion)
 async function executeAiQuery(question: string): Promise<AiAssistantResponse> {
   const openai = getOpenAIClient();
+  const customRules = await getActiveTrainingRules();
+  const fullPrompt = SYSTEM_PROMPT + customRules;
 
   const sqlResponse = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: fullPrompt },
       {
         role: 'user',
         content: `Вопрос пользователя: "${question}"
@@ -391,7 +441,7 @@ Return ONLY valid JSON.`,
     model: 'gpt-4o-mini',
     temperature: 0.3,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: fullPrompt },
       { role: 'user', content: `Вопрос: "${question}"` },
       { role: 'assistant', content: JSON.stringify({ sql }) },
       {
