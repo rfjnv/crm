@@ -27,6 +27,11 @@ export const createDealDto = z.object({
   transferInn: z.string().optional(),
   transferDocuments: z.array(z.string()).optional(),
   transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
+  /**
+   * Только для пользователя Dilnoza: куда сразу поставить сделку (иначе поле игнорируется).
+   * AUTO — как раньше: все позиции с кол-вом и ценой → IN_PROGRESS, иначе → подтверждение склада.
+   */
+  createRoute: z.enum(['AUTO', 'STOCK_CONFIRMATION', 'WAREHOUSE_MANAGER', 'FINANCE']).optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),
@@ -71,7 +76,8 @@ export const addDealItemDto = z.object({
 export const warehouseResponseDto = z.object({
   items: z.array(z.object({
     dealItemId: z.string().uuid('Некорректный ID позиции'),
-    warehouseComment: z.string().min(1, 'Укажите ответ'),
+    /** Необязательный комментарий склада */
+    warehouseComment: z.string().optional().nullable(),
     requestedQty: z.number().positive('Количество должно быть положительным'),
     price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
   })),

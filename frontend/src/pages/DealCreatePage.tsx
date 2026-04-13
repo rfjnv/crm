@@ -67,6 +67,7 @@ interface DraftData {
   transferInn?: string;
   transferDocuments?: string[];
   transferType?: 'ONE_TIME' | 'ANNUAL';
+  dilnozaCreateRoute?: 'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE';
   savedAt: number;
 }
 
@@ -95,6 +96,7 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.clickTransactionId?.trim()) return false;
   if (d.transferInn?.trim()) return false;
   if (d.transferDocuments && d.transferDocuments.length > 0) return false;
+  if (d.dilnozaCreateRoute && d.dilnozaCreateRoute !== 'AUTO') return false;
   if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
   return true;
 }
@@ -127,6 +129,7 @@ export default function DealCreatePage() {
   const [transferInn, setTransferInn] = useState('');
   const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
+  const [dilnozaCreateRoute, setDilnozaCreateRoute] = useState<'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE'>('AUTO');
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
@@ -154,6 +157,7 @@ export default function DealCreatePage() {
     setTransferInn(draft.transferInn ?? '');
     setTransferDocuments(draft.transferDocuments?.length ? [...draft.transferDocuments] : [...DEFAULT_TRANSFER_DOCUMENTS]);
     setTransferType(draft.transferType ?? 'ONE_TIME');
+    setDilnozaCreateRoute(draft.dilnozaCreateRoute ?? 'AUTO');
     setDraftItems(
       draft.items.length > 0
         ? draft.items.map((i) => ({ ...i, key: makeKey() }))
@@ -184,6 +188,7 @@ export default function DealCreatePage() {
       transferInn,
       transferDocuments,
       transferType,
+      dilnozaCreateRoute: isDilnoza ? dilnozaCreateRoute : undefined,
       savedAt: Date.now(),
     };
     if (isDraftEmpty(data)) {
@@ -191,7 +196,7 @@ export default function DealCreatePage() {
     } else {
       saveDraft(data);
     }
-  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType]);
+  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, dilnozaCreateRoute, isDilnoza]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -231,13 +236,17 @@ export default function DealCreatePage() {
     }, 0);
   }, [draftItems]);
 
-  // Smart status preview: all items with qty → IN_PROGRESS, otherwise → WAITING_STOCK_CONFIRMATION
   const previewStatus: DealStatus = useMemo(() => {
+    if (isDilnoza && dilnozaCreateRoute !== 'AUTO') {
+      if (dilnozaCreateRoute === 'STOCK_CONFIRMATION') return 'WAITING_STOCK_CONFIRMATION';
+      if (dilnozaCreateRoute === 'WAREHOUSE_MANAGER') return 'WAITING_WAREHOUSE_MANAGER';
+      if (dilnozaCreateRoute === 'FINANCE') return 'WAITING_FINANCE';
+    }
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) return 'WAITING_STOCK_CONFIRMATION';
     const allHaveQty = validItems.every((i) => i.requestedQty && i.requestedQty > 0);
     return allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
-  }, [draftItems]);
+  }, [draftItems, isDilnoza, dilnozaCreateRoute]);
 
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
@@ -286,6 +295,19 @@ export default function DealCreatePage() {
       }
     }
 
+    if (
+      isDilnoza
+      && (dilnozaCreateRoute === 'WAREHOUSE_MANAGER' || dilnozaCreateRoute === 'FINANCE')
+    ) {
+      for (const item of validItems) {
+        if (!item.requestedQty || item.requestedQty <= 0 || !item.price || item.price <= 0) {
+          const p = productMap.get(item.productId!);
+          message.error(`Для выбранного маршрута укажите количество и цену: «${p?.name || 'товар'}»`);
+          return;
+        }
+      }
+    }
+
     createMut.mutate({
       title: title || undefined,
       clientId,
@@ -305,6 +327,7 @@ export default function DealCreatePage() {
       ...(isDilnoza
         ? {
             paymentMethod,
+            createRoute: dilnozaCreateRoute,
             ...(needsDilnozaTransferFields(paymentMethod)
               ? {
                   transferInn: transferInn.trim(),
@@ -487,6 +510,21 @@ export default function DealCreatePage() {
                   </div>
                 </div>
               )}
+              <div style={{ marginTop: 16 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                  Куда отправить сделку при сохранении
+                </Typography.Text>
+                <Radio.Group
+                  value={dilnozaCreateRoute}
+                  onChange={(e) => setDilnozaCreateRoute(e.target.value)}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+                >
+                  <Radio value="AUTO">Авто (как раньше: все позиции с кол-вом и ценой → в работу, иначе → подтверждение склада)</Radio>
+                  <Radio value="STOCK_CONFIRMATION">Сразу на подтверждение склада</Radio>
+                  <Radio value="WAREHOUSE_MANAGER">Сразу к зав. склада (нужны количество и цена по всем позициям)</Radio>
+                  <Radio value="FINANCE">Сразу к бухгалтеру (нужны количество и цена по всем позициям)</Radio>
+                </Radio.Group>
+              </div>
             </div>
           )}
         </Card>

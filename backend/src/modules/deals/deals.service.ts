@@ -367,7 +367,9 @@ export class DealsService {
     // Smart status: if ALL items have qty > 0 → IN_PROGRESS (skip warehouse)
     // Otherwise → WAITING_STOCK_CONFIRMATION
     const allHaveQty = dto.items.every((i) => i.requestedQty && i.requestedQty > 0);
-    const initialStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
+    let initialStatus: DealStatus = allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
+    /** Для Telegram onDealCreated: при явном маршруте Dilnoza подставляем флаг «все кол-ва есть». */
+    let allHaveQtyForTelegram = allHaveQty;
 
     // Custom payment method at create is enabled only for Dilnoza.
     const creator = await prisma.user.findUnique({
@@ -406,6 +408,33 @@ export class DealsService {
           dilnozaTerms = `Click: ${dto.clickTransactionId.trim()}`;
         } else {
           dilnozaTerms = null;
+        }
+      }
+    }
+
+    if (canUseDilnozaCreatePayment && dto.createRoute && dto.createRoute !== 'AUTO') {
+      if (dto.createRoute === 'STOCK_CONFIRMATION') {
+        initialStatus = 'WAITING_STOCK_CONFIRMATION';
+        allHaveQtyForTelegram = false;
+      } else {
+        if (!dto.paymentMethod) {
+          throw new AppError(400, 'Выберите способ оплаты для выбранного маршрута');
+        }
+        const everyFilled = dto.items.every(
+          (i) => i.requestedQty != null && Number(i.requestedQty) > 0 && i.price != null && Number(i.price) > 0,
+        );
+        if (!everyFilled) {
+          throw new AppError(
+            400,
+            'Для маршрута «к зав. склада» или «к бухгалтеру» укажите количество и цену по всем позициям',
+          );
+        }
+        if (dto.createRoute === 'WAREHOUSE_MANAGER') {
+          initialStatus = 'WAITING_WAREHOUSE_MANAGER';
+          allHaveQtyForTelegram = true;
+        } else if (dto.createRoute === 'FINANCE') {
+          initialStatus = 'WAITING_FINANCE';
+          allHaveQtyForTelegram = true;
         }
       }
     }
@@ -492,9 +521,21 @@ export class DealsService {
       },
     });
 
-    void onDealCreated(deal.id, deal.status as DealStatus, allHaveQty).catch((err) => {
+    void onDealCreated(deal.id, deal.status as DealStatus, allHaveQtyForTelegram).catch((err) => {
       console.error('[Telegram deal groups] onDealCreated:', err);
     });
+
+    if (deal.status === 'WAITING_FINANCE' || deal.status === 'WAITING_WAREHOUSE_MANAGER') {
+      void this.notifyAfterDilnozaDirectRoute(
+        deal.id,
+        deal.title,
+        deal.managerId,
+        user.userId,
+        deal.status as 'WAITING_FINANCE' | 'WAITING_WAREHOUSE_MANAGER',
+      ).catch((err) => {
+        console.error('[Deals] notifyAfterDilnozaDirectRoute:', err);
+      });
+    }
 
     // Return with includes
     return prisma.deal.findUnique({
@@ -794,6 +835,97 @@ export class DealsService {
     return this.findById(dealId, user);
   }
 
+  /** Уведомления при создании сделки Dilnoza сразу в FINANCE или WAITING_WAREHOUSE_MANAGER (аналог хвоста sendToFinance). */
+  private async notifyAfterDilnozaDirectRoute(
+    dealId: string,
+    dealTitle: string,
+    managerId: string,
+    createdByUserId: string,
+    targetStatus: 'WAITING_FINANCE' | 'WAITING_WAREHOUSE_MANAGER',
+  ): Promise<void> {
+    await Promise.allSettled([
+      sendProductionPaymentSubmitTelegram(dealId),
+      ...(targetStatus === 'WAITING_FINANCE' ? [trySendFinanceTelegram(dealId)] : []),
+    ]);
+
+    if (targetStatus === 'WAITING_FINANCE') {
+      const accountants = await prisma.user.findMany({
+        where: { role: 'ACCOUNTANT', isActive: true },
+        select: { id: true },
+      });
+      if (accountants.length > 0) {
+        await prisma.notification.createMany({
+          data: accountants.map((acc) => ({
+            userId: acc.id,
+            title: 'Новая сделка на проверку',
+            body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId,
+          })),
+        });
+        pushService.sendPushToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+        telegramService.sendToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+
+    if (targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
+      const whManagers = await prisma.user.findMany({
+        where: { role: 'WAREHOUSE_MANAGER', isActive: true },
+        select: { id: true },
+      });
+      if (whManagers.length > 0) {
+        await prisma.notification.createMany({
+          data: whManagers.map((wm) => ({
+            userId: wm.id,
+            title: 'Новая сделка на обработку',
+            body: `Сделка "${dealTitle}" ожидает обработки`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId,
+          })),
+        });
+        pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${dealTitle}" ожидает обработки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+        telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${dealTitle}" ожидает обработки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+
+    await prisma.notification.create({
+      data: {
+        userId: managerId,
+        title: targetStatus === 'WAITING_FINANCE' ? 'Сделка отправлена в бухгалтерию' : 'Сделка у зав. склада',
+        body: `Сделка "${dealTitle}" создана и поставлена в очередь`,
+        severity: 'INFO',
+        link: `/deals/${dealId}`,
+        createdByUserId,
+      },
+    }).catch(() => {});
+
+    await syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (dilnoza route):', err);
+    });
+  }
+
   // ==================== WAREHOUSE RESPONSE ====================
 
   async submitWarehouseResponse(dealId: string, dto: WarehouseResponseDto, user: AuthUser) {
@@ -816,7 +948,10 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает подтверждения склада"');
     }
 
-    validateStatusTransition(deal.status, 'STOCK_CONFIRMED', user.role);
+    const canSubmitStock = ['WAREHOUSE', 'LOADER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+    if (!canSubmitStock) {
+      throw new AppError(403, 'Недостаточно прав для ответа склада');
+    }
 
     const needsResponse = deal.items.filter((i) => dealItemNeedsStockQty(i));
     const needsIds = new Set(needsResponse.map((i) => i.id));
@@ -837,7 +972,7 @@ export class DealsService {
         await recalcDealAmountFromItemsInTx(tx, dealId);
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'STOCK_CONFIRMED' },
+          data: { status: 'IN_PROGRESS' },
         });
       });
     } else {
@@ -882,10 +1017,11 @@ export class DealsService {
           }
 
           const qty = item.requestedQty;
+          const whComment = item.warehouseComment?.trim() || null;
           await tx.dealItem.update({
             where: { id: item.dealItemId },
             data: {
-              warehouseComment: item.warehouseComment,
+              warehouseComment: whComment,
               requestedQty: qty,
               price,
               lineTotal: qty * price,
@@ -904,7 +1040,7 @@ export class DealsService {
         await recalcDealAmountFromItemsInTx(tx, dealId);
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'STOCK_CONFIRMED' },
+          data: { status: 'IN_PROGRESS' },
         });
       });
     }
@@ -915,11 +1051,15 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'STOCK_CONFIRMED', respondedItems: dto.items.length },
+      after: { status: 'IN_PROGRESS', respondedItems: dto.items.length },
     });
 
-    void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED').catch((err) => {
+    void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', 'IN_PROGRESS').catch((err) => {
       console.error('[Telegram deal groups] cleanupStockWaitTelegramMessages:', err);
+    });
+
+    void onDealStatusChanged(dealId, deal.status, 'IN_PROGRESS').catch((err) => {
+      console.error('[Telegram deal groups] onDealStatusChanged (stock→work):', err);
     });
 
     void syncDealTelegramGroupMessages(dealId).catch((err) => {

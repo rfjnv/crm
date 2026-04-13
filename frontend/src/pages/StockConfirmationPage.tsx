@@ -36,7 +36,7 @@ export default function StockConfirmationPage() {
     }) => dealsApi.submitWarehouseResponse(dealId, items),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-confirmation-queue'] });
-      message.success('Ответ отправлен');
+      message.success('Ответ отправлен, сделка в работе');
       setRespondModal(null);
       respondForm.resetFields();
     },
@@ -167,7 +167,7 @@ export default function StockConfirmationPage() {
             const priceVal = item.price as number | null | undefined;
             const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
               dealItemId: item.dealItemId as string,
-              warehouseComment: item.warehouseComment as string,
+              warehouseComment: String(item.warehouseComment ?? '').trim(),
               requestedQty: Number(item.requestedQty),
             };
             if (priceVal != null && priceVal > 0) {
@@ -208,10 +208,9 @@ export default function StockConfirmationPage() {
                       </Form.Item>
                       <Form.Item
                         name={[field.name, 'warehouseComment']}
-                        label="Ответ склада"
-                        rules={[{ required: true, message: 'Укажите ответ' }]}
+                        label="Комментарий склада (необязательно)"
                       >
-                        <Input.TextArea rows={2} placeholder="Есть в наличии 40 тонн, срок доставки 3 дня..." />
+                        <Input.TextArea rows={2} placeholder="По желанию: срок, замечание…" />
                       </Form.Item>
                     </Card>
                   );

@@ -53,6 +53,8 @@ export const dealsApi = {
     transferInn?: string;
     transferDocuments?: string[];
     transferType?: 'ONE_TIME' | 'ANNUAL';
+    /** Только Dilnoza: AUTO | STOCK_CONFIRMATION | WAREHOUSE_MANAGER | FINANCE */
+    createRoute?: 'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE';
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
