@@ -323,9 +323,9 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+      <div ref={messagesContainerRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px 32px' }}>
         {!activeChatId && messages.length === 0 ? (
-          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, paddingBottom: '12%' }}>
             <Empty
               image={<OpenAiIcon style={{ fontSize: 64, color: themeToken.colorTextQuaternary }} />}
               description={<Text type="secondary">Задайте вопрос по данным CRM</Text>}
@@ -431,7 +431,7 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Input */}
-      <div style={{ padding: '12px 16px', borderTop: `1px solid ${themeToken.colorBorderSecondary}`, display: 'flex', gap: 8 }}>
+      <div style={{ padding: '16px 24px 20px', borderTop: `1px solid ${themeToken.colorBorderSecondary}`, display: 'flex', gap: 8 }}>
         <Input.TextArea
           ref={inputRef}
           value={input}
