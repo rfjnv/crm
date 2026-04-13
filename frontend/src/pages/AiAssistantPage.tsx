@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Card, Input, Button, Typography, Tag, Space, Spin, Empty, theme,
-  Tooltip, List, Popconfirm, Drawer,
+  Input, Button, Typography, Tag, Space, Spin, Empty, theme,
+  List, Popconfirm, Drawer,
 } from 'antd';
 import {
   SendOutlined, UserOutlined, CodeOutlined, DeleteOutlined,
@@ -101,16 +101,6 @@ export default function AiAssistantPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  const createChatMutation = useMutation({
-    mutationFn: aiAssistantApi.createChat,
-    onSuccess: (chat) => {
-      queryClient.invalidateQueries({ queryKey: ['ai-chats'] });
-      setActiveChatId(chat.id);
-      setMessages([]);
-      if (isMobile) setSidebarOpen(false);
-    },
-  });
 
   const renameMutation = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => aiAssistantApi.renameChat(id, title),
