@@ -90,10 +90,11 @@ SQL RULES (NEVER BREAK):
 - EVERY query MUST end with LIMIT N (max 100)
 - Cast: COUNT(*)::int, SUM(...)::numeric
 - Filter: is_archived = false by default
-- CRITICAL: ALWAYS include WHERE date filter!
-  - If user specifies a period -> use it
-  - If NO period mentioned -> default to last 30 days: WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-  - NEVER return aggregated data without a date filter
+- DATE RANGE (full access to all history):
+  - You MAY query **any date range** including **all time** (entire database history). There is NO requirement to add a date filter on every query.
+  - If the user names a period ("сегодня", "этот месяц", "2025 год", "последние 120 дней", "за январь") -> apply a precise WHERE on the relevant timestamp/date column.
+  - If the user asks for totals, "ever", "за всё время", "всего", "вообще", "all time", ranking without a period, or does not narrow time -> query **without** a date filter (still use LIMIT and sane filters like is_archived = false). State in the answer that the figures are **for all available data** when no period was given.
+  - Prefer COALESCE(di.deal_date, di.created_at, d.created_at) or closed_at when the question is revenue/deals timing; use created_at for audit_logs, etc.
 - TIMEZONE: The database runs in UTC but the business is in Asia/Tashkent (UTC+5).
   ALWAYS use timezone-aware date functions:
   - Today: (NOW() AT TIME ZONE 'Asia/Tashkent')::date
@@ -211,7 +212,7 @@ When user asks which clients buy product X most often, топ покупател
 - Product name: use WIDE OR of LIKE patterns — Russian word forms differ (самоклеящаяся, самоклеящая, самоклейка, этикет). Example:
   (LOWER(p.name) LIKE '%самокле%' OR LOWER(p.name) LIKE '%этикет%' OR LOWER(p.name) LIKE '%sticker%')
   One narrow string often returns zero rows while data exists.
-- Period column: COALESCE(di.deal_date, di.created_at, d.created_at) for time window (not only closed_at)
+- Period column when user asks a range: COALESCE(di.deal_date, di.created_at, d.created_at) (not only closed_at). If user wants all-time product stats, omit date filter (still LIMIT).
 - In EVERY ranking query include ALL of:
   COUNT(DISTINCT d.id)::int AS deals_count
   SUM(COALESCE(di.requested_qty, 0))::numeric AS total_qty
@@ -500,8 +501,8 @@ async function executeAiQuery(
 ---
 Generate your response:
 - DATA questions: { "queries": ["SELECT ...", ...], "plan": "brief explanation" }
-  CRITICAL: EVERY query MUST have a WHERE date filter! Default to last 30 days if no period specified.
-  Product-by-client questions: include deals_count + total_qty + total_amount_uzs (not count-only). Use broad product LIKE. For "last N days" use NOW() - INTERVAL 'N days' on COALESCE(di.deal_date, di.created_at, d.created_at).
+  Date filters are OPTIONAL: use them only when the user specifies a period. For all-time / overall questions, do NOT add an artificial 30-day cutoff.
+  Product-by-client: deals_count + total_qty + total_amount_uzs; broad product LIKE; "last N days" -> NOW() - INTERVAL 'N days' on COALESCE(di.deal_date, di.created_at, d.created_at).
   USE JOINs to get real names. Use history tables when they add insight.
 - CONVERSATIONAL questions: { "queries": null, "answer": "markdown response", "entities": [] }
 Return ONLY valid JSON.`,
@@ -567,7 +568,7 @@ Return ONLY valid JSON.`,
           content: `Your previous SQL queries ALL failed. Errors:
 ${failedQueries.map((f) => `SQL: ${f.query}\nError: ${f.error}`).join('\n\n')}
 
-Fix: use correct table/column names from the schema. EVERY query MUST have LIMIT and WHERE date filter.
+Fix: use correct table/column names from the schema. EVERY query MUST have LIMIT. Date filter only if the user's question implies a time window.
 Return: { "queries": ["SELECT ..."] }`,
         },
       ],
