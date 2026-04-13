@@ -112,6 +112,24 @@ function dealItemNeedsStockQty(item: { requestedQty: unknown }): boolean {
   return !Number.isFinite(n) || n <= 0;
 }
 
+const ROLES_CAN_ADD_REMOVE_DEAL_ITEMS: Role[] = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'];
+
+/** Менеджер может добавлять/удалять позиции в любом статусе, кроме закрытой и отменённой сделки. */
+function assertCanAddOrRemoveDealItem(
+  deal: { status: DealStatus; isArchived: boolean },
+  user: AuthUser,
+): void {
+  if (!ROLES_CAN_ADD_REMOVE_DEAL_ITEMS.includes(user.role)) {
+    throw new AppError(403, 'Недостаточно прав для добавления или удаления товаров в сделке');
+  }
+  if (deal.isArchived) {
+    throw new AppError(400, 'Нельзя изменять позиции архивной сделки');
+  }
+  if (deal.status === 'CLOSED' || deal.status === 'CANCELED') {
+    throw new AppError(400, 'Нельзя добавлять или удалять товары: сделка закрыта или отменена');
+  }
+}
+
 async function recalcDealAmountFromItemsInTx(tx: Prisma.TransactionClient, dealId: string): Promise<void> {
   const deal = await tx.deal.findUnique({
     where: { id: dealId },
@@ -2470,6 +2488,8 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
+    assertCanAddOrRemoveDealItem(deal, user);
+
     const product = await prisma.product.findUnique({ where: { id: dto.productId } });
     if (!product || !product.isActive) {
       throw new AppError(404, 'Товар не найден или неактивен');
@@ -2499,6 +2519,8 @@ export class DealsService {
     if (!deal) {
       throw new AppError(404, 'Сделка не найдена');
     }
+
+    assertCanAddOrRemoveDealItem(deal, user);
 
     const item = await prisma.dealItem.findFirst({
       where: { id: itemId, dealId },
