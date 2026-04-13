@@ -130,13 +130,14 @@ export default function AiAssistantPage() {
     },
   });
 
+  const abortRef = useRef<AbortController | null>(null);
+
   const handleSend = useCallback(async (text?: string) => {
     const question = (text || input).trim();
     if (!question || loading) return;
 
     let chatId = activeChatId;
 
-    // Auto-create chat if none selected
     if (!chatId) {
       try {
         const newChat = await aiAssistantApi.createChat();
@@ -159,8 +160,12 @@ export default function AiAssistantPage() {
     setInput('');
     setLoading(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const res: AiAssistantResponse = await aiAssistantApi.ask(chatId, question);
+      if (controller.signal.aborted) return;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAsstId
@@ -172,6 +177,7 @@ export default function AiAssistantPage() {
         queryClient.invalidateQueries({ queryKey: ['ai-chats'] });
       }
     } catch (err: any) {
+      if (controller.signal.aborted) return;
       const errorMsg = err?.response?.data?.message || err?.message || 'Произошла ошибка';
       setMessages((prev) =>
         prev.map((m) =>
@@ -183,6 +189,7 @@ export default function AiAssistantPage() {
     } finally {
       sendingRef.current = false;
       setLoading(false);
+      abortRef.current = null;
       queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', chatId] });
       inputRef.current?.focus();
     }
@@ -255,11 +262,23 @@ export default function AiAssistantPage() {
   }, []);
 
   const handleSelectChat = (chatId: string) => {
+    if (chatId === activeChatId) return;
+    if (loading) {
+      abortRef.current?.abort();
+      sendingRef.current = false;
+      setLoading(false);
+    }
     setActiveChatId(chatId);
+    setMessages([]);
     if (isMobile) setSidebarOpen(false);
   };
 
   const handleNewChat = () => {
+    if (loading) {
+      abortRef.current?.abort();
+      sendingRef.current = false;
+      setLoading(false);
+    }
     setActiveChatId(null);
     setMessages([]);
     if (isMobile) setSidebarOpen(false);
@@ -472,7 +491,9 @@ export default function AiAssistantPage() {
                       )}
                       {msg.entities && msg.entities.length > 0 && (
                         <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {msg.entities.map((entity, idx) => (
+                          {msg.entities
+                            .filter((e) => e.name && e.id && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(e.name))
+                            .map((entity, idx) => (
                             <Tag
                               key={idx}
                               color={ENTITY_COLORS[entity.type] || 'blue'}
@@ -522,7 +543,7 @@ export default function AiAssistantPage() {
           placeholder="Спросите что-нибудь о данных CRM..."
           autoSize={{ minRows: 1, maxRows: 4 }}
           disabled={loading}
-          style={{ borderRadius: 12 }}
+          style={{ borderRadius: 12, fontSize: 14 }}
         />
         {supportsVoice && (
           <Button
@@ -532,9 +553,12 @@ export default function AiAssistantPage() {
             onClick={toggleVoice}
             disabled={loading}
             style={{
-              height: 'auto',
               borderRadius: 12,
-              minWidth: 48,
+              minWidth: 40,
+              minHeight: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               ...(isListening ? { animation: 'pulse-mic 1.5s infinite' } : {}),
             }}
             title={isListening ? 'Остановить запись' : 'Голосовой ввод'}
@@ -545,7 +569,7 @@ export default function AiAssistantPage() {
           icon={<SendOutlined />}
           onClick={() => { if (isListening) { recognitionRef.current?.stop(); setIsListening(false); } handleSend(); }}
           loading={loading}
-          style={{ height: 'auto', borderRadius: 12, minWidth: 48 }}
+          style={{ borderRadius: 12, minWidth: 40, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         />
       </div>
     </div>
@@ -601,23 +625,37 @@ export default function AiAssistantPage() {
           100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
         }
 
-        .ai-markdown { font-size: 14px; line-height: 1.7; }
+        .ai-markdown {
+          font-size: 14px; line-height: 1.7;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+        }
         .ai-markdown p { margin: 0 0 8px 0; }
         .ai-markdown p:last-child { margin-bottom: 0; }
-        .ai-markdown h3 { font-size: 15px; font-weight: 600; margin: 12px 0 6px 0; }
+        .ai-markdown h3 { font-size: 15px; font-weight: 600; margin: 14px 0 6px 0; }
         .ai-markdown h4 { font-size: 14px; font-weight: 600; margin: 10px 0 4px 0; }
         .ai-markdown ul, .ai-markdown ol { margin: 4px 0 8px 0; padding-left: 20px; }
         .ai-markdown li { margin-bottom: 2px; }
         .ai-markdown strong { font-weight: 600; }
-        .ai-markdown hr { border: none; border-top: 1px solid rgba(0,0,0,0.06); margin: 10px 0; }
+        .ai-markdown hr { border: none; border-top: 1px solid rgba(0,0,0,0.06); margin: 12px 0; }
         .ai-markdown table {
-          width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px;
+          width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px;
+          border-radius: 8px; overflow: hidden;
         }
         .ai-markdown th, .ai-markdown td {
-          border: 1px solid rgba(0,0,0,0.08); padding: 6px 10px; text-align: left;
+          border: 1px solid rgba(0,0,0,0.08); padding: 8px 12px; text-align: left;
         }
         .ai-markdown th {
-          background: rgba(0,0,0,0.03); font-weight: 600;
+          background: rgba(0,0,0,0.04); font-weight: 600; font-size: 12px; text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        .ai-markdown tr:nth-child(even) {
+          background: rgba(0,0,0,0.015);
+        }
+        .ai-markdown td:last-child, .ai-markdown th:last-child {
+          text-align: right;
+        }
+        .ai-markdown td:first-child, .ai-markdown th:first-child {
+          text-align: left;
         }
         .ai-markdown code {
           background: rgba(0,0,0,0.04); padding: 1px 4px; border-radius: 3px; font-size: 12px;

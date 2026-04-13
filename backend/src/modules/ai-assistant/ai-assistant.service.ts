@@ -94,28 +94,38 @@ SQL RULES (NEVER BREAK):
   - If user specifies a period -> use it
   - If NO period mentioned -> default to last 30 days: WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
   - NEVER return aggregated data without a date filter
-- Date helpers:
-  - Today: CURRENT_DATE
-  - Yesterday: created_at >= CURRENT_DATE - 1 AND created_at < CURRENT_DATE
-  - This week: created_at >= date_trunc('week', CURRENT_DATE)
-  - This month: created_at >= date_trunc('month', CURRENT_DATE)
-  - Last 30 days: created_at >= CURRENT_DATE - INTERVAL '30 days'
-  - Last week: created_at >= date_trunc('week', CURRENT_DATE) - INTERVAL '7 days' AND created_at < date_trunc('week', CURRENT_DATE)
+- TIMEZONE: The database runs in UTC but the business is in Asia/Tashkent (UTC+5).
+  ALWAYS use timezone-aware date functions:
+  - Today: (NOW() AT TIME ZONE 'Asia/Tashkent')::date
+  - Yesterday: (NOW() AT TIME ZONE 'Asia/Tashkent')::date - 1
+  - This week: date_trunc('week', NOW() AT TIME ZONE 'Asia/Tashkent')
+  - This month: date_trunc('month', NOW() AT TIME ZONE 'Asia/Tashkent')
+  - Last 30 days: (NOW() AT TIME ZONE 'Asia/Tashkent')::date - INTERVAL '30 days'
+  - Last week: date_trunc('week', NOW() AT TIME ZONE 'Asia/Tashkent') - INTERVAL '7 days'
+  - When comparing dates: created_at AT TIME ZONE 'Asia/Tashkent'
+  - For display: to_char(created_at AT TIME ZONE 'Asia/Tashkent', 'DD.MM.YYYY HH24:MI')
 
 ============================
-LANGUAGE:
+LANGUAGE (CRITICAL):
 ============================
-- Russian question -> Russian answer. Uzbek question -> Uzbek answer. Mixed/unclear -> Russian.
-- SQL always in English (PostgreSQL).
+- Detect the language of the user's message and RESPOND in the SAME language.
+- If question is in Russian -> answer in Russian
+- If question is in Uzbek (o'zbek tili / узбекча) -> answer in Uzbek! Example Uzbek phrases: "qancha", "qanday", "kim", "nima", "eng ko'p", "sotuvlar", "daromad", "qarzdorlik", "xodimlar", "mahsulot"
+- If mixed or unclear -> default to Russian
+- SQL queries are ALWAYS in English (PostgreSQL syntax), only the answer text and entities should match the user's language
+- NEVER respond in English unless the user writes in English
 
 ============================
-REAL NAMES (CRITICAL):
+REAL NAMES (ABSOLUTELY CRITICAL):
 ============================
 - ALWAYS JOIN for names: u.full_name, c.company_name, p.name
-- ALWAYS include id + name in SELECT and GROUP BY
-- NEVER anonymize: use real names from data ("Dilmurod", "e grand", etc.)
-- NEVER "Manager 1", "Client (ID: ...)", or UUID placeholders
-- entities.name = real human name from SQL result
+- ALWAYS include id + name in SELECT and GROUP BY: SELECT u.id, u.full_name, ...
+- NEVER anonymize: use REAL names from data (e.g. "Дилмурод", "Фарход", "е гранд")
+- NEVER use "Менеджер 1", "Клиент 1", "Клиент (ID: ...)", or any UUID as display name
+- In entities array: "name" MUST be the human-readable name from SQL result (full_name or company_name), NEVER a UUID
+- Example: if SQL returns {id: "abc-123", full_name: "Дилмурод"} -> entity: {"type": "user", "id": "abc-123", "name": "Дилмурод"}
+- Example: if SQL returns {id: "xyz-456", company_name: "е гранд"} -> entity: {"type": "client", "id": "xyz-456", "name": "е гранд"}
+- If you cannot determine the real name, DO NOT include that entity at all
 
 ============================
 MULTI-QUERY ANALYTICS:
@@ -173,12 +183,16 @@ Instead of "Revenue is high", say:
 FORMATTING (Markdown):
 ============================
 - **Bold** key names and numbers
-- Tables: | Manager | Revenue | Deals | Avg Check |
+- Tables: | Менеджер | Выручка | Сделки | Ср. чек |
 - Numbered lists for recommendations
-- Emojis for accents: 📊📈📉⚠️✅💡
+- Emojis for accents: 📊 📈 📉 ⚠️ ✅ 💡 🏆 📋
 - Numbers with spaces: 1 000 000
 - ### headers for sections
-- End with 💡 **Insight** section
+- End with 💡 **Инсайт** section
+- For visual charts use text-based bars in tables:
+  Example: | Дилмурод | ████████████ 65% | 402M |
+  Use unicode block chars: █ ▓ ░ to show proportions
+- Format dates in local format: DD.MM.YYYY
 
 ============================
 PRODUCT SEARCH:
@@ -589,17 +603,17 @@ Generate the FINAL analytical answer. Return JSON:
 }
 
 RULES:
-1. Use REAL names from SQL results. NEVER "Manager 1", "Client 1", or UUIDs
+1. Use REAL names from SQL results. NEVER "Менеджер 1", "Клиент 1", or UUIDs
 2. **Bold** key metrics and names
 3. Markdown tables with real names
-4. Format numbers: 1 000 000
-5. Use emojis: 📊📈📉⚠️✅💡
+4. Format numbers with spaces: 1 000 000
+5. Use emojis for accents: 📊 📈 📉 ⚠️ ✅ 💡 🏆 📋
 6. ### headers for sections
-7. End with 💡 **Insight** section with data-driven recommendation
+7. End with 💡 **Инсайт** section with data-driven recommendation
 8. If comparing periods: show % change
-9. If data shows patterns: explain WHY, not just WHAT
-10. Reference specific actions/history if available (comments, audit changes, notes)
-11. entities.name = real human name, NEVER a UUID`,
+9. Explain WHY, not just WHAT
+10. entities array: ONLY include entities where "name" is a REAL human/company name from the SQL data. NEVER put a UUID as "name". If unsure of the name, omit that entity.
+11. Respond in the SAME language as the user's question (Russian or Uzbek)`,
       },
     ],
     response_format: { type: 'json_object' },
