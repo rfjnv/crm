@@ -160,6 +160,7 @@ model User {
   clientNotes         ClientNote[]
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
+  aiChats             AiChat[]
 
   @@map("users")
 }
@@ -791,4 +792,36 @@ model MonthlySnapshot {
   @@unique([year, month, scope, type])
   @@index([year, month])
   @@map("monthly_snapshots")
+}
+
+// ==================== AI ASSISTANT CHATS ====================
+
+model AiChat {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String   @default("Новый чат")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("ai_chats")
+}
+
+model AiChatMessage {
+  id        String   @id @default(uuid())
+  chatId    String   @map("chat_id")
+  role      String
+  content   String   @db.Text
+  sql       String?  @db.Text
+  entities  Json?
+  isError   Boolean  @default(false) @map("is_error")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  chat AiChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("ai_chat_messages")
 }

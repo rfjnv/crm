@@ -197,10 +197,142 @@ function serialize(obj: unknown): unknown {
   ));
 }
 
-export async function askQuestion(question: string): Promise<AiAssistantResponse> {
+function generateTitle(question: string): string {
+  const cleaned = question.replace(/[?!.]+$/, '').trim();
+  if (cleaned.length <= 50) return cleaned;
+  return cleaned.slice(0, 47) + '...';
+}
+
+// ==================== CHAT CRUD ====================
+
+export async function listChats(userId: string) {
+  return prisma.aiChat.findMany({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { messages: true } },
+    },
+  });
+}
+
+export async function createChat(userId: string) {
+  return prisma.aiChat.create({
+    data: { userId },
+    select: { id: true, title: true, createdAt: true, updatedAt: true },
+  });
+}
+
+export async function getChatMessages(chatId: string, userId: string) {
+  const chat = await prisma.aiChat.findFirst({
+    where: { id: chatId, userId },
+  });
+  if (!chat) throw new AppError(404, 'Чат не найден');
+
+  return prisma.aiChatMessage.findMany({
+    where: { chatId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      role: true,
+      content: true,
+      sql: true,
+      entities: true,
+      isError: true,
+      createdAt: true,
+    },
+  });
+}
+
+export async function renameChat(chatId: string, userId: string, title: string) {
+  const chat = await prisma.aiChat.findFirst({
+    where: { id: chatId, userId },
+  });
+  if (!chat) throw new AppError(404, 'Чат не найден');
+
+  return prisma.aiChat.update({
+    where: { id: chatId },
+    data: { title },
+    select: { id: true, title: true },
+  });
+}
+
+export async function deleteChat(chatId: string, userId: string) {
+  const chat = await prisma.aiChat.findFirst({
+    where: { id: chatId, userId },
+  });
+  if (!chat) throw new AppError(404, 'Чат не найден');
+
+  await prisma.aiChat.delete({ where: { id: chatId } });
+}
+
+// ==================== ASK QUESTION (with DB persistence) ====================
+
+export async function askQuestionInChat(
+  chatId: string,
+  userId: string,
+  question: string,
+): Promise<AiAssistantResponse> {
+  const chat = await prisma.aiChat.findFirst({
+    where: { id: chatId, userId },
+    include: { _count: { select: { messages: true } } },
+  });
+  if (!chat) throw new AppError(404, 'Чат не найден');
+
+  // Save user message
+  await prisma.aiChatMessage.create({
+    data: { chatId, role: 'user', content: question },
+  });
+
+  // Auto-title on first message
+  const isFirstMessage = chat._count.messages === 0;
+  if (isFirstMessage) {
+    await prisma.aiChat.update({
+      where: { id: chatId },
+      data: { title: generateTitle(question) },
+    });
+  }
+
+  // Touch updatedAt
+  await prisma.aiChat.update({
+    where: { id: chatId },
+    data: { updatedAt: new Date() },
+  });
+
+  let result: AiAssistantResponse;
+  try {
+    result = await executeAiQuery(question);
+  } catch (err) {
+    const errorMsg = err instanceof AppError ? err.message : 'Произошла ошибка при обработке запроса';
+    await prisma.aiChatMessage.create({
+      data: { chatId, role: 'assistant', content: errorMsg, isError: true },
+    });
+    throw err;
+  }
+
+  // Save assistant message
+  await prisma.aiChatMessage.create({
+    data: {
+      chatId,
+      role: 'assistant',
+      content: result.answer,
+      sql: result.sql,
+      entities: result.entities as any,
+    },
+  });
+
+  const updatedTitle = isFirstMessage ? generateTitle(question) : undefined;
+
+  return { ...result, chatTitle: updatedTitle };
+}
+
+// Core AI query logic (extracted from old askQuestion)
+async function executeAiQuery(question: string): Promise<AiAssistantResponse> {
   const openai = getOpenAIClient();
 
-  // Step 1: Ask OpenAI to generate SQL
   const sqlResponse = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
@@ -237,7 +369,6 @@ Return ONLY valid JSON: { "sql": "SELECT ..." }`,
 
   validateSQL(sql);
 
-  // Step 2: Execute the SQL
   let queryResult: unknown;
   try {
     queryResult = await prisma.$queryRawUnsafe(sql);
@@ -247,7 +378,6 @@ Return ONLY valid JSON: { "sql": "SELECT ..." }`,
     throw new AppError(400, `Ошибка выполнения SQL: ${msg}`);
   }
 
-  // Step 3: Ask OpenAI to format the final answer
   const answerResponse = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0.3,
