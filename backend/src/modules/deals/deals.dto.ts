@@ -69,6 +69,9 @@ export const createCommentDto = z.object({
 
 export const addDealItemDto = z.object({
   productId: z.string().uuid('Некорректный ID товара'),
+  /** Полноценная позиция: количество и цена (не «запрос на склад» без суммы). */
+  requestedQty: z.number().positive('Укажите количество больше 0'),
+  price: z.number().min(0, 'Цена не может быть отрицательной'),
   requestComment: z.string().optional(),
 });
 

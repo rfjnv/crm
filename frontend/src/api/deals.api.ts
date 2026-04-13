@@ -83,7 +83,7 @@ export const dealsApi = {
   getItems: (dealId: string) =>
     client.get<DealItem[]>(`/deals/${dealId}/items`).then((r) => r.data),
 
-  addItem: (dealId: string, data: { productId: string; requestComment?: string }) =>
+  addItem: (dealId: string, data: { productId: string; requestedQty: number; price: number; requestComment?: string }) =>
     client.post<DealItem>(`/deals/${dealId}/items`, data).then((r) => r.data),
 
   removeItem: (dealId: string, itemId: string) =>

@@ -230,7 +230,7 @@ export default function DealDetailPage() {
   });
 
   const addItemMut = useMutation({
-    mutationFn: (data: { productId: string; requestComment?: string }) => dealsApi.addItem(id!, data),
+    mutationFn: (data: { productId: string; requestedQty: number; price: number; requestComment?: string }) => dealsApi.addItem(id!, data),
     onSuccess: () => {
       invalidate();
       // If setting quantities modal is open, don't close item modal
@@ -240,7 +240,12 @@ export default function DealDetailPage() {
       itemForm.resetFields();
       message.success('Товар добавлен');
     },
-    onError: () => message.error('Ошибка добавления товара'),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        || (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        || 'Ошибка добавления товара';
+      message.error(msg);
+    },
   });
 
   const removeItemMut = useMutation({
@@ -1700,18 +1705,50 @@ export default function DealDetailPage() {
         confirmLoading={addItemMut.isPending}
         okText="Добавить"
         cancelText="Отмена"
+        width={isMobile ? '100%' : 480}
       >
-        <Form form={itemForm} layout="vertical" onFinish={(v) => addItemMut.mutate({ productId: v.productId, requestComment: v.requestComment || undefined })}>
+        <Form
+          form={itemForm}
+          layout="vertical"
+          initialValues={{ requestedQty: 1 }}
+          onFinish={(v) => addItemMut.mutate({
+            productId: v.productId,
+            requestedQty: Number(v.requestedQty),
+            price: Number(v.price),
+            requestComment: v.requestComment?.trim() || undefined,
+          })}
+        >
           <Form.Item name="productId" label="Товар" rules={[{ required: true, message: 'Выберите товар' }]}>
             <Select
               showSearch
               optionFilterProp="label"
               placeholder="Выберите товар"
               options={(products ?? []).filter((p) => p.isActive).map((p) => ({ label: `${p.name} (${p.sku}) — остаток: ${p.stock}`, value: p.id }))}
+              onChange={(pid) => {
+                const p = (products ?? []).find((x) => x.id === pid);
+                const sp = p?.salePrice != null ? Number(p.salePrice) : 0;
+                itemForm.setFieldsValue({ price: Number.isFinite(sp) ? sp : 0 });
+              }}
             />
           </Form.Item>
-          <Form.Item name="requestComment" label="Комментарий / запрос">
-            <Input.TextArea rows={2} placeholder="Например: нужно 50 тонн, уточнить наличие" />
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <Form.Item name="requestedQty" label="Количество" rules={[{ required: true, message: 'Укажите количество' }]}>
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0.001}
+                step={0.001}
+                parser={(val) => {
+                  const s = String(val ?? '').replace(',', '.');
+                  return Number(s) as unknown as 0;
+                }}
+              />
+            </Form.Item>
+            <Form.Item name="price" label="Цена за ед. (с НДС)" rules={[{ required: true, message: 'Укажите цену' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            </Form.Item>
+          </div>
+          <Form.Item name="requestComment" label="Примечание (необязательно)">
+            <Input.TextArea rows={2} placeholder="Доп. комментарий к позиции" />
           </Form.Item>
         </Form>
       </Modal>

@@ -2495,14 +2495,21 @@ export class DealsService {
       throw new AppError(404, 'Товар не найден или неактивен');
     }
 
+    const qty = Number(dto.requestedQty);
+    const price = Number(dto.price);
     const item = await prisma.dealItem.create({
       data: {
         dealId,
         productId: dto.productId,
+        requestedQty: qty,
+        price,
+        lineTotal: qty > 0 && price >= 0 ? qty * price : null,
         requestComment: dto.requestComment,
       },
       include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
     });
+
+    await this.recalcAmount(dealId);
 
     void syncDealTelegramGroupMessages(dealId).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
