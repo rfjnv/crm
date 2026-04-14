@@ -18,7 +18,7 @@ export class PowerOfAttorneyService {
           select: {
             id: true,
             contractNumber: true,
-            client: { select: { id: true, companyName: true, isSvip: true } },
+            client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
           },
         },
       },
@@ -37,7 +37,7 @@ export class PowerOfAttorneyService {
             startDate: true,
             client: {
               select: {
-                id: true, companyName: true, contactName: true, isSvip: true,
+                id: true, companyName: true, contactName: true, isSvip: true, creditStatus: true,
                 phone: true, address: true,
                 inn: true, bankName: true, bankAccount: true,
                 mfo: true, vatRegCode: true, oked: true,

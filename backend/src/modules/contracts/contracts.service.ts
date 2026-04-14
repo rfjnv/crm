@@ -25,7 +25,7 @@ export class ContractsService {
     const contracts = await prisma.contract.findMany({
       where,
       include: {
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         deals: {
           select: { id: true, amount: true, paidAmount: true, status: true },
         },
@@ -51,7 +51,7 @@ export class ContractsService {
     const contract = await prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, phone: true, address: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, contactName: true, phone: true, address: true, isSvip: true, creditStatus: true } },
         deals: {
           select: {
             id: true, title: true, status: true, amount: true,
@@ -137,7 +137,7 @@ export class ContractsService {
         notes: dto.notes,
       },
       include: {
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
       },
     });
 
@@ -189,7 +189,7 @@ export class ContractsService {
       where: { id },
       data,
       include: {
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
       },
     });
 
@@ -375,7 +375,7 @@ export class ContractsService {
       include: {
         client: {
           select: {
-            id: true, companyName: true, contactName: true, phone: true, address: true, isSvip: true,
+            id: true, companyName: true, contactName: true, phone: true, address: true, isSvip: true, creditStatus: true,
             inn: true, bankName: true, bankAccount: true, mfo: true, vatRegCode: true, oked: true,
           },
         },

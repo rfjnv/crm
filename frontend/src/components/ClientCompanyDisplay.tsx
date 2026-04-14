@@ -37,9 +37,19 @@ export function ClientCompanyDisplay({
   const vip = !!client?.isSvip;
   const creditStatus = client?.creditStatus ?? 'NORMAL';
   const riskMeta = creditStatus === 'NEGATIVE'
-    ? { letter: 'Н', tagColor: '#cf1322', borderColor: '#ff4d4f', bg: '#fff1f0' }
+    ? {
+        letter: 'Н',
+        tagColor: '#cf1322',
+        bgGradient: 'linear-gradient(90deg, #fff1f0 0%, #ffd8d6 100%)',
+        accent: '#cf1322',
+      }
     : creditStatus === 'SATISFACTORY'
-      ? { letter: 'У', tagColor: '#d48806', borderColor: '#faad14', bg: '#fffbe6' }
+      ? {
+          letter: 'У',
+          tagColor: '#d48806',
+          bgGradient: 'linear-gradient(90deg, #fffbe6 0%, #ffe7ba 100%)',
+          accent: '#d48806',
+        }
       : null;
 
   const nameEl =
@@ -48,10 +58,9 @@ export function ClientCompanyDisplay({
         type={secondary ? 'secondary' : undefined}
         style={{
           margin: 0,
-          border: riskMeta ? `1px solid ${riskMeta.borderColor}` : undefined,
-          background: riskMeta ? riskMeta.bg : undefined,
+          background: riskMeta ? riskMeta.bgGradient : undefined,
           borderRadius: riskMeta ? 4 : undefined,
-          padding: riskMeta ? '0 6px' : undefined,
+          padding: riskMeta ? '1px 6px' : undefined,
           display: 'inline-block',
         }}
       >
@@ -65,10 +74,9 @@ export function ClientCompanyDisplay({
         style={{
           margin: 0,
           fontWeight: vip ? 600 : undefined,
-          border: riskMeta ? `1px solid ${riskMeta.borderColor}` : undefined,
-          background: riskMeta ? riskMeta.bg : undefined,
+          background: riskMeta ? riskMeta.bgGradient : undefined,
           borderRadius: riskMeta ? 4 : undefined,
-          padding: riskMeta ? '0 6px' : undefined,
+          padding: riskMeta ? '1px 6px' : undefined,
           display: 'inline-block',
         }}
       >
@@ -79,7 +87,7 @@ export function ClientCompanyDisplay({
   return (
     <Space size={6} align="center" wrap className={className} style={style}>
       {vip && (
-        <CrownFilled style={{ color: '#faad14', fontSize: variant === 'full' ? 16 : 14 }} aria-hidden />
+        <CrownFilled style={{ color: riskMeta?.accent || '#faad14', fontSize: variant === 'full' ? 16 : 14 }} aria-hidden />
       )}
       {nameEl}
       {riskMeta && (
@@ -99,7 +107,17 @@ export function ClientCompanyDisplay({
         </Tag>
       )}
       {vip && variant === 'full' && (
-        <Tag color="gold" style={{ margin: 0, lineHeight: 1.35 }}>
+        <Tag
+          color={riskMeta ? undefined : 'gold'}
+          style={{
+            margin: 0,
+            lineHeight: 1.35,
+            background: riskMeta ? riskMeta.bgGradient : undefined,
+            borderColor: riskMeta ? riskMeta.accent : undefined,
+            color: riskMeta ? riskMeta.accent : undefined,
+            fontWeight: riskMeta ? 600 : undefined,
+          }}
+        >
           SVIP
         </Tag>
       )}

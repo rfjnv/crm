@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse, Dropdown,
+  message, theme, Collapse, Dropdown, Select,
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
@@ -20,6 +20,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from '../components/DealStatusTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import type { DealStatus, DealShort, PaymentStatus, PaymentRecord } from '../types';
 import type { CreateClientData } from '../api/clients.api';
@@ -137,6 +138,17 @@ export default function ClientDetailPage() {
       message.success(client?.isSvip ? 'Статус SVIP снят' : 'Клиент отмечен как SVIP');
     },
     onError: () => message.error('Ошибка изменения статуса'),
+  });
+
+  const creditStatusMut = useMutation({
+    mutationFn: (creditStatus: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE') =>
+      clientsApi.setCreditStatus(id!, creditStatus),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', id] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Кредитный статус клиента обновлён');
+    },
+    onError: () => message.error('Ошибка изменения кредитного статуса'),
   });
 
   // Client-side filtering of deals by payment status
@@ -264,9 +276,17 @@ export default function ClientDetailPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space size={8} align="center">
           <BackButton fallback="/clients" />
-          {client.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 22 }} />}
-          <Typography.Title level={4} style={{ margin: 0 }}>{client.companyName}</Typography.Title>
-          {client.isSvip && <Tag color="gold">SVIP</Tag>}
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            <ClientCompanyDisplay
+              client={{
+                id: client.id,
+                companyName: client.companyName,
+                isSvip: client.isSvip,
+                creditStatus: client.creditStatus,
+              }}
+              variant="full"
+            />
+          </Typography.Title>
         </Space>
         <Space>
           {isAdmin && (
@@ -277,6 +297,19 @@ export default function ClientDetailPage() {
             >
               {client.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
             </Button>
+          )}
+          {isAdmin && (
+            <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
+              size="middle"
+              value={client.creditStatus || 'NORMAL'}
+              style={{ width: 180 }}
+              onChange={(value) => creditStatusMut.mutate(value)}
+              options={[
+                { value: 'NORMAL', label: 'Статус: обычный' },
+                { value: 'SATISFACTORY', label: 'Статус: У (огранич.)' },
+                { value: 'NEGATIVE', label: 'Статус: Н (без долга)' },
+              ]}
+            />
           )}
           {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
         </Space>
@@ -297,6 +330,13 @@ export default function ClientDetailPage() {
                     <Descriptions.Item label="Email">{client.email || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Адрес">{client.address || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
+                    <Descriptions.Item label="Кредитный статус">
+                      {client.creditStatus === 'NEGATIVE'
+                        ? 'Н — Негатив (без долга)'
+                        : client.creditStatus === 'SATISFACTORY'
+                          ? 'У — Удовлетворительный (ограниченный долг)'
+                          : 'Обычный'}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Заметки">{client.notes || '—'}</Descriptions.Item>
                   </Descriptions>
                   {(client.inn || client.bankName || client.bankAccount || client.mfo || client.vatRegCode || client.oked) && (

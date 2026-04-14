@@ -90,7 +90,7 @@ router.get(
             paymentStatus: true,
           },
         },
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         creator: { select: { id: true, fullName: true } },
         receivedBy: { select: { id: true, fullName: true } },
       },
@@ -199,7 +199,7 @@ router.get(
     const deals = await prisma.deal.findMany({
       where,
       include: {
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
         payments: {
           select: { paidAt: true },
@@ -320,7 +320,7 @@ router.get(
     if (missingClientIds.length > 0) {
       const prepClients = await prisma.client.findMany({
         where: { id: { in: missingClientIds } },
-        select: { id: true, companyName: true, isSvip: true },
+        select: { id: true, companyName: true, isSvip: true, creditStatus: true },
       });
 
       for (const pc of prepClients) {
@@ -453,7 +453,7 @@ router.get(
         status: true,
         amount: true,
         paidAmount: true,
-        client: { select: { id: true, companyName: true, isSvip: true } },
+        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -504,7 +504,7 @@ router.get(
 
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, ...dealScope, isArchived: false },
-      include: { client: { select: { id: true, companyName: true, isSvip: true } } },
+      include: { client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } } },
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена');
 
@@ -701,7 +701,7 @@ router.get(
 
     const client = await prisma.client.findUnique({
       where: { id: clientId },
-      select: { id: true, companyName: true, contactName: true, phone: true, isSvip: true },
+      select: { id: true, companyName: true, contactName: true, phone: true, isSvip: true, creditStatus: true },
     });
     if (!client) throw new AppError(404, 'Клиент не найден');
 
