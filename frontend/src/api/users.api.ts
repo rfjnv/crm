@@ -7,7 +7,19 @@ export const usersApi = {
   create: (data: { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }) =>
     client.post<User>('/users', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ login: string; fullName: string; role: string; isActive: boolean; password: string; permissions: Permission[] }>) =>
+  update: (
+    id: string,
+    data: Partial<{
+      login: string;
+      fullName: string;
+      role: string;
+      isActive: boolean;
+      password: string;
+      permissions: Permission[];
+      badgeIcon: string | null;
+      badgeColor: string | null;
+    }>,
+  ) =>
     client.patch<User>(`/users/${id}`, data).then((r) => r.data),
 
   deactivate: (id: string) => client.delete<User>(`/users/${id}`).then((r) => r.data),

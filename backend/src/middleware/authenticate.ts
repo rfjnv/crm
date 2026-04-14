@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken, AccessTokenPayload } from '../lib/jwt';
+import { verifyAccessToken } from '../lib/jwt';
+import type { AccessTokenPayload } from '../lib/jwt';
 import { AppError } from '../lib/errors';
 import prisma from '../lib/prisma';
 
 declare global {
   namespace Express {
     interface Request {
+      /** Актуальные поля из БД + sessionId из access JWT (если есть) */
       user?: AccessTokenPayload;
     }
   }
@@ -46,6 +48,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
         userId: row.id,
         role: row.role,
         permissions,
+        ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
       };
       next();
     } catch {

@@ -8,6 +8,7 @@ import prisma from './lib/prisma';
 
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
+import profileRoutes from './modules/profile/profile.routes';
 import clientsRoutes from './modules/clients/clients.routes';
 import dealsRoutes from './modules/deals/deals.routes';
 import contractsRoutes from './modules/contracts/contracts.routes';
@@ -85,6 +86,7 @@ app.use('/api/public/rate', ratingsRoutes);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/profile', profileRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/deals', dealsRoutes);
 app.use('/api/contracts', contractsRoutes);

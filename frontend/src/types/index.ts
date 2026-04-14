@@ -79,6 +79,33 @@ export interface User {
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;
+  /** Значок в списке команды (задают админы) */
+  badgeIcon?: string | null;
+  badgeColor?: string | null;
+}
+
+export interface ProfileSession {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+export interface DailyReportDay {
+  date: string;
+  dealsCreated: number;
+  dealsClosed: number;
+  revenue: number;
+}
+
+export interface DailyReport {
+  days: DailyReportDay[];
+  totals: { dealsCreated: number; dealsClosed: number; revenue: number };
+  from: string;
+  to: string;
 }
 
 export interface AuthTokens {

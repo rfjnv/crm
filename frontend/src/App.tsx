@@ -21,6 +21,7 @@ import ProductsPage from './pages/ProductsPage';
 import WarehousePage from './pages/WarehousePage';
 import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
+import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import DebtsPage from './pages/DebtsPage';
 import NotificationsPage from './pages/NotificationsPage';
@@ -111,6 +112,7 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/users" element={<UsersPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />

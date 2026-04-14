@@ -5,6 +5,8 @@ export interface AccessTokenPayload {
   userId: string;
   role: string;
   permissions: string[];
+  /** ID refresh-сессии (для «текущее устройство» в списке сеансов) */
+  sessionId?: string;
 }
 
 export interface RefreshTokenPayload {

@@ -1,6 +1,27 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, Input, Select, Typography, message, Tag, Popconfirm, Checkbox, Tooltip, Card, Row, Col, Statistic, Segmented, Spin, theme } from 'antd';
+import {
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Select,
+  Typography,
+  message,
+  Tag,
+  Popconfirm,
+  Checkbox,
+  Tooltip,
+  Card,
+  Row,
+  Col,
+  Statistic,
+  Segmented,
+  Spin,
+  theme,
+  ColorPicker,
+} from 'antd';
 import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
 import { usersApi } from '../api/users.api';
@@ -10,6 +31,7 @@ import { moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
+import { UserBadgeIcon, USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Суперадмин',
@@ -46,6 +68,12 @@ export default function UsersPage() {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const canManageTeam = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const badgeOptions = USER_BADGE_ICON_KEYS.map((k) => ({
+    value: k,
+    label: USER_BADGE_ICON_LABELS[k],
+  }));
 
   const { data: users, isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
 
@@ -139,6 +167,8 @@ export default function UsersPage() {
       fullName: user.fullName,
       role: user.role,
       permissions: user.permissions || [],
+      badgeIcon: user.badgeIcon ?? undefined,
+      badgeColor: user.badgeColor || '#22609A',
     });
     setOpen(true);
   }
@@ -151,7 +181,26 @@ export default function UsersPage() {
       if (values.role !== editingUser.role) data.role = values.role;
       if (values.password) data.password = values.password;
       data.permissions = values.permissions;
-      updateMut.mutate({ id: editingUser.id, data: data as Partial<{ login: string; fullName: string; role: string; password: string; permissions: Permission[] }> });
+      if (canManageTeam) {
+        data.badgeIcon = (values.badgeIcon as string | undefined) ?? null;
+        const rawColor = values.badgeColor;
+        data.badgeColor =
+          typeof rawColor === 'string'
+            ? rawColor
+            : (rawColor as { toHexString?: () => string } | undefined)?.toHexString?.() ?? null;
+      }
+      updateMut.mutate({
+        id: editingUser.id,
+        data: data as Partial<{
+          login: string;
+          fullName: string;
+          role: string;
+          password: string;
+          permissions: Permission[];
+          badgeIcon: string | null;
+          badgeColor: string | null;
+        }>,
+      });
     } else {
       createMut.mutate(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] });
     }
@@ -162,9 +211,15 @@ export default function UsersPage() {
     form.setFieldsValue({ permissions: presets });
   }
 
-  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
-
-  const columns = [
+  const columns = useMemo(
+    () => [
+    {
+      title: '',
+      key: 'badge',
+      width: 48,
+      align: 'center' as const,
+      render: (_: unknown, r: User) => <UserBadgeIcon iconKey={r.badgeIcon} color={r.badgeColor} size={22} />,
+    },
     { title: 'Логин', dataIndex: 'login' },
     { title: 'ФИО', dataIndex: 'fullName' },
     {
@@ -172,16 +227,24 @@ export default function UsersPage() {
       dataIndex: 'role',
       render: (v: string) => <Tag color={roleColors[v] || 'default'}>{roleLabels[v] || v}</Tag>,
     },
-    {
-      title: 'Разрешения',
-      dataIndex: 'permissions',
-      render: (perms: string[] | undefined) => {
-        const count = perms?.length || 0;
-        if (count === 0) return <Tag>0</Tag>;
-        const labels = (perms || []).map((p) => ALL_PERMISSIONS.find((a) => a.key === p)?.label || p).join(', ');
-        return <Tooltip title={labels}><Tag color="geekblue">{count}</Tag></Tooltip>;
-      },
-    },
+    ...(canManageTeam
+      ? [
+          {
+            title: 'Разрешения',
+            dataIndex: 'permissions',
+            render: (perms: string[] | undefined) => {
+              const count = perms?.length || 0;
+              if (count === 0) return <Tag>0</Tag>;
+              const labels = (perms || []).map((p) => ALL_PERMISSIONS.find((a) => a.key === p)?.label || p).join(', ');
+              return (
+                <Tooltip title={labels}>
+                  <Tag color="geekblue">{count}</Tag>
+                </Tooltip>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: 'Статус',
       dataIndex: 'isActive',
@@ -189,12 +252,12 @@ export default function UsersPage() {
     },
     {
       title: 'Действия',
-      width: 200,
+      width: canManageTeam ? 200 : 72,
       render: (_: unknown, r: User) => {
         const isSelf = r.id === currentUser?.id;
         const isTargetSuperAdmin = r.role === 'SUPER_ADMIN';
-        const canEdit = !isTargetSuperAdmin || isSuperAdmin;
-        const canToggle = !isSelf && (!isTargetSuperAdmin || isSuperAdmin);
+        const canEdit = canManageTeam && (!isTargetSuperAdmin || isSuperAdmin);
+        const canToggle = canManageTeam && !isSelf && (!isTargetSuperAdmin || isSuperAdmin);
 
         return (
           <div style={{ display: 'flex', gap: 4 }}>
@@ -202,17 +265,17 @@ export default function UsersPage() {
             {canEdit && (
               <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
             )}
-            {r.isActive && canToggle && (
+            {canManageTeam && r.isActive && canToggle && (
               <Popconfirm title="Деактивировать пользователя?" onConfirm={() => deactivateMut.mutate(r.id)}>
                 <Button type="text" danger icon={<StopOutlined />} size="small" />
               </Popconfirm>
             )}
-            {!r.isActive && canToggle && (
+            {canManageTeam && !r.isActive && canToggle && (
               <Popconfirm title="Активировать пользователя?" onConfirm={() => activateMut.mutate(r.id)}>
                 <Button type="text" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} size="small" />
               </Popconfirm>
             )}
-            {canToggle && (
+            {canManageTeam && canToggle && (
               <Popconfirm
                 title="Удалить пользователя навсегда?"
                 description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
@@ -228,16 +291,25 @@ export default function UsersPage() {
         );
       },
     },
-  ];
+  ],
+    [canManageTeam, currentUser?.id, isSuperAdmin],
+  );
 
   const isEditing = !!editingUser;
   const isPending = createMut.isPending || updateMut.isPending;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Пользователи</Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Создать</Button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>Команда</Typography.Title>
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            Имена и значки видны всем; редактирование — только у администраторов.
+          </Typography.Text>
+        </div>
+        {canManageTeam && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Создать пользователя</Button>
+        )}
       </div>
 
       <Table
@@ -297,6 +369,22 @@ export default function UsersPage() {
               ))}
             </Checkbox.Group>
           </Form.Item>
+          {isEditing && canManageTeam && (
+            <>
+              <Form.Item name="badgeIcon" label="Значок в списке команды">
+                <Select allowClear placeholder="Без значка" options={badgeOptions} />
+              </Form.Item>
+              <Form.Item
+                name="badgeColor"
+                label="Цвет значка"
+                getValueFromEvent={(v: string | { toHexString?: () => string }) =>
+                  typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
+                }
+              >
+                <ColorPicker showText format="hex" disabledAlpha />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
 

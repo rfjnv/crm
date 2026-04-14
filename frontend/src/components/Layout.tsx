@@ -7,7 +7,6 @@ import {
   FundProjectionScreenOutlined,
   ShopOutlined,
   SwapOutlined,
-  UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -34,6 +33,7 @@ import {
   SafetyCertificateOutlined,
   StarOutlined,
   PhoneOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -392,25 +392,30 @@ export default function Layout() {
       ]
       : []),
 
-    // ── СИСТЕМА ──
-    ...(hasPermission('manage_users')
+    // ── СИСТЕМА (профиль и команда — у всех; рассылка/настройки — у админов) ──
+    { type: 'divider' as const },
+    ...(showGroupLabels
+      ? [{ type: 'group' as const, label: 'СИСТЕМА' }]
+      : []),
+    {
+      key: '/profile',
+      icon: <IdcardOutlined />,
+      label: <Link to="/profile">Профиль</Link>,
+    },
+    {
+      key: '/users',
+      icon: <TeamOutlined />,
+      label: <Link to="/users">Команда</Link>,
+    },
+    ...(isAdmin
       ? [
-        { type: 'divider' as const },
-        ...(showGroupLabels
-          ? [{ type: 'group' as const, label: 'СИСТЕМА' }]
-          : []),
         {
-          key: '/users',
-          icon: <UserOutlined />,
-          label: <Link to="/users">Пользователи</Link>,
+          key: '/notifications/broadcast',
+          icon: <SendOutlined />,
+          label: <Link to="/notifications/broadcast">Рассылка</Link>,
         },
-        ...(isAdmin
+        ...(hasPermission('manage_users')
           ? [{
-            key: '/notifications/broadcast',
-            icon: <SendOutlined />,
-            label: <Link to="/notifications/broadcast">Рассылка</Link>,
-          },
-          {
             key: '/settings/company',
             icon: <SettingOutlined />,
             label: <Link to="/settings/company">Настройки</Link>,

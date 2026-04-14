@@ -157,6 +157,10 @@ model User {
   contractsDeleted    Contract[]           @relation("ContractDeletedBy")
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
+  /** Значок в списке команды (задают ADMIN / SUPER_ADMIN): ключ иконки, например star, trophy */
+  badgeIcon           String?          @map("badge_icon")
+  /** HEX цвет значка, например #22609A */
+  badgeColor          String?          @map("badge_color")
   clientNotes         ClientNote[]
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")

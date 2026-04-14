@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { ALL_PERMISSIONS } from '../../lib/permissions';
+import { USER_BADGE_ICON_KEYS } from '../../lib/userBadges';
+
+const badgeIconEnum = z.enum(USER_BADGE_ICON_KEYS as unknown as [string, ...string[]]);
 
 const permissionValues = ALL_PERMISSIONS as unknown as readonly [string, ...string[]];
 
@@ -20,6 +23,8 @@ export const updateUserDto = z.object({
   isActive: z.boolean().optional(),
   password: z.string().min(6, 'Минимум 6 символов').optional(),
   permissions: z.array(z.enum(permissionValues)).optional(),
+  badgeIcon: badgeIconEnum.nullable().optional(),
+  badgeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
 });
 
 export type CreateUserDto = z.infer<typeof createUserDto>;

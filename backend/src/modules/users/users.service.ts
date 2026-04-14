@@ -14,6 +14,8 @@ const userSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
+  badgeIcon: true,
+  badgeColor: true,
 };
 
 export class UsersService {
@@ -76,12 +78,22 @@ export class UsersService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password !== undefined) data.password = await hashPassword(dto.password);
     if (dto.permissions !== undefined) data.permissions = dto.permissions;
+    if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;
+    if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
 
     if (Object.keys(data).length === 0) {
       throw new AppError(400, 'Нет данных для обновления');
     }
 
-    const before = { login: user.login, fullName: user.fullName, role: user.role, isActive: user.isActive, permissions: user.permissions };
+    const before = {
+      login: user.login,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive,
+      permissions: user.permissions,
+      badgeIcon: user.badgeIcon,
+      badgeColor: user.badgeColor,
+    };
 
     const updated = await prisma.user.update({
       where: { id },
@@ -95,7 +107,15 @@ export class UsersService {
       entityType: 'user',
       entityId: id,
       before,
-      after: { login: updated.login, fullName: updated.fullName, role: updated.role, isActive: updated.isActive, permissions: updated.permissions },
+      after: {
+        login: updated.login,
+        fullName: updated.fullName,
+        role: updated.role,
+        isActive: updated.isActive,
+        permissions: updated.permissions,
+        badgeIcon: updated.badgeIcon,
+        badgeColor: updated.badgeColor,
+      },
     });
 
     return updated;

@@ -83,10 +83,9 @@ export class AuthService {
       throw new AppError(401, 'Аккаунт деактивирован');
     }
 
-    // Revoke old session
     await prisma.session.update({
       where: { id: session.id },
-      data: { revokedAt: new Date() },
+      data: { revokedAt: new Date(), lastUsedAt: new Date() },
     });
 
     // Create new session (rotation)
@@ -121,6 +120,8 @@ export class AuthService {
         permissions: true,
         isActive: true,
         createdAt: true,
+        badgeIcon: true,
+        badgeColor: true,
       },
     });
 
@@ -140,7 +141,7 @@ export class AuthService {
   ): Promise<TokenPair> {
     const sessionId = randomUUID();
 
-    const accessToken = signAccessToken({ userId, role, permissions });
+    const accessToken = signAccessToken({ userId, role, permissions, sessionId });
     const refreshToken = signRefreshToken({ sessionId, userId });
     const refreshTokenHash = hashToken(refreshToken);
 
@@ -152,6 +153,7 @@ export class AuthService {
         expiresAt: new Date(Date.now() + config.jwt.refreshExpiresInMs),
         ip: meta.ip,
         userAgent: meta.userAgent,
+        lastUsedAt: new Date(),
         ...(replacedBySessionId && { replacedBySessionId }),
       },
     });
