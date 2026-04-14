@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AppError } from '../../lib/errors';
 import { profileService } from './profile.service';
+import { usersService } from '../users/users.service';
 import { dailyReportQueryDto } from './profile.dto';
 
 export class ProfileController {
@@ -26,6 +27,11 @@ export class ProfileController {
     }
     const report = await profileService.dailyReport(req.user!.userId, parsed.data.from, parsed.data.to);
     res.json(report);
+  }
+
+  async listMedalHistory(req: Request, res: Response): Promise<void> {
+    const rows = await usersService.listMedalHistory(req.user!.userId, req.user!);
+    res.json(rows);
   }
 }
 

@@ -86,8 +86,12 @@ router.get(
     };
 
     if (isManager) {
+      const whereSelf: Prisma.ClientNoteWhereInput = {
+        ...where,
+        userId: req.user!.userId,
+      };
       const feedRows = await prisma.clientNote.findMany({
-        where,
+        where: whereSelf,
         select: {
           id: true,
           userId: true,

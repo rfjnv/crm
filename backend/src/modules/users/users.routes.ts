@@ -92,6 +92,17 @@ router.get(
   }),
 );
 
+router.get(
+  '/:id/medal-history',
+  asyncHandler(usersController.listMedalHistory.bind(usersController)),
+);
+
+router.delete(
+  '/:id/medal-history/:entryId',
+  authorize('SUPER_ADMIN'),
+  asyncHandler(usersController.removeMedalHistoryEntry.bind(usersController)),
+);
+
 // Management routes — ADMIN or SUPER_ADMIN only
 router.post('/', authorize('ADMIN', 'SUPER_ADMIN'), validate(createUserDto), asyncHandler(usersController.create.bind(usersController)));
 router.patch('/:id', authorize('ADMIN', 'SUPER_ADMIN'), validate(updateUserDto), asyncHandler(usersController.update.bind(usersController)));

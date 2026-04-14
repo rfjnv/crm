@@ -1,5 +1,5 @@
 import client from './client';
-import type { User, Permission, UserKPI } from '../types';
+import type { User, Permission, UserKPI, UserMedalHistoryEntry } from '../types';
 
 export const usersApi = {
   /**
@@ -40,4 +40,10 @@ export const usersApi = {
 
   kpi: (id: string, period: string = 'month') =>
     client.get<UserKPI>(`/users/${id}/kpi`, { params: { period } }).then((r) => r.data),
+
+  medalHistory: (userId: string) =>
+    client.get<UserMedalHistoryEntry[]>(`/users/${userId}/medal-history`).then((r) => r.data),
+
+  deleteMedalHistoryEntry: (userId: string, entryId: string) =>
+    client.delete<{ success: boolean }>(`/users/${userId}/medal-history/${entryId}`).then((r) => r.data),
 };

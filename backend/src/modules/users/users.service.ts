@@ -109,6 +109,25 @@ export class UsersService {
       select: userSelect,
     });
 
+    const norm = (v: string | null | undefined) => v ?? null;
+    const badgeTouched = dto.badgeLabel !== undefined || dto.badgeIcon !== undefined || dto.badgeColor !== undefined;
+    const badgeChanged =
+      badgeTouched &&
+      (norm(updated.badgeLabel) !== norm(before.badgeLabel) ||
+        norm(updated.badgeIcon) !== norm(before.badgeIcon) ||
+        norm(updated.badgeColor) !== norm(before.badgeColor));
+    if (badgeChanged) {
+      await prisma.userMedalHistory.create({
+        data: {
+          userId: id,
+          badgeLabel: updated.badgeLabel,
+          badgeIcon: updated.badgeIcon,
+          badgeColor: updated.badgeColor,
+          grantedById: performedBy,
+        },
+      });
+    }
+
     await auditLog({
       userId: performedBy,
       action: 'UPDATE',
@@ -250,6 +269,51 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  async listMedalHistory(targetUserId: string, actor: { userId: string; role: string }) {
+    const isAdmin = actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+    if (!isAdmin && actor.userId !== targetUserId) {
+      throw new AppError(403, 'Нет доступа к истории медалей');
+    }
+    const rows = await prisma.userMedalHistory.findMany({
+      where: { userId: targetUserId, removedAt: null },
+      orderBy: { grantedAt: 'desc' },
+      select: {
+        id: true,
+        badgeLabel: true,
+        badgeIcon: true,
+        badgeColor: true,
+        grantedAt: true,
+        grantedBy: { select: { fullName: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      badgeLabel: r.badgeLabel,
+      badgeIcon: r.badgeIcon,
+      badgeColor: r.badgeColor,
+      grantedAt: r.grantedAt.toISOString(),
+      grantedByName: r.grantedBy?.fullName ?? null,
+    }));
+  }
+
+  async removeMedalHistoryEntry(entryId: string, targetUserId: string, performerId: string) {
+    const performer = await prisma.user.findUnique({ where: { id: performerId }, select: { role: true } });
+    if (performer?.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только суперадминистратор может скрыть запись в истории медалей');
+    }
+    const row = await prisma.userMedalHistory.findFirst({
+      where: { id: entryId, userId: targetUserId, removedAt: null },
+    });
+    if (!row) {
+      throw new AppError(404, 'Запись не найдена');
+    }
+    await prisma.userMedalHistory.update({
+      where: { id: entryId },
+      data: { removedAt: new Date(), removedById: performerId },
+    });
+    return { success: true };
   }
 }
 

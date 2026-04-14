@@ -37,6 +37,20 @@ export class UsersController {
     const user = await usersService.activate(req.params.id as string, req.user!.userId as string);
     res.json(user);
   }
+
+  async listMedalHistory(req: Request, res: Response): Promise<void> {
+    const rows = await usersService.listMedalHistory(req.params.id as string, req.user!);
+    res.json(rows);
+  }
+
+  async removeMedalHistoryEntry(req: Request, res: Response): Promise<void> {
+    const result = await usersService.removeMedalHistoryEntry(
+      req.params.entryId as string,
+      req.params.id as string,
+      req.user!.userId,
+    );
+    res.json(result);
+  }
 }
 
 export const usersController = new UsersController();

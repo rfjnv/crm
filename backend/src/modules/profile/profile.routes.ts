@@ -20,4 +20,6 @@ router.delete(
 
 router.get('/daily-report', asyncHandler(profileController.dailyReport.bind(profileController)));
 
+router.get('/medal-history', asyncHandler(profileController.listMedalHistory.bind(profileController)));
+
 export default router;

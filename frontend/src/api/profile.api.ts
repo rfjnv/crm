@@ -1,5 +1,5 @@
 import client from './client';
-import type { DailyReport, ProfileSession, User } from '../types';
+import type { DailyReport, ProfileSession, User, UserMedalHistoryEntry } from '../types';
 
 export interface UpdateProfilePayload {
   firstName?: string;
@@ -21,4 +21,6 @@ export const profileApi = {
 
   dailyReport: (from: string, to: string) =>
     client.get<DailyReport>('/profile/daily-report', { params: { from, to } }).then((r) => r.data),
+
+  medalHistory: () => client.get<UserMedalHistoryEntry[]>('/profile/medal-history').then((r) => r.data),
 };

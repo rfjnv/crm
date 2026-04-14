@@ -168,8 +168,31 @@ model User {
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
+  medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
+  medalsGranted       UserMedalHistory[] @relation("MedalHistoryGrantedBy")
+  medalsRemoved       UserMedalHistory[] @relation("MedalHistoryRemovedBy")
 
   @@map("users")
+}
+
+/** Запись в истории медали пользователя (суперадмин может скрыть запись). */
+model UserMedalHistory {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  badgeLabel   String?   @map("badge_label")
+  badgeIcon    String?   @map("badge_icon")
+  badgeColor   String?   @map("badge_color")
+  grantedAt    DateTime  @default(now()) @map("granted_at")
+  grantedById  String?   @map("granted_by_id")
+  removedAt    DateTime? @map("removed_at")
+  removedById  String?   @map("removed_by_id")
+
+  user      User  @relation("MedalHistoryUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("MedalHistoryGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  removedBy User? @relation("MedalHistoryRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, grantedAt])
+  @@map("user_medal_history")
 }
 
 model Session {

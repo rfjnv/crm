@@ -110,6 +110,16 @@ export interface DailyReport {
   to: string;
 }
 
+/** Запись истории медали (снимок на момент выдачи). */
+export interface UserMedalHistoryEntry {
+  id: string;
+  badgeLabel: string | null;
+  badgeIcon: string | null;
+  badgeColor: string | null;
+  grantedAt: string;
+  grantedByName: string | null;
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

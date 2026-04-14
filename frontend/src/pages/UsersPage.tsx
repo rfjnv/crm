@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
 import {
   Table,
   Button,
@@ -91,6 +92,13 @@ export default function UsersPage() {
     enabled: !!kpiUser,
   });
 
+  const editingId = editingUser?.id;
+  const { data: userMedalHistory = [], isLoading: userMedalHistoryLoading } = useQuery({
+    queryKey: ['user-medal-history', editingId],
+    queryFn: () => usersApi.medalHistory(editingId!),
+    enabled: open && !!editingId && canManageTeam,
+  });
+
   const invalidateUsers = () => {
     void queryClient.invalidateQueries({ queryKey: ['users'] });
   };
@@ -126,8 +134,9 @@ export default function UsersPage() {
         badgeLabel: string | null;
       }>;
     }) => usersApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       invalidateUsers();
+      void queryClient.invalidateQueries({ queryKey: ['user-medal-history', variables.id] });
       message.success('Пользователь обновлён');
       closeModal();
     },
@@ -175,6 +184,19 @@ export default function UsersPage() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
+      message.error(msg);
+    },
+  });
+
+  const removeMedalHistoryMut = useMutation({
+    mutationFn: ({ userId, entryId }: { userId: string; entryId: string }) =>
+      usersApi.deleteMedalHistoryEntry(userId, entryId),
+    onSuccess: (_, v) => {
+      void queryClient.invalidateQueries({ queryKey: ['user-medal-history', v.userId] });
+      message.success('Запись скрыта из истории');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
       message.error(msg);
     },
   });
@@ -385,7 +407,7 @@ export default function UsersPage() {
         confirmLoading={isPending}
         okText={isEditing ? 'Сохранить' : 'Создать'}
         cancelText="Отмена"
-        width={isMobile ? '100%' : 520}
+        width={isMobile ? '100%' : editingUser && canManageTeam ? 640 : 520}
       >
         <Form form={form} layout="vertical" onFinish={handleFinish}>
           <Form.Item name="login" label="Логин" rules={[{ required: true, message: 'Обязательно' }]}>
@@ -450,6 +472,74 @@ export default function UsersPage() {
               >
                 <ColorPicker showText format="hex" disabledAlpha />
               </Form.Item>
+              <Divider plain>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  История медалей
+                </Typography.Text>
+              </Divider>
+              <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: 13 }}>
+                Снимки при каждом изменении медали этому пользователю. Суперадминистратор может скрыть ошибочную запись
+                из списка (в базе остаётся пометка).
+              </Typography.Paragraph>
+              <Table
+                size="small"
+                loading={userMedalHistoryLoading}
+                dataSource={userMedalHistory}
+                rowKey="id"
+                pagination={false}
+                scroll={{ y: 220 }}
+                columns={[
+                  {
+                    title: 'Медаль',
+                    key: 'm',
+                    width: 200,
+                    render: (_: unknown, r) => (
+                      <TeamMedalDisplay
+                        badgeLabel={r.badgeLabel}
+                        badgeIcon={r.badgeIcon}
+                        badgeColor={r.badgeColor}
+                        variant="full"
+                      />
+                    ),
+                  },
+                  {
+                    title: 'Дата',
+                    dataIndex: 'grantedAt',
+                    width: 130,
+                    render: (d: string) => dayjs(d).format('DD.MM.YYYY HH:mm'),
+                  },
+                  {
+                    title: 'Кем',
+                    dataIndex: 'grantedByName',
+                    ellipsis: true,
+                    render: (n: string | null) => n || '—',
+                  },
+                  ...(isSuperAdmin
+                    ? [
+                        {
+                          title: '',
+                          key: 'mh',
+                          width: 88,
+                          render: (_: unknown, r: { id: string }) => (
+                            <Popconfirm
+                              title="Скрыть эту запись из истории?"
+                              onConfirm={() =>
+                                editingUser &&
+                                removeMedalHistoryMut.mutate({ userId: editingUser.id, entryId: r.id })
+                              }
+                              okText="Да"
+                              cancelText="Нет"
+                            >
+                              <Button size="small" danger loading={removeMedalHistoryMut.isPending}>
+                                Скрыть
+                              </Button>
+                            </Popconfirm>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             </>
           )}
         </Form>

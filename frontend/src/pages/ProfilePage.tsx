@@ -13,12 +13,18 @@ import {
   Space,
   Popconfirm,
   theme,
+  Card,
+  Row,
+  Col,
+  Avatar,
+  Empty,
 } from 'antd';
 import { Column, Line } from '@ant-design/charts';
 import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
+import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 
 const { RangePicker } = DatePicker;
 
@@ -33,6 +39,14 @@ function shortUa(ua: string | null) {
   if (!ua) return '—';
   if (ua.length <= 72) return ua;
   return `${ua.slice(0, 70)}…`;
+}
+
+function initialsFromFullName(fullName: string) {
+  const { firstName, lastName } = splitFullName(fullName);
+  const a = (firstName[0] || '').toUpperCase();
+  const b = (lastName[0] || '').toUpperCase();
+  const pair = `${a}${b}`.trim();
+  return (pair || a || '?').slice(0, 2);
 }
 
 export default function ProfilePage() {
@@ -60,6 +74,11 @@ export default function ProfilePage() {
   const { data: report, isLoading: reportLoading } = useQuery({
     queryKey: ['profile-daily-report', fromStr, toStr],
     queryFn: () => profileApi.dailyReport(fromStr, toStr),
+  });
+
+  const { data: medalHistory = [], isLoading: medalHistoryLoading } = useQuery({
+    queryKey: ['profile-medal-history'],
+    queryFn: () => profileApi.medalHistory(),
   });
 
   const profileMut = useMutation({
@@ -117,108 +136,95 @@ export default function ProfilePage() {
             key: 'me',
             label: 'Мои данные',
             children: (
-              <Form
-                form={profileForm}
-                layout="vertical"
-                style={{ maxWidth: 440 }}
-                initialValues={{
-                  ...splitFullName(user.fullName),
-                  login: user.login,
-                }}
-                onFinish={(v) => {
-                  profileMut.mutate({
-                    firstName: v.firstName,
-                    lastName: v.lastName,
-                    login: v.login !== user.login ? v.login : undefined,
-                    currentPassword: v.currentPassword || undefined,
-                    newPassword: v.newPassword || undefined,
-                  });
-                }}
-              >
-                <Form.Item name="firstName" label="Имя" rules={[{ required: true, message: 'Укажите имя' }]}>
-                  <Input autoComplete="given-name" />
-                </Form.Item>
-                <Form.Item name="lastName" label="Фамилия">
-                  <Input autoComplete="family-name" />
-                </Form.Item>
-                <Form.Item name="login" label="Логин" rules={[{ required: true }]}>
-                  <Input autoComplete="username" />
-                </Form.Item>
-                <Form.Item name="currentPassword" label="Текущий пароль (если меняете пароль)">
-                  <Input.Password autoComplete="current-password" />
-                </Form.Item>
-                <Form.Item name="newPassword" label="Новый пароль">
-                  <Input.Password autoComplete="new-password" />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={profileMut.isPending}>
-                  Сохранить
-                </Button>
-              </Form>
-            ),
-          },
-          {
-            key: 'sessions',
-            label: 'Активные сеансы',
-            children: (
-              <Table
-                loading={sessionsLoading}
-                dataSource={sessions}
-                rowKey="id"
-                pagination={false}
-                columns={[
-                  {
-                    title: 'Устройство / браузер',
-                    dataIndex: 'userAgent',
-                    render: (ua: string | null) => <Typography.Text code>{shortUa(ua)}</Typography.Text>,
-                  },
-                  { title: 'IP', dataIndex: 'ip', width: 120, render: (ip: string | null) => ip || '—' },
-                  {
-                    title: 'Создан',
-                    dataIndex: 'createdAt',
-                    width: 160,
-                    render: (d: string) => dayjs(d).format('DD.MM.YYYY HH:mm'),
-                  },
-                  {
-                    title: 'Активность',
-                    dataIndex: 'lastUsedAt',
-                    width: 160,
-                    render: (d: string | null) => (d ? dayjs(d).format('DD.MM.YYYY HH:mm') : '—'),
-                  },
-                  {
-                    title: '',
-                    key: 'cur',
-                    width: 100,
-                    render: (_: unknown, r) => (r.isCurrent ? <Typography.Text type="success">Текущий</Typography.Text> : null),
-                  },
-                  {
-                    title: '',
-                    key: 'act',
-                    width: 120,
-                    render: (_: unknown, r) => (
-                      <Popconfirm
-                        title={r.isCurrent ? 'Завершить эту сессию?' : 'Завершить сессию на этом устройстве?'}
-                        okText="Да"
-                        cancelText="Нет"
-                        onConfirm={() =>
-                          revokeMut.mutate(r.id, {
-                            onSuccess: () => {
-                              message.success('Сессия завершена');
-                              if (r.isCurrent) {
-                                logout();
-                                window.location.href = '/login';
-                              }
-                            },
-                          })
-                        }
-                      >
-                        <Button size="small" danger loading={revokeMut.isPending}>
-                          Завершить
-                        </Button>
-                      </Popconfirm>
-                    ),
-                  },
-                ]}
-              />
+              <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                <Card
+                  style={{
+                    borderRadius: 12,
+                    background: isDark ? undefined : `linear-gradient(135deg, ${tk.colorPrimaryBg} 0%, ${tk.colorBgContainer} 55%)`,
+                  }}
+                >
+                  <Row gutter={[16, 16]} align="middle">
+                    <Col flex="none">
+                      <Avatar size={72} style={{ background: tk.colorPrimary, fontSize: 26 }}>
+                        {initialsFromFullName(user.fullName)}
+                      </Avatar>
+                    </Col>
+                    <Col flex="auto">
+                      <Typography.Title level={4} style={{ margin: 0 }}>
+                        {user.fullName}
+                      </Typography.Title>
+                      <Typography.Text type="secondary">{user.login}</Typography.Text>
+                    </Col>
+                    <Col xs={24} md="auto">
+                      <Card size="small" title="Медаль в команде" style={{ minWidth: 200, maxWidth: 320 }}>
+                        <TeamMedalDisplay
+                          badgeLabel={user.badgeLabel}
+                          badgeIcon={user.badgeIcon}
+                          badgeColor={user.badgeColor}
+                          variant="full"
+                        />
+                        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
+                          Медаль задаётся администратором на странице «Команда» / «Пользователи». История начислений — во
+                          вкладке «История медалей».
+                        </Typography.Paragraph>
+                      </Card>
+                    </Col>
+                  </Row>
+                </Card>
+                <Card title="Личные данные и пароль" style={{ borderRadius: 12 }}>
+                  <Form
+                    form={profileForm}
+                    layout="vertical"
+                    style={{ maxWidth: 520 }}
+                    initialValues={{
+                      ...splitFullName(user.fullName),
+                      login: user.login,
+                    }}
+                    onFinish={(v) => {
+                      profileMut.mutate({
+                        firstName: v.firstName,
+                        lastName: v.lastName,
+                        login: v.login !== user.login ? v.login : undefined,
+                        currentPassword: v.currentPassword || undefined,
+                        newPassword: v.newPassword || undefined,
+                      });
+                    }}
+                  >
+                    <Row gutter={16}>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="firstName" label="Имя" rules={[{ required: true, message: 'Укажите имя' }]}>
+                          <Input size="large" autoComplete="given-name" placeholder="Иван" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="lastName" label="Фамилия">
+                          <Input size="large" autoComplete="family-name" placeholder="Иванов" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Form.Item name="login" label="Логин" rules={[{ required: true }]}>
+                      <Input size="large" autoComplete="username" />
+                    </Form.Item>
+                    <Row gutter={16}>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="currentPassword" label="Текущий пароль">
+                          <Input.Password size="large" autoComplete="current-password" placeholder="Если меняете пароль" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="newPassword" label="Новый пароль">
+                          <Input.Password size="large" autoComplete="new-password" placeholder="Не менять — оставьте пустым" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button type="primary" htmlType="submit" size="large" loading={profileMut.isPending}>
+                        Сохранить изменения
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                </Card>
+              </Space>
             ),
           },
           {
@@ -294,6 +300,113 @@ export default function ProfilePage() {
                   <Typography.Text type="secondary">Загрузка…</Typography.Text>
                 )}
               </div>
+            ),
+          },
+          {
+            key: 'medals',
+            label: 'История медалей',
+            children: medalHistoryLoading ? (
+              <Typography.Text type="secondary">Загрузка…</Typography.Text>
+            ) : medalHistory.length === 0 ? (
+              <Empty description="Пока нет записей — они появятся, когда админ изменит вашу медаль" />
+            ) : (
+              <Table
+                dataSource={medalHistory}
+                rowKey="id"
+                pagination={false}
+                columns={[
+                  {
+                    title: 'Медаль',
+                    key: 'medal',
+                    width: 220,
+                    render: (_: unknown, r) => (
+                      <TeamMedalDisplay
+                        badgeLabel={r.badgeLabel}
+                        badgeIcon={r.badgeIcon}
+                        badgeColor={r.badgeColor}
+                        variant="full"
+                      />
+                    ),
+                  },
+                  {
+                    title: 'Дата',
+                    dataIndex: 'grantedAt',
+                    width: 160,
+                    render: (d: string) => dayjs(d).format('DD.MM.YYYY HH:mm'),
+                  },
+                  {
+                    title: 'Кем выдано',
+                    dataIndex: 'grantedByName',
+                    ellipsis: true,
+                    render: (n: string | null) => n || '—',
+                  },
+                ]}
+              />
+            ),
+          },
+          {
+            key: 'sessions',
+            label: 'Активные сеансы',
+            children: (
+              <Table
+                loading={sessionsLoading}
+                dataSource={sessions}
+                rowKey="id"
+                pagination={false}
+                columns={[
+                  {
+                    title: 'Устройство / браузер',
+                    dataIndex: 'userAgent',
+                    render: (ua: string | null) => <Typography.Text code>{shortUa(ua)}</Typography.Text>,
+                  },
+                  { title: 'IP', dataIndex: 'ip', width: 120, render: (ip: string | null) => ip || '—' },
+                  {
+                    title: 'Создан',
+                    dataIndex: 'createdAt',
+                    width: 160,
+                    render: (d: string) => dayjs(d).format('DD.MM.YYYY HH:mm'),
+                  },
+                  {
+                    title: 'Активность',
+                    dataIndex: 'lastUsedAt',
+                    width: 160,
+                    render: (d: string | null) => (d ? dayjs(d).format('DD.MM.YYYY HH:mm') : '—'),
+                  },
+                  {
+                    title: '',
+                    key: 'cur',
+                    width: 100,
+                    render: (_: unknown, r) => (r.isCurrent ? <Typography.Text type="success">Текущий</Typography.Text> : null),
+                  },
+                  {
+                    title: '',
+                    key: 'act',
+                    width: 120,
+                    render: (_: unknown, r) => (
+                      <Popconfirm
+                        title={r.isCurrent ? 'Завершить эту сессию?' : 'Завершить сессию на этом устройстве?'}
+                        okText="Да"
+                        cancelText="Нет"
+                        onConfirm={() =>
+                          revokeMut.mutate(r.id, {
+                            onSuccess: () => {
+                              message.success('Сессия завершена');
+                              if (r.isCurrent) {
+                                logout();
+                                window.location.href = '/login';
+                              }
+                            },
+                          })
+                        }
+                      >
+                        <Button size="small" danger loading={revokeMut.isPending}>
+                          Завершить
+                        </Button>
+                      </Popconfirm>
+                    ),
+                  },
+                ]}
+              />
             ),
           },
         ]}
