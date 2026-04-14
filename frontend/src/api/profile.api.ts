@@ -1,5 +1,5 @@
 import client from './client';
-import type { DailyReport, ProfileSession, User, UserMedalHistoryEntry } from '../types';
+import type { DailyReport, MonthlyGoalProgress, ProfileSession, User, UserMedalHistoryEntry } from '../types';
 
 export interface UpdateProfilePayload {
   firstName?: string;
@@ -23,4 +23,11 @@ export const profileApi = {
     client.get<DailyReport>('/profile/daily-report', { params: { from, to } }).then((r) => r.data),
 
   medalHistory: () => client.get<UserMedalHistoryEntry[]>('/profile/medal-history').then((r) => r.data),
+
+  monthlyGoal: (opts?: { year?: number; month?: number }) =>
+    client
+      .get<MonthlyGoalProgress>('/profile/monthly-goal', {
+        params: opts?.year || opts?.month ? opts : undefined,
+      })
+      .then((r) => r.data),
 };

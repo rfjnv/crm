@@ -3,7 +3,7 @@ import { hashPassword } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { DEFAULT_PERMISSIONS } from '../../lib/permissions';
-import { CreateUserDto, UpdateUserDto } from './users.dto';
+import { CreateUserDto, UpdateUserDto, UpsertMonthlyGoalDto } from './users.dto';
 
 const userSelect = {
   id: true,
@@ -20,6 +20,57 @@ const userSelect = {
 };
 
 export class UsersService {
+  private resolveGoalPeriod(year?: number, month?: number) {
+    const now = new Date();
+    return {
+      year: year ?? now.getFullYear(),
+      month: month ?? now.getMonth() + 1,
+    };
+  }
+
+  private getMonthRange(year: number, month: number) {
+    const from = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    const to = new Date(year, month, 1, 0, 0, 0, 0);
+    return { from, to };
+  }
+
+  private async calculateActuals(userId: string, year: number, month: number) {
+    const { from, to } = this.getMonthRange(year, month);
+    const [dealsClosed, revenueAgg, callNotes] = await Promise.all([
+      prisma.deal.count({
+        where: {
+          managerId: userId,
+          status: 'CLOSED',
+          closedAt: { gte: from, lt: to },
+        },
+      }),
+      prisma.payment.aggregate({
+        where: {
+          deal: { managerId: userId },
+          paidAt: { gte: from, lt: to },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.clientNote.count({
+        where: {
+          userId,
+          deletedAt: null,
+          createdAt: { gte: from, lt: to },
+        },
+      }),
+    ]);
+    return {
+      dealsClosed,
+      revenue: revenueAgg._sum.amount ? Number(revenueAgg._sum.amount) : 0,
+      callNotes,
+    };
+  }
+
+  private calcPercent(actual: number, target: number | null) {
+    if (!target || target <= 0) return null;
+    return Math.round((actual / target) * 100);
+  }
+
   /**
    * По умолчанию только активные (команда, селекты менеджеров).
    * `includeInactive: true` — полный список (только ADMIN/SUPER_ADMIN в контроллере).
@@ -269,6 +320,162 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  async upsertMonthlyGoal(userId: string, dto: UpsertMonthlyGoalDto, performerId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) {
+      throw new AppError(404, 'Пользователь не найден');
+    }
+    const { year, month } = this.resolveGoalPeriod(dto.year, dto.month);
+    const row = await prisma.userMonthlyGoal.upsert({
+      where: { userId_year_month: { userId, year, month } },
+      create: {
+        userId,
+        year,
+        month,
+        dealsTarget: dto.dealsTarget,
+        revenueTarget: dto.revenueTarget,
+        callNotesTarget: dto.callNotesTarget,
+        updatedById: performerId,
+      },
+      update: {
+        dealsTarget: dto.dealsTarget,
+        revenueTarget: dto.revenueTarget,
+        callNotesTarget: dto.callNotesTarget,
+        updatedById: performerId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        year: true,
+        month: true,
+        dealsTarget: true,
+        revenueTarget: true,
+        callNotesTarget: true,
+        updatedAt: true,
+        updatedBy: { select: { fullName: true } },
+      },
+    });
+
+    await auditLog({
+      userId: performerId,
+      action: 'UPDATE',
+      entityType: 'user_goal',
+      entityId: row.id,
+      after: {
+        userId,
+        year,
+        month,
+        dealsTarget: row.dealsTarget,
+        revenueTarget: row.revenueTarget,
+        callNotesTarget: row.callNotesTarget,
+      },
+    });
+
+    const actual = await this.calculateActuals(userId, year, month);
+    const revenueTarget = row.revenueTarget != null ? Number(row.revenueTarget) : null;
+
+    return {
+      userId: row.userId,
+      year: row.year,
+      month: row.month,
+      targets: {
+        deals: row.dealsTarget,
+        revenue: revenueTarget,
+        callNotes: row.callNotesTarget,
+      },
+      actual,
+      progress: {
+        deals: this.calcPercent(actual.dealsClosed, row.dealsTarget),
+        revenue: this.calcPercent(actual.revenue, revenueTarget),
+        callNotes: this.calcPercent(actual.callNotes, row.callNotesTarget),
+      },
+      updatedAt: row.updatedAt.toISOString(),
+      updatedByName: row.updatedBy?.fullName ?? null,
+    };
+  }
+
+  async getMonthlyGoalProgress(userId: string, year?: number, month?: number) {
+    const p = this.resolveGoalPeriod(year, month);
+    const row = await prisma.userMonthlyGoal.findUnique({
+      where: { userId_year_month: { userId, year: p.year, month: p.month } },
+      select: {
+        userId: true,
+        year: true,
+        month: true,
+        dealsTarget: true,
+        revenueTarget: true,
+        callNotesTarget: true,
+        updatedAt: true,
+        updatedBy: { select: { fullName: true } },
+      },
+    });
+
+    const actual = await this.calculateActuals(userId, p.year, p.month);
+    const revenueTarget = row?.revenueTarget != null ? Number(row.revenueTarget) : null;
+    return {
+      userId,
+      year: p.year,
+      month: p.month,
+      targets: {
+        deals: row?.dealsTarget ?? null,
+        revenue: revenueTarget,
+        callNotes: row?.callNotesTarget ?? null,
+      },
+      actual,
+      progress: {
+        deals: this.calcPercent(actual.dealsClosed, row?.dealsTarget ?? null),
+        revenue: this.calcPercent(actual.revenue, revenueTarget),
+        callNotes: this.calcPercent(actual.callNotes, row?.callNotesTarget ?? null),
+      },
+      updatedAt: row?.updatedAt?.toISOString() ?? null,
+      updatedByName: row?.updatedBy?.fullName ?? null,
+    };
+  }
+
+  async listMonthlyGoalsForPeriod(year?: number, month?: number) {
+    const p = this.resolveGoalPeriod(year, month);
+    const rows = await prisma.userMonthlyGoal.findMany({
+      where: { year: p.year, month: p.month },
+      select: {
+        userId: true,
+        year: true,
+        month: true,
+        dealsTarget: true,
+        revenueTarget: true,
+        callNotesTarget: true,
+        updatedAt: true,
+        updatedBy: { select: { fullName: true } },
+      },
+    });
+
+    const result = await Promise.all(
+      rows.map(async (row) => {
+        const actual = await this.calculateActuals(row.userId, row.year, row.month);
+        const revenueTarget = row.revenueTarget != null ? Number(row.revenueTarget) : null;
+        return {
+          userId: row.userId,
+          year: row.year,
+          month: row.month,
+          targets: {
+            deals: row.dealsTarget,
+            revenue: revenueTarget,
+            callNotes: row.callNotesTarget,
+          },
+          actual,
+          progress: {
+            deals: this.calcPercent(actual.dealsClosed, row.dealsTarget),
+            revenue: this.calcPercent(actual.revenue, revenueTarget),
+            callNotes: this.calcPercent(actual.callNotes, row.callNotesTarget),
+          },
+          updatedAt: row.updatedAt.toISOString(),
+          updatedByName: row.updatedBy?.fullName ?? null,
+        };
+      }),
+    );
+
+    return result;
   }
 
   async listMedalHistory(targetUserId: string, actor: { userId: string; role: string }) {

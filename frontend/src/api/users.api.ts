@@ -1,5 +1,5 @@
 import client from './client';
-import type { User, Permission, UserKPI, UserMedalHistoryEntry } from '../types';
+import type { MonthlyGoalProgress, User, Permission, UserKPI, UserMedalHistoryEntry } from '../types';
 
 export const usersApi = {
   /**
@@ -46,4 +46,29 @@ export const usersApi = {
 
   deleteMedalHistoryEntry: (userId: string, entryId: string) =>
     client.delete<{ success: boolean }>(`/users/${userId}/medal-history/${entryId}`).then((r) => r.data),
+
+  monthlyGoal: (userId: string, opts?: { year?: number; month?: number }) =>
+    client
+      .get<MonthlyGoalProgress>(`/users/${userId}/monthly-goal`, {
+        params: opts?.year || opts?.month ? opts : undefined,
+      })
+      .then((r) => r.data),
+
+  monthlyGoals: (opts?: { year?: number; month?: number }) =>
+    client
+      .get<MonthlyGoalProgress[]>('/users/monthly-goals', {
+        params: opts?.year || opts?.month ? opts : undefined,
+      })
+      .then((r) => r.data),
+
+  upsertMonthlyGoal: (
+    userId: string,
+    data: {
+      year?: number;
+      month?: number;
+      dealsTarget: number | null;
+      revenueTarget: number | null;
+      callNotesTarget: number | null;
+    },
+  ) => client.put<MonthlyGoalProgress>(`/users/${userId}/monthly-goal`, data).then((r) => r.data),
 };

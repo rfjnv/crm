@@ -22,4 +22,6 @@ router.get('/daily-report', asyncHandler(profileController.dailyReport.bind(prof
 
 router.get('/medal-history', asyncHandler(profileController.listMedalHistory.bind(profileController)));
 
+router.get('/monthly-goal', asyncHandler(profileController.monthlyGoal.bind(profileController)));
+
 export default router;

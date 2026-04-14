@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { usersService } from './users.service';
 import { AppError } from '../../lib/errors';
+import { monthlyGoalQueryDto } from './users.dto';
 
 export class UsersController {
   async findAll(req: Request, res: Response): Promise<void> {
@@ -50,6 +51,43 @@ export class UsersController {
       req.user!.userId,
     );
     res.json(result);
+  }
+
+  async upsertMonthlyGoal(req: Request, res: Response): Promise<void> {
+    const result = await usersService.upsertMonthlyGoal(
+      req.params.id as string,
+      req.body,
+      req.user!.userId as string,
+    );
+    res.json(result);
+  }
+
+  async getMonthlyGoal(req: Request, res: Response): Promise<void> {
+    const parsed = monthlyGoalQueryDto.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError(400, 'Некорректные параметры периода');
+    }
+    const actor = req.user!;
+    const targetId = req.params.id as string;
+    const canManage = actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+    if (!canManage && actor.userId !== targetId) {
+      throw new AppError(403, 'Нет доступа к целям пользователя');
+    }
+    const result = await usersService.getMonthlyGoalProgress(
+      targetId,
+      parsed.data.year,
+      parsed.data.month,
+    );
+    res.json(result);
+  }
+
+  async listMonthlyGoals(req: Request, res: Response): Promise<void> {
+    const parsed = monthlyGoalQueryDto.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError(400, 'Некорректные параметры периода');
+    }
+    const rows = await usersService.listMonthlyGoalsForPeriod(parsed.data.year, parsed.data.month);
+    res.json(rows);
   }
 }
 

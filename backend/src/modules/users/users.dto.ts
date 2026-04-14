@@ -28,5 +28,20 @@ export const updateUserDto = z.object({
   badgeLabel: z.string().trim().max(48, 'Не более 48 символов').nullable().optional(),
 });
 
+export const upsertMonthlyGoalDto = z.object({
+  year: z.number().int().min(2020).max(2100).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+  dealsTarget: z.number().int().min(0).nullable(),
+  revenueTarget: z.number().min(0).nullable(),
+  callNotesTarget: z.number().int().min(0).nullable(),
+});
+
+export const monthlyGoalQueryDto = z.object({
+  year: z.coerce.number().int().min(2020).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+});
+
 export type CreateUserDto = z.infer<typeof createUserDto>;
 export type UpdateUserDto = z.infer<typeof updateUserDto>;
+export type UpsertMonthlyGoalDto = z.infer<typeof upsertMonthlyGoalDto>;
+export type MonthlyGoalQueryDto = z.infer<typeof monthlyGoalQueryDto>;

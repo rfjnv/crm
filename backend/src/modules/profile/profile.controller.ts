@@ -3,6 +3,7 @@ import { AppError } from '../../lib/errors';
 import { profileService } from './profile.service';
 import { usersService } from '../users/users.service';
 import { dailyReportQueryDto } from './profile.dto';
+import { monthlyGoalQueryDto } from '../users/users.dto';
 
 export class ProfileController {
   async patchProfile(req: Request, res: Response): Promise<void> {
@@ -32,6 +33,19 @@ export class ProfileController {
   async listMedalHistory(req: Request, res: Response): Promise<void> {
     const rows = await usersService.listMedalHistory(req.user!.userId, req.user!);
     res.json(rows);
+  }
+
+  async monthlyGoal(req: Request, res: Response): Promise<void> {
+    const parsed = monthlyGoalQueryDto.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError(400, 'Некорректные параметры периода');
+    }
+    const result = await usersService.getMonthlyGoalProgress(
+      req.user!.userId,
+      parsed.data.year,
+      parsed.data.month,
+    );
+    res.json(result);
   }
 }
 

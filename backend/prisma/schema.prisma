@@ -171,6 +171,8 @@ model User {
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
   medalsGranted       UserMedalHistory[] @relation("MedalHistoryGrantedBy")
   medalsRemoved       UserMedalHistory[] @relation("MedalHistoryRemovedBy")
+  monthlyGoals        UserMonthlyGoal[]
+  monthlyGoalsUpdated UserMonthlyGoal[] @relation("UserMonthlyGoalUpdatedBy")
 
   @@map("users")
 }
@@ -193,6 +195,27 @@ model UserMedalHistory {
 
   @@index([userId, grantedAt])
   @@map("user_medal_history")
+}
+
+/** Цели пользователя на конкретный месяц (сделки, выручка, заметки обзвона). */
+model UserMonthlyGoal {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  year            Int
+  month           Int
+  dealsTarget     Int?     @map("deals_target")
+  revenueTarget   Decimal? @map("revenue_target") @db.Decimal(15, 2)
+  callNotesTarget Int?     @map("call_notes_target")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  updatedById     String?  @map("updated_by_id")
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy User? @relation("UserMonthlyGoalUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, year, month])
+  @@index([year, month])
+  @@map("user_monthly_goals")
 }
 
 model Session {

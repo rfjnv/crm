@@ -120,6 +120,29 @@ export interface UserMedalHistoryEntry {
   grantedByName: string | null;
 }
 
+export interface MonthlyGoalProgress {
+  userId: string;
+  year: number;
+  month: number;
+  targets: {
+    deals: number | null;
+    revenue: number | null;
+    callNotes: number | null;
+  };
+  actual: {
+    dealsClosed: number;
+    revenue: number;
+    callNotes: number;
+  };
+  progress: {
+    deals: number | null;
+    revenue: number | null;
+    callNotes: number | null;
+  };
+  updatedAt: string | null;
+  updatedByName: string | null;
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

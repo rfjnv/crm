@@ -11,6 +11,7 @@ import { dashboardApi } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
 import { analyticsApi } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
+import { profileApi } from '../api/profile.api';
 import { formatUZS, formatFullNumber, formatShortNumber } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
@@ -82,6 +83,12 @@ export default function DashboardPage() {
     refetchInterval: 60_000,
   });
 
+  const { data: myGoal } = useQuery({
+    queryKey: ['profile-monthly-goal'],
+    queryFn: () => profileApi.monthlyGoal(),
+    refetchInterval: 60_000,
+  });
+
   const { data: abcMonth } = useQuery({
     queryKey: ['dashboard-abc-month'],
     queryFn: () => analyticsApi.getAbcXyz('month'),
@@ -136,6 +143,11 @@ export default function DashboardPage() {
   const revenueMonth = data.revenueMonth || 0;
   const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
   const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
+  const hasMyGoal = !!myGoal && (
+    myGoal.targets.deals != null ||
+    myGoal.targets.revenue != null ||
+    myGoal.targets.callNotes != null
+  );
 
   const allStockIssues = [
     ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
@@ -356,6 +368,50 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Monthly goal (compact, clickable → settings) ── */}
+      {hasMyGoal && myGoal && (
+        <div className={isMobile ? 'section' : undefined}>
+          <Card
+            bordered={false}
+            style={{ ...card, marginTop: isMobile ? 0 : 16 }}
+            styles={{ body: { padding: isMobile ? 14 : '12px 20px' } }}
+            title={<Typography.Text strong style={{ fontSize: 14 }}>Мои цели на месяц</Typography.Text>}
+          >
+            <Row gutter={[12, 12]}>
+              {myGoal.targets.deals != null && (
+                <Col xs={24} md={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделки (закрыто)</Typography.Text>
+                  <div style={{ marginTop: 2, marginBottom: 6 }}>
+                    <Typography.Text strong>{myGoal.actual.dealsClosed}</Typography.Text>
+                    <Typography.Text type="secondary"> / {myGoal.targets.deals}</Typography.Text>
+                  </div>
+                  <Progress percent={Math.min(100, myGoal.progress.deals ?? 0)} size="small" />
+                </Col>
+              )}
+              {myGoal.targets.revenue != null && (
+                <Col xs={24} md={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>Выручка</Typography.Text>
+                  <div style={{ marginTop: 2, marginBottom: 6 }}>
+                    <Typography.Text strong>{formatUZS(myGoal.actual.revenue)}</Typography.Text>
+                    <Typography.Text type="secondary"> / {formatUZS(myGoal.targets.revenue)}</Typography.Text>
+                  </div>
+                  <Progress percent={Math.min(100, myGoal.progress.revenue ?? 0)} size="small" />
+                </Col>
+              )}
+              {myGoal.targets.callNotes != null && (
+                <Col xs={24} md={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>Обзвоны (заметки)</Typography.Text>
+                  <div style={{ marginTop: 2, marginBottom: 6 }}>
+                    <Typography.Text strong>{myGoal.actual.callNotes}</Typography.Text>
+                    <Typography.Text type="secondary"> / {myGoal.targets.callNotes}</Typography.Text>
+                  </div>
+                  <Progress percent={Math.min(100, myGoal.progress.callNotes ?? 0)} size="small" />
+                </Col>
+              )}
+            </Row>
+          </Card>
+        </div>
+      )}
+
       {isAdmin && (
         <div className={isMobile ? 'section' : undefined}>
         <Card

@@ -4,7 +4,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { createUserDto, updateUserDto } from './users.dto';
+import { createUserDto, updateUserDto, upsertMonthlyGoalDto } from './users.dto';
 import prisma from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
 
@@ -97,10 +97,28 @@ router.get(
   asyncHandler(usersController.listMedalHistory.bind(usersController)),
 );
 
+router.get(
+  '/:id/monthly-goal',
+  asyncHandler(usersController.getMonthlyGoal.bind(usersController)),
+);
+
+router.get(
+  '/monthly-goals',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(usersController.listMonthlyGoals.bind(usersController)),
+);
+
 router.delete(
   '/:id/medal-history/:entryId',
   authorize('SUPER_ADMIN'),
   asyncHandler(usersController.removeMedalHistoryEntry.bind(usersController)),
+);
+
+router.put(
+  '/:id/monthly-goal',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate(upsertMonthlyGoalDto),
+  asyncHandler(usersController.upsertMonthlyGoal.bind(usersController)),
 );
 
 // Management routes — ADMIN or SUPER_ADMIN only

@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { tasksApi } from '../api/tasks.api';
 import { usersApi } from '../api/users.api';
+import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { Task, TaskStatus } from '../types';
@@ -44,6 +45,12 @@ export default function TasksPage() {
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: () => usersApi.list(),
+  });
+
+  const { data: myGoal } = useQuery({
+    queryKey: ['profile-monthly-goal'],
+    queryFn: () => profileApi.monthlyGoal(),
+    refetchInterval: 60_000,
   });
 
   const createMut = useMutation({
@@ -198,6 +205,37 @@ export default function TasksPage() {
           Новая задача
         </Button>
       </div>
+
+      {myGoal && (myGoal.targets.deals != null || myGoal.targets.revenue != null || myGoal.targets.callNotes != null) && (
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+            Мои цели на {dayjs().format('MMMM YYYY')}
+          </Typography.Text>
+          <Row gutter={[12, 8]}>
+            {myGoal.targets.deals != null && (
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделки</Typography.Text>
+                <div style={{ fontSize: 13 }}>{myGoal.actual.dealsClosed} / {myGoal.targets.deals}</div>
+                <Tag color="blue">{myGoal.progress.deals ?? 0}%</Tag>
+              </Col>
+            )}
+            {myGoal.targets.revenue != null && (
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Выручка</Typography.Text>
+                <div style={{ fontSize: 13 }}>{myGoal.actual.revenue} / {myGoal.targets.revenue}</div>
+                <Tag color="purple">{myGoal.progress.revenue ?? 0}%</Tag>
+              </Col>
+            )}
+            {myGoal.targets.callNotes != null && (
+              <Col xs={24} md={8}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Обзвоны</Typography.Text>
+                <div style={{ fontSize: 13 }}>{myGoal.actual.callNotes} / {myGoal.targets.callNotes}</div>
+                <Tag color="cyan">{myGoal.progress.callNotes ?? 0}%</Tag>
+              </Col>
+            )}
+          </Row>
+        </Card>
+      )}
 
       <Row gutter={12}>
         {COLUMNS.map((status) => {
