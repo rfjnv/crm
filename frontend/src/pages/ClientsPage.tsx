@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined, CrownFilled } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
