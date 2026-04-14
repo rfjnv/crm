@@ -37,6 +37,7 @@ import TasksPage from './pages/TasksPage';
 import ContractsPage from './pages/ContractsPage';
 import ArchivedDealsPage from './pages/ArchivedDealsPage';
 import CashboxPage from './pages/CashboxPage';
+import CompanyBalancePage from './pages/CompanyBalancePage';
 import ContractDetailPage from './pages/ContractDetailPage';
 import PowerOfAttorneyPage from './pages/PowerOfAttorneyPage';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -135,6 +136,9 @@ export default function App() {
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
                 <Route path="/finance/cashbox" element={<CashboxPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/finance/balance" element={<CompanyBalancePage />} />
+                </Route>
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/shipment" element={<WarehouseShipmentsPage />} />
                 <Route path="/warehouse/shipments" element={<Navigate to="/shipment" replace />} />

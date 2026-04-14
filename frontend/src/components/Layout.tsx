@@ -327,6 +327,13 @@ export default function Layout() {
         label: <Link to="/finance/cashbox">Касса</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/finance/balance',
+        icon: <DollarOutlined />,
+        label: <Link to="/finance/balance">Баланс компании</Link>,
+      }]
+      : []),
 
     // ── Сделки: история закрытых / архив (скрытые) ──
     ...(canViewClosedDealsHistory || isAdmin
