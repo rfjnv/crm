@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image,
+  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image, DatePicker,
 } from 'antd';
 import { UploadOutlined, SaveOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { CompanySettings } from '../types';
+import dayjs from 'dayjs';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
   ? new URL(import.meta.env.VITE_API_URL).origin
@@ -40,7 +41,11 @@ export default function CompanySettingsPage() {
   });
 
   const handleSave = (values: Record<string, unknown>) => {
-    updateMut.mutate(values as Partial<CompanySettings>);
+    const payload: Record<string, unknown> = { ...values };
+    if (payload.balanceStartDate && dayjs.isDayjs(payload.balanceStartDate)) {
+      payload.balanceStartDate = (payload.balanceStartDate as dayjs.Dayjs).format('YYYY-MM-DD');
+    }
+    updateMut.mutate(payload as Partial<CompanySettings>);
   };
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
@@ -79,7 +84,10 @@ export default function CompanySettingsPage() {
         <Form
           form={form}
           layout="vertical"
-          initialValues={settings || {}}
+          initialValues={{
+            ...(settings || {}),
+            balanceStartDate: settings?.balanceStartDate ? dayjs(settings.balanceStartDate) : null,
+          }}
           onFinish={handleSave}
         >
           <Typography.Title level={5} style={{ marginBottom: 16 }}>Реквизиты компании</Typography.Title>
@@ -123,6 +131,24 @@ export default function CompanySettingsPage() {
               placeholder="250 000 000"
             />
           </Form.Item>
+
+          <Divider />
+          <Typography.Title level={5} style={{ marginBottom: 16 }}>Баланс компании</Typography.Title>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+            <Form.Item label="Дата начала учета баланса" name="balanceStartDate">
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+            <Form.Item label="Начальный баланс" name="initialBalance">
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
+                step={100000}
+                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                parser={(v) => Number((v || '').replace(/\s/g, '')) as unknown as 0}
+              />
+            </Form.Item>
+          </div>
 
           <Divider />
           <Typography.Title level={5} style={{ marginBottom: 16 }}>Банковские реквизиты</Typography.Title>

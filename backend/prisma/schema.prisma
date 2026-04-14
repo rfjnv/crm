@@ -814,6 +814,8 @@ model CompanySettings {
   vatRegCode   String   @default("") @map("vat_reg_code")
   oked                String   @default("")
   monthlyRevenueGoal  Float    @default(250000000) @map("monthly_revenue_goal")
+  balanceStartDate    DateTime? @db.Date @map("balance_start_date")
+  initialBalance      Decimal   @default(0) @db.Decimal(15, 2) @map("initial_balance")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("company_settings")

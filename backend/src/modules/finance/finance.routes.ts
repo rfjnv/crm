@@ -797,4 +797,184 @@ router.get(
   }),
 );
 
+router.get(
+  '/company-balance',
+  authorize('WAREHOUSE_MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const period = (req.query.period as string) || 'month';
+    const method = req.query.method as string | undefined;
+    const managerId = req.query.managerId as string | undefined;
+
+    const settings = await prisma.companySettings.findUnique({ where: { id: 'singleton' } });
+    if (!settings?.balanceStartDate) {
+      res.json({
+        setupRequired: true,
+        startDate: null,
+        initialBalance: Number(settings?.initialBalance || 0),
+      });
+      return;
+    }
+
+    const startDate = new Date(settings.balanceStartDate);
+    const now = new Date();
+    const rangeStart = (() => {
+      const d = new Date(now);
+      if (period === 'day') d.setDate(d.getDate() - 1);
+      else if (period === 'week') d.setDate(d.getDate() - 7);
+      else if (period === 'year') d.setFullYear(d.getFullYear() - 1);
+      else d.setMonth(d.getMonth() - 1);
+      return d < startDate ? startDate : d;
+    })();
+
+    const paymentWhere: Prisma.PaymentWhereInput = {
+      paidAt: { gte: startDate, lte: now },
+      ...(method ? { method } : {}),
+      ...(managerId ? { deal: { managerId } } : {}),
+    };
+
+    const paymentRangeWhere: Prisma.PaymentWhereInput = {
+      paidAt: { gte: rangeStart, lte: now },
+      ...(method ? { method } : {}),
+      ...(managerId ? { deal: { managerId } } : {}),
+    };
+
+    const paymentBeforeRangeWhere: Prisma.PaymentWhereInput = {
+      paidAt: { gte: startDate, lt: rangeStart },
+      ...(method ? { method } : {}),
+      ...(managerId ? { deal: { managerId } } : {}),
+    };
+
+    const expenseWhere: Prisma.ExpenseWhereInput = {
+      status: 'APPROVED',
+      date: { gte: startDate, lte: now },
+    };
+    const expenseRangeWhere: Prisma.ExpenseWhereInput = {
+      status: 'APPROVED',
+      date: { gte: rangeStart, lte: now },
+    };
+    const expenseBeforeRangeWhere: Prisma.ExpenseWhereInput = {
+      status: 'APPROVED',
+      date: { gte: startDate, lt: rangeStart },
+    };
+
+    const [
+      incomingAllAgg,
+      incomingBeforeRangeAgg,
+      incomingRows,
+      expenseAllAgg,
+      expenseBeforeRangeAgg,
+      expenseRows,
+      expectedAgg,
+      debtsAgg,
+    ] = await Promise.all([
+      prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: paymentBeforeRangeWhere, _sum: { amount: true } }),
+      prisma.payment.findMany({
+        where: paymentRangeWhere,
+        select: { paidAt: true, amount: true },
+        orderBy: { paidAt: 'asc' },
+      }),
+      prisma.expense.aggregate({ where: expenseWhere, _sum: { amount: true } }),
+      prisma.expense.aggregate({ where: expenseBeforeRangeWhere, _sum: { amount: true } }),
+      prisma.expense.findMany({
+        where: expenseRangeWhere,
+        select: { date: true, amount: true },
+        orderBy: { date: 'asc' },
+      }),
+      prisma.deal.aggregate({
+        where: {
+          isArchived: false,
+          status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
+          ...(managerId ? { managerId } : {}),
+        },
+        _sum: { amount: true, paidAmount: true },
+      }),
+      prisma.deal.aggregate({
+        where: {
+          isArchived: false,
+          status: 'CLOSED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+          ...(managerId ? { managerId } : {}),
+        },
+        _sum: { amount: true, paidAmount: true },
+      }),
+    ]);
+
+    const initialBalance = Number(settings.initialBalance || 0);
+    const incomingAll = Number(incomingAllAgg._sum.amount || 0);
+    const incomingBeforeRange = Number(incomingBeforeRangeAgg._sum.amount || 0);
+    const expensesAll = Number(expenseAllAgg._sum.amount || 0);
+    const expensesBeforeRange = Number(expenseBeforeRangeAgg._sum.amount || 0);
+    const realBalance = initialBalance + incomingAll - expensesAll;
+
+    const expectedAmount = Math.max(
+      0,
+      Number(expectedAgg._sum.amount || 0) - Number(expectedAgg._sum.paidAmount || 0),
+    );
+    const debtAmount = Math.max(
+      0,
+      Number(debtsAgg._sum.amount || 0) - Number(debtsAgg._sum.paidAmount || 0),
+    );
+
+    const incomingByDay = new Map<string, number>();
+    for (const p of incomingRows) {
+      const day = p.paidAt.toISOString().slice(0, 10);
+      incomingByDay.set(day, (incomingByDay.get(day) || 0) + Number(p.amount));
+    }
+
+    const outgoingByDay = new Map<string, number>();
+    for (const e of expenseRows) {
+      const day = e.date.toISOString().slice(0, 10);
+      outgoingByDay.set(day, (outgoingByDay.get(day) || 0) + Number(e.amount));
+    }
+
+    const days: string[] = [];
+    for (let d = new Date(rangeStart); d <= now; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d).toISOString().slice(0, 10));
+    }
+
+    let runningBalance = initialBalance + incomingBeforeRange - expensesBeforeRange;
+    const balanceLine = days.map((day) => {
+      const incoming = incomingByDay.get(day) || 0;
+      const outgoing = outgoingByDay.get(day) || 0;
+      runningBalance += incoming - outgoing;
+      return { day, balance: Math.round(runningBalance * 100) / 100 };
+    });
+
+    const cashFlow = days.map((day) => ({
+      day,
+      incoming: Math.round((incomingByDay.get(day) || 0) * 100) / 100,
+      outgoing: Math.round((outgoingByDay.get(day) || 0) * 100) / 100,
+    }));
+
+    const paymentsPerDay = days.map((day) => ({
+      day,
+      total: Math.round((incomingByDay.get(day) || 0) * 100) / 100,
+    }));
+
+    res.json({
+      setupRequired: false,
+      updatedAt: new Date().toISOString(),
+      filters: { period, method: method || null, managerId: managerId || null },
+      startDate: settings.balanceStartDate.toISOString(),
+      initialBalance,
+      kpi: {
+        balance: Math.round(realBalance * 100) / 100,
+        cash: Math.round(realBalance * 100) / 100,
+        bank: 0,
+      },
+      breakdown: {
+        real: Math.round(realBalance * 100) / 100,
+        expected: Math.round(expectedAmount * 100) / 100,
+        debts: Math.round(debtAmount * 100) / 100,
+      },
+      charts: {
+        balanceLine,
+        cashFlow,
+        paymentsPerDay,
+      },
+    });
+  }),
+);
+
 export { router as financeRoutes };

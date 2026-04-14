@@ -64,6 +64,29 @@ export interface DealPaymentContextResponse {
   creditFromOtherDeals: number;
 }
 
+export interface CompanyBalanceChartPoint {
+  day: string;
+  balance?: number;
+  incoming?: number;
+  outgoing?: number;
+  total?: number;
+}
+
+export interface CompanyBalanceResponse {
+  setupRequired: boolean;
+  updatedAt?: string;
+  startDate?: string;
+  initialBalance?: number;
+  filters?: { period: string; method: string | null; managerId: string | null };
+  kpi?: { balance: number; cash: number; bank: number };
+  breakdown?: { real: number; expected: number; debts: number };
+  charts?: {
+    balanceLine: CompanyBalanceChartPoint[];
+    cashFlow: CompanyBalanceChartPoint[];
+    paymentsPerDay: CompanyBalanceChartPoint[];
+  };
+}
+
 export const financeApi = {
   cashbox: (params?: {
     period?: string;
@@ -95,4 +118,7 @@ export const financeApi = {
 
   clientDebtDetail: (clientId: string) =>
     client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),
+
+  companyBalance: (params?: { period?: 'day' | 'week' | 'month' | 'year'; method?: string; managerId?: string }) =>
+    client.get<CompanyBalanceResponse>('/finance/company-balance', { params }).then((r) => r.data),
 };

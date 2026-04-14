@@ -13,6 +13,8 @@ export const updateCompanySettingsDto = z.object({
   vatRegCode: z.string().optional(),
   oked: z.string().optional(),
   monthlyRevenueGoal: z.number().min(0).optional(),
+  balanceStartDate: z.coerce.date().nullable().optional(),
+  initialBalance: z.number().min(0).optional(),
 });
 
 export type UpdateCompanySettingsDto = z.infer<typeof updateCompanySettingsDto>;
