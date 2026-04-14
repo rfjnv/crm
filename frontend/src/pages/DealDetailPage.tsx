@@ -1122,11 +1122,9 @@ export default function DealDetailPage() {
               size="small"
               extra={
                 <Space>
-                  {(dealPayments ?? []).length > 0 && (
-                    <Tooltip title="Скачать чек об оплате">
-                      <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }} />
-                    </Tooltip>
-                  )}
+                  <Tooltip title="Скачать чек">
+                    <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }} />
+                  </Tooltip>
                   {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
@@ -1489,9 +1487,7 @@ export default function DealDetailPage() {
                       title="Оплата"
                       extra={
                         <Space>
-                          {(dealPayments ?? []).length > 0 && (
-                            <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }}>Чек</Button>
-                          )}
+                          <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }}>Чек</Button>
                           {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
                           )}

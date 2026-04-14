@@ -3575,10 +3575,6 @@ export class DealsService {
       orderBy: { paidAt: 'asc' },
     });
 
-    if (payments.length === 0) {
-      throw new AppError(400, 'В сделке нет платежей для формирования чека');
-    }
-
     const company = await prisma.companySettings.findFirst({ where: { id: 'singleton' } });
 
     const VAT_RATE = 0.12;
