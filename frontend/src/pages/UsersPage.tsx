@@ -12,7 +12,6 @@ import {
   Tag,
   Popconfirm,
   Checkbox,
-  Tooltip,
   Card,
   Row,
   Col,
@@ -21,6 +20,8 @@ import {
   Spin,
   theme,
   ColorPicker,
+  Space,
+  Divider,
 } from 'antd';
 import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
@@ -31,30 +32,8 @@ import { moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
-import { UserBadgeIcon, USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
-
-const roleLabels: Record<string, string> = {
-  SUPER_ADMIN: 'Суперадмин',
-  ADMIN: 'Администратор',
-  OPERATOR: 'Оператор',
-  MANAGER: 'Менеджер',
-  ACCOUNTANT: 'Бухгалтер',
-  WAREHOUSE: 'Склад',
-  WAREHOUSE_MANAGER: 'Зав. складом',
-  DRIVER: 'Водитель',
-  LOADER: 'Грузчик',
-};
-const roleColors: Record<string, string> = {
-  SUPER_ADMIN: 'red',
-  ADMIN: 'gold',
-  OPERATOR: 'cyan',
-  MANAGER: 'blue',
-  ACCOUNTANT: 'purple',
-  WAREHOUSE: 'green',
-  WAREHOUSE_MANAGER: 'lime',
-  DRIVER: 'orange',
-  LOADER: 'volcano',
-};
+import { USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
+import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 
 export default function UsersPage() {
   const isMobile = useIsMobile();
@@ -98,8 +77,22 @@ export default function UsersPage() {
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<{ login: string; fullName: string; role: string; password: string; permissions: Permission[] }> }) =>
-      usersApi.update(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<{
+        login: string;
+        fullName: string;
+        role: string;
+        password: string;
+        permissions: Permission[];
+        badgeIcon: string | null;
+        badgeColor: string | null;
+        badgeLabel: string | null;
+      }>;
+    }) => usersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Пользователь обновлён');
@@ -116,6 +109,8 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Пользователь деактивирован');
+      closeModal();
+      setEditingUser(null);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
@@ -128,6 +123,8 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Пользователь активирован');
+      closeModal();
+      setEditingUser(null);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
@@ -140,6 +137,8 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Пользователь удалён');
+      closeModal();
+      setEditingUser(null);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
@@ -169,6 +168,7 @@ export default function UsersPage() {
       permissions: user.permissions || [],
       badgeIcon: user.badgeIcon ?? undefined,
       badgeColor: user.badgeColor || '#22609A',
+      badgeLabel: user.badgeLabel ?? '',
     });
     setOpen(true);
   }
@@ -188,6 +188,8 @@ export default function UsersPage() {
           typeof rawColor === 'string'
             ? rawColor
             : (rawColor as { toHexString?: () => string } | undefined)?.toHexString?.() ?? null;
+        const rawLabel = (values.badgeLabel as string | undefined)?.trim();
+        data.badgeLabel = rawLabel || null;
       }
       updateMut.mutate({
         id: editingUser.id,
@@ -199,6 +201,7 @@ export default function UsersPage() {
           permissions: Permission[];
           badgeIcon: string | null;
           badgeColor: string | null;
+          badgeLabel: string | null;
         }>,
       });
     } else {
@@ -213,102 +216,79 @@ export default function UsersPage() {
 
   const columns = useMemo(
     () => [
-    {
-      title: '',
-      key: 'badge',
-      width: 48,
-      align: 'center' as const,
-      render: (_: unknown, r: User) => <UserBadgeIcon iconKey={r.badgeIcon} color={r.badgeColor} size={22} />,
-    },
-    { title: 'Логин', dataIndex: 'login' },
-    { title: 'ФИО', dataIndex: 'fullName' },
-    {
-      title: 'Роль',
-      dataIndex: 'role',
-      render: (v: string) => <Tag color={roleColors[v] || 'default'}>{roleLabels[v] || v}</Tag>,
-    },
-    ...(canManageTeam
-      ? [
-          {
-            title: 'Разрешения',
-            dataIndex: 'permissions',
-            render: (perms: string[] | undefined) => {
-              const count = perms?.length || 0;
-              if (count === 0) return <Tag>0</Tag>;
-              const labels = (perms || []).map((p) => ALL_PERMISSIONS.find((a) => a.key === p)?.label || p).join(', ');
-              return (
-                <Tooltip title={labels}>
-                  <Tag color="geekblue">{count}</Tag>
-                </Tooltip>
-              );
-            },
-          },
-        ]
-      : []),
-    {
-      title: 'Статус',
-      dataIndex: 'isActive',
-      render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Активен' : 'Деактивирован'}</Tag>,
-    },
-    {
-      title: 'Действия',
-      width: canManageTeam ? 200 : 72,
-      render: (_: unknown, r: User) => {
-        const isSelf = r.id === currentUser?.id;
-        const isTargetSuperAdmin = r.role === 'SUPER_ADMIN';
-        const canEdit = canManageTeam && (!isTargetSuperAdmin || isSuperAdmin);
-        const canToggle = canManageTeam && !isSelf && (!isTargetSuperAdmin || isSuperAdmin);
-
-        return (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <Button type="text" icon={<BarChartOutlined />} size="small" onClick={() => { setKpiUser(r); setKpiPeriod('month'); }} />
-            {canEdit && (
-              <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
-            )}
-            {canManageTeam && r.isActive && canToggle && (
-              <Popconfirm title="Деактивировать пользователя?" onConfirm={() => deactivateMut.mutate(r.id)}>
-                <Button type="text" danger icon={<StopOutlined />} size="small" />
-              </Popconfirm>
-            )}
-            {canManageTeam && !r.isActive && canToggle && (
-              <Popconfirm title="Активировать пользователя?" onConfirm={() => activateMut.mutate(r.id)}>
-                <Button type="text" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} size="small" />
-              </Popconfirm>
-            )}
-            {canManageTeam && canToggle && (
-              <Popconfirm
-                title="Удалить пользователя навсегда?"
-                description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
-                onConfirm={() => deleteMut.mutate(r.id)}
-                okText="Удалить"
-                cancelText="Отмена"
-                okButtonProps={{ danger: true }}
-              >
-                <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-              </Popconfirm>
-            )}
-          </div>
-        );
+      {
+        title: 'ФИО',
+        key: 'fullName',
+        ellipsis: true,
+        render: (_: unknown, r: User) => {
+          if (!canManageTeam) {
+            return <Typography.Text>{r.fullName}</Typography.Text>;
+          }
+          return (
+            <Space size={4} wrap>
+              <Button
+                type="text"
+                size="small"
+                icon={<BarChartOutlined />}
+                aria-label="KPI"
+                onClick={() => {
+                  setKpiUser(r);
+                  setKpiPeriod('month');
+                }}
+              />
+              <Typography.Link onClick={() => openEdit(r)} style={{ fontWeight: 500 }}>
+                {r.fullName}
+              </Typography.Link>
+              {!r.isActive && (
+                <Tag color="default" style={{ marginInlineStart: 4 }}>
+                  неактивен
+                </Tag>
+              )}
+            </Space>
+          );
+        },
       },
-    },
-  ],
-    [canManageTeam, currentUser?.id, isSuperAdmin],
+      {
+        title: 'Медаль',
+        key: 'medal',
+        width: 280,
+        render: (_: unknown, r: User) => (
+          <TeamMedalDisplay
+            badgeLabel={r.badgeLabel}
+            badgeIcon={r.badgeIcon}
+            badgeColor={r.badgeColor}
+            variant="full"
+          />
+        ),
+      },
+    ],
+    [canManageTeam],
   );
 
   const isEditing = !!editingUser;
   const isPending = createMut.isPending || updateMut.isPending;
 
+  const dangerTarget = editingUser;
+  const isSelf = dangerTarget && currentUser && dangerTarget.id === currentUser.id;
+  const isTargetSuperAdmin = dangerTarget?.role === 'SUPER_ADMIN';
+  const canEditDanger = dangerTarget && canManageTeam && (!isTargetSuperAdmin || isSuperAdmin) && !isSelf;
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Команда</Typography.Title>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Команда
+          </Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            Имена и значки видны всем; редактирование — только у администраторов.
+            Список для всех: только имя и медаль (свой текст, цвет и иконка — как бейдж SVIP у клиентов). Учётные данные и
+            роли настраиваются в окне редактирования для администраторов.
           </Typography.Text>
         </div>
         {canManageTeam && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Создать пользователя</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Создать пользователя
+          </Button>
         )}
       </div>
 
@@ -320,7 +300,7 @@ export default function UsersPage() {
         pagination={false}
         size="middle"
         bordered={false}
-        scroll={{ x: 600 }}
+        scroll={{ x: 400 }}
       />
 
       <Modal
@@ -365,18 +345,31 @@ export default function UsersPage() {
           <Form.Item name="permissions" label="Разрешения">
             <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {ALL_PERMISSIONS.map((p) => (
-                <Checkbox key={p.key} value={p.key}>{p.label}</Checkbox>
+                <Checkbox key={p.key} value={p.key}>
+                  {p.label}
+                </Checkbox>
               ))}
             </Checkbox.Group>
           </Form.Item>
           {isEditing && canManageTeam && (
             <>
-              <Form.Item name="badgeIcon" label="Значок в списке команды">
-                <Select allowClear placeholder="Без значка" options={badgeOptions} />
+              <Divider plain>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Медаль в списке команды
+                </Typography.Text>
+              </Divider>
+              <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: 13 }}>
+                Произвольная подпись (как «SVIP»), цвет и иконка — отдельно от системной роли.
+              </Typography.Paragraph>
+              <Form.Item name="badgeLabel" label="Подпись">
+                <Input placeholder="Например: упорный, лентяй, SVIP" maxLength={48} showCount />
+              </Form.Item>
+              <Form.Item name="badgeIcon" label="Иконка">
+                <Select allowClear placeholder="Без иконки" options={badgeOptions} />
               </Form.Item>
               <Form.Item
                 name="badgeColor"
-                label="Цвет значка"
+                label="Цвет"
                 getValueFromEvent={(v: string | { toHexString?: () => string }) =>
                   typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
                 }
@@ -386,6 +379,42 @@ export default function UsersPage() {
             </>
           )}
         </Form>
+
+        {isEditing && canManageTeam && dangerTarget && canEditDanger && (
+          <>
+            <Divider />
+            <Typography.Text type="danger" strong>
+              Опасная зона
+            </Typography.Text>
+            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {dangerTarget.isActive ? (
+                <Popconfirm title="Деактивировать пользователя?" onConfirm={() => deactivateMut.mutate(dangerTarget.id)}>
+                  <Button danger icon={<StopOutlined />} loading={deactivateMut.isPending}>
+                    Деактивировать
+                  </Button>
+                </Popconfirm>
+              ) : (
+                <Popconfirm title="Активировать пользователя?" onConfirm={() => activateMut.mutate(dangerTarget.id)}>
+                  <Button type="primary" icon={<CheckCircleOutlined />} loading={activateMut.isPending}>
+                    Активировать
+                  </Button>
+                </Popconfirm>
+              )}
+              <Popconfirm
+                title="Удалить пользователя навсегда?"
+                description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
+                onConfirm={() => deleteMut.mutate(dangerTarget.id)}
+                okText="Удалить"
+                cancelText="Отмена"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={deleteMut.isPending}>
+                  Удалить навсегда
+                </Button>
+              </Popconfirm>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* KPI Modal */}
@@ -396,6 +425,13 @@ export default function UsersPage() {
         footer={null}
         width={isMobile ? '100%' : 640}
       >
+        {kpiUser && canManageTeam && (
+          <div style={{ marginBottom: 12 }}>
+            <Button type="link" icon={<EditOutlined />} onClick={() => { setKpiUser(null); openEdit(kpiUser); }} style={{ padding: 0 }}>
+              Редактировать пользователя
+            </Button>
+          </div>
+        )}
         <div style={{ marginBottom: 16 }}>
           <Segmented
             value={kpiPeriod}
@@ -408,7 +444,9 @@ export default function UsersPage() {
           />
         </div>
         {kpiLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <Spin />
+          </div>
         ) : kpiData ? (
           <div>
             <Row gutter={[12, 12]}>
@@ -424,12 +462,7 @@ export default function UsersPage() {
               </Col>
               <Col span={8}>
                 <Card size="small">
-                  <Statistic
-                    title="Выручка"
-                    value={kpiData.revenue}
-                    formatter={(v) => moneyFormatter(Number(v))}
-                    suffix="so'm"
-                  />
+                  <Statistic title="Выручка" value={kpiData.revenue} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
                 </Card>
               </Col>
               <Col span={8}>
@@ -439,11 +472,7 @@ export default function UsersPage() {
               </Col>
               <Col span={8}>
                 <Card size="small">
-                  <Statistic
-                    title="Ср. время сделки"
-                    value={kpiData.avgDealDays}
-                    suffix="дн."
-                  />
+                  <Statistic title="Ср. время сделки" value={kpiData.avgDealDays} suffix="дн." />
                 </Card>
               </Col>
             </Row>
@@ -468,7 +497,6 @@ export default function UsersPage() {
           </div>
         ) : null}
       </Modal>
-
     </div>
   );
 }

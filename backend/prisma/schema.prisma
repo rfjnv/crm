@@ -161,6 +161,8 @@ model User {
   badgeIcon           String?          @map("badge_icon")
   /** HEX цвет значка, например #22609A */
   badgeColor          String?          @map("badge_color")
+  /** Произвольная подпись медали (как тег SVIP): «упорный», «лентяй» и т.д. */
+  badgeLabel          String?          @map("badge_label")
   clientNotes         ClientNote[]
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")

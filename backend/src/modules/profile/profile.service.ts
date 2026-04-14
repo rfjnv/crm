@@ -73,6 +73,7 @@ export class ProfileService {
         createdAt: true,
         badgeIcon: true,
         badgeColor: true,
+        badgeLabel: true,
       },
     });
   }

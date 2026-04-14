@@ -25,6 +25,7 @@ export const updateUserDto = z.object({
   permissions: z.array(z.enum(permissionValues)).optional(),
   badgeIcon: badgeIconEnum.nullable().optional(),
   badgeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+  badgeLabel: z.string().trim().max(48, 'Не более 48 символов').nullable().optional(),
 });
 
 export type CreateUserDto = z.infer<typeof createUserDto>;

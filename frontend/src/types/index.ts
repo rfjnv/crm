@@ -82,6 +82,8 @@ export interface User {
   /** Значок в списке команды (задают админы) */
   badgeIcon?: string | null;
   badgeColor?: string | null;
+  /** Текст «медали» в команде (произвольный, как подпись SVIP) */
+  badgeLabel?: string | null;
 }
 
 export interface ProfileSession {

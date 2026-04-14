@@ -122,6 +122,7 @@ export class AuthService {
         createdAt: true,
         badgeIcon: true,
         badgeColor: true,
+        badgeLabel: true,
       },
     });
 

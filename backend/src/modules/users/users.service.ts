@@ -16,6 +16,7 @@ const userSelect = {
   updatedAt: true,
   badgeIcon: true,
   badgeColor: true,
+  badgeLabel: true,
 };
 
 export class UsersService {
@@ -80,6 +81,7 @@ export class UsersService {
     if (dto.permissions !== undefined) data.permissions = dto.permissions;
     if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;
     if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
+    if (dto.badgeLabel !== undefined) data.badgeLabel = dto.badgeLabel;
 
     if (Object.keys(data).length === 0) {
       throw new AppError(400, 'Нет данных для обновления');
@@ -93,6 +95,7 @@ export class UsersService {
       permissions: user.permissions,
       badgeIcon: user.badgeIcon,
       badgeColor: user.badgeColor,
+      badgeLabel: user.badgeLabel,
     };
 
     const updated = await prisma.user.update({
@@ -115,6 +118,7 @@ export class UsersService {
         permissions: updated.permissions,
         badgeIcon: updated.badgeIcon,
         badgeColor: updated.badgeColor,
+        badgeLabel: updated.badgeLabel,
       },
     });
 

@@ -18,6 +18,7 @@ export const usersApi = {
       permissions: Permission[];
       badgeIcon: string | null;
       badgeColor: string | null;
+      badgeLabel: string | null;
     }>,
   ) =>
     client.patch<User>(`/users/${id}`, data).then((r) => r.data),
