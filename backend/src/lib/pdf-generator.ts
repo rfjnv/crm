@@ -794,6 +794,7 @@ export interface PaymentReceiptData {
   dealTitle: string;
   dealId: string;
   closedAt: string | null;
+  includeVat: boolean;
   client: {
     companyName: string;
     contactName: string;
@@ -805,23 +806,24 @@ export interface PaymentReceiptData {
   items: {
     num: number;
     name: string;
-    sku: string;
     unit: string;
     qty: number;
-    price: number;
-    total: number;
+    priceWithVat: number;
+    totalWithVat: number;
+    vatAmount: number;
+    sumWithoutVat: number;
   }[];
   payments: {
     num: number;
     amount: number;
     method: string | null;
     paidAt: string;
-    note: string | null;
-    creator: string | null;
   }[];
   totalAmount: number;
   totalPaid: number;
   remaining: number;
+  subtotalBase: number;
+  subtotalVat: number;
 }
 
 // ---------- Template: PAYMENT RECEIPT ----------
@@ -829,11 +831,10 @@ export interface PaymentReceiptData {
 const RECEIPT_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 11px; line-height: 1.5; color: #000; padding: 12mm 15mm 12mm 15mm; }
-.receipt-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
-.receipt-logo { width: 56px; height: 56px; object-fit: contain; }
-.receipt-company { flex: 1; font-size: 10px; line-height: 1.5; }
-.receipt-company strong { font-size: 13px; }
-.receipt-title { text-align: center; font-size: 18px; font-weight: bold; margin: 10px 0 4px; letter-spacing: 1px; }
+.receipt-header { text-align: center; margin-bottom: 10px; }
+.receipt-logo { width: 120px; height: auto; object-fit: contain; margin-bottom: 6px; }
+.receipt-company-name { font-size: 16px; font-weight: bold; }
+.receipt-title { text-align: center; font-size: 18px; font-weight: bold; margin: 14px 0 4px; letter-spacing: 1px; }
 .receipt-subtitle { text-align: center; font-size: 11px; color: #444; margin-bottom: 14px; }
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin: 12px 0; font-size: 11px; }
 .info-grid .label { font-weight: bold; }
@@ -877,11 +878,13 @@ export function buildPaymentReceiptHtml(
     <tr>
       <td class="center">${i.num}</td>
       <td>${i.name}</td>
-      <td style="font-size:8px;">${i.sku}</td>
       <td class="center">${i.unit}</td>
       <td class="money">${i.qty}</td>
-      <td class="money">${formatMoney(i.price)}</td>
-      <td class="money">${formatMoney(i.total)}</td>
+      <td class="money">${formatMoney(i.priceWithVat)}</td>
+      <td class="money">${formatMoney(i.sumWithoutVat)}</td>
+      <td class="center">12%</td>
+      <td class="money">${formatMoney(i.vatAmount)}</td>
+      <td class="money">${formatMoney(i.totalWithVat)}</td>
     </tr>
   `).join('');
 
@@ -891,20 +894,15 @@ export function buildPaymentReceiptHtml(
       <td class="money">${formatMoney(p.amount)}</td>
       <td class="center">${METHOD_LABELS[p.method ?? ''] || p.method || '—'}</td>
       <td class="center">${formatDate(p.paidAt)}</td>
-      <td>${p.creator || '—'}</td>
-      <td>${p.note || '—'}</td>
     </tr>
   `).join('');
+
+  const companyName = company?.companyName || 'Polygraph Business';
 
   const body = `
 <div class="receipt-header">
   ${logoImg}
-  <div class="receipt-company">
-    <strong>${company?.companyName || '—'}</strong><br>
-    ${company?.address || ''}<br>
-    Тел: ${company?.phone || '—'} | ИНН: ${company?.inn || '—'}<br>
-    Р/с: ${company?.bankAccount || '—'} | Банк: ${company?.bankName || '—'} | МФО: ${company?.mfo || '—'}
-  </div>
+  <div class="receipt-company-name">${companyName}</div>
 </div>
 
 <div class="receipt-title">ЧЕК ОБ ОПЛАТЕ</div>
@@ -927,13 +925,17 @@ export function buildPaymentReceiptHtml(
 <table>
   <thead>
     <tr>
-      <th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма</th>
+      <th>№</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th>
+      <th>Цена</th><th>Сумма</th><th>Ставка НДС</th><th>Сумма НДС</th><th>Итого с НДС</th>
     </tr>
   </thead>
   <tbody>
     ${itemRows}
     <tr class="totals-row">
-      <td colspan="6" style="text-align:right;">Итого:</td>
+      <td colspan="5" style="text-align:right;">Итого:</td>
+      <td class="money">${formatMoney(data.subtotalBase)}</td>
+      <td></td>
+      <td class="money">${formatMoney(data.subtotalVat)}</td>
       <td class="money">${formatMoney(data.totalAmount)}</td>
     </tr>
   </tbody>
@@ -943,15 +945,15 @@ export function buildPaymentReceiptHtml(
 <table>
   <thead>
     <tr>
-      <th>№</th><th>Сумма</th><th>Способ</th><th>Дата</th><th>Кем внесено</th><th>Примечание</th>
+      <th>№</th><th>Сумма</th><th>Способ</th><th>Дата</th>
     </tr>
   </thead>
   <tbody>
     ${paymentRows}
     <tr class="totals-row">
-      <td colspan="1" style="text-align:right;">Итого:</td>
+      <td style="text-align:right;">Итого:</td>
       <td class="money">${formatMoney(data.totalPaid)}</td>
-      <td colspan="4"></td>
+      <td colspan="2"></td>
     </tr>
   </tbody>
 </table>
@@ -974,7 +976,7 @@ export function buildPaymentReceiptHtml(
 <div class="stamp-area">
   <div class="stamp-block">
     <div style="font-weight:bold;font-size:10px;">Выдал:</div>
-    ${company?.director ? `<div style="font-size:10px;">${company.director}</div>` : ''}
+    <div style="font-size:10px;">${companyName}</div>
     <div class="stamp-line"></div>
     <div class="stamp-hint">подпись / М.П.</div>
   </div>

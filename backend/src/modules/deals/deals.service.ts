@@ -3581,17 +3581,26 @@ export class DealsService {
 
     const company = await prisma.companySettings.findFirst({ where: { id: 'singleton' } });
 
+    const VAT_RATE = 0.12;
+    let subtotalBase = 0;
+    let subtotalVat = 0;
     const items = deal.items.map((it, i) => {
       const qty = Number(it.requestedQty) || 0;
-      const price = Number(it.price) || 0;
+      const priceWithVat = Number(it.price) || 0;
+      const totalWithVat = Math.round(qty * priceWithVat * 100) / 100;
+      const vatAmount = Math.round((totalWithVat * VAT_RATE / (1 + VAT_RATE)) * 100) / 100;
+      const sumWithoutVat = Math.round((totalWithVat - vatAmount) * 100) / 100;
+      subtotalBase += sumWithoutVat;
+      subtotalVat += vatAmount;
       return {
         num: i + 1,
         name: it.product.name,
-        sku: it.product.sku,
         unit: it.product.unit,
         qty,
-        price,
-        total: Math.round(qty * price * 100) / 100,
+        priceWithVat,
+        totalWithVat,
+        vatAmount,
+        sumWithoutVat,
       };
     });
 
@@ -3619,6 +3628,7 @@ export class DealsService {
         dealTitle: deal.title,
         dealId: deal.id,
         closedAt: deal.closedAt?.toISOString() ?? null,
+        includeVat: deal.includeVat ?? true,
         client: deal.client ? {
           companyName: deal.client.companyName,
           contactName: deal.client.contactName ?? '',
@@ -3633,12 +3643,12 @@ export class DealsService {
           amount: Number(p.amount),
           method: p.method,
           paidAt: p.paidAt.toISOString(),
-          note: p.note ?? null,
-          creator: p.creator?.fullName ?? null,
         })),
         totalAmount,
         totalPaid,
         remaining: Math.max(0, totalAmount - totalPaid),
+        subtotalBase: Math.round(subtotalBase * 100) / 100,
+        subtotalVat: Math.round(subtotalVat * 100) / 100,
       },
       companyForPdf,
     );
