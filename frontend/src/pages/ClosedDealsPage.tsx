@@ -50,7 +50,7 @@ export default function ClosedDealsPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const managers = useMemo(() => {

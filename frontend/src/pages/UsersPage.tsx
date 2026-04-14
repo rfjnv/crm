@@ -12,6 +12,7 @@ import {
   Tag,
   Popconfirm,
   Checkbox,
+  Tooltip,
   Card,
   Row,
   Col,
@@ -25,6 +26,7 @@ import {
 } from 'antd';
 import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
+import { Link } from 'react-router-dom';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
@@ -35,6 +37,30 @@ import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 import { USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 
+const roleLabels: Record<string, string> = {
+  SUPER_ADMIN: 'Суперадмин',
+  ADMIN: 'Администратор',
+  OPERATOR: 'Оператор',
+  MANAGER: 'Менеджер',
+  ACCOUNTANT: 'Бухгалтер',
+  WAREHOUSE: 'Склад',
+  WAREHOUSE_MANAGER: 'Зав. складом',
+  DRIVER: 'Водитель',
+  LOADER: 'Грузчик',
+};
+const roleColors: Record<string, string> = {
+  SUPER_ADMIN: 'red',
+  ADMIN: 'gold',
+  OPERATOR: 'cyan',
+  MANAGER: 'blue',
+  ACCOUNTANT: 'purple',
+  WAREHOUSE: 'green',
+  WAREHOUSE_MANAGER: 'lime',
+  DRIVER: 'orange',
+  LOADER: 'volcano',
+};
+
+/** Управление учётными записями: ADMIN и SUPER_ADMIN. Полный список, в т.ч. неактивные. */
 export default function UsersPage() {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -54,7 +80,10 @@ export default function UsersPage() {
     label: USER_BADGE_ICON_LABELS[k],
   }));
 
-  const { data: users, isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: users, isLoading } = useQuery({
+    queryKey: ['users', 'manage'],
+    queryFn: () => usersApi.list({ includeInactive: true }),
+  });
 
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['user-kpi', kpiUser?.id, kpiPeriod],
@@ -62,11 +91,15 @@ export default function UsersPage() {
     enabled: !!kpiUser,
   });
 
+  const invalidateUsers = () => {
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
+  };
+
   const createMut = useMutation({
     mutationFn: (data: { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }) =>
       usersApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       message.success('Пользователь создан');
       closeModal();
     },
@@ -94,7 +127,7 @@ export default function UsersPage() {
       }>;
     }) => usersApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       message.success('Пользователь обновлён');
       closeModal();
     },
@@ -107,7 +140,7 @@ export default function UsersPage() {
   const deactivateMut = useMutation({
     mutationFn: (id: string) => usersApi.deactivate(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       message.success('Пользователь деактивирован');
       closeModal();
       setEditingUser(null);
@@ -121,7 +154,7 @@ export default function UsersPage() {
   const activateMut = useMutation({
     mutationFn: (id: string) => usersApi.activate(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       message.success('Пользователь активирован');
       closeModal();
       setEditingUser(null);
@@ -135,7 +168,7 @@ export default function UsersPage() {
   const deleteMut = useMutation({
     mutationFn: (id: string) => usersApi.deleteUser(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       message.success('Пользователь удалён');
       closeModal();
       setEditingUser(null);
@@ -217,52 +250,93 @@ export default function UsersPage() {
   const columns = useMemo(
     () => [
       {
-        title: 'ФИО',
-        key: 'fullName',
-        ellipsis: true,
+        title: 'Медаль',
+        key: 'medal',
+        width: 200,
+        render: (_: unknown, r: User) => (
+          <TeamMedalDisplay badgeLabel={r.badgeLabel} badgeIcon={r.badgeIcon} badgeColor={r.badgeColor} variant="full" />
+        ),
+      },
+      { title: 'Логин', dataIndex: 'login', width: 120 },
+      { title: 'ФИО', dataIndex: 'fullName', ellipsis: true },
+      {
+        title: 'Роль',
+        dataIndex: 'role',
+        width: 140,
+        render: (v: string) => <Tag color={roleColors[v] || 'default'}>{roleLabels[v] || v}</Tag>,
+      },
+      {
+        title: 'Разрешения',
+        dataIndex: 'permissions',
+        width: 100,
+        render: (perms: string[] | undefined) => {
+          const count = perms?.length || 0;
+          if (count === 0) return <Tag>0</Tag>;
+          const labels = (perms || []).map((p) => ALL_PERMISSIONS.find((a) => a.key === p)?.label || p).join(', ');
+          return (
+            <Tooltip title={labels}>
+              <Tag color="geekblue">{count}</Tag>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        title: 'Статус',
+        dataIndex: 'isActive',
+        width: 120,
+        render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Активен' : 'Деактивирован'}</Tag>,
+      },
+      {
+        title: 'Действия',
+        key: 'actions',
+        width: 200,
+        fixed: 'right' as const,
         render: (_: unknown, r: User) => {
-          if (!canManageTeam) {
-            return <Typography.Text>{r.fullName}</Typography.Text>;
-          }
+          const isSelf = r.id === currentUser?.id;
+          const isTargetSuperAdmin = r.role === 'SUPER_ADMIN';
+          const canEdit = !isTargetSuperAdmin || isSuperAdmin;
+          const canToggle = !isSelf && (!isTargetSuperAdmin || isSuperAdmin);
+
           return (
             <Space size={4} wrap>
               <Button
                 type="text"
-                size="small"
                 icon={<BarChartOutlined />}
-                aria-label="KPI"
+                size="small"
                 onClick={() => {
                   setKpiUser(r);
                   setKpiPeriod('month');
                 }}
               />
-              <Typography.Link onClick={() => openEdit(r)} style={{ fontWeight: 500 }}>
-                {r.fullName}
-              </Typography.Link>
-              {!r.isActive && (
-                <Tag color="default" style={{ marginInlineStart: 4 }}>
-                  неактивен
-                </Tag>
+              {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
+              {r.isActive && canToggle && (
+                <Popconfirm title="Деактивировать пользователя?" onConfirm={() => deactivateMut.mutate(r.id)}>
+                  <Button type="text" danger icon={<StopOutlined />} size="small" />
+                </Popconfirm>
+              )}
+              {!r.isActive && canToggle && (
+                <Popconfirm title="Активировать пользователя?" onConfirm={() => activateMut.mutate(r.id)}>
+                  <Button type="text" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} size="small" />
+                </Popconfirm>
+              )}
+              {canToggle && (
+                <Popconfirm
+                  title="Удалить пользователя навсегда?"
+                  description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
+                  onConfirm={() => deleteMut.mutate(r.id)}
+                  okText="Удалить"
+                  cancelText="Отмена"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                </Popconfirm>
               )}
             </Space>
           );
         },
       },
-      {
-        title: 'Медаль',
-        key: 'medal',
-        width: 280,
-        render: (_: unknown, r: User) => (
-          <TeamMedalDisplay
-            badgeLabel={r.badgeLabel}
-            badgeIcon={r.badgeIcon}
-            badgeColor={r.badgeColor}
-            variant="full"
-          />
-        ),
-      },
     ],
-    [canManageTeam],
+    [currentUser?.id, isSuperAdmin],
   );
 
   const isEditing = !!editingUser;
@@ -278,11 +352,11 @@ export default function UsersPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Команда
+            Пользователи
           </Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            Список для всех: только имя и медаль (свой текст, цвет и иконка — как бейдж SVIP у клиентов). Учётные данные и
-            роли настраиваются в окне редактирования для администраторов.
+            Учётные записи, роли и медали. В списке — все пользователи, включая неактивных. Публичный список команды —{' '}
+            <Link to="/team">Команда</Link>.
           </Typography.Text>
         </div>
         {canManageTeam && (
@@ -292,7 +366,7 @@ export default function UsersPage() {
         )}
       </div>
 
-      <Table
+      <Table<User>
         dataSource={users}
         columns={columns}
         rowKey="id"
@@ -300,7 +374,7 @@ export default function UsersPage() {
         pagination={false}
         size="middle"
         bordered={false}
-        scroll={{ x: 400 }}
+        scroll={{ x: 1100 }}
       />
 
       <Modal
@@ -417,7 +491,6 @@ export default function UsersPage() {
         )}
       </Modal>
 
-      {/* KPI Modal */}
       <Modal
         title={kpiUser ? `KPI — ${kpiUser.fullName}` : 'KPI'}
         open={!!kpiUser}
@@ -427,7 +500,15 @@ export default function UsersPage() {
       >
         {kpiUser && canManageTeam && (
           <div style={{ marginBottom: 12 }}>
-            <Button type="link" icon={<EditOutlined />} onClick={() => { setKpiUser(null); openEdit(kpiUser); }} style={{ padding: 0 }}>
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setKpiUser(null);
+                openEdit(kpiUser);
+              }}
+              style={{ padding: 0 }}
+            >
               Редактировать пользователя
             </Button>
           </div>

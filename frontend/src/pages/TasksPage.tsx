@@ -43,7 +43,7 @@ export default function TasksPage() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const createMut = useMutation({

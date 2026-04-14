@@ -34,6 +34,7 @@ import {
   StarOutlined,
   PhoneOutlined,
   IdcardOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -403,10 +404,19 @@ export default function Layout() {
       label: <Link to="/profile">Профиль</Link>,
     },
     {
-      key: '/users',
+      key: '/team',
       icon: <TeamOutlined />,
-      label: <Link to="/users">Команда</Link>,
+      label: <Link to="/team">Команда</Link>,
     },
+    ...(isAdmin
+      ? [
+          {
+            key: '/users',
+            icon: <UserOutlined />,
+            label: <Link to="/users">Пользователи</Link>,
+          },
+        ]
+      : []),
     ...(isAdmin
       ? [
         {

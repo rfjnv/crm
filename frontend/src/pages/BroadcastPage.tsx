@@ -40,7 +40,7 @@ export default function BroadcastPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const { data: deals } = useQuery({

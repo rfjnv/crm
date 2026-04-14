@@ -20,8 +20,13 @@ const userSelect = {
 };
 
 export class UsersService {
-  async findAll() {
+  /**
+   * По умолчанию только активные (команда, селекты менеджеров).
+   * `includeInactive: true` — полный список (только ADMIN/SUPER_ADMIN в контроллере).
+   */
+  async findAll(opts?: { includeInactive?: boolean }) {
     return prisma.user.findMany({
+      where: opts?.includeInactive ? undefined : { isActive: true },
       select: userSelect,
       orderBy: { createdAt: 'desc' },
     });

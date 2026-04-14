@@ -2,7 +2,16 @@ import client from './client';
 import type { User, Permission, UserKPI } from '../types';
 
 export const usersApi = {
-  list: () => client.get<User[]>('/users').then((r) => r.data),
+  /**
+   * Без параметров — только активные (Команда, выбор менеджера).
+   * `includeInactive: true` — все учётки, только для ADMIN/SUPER_ADMIN (страница «Пользователи»).
+   */
+  list: (opts?: { includeInactive?: boolean }) =>
+    client
+      .get<User[]>('/users', {
+        params: opts?.includeInactive ? { includeInactive: true } : undefined,
+      })
+      .then((r) => r.data),
 
   create: (data: { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }) =>
     client.post<User>('/users', data).then((r) => r.data),

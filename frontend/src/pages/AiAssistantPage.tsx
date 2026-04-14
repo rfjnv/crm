@@ -200,7 +200,7 @@ export default function AiAssistantPage() {
       case 'client': navigate(`/clients/${entity.id}`); break;
       case 'deal': navigate(`/deals/${entity.id}`); break;
       case 'product': navigate(`/inventory/products/${entity.id}`); break;
-      case 'user': navigate('/users'); break;
+      case 'user': navigate('/team'); break;
     }
   };
 

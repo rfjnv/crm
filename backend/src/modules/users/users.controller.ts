@@ -1,9 +1,15 @@
 import { Request, Response } from 'express';
 import { usersService } from './users.service';
+import { AppError } from '../../lib/errors';
 
 export class UsersController {
-  async findAll(_req: Request, res: Response): Promise<void> {
-    const users = await usersService.findAll();
+  async findAll(req: Request, res: Response): Promise<void> {
+    const raw = req.query.includeInactive;
+    const includeInactive = raw === 'true' || raw === '1';
+    if (includeInactive && req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Полный список пользователей доступен только администраторам');
+    }
+    const users = await usersService.findAll({ includeInactive });
     res.json(users);
   }
 

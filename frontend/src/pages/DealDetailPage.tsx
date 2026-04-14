@@ -159,7 +159,7 @@ export default function DealDetailPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
     enabled: role === 'SUPER_ADMIN' || role === 'ADMIN',
   });
 

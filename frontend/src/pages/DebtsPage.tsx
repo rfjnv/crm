@@ -46,7 +46,7 @@ export default function DebtsPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const clients: ClientDebtRow[] = data?.clients ?? [];

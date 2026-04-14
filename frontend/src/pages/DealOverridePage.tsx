@@ -36,7 +36,7 @@ export default function DealOverridePage() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const { data: clients } = useQuery({

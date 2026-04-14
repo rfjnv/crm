@@ -96,7 +96,7 @@ export default function WarehouseShipmentsPage() {
 
   const { data: usersForFilters } = useQuery({
     queryKey: ['users-list-warehouse-closed'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
     enabled: mainTab === 'closedAll',
   });
 

@@ -79,7 +79,7 @@ export default function CashboxPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
   });
 
   const debtParams = useMemo(() => {
