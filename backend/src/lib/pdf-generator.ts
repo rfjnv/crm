@@ -787,3 +787,209 @@ export async function generateContractPdf(
   const html = buildContractHtml(contract, companySettings);
   return generateDocumentPdf([html]);
 }
+
+// ---------- Types: Payment Receipt ----------
+
+export interface PaymentReceiptData {
+  dealTitle: string;
+  dealId: string;
+  closedAt: string | null;
+  client: {
+    companyName: string;
+    contactName: string;
+    inn: string | null;
+    address: string | null;
+    phone: string | null;
+  } | null;
+  manager: { fullName: string } | null;
+  items: {
+    num: number;
+    name: string;
+    sku: string;
+    unit: string;
+    qty: number;
+    price: number;
+    total: number;
+  }[];
+  payments: {
+    num: number;
+    amount: number;
+    method: string | null;
+    paidAt: string;
+    note: string | null;
+    creator: string | null;
+  }[];
+  totalAmount: number;
+  totalPaid: number;
+  remaining: number;
+}
+
+// ---------- Template: PAYMENT RECEIPT ----------
+
+const RECEIPT_CSS = `
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 11px; line-height: 1.5; color: #000; padding: 12mm 15mm 12mm 15mm; }
+.receipt-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.receipt-logo { width: 56px; height: 56px; object-fit: contain; }
+.receipt-company { flex: 1; font-size: 10px; line-height: 1.5; }
+.receipt-company strong { font-size: 13px; }
+.receipt-title { text-align: center; font-size: 18px; font-weight: bold; margin: 10px 0 4px; letter-spacing: 1px; }
+.receipt-subtitle { text-align: center; font-size: 11px; color: #444; margin-bottom: 14px; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin: 12px 0; font-size: 11px; }
+.info-grid .label { font-weight: bold; }
+.divider { border: none; border-top: 1px solid #ccc; margin: 14px 0; }
+.section-title { font-size: 13px; font-weight: bold; margin: 14px 0 6px; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 10px; }
+th, td { border: 1px solid #999; padding: 4px 8px; }
+th { background: #f2f2f2; font-weight: bold; text-align: center; font-size: 9.5px; }
+td.money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.center { text-align: center; }
+.totals-row td { font-weight: bold; border-top: 2px solid #000; }
+.summary-box { margin-top: 14px; padding: 10px 14px; border: 1px solid #999; border-radius: 4px; font-size: 12px; display: flex; justify-content: space-between; }
+.summary-box .pair { text-align: center; }
+.summary-box .pair .val { font-size: 15px; font-weight: bold; }
+.stamp-area { margin-top: 36px; display: flex; justify-content: space-between; }
+.stamp-block { width: 45%; }
+.stamp-line { border-bottom: 1px solid #000; height: 28px; margin: 6px 0 2px; }
+.stamp-hint { font-size: 8px; color: #888; text-align: center; }
+.footer { margin-top: 20px; text-align: center; font-size: 9px; color: #999; }
+`;
+
+const METHOD_LABELS: Record<string, string> = {
+  CASH: 'Наличные',
+  TRANSFER: 'Перечисление',
+  PAYME: 'Payme',
+  QR: 'QR',
+  CLICK: 'Click',
+  TERMINAL: 'Терминал',
+  INSTALLMENT: 'Рассрочка',
+};
+
+export function buildPaymentReceiptHtml(
+  data: PaymentReceiptData,
+  company: CompanySettingsForPdf | null,
+): string {
+  const logoImg = company?.logoPath
+    ? `<img class="receipt-logo" src="${getLogoBase64(company.logoPath)}" />`
+    : '';
+
+  const itemRows = data.items.map((i) => `
+    <tr>
+      <td class="center">${i.num}</td>
+      <td>${i.name}</td>
+      <td style="font-size:8px;">${i.sku}</td>
+      <td class="center">${i.unit}</td>
+      <td class="money">${i.qty}</td>
+      <td class="money">${formatMoney(i.price)}</td>
+      <td class="money">${formatMoney(i.total)}</td>
+    </tr>
+  `).join('');
+
+  const paymentRows = data.payments.map((p) => `
+    <tr>
+      <td class="center">${p.num}</td>
+      <td class="money">${formatMoney(p.amount)}</td>
+      <td class="center">${METHOD_LABELS[p.method ?? ''] || p.method || '—'}</td>
+      <td class="center">${formatDate(p.paidAt)}</td>
+      <td>${p.creator || '—'}</td>
+      <td>${p.note || '—'}</td>
+    </tr>
+  `).join('');
+
+  const body = `
+<div class="receipt-header">
+  ${logoImg}
+  <div class="receipt-company">
+    <strong>${company?.companyName || '—'}</strong><br>
+    ${company?.address || ''}<br>
+    Тел: ${company?.phone || '—'} | ИНН: ${company?.inn || '—'}<br>
+    Р/с: ${company?.bankAccount || '—'} | Банк: ${company?.bankName || '—'} | МФО: ${company?.mfo || '—'}
+  </div>
+</div>
+
+<div class="receipt-title">ЧЕК ОБ ОПЛАТЕ</div>
+<div class="receipt-subtitle">Сделка: ${data.dealTitle}</div>
+
+<hr class="divider" />
+
+<div class="info-grid">
+  <div><span class="label">Клиент:</span> ${data.client?.companyName || '—'}</div>
+  <div><span class="label">ИНН клиента:</span> ${data.client?.inn || '—'}</div>
+  <div><span class="label">Контактное лицо:</span> ${data.client?.contactName || '—'}</div>
+  <div><span class="label">Адрес:</span> ${data.client?.address || '—'}</div>
+  <div><span class="label">Менеджер:</span> ${data.manager?.fullName || '—'}</div>
+  <div><span class="label">Дата закрытия:</span> ${data.closedAt ? formatDate(data.closedAt) : 'Не закрыта'}</div>
+</div>
+
+<hr class="divider" />
+
+<div class="section-title">Товары</div>
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemRows}
+    <tr class="totals-row">
+      <td colspan="6" style="text-align:right;">Итого:</td>
+      <td class="money">${formatMoney(data.totalAmount)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-title">Платежи</div>
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Сумма</th><th>Способ</th><th>Дата</th><th>Кем внесено</th><th>Примечание</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${paymentRows}
+    <tr class="totals-row">
+      <td colspan="1" style="text-align:right;">Итого:</td>
+      <td class="money">${formatMoney(data.totalPaid)}</td>
+      <td colspan="4"></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="summary-box">
+  <div class="pair">
+    <div>Сумма сделки</div>
+    <div class="val">${formatMoney(data.totalAmount)}</div>
+  </div>
+  <div class="pair">
+    <div>Оплачено</div>
+    <div class="val" style="color:#389e0d;">${formatMoney(data.totalPaid)}</div>
+  </div>
+  <div class="pair">
+    <div>Остаток</div>
+    <div class="val" style="color:${data.remaining > 0 ? '#cf1322' : '#389e0d'};">${formatMoney(data.remaining)}</div>
+  </div>
+</div>
+
+<div class="stamp-area">
+  <div class="stamp-block">
+    <div style="font-weight:bold;font-size:10px;">Выдал:</div>
+    ${company?.director ? `<div style="font-size:10px;">${company.director}</div>` : ''}
+    <div class="stamp-line"></div>
+    <div class="stamp-hint">подпись / М.П.</div>
+  </div>
+  <div class="stamp-block">
+    <div style="font-weight:bold;font-size:10px;">Получил:</div>
+    ${data.client?.contactName ? `<div style="font-size:10px;">${data.client.contactName}</div>` : ''}
+    <div class="stamp-line"></div>
+    <div class="stamp-hint">подпись</div>
+  </div>
+</div>
+
+<div class="footer">
+  Документ сформирован автоматически. Дата формирования: ${formatDate(new Date())}.
+</div>
+`;
+
+  return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><style>${RECEIPT_CSS}</style></head><body>${body}</body></html>`;
+}

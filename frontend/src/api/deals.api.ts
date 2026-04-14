@@ -1,4 +1,5 @@
 import client from './client';
+import { downloadBlob, getFilenameFromDisposition } from '../utils/download';
 import type {
   Deal,
   DealItem,
@@ -244,4 +245,17 @@ export const dealsApi = {
   assignDriver: (dealId: string, driverId: string) => client.post(`/deals/${dealId}/assign-driver`, { driverId }).then((r) => r.data),
   startDelivery: (dealIds: string[]) => client.post('/deals/start-delivery', { dealIds }).then((r) => r.data),
   deliverDeal: (dealId: string) => client.post(`/deals/${dealId}/deliver`).then((r) => r.data),
+
+  downloadPaymentReceipt: (dealId: string) =>
+    client.get(`/deals/${dealId}/payment-receipt`, {
+      params: { ts: Date.now() },
+      headers: { Accept: 'application/pdf' },
+      responseType: 'blob',
+    }).then((r) => {
+      const filename = getFilenameFromDisposition(
+        r.headers['content-disposition'],
+        `receipt-${dealId}.pdf`,
+      );
+      downloadBlob(r.data, filename);
+    }),
 };

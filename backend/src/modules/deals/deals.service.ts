@@ -3547,6 +3547,106 @@ export class DealsService {
       orderBy: { createdAt: 'asc' },
     });
   }
+  // ==================== PAYMENT RECEIPT ====================
+
+  async generatePaymentReceipt(dealId: string, user: AuthUser): Promise<{ buffer: Buffer; filename: string }> {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...ownerScope(user) },
+      include: {
+        client: {
+          select: {
+            companyName: true, contactName: true, inn: true,
+            address: true, phone: true,
+          },
+        },
+        manager: { select: { fullName: true } },
+        items: {
+          include: { product: { select: { name: true, sku: true, unit: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+    const payments = await prisma.payment.findMany({
+      where: { dealId },
+      include: { creator: { select: { fullName: true } } },
+      orderBy: { paidAt: 'asc' },
+    });
+
+    if (payments.length === 0) {
+      throw new AppError(400, 'В сделке нет платежей для формирования чека');
+    }
+
+    const company = await prisma.companySettings.findFirst({ where: { id: 'singleton' } });
+
+    const items = deal.items.map((it, i) => {
+      const qty = Number(it.requestedQty) || 0;
+      const price = Number(it.price) || 0;
+      return {
+        num: i + 1,
+        name: it.product.name,
+        sku: it.product.sku,
+        unit: it.product.unit,
+        qty,
+        price,
+        total: Math.round(qty * price * 100) / 100,
+      };
+    });
+
+    const totalAmount = Number(deal.amount) || 0;
+    const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+
+    const { buildPaymentReceiptHtml, generateDocumentPdf } = await import('../../lib/pdf-generator');
+    const companyForPdf = company ? {
+      companyName: company.companyName,
+      inn: company.inn,
+      address: company.address,
+      phone: company.phone,
+      email: company.email,
+      bankName: company.bankName,
+      bankAccount: company.bankAccount,
+      mfo: company.mfo,
+      director: company.director,
+      logoPath: company.logoPath,
+      vatRegCode: company.vatRegCode,
+      oked: company.oked,
+    } : null;
+
+    const html = buildPaymentReceiptHtml(
+      {
+        dealTitle: deal.title,
+        dealId: deal.id,
+        closedAt: deal.closedAt?.toISOString() ?? null,
+        client: deal.client ? {
+          companyName: deal.client.companyName,
+          contactName: deal.client.contactName ?? '',
+          inn: deal.client.inn ?? null,
+          address: deal.client.address ?? null,
+          phone: deal.client.phone ?? null,
+        } : null,
+        manager: deal.manager ? { fullName: deal.manager.fullName } : null,
+        items,
+        payments: payments.map((p, i) => ({
+          num: i + 1,
+          amount: Number(p.amount),
+          method: p.method,
+          paidAt: p.paidAt.toISOString(),
+          note: p.note ?? null,
+          creator: p.creator?.fullName ?? null,
+        })),
+        totalAmount,
+        totalPaid,
+        remaining: Math.max(0, totalAmount - totalPaid),
+      },
+      companyForPdf,
+    );
+
+    const buffer = await generateDocumentPdf([html]);
+    const safeName = deal.title.replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
+    return { buffer, filename: `receipt_${safeName}.pdf` };
+  }
 }
 
 export const dealsService = new DealsService();

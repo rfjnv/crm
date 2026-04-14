@@ -340,6 +340,14 @@ export class DealsController {
     const deals = await dealsService.findPendingAdmin(getUser(req));
     res.json(deals);
   }
+
+  async paymentReceipt(req: Request, res: Response): Promise<void> {
+    const { buffer, filename } = await dealsService.generatePaymentReceipt(req.params.id as string, getUser(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  }
 }
 
 export const dealsController = new DealsController();

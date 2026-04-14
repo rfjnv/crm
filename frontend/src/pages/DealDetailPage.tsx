@@ -9,7 +9,7 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
-  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, FilePdfOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import BackButton from '../components/BackButton';
@@ -1121,12 +1121,19 @@ export default function DealDetailPage() {
               title="Оплата"
               size="small"
               extra={
-                !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
-                  <Space>
-                    <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
-                    <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
-                  </Space>
-                )
+                <Space>
+                  {(dealPayments ?? []).length > 0 && (
+                    <Tooltip title="Скачать чек об оплате">
+                      <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }} />
+                    </Tooltip>
+                  )}
+                  {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                    <>
+                      <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
+                      <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
+                    </>
+                  )}
+                </Space>
               }
               bordered={false}
             >
@@ -1482,6 +1489,9 @@ export default function DealDetailPage() {
                       title="Оплата"
                       extra={
                         <Space>
+                          {(dealPayments ?? []).length > 0 && (
+                            <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }}>Чек</Button>
+                          )}
                           {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
                           )}

@@ -86,6 +86,9 @@ router.patch('/:id/payments/:paymentId', validate(updatePaymentRecordDto), async
 router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
 
+// Payment Receipt PDF
+router.get('/:id/payment-receipt', asyncHandler(dealsController.paymentReceipt.bind(dealsController)));
+
 // New Workflow: per-deal actions
 router.post('/:id/wm-confirm', authorize('WAREHOUSE_MANAGER', 'WAREHOUSE', 'LOADER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.warehouseManagerConfirm.bind(dealsController)));
 router.post('/:id/admin-approve-new', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveByAdmin.bind(dealsController)));
