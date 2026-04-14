@@ -3653,7 +3653,9 @@ export class DealsService {
       companyForPdf,
     );
 
-    const buffer = await generateDocumentPdf([html]);
+    const buffer = await generateDocumentPdf([html], {
+      margin: { top: '5mm', bottom: '5mm', left: '5mm', right: '5mm' },
+    });
     const safeName = deal.title.replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     return { buffer, filename: `receipt_${safeName}.pdf` };
   }

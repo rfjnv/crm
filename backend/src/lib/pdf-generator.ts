@@ -96,7 +96,7 @@ export type DocType =
 
 function formatDate(date: Date | string): string {
   const d = new Date(date);
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Tashkent' });
 }
 
 function formatMoney(value: unknown): string {
@@ -743,10 +743,14 @@ async function launchBrowser() {
   }
 }
 
-export async function generateDocumentPdf(htmlPages: string[]): Promise<Buffer> {
+export async function generateDocumentPdf(
+  htmlPages: string[],
+  opts?: { margin?: { top: string; bottom: string; left: string; right: string } },
+): Promise<Buffer> {
   const browser = await launchBrowser();
   try {
     const pdfBuffers: Buffer[] = [];
+    const margin = opts?.margin ?? { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' };
 
     for (const html of htmlPages) {
       const page = await browser.newPage();
@@ -754,7 +758,7 @@ export async function generateDocumentPdf(htmlPages: string[]): Promise<Buffer> 
       const pdfUint8 = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+        margin,
       });
       pdfBuffers.push(Buffer.from(pdfUint8));
       await page.close();
@@ -830,9 +834,9 @@ export interface PaymentReceiptData {
 
 const RECEIPT_CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 11px; line-height: 1.5; color: #000; padding: 12mm 15mm 12mm 15mm; }
+body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 11px; line-height: 1.5; color: #000; padding: 8mm 8mm 8mm 8mm; }
 .receipt-header { text-align: center; margin-bottom: 10px; }
-.receipt-logo { width: 120px; height: auto; object-fit: contain; margin-bottom: 6px; }
+.receipt-logo { width: 160px; height: auto; object-fit: contain; margin-bottom: 4px; }
 .receipt-company-name { font-size: 16px; font-weight: bold; }
 .receipt-title { text-align: center; font-size: 18px; font-weight: bold; margin: 14px 0 4px; letter-spacing: 1px; }
 .receipt-subtitle { text-align: center; font-size: 11px; color: #444; margin-bottom: 14px; }
