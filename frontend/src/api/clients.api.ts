@@ -20,6 +20,7 @@ export interface CreateClientData {
   portraitPains?: string;
   portraitFears?: string;
   portraitObjections?: string;
+  creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
 }
 
 export const clientsApi = {
@@ -36,6 +37,9 @@ export const clientsApi = {
   archive: (id: string) => client.patch<Client>(`/clients/${id}/archive`).then((r) => r.data),
 
   toggleSvip: (id: string) => client.patch<Client>(`/clients/${id}/svip`).then((r) => r.data),
+
+  setCreditStatus: (id: string, creditStatus: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE') =>
+    client.patch<Client>(`/clients/${id}/credit-status`, { creditStatus }).then((r) => r.data),
 
   history: (id: string) => client.get<AuditLog[]>(`/clients/${id}/history`).then((r) => r.data),
 

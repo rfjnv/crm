@@ -187,6 +187,7 @@ export interface Client {
   portraitObjections?: string | null;
   managerId: string;
   isSvip: boolean;
+  creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

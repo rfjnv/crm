@@ -44,6 +44,15 @@ export class ClientsController {
     res.json(client);
   }
 
+  async setCreditStatus(req: Request, res: Response): Promise<void> {
+    const client = await clientsService.setCreditStatus(
+      req.params.id as string,
+      req.body.creditStatus,
+      getUser(req),
+    );
+    res.json(client);
+  }
+
   async archive(req: Request, res: Response): Promise<void> {
     const client = await clientsService.archive(req.params.id as string, getUser(req));
     res.json(client);

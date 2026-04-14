@@ -8,6 +8,7 @@ import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
@@ -238,6 +239,16 @@ export default function ClientsPage() {
     onError: () => message.error('Ошибка изменения статуса'),
   });
 
+  const creditStatusMut = useMutation({
+    mutationFn: ({ id, creditStatus }: { id: string; creditStatus: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE' }) =>
+      clientsApi.setCreditStatus(id, creditStatus),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Кредитный статус клиента обновлён');
+    },
+    onError: () => message.error('Ошибка изменения кредитного статуса'),
+  });
+
   const openEdit = (client: Client) => {
     setEditingClient(client);
     editForm.setFieldsValue({
@@ -259,12 +270,17 @@ export default function ClientsPage() {
   };
 
   const columns = [
-    { title: 'Компания', dataIndex: 'companyName', render: (v: string, r: Client) => (
-      <Space size={4}>
-        {r.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 16 }} />}
-        <Link to={`/clients/${r.id}`} style={r.isSvip ? { fontWeight: 600 } : undefined}>{v}</Link>
-      </Space>
-    ) },
+    {
+      title: 'Компания',
+      dataIndex: 'companyName',
+      render: (_v: string, r: Client) => (
+        <ClientCompanyDisplay
+          client={{ id: r.id, companyName: r.companyName, isSvip: r.isSvip, creditStatus: r.creditStatus }}
+          link
+          variant="full"
+        />
+      ),
+    },
     { title: 'Контакт', dataIndex: 'contactName' },
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Email', dataIndex: 'email' },
@@ -305,6 +321,19 @@ export default function ClientsPage() {
                   icon={<CrownFilled style={{ color: r.isSvip ? '#faad14' : '#d9d9d9' }} />}
                   onClick={() => svipMut.mutate(r.id)}
                   title={r.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
+                />
+              )}
+              {isAdmin && (
+                <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
+                  size="small"
+                  value={r.creditStatus || 'NORMAL'}
+                  style={{ width: 94 }}
+                  onChange={(value) => creditStatusMut.mutate({ id: r.id, creditStatus: value })}
+                  options={[
+                    { value: 'NORMAL', label: 'Статус: —' },
+                    { value: 'SATISFACTORY', label: 'Статус: У' },
+                    { value: 'NEGATIVE', label: 'Статус: Н' },
+                  ]}
                 />
               )}
               {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
@@ -443,12 +472,16 @@ export default function ClientsPage() {
             <Card size="small" style={{ marginBottom: 0, ...(client.isSvip ? { borderLeft: '3px solid #faad14' } : {}) }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Space size={4}>
-                    {client.isSvip && <CrownFilled style={{ color: '#faad14', fontSize: 14 }} />}
-                    <Link to={`/clients/${client.id}`}>
-                      <Typography.Text strong>{client.companyName}</Typography.Text>
-                    </Link>
-                  </Space>
+                  <ClientCompanyDisplay
+                    client={{
+                      id: client.id,
+                      companyName: client.companyName,
+                      isSvip: client.isSvip,
+                      creditStatus: client.creditStatus,
+                    }}
+                    link
+                    variant="full"
+                  />
                   <div style={{ marginTop: 2 }}>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>{client.contactName}</Typography.Text>
                   </div>
@@ -482,6 +515,19 @@ export default function ClientsPage() {
                         size="small"
                         icon={<CrownFilled style={{ color: client.isSvip ? '#faad14' : '#d9d9d9' }} />}
                         onClick={() => svipMut.mutate(client.id)}
+                      />
+                    )}
+                    {isAdmin && (
+                      <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
+                        size="small"
+                        value={client.creditStatus || 'NORMAL'}
+                        style={{ width: 94 }}
+                        onChange={(value) => creditStatusMut.mutate({ id: client.id, creditStatus: value })}
+                        options={[
+                          { value: 'NORMAL', label: '—' },
+                          { value: 'SATISFACTORY', label: 'У' },
+                          { value: 'NEGATIVE', label: 'Н' },
+                        ]}
                       />
                     )}
                     <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(client)} />

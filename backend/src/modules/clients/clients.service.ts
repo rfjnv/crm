@@ -1,4 +1,4 @@
-import { DealStatus, Client, Prisma } from '@prisma/client';
+import { DealStatus, Client, ClientCreditStatus, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -33,6 +33,7 @@ function clientAuditSnapshot(c: Client) {
     portraitObjections: c.portraitObjections,
     managerId: c.managerId,
     isSvip: c.isSvip,
+    creditStatus: c.creditStatus,
     isArchived: c.isArchived,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -313,6 +314,33 @@ export class ClientsService {
       entityId: id,
       before: { isSvip: client.isSvip },
       after: { isSvip: updated.isSvip },
+    });
+
+    return updated;
+  }
+
+  async setCreditStatus(id: string, creditStatus: ClientCreditStatus, user: AuthUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только администратор может менять кредитный статус клиента');
+    }
+
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+
+    const updated = await prisma.client.update({
+      where: { id },
+      data: { creditStatus },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: id,
+      before: { creditStatus: client.creditStatus },
+      after: { creditStatus: updated.creditStatus },
     });
 
     return updated;

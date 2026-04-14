@@ -42,8 +42,13 @@ export const updateClientDto = z.object({
   portraitObjections: z.string().max(20000).optional(),
 });
 
+export const setClientCreditStatusDto = z.object({
+  creditStatus: z.enum(['NORMAL', 'SATISFACTORY', 'NEGATIVE']),
+});
+
 export type CreateClientDto = z.infer<typeof createClientDto>;
 export type UpdateClientDto = z.infer<typeof updateClientDto>;
+export type SetClientCreditStatusDto = z.infer<typeof setClientCreditStatusDto>;
 
 export const createClientNoteDto = z.object({
   content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),

@@ -88,6 +88,12 @@ enum PaymentStatus {
   PAID
 }
 
+enum ClientCreditStatus {
+  NORMAL
+  SATISFACTORY
+  NEGATIVE
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -260,6 +266,7 @@ model Client {
   portraitObjections  String?  @map("portrait_objections") @db.Text
   managerId   String   @map("manager_id")
   isSvip      Boolean  @default(false) @map("is_svip")
+  creditStatus ClientCreditStatus @default(NORMAL) @map("credit_status")
   isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
