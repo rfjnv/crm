@@ -11,6 +11,10 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 
+function chartAxisLabelUZS(value: unknown): string {
+  return formatUZS(Number(value));
+}
+
 export default function CompanyBalancePage() {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -203,7 +207,7 @@ export default function CompanyBalancePage() {
                       yField="balance"
                       smooth
                       height={isMobile ? 240 : 280}
-                      axis={{ y: { labelFormatter: (v) => formatUZS(Number(v)) } }}
+                      axis={{ y: { labelFormatter: chartAxisLabelUZS } }}
                     />
                   </Card>
                 </Col>
@@ -222,7 +226,7 @@ export default function CompanyBalancePage() {
                       group
                       height={isMobile ? 240 : 280}
                       color={[tk.colorSuccess, tk.colorError]}
-                      axis={{ y: { labelFormatter: (v) => formatUZS(Number(v)) } }}
+                      axis={{ y: { labelFormatter: chartAxisLabelUZS } }}
                     />
                   </Card>
                 </Col>
@@ -234,7 +238,7 @@ export default function CompanyBalancePage() {
                       yField="total"
                       height={isMobile ? 220 : 260}
                       color={tk.colorSuccess}
-                      axis={{ y: { labelFormatter: (v) => formatUZS(Number(v)) } }}
+                      axis={{ y: { labelFormatter: chartAxisLabelUZS } }}
                     />
                   </Card>
                 </Col>
