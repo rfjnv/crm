@@ -173,6 +173,8 @@ export interface Client {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string | null;
   inn?: string | null;
   bankName?: string | null;

@@ -19,6 +19,8 @@ function clientAuditSnapshot(c: Client) {
     phone: c.phone,
     email: c.email,
     address: c.address,
+    latitude: c.latitude,
+    longitude: c.longitude,
     notes: c.notes,
     inn: c.inn,
     bankName: c.bankName,
