@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme } from 'antd';
+import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme, Dropdown } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -35,6 +35,7 @@ import {
   PhoneOutlined,
   IdcardOutlined,
   UserOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -75,6 +76,7 @@ function isDilnozaUser(fullName?: string, login?: string): boolean {
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, refreshToken, logout, setUser } = useAuthStore();
@@ -123,10 +125,27 @@ export default function Layout() {
     navigate('/login');
   };
 
+  const profileMenuItems: MenuProps['items'] = [
+    { key: 'profile', icon: <IdcardOutlined />, label: 'Профиль' },
+    { type: 'divider' },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Выход', danger: true },
+  ];
+
+  const onProfileMenuClick: NonNullable<MenuProps['onClick']> = ({ key }) => {
+    if (key === 'profile') navigate('/profile');
+    if (key === 'logout') void handleLogout();
+  };
+
   const role = user?.role as UserRole | undefined;
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
+
+  useEffect(() => {
+    if (isAdmin && location.pathname.startsWith('/notifications')) {
+      setMenuOpenKeys((prev) => (prev.includes('notifications-group') ? prev : [...prev, 'notifications-group']));
+    }
+  }, [location.pathname, isAdmin]);
   const canViewClosedDealsHistory =
     role === 'SUPER_ADMIN'
     || role === 'ADMIN'
@@ -327,7 +346,7 @@ export default function Layout() {
         label: <Link to="/finance/cashbox">Касса</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/finance/balance',
         icon: <DollarOutlined />,
@@ -424,21 +443,12 @@ export default function Layout() {
           },
         ]
       : []),
-    ...(isAdmin
-      ? [
-        {
-          key: '/notifications/broadcast',
-          icon: <SendOutlined />,
-          label: <Link to="/notifications/broadcast">Рассылка</Link>,
-        },
-        ...(hasPermission('manage_users')
-          ? [{
-            key: '/settings/company',
-            icon: <SettingOutlined />,
-            label: <Link to="/settings/company">Настройки</Link>,
-          }]
-          : []),
-      ]
+    ...(isAdmin && hasPermission('manage_users')
+      ? [{
+          key: '/settings/company',
+          icon: <SettingOutlined />,
+          label: <Link to="/settings/company">Настройки</Link>,
+        }]
       : []),
     // ── AI-ассистент ──
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER')
@@ -459,11 +469,28 @@ export default function Layout() {
         </Link>
       ),
     }] : []),
-    {
-      key: '/notifications',
-      icon: <BellOutlined />,
-      label: <Link to="/notifications">Уведомления</Link>,
-    },
+    ...(isAdmin
+      ? [{
+          key: 'notifications-group',
+          icon: <BellOutlined />,
+          label: 'Уведомления',
+          children: [
+            {
+              key: '/notifications',
+              label: <Link to="/notifications">Лента</Link>,
+            },
+            {
+              key: '/notifications/broadcast',
+              icon: <SendOutlined />,
+              label: <Link to="/notifications/broadcast">Рассылка</Link>,
+            },
+          ],
+        }]
+      : [{
+          key: '/notifications',
+          icon: <BellOutlined />,
+          label: <Link to="/notifications">Уведомления</Link>,
+        }]),
   ];
 
   const selectedPath = '/' + location.pathname.split('/').slice(1, 3).join('/');
@@ -504,6 +531,8 @@ export default function Layout() {
       <Menu
         mode="inline"
         selectedKeys={[selectedDilnoza]}
+        openKeys={menuOpenKeys}
+        onOpenChange={setMenuOpenKeys}
         items={menuItems}
         style={{ borderRight: 0, paddingTop: 12 }}
       />
@@ -522,9 +551,16 @@ export default function Layout() {
         >
           {menuContent}
           <div style={{ padding: 'var(--space-3)', borderTop: `1px solid ${themeToken.colorBorderSecondary}` }}>
-            <Button type="text" className={APP_BUTTON} icon={<LogoutOutlined />} onClick={handleLogout} block>
-              Выход
-            </Button>
+            <Dropdown
+              menu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
+              trigger={['click']}
+              placement="topLeft"
+            >
+              <Button type="text" className={APP_BUTTON} icon={<IdcardOutlined />} block style={{ justifyContent: 'flex-start' }}>
+                {user?.fullName ?? 'Профиль'}
+                <DownOutlined style={{ fontSize: 10, marginLeft: 'auto' }} />
+              </Button>
+            </Dropdown>
           </div>
         </Drawer>
       ) : (
@@ -600,11 +636,19 @@ export default function Layout() {
               onChange={toggle}
               size="small"
             />
-            {!isMobile && <Typography.Text strong>{user?.fullName}</Typography.Text>}
             {!isMobile && (
-              <Button type="text" className={APP_BUTTON} icon={<LogoutOutlined />} onClick={handleLogout}>
-                Выход
-              </Button>
+              <Dropdown
+                menu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
+                trigger={['click']}
+                placement="bottomRight"
+              >
+                <Button type="text" className={APP_BUTTON} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 280 }}>
+                  <Typography.Text strong ellipsis style={{ maxWidth: 220 }}>
+                    {user?.fullName ?? 'Профиль'}
+                  </Typography.Text>
+                  <DownOutlined style={{ fontSize: 10 }} />
+                </Button>
+              </Dropdown>
             )}
           </div>
         </Header>
