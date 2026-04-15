@@ -32,6 +32,8 @@ export const createDealDto = z.object({
    * AUTO — как раньше: все позиции с кол-вом и ценой → IN_PROGRESS, иначе → подтверждение склада.
    */
   createRoute: z.enum(['AUTO', 'STOCK_CONFIRMATION', 'WAREHOUSE_MANAGER', 'FINANCE']).optional(),
+  /** Сессионная сделка: выручка в аналитике по дате позиций до закрытия */
+  isSessionDeal: z.boolean().optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),
@@ -54,6 +56,7 @@ export const updateDealDto = z.object({
   discount: z.number().min(0).optional(),
   terms: z.string().nullable().optional(),
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
+  isSessionDeal: z.boolean().optional(),
 });
 
 export const paymentDto = z.object({

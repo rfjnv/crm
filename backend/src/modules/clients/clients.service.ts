@@ -5,9 +5,9 @@ import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
 import { CreateClientDto, UpdateClientDto } from './clients.dto';
 import {
-  SQL_DEALS_CLOSED_REVENUE_FILTER,
-  SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
-  SQL_EFFECTIVE_ITEM_TS,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 
@@ -478,19 +478,19 @@ export class ClientsService {
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}`,
+          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}`,
       ),
       prisma.$queryRaw<{ day: Date; amount: string }[]>(
         Prisma.sql`
-        SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+        SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                SUM(${SQL_LINE_REVENUE_DI})::text as amount
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}
-        GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
+        GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
         ORDER BY day ASC`,
       ),
       prisma.$queryRaw<{ product_id: string; total_qty: string }[]>(
@@ -499,8 +499,8 @@ export class ClientsService {
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${periodStart}
+          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
           AND di.requested_qty IS NOT NULL
         GROUP BY di.product_id
         ORDER BY SUM(di.requested_qty) DESC

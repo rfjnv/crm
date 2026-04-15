@@ -2,10 +2,9 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_CLOSED_REVENUE_FILTER,
-  SQL_DEALS_SHIPPED_CLOSED_FILTER,
-  SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
-  SQL_EFFECTIVE_ITEM_TS,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
@@ -266,18 +265,18 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}`,
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
           );
 
     const revenueTotalShipped = () =>
@@ -286,18 +285,18 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_SHIPPED_CLOSED_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_SHIPPED_CLOSED_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}`,
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
           );
 
     /** Avg line revenue per deal among deals with ≥1 line in period (operational). */
@@ -309,9 +308,9 @@ router.get(
                SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
-               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+               WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                  AND d.manager_id = ${dealScope.managerId}
                GROUP BY d.id
              ) sub`,
@@ -322,9 +321,9 @@ router.get(
                SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
-               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+               WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                GROUP BY d.id
              ) sub`,
           );
@@ -332,52 +331,52 @@ router.get(
     const revenueByDayOperational = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           );
 
     const revenueByDayShipped = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_SHIPPED_CLOSED_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_SHIPPED_CLOSED_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           );
 
@@ -396,10 +395,10 @@ router.get(
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
-               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+               WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
                  AND d.manager_id = ${dealScope.managerId}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name, c.is_svip
                ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
@@ -417,9 +416,9 @@ router.get(
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
-               WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-                 AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+               WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+                 AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name, c.is_svip
                ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
@@ -469,9 +468,9 @@ router.get(
          FROM deal_items di
          JOIN deals d ON d.id = di.deal_id
          JOIN products p ON p.id = di.product_id
-         WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-           AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-           AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
            AND di.requested_qty IS NOT NULL
          GROUP BY p.id, p.name
          ORDER BY SUM(di.requested_qty) DESC

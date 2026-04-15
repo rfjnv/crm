@@ -373,6 +373,8 @@ export interface Deal {
   loadingAssignee?: { id: string; fullName: string } | null;
   deliveryDriver?: { id: string; fullName: string } | null;
   isArchived: boolean;
+  /** Сессионная: выручка по дате позиций до закрытия */
+  isSessionDeal?: boolean;
   createdAt: string;
   updatedAt: string;
   /** Момент перевода в CLOSED (доставка / закрытие) */

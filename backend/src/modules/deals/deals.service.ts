@@ -457,6 +457,11 @@ export class DealsService {
       }
     }
 
+    const isSessionDeal = dto.isSessionDeal === true;
+    const sessionDealDayStart = isSessionDeal
+      ? tashkentDayBoundsFromYmd(currentTashkentYmd()).start
+      : undefined;
+
     // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
@@ -467,6 +472,7 @@ export class DealsService {
           status: initialStatus as any,
           clientId: dto.clientId,
           managerId: user.userId,
+          isSessionDeal,
           paymentMethod: paymentMethodAtCreate,
           paymentType: 'FULL',
           paidAmount: 0,
@@ -499,6 +505,7 @@ export class DealsService {
             price: item.price ?? null,
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
             requestComment: item.requestComment,
+            ...(sessionDealDayStart ? { dealDate: sessionDealDayStart } : {}),
           },
         });
       }
@@ -632,6 +639,11 @@ export class DealsService {
       data.managerId = dto.managerId;
     }
 
+    if (dto.isSessionDeal !== undefined) {
+      before.isSessionDeal = deal.isSessionDeal;
+      data.isSessionDeal = dto.isSessionDeal;
+    }
+
     // Status change handling with strict workflow enforcement
     if (dto.status !== undefined && dto.status !== deal.status) {
       validateStatusTransition(deal.status, dto.status as DealStatus, user.role);
@@ -684,6 +696,7 @@ export class DealsService {
       if (dto.terms !== undefined) after.terms = updated.terms;
       if (dto.contractId !== undefined) after.contractId = updated.contractId;
       if (dto.managerId !== undefined) after.managerId = updated.managerId;
+      if (dto.isSessionDeal !== undefined) after.isSessionDeal = updated.isSessionDeal;
 
       await auditLog({
         userId: user.userId,
@@ -2497,6 +2510,9 @@ export class DealsService {
 
     const qty = Number(dto.requestedQty);
     const price = Number(dto.price);
+    const sessionDealDayStart = deal.isSessionDeal
+      ? tashkentDayBoundsFromYmd(currentTashkentYmd()).start
+      : undefined;
     const item = await prisma.dealItem.create({
       data: {
         dealId,
@@ -2505,6 +2521,7 @@ export class DealsService {
         price,
         lineTotal: qty > 0 && price >= 0 ? qty * price : null,
         requestComment: dto.requestComment,
+        ...(sessionDealDayStart ? { dealDate: sessionDealDayStart } : {}),
       },
       include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
     });

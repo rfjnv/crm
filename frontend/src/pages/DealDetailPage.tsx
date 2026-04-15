@@ -969,9 +969,10 @@ export default function DealDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <BackButton fallback="/deals" />
         <Typography.Title level={4} style={{ margin: 0 }}>{deal.title}</Typography.Title>
+        {deal.isSessionDeal && <Tag color="blue">Сессионная</Tag>}
       </div>
 
       <Card bordered={false} style={{ marginBottom: 16 }}>

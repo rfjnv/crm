@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_CLOSED_REVENUE_FILTER,
-  SQL_EFFECTIVE_ITEM_DATE_TASHKENT,
-  SQL_EFFECTIVE_ITEM_TS,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -44,43 +44,43 @@ router.get(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}`,
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}`,
           );
 
     const revenueByDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT} as day,
+            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
                               SUM(${SQL_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-               AND ${SQL_EFFECTIVE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_ITEM_TS} < ${rangeEndExclusive}
-             GROUP BY ${SQL_EFFECTIVE_ITEM_DATE_TASHKENT}
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
              ORDER BY day ASC`,
           );
 
@@ -267,7 +267,7 @@ router.get(
     }[]>(
       Prisma.sql`SELECT di.id,
                         ${SQL_LINE_REVENUE_DI}::text as line_total,
-                        ${SQL_EFFECTIVE_ITEM_TS} as deal_date,
+                        ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as deal_date,
                         d.id as deal_id, d.title as deal_title,
                         c.id as client_id, c.company_name, c.is_svip as is_svip,
                         u.id as manager_id, u.full_name as manager_name,
@@ -277,10 +277,10 @@ router.get(
        JOIN clients c ON c.id = d.client_id
        JOIN users u ON u.id = d.manager_id
        JOIN products p ON p.id = di.product_id
-       WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-         AND ${SQL_EFFECTIVE_ITEM_TS} >= ${startOfToday}
-         AND ${SQL_EFFECTIVE_ITEM_TS} < ${startOfTomorrow}
-       ORDER BY ${SQL_EFFECTIVE_ITEM_TS} DESC`
+       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${startOfToday}
+         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
+       ORDER BY ${SQL_EFFECTIVE_REVENUE_ITEM_TS} DESC`
     );
 
     const items = rows.map((r) => ({

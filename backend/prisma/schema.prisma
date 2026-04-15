@@ -393,6 +393,11 @@ model Deal {
   createdAt     DateTime      @default(now()) @map("created_at")
   /** Момент перевода в CLOSED — для выручки по дню закрытия (если нет deal_date у позиций) */
   closedAt      DateTime?     @map("closed_at")
+  /**
+   * Сессионная сделка (внутренние цеха и т.п.): одна карточка на период; в аналитике выручка
+   * по дате позиции (deal_date / created_at строки) до закрытия сделки.
+   */
+  isSessionDeal Boolean       @default(false) @map("is_session_deal")
   version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
 

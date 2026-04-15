@@ -3,8 +3,8 @@ import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
   SQL_ANALYTICS_TZ,
-  SQL_DEALS_CLOSED_REVENUE_FILTER,
-  SQL_EFFECTIVE_ITEM_TS,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -160,9 +160,9 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
-        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-          AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
           ${mgrFilter}
         GROUP BY p.id, p.name
         HAVING COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) > 0
@@ -174,10 +174,10 @@ router.get(
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN clients c ON c.id = d.client_id
-        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
           AND c.is_archived = false
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= ${start}
-          AND ${SQL_EFFECTIVE_ITEM_TS} < ${end}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
           ${mgrFilter}
         GROUP BY c.id, c.company_name
         HAVING COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) > 0
@@ -186,26 +186,26 @@ router.get(
       prisma.$queryRaw<{ id: string; month: Date; rev: string }[]>(
         Prisma.sql`
         SELECT di.product_id as id,
-          DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+          DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
           SUM(${SQL_LINE_REVENUE_DI})::text as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= NOW() - INTERVAL '12 months'
           ${mgrFilter}
-        GROUP BY di.product_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})`,
+        GROUP BY di.product_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})`,
       ),
       prisma.$queryRaw<{ id: string; month: Date; rev: string }[]>(
         Prisma.sql`
         SELECT d.client_id as id,
-          DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+          DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
           SUM(${SQL_LINE_REVENUE_DI})::text as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= NOW() - INTERVAL '12 months'
           ${mgrFilter}
-        GROUP BY d.client_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})`,
+        GROUP BY d.client_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})`,
       ),
     ]);
 

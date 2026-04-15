@@ -57,6 +57,7 @@ interface DraftData {
   clientId?: string;
   title: string;
   commentText: string;
+  isSessionDeal?: boolean;
   items: Omit<DraftItem, 'key'>[];
   paymentMethod?: PaymentMethod;
   /** единое поле деталей по оплате (номер операции, комментарий) */
@@ -97,6 +98,7 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.transferInn?.trim()) return false;
   if (d.transferDocuments && d.transferDocuments.length > 0) return false;
   if (d.dilnozaCreateRoute && d.dilnozaCreateRoute !== 'AUTO') return false;
+  if (d.isSessionDeal) return false;
   if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
   return true;
 }
@@ -130,6 +132,7 @@ export default function DealCreatePage() {
   const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [dilnozaCreateRoute, setDilnozaCreateRoute] = useState<'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE'>('AUTO');
+  const [isSessionDeal, setIsSessionDeal] = useState(false);
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
@@ -158,6 +161,7 @@ export default function DealCreatePage() {
     setTransferDocuments(draft.transferDocuments?.length ? [...draft.transferDocuments] : [...DEFAULT_TRANSFER_DOCUMENTS]);
     setTransferType(draft.transferType ?? 'ONE_TIME');
     setDilnozaCreateRoute(draft.dilnozaCreateRoute ?? 'AUTO');
+    setIsSessionDeal(!!draft.isSessionDeal);
     setDraftItems(
       draft.items.length > 0
         ? draft.items.map((i) => ({ ...i, key: makeKey() }))
@@ -189,6 +193,7 @@ export default function DealCreatePage() {
       transferDocuments,
       transferType,
       dilnozaCreateRoute: isDilnoza ? dilnozaCreateRoute : undefined,
+      isSessionDeal: isSessionDeal || undefined,
       savedAt: Date.now(),
     };
     if (isDraftEmpty(data)) {
@@ -196,7 +201,7 @@ export default function DealCreatePage() {
     } else {
       saveDraft(data);
     }
-  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, dilnozaCreateRoute, isDilnoza]);
+  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, dilnozaCreateRoute, isDilnoza, isSessionDeal]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -312,6 +317,7 @@ export default function DealCreatePage() {
       title: title || undefined,
       clientId,
       comment: commentText || undefined,
+      ...(isSessionDeal ? { isSessionDeal: true } : {}),
       deliveryType,
       ...(deliveryType !== 'DELIVERY' ? {
         vehicleNumber: vehicleNumber.trim() || undefined,
@@ -413,6 +419,11 @@ export default function DealCreatePage() {
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
               <DealStatusTag status={previewStatus} />
+            </div>
+            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }}>
+              <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>
+                Сессионная сделка (выручка в отчётах по дню позиции, до закрытия сделки)
+              </Checkbox>
             </div>
           </div>
           <div style={{ marginTop: 16 }}>

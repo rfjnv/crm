@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
-  SQL_DEALS_CLOSED_REVENUE_FILTER,
-  SQL_EFFECTIVE_ITEM_TS,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
   SQL_ANALYTICS_TZ,
 } from '../../lib/analytics';
@@ -253,13 +253,13 @@ router.get(
         (STDDEV_SAMP(sub.monthly_rev) / NULLIF(AVG(sub.monthly_rev), 0))::text as cv
       FROM (
         SELECT di.product_id,
-          DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+          DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
           SUM(${SQL_LINE_REVENUE_DI})::numeric as monthly_rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-          AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
-        GROUP BY di.product_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+        GROUP BY di.product_id, DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
       ) sub
       JOIN products p ON p.id = sub.product_id
       GROUP BY sub.product_id, p.name
@@ -279,14 +279,14 @@ router.get(
     const seasonalityRaw = await prisma.$queryRaw<{
       month: number; total_quantity: string; total_revenue: string;
     }[]>(
-      Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})::int as month,
+      Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})::int as month,
         COALESCE(SUM(di.requested_qty), 0)::text as total_quantity,
         COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_CLOSED_REVENUE_FILTER}
-        AND ${SQL_EFFECTIVE_ITEM_TS} >= NOW() - INTERVAL '12 months'
-      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
+      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= NOW() - INTERVAL '12 months'
+      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})
       ORDER BY month`,
     );
 
