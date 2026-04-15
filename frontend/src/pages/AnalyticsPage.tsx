@@ -390,7 +390,7 @@ export default function AnalyticsPage() {
     queryFn: () => financeApi.getDebts(),
   });
 
-  const { data: allProducts = [] } = useQuery({
+  const { data: allProducts = [] } = useQuery<Product[]>({
     queryKey: ['analytics-product-hierarchy'],
     queryFn: productsApi.list,
   });
@@ -658,14 +658,14 @@ export default function AnalyticsPage() {
   const productOptionsForClients = useMemo(() => {
     let source = visibleProducts;
     if (clientScopeCategory) {
-      source = source.filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory);
+      source = source.filter((p: Product) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory);
     }
     if (clientScopeType) {
-      source = source.filter((p) => inferTypeLabel(p) === clientScopeType);
+      source = source.filter((p: Product) => inferTypeLabel(p) === clientScopeType);
     }
     return source
-      .map((p) => ({ label: p.name, value: p.id }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+      .map((p: Product) => ({ label: p.name, value: p.id }))
+      .sort((a: { label: string; value: string }, b: { label: string; value: string }) => a.label.localeCompare(b.label, 'ru'));
   }, [visibleProducts, clientScopeCategory, clientScopeType]);
 
   const selectedClientScopeProductIds = useMemo(() => {
@@ -673,17 +673,17 @@ export default function AnalyticsPage() {
       if (!clientScopeCategory) return new Set<string>();
       return new Set(
         visibleProducts
-          .filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
-          .map((p) => p.id),
+          .filter((p: Product) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
+          .map((p: Product) => p.id),
       );
     }
     if (clientScopeLevel === 'type') {
       if (!clientScopeCategory || !clientScopeType) return new Set<string>();
       return new Set(
         visibleProducts
-          .filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
-          .filter((p) => inferTypeLabel(p) === clientScopeType)
-          .map((p) => p.id),
+          .filter((p: Product) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
+          .filter((p: Product) => inferTypeLabel(p) === clientScopeType)
+          .map((p: Product) => p.id),
       );
     }
     return clientScopeProductId ? new Set([clientScopeProductId]) : new Set<string>();
