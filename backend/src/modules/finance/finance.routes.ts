@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Role, Prisma, PaymentStatus as PrismaPaymentStatus } from '@prisma/client';
+import { Role, Prisma, PaymentMethod, PaymentStatus as PrismaPaymentStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
@@ -833,7 +833,7 @@ router.get(
     };
     const dealWhereFilter: Prisma.DealWhereInput = {
       isArchived: false,
-      ...(method ? { paymentMethod: method as Prisma.PaymentMethod } : {}),
+      ...(method ? { paymentMethod: method as PaymentMethod } : {}),
       ...(managerId ? { managerId } : {}),
     };
 
