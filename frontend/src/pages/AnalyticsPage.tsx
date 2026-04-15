@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren, TdHTMLAttributes } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space } from 'antd';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space, Modal } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -144,6 +144,17 @@ type ProductSalesAggregate = {
   salesRevenue: number;
   dealIds: Set<string>;
   lastSaleAt: string | null;
+};
+
+type ProductPurchaseRow = {
+  productId: string;
+  dealId: string;
+  dealTitle: string;
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  soldQty: number;
+  salesRevenue: number;
 };
 
 type CategorySummary = {
@@ -312,7 +323,13 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
+  const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [comparisonMap, setComparisonMap] = useState<Record<string, HierarchyCompareItem>>({});
+  const [clientsModalOpen, setClientsModalOpen] = useState(false);
+  const [clientScopeLevel, setClientScopeLevel] = useState<CompareLevel>('category');
+  const [clientScopeCategory, setClientScopeCategory] = useState<string | null>(null);
+  const [clientScopeType, setClientScopeType] = useState<string | null>(null);
+  const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(null);
   const [abcXyzFilterAbc, setAbcXyzFilterAbc] = useState<string | undefined>();
   const [abcXyzFilterXyz, setAbcXyzFilterXyz] = useState<string | undefined>();
   const [abcXyzFilterCombined, setAbcXyzFilterCombined] = useState<string | undefined>();
@@ -382,7 +399,13 @@ export default function AnalyticsPage() {
     return allProducts.filter((p: Product) => p.isActive);
   }, [allProducts]);
 
-  const { data: productSalesMap = {}, isLoading: salesLoading } = useQuery({
+  const productsById = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const p of visibleProducts) map.set(p.id, p);
+    return map;
+  }, [visibleProducts]);
+
+  const { data: salesContext, isLoading: salesLoading } = useQuery({
     queryKey: ['analytics-product-sales-map', period],
     queryFn: async () => {
       const allDeals = await dealsApi.list(undefined, true);
@@ -405,6 +428,8 @@ export default function AnalyticsPage() {
       );
 
       const aggregateMap: Record<string, ProductSalesAggregate> = {};
+      const purchaseRows: ProductPurchaseRow[] = [];
+      const dealsById = new Map(closedDeals.map((deal) => [deal.id, deal]));
 
       for (const entry of dealItemsEntries) {
         for (const item of entry.items) {
@@ -430,12 +455,29 @@ export default function AnalyticsPage() {
           if (!current.lastSaleAt || new Date(entry.createdAt) > new Date(current.lastSaleAt)) {
             current.lastSaleAt = entry.createdAt;
           }
+
+          const deal = dealsById.get(entry.dealId);
+          if (deal?.clientId) {
+            purchaseRows.push({
+              productId: item.productId,
+              dealId: entry.dealId,
+              dealTitle: deal.title || `Сделка ${entry.dealId.slice(0, 6)}`,
+              clientId: deal.clientId,
+              clientName: deal.client?.companyName || 'Клиент',
+              clientIsSvip: Boolean(deal.client?.isSvip),
+              soldQty: qty,
+              salesRevenue: qty * price,
+            });
+          }
         }
       }
 
-      return aggregateMap;
+      return { aggregateMap, purchaseRows };
     },
   });
+
+  const productSalesMap = salesContext?.aggregateMap ?? {};
+  const purchaseRows = salesContext?.purchaseRows ?? [];
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
@@ -558,7 +600,149 @@ export default function AnalyticsPage() {
     return typeSummaries.find((t) => t.name === activeType)?.products || [];
   }, [activeType, typeSummaries]);
 
+  useEffect(() => {
+    if (productsOnLevel.length === 0) {
+      setActiveProductId(null);
+      return;
+    }
+    if (!activeProductId || !productsOnLevel.some((p) => p.id === activeProductId)) {
+      setActiveProductId(productsOnLevel[0].id);
+    }
+  }, [activeProductId, productsOnLevel]);
+
+  useEffect(() => {
+    setClientScopeCategory((prev) => prev ?? activeCategory ?? categories[0]?.name ?? null);
+  }, [activeCategory, categories]);
+
+  useEffect(() => {
+    if (!activeCategory) return;
+    const firstType = typeSummaries[0]?.name ?? null;
+    setClientScopeType((prev) => {
+      if (prev && typeSummaries.some((t) => t.name === prev)) return prev;
+      return activeType ?? firstType;
+    });
+  }, [activeCategory, activeType, typeSummaries]);
+
+  useEffect(() => {
+    const firstProductId = productsOnLevel[0]?.id ?? null;
+    setClientScopeProductId((prev) => {
+      if (prev && productsOnLevel.some((p) => p.id === prev)) return prev;
+      return activeProductId ?? firstProductId;
+    });
+  }, [activeProductId, productsOnLevel]);
+
   const comparisonItems = useMemo(() => Object.values(comparisonMap), [comparisonMap]);
+
+  const categoryOptionsForClients = useMemo(
+    () => categories.map((c) => ({ label: c.name, value: c.name })),
+    [categories],
+  );
+
+  const typeOptionsForClients = useMemo(() => {
+    if (!clientScopeCategory) return [];
+    return categories
+      .find((c) => c.name === clientScopeCategory)
+      ?.products.map((p) => inferTypeLabel(p))
+      .filter((v, i, arr) => arr.indexOf(v) === i)
+      .sort((a, b) => a.localeCompare(b, 'ru'))
+      .map((v) => ({ label: v, value: v })) ?? [];
+  }, [categories, clientScopeCategory]);
+
+  useEffect(() => {
+    if (!clientScopeType) return;
+    if (!typeOptionsForClients.some((opt) => opt.value === clientScopeType)) {
+      setClientScopeType(typeOptionsForClients[0]?.value ?? null);
+    }
+  }, [clientScopeType, typeOptionsForClients]);
+
+  const productOptionsForClients = useMemo(() => {
+    let source = visibleProducts;
+    if (clientScopeCategory) {
+      source = source.filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory);
+    }
+    if (clientScopeType) {
+      source = source.filter((p) => inferTypeLabel(p) === clientScopeType);
+    }
+    return source
+      .map((p) => ({ label: p.name, value: p.id }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  }, [visibleProducts, clientScopeCategory, clientScopeType]);
+
+  const selectedClientScopeProductIds = useMemo(() => {
+    if (clientScopeLevel === 'category') {
+      if (!clientScopeCategory) return new Set<string>();
+      return new Set(
+        visibleProducts
+          .filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
+          .map((p) => p.id),
+      );
+    }
+    if (clientScopeLevel === 'type') {
+      if (!clientScopeCategory || !clientScopeType) return new Set<string>();
+      return new Set(
+        visibleProducts
+          .filter((p) => ((p.category && p.category.trim()) || 'Без категории') === clientScopeCategory)
+          .filter((p) => inferTypeLabel(p) === clientScopeType)
+          .map((p) => p.id),
+      );
+    }
+    return clientScopeProductId ? new Set([clientScopeProductId]) : new Set<string>();
+  }, [clientScopeCategory, clientScopeLevel, clientScopeProductId, clientScopeType, visibleProducts]);
+
+  const clientPurchaseSummaryRows = useMemo(() => {
+    const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
+    const map = new Map<
+      string,
+      {
+        key: string;
+        clientId: string;
+        clientName: string;
+        clientIsSvip: boolean;
+        deals: Set<string>;
+        soldQty: number;
+        salesRevenue: number;
+        productMetrics: Map<string, { name: string; soldQty: number; salesRevenue: number }>;
+      }
+    >();
+
+    for (const row of rows) {
+      const existing = map.get(row.clientId) ?? {
+        key: row.clientId,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        clientIsSvip: row.clientIsSvip,
+        deals: new Set<string>(),
+        soldQty: 0,
+        salesRevenue: 0,
+        productMetrics: new Map<string, { name: string; soldQty: number; salesRevenue: number }>(),
+      };
+      existing.deals.add(row.dealId);
+      existing.soldQty += row.soldQty;
+      existing.salesRevenue += row.salesRevenue;
+      const product = productsById.get(row.productId);
+      const metric = existing.productMetrics.get(row.productId) ?? {
+        name: product?.name || row.productId,
+        soldQty: 0,
+        salesRevenue: 0,
+      };
+      metric.soldQty += row.soldQty;
+      metric.salesRevenue += row.salesRevenue;
+      existing.productMetrics.set(row.productId, metric);
+      map.set(row.clientId, existing);
+    }
+
+    return [...map.values()]
+      .map((entry) => ({
+        ...entry,
+        dealsCount: entry.deals.size,
+        purchasedInfo: [...entry.productMetrics.values()]
+          .sort((a, b) => b.salesRevenue - a.salesRevenue)
+          .slice(0, 3)
+          .map((v) => `${v.name} (${v.soldQty.toLocaleString('ru-RU')} шт.)`)
+          .join(', '),
+      }))
+      .sort((a, b) => b.salesRevenue - a.salesRevenue);
+  }, [productsById, purchaseRows, selectedClientScopeProductIds]);
 
   const comparisonByLevel = useMemo(() => {
     return {
@@ -1300,6 +1484,7 @@ export default function AnalyticsPage() {
       <Col xs={24} xl={16}>
         <Card
           title="Иерархия товаров"
+          extra={<Button onClick={() => setClientsModalOpen(true)}>Показать клиентов</Button>}
           bordered={false}
           style={{
             background: isDark
@@ -1485,6 +1670,7 @@ export default function AnalyticsPage() {
 
                       return (
                         <List.Item
+                          onClick={() => setActiveProductId(item.id)}
                           style={{ borderRadius: 8, paddingInline: 10 }}
                           actions={[
                             <Checkbox
@@ -1663,7 +1849,7 @@ export default function AnalyticsPage() {
                           height={220}
                           colorField="name"
                           axis={{
-                            x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                            x: { label: false },
                             y: { labelFill: token.colorTextSecondary },
                           }}
                           tooltip={{
@@ -1689,7 +1875,7 @@ export default function AnalyticsPage() {
                               height={200}
                               colorField="name"
                               axis={{
-                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                x: { label: false },
                                 y: { labelFill: token.colorTextSecondary },
                               }}
                               tooltip={{
@@ -1714,7 +1900,7 @@ export default function AnalyticsPage() {
                               height={200}
                               colorField="name"
                               axis={{
-                                x: { labelFill: token.colorTextSecondary, labelAutoHide: true },
+                                x: { label: false },
                                 y: { labelFill: token.colorTextSecondary },
                               }}
                               tooltip={{
@@ -2251,6 +2437,109 @@ export default function AnalyticsPage() {
           { key: 'profitability', label: 'Рентабельность', children: profitabilityTab },
         ]}
       />
+
+      <Modal
+        title="Кто покупает"
+        open={clientsModalOpen}
+        onCancel={() => setClientsModalOpen(false)}
+        footer={null}
+        width={960}
+      >
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Segmented
+            value={clientScopeLevel}
+            onChange={(v) => setClientScopeLevel(v as CompareLevel)}
+            options={[
+              { label: 'По категории', value: 'category' },
+              { label: 'По типу', value: 'type' },
+              { label: 'По товару', value: 'product' },
+            ]}
+          />
+
+          <Select
+            placeholder="Категория"
+            style={{ minWidth: 210 }}
+            value={clientScopeCategory || undefined}
+            onChange={(v) => setClientScopeCategory(v)}
+            options={categoryOptionsForClients}
+            showSearch
+            optionFilterProp="label"
+          />
+
+          {(clientScopeLevel === 'type' || clientScopeLevel === 'product') && (
+            <Select
+              placeholder="Тип"
+              style={{ minWidth: 230 }}
+              value={clientScopeType || undefined}
+              onChange={(v) => setClientScopeType(v)}
+              options={typeOptionsForClients}
+              showSearch
+              optionFilterProp="label"
+            />
+          )}
+
+          {clientScopeLevel === 'product' && (
+            <Select
+              placeholder="Товар"
+              style={{ minWidth: 260 }}
+              value={clientScopeProductId || undefined}
+              onChange={(v) => setClientScopeProductId(v)}
+              options={productOptionsForClients}
+              showSearch
+              optionFilterProp="label"
+            />
+          )}
+        </Space>
+
+        <Table
+          size="small"
+          rowKey="clientId"
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          dataSource={clientPurchaseSummaryRows}
+          locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+          columns={[
+            {
+              title: 'Клиент',
+              dataIndex: 'clientName',
+              key: 'clientName',
+              render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+                  {r.clientIsSvip ? `👑 ${v}` : v}
+                </Button>
+              ),
+            },
+            {
+              title: 'Сделок',
+              dataIndex: 'dealsCount',
+              key: 'dealsCount',
+              width: 90,
+              align: 'right',
+            },
+            {
+              title: 'Куплено (шт.)',
+              dataIndex: 'soldQty',
+              key: 'soldQty',
+              width: 120,
+              align: 'right',
+              render: (v: number) => v.toLocaleString('ru-RU'),
+            },
+            {
+              title: 'Выручка',
+              dataIndex: 'salesRevenue',
+              key: 'salesRevenue',
+              width: 170,
+              align: 'right',
+              render: (v: number) => formatUZS(v),
+            },
+            {
+              title: 'Что купил',
+              dataIndex: 'purchasedInfo',
+              key: 'purchasedInfo',
+              render: (v: string) => v || '-',
+            },
+          ]}
+        />
+      </Modal>
     </div>
   );
 }
