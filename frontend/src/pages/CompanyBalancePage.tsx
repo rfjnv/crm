@@ -40,7 +40,12 @@ export default function CompanyBalancePage() {
     queryFn: settingsApi.getCompanySettings,
   });
 
-  const { data: balanceData, isLoading: balanceLoading } = useQuery({
+  const {
+    data: balanceData,
+    isLoading: balanceLoading,
+    isFetching: balanceFetching,
+    refetch: refetchBalance,
+  } = useQuery({
     queryKey: ['company-balance', balancePeriod, balanceMethod, balanceManagerId],
     queryFn: () =>
       financeApi.companyBalance({
@@ -48,7 +53,7 @@ export default function CompanyBalancePage() {
         method: balanceMethod,
         managerId: balanceManagerId,
       }),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   });
 
   const setupBalanceMut = useMutation({
@@ -157,6 +162,9 @@ export default function CompanyBalancePage() {
               onChange={setBalanceManagerId}
               options={managers}
             />
+            <Button onClick={() => void refetchBalance()} loading={balanceFetching}>
+              Обновить
+            </Button>
           </Space>
 
           {balanceLoading ? (

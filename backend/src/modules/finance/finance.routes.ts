@@ -831,6 +831,11 @@ router.get(
       ...(method ? { method } : {}),
       ...(managerId ? { deal: { managerId } } : {}),
     };
+    const dealWhereFilter: Prisma.DealWhereInput = {
+      isArchived: false,
+      ...(method ? { paymentMethod: method as Prisma.PaymentMethod } : {}),
+      ...(managerId ? { managerId } : {}),
+    };
 
     const paymentRangeWhere: Prisma.PaymentWhereInput = {
       paidAt: { gte: rangeStart, lte: now },
@@ -883,18 +888,16 @@ router.get(
       }),
       prisma.deal.aggregate({
         where: {
-          isArchived: false,
+          ...dealWhereFilter,
           status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
-          ...(managerId ? { managerId } : {}),
         },
         _sum: { amount: true, paidAmount: true },
       }),
       prisma.deal.aggregate({
         where: {
-          isArchived: false,
+          ...dealWhereFilter,
           status: 'CLOSED',
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-          ...(managerId ? { managerId } : {}),
         },
         _sum: { amount: true, paidAmount: true },
       }),

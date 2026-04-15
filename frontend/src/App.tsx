@@ -136,7 +136,7 @@ export default function App() {
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
                 <Route path="/finance/cashbox" element={<CashboxPage />} />
-                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
                   <Route path="/finance/balance" element={<CompanyBalancePage />} />
                 </Route>
                 <Route path="/tasks" element={<TasksPage />} />
