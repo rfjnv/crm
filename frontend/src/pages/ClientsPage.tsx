@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse } from 'antd';
+import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse, InputNumber } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined, CrownFilled } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
@@ -257,6 +257,8 @@ export default function ClientsPage() {
       phone: client.phone || '+998',
       email: client.email || '',
       address: client.address || '',
+      latitude: client.latitude ?? undefined,
+      longitude: client.longitude ?? undefined,
       notes: client.notes || '',
       managerId: client.managerId,
       inn: client.inn || '',
@@ -368,6 +370,14 @@ export default function ClientsPage() {
       <Form.Item name="address" label="Адрес">
         <Input />
       </Form.Item>
+      <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+        <Form.Item name="latitude" label="Широта" style={{ flex: 1 }}>
+          <InputNumber min={-90} max={90} precision={6} step={0.000001} style={{ width: '100%' }} placeholder="41.311081" />
+        </Form.Item>
+        <Form.Item name="longitude" label="Долгота" style={{ flex: 1 }}>
+          <InputNumber min={-180} max={180} precision={6} step={0.000001} style={{ width: '100%' }} placeholder="69.240562" />
+        </Form.Item>
+      </Space>
       <Form.Item name="notes" label="Заметки">
         <Input.TextArea rows={2} />
       </Form.Item>

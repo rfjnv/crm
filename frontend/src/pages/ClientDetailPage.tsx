@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse, Dropdown, Select,
+  message, theme, Collapse, Dropdown, Select, InputNumber,
 } from 'antd';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
@@ -201,6 +201,8 @@ export default function ClientDetailPage() {
       phone: client.phone || '+998',
       email: client.email || '',
       address: client.address || '',
+      latitude: client.latitude ?? undefined,
+      longitude: client.longitude ?? undefined,
       notes: client.notes || '',
       inn: client.inn || '',
       bankName: client.bankName || '',
@@ -329,6 +331,11 @@ export default function ClientDetailPage() {
                     <Descriptions.Item label="Телефон">{client.phone || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Email">{client.email || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Адрес">{client.address || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Координаты">
+                      {(client.latitude != null && client.longitude != null)
+                        ? `${client.latitude.toFixed(6)}, ${client.longitude.toFixed(6)}`
+                        : '—'}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
                     <Descriptions.Item label="Кредитный статус">
                       {client.creditStatus === 'NEGATIVE'
@@ -356,6 +363,27 @@ export default function ClientDetailPage() {
                     }]} />
                   )}
                 </Card>
+                {(client.latitude != null && client.longitude != null) && (
+                  <Card title="Местоположение" bordered={false}>
+                    <iframe
+                      title="Карта клиента"
+                      src={`https://yandex.ru/map-widget/v1/?ll=${client.longitude}%2C${client.latitude}&z=15&pt=${client.longitude},${client.latitude},pm2rdm`}
+                      style={{ border: 0, borderRadius: 8 }}
+                      width="100%"
+                      height={280}
+                      loading="lazy"
+                    />
+                    <Typography.Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
+                      <a
+                        href={`https://yandex.ru/maps/?ll=${client.longitude}%2C${client.latitude}&z=15&pt=${client.longitude},${client.latitude},pm2rdm`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Открыть в Яндекс.Картах
+                      </a>
+                    </Typography.Paragraph>
+                  </Card>
+                )}
 
                 <Card title="Договоры" extra={<Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setContractModal(true)}>Создать</Button>} bordered={false}>
                   <Table
@@ -751,6 +779,14 @@ export default function ClientDetailPage() {
           <Form.Item name="address" label="Адрес">
             <Input />
           </Form.Item>
+          <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
+            <Form.Item name="latitude" label="Широта" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
+              <InputNumber min={-90} max={90} precision={6} step={0.000001} style={{ width: '100%' }} placeholder="41.311081" />
+            </Form.Item>
+            <Form.Item name="longitude" label="Долгота" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
+              <InputNumber min={-180} max={180} precision={6} step={0.000001} style={{ width: '100%' }} placeholder="69.240562" />
+            </Form.Item>
+          </Space>
           <Form.Item name="notes" label="Заметки">
             <Input.TextArea rows={2} />
           </Form.Item>
