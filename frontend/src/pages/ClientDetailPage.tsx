@@ -54,6 +54,16 @@ function getPaymentCategory(deal: DealShort): PaymentFilter {
   return 'DEBT';
 }
 
+function buildYandexMapUrlByAddress(address: string): string {
+  const encoded = encodeURIComponent(address);
+  return `https://yandex.ru/map-widget/v1/?text=${encoded}&z=15`;
+}
+
+function buildYandexMapsOpenUrlByAddress(address: string): string {
+  const encoded = encodeURIComponent(address);
+  return `https://yandex.ru/maps/?text=${encoded}&z=15`;
+}
+
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [contractModal, setContractModal] = useState(false);
@@ -356,6 +366,28 @@ export default function ClientDetailPage() {
                     }]} />
                   )}
                 </Card>
+                {client.address?.trim() && (
+                  <Card title="Местоположение" bordered={false}>
+                    <iframe
+                      title="Карта клиента"
+                      src={buildYandexMapUrlByAddress(client.address)}
+                      style={{ border: 0, borderRadius: 8 }}
+                      width="100%"
+                      height={280}
+                      loading="lazy"
+                    />
+                    <Typography.Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
+                      <a
+                        href={buildYandexMapsOpenUrlByAddress(client.address)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Открыть в Яндекс.Картах
+                      </a>
+                    </Typography.Paragraph>
+                  </Card>
+                )}
+
                 <Card title="Договоры" extra={<Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setContractModal(true)}>Создать</Button>} bordered={false}>
                   <Table
                     dataSource={contracts ?? []}
