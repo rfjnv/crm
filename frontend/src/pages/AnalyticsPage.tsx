@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren, TdHTMLAttributes } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space, Modal } from 'antd';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space, InputNumber } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -157,6 +157,8 @@ type ProductPurchaseRow = {
   salesRevenue: number;
 };
 
+type HierarchyPeriodPreset = AnalyticsPeriod | 'custom';
+
 type CategorySummary = {
   name: string;
   products: Product[];
@@ -228,6 +230,16 @@ function getPeriodStartDate(period: AnalyticsPeriod): Date {
   return start;
 }
 
+function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: number): Date {
+  if (preset === 'custom') {
+    const safeDays = Number.isFinite(customDays) ? Math.max(1, Math.floor(customDays)) : 30;
+    const start = new Date();
+    start.setDate(start.getDate() - safeDays);
+    return start;
+  }
+  return getPeriodStartDate(preset);
+}
+
 function buildRevenueChartData(
   raw: { day: string; total: number; shippedTotal?: number }[],
 ): { day: string; total: number }[] {
@@ -280,6 +292,73 @@ function aggregateSalesForProducts(products: Product[], salesMap: Record<string,
   };
 }
 
+async function loadSalesContext(periodStart: Date) {
+  const allDeals = await dealsApi.list(undefined, true);
+  const closedDeals = allDeals.filter((deal) => {
+    if (deal.status !== 'CLOSED') return false;
+    const createdAt = new Date(deal.createdAt);
+    return createdAt >= periodStart;
+  });
+
+  const dealItemsEntries = await Promise.all(
+    closedDeals.map(async (deal) => {
+      try {
+        const items = await dealsApi.getItems(deal.id);
+        return { dealId: deal.id, createdAt: deal.createdAt, items };
+      } catch {
+        return { dealId: deal.id, createdAt: deal.createdAt, items: [] };
+      }
+    }),
+  );
+
+  const aggregateMap: Record<string, ProductSalesAggregate> = {};
+  const purchaseRows: ProductPurchaseRow[] = [];
+  const dealsById = new Map(closedDeals.map((deal) => [deal.id, deal]));
+
+  for (const entry of dealItemsEntries) {
+    for (const item of entry.items) {
+      if (!item.productId) continue;
+      const qty = Number(item.requestedQty || 0);
+      const price = Number(item.price || 0);
+      if (qty <= 0 || price <= 0) continue;
+
+      if (!aggregateMap[item.productId]) {
+        aggregateMap[item.productId] = {
+          productId: item.productId,
+          soldQty: 0,
+          salesRevenue: 0,
+          dealIds: new Set<string>(),
+          lastSaleAt: null,
+        };
+      }
+
+      const current = aggregateMap[item.productId];
+      current.soldQty += qty;
+      current.salesRevenue += qty * price;
+      current.dealIds.add(entry.dealId);
+      if (!current.lastSaleAt || new Date(entry.createdAt) > new Date(current.lastSaleAt)) {
+        current.lastSaleAt = entry.createdAt;
+      }
+
+      const deal = dealsById.get(entry.dealId);
+      if (deal?.clientId) {
+        purchaseRows.push({
+          productId: item.productId,
+          dealId: entry.dealId,
+          dealTitle: deal.title || `Сделка ${entry.dealId.slice(0, 6)}`,
+          clientId: deal.clientId,
+          clientName: deal.client?.companyName || 'Клиент',
+          clientIsSvip: Boolean(deal.client?.isSvip),
+          soldQty: qty,
+          salesRevenue: qty * price,
+        });
+      }
+    }
+  }
+
+  return { aggregateMap, purchaseRows };
+}
+
 function buildComparisonRows(level: CompareLevel, items: HierarchyCompareItem[]) {
   const baseRows: Array<{ metric: string;[key: string]: string | number }> = [
     { metric: 'Сделок' },
@@ -325,11 +404,12 @@ export default function AnalyticsPage() {
   const [activeType, setActiveType] = useState<string | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [comparisonMap, setComparisonMap] = useState<Record<string, HierarchyCompareItem>>({});
-  const [clientsModalOpen, setClientsModalOpen] = useState(false);
   const [clientScopeLevel, setClientScopeLevel] = useState<CompareLevel>('category');
   const [clientScopeCategory, setClientScopeCategory] = useState<string | null>(null);
   const [clientScopeType, setClientScopeType] = useState<string | null>(null);
   const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(null);
+  const [hierarchyPeriodPreset, setHierarchyPeriodPreset] = useState<HierarchyPeriodPreset>('month');
+  const [hierarchyCustomDays, setHierarchyCustomDays] = useState<number>(30);
   const [abcXyzFilterAbc, setAbcXyzFilterAbc] = useState<string | undefined>();
   const [abcXyzFilterXyz, setAbcXyzFilterXyz] = useState<string | undefined>();
   const [abcXyzFilterCombined, setAbcXyzFilterCombined] = useState<string | undefined>();
@@ -407,77 +487,16 @@ export default function AnalyticsPage() {
 
   const { data: salesContext, isLoading: salesLoading } = useQuery({
     queryKey: ['analytics-product-sales-map', period],
-    queryFn: async () => {
-      const allDeals = await dealsApi.list(undefined, true);
-      const periodStart = getPeriodStartDate(period);
-      const closedDeals = allDeals.filter((deal) => {
-        if (deal.status !== 'CLOSED') return false;
-        const createdAt = new Date(deal.createdAt);
-        return createdAt >= periodStart;
-      });
-
-      const dealItemsEntries = await Promise.all(
-        closedDeals.map(async (deal) => {
-          try {
-            const items = await dealsApi.getItems(deal.id);
-            return { dealId: deal.id, createdAt: deal.createdAt, items };
-          } catch {
-            return { dealId: deal.id, createdAt: deal.createdAt, items: [] };
-          }
-        }),
-      );
-
-      const aggregateMap: Record<string, ProductSalesAggregate> = {};
-      const purchaseRows: ProductPurchaseRow[] = [];
-      const dealsById = new Map(closedDeals.map((deal) => [deal.id, deal]));
-
-      for (const entry of dealItemsEntries) {
-        for (const item of entry.items) {
-          if (!item.productId) continue;
-          const qty = Number(item.requestedQty || 0);
-          const price = Number(item.price || 0);
-          if (qty <= 0 || price <= 0) continue;
-
-          if (!aggregateMap[item.productId]) {
-            aggregateMap[item.productId] = {
-              productId: item.productId,
-              soldQty: 0,
-              salesRevenue: 0,
-              dealIds: new Set<string>(),
-              lastSaleAt: null,
-            };
-          }
-
-          const current = aggregateMap[item.productId];
-          current.soldQty += qty;
-          current.salesRevenue += qty * price;
-          current.dealIds.add(entry.dealId);
-          if (!current.lastSaleAt || new Date(entry.createdAt) > new Date(current.lastSaleAt)) {
-            current.lastSaleAt = entry.createdAt;
-          }
-
-          const deal = dealsById.get(entry.dealId);
-          if (deal?.clientId) {
-            purchaseRows.push({
-              productId: item.productId,
-              dealId: entry.dealId,
-              dealTitle: deal.title || `Сделка ${entry.dealId.slice(0, 6)}`,
-              clientId: deal.clientId,
-              clientName: deal.client?.companyName || 'Клиент',
-              clientIsSvip: Boolean(deal.client?.isSvip),
-              soldQty: qty,
-              salesRevenue: qty * price,
-            });
-          }
-        }
-      }
-
-      return { aggregateMap, purchaseRows };
-    },
+    queryFn: () => loadSalesContext(getPeriodStartDate(period)),
   });
 
   const productSalesMap = salesContext?.aggregateMap ?? {};
-  const purchaseRows = salesContext?.purchaseRows ?? [];
+  const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
+    queryKey: ['analytics-hierarchy-clients-context', hierarchyPeriodPreset, hierarchyCustomDays],
+    queryFn: () => loadSalesContext(getStartDateByPreset(hierarchyPeriodPreset, hierarchyCustomDays)),
+  });
+
+  const purchaseRows = hierarchyClientContext?.purchaseRows ?? [];
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
@@ -743,6 +762,22 @@ export default function AnalyticsPage() {
       }))
       .sort((a, b) => b.salesRevenue - a.salesRevenue);
   }, [productsById, purchaseRows, selectedClientScopeProductIds]);
+
+  const hierarchyClientRevenueChartData = useMemo(
+    () =>
+      clientPurchaseSummaryRows
+        .slice(0, 12)
+        .map((row) => ({ name: row.clientIsSvip ? `👑 ${row.clientName}` : row.clientName, value: row.salesRevenue })),
+    [clientPurchaseSummaryRows],
+  );
+
+  const hierarchyClientQtyChartData = useMemo(
+    () =>
+      clientPurchaseSummaryRows
+        .slice(0, 12)
+        .map((row) => ({ name: row.clientIsSvip ? `👑 ${row.clientName}` : row.clientName, value: row.soldQty })),
+    [clientPurchaseSummaryRows],
+  );
 
   const comparisonByLevel = useMemo(() => {
     return {
@@ -1484,7 +1519,6 @@ export default function AnalyticsPage() {
       <Col xs={24} xl={16}>
         <Card
           title="Иерархия товаров"
-          extra={<Button onClick={() => setClientsModalOpen(true)}>Показать клиентов</Button>}
           bordered={false}
           style={{
             background: isDark
@@ -2412,39 +2446,35 @@ export default function AnalyticsPage() {
     </div>
   );
 
-  return (
+  const hierarchyClientsTab = (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>
-        <Segmented
-          options={periodOptions}
-          value={period}
-          onChange={(v) => setPeriod(v as AnalyticsPeriod)}
-        />
-      </div>
+      <Card bordered={false} style={{ marginBottom: 16 }}>
+        <Space wrap size={12}>
+          <Typography.Text type="secondary">Период:</Typography.Text>
+          <Segmented
+            value={hierarchyPeriodPreset}
+            onChange={(v) => setHierarchyPeriodPreset(v as HierarchyPeriodPreset)}
+            options={[
+              { label: 'Неделя', value: 'week' },
+              { label: 'Месяц', value: 'month' },
+              { label: 'Квартал', value: 'quarter' },
+              { label: 'Год', value: 'year' },
+              { label: 'Дни', value: 'custom' },
+            ]}
+          />
+          {hierarchyPeriodPreset === 'custom' && (
+            <InputNumber
+              min={1}
+              max={3650}
+              value={hierarchyCustomDays}
+              onChange={(v) => setHierarchyCustomDays(Number(v) || 30)}
+              addonAfter="дн."
+            />
+          )}
+        </Space>
+      </Card>
 
-      <Tabs
-        defaultActiveKey="sales"
-        items={[
-          { key: 'sales', label: 'Продажи', children: salesTab },
-          { key: 'abc-xyz', label: 'ABC / XYZ', children: abcXyzTab },
-          { key: 'finance', label: 'Финансы', children: financeTab },
-          { key: 'clients', label: 'Клиенты', icon: <TeamOutlined />, children: clientsTab },
-          { key: 'products', label: 'Товары+', icon: <ShoppingOutlined />, children: productsTab },
-          { key: 'product-hierarchy', label: 'Иерархия товаров', children: productHierarchyTab },
-          { key: 'warehouse', label: 'Склад', children: warehouseTab },
-          { key: 'managers', label: 'Менеджеры', children: managersTab },
-          { key: 'profitability', label: 'Рентабельность', children: profitabilityTab },
-        ]}
-      />
-
-      <Modal
-        title="Кто покупает"
-        open={clientsModalOpen}
-        onCancel={() => setClientsModalOpen(false)}
-        footer={null}
-        width={960}
-      >
+      <Card bordered={false} title="Фильтры выбора">
         <Space wrap style={{ marginBottom: 12 }}>
           <Segmented
             value={clientScopeLevel}
@@ -2491,55 +2521,142 @@ export default function AnalyticsPage() {
           )}
         </Space>
 
-        <Table
-          size="small"
-          rowKey="clientId"
-          pagination={{ pageSize: 8, showSizeChanger: false }}
-          dataSource={clientPurchaseSummaryRows}
-          locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
-          columns={[
-            {
-              title: 'Клиент',
-              dataIndex: 'clientName',
-              key: 'clientName',
-              render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
-                <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
-                  {r.clientIsSvip ? `👑 ${v}` : v}
-                </Button>
-              ),
-            },
-            {
-              title: 'Сделок',
-              dataIndex: 'dealsCount',
-              key: 'dealsCount',
-              width: 90,
-              align: 'right',
-            },
-            {
-              title: 'Куплено (шт.)',
-              dataIndex: 'soldQty',
-              key: 'soldQty',
-              width: 120,
-              align: 'right',
-              render: (v: number) => v.toLocaleString('ru-RU'),
-            },
-            {
-              title: 'Выручка',
-              dataIndex: 'salesRevenue',
-              key: 'salesRevenue',
-              width: 170,
-              align: 'right',
-              render: (v: number) => formatUZS(v),
-            },
-            {
-              title: 'Что купил',
-              dataIndex: 'purchasedInfo',
-              key: 'purchasedInfo',
-              render: (v: string) => v || '-',
-            },
-          ]}
+        {hierarchyClientLoading ? (
+          <Spin style={{ display: 'block', margin: '16px auto' }} />
+        ) : (
+          <>
+            <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+              <Col xs={24} md={12}>
+                <Card size="small" title="Топ клиенты — Выручка">
+                  {hierarchyClientRevenueChartData.length > 0 ? (
+                    <Bar
+                      data={hierarchyClientRevenueChartData}
+                      xField="name"
+                      yField="value"
+                      height={220}
+                      colorField="name"
+                      axis={{
+                        x: { label: false },
+                        y: { labelFill: token.colorTextSecondary },
+                      }}
+                      tooltip={{
+                        formatter: (datum: { name: string; value: number }) => ({ name: datum.name, value: formatUZS(datum.value) }),
+                      }}
+                      theme={chartTheme}
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} md={12}>
+                <Card size="small" title="Топ клиенты — Количество (шт.)">
+                  {hierarchyClientQtyChartData.length > 0 ? (
+                    <Bar
+                      data={hierarchyClientQtyChartData}
+                      xField="name"
+                      yField="value"
+                      height={220}
+                      colorField="name"
+                      axis={{
+                        x: { label: false },
+                        y: { labelFill: token.colorTextSecondary },
+                      }}
+                      tooltip={{
+                        formatter: (datum: { name: string; value: number }) => ({
+                          name: datum.name,
+                          value: datum.value.toLocaleString('ru-RU'),
+                        }),
+                      }}
+                      theme={chartTheme}
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                  )}
+                </Card>
+              </Col>
+            </Row>
+
+            <Table
+              size="small"
+              rowKey="clientId"
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              dataSource={clientPurchaseSummaryRows}
+              locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+              columns={[
+                {
+                  title: 'Клиент',
+                  dataIndex: 'clientName',
+                  key: 'clientName',
+                  render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                    <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+                      {r.clientIsSvip ? `👑 ${v}` : v}
+                    </Button>
+                  ),
+                },
+                {
+                  title: 'Сделок',
+                  dataIndex: 'dealsCount',
+                  key: 'dealsCount',
+                  width: 90,
+                  align: 'right',
+                },
+                {
+                  title: 'Куплено (шт.)',
+                  dataIndex: 'soldQty',
+                  key: 'soldQty',
+                  width: 120,
+                  align: 'right',
+                  render: (v: number) => v.toLocaleString('ru-RU'),
+                },
+                {
+                  title: 'Выручка',
+                  dataIndex: 'salesRevenue',
+                  key: 'salesRevenue',
+                  width: 170,
+                  align: 'right',
+                  render: (v: number) => formatUZS(v),
+                },
+                {
+                  title: 'Что купил',
+                  dataIndex: 'purchasedInfo',
+                  key: 'purchasedInfo',
+                  render: (v: string) => v || '-',
+                },
+              ]}
+            />
+          </>
+        )}
+      </Card>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>
+        <Segmented
+          options={periodOptions}
+          value={period}
+          onChange={(v) => setPeriod(v as AnalyticsPeriod)}
         />
-      </Modal>
+      </div>
+
+      <Tabs
+        defaultActiveKey="sales"
+        items={[
+          { key: 'sales', label: 'Продажи', children: salesTab },
+          { key: 'abc-xyz', label: 'ABC / XYZ', children: abcXyzTab },
+          { key: 'finance', label: 'Финансы', children: financeTab },
+          { key: 'clients', label: 'Клиенты', icon: <TeamOutlined />, children: clientsTab },
+          { key: 'products', label: 'Товары+', icon: <ShoppingOutlined />, children: productsTab },
+          { key: 'product-hierarchy', label: 'Иерархия товаров', children: productHierarchyTab },
+          { key: 'hierarchy-clients', label: 'Клиенты по иерархии', children: hierarchyClientsTab },
+          { key: 'warehouse', label: 'Склад', children: warehouseTab },
+          { key: 'managers', label: 'Менеджеры', children: managersTab },
+          { key: 'profitability', label: 'Рентабельность', children: profitabilityTab },
+        ]}
+      />
     </div>
   );
 }
