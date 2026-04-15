@@ -56,6 +56,12 @@ function paymentMethodLabel(m: string | null | undefined): string {
   return m ? map[m] || esc(m) : '—';
 }
 
+function deliveryTypeLabel(t: string | null | undefined): string {
+  if (t === 'PICKUP') return 'Самовывоз';
+  if (t === 'DELIVERY') return 'Доставка';
+  return t ? esc(t) : '—';
+}
+
 function formatSum(n: unknown): string {
   const x = Number(n);
   if (!Number.isFinite(x)) return '—';
@@ -139,6 +145,10 @@ function parseStoredTelegramMessageId(raw: string | null | undefined): number | 
 /** Склад + intake: позиции, комментарии к строкам, последние комментарии к сделке в CRM. */
 type DealRowWarehouseIntakeTg = {
   title: string;
+  deliveryType?: string | null;
+  vehicleNumber?: string | null;
+  vehicleType?: string | null;
+  deliveryComment?: string | null;
   client: { companyName: string; contactName: string | null };
   manager: { fullName: string };
   items: Array<{
@@ -167,6 +177,10 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
+    `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
+    `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
+    `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
+    `Комментарий доставки: <b>${esc(deal.deliveryComment?.trim() || '—')}</b>`,
     '',
     '<b>Товары:</b>',
     lines.length ? lines.join('\n') : '—',
@@ -193,6 +207,10 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
+    `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
+    `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
+    `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
+    `Комментарий доставки: <b>${esc(deal.deliveryComment?.trim() || '—')}</b>`,
     '',
     '<b>Товары:</b>',
     lines.length ? lines.join('\n') : '—',
@@ -236,6 +254,7 @@ function productionSyncHeaderForEdit(
     FINANCE_APPROVED: '📋 <b>Производство — финансы одобрили</b>',
     STOCK_CONFIRMED: '📋 <b>Производство — склад подтвердил</b>',
     WAITING_STOCK_CONFIRMATION: '📥 <b>Производство — ожидает склад</b>',
+    WAITING_WAREHOUSE_MANAGER: '📋 <b>Производство — на обработке у завсклада</b>',
     SHIPMENT_ON_HOLD: '⏸ <b>Отгрузка на паузе</b>',
     NEW: '📋 <b>Производство — новая заявка</b>',
     REOPENED: '📋 <b>Производство — сделка</b>',
@@ -255,6 +274,10 @@ function productionSyncHeaderForEdit(
 /** Данные сделки для одного сообщения в группу производства (позиции + оплата + комменты). */
 type DealRowForProductionTg = {
   title: string;
+  deliveryType?: string | null;
+  vehicleNumber?: string | null;
+  vehicleType?: string | null;
+  deliveryComment?: string | null;
   paymentMethod: PaymentMethod | null;
   paymentType: PaymentType;
   amount: unknown;
@@ -329,7 +352,9 @@ export function buildProductionGroupHtml(
   const methodDisplay =
     paymentMethodPending && !deal.paymentMethod
       ? '— (менеджер укажет при отправке)'
-      : paymentMethodLabel(deal.paymentMethod);
+      : deal.paymentMethod
+        ? paymentMethodLabel(deal.paymentMethod)
+        : '— (не указан)';
 
   const rfsExtra = buildReadyForShipmentExtraLines(deal);
 
@@ -340,6 +365,10 @@ export function buildProductionGroupHtml(
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
     ...rfsExtra,
+    `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
+    `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
+    `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
+    `Комментарий доставки: <b>${esc(deal.deliveryComment?.trim() || '—')}</b>`,
     '',
     '<b>Позиции с количествами:</b>',
     lines.length ? lines.join('\n') : '—',
@@ -414,6 +443,9 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
         take: 5,
         include: { author: { select: { fullName: true } } },
       },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
     },
   });
   if (!full) return;
@@ -422,6 +454,10 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
 
   const fullProd: DealRowForProductionTg = {
     title: full.title,
+    deliveryType: full.deliveryType,
+    vehicleNumber: full.shipment?.vehicleNumber ?? full.vehicleNumber,
+    vehicleType: full.shipment?.vehicleType ?? full.vehicleType,
+    deliveryComment: full.shipment?.shipmentComment ?? full.deliveryComment,
     paymentMethod: full.paymentMethod,
     paymentType: full.paymentType,
     amount: full.amount,
@@ -507,6 +543,9 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
         orderBy: { createdAt: 'desc' },
         take: 5,
         include: { author: { select: { fullName: true } } },
+      },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
       },
     },
   });
@@ -615,6 +654,9 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
         take: 5,
         include: { author: { select: { fullName: true } } },
       },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
     },
   });
 
@@ -716,6 +758,10 @@ type DealForFinanceTg = {
   dueDate: Date | null;
   terms: string | null;
   title: string;
+  deliveryType?: string | null;
+  vehicleNumber?: string | null;
+  vehicleType?: string | null;
+  deliveryComment?: string | null;
   transferType: string | null;
   transferInn: string | null;
   client: { companyName: string; contactName: string | null; inn: string | null };
@@ -743,6 +789,10 @@ export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
     `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
+    `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
+    `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
+    `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
+    `Комментарий доставки: <b>${esc(deal.deliveryComment?.trim() || '—')}</b>`,
     '',
     '<b>Суммы и факт оплаты:</b>',
     `Тип оплаты: <b>${paymentTypeLabelRu(deal.paymentType)}</b>`,
@@ -820,6 +870,9 @@ export async function appendFinanceTelegramLog(dealId: string, plainLine: string
         take: 5,
         include: { author: { select: { fullName: true } } },
       },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
     },
   });
   if (!deal) return;
@@ -855,6 +908,9 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
         orderBy: { createdAt: 'desc' },
         take: 5,
         include: { author: { select: { fullName: true } } },
+      },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
       },
     },
   });
@@ -943,6 +999,9 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
         take: 5,
         include: { author: { select: { fullName: true } } },
       },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
     },
   });
 
@@ -987,12 +1046,31 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
   }
 
   const chatProd = resolveProductionBoardChatId(deal);
+  if (chatProd && !deal.productionTelegramMessageId?.trim()) {
+    // Если сообщение не было создано на ранних этапах (например, дилно-зависимый маршрут),
+    // создаем его здесь, чтобы последующие платежи/комментарии могли делать edit.
+    if (deal.status === 'IN_PROGRESS') {
+      await trySendProductionTelegram(dealId);
+    } else if (
+      deal.status === 'WAITING_FINANCE' ||
+      deal.status === 'WAITING_WAREHOUSE_MANAGER' ||
+      deal.status === 'ADMIN_APPROVED' ||
+      deal.status === 'READY_FOR_SHIPMENT'
+    ) {
+      await sendProductionPaymentSubmitTelegram(dealId);
+    }
+  }
+
   if (chatProd && deal.productionTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
     if (mid != null) {
       const hdr = productionSyncHeaderForEdit(deal.status, deal.items);
       const fullProd: DealRowForProductionTg = {
         title: deal.title,
+        deliveryType: deal.deliveryType,
+        vehicleNumber: deal.shipment?.vehicleNumber ?? deal.vehicleNumber,
+        vehicleType: deal.shipment?.vehicleType ?? deal.vehicleType,
+        deliveryComment: deal.shipment?.shipmentComment ?? deal.deliveryComment,
         paymentMethod: deal.paymentMethod,
         paymentType: deal.paymentType,
         amount: deal.amount,
@@ -1044,7 +1122,12 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
 
   if (
     !snap ||
-    (snap.status !== 'WAITING_FINANCE' && snap.status !== 'ADMIN_APPROVED' && snap.status !== 'READY_FOR_SHIPMENT')
+    (
+      snap.status !== 'WAITING_FINANCE' &&
+      snap.status !== 'WAITING_WAREHOUSE_MANAGER' &&
+      snap.status !== 'ADMIN_APPROVED' &&
+      snap.status !== 'READY_FOR_SHIPMENT'
+    )
   ) {
     return;
   }
@@ -1064,6 +1147,9 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
         take: 5,
         include: { author: { select: { fullName: true } } },
       },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
     },
   });
 
@@ -1074,7 +1160,9 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
       ? '✅ <b>Админ одобрил — можно на отгрузку товара</b>'
       : full.status === 'ADMIN_APPROVED'
         ? '📋 <b>Производство — к админу</b>'
-        : '📋 <b>Производство — на проверке в финансах</b>';
+        : full.status === 'WAITING_WAREHOUSE_MANAGER'
+          ? '📋 <b>Производство — на обработке у завсклада</b>'
+          : '📋 <b>Производство — на проверке в финансах</b>';
 
   const body = buildProductionGroupHtml(full, header, false);
   const path = dealLinkPath(dealId);
