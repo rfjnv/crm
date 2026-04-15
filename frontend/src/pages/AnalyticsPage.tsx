@@ -2580,7 +2580,7 @@ export default function AnalyticsPage() {
             <Table
               size="small"
               rowKey="clientId"
-              pagination={{ pageSize: 10, showSizeChanger: false }}
+              pagination={false}
               dataSource={clientPurchaseSummaryRows}
               locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
               columns={[
