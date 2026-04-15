@@ -869,8 +869,8 @@ router.get(
       expenseAllAgg,
       expenseBeforeRangeAgg,
       expenseRows,
-      expectedAgg,
-      debtsAgg,
+      expectedRows,
+      debtRows,
     ] = await Promise.all([
       prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
       prisma.payment.aggregate({ where: paymentBeforeRangeWhere, _sum: { amount: true } }),
@@ -886,20 +886,20 @@ router.get(
         select: { date: true, amount: true },
         orderBy: { date: 'asc' },
       }),
-      prisma.deal.aggregate({
+      prisma.deal.findMany({
         where: {
           ...dealWhereFilter,
           status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
         },
-        _sum: { amount: true, paidAmount: true },
+        select: { amount: true, paidAmount: true },
       }),
-      prisma.deal.aggregate({
+      prisma.deal.findMany({
         where: {
           ...dealWhereFilter,
           status: 'CLOSED',
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         },
-        _sum: { amount: true, paidAmount: true },
+        select: { amount: true, paidAmount: true },
       }),
     ]);
 
@@ -910,13 +910,13 @@ router.get(
     const expensesBeforeRange = Number(expenseBeforeRangeAgg._sum.amount || 0);
     const realBalance = initialBalance + incomingAll - expensesAll;
 
-    const expectedAmount = Math.max(
+    const expectedAmount = expectedRows.reduce(
+      (sum, d) => sum + Math.max(0, Number(d.amount) - Number(d.paidAmount)),
       0,
-      Number(expectedAgg._sum.amount || 0) - Number(expectedAgg._sum.paidAmount || 0),
     );
-    const debtAmount = Math.max(
+    const debtAmount = debtRows.reduce(
+      (sum, d) => sum + Math.max(0, Number(d.amount) - Number(d.paidAmount)),
       0,
-      Number(debtsAgg._sum.amount || 0) - Number(debtsAgg._sum.paidAmount || 0),
     );
 
     const incomingByDay = new Map<string, number>();
