@@ -7,8 +7,6 @@ export interface CreateClientData {
   phone?: string;
   email?: string;
   address?: string;
-  latitude?: number;
-  longitude?: number;
   notes?: string;
   managerId?: string;
   inn?: string;

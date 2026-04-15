@@ -252,8 +252,6 @@ model Client {
   phone       String?
   email       String?
   address     String?
-  latitude    Float?
-  longitude   Float?
   notes       String?
   inn         String?
   bankName    String?  @map("bank_name")
