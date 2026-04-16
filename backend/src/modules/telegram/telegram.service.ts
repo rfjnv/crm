@@ -183,6 +183,58 @@ class TelegramService {
     }
   }
 
+  async sendGroupDocument(
+    chatId: string,
+    file: Buffer | string,
+    filename: string,
+    caption?: string,
+  ): Promise<boolean> {
+    if (!this.bot) {
+      console.warn('[Telegram] sendGroupDocument: бот не инициализирован');
+      return false;
+    }
+    if (!chatId) return false;
+    try {
+      const target = this.toTelegramTarget(chatId);
+      await this.bot.sendDocument(
+        target,
+        typeof file === 'string' ? file : ({ source: file, filename } as any),
+        {
+          caption: caption ? this.escapeHtml(caption) : undefined,
+          parse_mode: caption ? 'HTML' : undefined,
+        },
+      );
+      return true;
+    } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          await this.bot.sendDocument(
+            this.toTelegramTarget(migratedChatId),
+            typeof file === 'string' ? file : ({ source: file, filename } as any),
+            {
+              caption: caption ? this.escapeHtml(caption) : undefined,
+              parse_mode: caption ? 'HTML' : undefined,
+            },
+          );
+          console.warn(`[Telegram] sendGroupDocument: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return true;
+        } catch {
+          // fall through
+        }
+      }
+      const e = err as { message?: string; response?: { body?: { description?: string; error_code?: number } } };
+      const body = e.response?.body;
+      console.error(
+        '[Telegram] sendGroupDocument failed chat_id=',
+        chatId,
+        body?.description || e.message,
+        body?.error_code != null ? `(code ${body.error_code})` : '',
+      );
+      return false;
+    }
+  }
+
   /**
    * HTML в любой чат (личка или группа) + inline-кнопки. Опционально строка со ссылкой в CRM.
    */

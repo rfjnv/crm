@@ -82,4 +82,8 @@ export const config = {
     groupReadyForShipmentChatId: trimEnv(process.env.TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID),
     groupFinanceChatId: trimEnv(process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID),
   },
+  reports: {
+    internalToken: trimEnv(process.env.INTERNAL_REPORTS_TOKEN),
+    timezone: trimEnv(process.env.REPORTS_TIMEZONE) || 'Asia/Tashkent',
+  },
 } as const;

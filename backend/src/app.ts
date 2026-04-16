@@ -33,7 +33,9 @@ import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
+import { internalReportsRoutes } from './modules/internal/reports.routes';
 import './modules/telegram/telegram.customer-bot.service';
+import './modules/internal/dailyClosedDeals.scheduler';
 
 const app = express();
 
@@ -79,6 +81,7 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.use('/api', debugRoutes);
+app.use('/api/internal/reports', internalReportsRoutes);
 
 // Public routes (no auth)
 app.use('/api/public/rate', ratingsRoutes);

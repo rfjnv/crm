@@ -12,10 +12,35 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { authorize } from '../../middleware/authorize';
+import { AppError } from '../../lib/errors';
+import { closedDealsReportService } from './closedDealsReport.service';
 
 const router = Router();
 
 router.use(authenticate);
+
+router.get(
+  '/export/closed-deals.xlsx',
+  authorize('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    if (!from || !to) {
+      throw new AppError(400, 'Параметры from и to обязательны (формат YYYY-MM-DD)');
+    }
+
+    const report = await closedDealsReportService.buildReport(from, to);
+    const filename = `closed-deals-${from}_${to}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(report.xlsxBuffer);
+  }),
+);
 
 // Tashkent = UTC+5
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
