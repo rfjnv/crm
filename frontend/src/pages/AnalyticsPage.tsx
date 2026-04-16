@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren, TdHTMLAttributes } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space, InputNumber } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Tabs, Card, Col, Row, Statistic, Table, Typography, Spin, Tag, Segmented, theme, Tooltip, Badge, List, Checkbox, Empty, Button, Select, Space, InputNumber, DatePicker, message } from 'antd';
 import {
   DollarOutlined,
   RiseOutlined,
@@ -399,7 +400,12 @@ function FormulaHint({ text }: { text: string }) {
 }
 
 export default function AnalyticsPage() {
+  const { RangePicker } = DatePicker;
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
+  const [exportRange, setExportRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().startOf('month'),
+    dayjs().endOf('day'),
+  ]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
@@ -415,6 +421,33 @@ export default function AnalyticsPage() {
   const [abcXyzFilterCombined, setAbcXyzFilterCombined] = useState<string | undefined>();
   const { token } = theme.useToken();
   const navigate = useNavigate();
+
+  const sendNowMut = useMutation({
+    mutationFn: () => analyticsApi.sendClosedDealsNow(),
+    onSuccess: (res) => {
+      if (res.ok) {
+        message.success(`Отчёт отправлен в Telegram. Строк: ${res.rows}`);
+      } else {
+        message.error(res.errors?.[0] || 'Не удалось отправить отчёт');
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки';
+      message.error(msg);
+    },
+  });
+
+  const downloadClosedDeals = async () => {
+    const from = exportRange[0].format('YYYY-MM-DD');
+    const to = exportRange[1].format('YYYY-MM-DD');
+    try {
+      await analyticsApi.exportClosedDeals(from, to);
+      message.success(`Файл скачан: ${from} — ${to}`);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка скачивания';
+      message.error(msg);
+    }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['analytics', period],
@@ -2635,11 +2668,31 @@ export default function AnalyticsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>
-        <Segmented
-          options={periodOptions}
-          value={period}
-          onChange={(v) => setPeriod(v as AnalyticsPeriod)}
-        />
+        <Space wrap>
+          <RangePicker
+            value={exportRange}
+            onChange={(v) => {
+              if (v?.[0] && v?.[1]) setExportRange([v[0], v[1]]);
+            }}
+            format="DD.MM.YYYY"
+            allowClear={false}
+          />
+          <Button onClick={downloadClosedDeals}>
+            Скачать отчёт
+          </Button>
+          <Button
+            type="primary"
+            loading={sendNowMut.isPending}
+            onClick={() => sendNowMut.mutate()}
+          >
+            Отправить сейчас
+          </Button>
+          <Segmented
+            options={periodOptions}
+            value={period}
+            onChange={(v) => setPeriod(v as AnalyticsPeriod)}
+          />
+        </Space>
       </div>
 
       <Tabs

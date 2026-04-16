@@ -94,4 +94,32 @@ export const analyticsApi = {
       a.remove();
       window.URL.revokeObjectURL(url);
     }),
+
+  exportClosedDeals: (from: string, to: string) =>
+    client.get('/analytics/export/closed-deals.xlsx', {
+      params: { from, to },
+      responseType: 'blob',
+    }).then((r) => {
+      const header = String(r.headers?.['content-disposition'] || '');
+      const match = /filename="([^"]+)"/i.exec(header);
+      const fallback = `closed-deals-${from}_${to}.xlsx`;
+      const filename = match?.[1] || fallback;
+      const url = window.URL.createObjectURL(new Blob([r.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }),
+
+  sendClosedDealsNow: () =>
+    client.post('/analytics/export/closed-deals/send-now').then((r) => r.data as {
+      ok: boolean;
+      period: { from: string; to: string };
+      rows: number;
+      sentAt: string;
+      errors?: string[];
+    }),
 };

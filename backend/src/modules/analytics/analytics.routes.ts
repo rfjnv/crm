@@ -14,6 +14,7 @@ import { ownerScope } from '../../lib/scope';
 import { authorize } from '../../middleware/authorize';
 import { AppError } from '../../lib/errors';
 import { closedDealsReportService } from './closedDealsReport.service';
+import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
 
 const router = Router();
 
@@ -39,6 +40,18 @@ router.get(
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(report.xlsxBuffer);
+  }),
+);
+
+router.post(
+  '/export/closed-deals/send-now',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    const result = await sendDailyClosedDealsToWarehouse();
+    res.json({
+      ...result,
+      sentAt: new Date().toISOString(),
+    });
   }),
 );
 
