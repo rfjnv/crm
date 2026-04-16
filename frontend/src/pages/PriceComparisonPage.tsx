@@ -3,47 +3,14 @@ import { Card, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import BackButton from '../components/BackButton';
 import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  PRICE_ROWS,
+  type Competitor,
+  type MatchType,
+  type PriceRow,
+} from './priceComparisonData';
 
-type MatchType = 'Точное' | 'Потенциальное';
-
-type PriceRow = {
-  key: string;
-  category: string;
-  ourProduct: string;
-  competitorProduct: string;
-  competitor: 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading';
-  ourPrice: number;
-  competitorPrice: number | null;
-  matchType: MatchType;
-};
-
-const PRICE_ROWS: PriceRow[] = [
-  { key: '1', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (Китай), глянец, 50×35', competitorProduct: 'Самоклеящаяся бумага 35×50, 195 г', competitor: 'Yann', ourPrice: 1000, competitorPrice: 1000, matchType: 'Точное' },
-  { key: '2', category: 'Самоклеящаяся бумага', ourProduct: 'без насечки (Китай), 50×35', competitorProduct: 'Самоклеящаяся бумага 35×50, 195 г', competitor: 'Yann', ourPrice: 1000, competitorPrice: 1000, matchType: 'Точное' },
-  { key: '3', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (Китай), глянец, 50×70', competitorProduct: 'Самоклеящаяся бумага 50×70, 195 г', competitor: 'Yann', ourPrice: 2000, competitorPrice: 2000, matchType: 'Точное' },
-  { key: '4', category: 'Самоклеящаяся бумага', ourProduct: 'без насечки (Китай), 50×70', competitorProduct: 'Самоклеящаяся бумага 50×70, 195 г', competitor: 'Yann', ourPrice: 2000, competitorPrice: 2000, matchType: 'Точное' },
-  { key: '5', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (Китай), глянец, 70×100', competitorProduct: 'Самоклеящаяся бумага 70×100, 195 г', competitor: 'Yann', ourPrice: 4000, competitorPrice: 4000, matchType: 'Точное' },
-  { key: '6', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (Китай), глянец, 50×70', competitorProduct: 'Самоклеящаяся в листах (глянцевая) 50×70 (slit/non-slit)', competitor: 'Avanta Trade', ourPrice: 2000, competitorPrice: 1800, matchType: 'Потенциальное' },
-  { key: '7', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (Китай), глянец, 70×100', competitorProduct: 'Самоклеящаяся в листах (глянцевая) 70×100 (slit/non-slit)', competitor: 'Avanta Trade', ourPrice: 4000, competitorPrice: 3600, matchType: 'Потенциальное' },
-  { key: '8', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (ТУРЦИЯ), полуглянец, 50×70', competitorProduct: 'Турция ADCOAT (полуглянцевая) 45×64 slit/non-slit', competitor: 'Avanta Trade', ourPrice: 2700, competitorPrice: 2500, matchType: 'Потенциальное' },
-  { key: '9', category: 'Самоклеящаяся бумага', ourProduct: 'с насечкой (ТУРЦИЯ), полуглянец, 70×100', competitorProduct: 'Турция ADCOAT (полуглянцевая) 70×100 slit/non-slit', competitor: 'Avanta Trade', ourPrice: 5400, competitorPrice: 6000, matchType: 'Точное' },
-  { key: '10', category: 'Мелованная бумага', ourProduct: 'HI-KOTE 70×100 (глянец), 170 г/м²', competitorProduct: 'HiKote C2S Art Paper глянцевая, 150 г, 70×100', competitor: 'Yann', ourPrice: 1790, competitorPrice: 1628, matchType: 'Потенциальное' },
-  { key: '11', category: 'Мелованная бумага', ourProduct: 'HI-KOTE 70×100 (глянец), 250 г/м²', competitorProduct: 'HiKote C2S Art Paper глянцевая, 250 г, 70×100', competitor: 'Yann', ourPrice: 2630, competitorPrice: 2190, matchType: 'Точное' },
-  { key: '12', category: 'Мелованная бумага', ourProduct: 'HI-KOTE 70×100 (глянец), 250 г/м²', competitorProduct: 'HiKote C2S Art Paper глянцевая, 300 г, 70×100', competitor: 'Yann', ourPrice: 2630, competitorPrice: 2625, matchType: 'Потенциальное' },
-  { key: '13', category: 'Фольга для горячего тиснения', ourProduct: 'ЗОЛОТАЯ (64×120 м)', competitorProduct: 'Фольга горячего тиснения Золотая, 64×120 м', competitor: 'Avanta Trade', ourPrice: 150000, competitorPrice: 150000, matchType: 'Точное' },
-  { key: '14', category: 'Фольга для горячего тиснения', ourProduct: 'СЕРЕБРЯНАЯ (64×120 м)', competitorProduct: 'Фольга горячего тиснения Серебряная, 64×120 м', competitor: 'Avanta Trade', ourPrice: 150000, competitorPrice: 150000, matchType: 'Точное' },
-  { key: '15', category: 'Фольга для горячего тиснения', ourProduct: 'ЗЕЛЕНАЯ (64×120 м)', competitorProduct: 'Фольга горячего тиснения Зелёная, 64×120 м', competitor: 'Avanta Trade', ourPrice: 230000, competitorPrice: 230000, matchType: 'Точное' },
-  { key: '16', category: 'Фольга для горячего тиснения', ourProduct: 'КРАСНАЯ / СИНЯЯ / ТЕМНО-СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ', competitorProduct: 'Фольга горячего тиснения Красная, 64×120 м', competitor: 'Avanta Trade', ourPrice: 230000, competitorPrice: 230000, matchType: 'Точное' },
-  { key: '17', category: 'Фольга для горячего тиснения', ourProduct: 'КРАСНАЯ / СИНЯЯ / ТЕМНО-СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ', competitorProduct: 'Фольга горячего тиснения Фиолетовая, 64×120 м', competitor: 'Avanta Trade', ourPrice: 230000, competitorPrice: 230000, matchType: 'Точное' },
-  { key: '18', category: 'Фольга для горячего тиснения', ourProduct: 'БЕЛАЯ (64×120 м)', competitorProduct: 'Фольга горячего тиснения Белая, 64×120 м', competitor: 'Avanta Trade', ourPrice: 280000, competitorPrice: 230000, matchType: 'Точное' },
-  { key: '19', category: 'Фольга для горячего тиснения', ourProduct: 'ГОЛОГРАММА (64×120 м)', competitorProduct: 'Фольга горячего тиснения Голограмма Золотистая, 64×120 м', competitor: 'Avanta Trade', ourPrice: 250000, competitorPrice: 250000, matchType: 'Точное' },
-  { key: '20', category: 'Фольга для горячего тиснения', ourProduct: 'ЗОЛОТАЯ, 64×240 м', competitorProduct: 'Фольга горячего тиснения Золотая, 64×240 м', competitor: 'Avanta Trade', ourPrice: 300000, competitorPrice: 300000, matchType: 'Точное' },
-  { key: '21', category: 'Фольга для горячего тиснения', ourProduct: 'СЕРЕБРЯНАЯ, 64×240 м', competitorProduct: 'Фольга горячего тиснения Серебряная, 64×240 м', competitor: 'Avanta Trade', ourPrice: 300000, competitorPrice: 300000, matchType: 'Точное' },
-  { key: '22', category: 'Фольга для горячего тиснения', ourProduct: 'ЗОЛОТАЯ, 64×360 м', competitorProduct: 'Фольга горячего тиснения Золотая, 64×360 м', competitor: 'Avanta Trade', ourPrice: 450000, competitorPrice: 450000, matchType: 'Точное' },
-  { key: '23', category: 'Фольга для горячего тиснения', ourProduct: 'СЕРЕБРЯНАЯ, 64×360 м', competitorProduct: 'Фольга горячего тиснения Серебряная, 64×360 м', competitor: 'Avanta Trade', ourPrice: 450000, competitorPrice: 450000, matchType: 'Точное' },
-];
-
-const competitorColor: Record<PriceRow['competitor'], string> = {
+const competitorColor: Record<Competitor, string> = {
   Yann: 'blue',
   'Bit Trade': 'green',
   'Avanta Trade': 'gold',
@@ -65,7 +32,7 @@ function priceDelta(ourPrice: number, competitorPrice: number | null): { diff: n
 export default function PriceComparisonPage() {
   const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
-  const [competitor, setCompetitor] = useState<'all' | PriceRow['competitor']>('all');
+  const [competitor, setCompetitor] = useState<'all' | Competitor>('all');
   const [category, setCategory] = useState<string>('all');
   const [matchType, setMatchType] = useState<'all' | MatchType>('all');
 
@@ -138,7 +105,7 @@ export default function PriceComparisonPage() {
       title: 'Компания',
       dataIndex: 'competitor',
       width: 140,
-      render: (value: PriceRow['competitor']) => (
+      render: (value: Competitor) => (
         <Tag color={competitorColor[value]}>{value}</Tag>
       ),
     },
