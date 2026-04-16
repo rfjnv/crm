@@ -110,6 +110,26 @@ function formatPhone(value: string): string {
   return result;
 }
 
+function parseCoordinatesText(raw: string): { latitude: number; longitude: number } | null {
+  const matches = raw.match(/-?\d+(?:[.,]\d+)?/g);
+  if (!matches || matches.length < 2) return null;
+  const first = Number(matches[0].replace(',', '.'));
+  const second = Number(matches[1].replace(',', '.'));
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+
+  let latitude = first;
+  let longitude = second;
+
+  // Support pasted "lng, lat" by auto-swapping if obvious.
+  if (Math.abs(latitude) > 90 && Math.abs(longitude) <= 90) {
+    latitude = second;
+    longitude = first;
+  }
+
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
+}
+
 function PhoneInput({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
   const display = value || '+998';
 
@@ -378,6 +398,25 @@ export default function ClientsPage() {
           <InputNumber min={-180} max={180} precision={6} step={0.000001} style={{ width: '100%' }} placeholder="69.240562" />
         </Form.Item>
       </Space>
+      <Form.Item label="Вставить координаты">
+        <Input
+          placeholder="41.273454, 69.286142"
+          onBlur={(e) => {
+            const text = e.target.value.trim();
+            if (!text) return;
+            const parsed = parseCoordinatesText(text);
+            if (!parsed) {
+              message.warning('Не удалось распознать координаты');
+              return;
+            }
+            const targetForm = isEditMode ? editForm : form;
+            targetForm.setFieldsValue({
+              latitude: parsed.latitude,
+              longitude: parsed.longitude,
+            });
+          }}
+        />
+      </Form.Item>
       <Form.Item name="notes" label="Заметки">
         <Input.TextArea rows={2} />
       </Form.Item>
