@@ -10,9 +10,13 @@ import {
   type PriceRow,
 } from './priceComparisonData';
 
+/** Зелёный = у нас дешевле (их цена выше), красный = у них дешевле (их цена ниже). */
+const COLOR_WE_CHEAPER = '#389e0d';
+const COLOR_THEY_CHEAPER = '#cf1322';
+
 const competitorColor: Record<Competitor, string> = {
   Yann: 'blue',
-  'Bit Trade': 'green',
+  'Bit Trade': 'cyan',
   'Avanta Trade': 'gold',
   'Foil Trading': 'magenta',
 };
@@ -131,7 +135,7 @@ export default function PriceComparisonPage() {
       render: (_, row) => {
         const delta = priceDelta(row.ourPrice, row.competitorPrice);
         if (!delta) return '—';
-        const color = delta.diff > 0 ? '#cf1322' : delta.diff < 0 ? '#08979c' : undefined;
+        const color = delta.diff > 0 ? COLOR_WE_CHEAPER : delta.diff < 0 ? COLOR_THEY_CHEAPER : undefined;
         const prefix = delta.diff > 0 ? '+' : '';
         return <span style={{ color }}>{prefix}{formatMoney(delta.diff)}</span>;
       },
@@ -144,7 +148,7 @@ export default function PriceComparisonPage() {
       render: (_, row) => {
         const delta = priceDelta(row.ourPrice, row.competitorPrice);
         if (!delta) return '—';
-        const color = delta.percent > 0 ? '#cf1322' : delta.percent < 0 ? '#08979c' : undefined;
+        const color = delta.percent > 0 ? COLOR_WE_CHEAPER : delta.percent < 0 ? COLOR_THEY_CHEAPER : undefined;
         const prefix = delta.percent > 0 ? '+' : '';
         return <span style={{ color, fontWeight: 600 }}>{prefix}{delta.percent}%</span>;
       },
@@ -205,11 +209,11 @@ export default function PriceComparisonPage() {
         </Card>
         <Card size="small">
           <Typography.Text type="secondary">У них дешевле</Typography.Text>
-          <div style={{ fontSize: 24, fontWeight: 600, color: '#08979c' }}>{stats.theyAreCheaper}</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: COLOR_THEY_CHEAPER }}>{stats.theyAreCheaper}</div>
         </Card>
         <Card size="small">
           <Typography.Text type="secondary">У нас дешевле</Typography.Text>
-          <div style={{ fontSize: 24, fontWeight: 600, color: '#cf1322' }}>{stats.weAreCheaper}</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: COLOR_WE_CHEAPER }}>{stats.weAreCheaper}</div>
         </Card>
         <Card size="small">
           <Typography.Text type="secondary">Одинаково</Typography.Text>
