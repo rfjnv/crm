@@ -45,6 +45,7 @@ import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
+import PriceComparisonPage from './pages/PriceComparisonPage';
 import ReviewsPage from './pages/ReviewsPage';
 import WarehouseManagerPage from './pages/WarehouseManagerPage';
 import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
@@ -129,6 +130,7 @@ export default function App() {
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
+                  <Route path="/analytics/price-comparison" element={<PriceComparisonPage />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 </Route>

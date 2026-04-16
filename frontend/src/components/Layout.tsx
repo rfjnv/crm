@@ -414,6 +414,11 @@ export default function Layout() {
               icon: <FieldTimeOutlined />,
               label: <Link to="/history-analytics">Аналитика (история)</Link>,
             },
+            {
+              key: '/analytics/price-comparison',
+              icon: <BarChartOutlined />,
+              label: <Link to="/analytics/price-comparison">Сравнение цен</Link>,
+            },
           ]
           : []),
       ]
