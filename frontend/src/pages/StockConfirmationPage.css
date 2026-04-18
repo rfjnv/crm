@@ -106,6 +106,102 @@
   border-radius: 14px;
 }
 
+.stock-confirm-modal__title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stock-confirm-modal__title-main {
+  min-width: 0;
+}
+
+.stock-confirm-modal__title-text.ant-typography {
+  display: block;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.stock-confirm-modal__title-subtitle.ant-typography {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.stock-confirm-modal__title-chips {
+  row-gap: 6px;
+}
+
+.stock-confirm-form__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stock-confirm-form__item-card {
+  border-radius: 16px;
+}
+
+.stock-confirm-form__item-title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stock-confirm-form__item-name.ant-typography {
+  display: block;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.stock-confirm-form__item-meta {
+  row-gap: 6px;
+}
+
+.stock-confirm-form__request-note {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.stock-confirm-form__catalog-note,
+.stock-confirm-form__price-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.stock-confirm-form__price-warning {
+  border: 1px solid rgba(250, 173, 20, 0.45);
+  background: rgba(250, 173, 20, 0.12);
+}
+
+.stock-confirm-form__last-field {
+  margin-bottom: 0;
+}
+
+.stock-confirm-modal__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stock-confirm-modal__footer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.stock-confirm-modal__footer-actions .ant-btn {
+  flex: 1;
+}
+
 .stock-confirm-modal--mobile .ant-modal-body .ant-card .ant-card-head {
   min-height: auto;
   padding-top: 10px;
@@ -120,5 +216,39 @@
 @media (max-width: 768px) {
   .stock-confirm-page--mobile {
     padding-inline: 0 !important;
+  }
+
+  .stock-confirm-modal--mobile .ant-modal {
+    max-width: calc(100vw - 16px);
+    margin: 8px auto;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .stock-confirm-modal--mobile .ant-modal-content {
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  .stock-confirm-modal--mobile .ant-modal-header {
+    padding-bottom: 8px;
+  }
+
+  .stock-confirm-modal--mobile .ant-modal-body {
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+    padding-top: 8px;
+  }
+
+  .stock-confirm-modal--mobile .ant-modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--card-bg);
+    padding-top: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border-color);
+  }
+
+  .stock-confirm-modal__footer-actions {
+    flex-direction: column;
   }
 }

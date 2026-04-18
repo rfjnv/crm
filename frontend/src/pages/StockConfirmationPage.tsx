@@ -16,6 +16,44 @@ import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
 import './StockConfirmationPage.css';
 
+function normalizeQtyExpression(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed
+    .replace(/,/g, '.')
+    .replace(/\s*\+\s*/g, '+')
+    .replace(/\s+/g, '+');
+
+  if (!/^\d+(?:\.\d+)?(?:\+\d+(?:\.\d+)?)*$/.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function parseQtyInput(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+
+  const normalized = normalizeQtyExpression(value);
+  if (!normalized) return null;
+
+  const total = normalized
+    .split('+')
+    .reduce((sum, part) => sum + Number(part), 0);
+
+  if (!Number.isFinite(total) || total <= 0) return null;
+  return Math.round(total * 1000) / 1000;
+}
+
+function formatQtyValue(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(3).replace(/\.?0+$/, '');
+}
+
 export default function StockConfirmationPage() {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -53,6 +91,7 @@ export default function StockConfirmationPage() {
   const openRespondModal = (deal: Deal) => {
     const initialValues = getPendingItems(deal).map((item) => {
       const defPrice = item.product?.salePrice ? Number(item.product.salePrice) : undefined;
+      const hasCatalogPrice = defPrice != null && defPrice > 0;
       return {
         dealItemId: item.id,
         productName: item.product?.name || 'Товар',
@@ -60,11 +99,21 @@ export default function StockConfirmationPage() {
         unit: item.product?.unit || 'шт',
         requestComment: item.requestComment || '',
         warehouseComment: '',
-        price: defPrice,
+        price: hasCatalogPrice ? undefined : null,
+        hasCatalogPrice,
+        catalogPrice: hasCatalogPrice ? defPrice : null,
       };
     });
     respondForm.setFieldsValue({ items: initialValues });
     setRespondModal(deal);
+  };
+
+  const applyParsedQtyValue = (fieldName: number) => {
+    const currentValue = respondForm.getFieldValue(['items', fieldName, 'requestedQty']);
+    const parsed = parseQtyInput(currentValue);
+    if (parsed != null) {
+      respondForm.setFieldValue(['items', fieldName, 'requestedQty'], formatQtyValue(parsed));
+    }
   };
 
   const columns = [
@@ -116,6 +165,7 @@ export default function StockConfirmationPage() {
 
   const list = deals ?? [];
   const pendingItemsTotal = list.reduce((sum, deal) => sum + getPendingItems(deal).length, 0);
+  const modalPendingCount = respondModal ? getPendingItems(respondModal).length : 0;
 
   const renderMobileCard = (deal: Deal) => {
     const pendingItems = getPendingItems(deal);
@@ -244,26 +294,65 @@ export default function StockConfirmationPage() {
 
       {/* Warehouse Response Modal */}
       <Modal
-        title={`Ответ склада — ${respondModal?.title ?? ''}`}
+        title={(
+          <div className="stock-confirm-modal__title">
+            <div className="stock-confirm-modal__title-main">
+              <Typography.Text strong className="stock-confirm-modal__title-text">
+                Ответ склада
+              </Typography.Text>
+              {respondModal && (
+                <Typography.Text type="secondary" className="stock-confirm-modal__title-subtitle">
+                  {respondModal.title}
+                </Typography.Text>
+              )}
+            </div>
+            {respondModal && (
+              <Space size={6} wrap className="stock-confirm-modal__title-chips">
+                <Tag color="green">{modalPendingCount} поз.</Tag>
+                {respondModal.client && <Tag>{respondModal.client.companyName || 'Клиент'}</Tag>}
+              </Space>
+            )}
+          </div>
+        )}
         open={!!respondModal}
         onCancel={() => { setRespondModal(null); respondForm.resetFields(); }}
-        onOk={() => respondForm.submit()}
-        confirmLoading={respondMut.isPending}
-        okText="Ответить"
-        cancelText="Отмена"
         width={isMobile ? '100%' : 700}
         className={isMobile ? 'stock-confirm-modal stock-confirm-modal--mobile' : 'stock-confirm-modal'}
+        styles={isMobile ? { body: { paddingTop: 8, paddingBottom: 12 } } : undefined}
+        footer={(
+          <div className="stock-confirm-modal__footer">
+            <div className="stock-confirm-modal__footer-text">
+              {respondModal && (
+                <Typography.Text type="secondary">
+                  Заполните количество для всех {modalPendingCount} поз.
+                </Typography.Text>
+              )}
+            </div>
+            <div className="stock-confirm-modal__footer-actions">
+              <Button onClick={() => { setRespondModal(null); respondForm.resetFields(); }}>
+                Отмена
+              </Button>
+              <Button type="primary" loading={respondMut.isPending} onClick={() => respondForm.submit()}>
+                Ответить
+              </Button>
+            </div>
+          </div>
+        )}
       >
-        <Form form={respondForm} layout="vertical" onFinish={(values) => {
+        <Form form={respondForm} layout="vertical" className="stock-confirm-form" onFinish={(values) => {
           if (!respondModal) return;
           const items = (values.items as Record<string, unknown>[]).map((item) => {
+            const parsedQty = parseQtyInput(item.requestedQty);
+            const sourceItem = respondModal.items?.find((row) => row.id === item.dealItemId);
+            const catalogPrice = sourceItem?.product?.salePrice != null ? Number(sourceItem.product.salePrice) : 0;
+            const hasCatalogPrice = catalogPrice > 0;
             const priceVal = item.price as number | null | undefined;
             const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
               dealItemId: item.dealItemId as string,
               warehouseComment: String(item.warehouseComment ?? '').trim(),
-              requestedQty: Number(item.requestedQty),
+              requestedQty: parsedQty ?? 0,
             };
-            if (priceVal != null && priceVal > 0) {
+            if (!hasCatalogPrice && priceVal != null && priceVal > 0) {
               row.price = priceVal;
             }
             return row;
@@ -272,36 +361,89 @@ export default function StockConfirmationPage() {
         }}>
           <Form.List name="items">
             {(fields) => (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="stock-confirm-form__list">
                 {fields.map((field) => {
                   const itemData = respondForm.getFieldValue(['items', field.name]);
                   return (
-                    <Card key={field.key} size="small" title={`${itemData?.productName || 'Товар'} (${itemData?.sku}) — ${itemData?.unit || 'шт'}`} bordered>
+                    <Card
+                      key={field.key}
+                      size="small"
+                      className="stock-confirm-form__item-card"
+                      title={(
+                        <div className="stock-confirm-form__item-title">
+                          <Typography.Text strong className="stock-confirm-form__item-name">
+                            {itemData?.productName || 'Товар'}
+                          </Typography.Text>
+                          <Space size={6} wrap className="stock-confirm-form__item-meta">
+                            {itemData?.sku && <Tag>{itemData.sku}</Tag>}
+                            <Tag color="blue">{itemData?.unit || 'шт'}</Tag>
+                          </Space>
+                        </div>
+                      )}
+                      bordered
+                    >
                       <Form.Item name={[field.name, 'dealItemId']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'productName']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'sku']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'unit']} hidden><Input /></Form.Item>
                       {itemData?.requestComment && (
-                        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                          Запрос менеджера: {itemData.requestComment}
-                        </Typography.Text>
+                        <div className="stock-confirm-form__request-note">
+                          <Typography.Text type="secondary">
+                            Запрос менеджера: {itemData.requestComment}
+                          </Typography.Text>
+                        </div>
+                      )}
+                      {itemData?.hasCatalogPrice ? (
+                        <div className="stock-confirm-form__catalog-note">
+                          <Typography.Text type="secondary">
+                            Цена возьмется из каталога автоматически.
+                          </Typography.Text>
+                          <Typography.Text strong>
+                            {moneyFormatter(itemData.catalogPrice)}
+                          </Typography.Text>
+                        </div>
+                      ) : (
+                        <div className="stock-confirm-form__price-warning">
+                          <Typography.Text type="secondary">
+                            У товара нет цены в каталоге, поэтому здесь нужно указать цену вручную.
+                          </Typography.Text>
+                        </div>
                       )}
                       <Form.Item
                         name={[field.name, 'requestedQty']}
                         label={`Количество (${itemData?.unit || 'шт'})`}
-                        rules={[{ required: true, message: 'Укажите количество' }]}
+                        extra="Можно вводить: 20,2 или 20,2+20,3 или 20,2 20,3"
+                        rules={[
+                          { required: true, message: 'Укажите количество' },
+                          {
+                            validator: (_rule, value) => (
+                              parseQtyInput(value) != null
+                                ? Promise.resolve()
+                                : Promise.reject(new Error('Введите число или сумму чисел через +'))
+                            ),
+                          },
+                        ]}
                       >
-                        <InputNumber style={{ width: '100%' }} min={0.001} step={0.001} placeholder="Фактическое количество" />
+                        <Input
+                          inputMode="decimal"
+                          placeholder="Например: 20,2 или 20,2+20,3"
+                          onBlur={() => applyParsedQtyValue(field.name)}
+                          onPressEnter={() => applyParsedQtyValue(field.name)}
+                        />
                       </Form.Item>
-                      <Form.Item
-                        name={[field.name, 'price']}
-                        label="Цена (пусто — из каталога)"
-                      >
-                        <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="По прайсу" />
-                      </Form.Item>
+                      {!itemData?.hasCatalogPrice && (
+                        <Form.Item
+                          name={[field.name, 'price']}
+                          label="Цена"
+                          rules={[{ required: true, message: 'Укажите цену' }]}
+                        >
+                          <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="Цена из каталога не найдена" />
+                        </Form.Item>
+                      )}
                       <Form.Item
                         name={[field.name, 'warehouseComment']}
                         label="Комментарий склада (необязательно)"
+                        className="stock-confirm-form__last-field"
                       >
                         <Input.TextArea rows={2} placeholder="По желанию: срок, замечание…" />
                       </Form.Item>
