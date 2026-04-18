@@ -1,0 +1,126 @@
+.wm-page--mobile .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.wm-mobile-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-bottom: 12px;
+}
+
+.wm-mobile-summary__card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+}
+
+.wm-mobile-summary__card h4.ant-typography {
+  margin: 0;
+}
+
+.wm-mobile-card {
+  border-radius: 16px;
+}
+
+.wm-mobile-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.wm-mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wm-mobile-card__header-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.wm-mobile-card__title-link {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.wm-mobile-card__title.ant-typography {
+  display: inline-block;
+  line-height: 1.35;
+}
+
+.wm-mobile-card__client {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.wm-mobile-card__amount.ant-typography {
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.wm-mobile-card__chips {
+  row-gap: 6px;
+}
+
+.wm-mobile-card__meta.ant-typography {
+  font-size: 13px;
+}
+
+.wm-mobile-card__note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.wm-mobile-card__items {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.wm-mobile-card__items-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wm-mobile-card__items-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.wm-mobile-card__items-list li + li {
+  margin-top: 4px;
+}
+
+.wm-mobile-card__toggle.ant-btn {
+  align-self: flex-start;
+  padding-inline: 0 !important;
+  margin-top: 4px;
+}
+
+.wm-mobile-card__action.ant-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .wm-page--mobile {
+    padding-inline: 0 !important;
+  }
+
+  .wm-page--mobile .ant-tabs-content-holder {
+    min-width: 0;
+  }
+}

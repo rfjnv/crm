@@ -10,6 +10,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useAuthStore } from '../store/authStore';
+import MobileCardList from '../components/MobileCardList';
+import './WarehouseManagerPage.css';
 
 const deliveryLabels: Record<string, string> = {
   SELF_PICKUP: 'Самовывоз',
@@ -30,6 +32,7 @@ export default function WarehouseManagerPage() {
   const [tab, setTab] = useState('incoming');
   const [assignModal, setAssignModal] = useState<{ dealId: string; type: 'loading' | 'driver' } | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const qc = useQueryClient();
 
   const { data: incoming = [], isLoading: l1 } = useQuery({ queryKey: ['wm-incoming'], queryFn: dealsApi.wmIncoming, refetchInterval: 10_000 });
@@ -66,6 +69,24 @@ export default function WarehouseManagerPage() {
 
   const roleLabels: Record<string, string> = { WAREHOUSE: 'Склад', DRIVER: 'Водитель', LOADER: 'Грузчик' };
 
+  const toggleItems = (dealId: string) => {
+    setExpandedItems((prev) => ({ ...prev, [dealId]: !prev[dealId] }));
+  };
+
+  const getItemsMeta = (deal: Deal) => {
+    const items = (deal as any).items ?? [];
+    const expanded = !!expandedItems[deal.id];
+    const preview = expanded ? items : items.slice(0, 2);
+    return {
+      expanded,
+      items,
+      preview,
+      hiddenCount: Math.max(items.length - preview.length, 0),
+    };
+  };
+
+  const isPickupDeal = (deal: Deal) => deal.deliveryType === 'SELF_PICKUP' || deal.deliveryType === 'YANDEX';
+
   const expandedRow = (r: Deal) => (
     <Descriptions size="small" column={isMobile ? 1 : 3} bordered>
       {r.deliveryType && <Descriptions.Item label="Доставка"><DeliveryTag type={r.deliveryType} /></Descriptions.Item>}
@@ -85,47 +106,68 @@ export default function WarehouseManagerPage() {
   /* ---- Mobile cards ---- */
 
   const renderIncomingCard = (r: Deal) => {
-    const isPickup = r.deliveryType === 'SELF_PICKUP' || r.deliveryType === 'YANDEX';
+    const isPickup = isPickupDeal(r);
+    const { items, preview, expanded, hiddenCount } = getItemsMeta(r);
+    const actionText = isPickup ? 'Клиент приехал' : 'Машина готова';
+    const metaText = isPickup
+      ? 'Сделка ждет подтверждения выдачи клиенту'
+      : 'Сделка ждет подтверждения готовности к отправке';
     return (
-      <Card size="small" style={{ marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Link to={`/deals/${r.id}`}>
-              <Typography.Text strong>{r.title}</Typography.Text>
+      <Card size="small" className="wm-mobile-card">
+        <div className="wm-mobile-card__header">
+          <div className="wm-mobile-card__header-main">
+            <Link to={`/deals/${r.id}`} className="wm-mobile-card__title-link">
+              <Typography.Text strong className="wm-mobile-card__title">{r.title}</Typography.Text>
             </Link>
-            <div style={{ marginTop: 4, fontSize: 12 }}>
+            <div className="wm-mobile-card__client">
               <ClientCompanyDisplay client={r.client} secondary />
             </div>
-            <div style={{ marginTop: 4 }}>
-              <Space size={4} wrap>
-                <DeliveryTag type={r.deliveryType} />
-                {r.vehicleNumber && (
-                  <Tag>{r.vehicleType || ''} {r.vehicleNumber}</Tag>
-                )}
-              </Space>
-            </div>
-            {r.deliveryComment && (
-              <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>{r.deliveryComment}</div>
-            )}
-            <div style={{ marginTop: 4 }}>
-              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
-                {(r as any).items?.map((it: any) => (
-                  <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
-                ))}
-              </ul>
-            </div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ marginBottom: 8 }}>
-              <Typography.Text strong>{formatUZS(Number(r.amount))}</Typography.Text>
-            </div>
-            <Popconfirm title={isPickup ? 'Клиент пришёл за товарами?' : 'Машина готова?'} onConfirm={() => confirmMut.mutate(r.id)}>
-              <Button type="primary" size="small" icon={isPickup ? <CheckOutlined /> : <CarOutlined />} loading={confirmMut.isPending}>
-                {isPickup ? 'Пришли' : 'Готова'}
-              </Button>
-            </Popconfirm>
-          </div>
+          <Typography.Text strong className="wm-mobile-card__amount">
+            {formatUZS(Number(r.amount))}
+          </Typography.Text>
         </div>
+
+        <Space size={6} wrap className="wm-mobile-card__chips">
+          <DeliveryTag type={r.deliveryType} />
+          <Tag color={isPickup ? 'geekblue' : 'cyan'}>{isPickup ? 'Ждет клиента' : 'Ждет машину'}</Tag>
+          {r.vehicleNumber && <Tag>{`${r.vehicleType || ''} ${r.vehicleNumber}`.trim()}</Tag>}
+        </Space>
+
+        <Typography.Text type="secondary" className="wm-mobile-card__meta">
+          {metaText}
+        </Typography.Text>
+
+        {r.deliveryComment && (
+          <div className="wm-mobile-card__note">
+            <Typography.Text type="secondary">{r.deliveryComment}</Typography.Text>
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <div className="wm-mobile-card__items">
+            <div className="wm-mobile-card__items-header">
+              <Typography.Text strong>Состав заказа</Typography.Text>
+              <Typography.Text type="secondary">{items.length} поз.</Typography.Text>
+            </div>
+            <ul className="wm-mobile-card__items-list">
+              {preview.map((it: any) => (
+                <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+              ))}
+            </ul>
+            {(hiddenCount > 0 || items.length > 2) && (
+              <Button type="link" size="small" className="wm-mobile-card__toggle" onClick={() => toggleItems(r.id)}>
+                {expanded ? 'Скрыть состав' : `Показать еще ${hiddenCount} ${hiddenCount === 1 ? 'позицию' : 'позиции'}`}
+              </Button>
+            )}
+          </div>
+        )}
+
+        <Popconfirm title={isPickup ? 'Клиент пришёл за товарами?' : 'Машина готова?'} onConfirm={() => confirmMut.mutate(r.id)}>
+          <Button type="primary" className="wm-mobile-card__action" icon={isPickup ? <CheckOutlined /> : <CarOutlined />} loading={confirmMut.isPending}>
+            {actionText}
+          </Button>
+        </Popconfirm>
       </Card>
     );
   };
@@ -133,62 +175,92 @@ export default function WarehouseManagerPage() {
   const renderApprovedCard = (r: Deal) => {
     const isDelivery = r.deliveryType === 'DELIVERY';
     const needsDriver = isDelivery && !r.deliveryDriverId;
+    const { items, preview, expanded, hiddenCount } = getItemsMeta(r);
+    const summaryStatus = needsDriver
+      ? 'Нужно назначить водителя'
+      : isDelivery
+        ? 'Готово к назначению на отгрузку'
+        : 'Можно передавать на отгрузку';
     return (
-      <Card size="small" style={{ marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Link to={`/deals/${r.id}`}>
-              <Typography.Text strong>{r.title}</Typography.Text>
+      <Card size="small" className="wm-mobile-card">
+        <div className="wm-mobile-card__header">
+          <div className="wm-mobile-card__header-main">
+            <Link to={`/deals/${r.id}`} className="wm-mobile-card__title-link">
+              <Typography.Text strong className="wm-mobile-card__title">{r.title}</Typography.Text>
             </Link>
-            <div style={{ marginTop: 4, fontSize: 12 }}>
+            <div className="wm-mobile-card__client">
               <ClientCompanyDisplay client={r.client} secondary />
             </div>
-            <div style={{ marginTop: 4 }}>
-              <Space size={4} wrap>
-                <DeliveryTag type={r.deliveryType} />
-                {r.deliveryDriver && <Tag color="green">{r.deliveryDriver.fullName}</Tag>}
-                {isDelivery && !r.deliveryDriver && <Tag color="red">Водитель не назначен</Tag>}
-              </Space>
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
-                {(r as any).items?.map((it: any) => (
-                  <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
-                ))}
-              </ul>
-            </div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ marginBottom: 8 }}>
-              <Typography.Text strong>{formatUZS(Number(r.amount))}</Typography.Text>
-            </div>
-            <Space direction="vertical" size={4}>
-              {needsDriver && (
-                <Button size="small" type="primary" icon={<CarOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'driver' }); setSelectedUserId(null); }}>
-                  Водитель
-                </Button>
-              )}
-              {!needsDriver && (
-                <Button size="small" icon={<UserAddOutlined />} onClick={() => { setAssignModal({ dealId: r.id, type: 'loading' }); setSelectedUserId(null); }}>
-                  Отгрузка
-                </Button>
-              )}
-            </Space>
-          </div>
+          <Typography.Text strong className="wm-mobile-card__amount">
+            {formatUZS(Number(r.amount))}
+          </Typography.Text>
         </div>
+
+        <Space size={6} wrap className="wm-mobile-card__chips">
+          <DeliveryTag type={r.deliveryType} />
+          <Tag color={needsDriver ? 'red' : 'green'}>{summaryStatus}</Tag>
+          {r.deliveryDriver && <Tag color="green">{r.deliveryDriver.fullName}</Tag>}
+        </Space>
+
+        {items.length > 0 && (
+          <div className="wm-mobile-card__items">
+            <div className="wm-mobile-card__items-header">
+              <Typography.Text strong>Состав заказа</Typography.Text>
+              <Typography.Text type="secondary">{items.length} поз.</Typography.Text>
+            </div>
+            <ul className="wm-mobile-card__items-list">
+              {preview.map((it: any) => (
+                <li key={it.id}>{it.product?.name} — {Number(it.requestedQty)} {it.product?.unit || ''}</li>
+              ))}
+            </ul>
+            {(hiddenCount > 0 || items.length > 2) && (
+              <Button type="link" size="small" className="wm-mobile-card__toggle" onClick={() => toggleItems(r.id)}>
+                {expanded ? 'Скрыть состав' : `Показать еще ${hiddenCount} ${hiddenCount === 1 ? 'позицию' : 'позиции'}`}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {needsDriver ? (
+          <Button
+            type="primary"
+            className="wm-mobile-card__action"
+            icon={<CarOutlined />}
+            onClick={() => { setAssignModal({ dealId: r.id, type: 'driver' }); setSelectedUserId(null); }}
+          >
+            Назначить водителя
+          </Button>
+        ) : (
+          <Button
+            className="wm-mobile-card__action"
+            icon={<UserAddOutlined />}
+            onClick={() => { setAssignModal({ dealId: r.id, type: 'loading' }); setSelectedUserId(null); }}
+          >
+            Передать на отгрузку
+          </Button>
+        )}
       </Card>
     );
   };
 
   const pageTitle = fullWmAccess ? 'Зав. склада' : 'Входящие к админу';
+  const incomingPickupCount = incoming.filter((deal) => isPickupDeal(deal)).length;
+  const incomingDeliveryCount = incoming.filter((deal) => deal.deliveryType === 'DELIVERY').length;
+  const approvedNeedsDriverCount = approved.filter((deal) => deal.deliveryType === 'DELIVERY' && !deal.deliveryDriverId).length;
+  const approvedLoadingReadyCount = approved.length - approvedNeedsDriverCount;
 
   const incomingTab = {
     key: 'incoming',
     label: `Входящие (${incoming.length})`,
     children: isMobile ? (
-      l1 ? <Card loading /> : incoming.length === 0
-        ? <Card><Typography.Text type="secondary">Нет входящих сделок</Typography.Text></Card>
-        : <div>{incoming.map((d) => <div key={d.id}>{renderIncomingCard(d)}</div>)}</div>
+      <MobileCardList
+        data={incoming}
+        loading={l1}
+        rowKey="id"
+        emptyText="Нет входящих сделок"
+        renderCard={(deal) => renderIncomingCard(deal)}
+      />
     ) : (
       <Card>
         <Table
@@ -232,9 +304,13 @@ export default function WarehouseManagerPage() {
     key: 'approved',
     label: `Одобренные (${approved.length})`,
     children: isMobile ? (
-      l2 ? <Card loading /> : approved.length === 0
-        ? <Card><Typography.Text type="secondary">Нет одобренных сделок</Typography.Text></Card>
-        : <div>{approved.map((d) => <div key={d.id}>{renderApprovedCard(d)}</div>)}</div>
+      <MobileCardList
+        data={approved}
+        loading={l2}
+        rowKey="id"
+        emptyText="Нет одобренных сделок"
+        renderCard={(deal) => renderApprovedCard(deal)}
+      />
     ) : (
       <Card>
         <Table
@@ -288,11 +364,31 @@ export default function WarehouseManagerPage() {
   };
 
   return (
-    <div style={{ padding: isMobile ? 12 : 24 }}>
+    <div style={{ padding: isMobile ? 12 : 24 }} className={isMobile ? 'wm-page wm-page--mobile' : 'wm-page'}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <BackButton fallback="/dashboard" />
         <Typography.Title level={3} style={{ margin: 0 }}>{pageTitle}</Typography.Title>
       </div>
+      {isMobile && (
+        <div className="wm-mobile-summary">
+          <Card size="small" className="wm-mobile-summary__card">
+            <Typography.Text type="secondary">Входящие</Typography.Text>
+            <Typography.Title level={4}>{incoming.length}</Typography.Title>
+            <Typography.Text type="secondary">
+              Самовывоз: {incomingPickupCount} · Доставка: {incomingDeliveryCount}
+            </Typography.Text>
+          </Card>
+          {fullWmAccess && (
+            <Card size="small" className="wm-mobile-summary__card">
+              <Typography.Text type="secondary">Одобренные</Typography.Text>
+              <Typography.Title level={4}>{approved.length}</Typography.Title>
+              <Typography.Text type="secondary">
+                Без водителя: {approvedNeedsDriverCount} · На отгрузку: {approvedLoadingReadyCount}
+              </Typography.Text>
+            </Card>
+          )}
+        </div>
+      )}
       <Tabs activeKey={tab} onChange={setTab} items={fullWmAccess ? [incomingTab, approvedTab] : [incomingTab]} />
 
       <Modal
