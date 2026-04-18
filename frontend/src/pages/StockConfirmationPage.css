@@ -1,0 +1,124 @@
+.stock-confirm-summary {
+  margin-bottom: 12px;
+}
+
+.stock-confirm-summary__card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+}
+
+.stock-confirm-summary__card h4.ant-typography {
+  margin: 0;
+}
+
+.stock-confirm-mobile-card {
+  border-radius: 16px;
+}
+
+.stock-confirm-mobile-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.stock-confirm-mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stock-confirm-mobile-card__header-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.stock-confirm-mobile-card__title-link {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.stock-confirm-mobile-card__title.ant-typography {
+  display: inline-block;
+  line-height: 1.35;
+}
+
+.stock-confirm-mobile-card__client {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.stock-confirm-mobile-card__date.ant-typography {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.stock-confirm-mobile-card__chips {
+  row-gap: 6px;
+}
+
+.stock-confirm-mobile-card__items {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.stock-confirm-mobile-card__items-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stock-confirm-mobile-card__items-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.stock-confirm-mobile-card__items-list li + li {
+  margin-top: 6px;
+}
+
+.stock-confirm-mobile-card__item-comment.ant-typography {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.stock-confirm-mobile-card__more.ant-typography {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.stock-confirm-mobile-card__action.ant-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.stock-confirm-modal--mobile .ant-modal-body .ant-card {
+  border-radius: 14px;
+}
+
+.stock-confirm-modal--mobile .ant-modal-body .ant-card .ant-card-head {
+  min-height: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.stock-confirm-modal--mobile .ant-modal-body .ant-card .ant-card-head-title {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+@media (max-width: 768px) {
+  .stock-confirm-page--mobile {
+    padding-inline: 0 !important;
+  }
+}
