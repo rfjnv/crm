@@ -167,7 +167,6 @@
   background: var(--bg-secondary);
 }
 
-.stock-confirm-form__catalog-note,
 .stock-confirm-form__price-warning {
   display: flex;
   flex-direction: column;
@@ -189,17 +188,20 @@
 
 .stock-confirm-modal__footer {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .stock-confirm-modal__footer-actions {
   display: flex;
   gap: 12px;
+  width: 100%;
 }
 
 .stock-confirm-modal__footer-actions .ant-btn {
   flex: 1;
+  min-height: 50px;
+  border-radius: 12px;
+  font-size: 17px;
+  font-weight: 600;
 }
 
 .stock-confirm-modal--mobile .ant-modal-body .ant-card .ant-card-head {
@@ -243,12 +245,17 @@
     position: sticky;
     bottom: 0;
     background: var(--card-bg);
-    padding-top: 12px;
+    padding-top: 14px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--border-color);
   }
 
   .stock-confirm-modal__footer-actions {
     flex-direction: column;
+  }
+
+  .stock-confirm-modal__footer-actions .ant-btn {
+    min-height: 52px;
+    font-size: 18px;
   }
 }

@@ -321,13 +321,6 @@ export default function StockConfirmationPage() {
         styles={isMobile ? { body: { paddingTop: 8, paddingBottom: 12 } } : undefined}
         footer={(
           <div className="stock-confirm-modal__footer">
-            <div className="stock-confirm-modal__footer-text">
-              {respondModal && (
-                <Typography.Text type="secondary">
-                  Заполните количество для всех {modalPendingCount} поз.
-                </Typography.Text>
-              )}
-            </div>
             <div className="stock-confirm-modal__footer-actions">
               <Button onClick={() => { setRespondModal(null); respondForm.resetFields(); }}>
                 Отмена
@@ -393,16 +386,7 @@ export default function StockConfirmationPage() {
                           </Typography.Text>
                         </div>
                       )}
-                      {itemData?.hasCatalogPrice ? (
-                        <div className="stock-confirm-form__catalog-note">
-                          <Typography.Text type="secondary">
-                            Цена возьмется из каталога автоматически.
-                          </Typography.Text>
-                          <Typography.Text strong>
-                            {moneyFormatter(itemData.catalogPrice)}
-                          </Typography.Text>
-                        </div>
-                      ) : (
+                      {!itemData?.hasCatalogPrice && (
                         <div className="stock-confirm-form__price-warning">
                           <Typography.Text type="secondary">
                             У товара нет цены в каталоге, поэтому здесь нужно указать цену вручную.
