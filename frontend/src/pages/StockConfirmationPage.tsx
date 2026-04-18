@@ -409,7 +409,6 @@ export default function StockConfirmationPage() {
                         ]}
                       >
                         <Input
-                          inputMode="decimal"
                           placeholder="Например: 20,2 или 20,2+20,3"
                           onBlur={() => applyParsedQtyValue(field.name)}
                           onPressEnter={() => applyParsedQtyValue(field.name)}
