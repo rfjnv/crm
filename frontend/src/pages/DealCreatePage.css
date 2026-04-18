@@ -1,0 +1,217 @@
+.deal-create-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.deal-create-header__title {
+  min-width: 0;
+}
+
+.deal-create-header__actions {
+  display: flex;
+  align-items: center;
+}
+
+.deal-create-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.deal-create-grid--single {
+  grid-template-columns: 1fr;
+}
+
+.deal-create-grid--triple {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.deal-create-grid--compact {
+  gap: 12px;
+}
+
+.deal-create-delivery-block,
+.deal-create-payment-block {
+  margin-top: 16px;
+}
+
+.deal-create-item-card {
+  border-radius: 16px;
+}
+
+.deal-create-item-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.deal-create-item-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deal-create-item-card__remove.ant-btn {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.deal-create-field-label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.deal-create-item-card__stock {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.deal-create-item-card__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.deal-create-item-card__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.deal-create-items-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deal-create-items-mobile__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deal-create-items-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.deal-create-add-btn.ant-btn {
+  min-height: 48px;
+}
+
+@media (max-width: 768px) {
+  .deal-create-page--mobile {
+    padding-inline: 0 !important;
+  }
+
+  .deal-create-header--mobile {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .deal-create-header__actions--mobile {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .deal-create-action-btn.ant-btn {
+    min-height: 48px;
+    width: 100%;
+    justify-content: center;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .deal-create-section-card {
+    border-radius: 18px;
+  }
+
+  .deal-create-section-card .ant-card-head {
+    min-height: auto;
+    padding: 14px 16px;
+  }
+
+  .deal-create-section-card .ant-card-head-title {
+    font-size: 16px;
+  }
+
+  .deal-create-section-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .deal-create-draft-alert .ant-alert-message,
+  .deal-create-draft-alert .ant-alert-description {
+    word-break: break-word;
+  }
+
+  .deal-create-draft-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .deal-create-draft-actions .ant-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .deal-create-checkbox-row .ant-checkbox-wrapper {
+    line-height: 1.5;
+  }
+
+  .deal-create-delivery-group,
+  .deal-create-route-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .deal-create-delivery-group .ant-radio-button-wrapper,
+  .deal-create-route-group .ant-radio-wrapper,
+  .deal-create-route-group .ant-radio-button-wrapper {
+    height: auto;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .deal-create-items-card .ant-card-extra {
+    margin-inline-start: 0;
+  }
+
+  .deal-create-items-extra {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 8px;
+  }
+
+  .deal-create-item-card__grid {
+    grid-template-columns: 1fr;
+  }
+}

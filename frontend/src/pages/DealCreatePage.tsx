@@ -20,6 +20,7 @@ import { VAT_RATE } from '../utils/vat';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS, needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
+import './DealCreatePage.css';
 
 interface DraftItem {
   key: string;
@@ -346,16 +347,106 @@ export default function DealCreatePage() {
     });
   }
 
+  const renderItemMobileCard = (item: DraftItem) => {
+    const p = item.productId ? productMap.get(item.productId) : null;
+    const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
+    const intUnit = isIntegerUnit(p?.unit);
+
+    return (
+      <Card key={item.key} size="small" className="deal-create-item-card">
+        <div className="deal-create-item-card__top">
+          <Typography.Text strong>
+            {p?.name || 'Позиция'}
+          </Typography.Text>
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => removeItemRow(item.key)}
+            className="deal-create-item-card__remove"
+          />
+        </div>
+
+        <div>
+          <Typography.Text type="secondary" className="deal-create-field-label">Товар</Typography.Text>
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder="Выберите товар"
+            style={{ width: '100%' }}
+            value={item.productId}
+            onChange={(v) => handleProductChange(item.key, v)}
+            options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
+              label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
+              value: pr.id,
+              disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
+            }))}
+          />
+          {p && (
+            <div className="deal-create-item-card__stock">
+              Остаток: {formatQty(p.stock)} {p.unit}
+            </div>
+          )}
+        </div>
+
+        <div className="deal-create-item-card__grid">
+          <div>
+            <Typography.Text type="secondary" className="deal-create-field-label">Кол-во</Typography.Text>
+            <InputNumber
+              min={intUnit ? 1 : 0.001}
+              step={intUnit ? 1 : 0.1}
+              precision={intUnit ? 0 : 3}
+              placeholder="Кол-во"
+              style={{ width: '100%' }}
+              value={item.requestedQty}
+              onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+              parser={(v) => {
+                const s = (v || '').replace(',', '.');
+                return Number(s) as unknown as 0;
+              }}
+            />
+          </div>
+          <div>
+            <Typography.Text type="secondary" className="deal-create-field-label">Цена</Typography.Text>
+            <InputNumber
+              min={0}
+              placeholder="Цена"
+              style={{ width: '100%' }}
+              formatter={moneyFormatter}
+              parser={(v) => moneyParser(v) as unknown as number}
+              value={item.price}
+              onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+            />
+          </div>
+        </div>
+
+        <div className="deal-create-item-card__summary">
+          <Typography.Text type="secondary">Сумма</Typography.Text>
+          <Typography.Text strong>{lineTotal > 0 ? formatUZS(lineTotal) : '—'}</Typography.Text>
+        </div>
+
+        <div>
+          <Typography.Text type="secondary" className="deal-create-field-label">Комментарий</Typography.Text>
+          <Input
+            placeholder="Комментарий к позиции"
+            value={item.requestComment}
+            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+          />
+        </div>
+      </Card>
+    );
+  };
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space align="center">
+    <div className={isMobile ? 'deal-create-page deal-create-page--mobile' : 'deal-create-page'}>
+      <div className={isMobile ? 'deal-create-header deal-create-header--mobile' : 'deal-create-header'}>
+        <Space align="center" className="deal-create-header__title">
           <BackButton fallback="/deals" />
           <Typography.Title level={4} style={{ margin: 0 }}>Новая сделка</Typography.Title>
         </Space>
-        <Space>
-          <Button onClick={() => navigate('/deals')}>Отмена</Button>
-          <Button type="primary" loading={createMut.isPending} onClick={handleSubmit}>Сохранить сделку</Button>
+        <Space className={isMobile ? 'deal-create-header__actions deal-create-header__actions--mobile' : 'deal-create-header__actions'}>
+          <Button onClick={() => navigate('/deals')} className={isMobile ? 'deal-create-action-btn' : undefined}>Отмена</Button>
+          <Button type="primary" loading={createMut.isPending} onClick={handleSubmit} className={isMobile ? 'deal-create-action-btn' : undefined}>Сохранить сделку</Button>
         </Space>
       </div>
 
@@ -366,18 +457,19 @@ export default function DealCreatePage() {
           message="Найден незавершённый черновик сделки"
           description={`Сохранён ${dayjs(draftBanner.savedAt).format('DD.MM.YYYY HH:mm')}`}
           action={
-            <Space>
-              <Button size="small" type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
-              <Button size="small" danger onClick={discardDraft}>Удалить</Button>
+            <Space className={isMobile ? 'deal-create-draft-actions' : undefined}>
+              <Button size={isMobile ? 'middle' : 'small'} type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
+              <Button size={isMobile ? 'middle' : 'small'} danger onClick={discardDraft}>Удалить</Button>
             </Space>
           }
           style={{ marginBottom: 16 }}
+          className={isMobile ? 'deal-create-draft-alert' : undefined}
         />
       )}
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Card title="Основное" bordered={false}>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+        <Card title="Основное" bordered={false} className={isMobile ? 'deal-create-section-card' : undefined}>
+          <div className={isMobile ? 'deal-create-grid deal-create-grid--single' : 'deal-create-grid'}>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
               <Select
@@ -420,23 +512,23 @@ export default function DealCreatePage() {
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
               <DealStatusTag status={previewStatus} />
             </div>
-            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }}>
+            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }} className={isMobile ? 'deal-create-checkbox-row' : undefined}>
               <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>
                 Сессионная сделка (выручка в отчётах по дню позиции, до закрытия сделки)
               </Checkbox>
             </div>
           </div>
-          <div style={{ marginTop: 16 }}>
+          <div className="deal-create-delivery-block">
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
               Как доставим? *
             </Typography.Text>
-            <Radio.Group value={deliveryType} onChange={(e) => setDeliveryType(e.target.value)}>
+            <Radio.Group value={deliveryType} onChange={(e) => setDeliveryType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
               <Radio.Button value="SELF_PICKUP">Самовывоз</Radio.Button>
               <Radio.Button value="YANDEX">Яндекс</Radio.Button>
               <Radio.Button value="DELIVERY">Доставка</Radio.Button>
             </Radio.Group>
             {deliveryType !== 'DELIVERY' && (
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div className={isMobile ? 'deal-create-grid deal-create-grid--single deal-create-grid--compact' : 'deal-create-grid deal-create-grid--triple'}>
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Номер машины</Typography.Text>
                   <Input placeholder="01 A 123 AA" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} />
@@ -454,7 +546,7 @@ export default function DealCreatePage() {
           </div>
 
           {isDilnoza && (
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16 }} className="deal-create-payment-block">
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                 Способ оплаты
               </Typography.Text>
@@ -514,7 +606,7 @@ export default function DealCreatePage() {
                     <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
                       Тип документа
                     </Typography.Text>
-                    <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)}>
+                    <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
                       <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
                       <Radio.Button value="ANNUAL">Годовой</Radio.Button>
                     </Radio.Group>
@@ -529,6 +621,7 @@ export default function DealCreatePage() {
                   value={dilnozaCreateRoute}
                   onChange={(e) => setDilnozaCreateRoute(e.target.value)}
                   style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+                  className={isMobile ? 'deal-create-route-group' : undefined}
                 >
                   <Radio value="AUTO">Авто (как раньше: все позиции с кол-вом и ценой → в работу, иначе → подтверждение склада)</Radio>
                   <Radio value="STOCK_CONFIRMATION">Сразу на подтверждение склада</Radio>
@@ -543,7 +636,7 @@ export default function DealCreatePage() {
         <Card
           title={`Товары (${draftItems.filter((i) => i.productId).length})`}
           extra={
-            <Space>
+            <Space className={isMobile ? 'deal-create-items-extra' : undefined}>
               {canToggleVat && (
                 <Button
                   size="small"
@@ -558,147 +651,171 @@ export default function DealCreatePage() {
             </Space>
           }
           bordered={false}
+          className={isMobile ? 'deal-create-section-card deal-create-items-card' : undefined}
         >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
-                {showVat && <>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 70 }}>НДС %</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Сумма НДС</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>С НДС</th>
-                </>}
-                <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Коммент</th>
-                <th style={{ width: 40 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {draftItems.map((item) => {
-                const p = item.productId ? productMap.get(item.productId) : null;
-                const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
-                const intUnit = isIntegerUnit(p?.unit);
-                return (
-                  <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                    <td style={{ padding: '6px 8px' }}>
-                      <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
-                        value={item.productId}
-                        onChange={(v) => handleProductChange(item.key, v)}
-                        options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
-                          label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
-                          value: pr.id,
-                          disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
-                        }))}
-                      />
-                      {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <InputNumber
-                        min={intUnit ? 1 : 0.001}
-                        step={intUnit ? 1 : 0.1}
-                        precision={intUnit ? 0 : 3}
-                        placeholder="Кол-во"
-                        style={{ width: '100%' }}
-                        value={item.requestedQty}
-                        onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-                        parser={(v) => {
-                          const s = (v || '').replace(',', '.');
-                          return Number(s) as unknown as 0;
-                        }}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
-                        formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
-                        value={item.price}
-                        onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <Typography.Text style={{ whiteSpace: 'nowrap' }}>
-                        {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
-                      </Typography.Text>
-                    </td>
+          {isMobile ? (
+            <div className="deal-create-items-mobile">
+              <div className="deal-create-items-mobile__list">
+                {draftItems.map((item) => renderItemMobileCard(item))}
+              </div>
+              {totalAmount > 0 && (
+                <div className="deal-create-items-total">
+                  <Typography.Text type="secondary">
+                    {showVat ? 'Итого с НДС' : 'Итого'}
+                  </Typography.Text>
+                  <Typography.Text strong>
+                    {formatUZS(showVat ? Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100 : totalAmount)}
+                  </Typography.Text>
+                </div>
+              )}
+              <Button type="dashed" block icon={<PlusOutlined />} className="deal-create-add-btn" onClick={addItemRow}>
+                Добавить позицию
+              </Button>
+            </div>
+          ) : (
+            <>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
                     {showVat && <>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                        <Typography.Text type="secondary">12%</Typography.Text>
-                      </td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <Typography.Text style={{ whiteSpace: 'nowrap' }}>
-                          {lineTotal > 0 ? formatUZS(Math.round(lineTotal * VAT_RATE * 100) / 100) : '—'}
-                        </Typography.Text>
-                      </td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
-                          {lineTotal > 0 ? formatUZS(Math.round(lineTotal * (1 + VAT_RATE) * 100) / 100) : '—'}
-                        </Typography.Text>
-                      </td>
+                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 70 }}>НДС %</th>
+                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Сумма НДС</th>
+                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>С НДС</th>
                     </>}
-                    <td style={{ padding: '6px 8px' }}>
-                      <Input placeholder="Коммент" value={item.requestComment}
-                        onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
-                    </td>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Коммент</th>
+                    <th style={{ width: 40 }} />
                   </tr>
-                );
-              })}
-            </tbody>
-            {totalAmount > 0 && (
-              <tfoot>
-                {showVat ? (
-                  <>
-                    <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
-                      <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
-                        <Typography.Text>Без НДС:</Typography.Text>
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <Typography.Text>{formatUZS(totalAmount)}</Typography.Text>
-                      </td>
-                      <td></td>
-                      <td style={{ padding: '8px', textAlign: 'right' }}>
-                        <Typography.Text>НДС 12%:</Typography.Text>
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <Typography.Text>{formatUZS(Math.round(totalAmount * VAT_RATE * 100) / 100)}</Typography.Text>
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                    <tr>
-                      <td colSpan={6} style={{ padding: '8px', textAlign: 'right' }}>
-                        <Typography.Text strong>Итого с НДС:</Typography.Text>
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <Typography.Text strong>{formatUZS(Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100)}</Typography.Text>
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </>
-                ) : (
-                  <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
-                    <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
-                      <Typography.Text strong>Итого:</Typography.Text>
-                    </td>
-                    <td style={{ padding: '8px' }}>
-                      <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
+                </thead>
+                <tbody>
+                  {draftItems.map((item) => {
+                    const p = item.productId ? productMap.get(item.productId) : null;
+                    const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
+                    const intUnit = isIntegerUnit(p?.unit);
+                    return (
+                      <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
+                            value={item.productId}
+                            onChange={(v) => handleProductChange(item.key, v)}
+                            options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
+                              label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
+                              value: pr.id,
+                              disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
+                            }))}
+                          />
+                          {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <InputNumber
+                            min={intUnit ? 1 : 0.001}
+                            step={intUnit ? 1 : 0.1}
+                            precision={intUnit ? 0 : 3}
+                            placeholder="Кол-во"
+                            style={{ width: '100%' }}
+                            value={item.requestedQty}
+                            onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                            parser={(v) => {
+                              const s = (v || '').replace(',', '.');
+                              return Number(s) as unknown as 0;
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
+                            formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
+                            value={item.price}
+                            onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Typography.Text style={{ whiteSpace: 'nowrap' }}>
+                            {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
+                          </Typography.Text>
+                        </td>
+                        {showVat && <>
+                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            <Typography.Text type="secondary">12%</Typography.Text>
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <Typography.Text style={{ whiteSpace: 'nowrap' }}>
+                              {lineTotal > 0 ? formatUZS(Math.round(lineTotal * VAT_RATE * 100) / 100) : '—'}
+                            </Typography.Text>
+                          </td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
+                              {lineTotal > 0 ? formatUZS(Math.round(lineTotal * (1 + VAT_RATE) * 100) / 100) : '—'}
+                            </Typography.Text>
+                          </td>
+                        </>}
+                        <td style={{ padding: '6px 8px' }}>
+                          <Input placeholder="Коммент" value={item.requestComment}
+                            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {totalAmount > 0 && (
+                  <tfoot>
+                    {showVat ? (
+                      <>
+                        <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
+                          <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
+                            <Typography.Text>Без НДС:</Typography.Text>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <Typography.Text>{formatUZS(totalAmount)}</Typography.Text>
+                          </td>
+                          <td></td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
+                            <Typography.Text>НДС 12%:</Typography.Text>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <Typography.Text>{formatUZS(Math.round(totalAmount * VAT_RATE * 100) / 100)}</Typography.Text>
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                        <tr>
+                          <td colSpan={6} style={{ padding: '8px', textAlign: 'right' }}>
+                            <Typography.Text strong>Итого с НДС:</Typography.Text>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <Typography.Text strong>{formatUZS(Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100)}</Typography.Text>
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      </>
+                    ) : (
+                      <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
+                        <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
+                          <Typography.Text strong>Итого:</Typography.Text>
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
+                        </td>
+                        <td colSpan={2} />
+                      </tr>
+                    )}
+                  </tfoot>
                 )}
-              </tfoot>
-            )}
-          </table>
+              </table>
 
-          <Button type="dashed" block icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={addItemRow}>
-            Добавить позицию
-          </Button>
+              <Button type="dashed" block icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={addItemRow}>
+                Добавить позицию
+              </Button>
+            </>
+          )}
         </Card>
 
-        <Card title="Комментарий" bordered={false}>
+        <Card title="Комментарий" bordered={false} className={isMobile ? 'deal-create-section-card' : undefined}>
           <Input.TextArea
             rows={3}
             placeholder="Комментарий к сделке (необязательно)..."
