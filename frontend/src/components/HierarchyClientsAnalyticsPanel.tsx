@@ -191,6 +191,16 @@ export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyCl
         soldQty: number;
         salesRevenue: number;
         productMetrics: Map<string, { name: string; soldQty: number; salesRevenue: number }>;
+        purchaseLines: Array<{
+          key: string;
+          dealId: string;
+          dealTitle: string;
+          saleAt: string;
+          productId: string;
+          productName: string;
+          soldQty: number;
+          salesRevenue: number;
+        }>;
       }
     >();
 
@@ -204,19 +214,31 @@ export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyCl
         soldQty: 0,
         salesRevenue: 0,
         productMetrics: new Map<string, { name: string; soldQty: number; salesRevenue: number }>(),
+        purchaseLines: [],
       };
       existing.deals.add(row.dealId);
       existing.soldQty += row.soldQty;
       existing.salesRevenue += row.salesRevenue;
       const product = productsById.get(row.productId);
+      const productName = product?.name || row.productId;
       const metric = existing.productMetrics.get(row.productId) ?? {
-        name: product?.name || row.productId,
+        name: productName,
         soldQty: 0,
         salesRevenue: 0,
       };
       metric.soldQty += row.soldQty;
       metric.salesRevenue += row.salesRevenue;
       existing.productMetrics.set(row.productId, metric);
+      existing.purchaseLines.push({
+        key: `${row.dealId}-${row.productId}-${row.saleAt}-${existing.purchaseLines.length}`,
+        dealId: row.dealId,
+        dealTitle: row.dealTitle,
+        saleAt: row.saleAt,
+        productId: row.productId,
+        productName,
+        soldQty: row.soldQty,
+        salesRevenue: row.salesRevenue,
+      });
       map.set(row.clientId, existing);
     }
 
@@ -224,6 +246,9 @@ export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyCl
       .map((entry) => ({
         ...entry,
         dealsCount: entry.deals.size,
+        purchaseLines: [...entry.purchaseLines].sort(
+          (a, b) => new Date(b.saleAt).getTime() - new Date(a.saleAt).getTime(),
+        ),
         purchasedInfo: [...entry.productMetrics.values()]
           .sort((a, b) => b.salesRevenue - a.salesRevenue)
           .slice(0, 3)
@@ -398,6 +423,62 @@ export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyCl
               pagination={false}
               dataSource={clientPurchaseSummaryRows}
               locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+              expandable={{
+                expandedRowRender: (record) => (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey="key"
+                    dataSource={record.purchaseLines}
+                    columns={[
+                      {
+                        title: 'Товар',
+                        dataIndex: 'productName',
+                        key: 'productName',
+                        ellipsis: true,
+                      },
+                      {
+                        title: 'Сделка',
+                        dataIndex: 'dealTitle',
+                        key: 'dealTitle',
+                        render: (title: string, line: { dealId: string }) => (
+                          <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
+                            {title}
+                          </Button>
+                        ),
+                      },
+                      {
+                        title: 'Дата',
+                        dataIndex: 'saleAt',
+                        key: 'saleAt',
+                        width: 110,
+                        render: (iso: string) =>
+                          new Date(iso).toLocaleDateString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                          }),
+                      },
+                      {
+                        title: 'Шт.',
+                        dataIndex: 'soldQty',
+                        key: 'soldQty',
+                        width: 72,
+                        align: 'right',
+                        render: (v: number) => v.toLocaleString('ru-RU'),
+                      },
+                      {
+                        title: 'Выручка',
+                        dataIndex: 'salesRevenue',
+                        key: 'salesRevenue',
+                        width: 120,
+                        align: 'right',
+                        render: (v: number) => formatUZS(v),
+                      },
+                    ]}
+                  />
+                ),
+              }}
               columns={[
                 {
                   title: 'Клиент',

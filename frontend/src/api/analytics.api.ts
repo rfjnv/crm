@@ -18,6 +18,22 @@ import type {
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
+/** Строка для «Клиенты по иерархии» — согласовано с аналитикой товара (CLOSED, отсечка по createdAt сделки). */
+export type HierarchyClosedItemRow = {
+  productId: string;
+  dealId: string;
+  dealTitle: string | null;
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  soldQty: number;
+  unitPrice: number;
+  salesRevenue: number;
+  dealCreatedAt: string;
+  /** Дата закрытия сделки или, если нет, дата создания */
+  saleAt: string;
+};
+
 export type CallActivityRange = 'today' | 'week' | 'month';
 
 export type CallActivitySummaryRow = {
@@ -46,6 +62,13 @@ export type CallActivityResponse = {
 export const analyticsApi = {
   getData: (period: AnalyticsPeriod = 'month') =>
     client.get<AnalyticsData>('/analytics', { params: { period } }).then((r) => r.data),
+
+  getHierarchyClosedItems: (fromIso: string) =>
+    client
+      .get<{ rows: HierarchyClosedItemRow[] }>('/analytics/hierarchy-closed-items', {
+        params: { from: fromIso },
+      })
+      .then((r) => r.data),
 
   getCallActivity: (params: {
     range?: CallActivityRange;

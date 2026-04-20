@@ -1,4 +1,4 @@
-import { dealsApi } from '../api/deals.api';
+import { analyticsApi } from '../api/analytics.api';
 import type { AnalyticsPeriod } from '../api/analytics.api';
 import type { Product } from '../types';
 
@@ -19,6 +19,8 @@ export type ProductPurchaseRow = {
   clientIsSvip: boolean;
   soldQty: number;
   salesRevenue: number;
+  /** Дата продажи (закрытие сделки или создание) */
+  saleAt: string;
 };
 
 export type HierarchyPeriodPreset = AnalyticsPeriod | 'custom';
@@ -61,14 +63,15 @@ export function getPeriodStartDate(period: AnalyticsPeriod): Date {
     return start;
   }
   if (period === 'month') {
-    start.setMonth(now.getMonth() - 1);
+    start.setDate(now.getDate() - 30);
     return start;
   }
   if (period === 'quarter') {
-    start.setMonth(now.getMonth() - 3);
+    start.setDate(now.getDate() - 90);
     return start;
   }
-  start.setFullYear(now.getFullYear() - 1);
+  /** Как на странице товара: «Год» = последние 365 дней */
+  start.setDate(now.getDate() - 365);
   return start;
 }
 
@@ -83,67 +86,44 @@ export function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: 
 }
 
 export async function loadSalesContext(periodStart: Date) {
-  const allDeals = await dealsApi.list(undefined, true);
-  const closedDeals = allDeals.filter((deal) => {
-    if (deal.status !== 'CLOSED') return false;
-    const createdAt = new Date(deal.createdAt);
-    return createdAt >= periodStart;
-  });
-
-  const dealItemsEntries = await Promise.all(
-    closedDeals.map(async (deal) => {
-      try {
-        const items = await dealsApi.getItems(deal.id);
-        return { dealId: deal.id, createdAt: deal.createdAt, items };
-      } catch {
-        return { dealId: deal.id, createdAt: deal.createdAt, items: [] };
-      }
-    }),
-  );
+  const { rows } = await analyticsApi.getHierarchyClosedItems(periodStart.toISOString());
 
   const aggregateMap: Record<string, ProductSalesAggregate> = {};
   const purchaseRows: ProductPurchaseRow[] = [];
-  const dealsById = new Map(closedDeals.map((deal) => [deal.id, deal]));
 
-  for (const entry of dealItemsEntries) {
-    for (const item of entry.items) {
-      if (!item.productId) continue;
-      const qty = Number(item.requestedQty || 0);
-      const price = Number(item.price || 0);
-      if (qty <= 0 || price <= 0) continue;
+  for (const row of rows) {
+    const qty = row.soldQty;
+    if (qty <= 0) continue;
 
-      if (!aggregateMap[item.productId]) {
-        aggregateMap[item.productId] = {
-          productId: item.productId,
-          soldQty: 0,
-          salesRevenue: 0,
-          dealIds: new Set<string>(),
-          lastSaleAt: null,
-        };
-      }
-
-      const current = aggregateMap[item.productId];
-      current.soldQty += qty;
-      current.salesRevenue += qty * price;
-      current.dealIds.add(entry.dealId);
-      if (!current.lastSaleAt || new Date(entry.createdAt) > new Date(current.lastSaleAt)) {
-        current.lastSaleAt = entry.createdAt;
-      }
-
-      const deal = dealsById.get(entry.dealId);
-      if (deal?.clientId) {
-        purchaseRows.push({
-          productId: item.productId,
-          dealId: entry.dealId,
-          dealTitle: deal.title || `Сделка ${entry.dealId.slice(0, 6)}`,
-          clientId: deal.clientId,
-          clientName: deal.client?.companyName || 'Клиент',
-          clientIsSvip: Boolean(deal.client?.isSvip),
-          soldQty: qty,
-          salesRevenue: qty * price,
-        });
-      }
+    if (!aggregateMap[row.productId]) {
+      aggregateMap[row.productId] = {
+        productId: row.productId,
+        soldQty: 0,
+        salesRevenue: 0,
+        dealIds: new Set<string>(),
+        lastSaleAt: null,
+      };
     }
+
+    const current = aggregateMap[row.productId];
+    current.soldQty += qty;
+    current.salesRevenue += row.salesRevenue;
+    current.dealIds.add(row.dealId);
+    if (!current.lastSaleAt || new Date(row.saleAt) > new Date(current.lastSaleAt)) {
+      current.lastSaleAt = row.saleAt;
+    }
+
+    purchaseRows.push({
+      productId: row.productId,
+      dealId: row.dealId,
+      dealTitle: row.dealTitle?.trim() || `Сделка ${row.dealId.slice(0, 6)}`,
+      clientId: row.clientId,
+      clientName: row.clientName || 'Клиент',
+      clientIsSvip: row.clientIsSvip,
+      soldQty: qty,
+      salesRevenue: row.salesRevenue,
+      saleAt: row.saleAt,
+    });
   }
 
   return { aggregateMap, purchaseRows };

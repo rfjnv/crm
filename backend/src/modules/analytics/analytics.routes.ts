@@ -254,6 +254,70 @@ router.get(
   }),
 );
 
+/**
+ * Позиции закрытых сделок за период — те же правила, что и `getProductAnalytics` (фильтр по `deals.created_at`, без ownerScope),
+ * чтобы блок «Клиенты по иерархии» совпадал с аналитикой товара.
+ */
+router.get(
+  '/hierarchy-closed-items',
+  asyncHandler(async (req: Request, res: Response) => {
+    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    if (!fromRaw) {
+      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
+    }
+    const from = new Date(fromRaw);
+    if (Number.isNaN(from.getTime())) {
+      throw new AppError(400, 'Некорректный параметр from');
+    }
+
+    const items = await prisma.dealItem.findMany({
+      where: {
+        deal: {
+          status: 'CLOSED',
+          createdAt: { gte: from },
+        },
+      },
+      select: {
+        productId: true,
+        requestedQty: true,
+        price: true,
+        deal: {
+          select: {
+            id: true,
+            title: true,
+            createdAt: true,
+            closedAt: true,
+            client: { select: { id: true, companyName: true, isSvip: true } },
+          },
+        },
+      },
+    });
+
+    const rows = items
+      .map((r) => {
+        const qty = Number(r.requestedQty ?? 0);
+        const unit = Number(r.price ?? 0);
+        const saleAt = r.deal.closedAt ?? r.deal.createdAt;
+        return {
+          productId: r.productId,
+          dealId: r.deal.id,
+          dealTitle: r.deal.title,
+          clientId: r.deal.client.id,
+          clientName: r.deal.client.companyName,
+          clientIsSvip: !!r.deal.client.isSvip,
+          soldQty: qty,
+          unitPrice: unit,
+          salesRevenue: qty * unit,
+          dealCreatedAt: r.deal.createdAt.toISOString(),
+          saleAt: saleAt.toISOString(),
+        };
+      })
+      .filter((r) => r.soldQty > 0);
+
+    res.json({ rows });
+  }),
+);
+
 function getPeriodRange(period: string): { start: Date; end: Date } {
   // Compute "now" in Tashkent timezone
   const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
