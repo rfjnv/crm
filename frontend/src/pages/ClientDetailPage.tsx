@@ -6,6 +6,7 @@ import {
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
   message, theme, Collapse, Dropdown, Select, InputNumber,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
@@ -23,7 +24,15 @@ import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
-import type { DealStatus, DealShort, PaymentStatus, PaymentRecord, Product } from '../types';
+import type {
+  DealStatus,
+  DealShort,
+  PaymentStatus,
+  PaymentRecord,
+  Product,
+  ClientStockPosition,
+  ClientStockEvent,
+} from '../types';
 import type { CreateClientData } from '../api/clients.api';
 import {
   CLIENT_PORTRAIT_TEMPLATES,
@@ -59,6 +68,9 @@ function buildYandexMapUrlByAddress(address: string): string {
   const encoded = encodeURIComponent(address);
   return `https://yandex.ru/map-widget/v1/?text=${encoded}&z=15`;
 }
+
+type StockPositionTableRow = ClientStockPosition & { key: string };
+type StockEventTableRow = ClientStockEvent & { key: string };
 
 function buildYandexMapsOpenUrlByAddress(address: string): string {
   const encoded = encodeURIComponent(address);
@@ -361,20 +373,20 @@ export default function ClientDetailPage() {
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
   ];
 
-  const stockColumns = [
-    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: { product?: { name?: string; sku?: string } | null }) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
-    { title: 'Остаток', dataIndex: 'qtyTotal', align: 'right' as const, render: (v: number, r: { product?: { unit?: string } | null }) => `${v} ${r.product?.unit ?? ''}`.trim() },
+  const stockColumns: ColumnsType<StockPositionTableRow> = [
+    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: StockPositionTableRow) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
+    { title: 'Остаток', dataIndex: 'qtyTotal', align: 'right' as const, render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim() },
     { title: 'Цена по умолчанию', dataIndex: ['product', 'salePrice'], align: 'right' as const, render: (v: number | null | undefined) => v != null ? formatUZS(v) : '—' },
   ];
 
-  const stockEventColumns = [
+  const stockEventColumns: ColumnsType<StockEventTableRow> = [
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
     { title: 'Тип', dataIndex: 'type', render: (v: string) => v === 'ADD' ? <Tag color="green">Добавление</Tag> : v === 'RESERVE_TO_DEAL' ? <Tag color="blue">Отправка в работу</Tag> : <Tag>Коррекция</Tag> },
-    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: { product?: { name?: string; sku?: string } }) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
-    { title: 'Изменение', dataIndex: 'qtyDelta', align: 'right' as const, render: (v: number, r: { product?: { unit?: string } }) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim() },
-    { title: 'Было → Стало', key: 'beforeAfter', render: (_: unknown, r: { qtyBefore: number; qtyAfter: number; product?: { unit?: string } }) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim() },
+    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: StockEventTableRow) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
+    { title: 'Изменение', dataIndex: 'qtyDelta', align: 'right' as const, render: (v: number, r: StockEventTableRow) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim() },
+    { title: 'Было → Стало', key: 'beforeAfter', render: (_: unknown, r: StockEventTableRow) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim() },
     { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => v || '—' },
-    { title: 'Сделка', dataIndex: ['sourceDeal', 'id'], render: (_: unknown, r: { sourceDeal?: { id: string; title: string } | null }) => r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—' },
+    { title: 'Сделка', dataIndex: ['sourceDeal', 'id'], render: (_: unknown, r: StockEventTableRow) => r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—' },
     { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
   ];
 
@@ -707,14 +719,14 @@ export default function ClientDetailPage() {
                     </Space>
                   )}
                 >
-                  <Table
+                  <Table<StockPositionTableRow>
                     dataSource={(stockData?.positions ?? []).map((p) => ({ ...p, key: p.id }))}
                     columns={[
                       ...stockColumns,
                       {
                         title: 'Действие',
                         key: 'action',
-                        render: (_: unknown, r: { productId: string }) => (
+                        render: (_: unknown, r: StockPositionTableRow) => (
                           <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
                             Отправить в работу
                           </Button>
@@ -728,7 +740,7 @@ export default function ClientDetailPage() {
                 </Card>
 
                 <Card title="История изменений" bordered={false} loading={stockLoading}>
-                  <Table
+                  <Table<StockEventTableRow>
                     dataSource={(stockData?.events ?? []).map((e) => ({ ...e, key: e.id }))}
                     columns={stockEventColumns}
                     pagination={{ pageSize: 10 }}
