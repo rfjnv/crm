@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination } from 'antd';
-import { CalendarOutlined } from '@ant-design/icons';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs } from 'antd';
+import { CalendarOutlined, ApartmentOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
+import { productsApi } from '../api/products.api';
+import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
-import type { HistoryClientActivity } from '../types';
+import type { HistoryClientActivity, Product } from '../types';
 
 const { Title } = Typography;
 
@@ -107,6 +109,16 @@ export default function ClientActivityMatrixPage() {
     queryKey: ['manager-client-activity', year],
     queryFn: () => analyticsApi.getHistory(year),
   });
+
+  const { data: allProducts = [] } = useQuery({
+    queryKey: ['products', 'hierarchy-clients'],
+    queryFn: () => productsApi.list(),
+  });
+
+  const visibleProducts = useMemo(
+    () => (allProducts as Product[]).filter((p) => p.isActive),
+    [allProducts],
+  );
 
   const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
     queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
@@ -302,14 +314,24 @@ export default function ClientActivityMatrixPage() {
     },
   ];
 
-  if (isLoading) {
-    return <div style={{ textAlign: 'center', marginTop: 120 }}><Spin size="large" /></div>;
-  }
-
   return (
     <div>
       <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
-      <Card
+
+      <Tabs
+        defaultActiveKey="matrix"
+        items={[
+          {
+            key: 'matrix',
+            label: (
+              <span>
+                <CalendarOutlined /> Матрица по месяцам
+              </span>
+            ),
+            children: isLoading ? (
+              <div style={{ textAlign: 'center', padding: 48 }}><Spin size="large" /></div>
+            ) : (
+              <Card
         size="small"
         extra={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -423,6 +445,19 @@ export default function ClientActivityMatrixPage() {
           />
         )}
       </Card>
+            ),
+          },
+          {
+            key: 'hierarchy-clients',
+            label: (
+              <span>
+                <ApartmentOutlined /> Клиенты по иерархии
+              </span>
+            ),
+            children: <HierarchyClientsAnalyticsPanel products={visibleProducts} />,
+          },
+        ]}
+      />
 
       <Drawer
         title={cellDrawer ? `${cellDrawer.clientName} - ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
