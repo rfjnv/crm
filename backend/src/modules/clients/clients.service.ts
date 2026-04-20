@@ -1,9 +1,15 @@
-import { DealStatus, Client, ClientCreditStatus, Prisma } from '@prisma/client';
+import { DealStatus, Client, ClientCreditStatus, Prisma, DeliveryType } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
-import { CreateClientDto, UpdateClientDto } from './clients.dto';
+import {
+  CreateClientDto,
+  UpdateClientDto,
+  AddClientStockDto,
+  SendClientStockAllDto,
+  SendClientStockPartialDto,
+} from './clients.dto';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
@@ -60,6 +66,16 @@ type LatestDealManagerRow = {
   clientId: string;
   managerId: string;
   managerName: string;
+};
+
+type ClientStockRevenueRow = {
+  day: Date;
+  amount: string;
+};
+
+type ClientStockTopProductRow = {
+  product_id: string;
+  total_qty: string;
 };
 
 export class ClientsService {
@@ -406,6 +422,277 @@ export class ClientsService {
     return updated;
   }
 
+  private async getAccessibleClient(id: string, user: AuthUser) {
+    const client = await prisma.client.findFirst({
+      where: { id, ...clientOwnerScope(user), isArchived: false },
+      select: { id: true, managerId: true, companyName: true },
+    });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+    return client;
+  }
+
+  async getStock(id: string, user: AuthUser, query?: { historyLimit?: number }) {
+    await this.getAccessibleClient(id, user);
+    const historyLimit = Math.max(1, Math.min(200, Number(query?.historyLimit ?? 50)));
+
+    const [positions, events] = await Promise.all([
+      prisma.clientStockPosition.findMany({
+        where: { clientId: id, qtyTotal: { gt: 0 } },
+        include: {
+          product: { select: { id: true, name: true, sku: true, unit: true, salePrice: true } },
+        },
+        orderBy: [{ product: { name: 'asc' } }],
+      }),
+      prisma.clientStockEvent.findMany({
+        where: { clientId: id },
+        include: {
+          product: { select: { id: true, name: true, sku: true, unit: true } },
+          author: { select: { id: true, fullName: true } },
+          sourceDeal: { select: { id: true, title: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: historyLimit,
+      }),
+    ]);
+
+    return {
+      positions: positions.map((p) => ({
+        id: p.id,
+        productId: p.productId,
+        qtyTotal: Number(p.qtyTotal),
+        product: p.product
+          ? {
+              id: p.product.id,
+              name: p.product.name,
+              sku: p.product.sku,
+              unit: p.product.unit,
+              salePrice: p.product.salePrice != null ? Number(p.product.salePrice) : null,
+            }
+          : null,
+      })),
+      events: events.map((e) => ({
+        id: e.id,
+        type: e.type,
+        productId: e.productId,
+        qtyDelta: Number(e.qtyDelta),
+        qtyBefore: Number(e.qtyBefore),
+        qtyAfter: Number(e.qtyAfter),
+        unitPrice: e.unitPrice != null ? Number(e.unitPrice) : null,
+        lineTotal: e.lineTotal != null ? Number(e.lineTotal) : null,
+        comment: e.comment,
+        createdAt: e.createdAt,
+        product: e.product,
+        author: e.author,
+        sourceDeal: e.sourceDeal,
+      })),
+      totals: {
+        distinctProducts: positions.length,
+        totalQty: positions.reduce((sum, p) => sum + Number(p.qtyTotal), 0),
+      },
+    };
+  }
+
+  async addStock(id: string, dto: AddClientStockDto, user: AuthUser) {
+    await this.getAccessibleClient(id, user);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const touchedProductIds = new Set<string>();
+      const eventIds: string[] = [];
+
+      for (const item of dto.items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { id: true, name: true, isActive: true, salePrice: true },
+        });
+        if (!product || !product.isActive) {
+          throw new AppError(404, 'Товар не найден или неактивен');
+        }
+        const qty = Number(item.qty);
+        const before = await tx.clientStockPosition.findUnique({
+          where: { clientId_productId: { clientId: id, productId: item.productId } },
+          select: { id: true, qtyTotal: true },
+        });
+        const qtyBefore = Number(before?.qtyTotal ?? 0);
+        const qtyAfter = qtyBefore + qty;
+        const unitPrice = item.price ?? (product.salePrice != null ? Number(product.salePrice) : undefined);
+        const lineTotal = unitPrice != null ? qty * unitPrice : undefined;
+
+        await tx.clientStockPosition.upsert({
+          where: { clientId_productId: { clientId: id, productId: item.productId } },
+          create: { clientId: id, productId: item.productId, qtyTotal: qtyAfter },
+          update: { qtyTotal: qtyAfter },
+        });
+        const ev = await tx.clientStockEvent.create({
+          data: {
+            clientId: id,
+            productId: item.productId,
+            type: 'ADD',
+            qtyDelta: qty,
+            qtyBefore,
+            qtyAfter,
+            authorId: user.userId,
+            comment: item.comment?.trim() || null,
+            unitPrice: unitPrice ?? null,
+            lineTotal: lineTotal ?? null,
+          },
+          select: { id: true },
+        });
+        eventIds.push(ev.id);
+        touchedProductIds.add(item.productId);
+      }
+
+      return { touchedProductIds: [...touchedProductIds], eventIds };
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: id,
+      after: { stockEventIds: result.eventIds, itemsCount: dto.items.length },
+    });
+
+    return this.getStock(id, user, { historyLimit: 50 });
+  }
+
+  private buildDealTitle(title?: string): string {
+    return title?.trim() || `Отгрузка со склада клиента от ${new Date().toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' })}`;
+  }
+
+  async sendStockPartial(id: string, dto: SendClientStockPartialDto, user: AuthUser) {
+    const client = await this.getAccessibleClient(id, user);
+
+    const created = await prisma.$transaction(async (tx) => {
+      let totalAmount = 0;
+      const prepared: Array<{ productId: string; qty: number; price: number; requestComment?: string }> = [];
+
+      for (const item of dto.items) {
+        const pos = await tx.clientStockPosition.findUnique({
+          where: { clientId_productId: { clientId: id, productId: item.productId } },
+          include: { product: { select: { id: true, salePrice: true, isActive: true } } },
+        });
+        if (!pos || Number(pos.qtyTotal) <= 0) {
+          throw new AppError(400, 'По одной из позиций остаток отсутствует');
+        }
+        if (!pos.product?.isActive) {
+          throw new AppError(400, 'По одной из позиций товар неактивен');
+        }
+        const qty = Number(item.qty);
+        const available = Number(pos.qtyTotal);
+        if (qty > available) {
+          throw new AppError(400, 'Нельзя отправить больше, чем доступный остаток');
+        }
+        const price = item.price ?? (pos.product.salePrice != null ? Number(pos.product.salePrice) : 0);
+        if (price <= 0) {
+          throw new AppError(400, 'Укажите цену для отправляемых позиций');
+        }
+        prepared.push({ productId: item.productId, qty, price, requestComment: item.requestComment });
+        totalAmount += qty * price;
+      }
+
+      const deal = await tx.deal.create({
+        data: {
+          title: this.buildDealTitle(dto.title),
+          status: 'IN_PROGRESS',
+          amount: totalAmount,
+          discount: 0,
+          clientId: id,
+          managerId: user.userId,
+          paymentType: 'FULL',
+          paidAmount: 0,
+          paymentStatus: 'UNPAID',
+          isSessionDeal: false,
+          deliveryType: (dto.deliveryType as DeliveryType | undefined) ?? 'SELF_PICKUP',
+          vehicleNumber: dto.vehicleNumber?.trim() || null,
+          vehicleType: dto.vehicleType?.trim() || null,
+          deliveryComment: dto.deliveryComment?.trim() || null,
+        },
+        select: { id: true, title: true, status: true, amount: true, clientId: true, createdAt: true },
+      });
+
+      for (const item of prepared) {
+        const before = await tx.clientStockPosition.findUniqueOrThrow({
+          where: { clientId_productId: { clientId: id, productId: item.productId } },
+          select: { qtyTotal: true },
+        });
+        const qtyBefore = Number(before.qtyTotal);
+        const qtyAfter = Math.max(0, qtyBefore - item.qty);
+        await tx.clientStockPosition.update({
+          where: { clientId_productId: { clientId: id, productId: item.productId } },
+          data: { qtyTotal: qtyAfter },
+        });
+        await tx.dealItem.create({
+          data: {
+            dealId: deal.id,
+            productId: item.productId,
+            requestedQty: item.qty,
+            price: item.price,
+            lineTotal: item.qty * item.price,
+            requestComment: item.requestComment?.trim() || null,
+          },
+        });
+        await tx.clientStockEvent.create({
+          data: {
+            clientId: id,
+            productId: item.productId,
+            type: 'RESERVE_TO_DEAL',
+            qtyDelta: -item.qty,
+            qtyBefore,
+            qtyAfter,
+            authorId: user.userId,
+            sourceDealId: deal.id,
+            comment: item.requestComment?.trim() || 'Отправлено в работу',
+            unitPrice: item.price,
+            lineTotal: item.qty * item.price,
+          },
+        });
+      }
+
+      if (client.managerId !== user.userId) {
+        await tx.client.update({
+          where: { id },
+          data: { managerId: user.userId },
+        });
+      }
+
+      return deal;
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'CREATE',
+      entityType: 'deal',
+      entityId: created.id,
+      after: { title: created.title, status: created.status, amount: Number(created.amount), clientId: created.clientId },
+    });
+
+    return created;
+  }
+
+  async sendStockAll(id: string, dto: SendClientStockAllDto, user: AuthUser) {
+    await this.getAccessibleClient(id, user);
+    const positions = await prisma.clientStockPosition.findMany({
+      where: { clientId: id, qtyTotal: { gt: 0 } },
+      include: { product: { select: { salePrice: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (positions.length === 0) {
+      throw new AppError(400, 'Нет остатков для отправки');
+    }
+    const payload: SendClientStockPartialDto = {
+      ...dto,
+      items: positions.map((p) => ({
+        productId: p.productId,
+        qty: Number(p.qtyTotal),
+        price: p.product.salePrice != null ? Number(p.product.salePrice) : undefined,
+        requestComment: 'Отправлено целиком',
+      })),
+    };
+    return this.sendStockPartial(id, payload, user);
+  }
+
   async getHistory(id: string, user: AuthUser) {
     // Verify access
     const client = await prisma.client.findFirst({
@@ -473,7 +760,7 @@ export class ClientsService {
     const canceledDeals = allDeals.filter((d) => d.status === 'CANCELED').length;
     const currentDebt = nonCanceled.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount)), 0);
 
-    const [revAgg, revByDayRaw, topProductsRaw] = await Promise.all([
+    const [revAgg, revByDayRaw, topProductsRaw, stockRevAgg, stockRevByDayRaw, stockTopProductsRaw] = await Promise.all([
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
         SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
@@ -508,9 +795,39 @@ export class ClientsService {
         ORDER BY SUM(di.requested_qty) DESC
         LIMIT 5`,
       ),
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`
+        SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+        FROM client_stock_events cse
+        WHERE cse.client_id = ${id}
+          AND cse.type = 'ADD'
+          AND cse.created_at >= ${periodStart}`,
+      ),
+      prisma.$queryRaw<ClientStockRevenueRow[]>(
+        Prisma.sql`
+        SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+               COALESCE(SUM(cse.line_total), 0)::text as amount
+        FROM client_stock_events cse
+        WHERE cse.client_id = ${id}
+          AND cse.type = 'ADD'
+          AND cse.created_at >= ${periodStart}
+        GROUP BY day
+        ORDER BY day ASC`,
+      ),
+      prisma.$queryRaw<ClientStockTopProductRow[]>(
+        Prisma.sql`
+        SELECT cse.product_id, COALESCE(SUM(cse.qty_delta), 0)::text as total_qty
+        FROM client_stock_events cse
+        WHERE cse.client_id = ${id}
+          AND cse.type = 'ADD'
+          AND cse.created_at >= ${periodStart}
+        GROUP BY cse.product_id
+        ORDER BY SUM(cse.qty_delta) DESC
+        LIMIT 5`,
+      ),
     ]);
 
-    const totalSpent = revAgg[0] ? Number(revAgg[0].total) : 0;
+    const totalSpent = (revAgg[0] ? Number(revAgg[0].total) : 0) + (stockRevAgg[0] ? Number(stockRevAgg[0].total) : 0);
 
     // Last payment
     const lastPayment = await prisma.payment.findFirst({
@@ -519,12 +836,27 @@ export class ClientsService {
       select: { paidAt: true },
     });
 
-    const revenueByDayArr = revByDayRaw.map((r) => ({
-      date: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10),
-      amount: Number(r.amount),
-    }));
+    const revenueByDayMap = new Map<string, number>();
+    for (const r of revByDayRaw) {
+      const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
+      revenueByDayMap.set(day, (revenueByDayMap.get(day) ?? 0) + Number(r.amount));
+    }
+    for (const r of stockRevByDayRaw) {
+      const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
+      revenueByDayMap.set(day, (revenueByDayMap.get(day) ?? 0) + Number(r.amount));
+    }
+    const revenueByDayArr = [...revenueByDayMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, amount]) => ({ date, amount }));
 
-    const productIds = topProductsRaw.map((tp) => tp.product_id);
+    const topQtyByProduct = new Map<string, number>();
+    for (const tp of topProductsRaw) {
+      topQtyByProduct.set(tp.product_id, (topQtyByProduct.get(tp.product_id) ?? 0) + Number(tp.total_qty));
+    }
+    for (const tp of stockTopProductsRaw) {
+      topQtyByProduct.set(tp.product_id, (topQtyByProduct.get(tp.product_id) ?? 0) + Number(tp.total_qty));
+    }
+    const productIds = [...topQtyByProduct.keys()];
     const products = productIds.length > 0
       ? await prisma.product.findMany({
           where: { id: { in: productIds } },
@@ -533,11 +865,14 @@ export class ClientsService {
       : [];
     const productMap = new Map(products.map((p) => [p.id, p.name]));
 
-    const topProductsResult = topProductsRaw.map((tp) => ({
-      productId: tp.product_id,
-      productName: productMap.get(tp.product_id) || 'Неизвестный',
-      totalQuantity: Number(tp.total_qty),
-    }));
+    const topProductsResult = [...topQtyByProduct.entries()]
+      .map(([productId, totalQuantity]) => ({
+        productId,
+        productName: productMap.get(productId) || 'Неизвестный',
+        totalQuantity,
+      }))
+      .sort((a, b) => b.totalQuantity - a.totalQuantity)
+      .slice(0, 5);
 
     // Recent payments
     const recentPayments = await prisma.payment.findMany({

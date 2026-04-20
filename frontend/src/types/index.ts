@@ -204,6 +204,44 @@ export interface Client {
   contracts?: Contract[];
 }
 
+export interface ClientStockPosition {
+  id: string;
+  productId: string;
+  qtyTotal: number;
+  product: {
+    id: string;
+    name: string;
+    sku: string;
+    unit: string;
+    salePrice: number | null;
+  } | null;
+}
+
+export interface ClientStockEvent {
+  id: string;
+  type: 'ADD' | 'RESERVE_TO_DEAL' | 'CORRECTION';
+  productId: string;
+  qtyDelta: number;
+  qtyBefore: number;
+  qtyAfter: number;
+  unitPrice: number | null;
+  lineTotal: number | null;
+  comment: string | null;
+  createdAt: string;
+  product?: { id: string; name: string; sku: string; unit: string };
+  author?: { id: string; fullName: string };
+  sourceDeal?: { id: string; title: string } | null;
+}
+
+export interface ClientStockResponse {
+  positions: ClientStockPosition[];
+  events: ClientStockEvent[];
+  totals: {
+    distinctProducts: number;
+    totalQty: number;
+  };
+}
+
 export interface DealShort {
   id: string;
   title: string;

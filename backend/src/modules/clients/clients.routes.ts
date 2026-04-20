@@ -10,6 +10,9 @@ import {
   createClientNoteDto,
   updateClientNoteDto,
   setClientCreditStatusDto,
+  addClientStockDto,
+  sendClientStockAllDto,
+  sendClientStockPartialDto,
 } from './clients.dto';
 import { authorize } from '../../middleware/authorize';
 
@@ -33,6 +36,10 @@ router.patch('/:id/archive', asyncHandler(clientsController.archive.bind(clients
 router.get('/:id/history', asyncHandler(clientsController.getHistory.bind(clientsController)));
 router.get('/:id/payments', asyncHandler(clientsController.getPayments.bind(clientsController)));
 router.get('/:id/analytics', asyncHandler(clientsController.getAnalytics.bind(clientsController)));
+router.get('/:id/stock', asyncHandler(clientsController.getStock.bind(clientsController)));
+router.post('/:id/stock/add', validate(addClientStockDto), asyncHandler(clientsController.addStock.bind(clientsController)));
+router.post('/:id/stock/send-partial', validate(sendClientStockPartialDto), asyncHandler(clientsController.sendStockPartial.bind(clientsController)));
+router.post('/:id/stock/send-all', validate(sendClientStockAllDto), asyncHandler(clientsController.sendStockAll.bind(clientsController)));
 
 router.get('/:id/notes', asyncHandler(clientsController.listNotes.bind(clientsController)));
 router.post('/:id/notes', validate(createClientNoteDto), asyncHandler(clientsController.createNote.bind(clientsController)));

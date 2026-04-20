@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
@@ -15,6 +15,7 @@ import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import BackButton from '../components/BackButton';
 import { contractsApi } from '../api/contracts.api';
+import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from '../components/DealStatusTag';
@@ -22,7 +23,7 @@ import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
-import type { DealStatus, DealShort, PaymentStatus, PaymentRecord } from '../types';
+import type { DealStatus, DealShort, PaymentStatus, PaymentRecord, Product } from '../types';
 import type { CreateClientData } from '../api/clients.api';
 import {
   CLIENT_PORTRAIT_TEMPLATES,
@@ -93,6 +94,7 @@ function parseCoordinatesText(raw: string): { latitude: number; longitude: numbe
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [contractModal, setContractModal] = useState(false);
   const [contractForm] = Form.useForm();
   const [editOpen, setEditOpen] = useState(false);
@@ -109,6 +111,10 @@ export default function ClientDetailPage() {
 
   // Analytics period
   const [analyticsPeriod, setAnalyticsPeriod] = useState<number>(30);
+  const [stockProductId, setStockProductId] = useState<string>();
+  const [stockQty, setStockQty] = useState<number>(1);
+  const [stockPrice, setStockPrice] = useState<number | undefined>(undefined);
+  const [stockComment, setStockComment] = useState('');
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -138,6 +144,17 @@ export default function ClientDetailPage() {
     queryKey: ['client-analytics', id, analyticsPeriod],
     queryFn: () => clientsApi.analytics(id!, analyticsPeriod),
     enabled: !!id,
+  });
+
+  const { data: stockData, isLoading: stockLoading } = useQuery({
+    queryKey: ['client-stock', id],
+    queryFn: () => clientsApi.stock(id!, { historyLimit: 100 }),
+    enabled: !!id,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ['products'],
+    queryFn: inventoryApi.listProducts,
   });
 
   const createContractMut = useMutation({
@@ -186,6 +203,51 @@ export default function ClientDetailPage() {
       message.success('Кредитный статус клиента обновлён');
     },
     onError: () => message.error('Ошибка изменения кредитного статуса'),
+  });
+
+  const addStockMut = useMutation({
+    mutationFn: (data: Parameters<typeof clientsApi.addStock>[1]) => clientsApi.addStock(id!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
+      queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
+      message.success('Товар добавлен в накопление клиента');
+      setStockQty(1);
+      setStockComment('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка добавления товара';
+      message.error(msg);
+    },
+  });
+
+  const sendStockPartialMut = useMutation({
+    mutationFn: (payload: Parameters<typeof clientsApi.sendStockPartial>[1]) => clientsApi.sendStockPartial(id!, payload),
+    onSuccess: (deal) => {
+      queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
+      message.success('Часть остатков отправлена в работу');
+      navigate(`/deals/${deal.id}`);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки в работу';
+      message.error(msg);
+    },
+  });
+
+  const sendStockAllMut = useMutation({
+    mutationFn: () => clientsApi.sendStockAll(id!, {}),
+    onSuccess: (deal) => {
+      queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
+      message.success('Все остатки отправлены в работу');
+      navigate(`/deals/${deal.id}`);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки всех остатков';
+      message.error(msg);
+    },
   });
 
   // Client-side filtering of deals by payment status
@@ -298,6 +360,52 @@ export default function ClientDetailPage() {
     { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => v || '—' },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
   ];
+
+  const stockColumns = [
+    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: { product?: { name?: string; sku?: string } | null }) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
+    { title: 'Остаток', dataIndex: 'qtyTotal', align: 'right' as const, render: (v: number, r: { product?: { unit?: string } | null }) => `${v} ${r.product?.unit ?? ''}`.trim() },
+    { title: 'Цена по умолчанию', dataIndex: ['product', 'salePrice'], align: 'right' as const, render: (v: number | null | undefined) => v != null ? formatUZS(v) : '—' },
+  ];
+
+  const stockEventColumns = [
+    { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+    { title: 'Тип', dataIndex: 'type', render: (v: string) => v === 'ADD' ? <Tag color="green">Добавление</Tag> : v === 'RESERVE_TO_DEAL' ? <Tag color="blue">Отправка в работу</Tag> : <Tag>Коррекция</Tag> },
+    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: { product?: { name?: string; sku?: string } }) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
+    { title: 'Изменение', dataIndex: 'qtyDelta', align: 'right' as const, render: (v: number, r: { product?: { unit?: string } }) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim() },
+    { title: 'Было → Стало', key: 'beforeAfter', render: (_: unknown, r: { qtyBefore: number; qtyAfter: number; product?: { unit?: string } }) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim() },
+    { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => v || '—' },
+    { title: 'Сделка', dataIndex: ['sourceDeal', 'id'], render: (_: unknown, r: { sourceDeal?: { id: string; title: string } | null }) => r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—' },
+    { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
+  ];
+
+  const submitAddStock = () => {
+    if (!stockProductId) {
+      message.error('Выберите товар');
+      return;
+    }
+    if (!stockQty || stockQty <= 0) {
+      message.error('Укажите корректное количество');
+      return;
+    }
+    addStockMut.mutate({
+      items: [{ productId: stockProductId, qty: stockQty, price: stockPrice, comment: stockComment || undefined }],
+    });
+  };
+
+  const sendOnePositionToWork = (productId: string) => {
+    const position = stockData?.positions.find((p) => p.productId === productId);
+    if (!position || position.qtyTotal <= 0) {
+      message.error('Нет доступного остатка');
+      return;
+    }
+    sendStockPartialMut.mutate({
+      items: [{
+        productId,
+        qty: position.qtyTotal,
+        price: position.product?.salePrice ?? undefined,
+      }],
+    });
+  };
 
   // ── Analytics chart data ──
   const lineData = (analytics?.revenueByDay ?? []).map((d) => ({
@@ -535,6 +643,100 @@ export default function ClientDetailPage() {
                   }}
                 />
               </Card>
+            ),
+          },
+          {
+            key: 'stock',
+            label: 'Товары клиента',
+            children: (
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Card
+                  title="Добавить в накопление"
+                  bordered={false}
+                  extra={(
+                    <Button type="primary" onClick={submitAddStock} loading={addStockMut.isPending}>
+                      Добавить
+                    </Button>
+                  )}
+                >
+                  <Row gutter={[12, 12]}>
+                    <Col xs={24} md={10}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Товар</Typography.Text>
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Выберите товар"
+                        value={stockProductId}
+                        onChange={(v) => {
+                          setStockProductId(v);
+                          const p = (products ?? []).find((x: Product) => x.id === v);
+                          setStockPrice(p?.salePrice != null ? Number(p.salePrice) : undefined);
+                        }}
+                        style={{ width: '100%' }}
+                        options={(products ?? []).filter((p: Product) => p.isActive).map((p: Product) => ({
+                          value: p.id,
+                          label: `${p.name} (${p.sku})`,
+                        }))}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8} md={4}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Количество</Typography.Text>
+                      <InputNumber min={0.001} step={0.1} precision={3} value={stockQty} onChange={(v) => setStockQty(Number(v ?? 0))} style={{ width: '100%' }} />
+                    </Col>
+                    <Col xs={24} sm={8} md={5}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Цена</Typography.Text>
+                      <InputNumber min={0} value={stockPrice} onChange={(v) => setStockPrice(v == null ? undefined : Number(v))} formatter={(v) => formatUZS(Number(v || 0)).replace(' UZS', '')} parser={(v) => Number((v || '').toString().replace(/[^\d.]/g, '')) as unknown as number} style={{ width: '100%' }} />
+                    </Col>
+                    <Col xs={24} sm={8} md={5}>
+                      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Комментарий</Typography.Text>
+                      <Input value={stockComment} onChange={(e) => setStockComment(e.target.value)} placeholder="Примечание" />
+                    </Col>
+                  </Row>
+                </Card>
+
+                <Card
+                  title={`Остатки (${stockData?.totals.distinctProducts ?? 0})`}
+                  bordered={false}
+                  loading={stockLoading}
+                  extra={(
+                    <Space>
+                      <Typography.Text strong>Всего: {stockData?.totals.totalQty ?? 0}</Typography.Text>
+                      <Button type="primary" onClick={() => sendStockAllMut.mutate()} loading={sendStockAllMut.isPending} disabled={!stockData?.positions?.length}>
+                        Отправить все в работу
+                      </Button>
+                    </Space>
+                  )}
+                >
+                  <Table
+                    dataSource={(stockData?.positions ?? []).map((p) => ({ ...p, key: p.id }))}
+                    columns={[
+                      ...stockColumns,
+                      {
+                        title: 'Действие',
+                        key: 'action',
+                        render: (_: unknown, r: { productId: string }) => (
+                          <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
+                            Отправить в работу
+                          </Button>
+                        ),
+                      },
+                    ]}
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 700 }}
+                  />
+                </Card>
+
+                <Card title="История изменений" bordered={false} loading={stockLoading}>
+                  <Table
+                    dataSource={(stockData?.events ?? []).map((e) => ({ ...e, key: e.id }))}
+                    columns={stockEventColumns}
+                    pagination={{ pageSize: 10 }}
+                    size="small"
+                    scroll={{ x: 1000 }}
+                  />
+                </Card>
+              </Space>
             ),
           },
           {

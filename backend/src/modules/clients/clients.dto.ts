@@ -50,9 +50,52 @@ export const setClientCreditStatusDto = z.object({
   creditStatus: z.enum(['NORMAL', 'SATISFACTORY', 'NEGATIVE']),
 });
 
+export const clientStockQueryDto = z.object({
+  historyLimit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+const stockItemBase = z.object({
+  productId: z.string().uuid('Некорректный ID товара'),
+  qty: z.number().positive('Количество должно быть больше 0'),
+  price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
+  comment: z.string().max(1000).optional(),
+});
+
+export const addClientStockDto = z.object({
+  items: z.array(stockItemBase).min(1, 'Добавьте хотя бы один товар'),
+});
+
+export const sendClientStockPartialDto = z.object({
+  title: z.string().optional(),
+  deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).optional(),
+  vehicleNumber: z.string().optional(),
+  vehicleType: z.string().optional(),
+  deliveryComment: z.string().optional(),
+  items: z.array(
+    z.object({
+      productId: z.string().uuid('Некорректный ID товара'),
+      qty: z.number().positive('Количество должно быть больше 0'),
+      price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
+      requestComment: z.string().max(1000).optional(),
+    }),
+  ).min(1, 'Выберите хотя бы одну позицию'),
+});
+
+export const sendClientStockAllDto = z.object({
+  title: z.string().optional(),
+  deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).optional(),
+  vehicleNumber: z.string().optional(),
+  vehicleType: z.string().optional(),
+  deliveryComment: z.string().optional(),
+});
+
 export type CreateClientDto = z.infer<typeof createClientDto>;
 export type UpdateClientDto = z.infer<typeof updateClientDto>;
 export type SetClientCreditStatusDto = z.infer<typeof setClientCreditStatusDto>;
+export type ClientStockQueryDto = z.infer<typeof clientStockQueryDto>;
+export type AddClientStockDto = z.infer<typeof addClientStockDto>;
+export type SendClientStockPartialDto = z.infer<typeof sendClientStockPartialDto>;
+export type SendClientStockAllDto = z.infer<typeof sendClientStockAllDto>;
 
 export const createClientNoteDto = z.object({
   content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),

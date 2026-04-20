@@ -74,6 +74,27 @@ export class ClientsController {
     res.json(analytics);
   }
 
+  async getStock(req: Request, res: Response): Promise<void> {
+    const historyLimit = req.query.historyLimit ? parseInt(req.query.historyLimit as string, 10) : undefined;
+    const result = await clientsService.getStock(req.params.id as string, getUser(req), { historyLimit });
+    res.json(result);
+  }
+
+  async addStock(req: Request, res: Response): Promise<void> {
+    const result = await clientsService.addStock(req.params.id as string, req.body, getUser(req));
+    res.status(201).json(result);
+  }
+
+  async sendStockPartial(req: Request, res: Response): Promise<void> {
+    const result = await clientsService.sendStockPartial(req.params.id as string, req.body, getUser(req));
+    res.status(201).json(result);
+  }
+
+  async sendStockAll(req: Request, res: Response): Promise<void> {
+    const result = await clientsService.sendStockAll(req.params.id as string, req.body, getUser(req));
+    res.status(201).json(result);
+  }
+
   async listNotes(req: Request, res: Response): Promise<void> {
     const includeDeleted = req.query.includeDeleted === 'true' || req.query.includeDeleted === '1';
     const notes = await clientNotesService.list(req.params.id as string, getUser(req), includeDeleted);

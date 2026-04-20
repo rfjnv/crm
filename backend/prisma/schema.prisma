@@ -94,6 +94,12 @@ enum ClientCreditStatus {
   NEGATIVE
 }
 
+enum ClientStockEventType {
+  ADD
+  RESERVE_TO_DEAL
+  CORRECTION
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -172,6 +178,7 @@ model User {
   /** Произвольная подпись медали (как тег SVIP): «упорный», «лентяй» и т.д. */
   badgeLabel          String?          @map("badge_label")
   clientNotes         ClientNote[]
+  clientStockEventsAuthored ClientStockEvent[] @relation("ClientStockEventAuthor")
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
@@ -280,6 +287,8 @@ model Client {
   contracts   Contract[]
   payments    Payment[]
   clientNotes ClientNote[]
+  stockPositions ClientStockPosition[]
+  stockEvents ClientStockEvent[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
@@ -442,6 +451,7 @@ model Deal {
   deliveryDriver     User?               @relation("DealDeliveryDriver", fields: [deliveryDriverId], references: [id])
   comments           DealComment[]
   items              DealItem[]
+  clientStockEvents  ClientStockEvent[]
   movements          InventoryMovement[]
   shipment           Shipment?
   payments           Payment[]
@@ -554,6 +564,8 @@ model Product {
 
   movements InventoryMovement[]
   dealItems DealItem[]
+  clientStockPositions ClientStockPosition[]
+  clientStockEvents ClientStockEvent[]
 
   @@index([category])
   @@index([countryOfOrigin])
@@ -577,6 +589,50 @@ model InventoryMovement {
   @@index([dealId])
   @@index([createdAt])
   @@map("inventory_movements")
+}
+
+model ClientStockPosition {
+  id        String   @id @default(uuid())
+  clientId  String   @map("client_id")
+  productId String   @map("product_id")
+  qtyTotal  Decimal  @default(0) @db.Decimal(12, 3) @map("qty_total")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([clientId, productId])
+  @@index([clientId])
+  @@index([productId])
+  @@map("client_stock_positions")
+}
+
+model ClientStockEvent {
+  id           String              @id @default(uuid())
+  clientId     String              @map("client_id")
+  productId    String              @map("product_id")
+  type         ClientStockEventType
+  qtyDelta     Decimal             @db.Decimal(12, 3) @map("qty_delta")
+  qtyBefore    Decimal             @db.Decimal(12, 3) @map("qty_before")
+  qtyAfter     Decimal             @db.Decimal(12, 3) @map("qty_after")
+  unitPrice    Decimal?            @db.Decimal(12, 2) @map("unit_price")
+  lineTotal    Decimal?            @db.Decimal(15, 2) @map("line_total")
+  sourceDealId String?             @map("source_deal_id")
+  authorId     String              @map("author_id")
+  comment      String?
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
+  sourceDeal Deal?    @relation(fields: [sourceDealId], references: [id], onDelete: SetNull)
+  author     User     @relation("ClientStockEventAuthor", fields: [authorId], references: [id])
+
+  @@index([clientId, createdAt])
+  @@index([clientId, productId])
+  @@index([sourceDealId])
+  @@index([authorId])
+  @@map("client_stock_events")
 }
 
 // ==================== AUDIT ====================

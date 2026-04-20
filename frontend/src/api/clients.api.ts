@@ -1,5 +1,5 @@
 import client from './client';
-import type { Client, AuditLog, PaymentRecord, ClientAnalytics, ClientNote } from '../types';
+import type { Client, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
 
 export interface CreateClientData {
   companyName: string;
@@ -23,6 +23,37 @@ export interface CreateClientData {
   portraitFears?: string;
   portraitObjections?: string;
   creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
+}
+
+export interface AddClientStockPayload {
+  items: Array<{
+    productId: string;
+    qty: number;
+    price?: number;
+    comment?: string;
+  }>;
+}
+
+export interface SendClientStockPartialPayload {
+  title?: string;
+  deliveryType?: 'SELF_PICKUP' | 'YANDEX' | 'DELIVERY';
+  vehicleNumber?: string;
+  vehicleType?: string;
+  deliveryComment?: string;
+  items: Array<{
+    productId: string;
+    qty: number;
+    price?: number;
+    requestComment?: string;
+  }>;
+}
+
+export interface SendClientStockAllPayload {
+  title?: string;
+  deliveryType?: 'SELF_PICKUP' | 'YANDEX' | 'DELIVERY';
+  vehicleNumber?: string;
+  vehicleType?: string;
+  deliveryComment?: string;
 }
 
 export const clientsApi = {
@@ -49,6 +80,18 @@ export const clientsApi = {
 
   analytics: (id: string, periodDays?: number) =>
     client.get<ClientAnalytics>(`/clients/${id}/analytics`, { params: periodDays ? { periodDays } : {} }).then((r) => r.data),
+
+  stock: (id: string, params?: { historyLimit?: number }) =>
+    client.get<ClientStockResponse>(`/clients/${id}/stock`, { params }).then((r) => r.data),
+
+  addStock: (id: string, data: AddClientStockPayload) =>
+    client.post<ClientStockResponse>(`/clients/${id}/stock/add`, data).then((r) => r.data),
+
+  sendStockPartial: (id: string, data: SendClientStockPartialPayload) =>
+    client.post<Deal>(`/clients/${id}/stock/send-partial`, data).then((r) => r.data),
+
+  sendStockAll: (id: string, data: SendClientStockAllPayload) =>
+    client.post<Deal>(`/clients/${id}/stock/send-all`, data).then((r) => r.data),
 
   notes: {
     list: (clientId: string, opts?: { includeDeleted?: boolean }) =>
