@@ -109,23 +109,18 @@ export default function HierarchyClientsAnalyticsPanel({
 
   const writePersist = useCallback((name: string, value: string | null) => {
     if (!persistPrefix) return;
-    setSearchParams((prev) => {
-      const key = qp(name);
-      if (!key) return prev;
+    const key = qp(name);
+    if (!key) return;
 
-      const current = prev.get(key);
-      if (!value) {
-        if (current === null) return prev;
-      } else if (current === value) {
-        return prev;
-      }
+    const current = searchParams.get(key);
+    if (!value && current === null) return;
+    if (value && current === value) return;
 
-      const next = new URLSearchParams(prev);
-      if (!value) next.delete(key);
-      else next.set(key, value);
-      return next;
-    }, { replace: true });
-  }, [persistPrefix, setSearchParams]);
+    const next = new URLSearchParams(searchParams);
+    if (!value) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  }, [persistPrefix, searchParams, setSearchParams]);
 
   const visibleProducts = useMemo(
     () => products.filter((p: Product) => p.isActive),
