@@ -497,32 +497,46 @@ router.get(
 
     // ── 8. Client activity matrix — month from effective item date ──
     const clientActivityRaw = await prisma.$queryRaw<
-      { client_id: string; company_name: string; month: number; revenue: string }[]
+      { client_id: string; company_name: string; manager_department: string | null; month: number; revenue: string }[]
     >(
       Prisma.sql`SELECT
         c.id as client_id,
         c.company_name,
+        MAX(mu.department) as manager_department,
         EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
         COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
+      JOIN users mu ON mu.id = c.manager_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY c.id, c.company_name, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY c.company_name, month`,
     );
-    const activityMap = new Map<string, { clientId: string; companyName: string; activeMonths: number[]; monthlyData: { month: number; revenue: number }[] }>();
+    const activityMap = new Map<
+      string,
+      {
+        clientId: string;
+        companyName: string;
+        managerDepartment: string | null;
+        activeMonths: number[];
+        monthlyData: { month: number; revenue: number }[];
+      }
+    >();
     for (const row of clientActivityRaw) {
+      const dept = row.manager_department?.trim() || null;
       const existing = activityMap.get(row.client_id);
       if (existing) {
         existing.activeMonths.push(row.month);
         existing.monthlyData.push({ month: row.month, revenue: Number(row.revenue) });
+        if (!existing.managerDepartment && dept) existing.managerDepartment = dept;
       } else {
         activityMap.set(row.client_id, {
           clientId: row.client_id,
           companyName: row.company_name,
+          managerDepartment: dept,
           activeMonths: [row.month],
           monthlyData: [{ month: row.month, revenue: Number(row.revenue) }],
         });

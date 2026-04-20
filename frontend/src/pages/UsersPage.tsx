@@ -104,7 +104,14 @@ export default function UsersPage() {
   };
 
   const createMut = useMutation({
-    mutationFn: (data: { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }) =>
+    mutationFn: (data: {
+      login: string;
+      password: string;
+      fullName: string;
+      role: string;
+      department?: string | null;
+      permissions?: Permission[];
+    }) =>
       usersApi.create(data),
     onSuccess: () => {
       invalidateUsers();
@@ -126,6 +133,7 @@ export default function UsersPage() {
       data: Partial<{
         login: string;
         fullName: string;
+        department: string | null;
         role: string;
         password: string;
         permissions: Permission[];
@@ -219,6 +227,7 @@ export default function UsersPage() {
     form.setFieldsValue({
       login: user.login,
       fullName: user.fullName,
+      department: user.department ?? '',
       role: user.role,
       permissions: user.permissions || [],
       badgeIcon: user.badgeIcon ?? undefined,
@@ -233,6 +242,9 @@ export default function UsersPage() {
       const data: Record<string, unknown> = {};
       if (values.login !== editingUser.login) data.login = values.login;
       if (values.fullName !== editingUser.fullName) data.fullName = values.fullName;
+      const nextDept = ((values.department as string | undefined) ?? '').trim() || null;
+      const prevDept = (editingUser.department ?? '').trim() || null;
+      if (nextDept !== prevDept) data.department = nextDept;
       if (values.role !== editingUser.role) data.role = values.role;
       if (values.password) data.password = values.password;
       data.permissions = values.permissions;
@@ -251,6 +263,7 @@ export default function UsersPage() {
         data: data as Partial<{
           login: string;
           fullName: string;
+          department: string | null;
           role: string;
           password: string;
           permissions: Permission[];
@@ -260,7 +273,11 @@ export default function UsersPage() {
         }>,
       });
     } else {
-      createMut.mutate(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] });
+      const dept = ((values.department as string | undefined) ?? '').trim();
+      createMut.mutate({
+        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }),
+        ...(dept ? { department: dept } : {}),
+      });
     }
   }
 
@@ -281,6 +298,13 @@ export default function UsersPage() {
       },
       { title: 'Логин', dataIndex: 'login', width: 120 },
       { title: 'ФИО', dataIndex: 'fullName', ellipsis: true },
+      {
+        title: 'Отдел',
+        dataIndex: 'department',
+        width: 140,
+        ellipsis: true,
+        render: (v: string | null | undefined) => v || '—',
+      },
       {
         title: 'Роль',
         dataIndex: 'role',
@@ -396,7 +420,7 @@ export default function UsersPage() {
         pagination={false}
         size="middle"
         bordered={false}
-        scroll={{ x: 1100 }}
+        scroll={{ x: 1250 }}
       />
 
       <Modal
@@ -415,6 +439,9 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="fullName" label="ФИО" rules={[{ required: true, message: 'Обязательно' }]}>
             <Input />
+          </Form.Item>
+          <Form.Item name="department" label="Отдел">
+            <Input placeholder="Например: B2B, розница, регион" maxLength={120} allowClear />
           </Form.Item>
           <Form.Item
             name="password"

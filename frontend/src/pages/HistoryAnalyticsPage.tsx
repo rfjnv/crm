@@ -425,6 +425,18 @@ export default function HistoryAnalyticsPage() {
   const activityCols = [
     { title: 'Компания', dataIndex: 'companyName', key: 'companyName', fixed: 'left' as const, width: 180, ellipsis: true },
     {
+      title: 'Отдел',
+      dataIndex: 'managerDepartment',
+      key: 'managerDepartment',
+      fixed: 'left' as const,
+      width: 110,
+      ellipsis: true,
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) =>
+        (a.managerDepartment || '').localeCompare(b.managerDepartment || '', 'ru'),
+      render: (v: string | null | undefined) =>
+        v || <span style={{ color: token.colorTextSecondary }}>—</span>,
+    },
+    {
       title: 'Последний контакт',
       key: 'lastContact',
       width: 150,

@@ -219,6 +219,18 @@ export default function ClientActivityMatrixPage() {
       ),
     },
     {
+      title: 'Отдел',
+      dataIndex: 'managerDepartment',
+      key: 'managerDepartment',
+      fixed: 'left' as const,
+      width: 120,
+      ellipsis: true,
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) =>
+        (a.managerDepartment || '').localeCompare(b.managerDepartment || '', 'ru'),
+      render: (v: string | null | undefined) =>
+        v ? <Typography.Text style={{ fontSize: 12 }}>{v}</Typography.Text> : <Typography.Text type="secondary">—</Typography.Text>,
+    },
+    {
       title: 'Последний контакт',
       key: 'lastContact',
       width: 168,
@@ -296,7 +308,7 @@ export default function ClientActivityMatrixPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Матрица активности клиентов</Title>
+      <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
       <Card
         size="small"
         extra={(

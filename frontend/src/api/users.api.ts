@@ -13,7 +13,14 @@ export const usersApi = {
       })
       .then((r) => r.data),
 
-  create: (data: { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }) =>
+  create: (data: {
+    login: string;
+    password: string;
+    fullName: string;
+    role: string;
+    department?: string | null;
+    permissions?: Permission[];
+  }) =>
     client.post<User>('/users', data).then((r) => r.data),
 
   update: (
@@ -21,6 +28,7 @@ export const usersApi = {
     data: Partial<{
       login: string;
       fullName: string;
+      department: string | null;
       role: string;
       isActive: boolean;
       password: string;

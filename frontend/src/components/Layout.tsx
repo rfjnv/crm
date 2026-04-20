@@ -395,7 +395,7 @@ export default function Layout() {
         {
           key: '/manager/client-activity',
           icon: <CalendarOutlined />,
-          label: <Link to="/manager/client-activity">Матрица активности клиентов</Link>,
+          label: <Link to="/manager/client-activity">Аналитика для менеджеров</Link>,
         },
         {
           key: '/analytics/calls',

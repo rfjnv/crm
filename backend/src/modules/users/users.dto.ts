@@ -12,6 +12,7 @@ export const createUserDto = z.object({
   login: z.string().min(1, 'Логин обязателен').max(50),
   password: z.string().min(6, 'Минимум 6 символов'),
   fullName: z.string().min(1, 'Имя обязательно'),
+  department: z.string().trim().max(120).optional(),
   role: z.enum(roleValues),
   permissions: z.array(z.enum(permissionValues)).optional(),
 });
@@ -19,6 +20,7 @@ export const createUserDto = z.object({
 export const updateUserDto = z.object({
   login: z.string().min(1).max(50).optional(),
   fullName: z.string().min(1).optional(),
+  department: z.string().trim().max(120).nullable().optional(),
   role: z.enum(roleValues).optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(6, 'Минимум 6 символов').optional(),

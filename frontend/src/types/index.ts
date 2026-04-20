@@ -74,6 +74,8 @@ export interface User {
   id: string;
   login: string;
   fullName: string;
+  /** Отдел менеджера (для матрицы клиентов и отчётов) */
+  department?: string | null;
   role: UserRole;
   permissions: Permission[];
   isActive: boolean;
@@ -1063,6 +1065,8 @@ export interface HistoryDebtor {
 export interface HistoryClientActivity {
   clientId: string;
   companyName: string;
+  /** Отдел ответственного менеджера клиента (из карточки пользователя) */
+  managerDepartment?: string | null;
   activeMonths: number[];
   monthlyData: { month: number; revenue: number }[];
   /** ISO: последняя заметка по клиенту (любой пользователь CRM) */

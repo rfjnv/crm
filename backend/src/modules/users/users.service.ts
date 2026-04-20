@@ -9,6 +9,7 @@ const userSelect = {
   id: true,
   login: true,
   fullName: true,
+  department: true,
   role: true,
   permissions: true,
   isActive: true,
@@ -92,11 +93,13 @@ export class UsersService {
     const hashed = await hashPassword(dto.password);
     const permissions = dto.permissions ?? DEFAULT_PERMISSIONS[dto.role] ?? [];
 
+    const dept = dto.department?.trim();
     const user = await prisma.user.create({
       data: {
         login: dto.login,
         password: hashed,
         fullName: dto.fullName,
+        department: dept || null,
         role: dto.role,
         permissions,
       },
@@ -108,7 +111,13 @@ export class UsersService {
       action: 'CREATE',
       entityType: 'user',
       entityId: user.id,
-      after: { login: user.login, fullName: user.fullName, role: user.role, permissions: user.permissions },
+      after: {
+        login: user.login,
+        fullName: user.fullName,
+        department: user.department,
+        role: user.role,
+        permissions: user.permissions,
+      },
     });
 
     return user;
@@ -131,6 +140,9 @@ export class UsersService {
     const data: Record<string, unknown> = {};
     if (dto.login !== undefined) data.login = dto.login;
     if (dto.fullName !== undefined) data.fullName = dto.fullName;
+    if (dto.department !== undefined) {
+      data.department = dto.department === null || dto.department === '' ? null : dto.department.trim();
+    }
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password !== undefined) data.password = await hashPassword(dto.password);
@@ -146,6 +158,7 @@ export class UsersService {
     const before = {
       login: user.login,
       fullName: user.fullName,
+      department: user.department,
       role: user.role,
       isActive: user.isActive,
       permissions: user.permissions,
@@ -188,6 +201,7 @@ export class UsersService {
       after: {
         login: updated.login,
         fullName: updated.fullName,
+        department: updated.department,
         role: updated.role,
         isActive: updated.isActive,
         permissions: updated.permissions,

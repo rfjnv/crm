@@ -132,6 +132,8 @@ model User {
   login       String   @unique
   password    String
   fullName    String   @map("full_name")
+  /** Отдел / подразделение (для аналитики и матрицы клиентов) */
+  department  String?  @map("department")
   role        Role     @default(MANAGER)
   permissions String[] @default([])
   isActive    Boolean  @default(true) @map("is_active")
