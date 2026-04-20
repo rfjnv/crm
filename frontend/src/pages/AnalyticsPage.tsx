@@ -2211,7 +2211,11 @@ export default function AnalyticsPage() {
   );
 
   const hierarchyClientsTab = (
-    <HierarchyClientsAnalyticsPanel products={visibleProducts} fetchEnabled={analyticsTab === 'hierarchy-clients'} />
+    <HierarchyClientsAnalyticsPanel
+      products={visibleProducts}
+      fetchEnabled={analyticsTab === 'hierarchy-clients'}
+      persistPrefix="analytics_hc"
+    />
   );
 
   return (
