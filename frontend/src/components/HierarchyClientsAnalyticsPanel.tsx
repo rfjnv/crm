@@ -27,13 +27,15 @@ type CategorySummary = {
 export type HierarchyClientsAnalyticsPanelProps = {
   /** Активные товары (как на странице аналитики) */
   products: Product[];
+  /** false — не грузить закрытые позиции, пока вкладка скрыта (ускоряет остальные страницы) */
+  fetchEnabled?: boolean;
 };
 
 /**
  * Блок «Клиенты по иерархии»: период, фильтр категория/тип/товар, графики и таблица клиентов.
  * Используется в аналитике и на странице «Аналитика для менеджеров».
  */
-export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyClientsAnalyticsPanelProps) {
+export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled = true }: HierarchyClientsAnalyticsPanelProps) {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [clientScopeLevel, setClientScopeLevel] = useState<CompareLevel>('category');
@@ -150,9 +152,13 @@ export default function HierarchyClientsAnalyticsPanel({ products }: HierarchyCl
     [categories],
   );
 
+  const hierarchyStale = 120_000;
+
   const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
     queryKey: ['analytics-hierarchy-clients-context', hierarchyPeriodPreset, hierarchyCustomDays],
     queryFn: () => loadSalesContext(getStartDateByPreset(hierarchyPeriodPreset, hierarchyCustomDays)),
+    enabled: fetchEnabled,
+    staleTime: hierarchyStale,
   });
 
   const purchaseRows = hierarchyClientContext?.purchaseRows ?? [];

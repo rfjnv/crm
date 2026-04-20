@@ -6,7 +6,8 @@ export type ProductSalesAggregate = {
   productId: string;
   soldQty: number;
   salesRevenue: number;
-  dealIds: Set<string>;
+  /** Число сделок с этим товаром; при суммировании по нескольким товарам одна сделка может считаться несколько раз */
+  dealsCount: number;
   lastSaleAt: string | null;
 };
 
@@ -85,18 +86,30 @@ export function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: 
   return getPeriodStartDate(preset);
 }
 
+export async function loadHierarchyMerchandiseStats(periodStart: Date) {
+  return analyticsApi.getHierarchyMerchandiseStats(periodStart.toISOString());
+}
+
+type AggBuilder = {
+  productId: string;
+  soldQty: number;
+  salesRevenue: number;
+  dealIds: Set<string>;
+  lastSaleAt: string | null;
+};
+
 export async function loadSalesContext(periodStart: Date) {
   const { rows } = await analyticsApi.getHierarchyClosedItems(periodStart.toISOString());
 
-  const aggregateMap: Record<string, ProductSalesAggregate> = {};
+  const building: Record<string, AggBuilder> = {};
   const purchaseRows: ProductPurchaseRow[] = [];
 
   for (const row of rows) {
     const qty = row.soldQty;
     if (qty <= 0) continue;
 
-    if (!aggregateMap[row.productId]) {
-      aggregateMap[row.productId] = {
+    if (!building[row.productId]) {
+      building[row.productId] = {
         productId: row.productId,
         soldQty: 0,
         salesRevenue: 0,
@@ -105,7 +118,7 @@ export async function loadSalesContext(periodStart: Date) {
       };
     }
 
-    const current = aggregateMap[row.productId];
+    const current = building[row.productId];
     current.soldQty += qty;
     current.salesRevenue += row.salesRevenue;
     current.dealIds.add(row.dealId);
@@ -124,6 +137,17 @@ export async function loadSalesContext(periodStart: Date) {
       salesRevenue: row.salesRevenue,
       saleAt: row.saleAt,
     });
+  }
+
+  const aggregateMap: Record<string, ProductSalesAggregate> = {};
+  for (const [id, b] of Object.entries(building)) {
+    aggregateMap[id] = {
+      productId: id,
+      soldQty: b.soldQty,
+      salesRevenue: b.salesRevenue,
+      dealsCount: b.dealIds.size,
+      lastSaleAt: b.lastSaleAt,
+    };
   }
 
   return { aggregateMap, purchaseRows };

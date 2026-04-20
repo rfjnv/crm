@@ -452,6 +452,7 @@ model Deal {
   @@index([clientId])
   @@index([contractId])
   @@index([status])
+  @@index([status, createdAt])
   @@index([closedAt])
   @@index([isArchived])
   @@index([paymentStatus])

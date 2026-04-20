@@ -24,9 +24,10 @@ import {
   inferTypeLabel,
   safePrice,
   getPeriodStartDate,
-  loadSalesContext,
+  loadHierarchyMerchandiseStats,
   type ProductSalesAggregate,
 } from '../lib/analyticsHierarchySales';
+import type { HierarchyMerchandiseStatsRow } from '../api/analytics.api';
 import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import { financeApi } from '../api/finance.api';
@@ -193,7 +194,7 @@ function aggregateSalesForProducts(products: Product[], salesMap: Record<string,
   let soldQty = 0;
   let salesRevenue = 0;
   let lastSaleAt: string | null = null;
-  const dealIds = new Set<string>();
+  let salesDeals = 0;
 
   for (const product of products) {
     const sales = salesMap[product.id];
@@ -201,15 +202,12 @@ function aggregateSalesForProducts(products: Product[], salesMap: Record<string,
 
     soldQty += sales.soldQty;
     salesRevenue += sales.salesRevenue;
-    for (const dealId of sales.dealIds) {
-      dealIds.add(dealId);
-    }
+    salesDeals += sales.dealsCount;
     if (sales.lastSaleAt && (!lastSaleAt || new Date(sales.lastSaleAt) > new Date(lastSaleAt))) {
       lastSaleAt = sales.lastSaleAt;
     }
   }
 
-  const salesDeals = dealIds.size;
   return {
     salesDeals,
     soldQty,
@@ -217,6 +215,17 @@ function aggregateSalesForProducts(products: Product[], salesMap: Record<string,
     avgDealRevenue: salesDeals > 0 ? salesRevenue / salesDeals : 0,
     avgUnitPrice: soldQty > 0 ? salesRevenue / soldQty : 0,
     lastSaleAt,
+  };
+}
+
+function statsRowToHierarchySales(row: HierarchyMerchandiseStatsRow) {
+  return {
+    salesDeals: row.dealsCount,
+    soldQty: row.soldQty,
+    salesRevenue: row.salesRevenue,
+    avgDealRevenue: row.dealsCount > 0 ? row.salesRevenue / row.dealsCount : 0,
+    avgUnitPrice: row.soldQty > 0 ? row.salesRevenue / row.soldQty : 0,
+    lastSaleAt: row.lastSaleAt,
   };
 }
 
@@ -261,6 +270,7 @@ function FormulaHint({ text }: { text: string }) {
 
 export default function AnalyticsPage() {
   const { RangePicker } = DatePicker;
+  const [analyticsTab, setAnalyticsTab] = useState('sales');
   const [period, setPeriod] = useState<AnalyticsPeriod>('month');
   const [exportRange, setExportRange] = useState<[Dayjs, Dayjs]>([
     dayjs().startOf('month'),
@@ -303,14 +313,18 @@ export default function AnalyticsPage() {
     }
   };
 
+  const heavyAnalyticsStale = 120_000;
+
   const { data, isLoading } = useQuery({
     queryKey: ['analytics', period],
     queryFn: () => analyticsApi.getData(period),
+    staleTime: heavyAnalyticsStale,
   });
 
   const { data: abcXyz, isLoading: abcXyzLoading } = useQuery({
     queryKey: ['analytics-abc-xyz', period],
     queryFn: () => analyticsApi.getAbcXyz(period),
+    staleTime: heavyAnalyticsStale,
   });
 
   useEffect(() => {
@@ -349,6 +363,7 @@ export default function AnalyticsPage() {
   const { data: intel } = useQuery({
     queryKey: ['analytics-intelligence', period],
     queryFn: () => analyticsApi.getIntelligence(period),
+    staleTime: heavyAnalyticsStale,
   });
 
   // Берём общий долг с той же страницы должников — чтобы цифра всегда совпадала
@@ -360,18 +375,36 @@ export default function AnalyticsPage() {
   const { data: allProducts = [] } = useQuery<Product[]>({
     queryKey: ['analytics-product-hierarchy'],
     queryFn: productsApi.list,
+    staleTime: 300_000,
   });
 
   const visibleProducts = useMemo(() => {
     return allProducts.filter((p: Product) => p.isActive);
   }, [allProducts]);
 
-  const { data: salesContext, isLoading: salesLoading } = useQuery({
-    queryKey: ['analytics-product-sales-map', period],
-    queryFn: () => loadSalesContext(getPeriodStartDate(period)),
+  const productHierarchyActive = analyticsTab === 'product-hierarchy';
+
+  const { data: merchandiseStats, isLoading: merchandiseLoading } = useQuery({
+    queryKey: ['analytics-hierarchy-merchandise', period],
+    queryFn: () => loadHierarchyMerchandiseStats(getPeriodStartDate(period)),
+    enabled: productHierarchyActive,
+    staleTime: heavyAnalyticsStale,
   });
 
-  const productSalesMap = salesContext?.aggregateMap ?? {};
+  const productSalesMap = useMemo(() => {
+    if (!merchandiseStats?.byProduct) return {};
+    const m: Record<string, ProductSalesAggregate> = {};
+    for (const [id, row] of Object.entries(merchandiseStats.byProduct)) {
+      m[id] = {
+        productId: id,
+        soldQty: row.soldQty,
+        salesRevenue: row.salesRevenue,
+        dealsCount: row.dealsCount,
+        lastSaleAt: row.lastSaleAt,
+      };
+    }
+    return m;
+  }, [merchandiseStats]);
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
@@ -1247,6 +1280,7 @@ export default function AnalyticsPage() {
         <Card
           title="Иерархия товаров"
           bordered={false}
+          loading={merchandiseLoading}
           style={{
             background: isDark
               ? 'linear-gradient(180deg, rgba(91,141,184,0.14) 0%, rgba(20,20,20,0.95) 35%)'
@@ -1291,7 +1325,10 @@ export default function AnalyticsPage() {
                     dataSource={categories}
                     renderItem={(item) => {
                       const key = compareKey('category', item.name);
-                      const sales = aggregateSalesForProducts(item.products, productSalesMap);
+                      const catRow = merchandiseStats?.byCategory[item.name];
+                      const sales = catRow
+                        ? statsRowToHierarchySales(catRow)
+                        : aggregateSalesForProducts(item.products, productSalesMap);
                       const compareItem: HierarchyCompareItem = {
                         id: item.name,
                         key,
@@ -1468,7 +1505,7 @@ export default function AnalyticsPage() {
           }}
           extra={comparisonItems.length > 0 ? <Button type="link" onClick={() => setComparisonMap({})}>Очистить</Button> : null}
         >
-          {salesLoading ? (
+          {merchandiseLoading ? (
             <Spin style={{ display: 'block', margin: '20px auto' }} />
           ) : comparisonItems.length === 0 ? (
             <Typography.Text type="secondary">Выбирайте категории, типы или товары слева для сравнения</Typography.Text>
@@ -2173,7 +2210,9 @@ export default function AnalyticsPage() {
     </div>
   );
 
-  const hierarchyClientsTab = <HierarchyClientsAnalyticsPanel products={visibleProducts} />;
+  const hierarchyClientsTab = (
+    <HierarchyClientsAnalyticsPanel products={visibleProducts} fetchEnabled={analyticsTab === 'hierarchy-clients'} />
+  );
 
   return (
     <div>
@@ -2207,7 +2246,9 @@ export default function AnalyticsPage() {
       </div>
 
       <Tabs
-        defaultActiveKey="sales"
+        activeKey={analyticsTab}
+        onChange={setAnalyticsTab}
+        destroyInactiveTabPane
         items={[
           { key: 'sales', label: 'Продажи', children: salesTab },
           { key: 'abc-xyz', label: 'ABC / XYZ', children: abcXyzTab },

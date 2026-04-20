@@ -18,6 +18,19 @@ import type {
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
 
+/** Агрегаты по товару / категории для вкладки «Иерархия товаров» (без списка всех позиций). */
+export type HierarchyMerchandiseStatsRow = {
+  dealsCount: number;
+  soldQty: number;
+  salesRevenue: number;
+  lastSaleAt: string;
+};
+
+export type HierarchyMerchandiseStats = {
+  byProduct: Record<string, HierarchyMerchandiseStatsRow>;
+  byCategory: Record<string, HierarchyMerchandiseStatsRow>;
+};
+
 /** Строка для «Клиенты по иерархии» — согласовано с аналитикой товара (CLOSED, отсечка по createdAt сделки). */
 export type HierarchyClosedItemRow = {
   productId: string;
@@ -66,6 +79,13 @@ export const analyticsApi = {
   getHierarchyClosedItems: (fromIso: string) =>
     client
       .get<{ rows: HierarchyClosedItemRow[] }>('/analytics/hierarchy-closed-items', {
+        params: { from: fromIso },
+      })
+      .then((r) => r.data),
+
+  getHierarchyMerchandiseStats: (fromIso: string) =>
+    client
+      .get<HierarchyMerchandiseStats>('/analytics/hierarchy-merchandise-stats', {
         params: { from: fromIso },
       })
       .then((r) => r.data),

@@ -255,6 +255,100 @@ router.get(
 );
 
 /**
+ * Компактные агрегаты для вкладки «Иерархия товаров» (без списка всех строк — быстрый ответ).
+ * Правила те же, что у `hierarchy-closed-items`.
+ */
+router.get(
+  '/hierarchy-merchandise-stats',
+  asyncHandler(async (req: Request, res: Response) => {
+    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    if (!fromRaw) {
+      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
+    }
+    const from = new Date(fromRaw);
+    if (Number.isNaN(from.getTime())) {
+      throw new AppError(400, 'Некорректный параметр from');
+    }
+
+    const [productRows, categoryRows] = await Promise.all([
+      prisma.$queryRaw<
+        {
+          product_id: string;
+          deals_count: number;
+          sold_qty: string;
+          sales_revenue: string;
+          last_sale_at: Date;
+        }[]
+      >(Prisma.sql`
+        SELECT
+          di.product_id,
+          COUNT(DISTINCT di.deal_id)::int AS deals_count,
+          COALESCE(SUM(di.requested_qty::numeric), 0)::text AS sold_qty,
+          COALESCE(SUM(di.requested_qty::numeric * COALESCE(di.price::numeric, 0)), 0)::text AS sales_revenue,
+          MAX(COALESCE(d.closed_at, d.created_at)) AS last_sale_at
+        FROM deal_items di
+        INNER JOIN deals d ON d.id = di.deal_id
+        WHERE d.status = 'CLOSED'
+          AND d.created_at >= ${from}
+          AND COALESCE(di.requested_qty::numeric, 0) > 0
+        GROUP BY di.product_id
+      `),
+      prisma.$queryRaw<
+        {
+          category: string;
+          deals_count: number;
+          sold_qty: string;
+          sales_revenue: string;
+          last_sale_at: Date;
+        }[]
+      >(Prisma.sql`
+        SELECT
+          COALESCE(NULLIF(TRIM(p.category), ''), 'Без категории') AS category,
+          COUNT(DISTINCT di.deal_id)::int AS deals_count,
+          COALESCE(SUM(di.requested_qty::numeric), 0)::text AS sold_qty,
+          COALESCE(SUM(di.requested_qty::numeric * COALESCE(di.price::numeric, 0)), 0)::text AS sales_revenue,
+          MAX(COALESCE(d.closed_at, d.created_at)) AS last_sale_at
+        FROM deal_items di
+        INNER JOIN deals d ON d.id = di.deal_id
+        INNER JOIN products p ON p.id = di.product_id
+        WHERE d.status = 'CLOSED'
+          AND d.created_at >= ${from}
+          AND COALESCE(di.requested_qty::numeric, 0) > 0
+        GROUP BY 1
+      `),
+    ]);
+
+    const byProduct: Record<
+      string,
+      { dealsCount: number; soldQty: number; salesRevenue: number; lastSaleAt: string }
+    > = {};
+    for (const r of productRows) {
+      byProduct[r.product_id] = {
+        dealsCount: r.deals_count,
+        soldQty: Number(r.sold_qty),
+        salesRevenue: Number(r.sales_revenue),
+        lastSaleAt: r.last_sale_at.toISOString(),
+      };
+    }
+
+    const byCategory: Record<
+      string,
+      { dealsCount: number; soldQty: number; salesRevenue: number; lastSaleAt: string }
+    > = {};
+    for (const r of categoryRows) {
+      byCategory[r.category] = {
+        dealsCount: r.deals_count,
+        soldQty: Number(r.sold_qty),
+        salesRevenue: Number(r.sales_revenue),
+        lastSaleAt: r.last_sale_at.toISOString(),
+      };
+    }
+
+    res.json({ byProduct, byCategory });
+  }),
+);
+
+/**
  * Позиции закрытых сделок за период — те же правила, что и `getProductAnalytics` (фильтр по `deals.created_at`, без ownerScope),
  * чтобы блок «Клиенты по иерархии» совпадал с аналитикой товара.
  */

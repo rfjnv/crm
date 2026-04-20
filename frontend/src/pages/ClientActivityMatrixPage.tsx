@@ -96,6 +96,7 @@ function mergeMatrixListSearchParams(
 export default function ClientActivityMatrixPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const [matrixTab, setMatrixTab] = useState('matrix');
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseMatrixListParams(searchParams), [searchParams]);
   const { year, selectedMonths, selectedClients, page, pageSize } = listState;
@@ -105,14 +106,18 @@ export default function ClientActivityMatrixPage() {
   const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
   const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
 
+  const matrixStale = 120_000;
+
   const { data, isLoading } = useQuery({
     queryKey: ['manager-client-activity', year],
     queryFn: () => analyticsApi.getHistory(year),
+    staleTime: matrixStale,
   });
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products', 'hierarchy-clients'],
     queryFn: () => productsApi.list(),
+    staleTime: 300_000,
   });
 
   const visibleProducts = useMemo(
@@ -124,6 +129,7 @@ export default function ClientActivityMatrixPage() {
     queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
     queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, year),
     enabled: !!cellDrawer,
+    staleTime: matrixStale,
   });
 
   const clientActivity = data?.clientActivity ?? [];
@@ -319,7 +325,9 @@ export default function ClientActivityMatrixPage() {
       <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
 
       <Tabs
-        defaultActiveKey="matrix"
+        activeKey={matrixTab}
+        onChange={setMatrixTab}
+        destroyInactiveTabPane
         items={[
           {
             key: 'matrix',
@@ -454,7 +462,12 @@ export default function ClientActivityMatrixPage() {
                 <ApartmentOutlined /> Клиенты по иерархии
               </span>
             ),
-            children: <HierarchyClientsAnalyticsPanel products={visibleProducts} />,
+            children: (
+              <HierarchyClientsAnalyticsPanel
+                products={visibleProducts}
+                fetchEnabled={matrixTab === 'hierarchy-clients'}
+              />
+            ),
           },
         ]}
       />

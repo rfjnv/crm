@@ -137,13 +137,20 @@ export default function HistoryAnalyticsPage() {
   /** Monthly chart: compare operational vs shipped revenue, or show one metric. */
   const [historyRevMode, setHistoryRevMode] = useState<'both' | 'operational' | 'shipped'>('both');
 
-  const { data, isLoading } = useQuery({ queryKey: ['analytics-history', year], queryFn: () => analyticsApi.getHistory(year) });
+  const historyStaleMs = 120_000;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['analytics-history', year],
+    queryFn: () => analyticsApi.getHistory(year),
+    staleTime: historyStaleMs,
+  });
 
   const needExtended = activeTab === 'analytics' || activeTab === 'segments';
   const { data: extended } = useQuery({
     queryKey: ['analytics-history-extended', year],
     queryFn: () => analyticsApi.getHistoryExtended(year),
     enabled: needExtended,
+    staleTime: historyStaleMs,
   });
 
   const drillType = kpiDrawer === 'deals' || kpiDrawer === 'revenue' || kpiDrawer === 'avg'
@@ -152,12 +159,14 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-drilldown', drillType, year],
     queryFn: () => analyticsApi.getHistoryDrilldown(drillType!, undefined, year),
     enabled: !!drillType,
+    staleTime: historyStaleMs,
   });
 
   const { data: monthDetail } = useQuery({
     queryKey: ['analytics-history-month', monthDrawer, year],
     queryFn: () => analyticsApi.getHistoryMonth(monthDrawer!, year),
     enabled: !!monthDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Client-month purchases drawer query
@@ -165,6 +174,7 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
     queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, year),
     enabled: !!cellDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Product buyers drawer query
@@ -172,6 +182,7 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-product-buyers', productDrawer?.productId, year],
     queryFn: () => analyticsApi.getHistoryProductBuyers(productDrawer!.productId, year),
     enabled: !!productDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Manager drilldown query
@@ -179,6 +190,7 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-drilldown-manager', managerDrawer?.managerId, year],
     queryFn: () => analyticsApi.getHistoryDrilldown('deals', { managerId: managerDrawer!.managerId }, year),
     enabled: !!managerDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Method drilldown query
@@ -186,6 +198,7 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-drilldown-method', methodDrawer, year],
     queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }, year),
     enabled: !!methodDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Cohort clients query
@@ -193,6 +206,7 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, year],
     queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year),
     enabled: !!cohortDrawer,
+    staleTime: historyStaleMs,
   });
 
   // Data quality queries (loaded only when tab is active)
@@ -201,16 +215,19 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-data-quality', year],
     queryFn: () => analyticsApi.getHistoryDataQuality(year),
     enabled: needDataQuality,
+    staleTime: historyStaleMs,
   });
   const { data: exchangeData } = useQuery({
     queryKey: ['analytics-history-exchange', year],
     queryFn: () => analyticsApi.getHistoryExchange(year),
     enabled: needDataQuality,
+    staleTime: historyStaleMs,
   });
   const { data: prepaymentData } = useQuery({
     queryKey: ['analytics-history-prepayments', year],
     queryFn: () => analyticsApi.getHistoryPrepayments(year),
     enabled: needDataQuality,
+    staleTime: historyStaleMs,
   });
 
   const filteredActivity = useMemo(() => {
