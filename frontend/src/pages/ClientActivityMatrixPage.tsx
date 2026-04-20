@@ -65,25 +65,6 @@ function parseMatrixListParams(sp: URLSearchParams): {
   return { year, selectedMonths, selectedClients, page, pageSize, view };
 }
 
-function buildMatrixListSearchParams(state: {
-  year: number;
-  selectedMonths: number[];
-  selectedClients: string[];
-  page: number;
-  pageSize: number;
-  view: MatrixTabView;
-}): URLSearchParams {
-  const cy = new Date().getFullYear();
-  const n = new URLSearchParams();
-  if (state.year !== cy) n.set('year', String(state.year));
-  if (state.selectedMonths.length) n.set('months', state.selectedMonths.join(','));
-  if (state.selectedClients.length) n.set('clients', state.selectedClients.join(','));
-  if (state.page !== 1) n.set('page', String(state.page));
-  if (state.pageSize !== DEFAULT_PAGE_SIZE) n.set('pageSize', String(state.pageSize));
-  if (state.view !== 'matrix') n.set('view', state.view);
-  return n;
-}
-
 function mergeMatrixListSearchParams(
   prev: URLSearchParams,
   patch: Partial<{
@@ -104,7 +85,28 @@ function mergeMatrixListSearchParams(
     pageSize: patch.pageSize ?? cur.pageSize,
     view: patch.view ?? cur.view,
   };
-  return buildMatrixListSearchParams(next);
+  const cy = new Date().getFullYear();
+  const merged = new URLSearchParams(prev);
+
+  if (next.year !== cy) merged.set('year', String(next.year));
+  else merged.delete('year');
+
+  if (next.selectedMonths.length) merged.set('months', next.selectedMonths.join(','));
+  else merged.delete('months');
+
+  if (next.selectedClients.length) merged.set('clients', next.selectedClients.join(','));
+  else merged.delete('clients');
+
+  if (next.page !== 1) merged.set('page', String(next.page));
+  else merged.delete('page');
+
+  if (next.pageSize !== DEFAULT_PAGE_SIZE) merged.set('pageSize', String(next.pageSize));
+  else merged.delete('pageSize');
+
+  if (next.view !== 'matrix') merged.set('view', next.view);
+  else merged.delete('view');
+
+  return merged;
 }
 
 export default function ClientActivityMatrixPage() {
