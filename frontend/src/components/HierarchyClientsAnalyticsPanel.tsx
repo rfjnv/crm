@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button } from 'antd';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
@@ -700,6 +700,31 @@ export default function HierarchyClientsAnalyticsPanel({
                 columns={matrixColumns}
               />
             )}
+
+            <Affix offsetBottom={16}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+                <Card
+                  size="small"
+                  style={{
+                    pointerEvents: 'auto',
+                    boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.45)' : '0 8px 22px rgba(0,0,0,0.12)',
+                    borderRadius: 10,
+                  }}
+                >
+                  <Space size={8}>
+                    <Typography.Text type="secondary">Быстрый вид:</Typography.Text>
+                    <Segmented
+                      value={clientViewMode}
+                      onChange={(v) => setClientViewMode(v as ClientViewMode)}
+                      options={[
+                        { label: 'Таблица', value: 'table' },
+                        { label: 'Матрица', value: 'matrix' },
+                      ]}
+                    />
+                  </Space>
+                </Card>
+              </div>
+            </Affix>
           </>
         )}
       </Card>
