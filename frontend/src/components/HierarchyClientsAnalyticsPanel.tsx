@@ -366,6 +366,27 @@ export default function HierarchyClientsAnalyticsPanel({
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
 
+  const categoryProductsChartData = useMemo(() => {
+    const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
+    const byProduct = new Map<string, { name: string; soldQty: number }>();
+
+    for (const row of rows) {
+      const product = productsById.get(row.productId);
+      const key = row.productId;
+      const current = byProduct.get(key) ?? {
+        name: product?.name || row.productId,
+        soldQty: 0,
+      };
+      current.soldQty += row.soldQty;
+      byProduct.set(key, current);
+    }
+
+    return [...byProduct.values()]
+      .sort((a, b) => b.soldQty - a.soldQty)
+      .slice(0, 20)
+      .map((p) => ({ name: p.name, value: p.soldQty }));
+  }, [productsById, purchaseRows, selectedClientScopeProductIds]);
+
   const matrixRows = useMemo(() => {
     const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
     const monthSet = new Set<string>();
@@ -643,6 +664,41 @@ export default function HierarchyClientsAnalyticsPanel({
         ) : (
           <>
             <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+              <Col xs={24}>
+                <Card
+                  size="small"
+                  title={
+                    clientScopeLevel === 'category'
+                      ? 'Топ товаров в выбранной категории (шт.)'
+                      : clientScopeLevel === 'type'
+                        ? 'Топ товаров в выбранном типе (шт.)'
+                        : 'Продажи выбранного товара (шт.)'
+                  }
+                >
+                  {categoryProductsChartData.length > 0 ? (
+                    <Bar
+                      data={categoryProductsChartData}
+                      xField="name"
+                      yField="value"
+                      height={320}
+                      colorField="name"
+                      axis={{
+                        x: { label: false },
+                        y: { labelFill: token.colorTextSecondary },
+                      }}
+                      tooltip={{
+                        formatter: (datum: { name: string; value: number }) => ({
+                          name: datum.name,
+                          value: `${datum.value.toLocaleString('ru-RU')} шт.`,
+                        }),
+                      }}
+                      theme={chartTheme}
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                  )}
+                </Card>
+              </Col>
               <Col xs={24} md={12}>
                 <Card size="small" title="Топ клиенты — Выручка">
                   {hierarchyClientRevenueChartData.length > 0 ? (
