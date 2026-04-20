@@ -127,6 +127,7 @@ export default function HistoryAnalyticsPage() {
   const [dqSearch, setDqSearch] = useState('');
   const [dqOpTypeFilter, setDqOpTypeFilter] = useState<string[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [yoyMetric, setYoyMetric] = useState<'revenue' | 'collected'>('revenue');
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -142,6 +143,13 @@ export default function HistoryAnalyticsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics-history', year],
     queryFn: () => analyticsApi.getHistory(year),
+    staleTime: historyStaleMs,
+  });
+  const prevYear = year - 1;
+  const { data: prevYearData } = useQuery({
+    queryKey: ['analytics-history', prevYear],
+    queryFn: () => analyticsApi.getHistory(prevYear),
+    enabled: prevYear >= 2024,
     staleTime: historyStaleMs,
   });
 
@@ -255,6 +263,31 @@ export default function HistoryAnalyticsPage() {
     }
     return list;
   }, [dataQuality?.problemRows, dqOpTypeFilter, dqSearch]);
+
+  const yoyRows = useMemo(() => {
+    const currentMap = new Map((data?.monthlyTrend || []).map((m) => [m.month, m]));
+    const prevMap = new Map((prevYearData?.monthlyTrend || []).map((m) => [m.month, m]));
+    const months = Array.from(
+      new Set<number>([...currentMap.keys(), ...prevMap.keys()]),
+    ).sort((a, b) => a - b);
+
+    return months.map((month) => {
+      const current = currentMap.get(month);
+      const prev = prevMap.get(month);
+      const currentValue = yoyMetric === 'revenue' ? Number(current?.revenue ?? 0) : Number(current?.collected ?? 0);
+      const prevValue = yoyMetric === 'revenue' ? Number(prev?.revenue ?? 0) : Number(prev?.collected ?? 0);
+      const delta = currentValue - prevValue;
+      const deltaPct = prevValue > 0 ? (delta / prevValue) * 100 : null;
+      return {
+        key: month,
+        month,
+        currentValue,
+        prevValue,
+        delta,
+        deltaPct,
+      };
+    });
+  }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric]);
 
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
@@ -689,6 +722,108 @@ export default function HistoryAnalyticsPage() {
         ) : (
           <Text type="secondary">Нет данных</Text>
         )}
+      </Card>
+
+      <Card
+        title={`Сравнение с ${prevYear} годом`}
+        size="small"
+        style={{ marginBottom: 16 }}
+        extra={
+          <Segmented
+            size="small"
+            value={yoyMetric}
+            onChange={(v) => setYoyMetric(v as 'revenue' | 'collected')}
+            options={[
+              { label: 'Выручка', value: 'revenue' },
+              { label: 'Оплаты', value: 'collected' },
+            ]}
+          />
+        }
+      >
+        <Table
+          dataSource={yoyRows}
+          size="small"
+          pagination={false}
+          scroll={{ x: 700 }}
+          columns={[
+            {
+              title: 'Месяц',
+              dataIndex: 'month',
+              key: 'month',
+              width: 100,
+              render: (m: number) => MONTH_LABELS[m] || `${m}`,
+            },
+            {
+              title: String(prevYear),
+              dataIndex: 'prevValue',
+              key: 'prevValue',
+              align: 'right',
+              render: (v: number) => fmtNum(v),
+            },
+            {
+              title: String(year),
+              dataIndex: 'currentValue',
+              key: 'currentValue',
+              align: 'right',
+              render: (v: number) => fmtNum(v),
+            },
+            {
+              title: 'Разница',
+              dataIndex: 'delta',
+              key: 'delta',
+              align: 'right',
+              render: (v: number) => (
+                <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                  {v >= 0 ? '+' : ''}{fmtNum(v)}
+                </span>
+              ),
+            },
+            {
+              title: '%',
+              dataIndex: 'deltaPct',
+              key: 'deltaPct',
+              width: 120,
+              align: 'right',
+              render: (v: number | null) => {
+                if (v == null) return <span style={{ color: token.colorTextSecondary }}>—</span>;
+                return (
+                  <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                    {v >= 0 ? '+' : ''}{v.toFixed(1)}%
+                  </span>
+                );
+              },
+            },
+          ]}
+          summary={(rows) => {
+            const totalPrev = rows.reduce((s, r) => s + Number(r.prevValue || 0), 0);
+            const totalCurrent = rows.reduce((s, r) => s + Number(r.currentValue || 0), 0);
+            const totalDelta = totalCurrent - totalPrev;
+            const totalDeltaPct = totalPrev > 0 ? (totalDelta / totalPrev) * 100 : null;
+            return (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0}>
+                  <Text strong>Итого</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <Text strong>{fmtNum(totalPrev)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="right">
+                  <Text strong>{fmtNum(totalCurrent)}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} align="right">
+                  <Text strong style={{ color: totalDelta >= 0 ? token.colorSuccess : token.colorError }}>
+                    {totalDelta >= 0 ? '+' : ''}{fmtNum(totalDelta)}
+                  </Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={4} align="right">
+                  <Text strong style={{ color: (totalDeltaPct ?? 0) >= 0 ? token.colorSuccess : token.colorError }}>
+                    {totalDeltaPct == null ? '—' : `${totalDeltaPct >= 0 ? '+' : ''}${totalDeltaPct.toFixed(1)}%`}
+                  </Text>
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            );
+          }}
+        />
       </Card>
 
       <Card
