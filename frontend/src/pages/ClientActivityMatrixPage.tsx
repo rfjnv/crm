@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs } from 'antd';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs, Input } from 'antd';
 import { CalendarOutlined, ApartmentOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
@@ -35,6 +35,7 @@ function parseMatrixListParams(sp: URLSearchParams): {
   year: number;
   selectedMonths: number[];
   selectedClients: string[];
+  clientSearch: string;
   page: number;
   pageSize: number;
   view: MatrixTabView;
@@ -54,6 +55,7 @@ function parseMatrixListParams(sp: URLSearchParams): {
   const selectedClients = clientsPart
     ? [...new Set(clientsPart.split(',').map((s) => s.trim()).filter(Boolean))]
     : [];
+  const clientSearch = (sp.get('clientSearch') || '').trim();
 
   const rawPage = parseInt(sp.get('page') || '1', 10);
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
@@ -62,7 +64,7 @@ function parseMatrixListParams(sp: URLSearchParams): {
   const tabRaw = sp.get('view');
   const view = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
 
-  return { year, selectedMonths, selectedClients, page, pageSize, view };
+  return { year, selectedMonths, selectedClients, clientSearch, page, pageSize, view };
 }
 
 function mergeMatrixListSearchParams(
@@ -71,6 +73,7 @@ function mergeMatrixListSearchParams(
     year: number;
     selectedMonths: number[];
     selectedClients: string[];
+    clientSearch: string;
     page: number;
     pageSize: number;
     view: MatrixTabView;
@@ -81,6 +84,7 @@ function mergeMatrixListSearchParams(
     year: patch.year ?? cur.year,
     selectedMonths: patch.selectedMonths !== undefined ? patch.selectedMonths : cur.selectedMonths,
     selectedClients: patch.selectedClients !== undefined ? patch.selectedClients : cur.selectedClients,
+    clientSearch: patch.clientSearch !== undefined ? patch.clientSearch : cur.clientSearch,
     page: patch.page ?? cur.page,
     pageSize: patch.pageSize ?? cur.pageSize,
     view: patch.view ?? cur.view,
@@ -96,6 +100,9 @@ function mergeMatrixListSearchParams(
 
   if (next.selectedClients.length) merged.set('clients', next.selectedClients.join(','));
   else merged.delete('clients');
+
+  if (next.clientSearch.trim()) merged.set('clientSearch', next.clientSearch.trim());
+  else merged.delete('clientSearch');
 
   if (next.page !== 1) merged.set('page', String(next.page));
   else merged.delete('page');
@@ -114,7 +121,7 @@ export default function ClientActivityMatrixPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseMatrixListParams(searchParams), [searchParams]);
-  const { year, selectedMonths, selectedClients, page, pageSize, view } = listState;
+  const { year, selectedMonths, selectedClients, clientSearch, page, pageSize, view } = listState;
 
   const isMobile = useIsMobile();
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -162,9 +169,14 @@ export default function ClientActivityMatrixPage() {
   }, [selectedMonths, visibleMonths]);
 
   const filteredActivity = useMemo(() => {
-    if (selectedClients.length === 0) return clientActivity;
-    return clientActivity.filter((c) => selectedClients.includes(c.clientId));
-  }, [clientActivity, selectedClients]);
+    let rows = clientActivity;
+    if (selectedClients.length > 0) {
+      rows = rows.filter((c) => selectedClients.includes(c.clientId));
+    }
+    const q = clientSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((c) => c.companyName.toLowerCase().includes(q));
+  }, [clientActivity, clientSearch, selectedClients]);
 
   const patchListParams = useCallback(
     (patch: Parameters<typeof mergeMatrixListSearchParams>[1], nav?: { replace?: boolean }) => {
@@ -386,6 +398,13 @@ export default function ClientActivityMatrixPage() {
               options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
               filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
             />
+            <Input.Search
+              allowClear
+              placeholder="Поиск по клиенту"
+              value={clientSearch}
+              onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
+              style={{ width: isMobile ? 220 : 260 }}
+            />
           </div>
         )}
       >
@@ -482,6 +501,8 @@ export default function ClientActivityMatrixPage() {
                 products={visibleProducts}
                 fetchEnabled={view === 'hierarchy-clients'}
                 persistPrefix="mgr_hc"
+                clientSearchTerm={clientSearch}
+                onClientSearchTermChange={(value) => patchListParams({ clientSearch: value, page: 1 })}
               />
             ),
           },

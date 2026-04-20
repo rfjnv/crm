@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix } from 'antd';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
@@ -63,6 +63,10 @@ export type HierarchyClientsAnalyticsPanelProps = {
   fetchEnabled?: boolean;
   /** Префикс для сохранения состояния фильтров в URL query (например `mgr_hc`) */
   persistPrefix?: string;
+  /** Внешний текст поиска по клиентам (если передан — используется как источник истины). */
+  clientSearchTerm?: string;
+  /** Коллбек изменения внешнего поиска. */
+  onClientSearchTermChange?: (value: string) => void;
 };
 
 /**
@@ -73,6 +77,8 @@ export default function HierarchyClientsAnalyticsPanel({
   products,
   fetchEnabled = true,
   persistPrefix,
+  clientSearchTerm,
+  onClientSearchTermChange,
 }: HierarchyClientsAnalyticsPanelProps) {
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -106,6 +112,9 @@ export default function HierarchyClientsAnalyticsPanel({
   const [clientViewMode, setClientViewMode] = useState<ClientViewMode>(
     persistedView === 'matrix' ? 'matrix' : 'table',
   );
+  const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
+
+  const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim().toLowerCase();
 
   const writePersist = useCallback((name: string, value: string | null) => {
     if (!persistPrefix) return;
@@ -251,6 +260,10 @@ export default function HierarchyClientsAnalyticsPanel({
   useEffect(() => {
     writePersist('view', clientViewMode);
   }, [clientViewMode, writePersist]);
+  useEffect(() => {
+    if (clientSearchTerm !== undefined) return;
+    writePersist('clientSearch', internalClientSearch.trim() || null);
+  }, [clientSearchTerm, internalClientSearch, writePersist]);
 
   const hierarchyStale = 120_000;
 
@@ -339,8 +352,12 @@ export default function HierarchyClientsAnalyticsPanel({
           .map((v) => `${v.name} (${v.soldQty.toLocaleString('ru-RU')} шт.)`)
           .join(', '),
       }))
+      .filter((row) => {
+        if (!effectiveClientSearch) return true;
+        return row.clientName.toLowerCase().includes(effectiveClientSearch);
+      })
       .sort((a, b) => b.salesRevenue - a.salesRevenue);
-  }, [productsById, purchaseRows, selectedClientScopeProductIds]);
+  }, [effectiveClientSearch, productsById, purchaseRows, selectedClientScopeProductIds]);
 
   const hierarchyClientRevenueChartData = useMemo(
     () =>
@@ -651,6 +668,17 @@ export default function HierarchyClientsAnalyticsPanel({
               { label: 'Таблица', value: 'table' },
               { label: 'Матрица по месяцам', value: 'matrix' },
             ]}
+          />
+          <Input.Search
+            allowClear
+            placeholder="Поиск клиента"
+            value={clientSearchTerm ?? internalClientSearch}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (onClientSearchTermChange) onClientSearchTermChange(next);
+              else setInternalClientSearch(next);
+            }}
+            style={{ minWidth: 220 }}
           />
         </Space>
 
