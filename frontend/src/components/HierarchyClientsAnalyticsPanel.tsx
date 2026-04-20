@@ -15,6 +15,35 @@ import {
 
 type CompareLevel = 'category' | 'type' | 'product';
 type ClientViewMode = 'table' | 'matrix';
+type PurchaseLineRow = {
+  key: string;
+  dealId: string;
+  dealTitle: string;
+  saleAt: string;
+  productId: string;
+  productName: string;
+  soldQty: number;
+  salesRevenue: number;
+};
+type ClientPurchaseSummaryRow = {
+  key: string;
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  deals: Set<string>;
+  soldQty: number;
+  salesRevenue: number;
+  productMetrics: Map<string, { name: string; soldQty: number; salesRevenue: number }>;
+  purchaseLines: PurchaseLineRow[];
+  dealsCount: number;
+  purchasedInfo: string;
+};
+type MatrixClientRow = {
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  monthly: Record<string, number>;
+};
 
 type CategorySummary = {
   name: string;
@@ -249,31 +278,9 @@ export default function HierarchyClientsAnalyticsPanel({
     return clientScopeProductId ? new Set([clientScopeProductId]) : new Set<string>();
   }, [clientScopeCategory, clientScopeLevel, clientScopeProductId, clientScopeType, visibleProducts]);
 
-  const clientPurchaseSummaryRows = useMemo(() => {
+  const clientPurchaseSummaryRows = useMemo<ClientPurchaseSummaryRow[]>(() => {
     const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
-    const map = new Map<
-      string,
-      {
-        key: string;
-        clientId: string;
-        clientName: string;
-        clientIsSvip: boolean;
-        deals: Set<string>;
-        soldQty: number;
-        salesRevenue: number;
-        productMetrics: Map<string, { name: string; soldQty: number; salesRevenue: number }>;
-        purchaseLines: Array<{
-          key: string;
-          dealId: string;
-          dealTitle: string;
-          saleAt: string;
-          productId: string;
-          productName: string;
-          soldQty: number;
-          salesRevenue: number;
-        }>;
-      }
-    >();
+    const map = new Map<string, Omit<ClientPurchaseSummaryRow, 'dealsCount' | 'purchasedInfo'>>();
 
     for (const row of rows) {
       const existing = map.get(row.clientId) ?? {
@@ -358,7 +365,7 @@ export default function HierarchyClientsAnalyticsPanel({
       return `${m}.${String(y).slice(-2)}`;
     };
 
-    const byClient = new Map<string, { clientId: string; clientName: string; clientIsSvip: boolean; monthly: Record<string, number> }>();
+    const byClient = new Map<string, MatrixClientRow>();
     for (const row of rows) {
       const month = row.saleAt.slice(0, 7);
       const current = byClient.get(row.clientId) ?? {
@@ -555,7 +562,7 @@ export default function HierarchyClientsAnalyticsPanel({
                           title: 'Сделка',
                           dataIndex: 'dealTitle',
                           key: 'dealTitle',
-                          render: (title: string, line: { dealId: string }) => (
+                          render: (title: string, line) => (
                             <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
                               {title}
                             </Button>
@@ -598,7 +605,7 @@ export default function HierarchyClientsAnalyticsPanel({
                     title: 'Клиент',
                     dataIndex: 'clientName',
                     key: 'clientName',
-                    render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                    render: (v: string, r) => (
                       <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
                         {r.clientIsSvip ? `👑 ${v}` : v}
                       </Button>
@@ -650,7 +657,7 @@ export default function HierarchyClientsAnalyticsPanel({
                     key: 'clientName',
                     width: 220,
                     fixed: 'left',
-                    render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                    render: (v: string, r) => (
                       <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
                         {r.clientIsSvip ? `👑 ${v}` : v}
                       </Button>
@@ -661,7 +668,7 @@ export default function HierarchyClientsAnalyticsPanel({
                     key: `m_${monthKey}`,
                     width: 78,
                     align: 'center' as const,
-                    render: (_: unknown, row: { monthly: Record<string, number> }) => {
+                    render: (_: unknown, row) => {
                       const revenue = row.monthly[monthKey] ?? 0;
                       const ratio = Math.min(1, revenue / matrixRows.maxRevenue);
                       const bg = revenue > 0

@@ -29,8 +29,16 @@ const MONTH_LABELS: Record<number, string> = {
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+type MatrixTabView = 'matrix' | 'hierarchy-clients';
 
-function parseMatrixListParams(sp: URLSearchParams) {
+function parseMatrixListParams(sp: URLSearchParams): {
+  year: number;
+  selectedMonths: number[];
+  selectedClients: string[];
+  page: number;
+  pageSize: number;
+  view: MatrixTabView;
+} {
   const cy = new Date().getFullYear();
   const rawY = parseInt(sp.get('year') || String(cy), 10);
   const year = Number.isFinite(rawY) && rawY >= 2020 && rawY <= 2035 ? rawY : cy;
@@ -63,7 +71,7 @@ function buildMatrixListSearchParams(state: {
   selectedClients: string[];
   page: number;
   pageSize: number;
-  view: 'matrix' | 'hierarchy-clients';
+  view: MatrixTabView;
 }): URLSearchParams {
   const cy = new Date().getFullYear();
   const n = new URLSearchParams();
@@ -84,7 +92,7 @@ function mergeMatrixListSearchParams(
     selectedClients: string[];
     page: number;
     pageSize: number;
-    view: 'matrix' | 'hierarchy-clients';
+    view: MatrixTabView;
   }>,
 ): URLSearchParams {
   const cur = parseMatrixListParams(prev);
@@ -331,7 +339,7 @@ export default function ClientActivityMatrixPage() {
 
       <Tabs
         activeKey={view}
-        onChange={(next) => patchListParams({ view: next as 'matrix' | 'hierarchy-clients' })}
+        onChange={(next) => patchListParams({ view: next as MatrixTabView })}
         destroyInactiveTabPane
         items={[
           {
