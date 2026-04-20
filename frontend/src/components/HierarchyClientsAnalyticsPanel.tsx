@@ -110,9 +110,17 @@ export default function HierarchyClientsAnalyticsPanel({
   const writePersist = useCallback((name: string, value: string | null) => {
     if (!persistPrefix) return;
     setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
       const key = qp(name);
-      if (!key) return next;
+      if (!key) return prev;
+
+      const current = prev.get(key);
+      if (!value) {
+        if (current === null) return prev;
+      } else if (current === value) {
+        return prev;
+      }
+
+      const next = new URLSearchParams(prev);
       if (!value) next.delete(key);
       else next.set(key, value);
       return next;
