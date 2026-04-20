@@ -129,6 +129,7 @@ export default function HierarchyClientsAnalyticsPanel({
     for (const p of visibleProducts) map.set(p.id, p);
     return map;
   }, [visibleProducts]);
+  const normalizedCategory = (p: Product) => ((p.category && p.category.trim()) || 'Без категории');
 
   const categories = useMemo<CategorySummary[]>(() => {
     const byCategory = new Map<string, Product[]>();
@@ -390,6 +391,18 @@ export default function HierarchyClientsAnalyticsPanel({
     return { monthKeys, monthLabel, clients, maxRevenue };
   }, [purchaseRows, selectedClientScopeProductIds]);
 
+  useEffect(() => {
+    if (clientScopeLevel !== 'product' || !clientScopeProductId) return;
+    const selectedProduct = productsById.get(clientScopeProductId);
+    if (!selectedProduct) return;
+
+    const expectedCategory = normalizedCategory(selectedProduct);
+    const expectedType = inferTypeLabel(selectedProduct);
+
+    if (clientScopeCategory !== expectedCategory) setClientScopeCategory(expectedCategory);
+    if (clientScopeType !== expectedType) setClientScopeType(expectedType);
+  }, [clientScopeLevel, clientScopeProductId, clientScopeCategory, clientScopeType, productsById]);
+
   const purchaseLinesColumns: ColumnsType<PurchaseLineRow> = [
     {
       title: 'Товар',
@@ -593,7 +606,14 @@ export default function HierarchyClientsAnalyticsPanel({
               placeholder="Товар"
               style={{ minWidth: 260 }}
               value={clientScopeProductId || undefined}
-              onChange={(v) => setClientScopeProductId(v)}
+              onChange={(v) => {
+                setClientScopeProductId(v);
+                const selectedProduct = productsById.get(v);
+                if (selectedProduct) {
+                  setClientScopeCategory(normalizedCategory(selectedProduct));
+                  setClientScopeType(inferTypeLabel(selectedProduct));
+                }
+              }}
               options={productOptionsForClients}
               showSearch
               optionFilterProp="label"
