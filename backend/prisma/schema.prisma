@@ -723,6 +723,7 @@ model Expense {
   category       String
   amount         Decimal   @db.Decimal(12, 2)
   note           String?
+  method         String?
   status         String    @default("APPROVED")
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
@@ -736,6 +737,7 @@ model Expense {
   @@index([date])
   @@index([category])
   @@index([status])
+  @@index([method])
   @@map("expenses")
 }
 

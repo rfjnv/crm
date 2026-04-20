@@ -852,23 +852,31 @@ router.get(
     const expenseWhere: Prisma.ExpenseWhereInput = {
       status: 'APPROVED',
       date: { gte: startDate, lte: now },
+      ...(method ? { method } : {}),
     };
     const expenseRangeWhere: Prisma.ExpenseWhereInput = {
       status: 'APPROVED',
       date: { gte: rangeStart, lte: now },
+      ...(method ? { method } : {}),
     };
     const expenseBeforeRangeWhere: Prisma.ExpenseWhereInput = {
       status: 'APPROVED',
       date: { gte: startDate, lt: rangeStart },
+      ...(method ? { method } : {}),
     };
 
     const [
       incomingAllAgg,
       incomingBeforeRangeAgg,
       incomingRows,
+      incomingByMethodAgg,
+      incomingRangeByMethodAgg,
+      recentIncoming,
       expenseAllAgg,
       expenseBeforeRangeAgg,
       expenseRows,
+      expenseByMethodAgg,
+      expenseRangeByMethodAgg,
       expectedRows,
       debtRows,
     ] = await Promise.all([
@@ -876,15 +884,51 @@ router.get(
       prisma.payment.aggregate({ where: paymentBeforeRangeWhere, _sum: { amount: true } }),
       prisma.payment.findMany({
         where: paymentRangeWhere,
-        select: { paidAt: true, amount: true },
+        select: { paidAt: true, amount: true, method: true },
         orderBy: { paidAt: 'asc' },
+      }),
+      prisma.payment.groupBy({
+        by: ['method'],
+        where: paymentWhere,
+        _sum: { amount: true },
+      }),
+      prisma.payment.groupBy({
+        by: ['method'],
+        where: paymentRangeWhere,
+        _sum: { amount: true },
+      }),
+      prisma.payment.findMany({
+        where: paymentRangeWhere,
+        orderBy: { paidAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          paidAt: true,
+          amount: true,
+          method: true,
+          note: true,
+          deal: { select: { id: true, title: true } },
+          client: { select: { id: true, companyName: true } },
+          creator: { select: { id: true, fullName: true } },
+          receivedBy: { select: { id: true, fullName: true } },
+        },
       }),
       prisma.expense.aggregate({ where: expenseWhere, _sum: { amount: true } }),
       prisma.expense.aggregate({ where: expenseBeforeRangeWhere, _sum: { amount: true } }),
       prisma.expense.findMany({
         where: expenseRangeWhere,
-        select: { date: true, amount: true },
+        select: { date: true, amount: true, method: true },
         orderBy: { date: 'asc' },
+      }),
+      prisma.expense.groupBy({
+        by: ['method'],
+        where: expenseWhere,
+        _sum: { amount: true },
+      }),
+      prisma.expense.groupBy({
+        by: ['method'],
+        where: expenseRangeWhere,
+        _sum: { amount: true },
       }),
       prisma.deal.findMany({
         where: {
@@ -920,15 +964,27 @@ router.get(
     );
 
     const incomingByDay = new Map<string, number>();
+    const incomingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const p of incomingRows) {
       const day = p.paidAt.toISOString().slice(0, 10);
-      incomingByDay.set(day, (incomingByDay.get(day) || 0) + Number(p.amount));
+      const amt = Number(p.amount);
+      incomingByDay.set(day, (incomingByDay.get(day) || 0) + amt);
+      const key = p.method || 'UNKNOWN';
+      if (!incomingByDayMethodMap.has(day)) incomingByDayMethodMap.set(day, new Map());
+      const dayMap = incomingByDayMethodMap.get(day)!;
+      dayMap.set(key, (dayMap.get(key) || 0) + amt);
     }
 
     const outgoingByDay = new Map<string, number>();
+    const outgoingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const e of expenseRows) {
       const day = e.date.toISOString().slice(0, 10);
-      outgoingByDay.set(day, (outgoingByDay.get(day) || 0) + Number(e.amount));
+      const amt = Number(e.amount);
+      outgoingByDay.set(day, (outgoingByDay.get(day) || 0) + amt);
+      const key = e.method || 'UNKNOWN';
+      if (!outgoingByDayMethodMap.has(day)) outgoingByDayMethodMap.set(day, new Map());
+      const dayMap = outgoingByDayMethodMap.get(day)!;
+      dayMap.set(key, (dayMap.get(key) || 0) + amt);
     }
 
     const days: string[] = [];
@@ -955,6 +1011,61 @@ router.get(
       total: Math.round((incomingByDay.get(day) || 0) * 100) / 100,
     }));
 
+    const incomeVsExpense = days.map((day) => {
+      const inc = Math.round((incomingByDay.get(day) || 0) * 100) / 100;
+      const out = Math.round((outgoingByDay.get(day) || 0) * 100) / 100;
+      return {
+        day,
+        incoming: inc,
+        outgoing: out,
+        net: Math.round((inc - out) * 100) / 100,
+      };
+    });
+
+    const ALL_METHODS = ['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'UNKNOWN'] as const;
+
+    const incomingByDayMethod: { day: string; method: string; amount: number }[] = [];
+    const expenseByDayMethod: { day: string; method: string; amount: number }[] = [];
+    for (const day of days) {
+      const incDay = incomingByDayMethodMap.get(day);
+      const outDay = outgoingByDayMethodMap.get(day);
+      for (const m of ALL_METHODS) {
+        const inc = incDay?.get(m) || 0;
+        const out = outDay?.get(m) || 0;
+        if (inc > 0) incomingByDayMethod.push({ day, method: m, amount: Math.round(inc * 100) / 100 });
+        if (out > 0) expenseByDayMethod.push({ day, method: m, amount: Math.round(out * 100) / 100 });
+      }
+    }
+
+    const byMethod: Record<string, { incoming: number; outgoing: number; net: number; incomingInRange: number; outgoingInRange: number }> = {};
+    for (const m of ALL_METHODS) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
+    for (const row of incomingByMethodAgg) {
+      const m = row.method || 'UNKNOWN';
+      if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
+      byMethod[m].incoming = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+    }
+    for (const row of expenseByMethodAgg) {
+      const m = row.method || 'UNKNOWN';
+      if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
+      byMethod[m].outgoing = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+    }
+    for (const row of incomingRangeByMethodAgg) {
+      const m = row.method || 'UNKNOWN';
+      if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
+      byMethod[m].incomingInRange = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+    }
+    for (const row of expenseRangeByMethodAgg) {
+      const m = row.method || 'UNKNOWN';
+      if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
+      byMethod[m].outgoingInRange = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+    }
+    for (const m of Object.keys(byMethod)) {
+      byMethod[m].net = Math.round((byMethod[m].incoming - byMethod[m].outgoing) * 100) / 100;
+    }
+
+    const incomingInRange = incomingRows.reduce((s, p) => s + Number(p.amount), 0);
+    const outgoingInRange = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
+
     res.json({
       setupRequired: false,
       updatedAt: new Date().toISOString(),
@@ -963,18 +1074,38 @@ router.get(
       initialBalance,
       kpi: {
         balance: Math.round(realBalance * 100) / 100,
-        cash: Math.round(realBalance * 100) / 100,
-        bank: 0,
+        cash: Math.round((byMethod.CASH?.net || 0) * 100) / 100,
+        bank: Math.round(((byMethod.TRANSFER?.net || 0) + (byMethod.PAYME?.net || 0) + (byMethod.QR?.net || 0) + (byMethod.CLICK?.net || 0) + (byMethod.TERMINAL?.net || 0)) * 100) / 100,
+        incomingAll: Math.round(incomingAll * 100) / 100,
+        expensesAll: Math.round(expensesAll * 100) / 100,
+        incomingInRange: Math.round(incomingInRange * 100) / 100,
+        outgoingInRange: Math.round(outgoingInRange * 100) / 100,
+        netInRange: Math.round((incomingInRange - outgoingInRange) * 100) / 100,
       },
       breakdown: {
         real: Math.round(realBalance * 100) / 100,
         expected: Math.round(expectedAmount * 100) / 100,
         debts: Math.round(debtAmount * 100) / 100,
       },
+      byMethod,
+      recentIncoming: recentIncoming.map((p) => ({
+        id: p.id,
+        paidAt: p.paidAt.toISOString(),
+        amount: Math.round(Number(p.amount) * 100) / 100,
+        method: p.method,
+        note: p.note,
+        deal: p.deal ? { id: p.deal.id, title: p.deal.title } : null,
+        client: p.client ? { id: p.client.id, name: p.client.companyName } : null,
+        creator: p.creator ? { id: p.creator.id, fullName: p.creator.fullName } : null,
+        receivedBy: p.receivedBy ? { id: p.receivedBy.id, fullName: p.receivedBy.fullName } : null,
+      })),
       charts: {
         balanceLine,
         cashFlow,
         paymentsPerDay,
+        incomeVsExpense,
+        incomingByDayMethod,
+        expenseByDayMethod,
       },
     });
   }),

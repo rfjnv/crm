@@ -24,7 +24,7 @@ router.get(
   '/',
   requirePermission('manage_expenses'),
   asyncHandler(async (req: Request, res: Response) => {
-    const { from, to, category, status } = req.query;
+    const { from, to, category, status, method } = req.query;
 
     const where: Record<string, unknown> = {};
     if (from || to) {
@@ -34,6 +34,7 @@ router.get(
     }
     if (category) where.category = category as string;
     if (status) where.status = status as string;
+    if (method) where.method = method as string;
 
     const expenses = await prisma.expense.findMany({
       where,
@@ -64,6 +65,7 @@ router.post(
         category: data.category,
         amount: data.amount,
         note: data.note,
+        method: data.method,
         createdBy: req.user!.userId,
         status: isAdmin ? 'APPROVED' : 'PENDING',
         approvedBy: isAdmin ? req.user!.userId : undefined,

@@ -759,12 +759,15 @@ export interface OnlineUser {
 
 // ──── Expenses ────
 
+export type ExpenseMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'CLICK' | 'TERMINAL' | 'INSTALLMENT';
+
 export interface Expense {
   id: string;
   date: string;
   category: string;
   amount: string;
   note?: string | null;
+  method?: ExpenseMethod | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   approvedBy?: string | null;
   approvedAt?: string | null;

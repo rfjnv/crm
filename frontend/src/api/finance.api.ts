@@ -72,18 +72,65 @@ export interface CompanyBalanceChartPoint {
   total?: number;
 }
 
+export interface CompanyBalanceIncomeVsExpensePoint {
+  day: string;
+  incoming: number;
+  outgoing: number;
+  net: number;
+}
+
+export interface CompanyBalanceMethodDayPoint {
+  day: string;
+  method: string;
+  amount: number;
+}
+
+export interface CompanyBalanceMethodAgg {
+  incoming: number;
+  outgoing: number;
+  net: number;
+  incomingInRange: number;
+  outgoingInRange: number;
+}
+
+export interface CompanyBalanceRecentIncoming {
+  id: string;
+  paidAt: string;
+  amount: number;
+  method: string | null;
+  note: string | null;
+  deal: { id: string; title: string } | null;
+  client: { id: string; name: string } | null;
+  creator: { id: string; fullName: string } | null;
+  receivedBy: { id: string; fullName: string } | null;
+}
+
 export interface CompanyBalanceResponse {
   setupRequired: boolean;
   updatedAt?: string;
   startDate?: string;
   initialBalance?: number;
   filters?: { period: string; method: string | null; managerId: string | null };
-  kpi?: { balance: number; cash: number; bank: number };
+  kpi?: {
+    balance: number;
+    cash: number;
+    bank: number;
+    incomingAll?: number;
+    expensesAll?: number;
+    incomingInRange?: number;
+    outgoingInRange?: number;
+    netInRange?: number;
+  };
   breakdown?: { real: number; expected: number; debts: number };
+  byMethod?: Record<string, CompanyBalanceMethodAgg>;
+  recentIncoming?: CompanyBalanceRecentIncoming[];
   charts?: {
     balanceLine: CompanyBalanceChartPoint[];
     cashFlow: CompanyBalanceChartPoint[];
     paymentsPerDay: CompanyBalanceChartPoint[];
+    incomeVsExpense: CompanyBalanceIncomeVsExpensePoint[];
+    incomingByDayMethod: CompanyBalanceMethodDayPoint[];
+    expenseByDayMethod: CompanyBalanceMethodDayPoint[];
   };
 }
 
