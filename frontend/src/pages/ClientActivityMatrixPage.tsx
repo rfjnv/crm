@@ -51,8 +51,10 @@ function parseMatrixListParams(sp: URLSearchParams) {
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
   const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
   const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
+  const tabRaw = sp.get('view');
+  const view = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
 
-  return { year, selectedMonths, selectedClients, page, pageSize };
+  return { year, selectedMonths, selectedClients, page, pageSize, view };
 }
 
 function buildMatrixListSearchParams(state: {
@@ -61,6 +63,7 @@ function buildMatrixListSearchParams(state: {
   selectedClients: string[];
   page: number;
   pageSize: number;
+  view: 'matrix' | 'hierarchy-clients';
 }): URLSearchParams {
   const cy = new Date().getFullYear();
   const n = new URLSearchParams();
@@ -69,6 +72,7 @@ function buildMatrixListSearchParams(state: {
   if (state.selectedClients.length) n.set('clients', state.selectedClients.join(','));
   if (state.page !== 1) n.set('page', String(state.page));
   if (state.pageSize !== DEFAULT_PAGE_SIZE) n.set('pageSize', String(state.pageSize));
+  if (state.view !== 'matrix') n.set('view', state.view);
   return n;
 }
 
@@ -80,6 +84,7 @@ function mergeMatrixListSearchParams(
     selectedClients: string[];
     page: number;
     pageSize: number;
+    view: 'matrix' | 'hierarchy-clients';
   }>,
 ): URLSearchParams {
   const cur = parseMatrixListParams(prev);
@@ -89,6 +94,7 @@ function mergeMatrixListSearchParams(
     selectedClients: patch.selectedClients !== undefined ? patch.selectedClients : cur.selectedClients,
     page: patch.page ?? cur.page,
     pageSize: patch.pageSize ?? cur.pageSize,
+    view: patch.view ?? cur.view,
   };
   return buildMatrixListSearchParams(next);
 }
@@ -96,10 +102,9 @@ function mergeMatrixListSearchParams(
 export default function ClientActivityMatrixPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [matrixTab, setMatrixTab] = useState('matrix');
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseMatrixListParams(searchParams), [searchParams]);
-  const { year, selectedMonths, selectedClients, page, pageSize } = listState;
+  const { year, selectedMonths, selectedClients, page, pageSize, view } = listState;
 
   const isMobile = useIsMobile();
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -325,8 +330,8 @@ export default function ClientActivityMatrixPage() {
       <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
 
       <Tabs
-        activeKey={matrixTab}
-        onChange={setMatrixTab}
+        activeKey={view}
+        onChange={(next) => patchListParams({ view: next as 'matrix' | 'hierarchy-clients' })}
         destroyInactiveTabPane
         items={[
           {
@@ -465,7 +470,8 @@ export default function ClientActivityMatrixPage() {
             children: (
               <HierarchyClientsAnalyticsPanel
                 products={visibleProducts}
-                fetchEnabled={matrixTab === 'hierarchy-clients'}
+                fetchEnabled={view === 'hierarchy-clients'}
+                persistPrefix="mgr_hc"
               />
             ),
           },

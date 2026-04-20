@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button } from 'antd';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
@@ -14,6 +14,7 @@ import {
 } from '../lib/analyticsHierarchySales';
 
 type CompareLevel = 'category' | 'type' | 'product';
+type ClientViewMode = 'table' | 'matrix';
 
 type CategorySummary = {
   name: string;
@@ -29,21 +30,63 @@ export type HierarchyClientsAnalyticsPanelProps = {
   products: Product[];
   /** false — не грузить закрытые позиции, пока вкладка скрыта (ускоряет остальные страницы) */
   fetchEnabled?: boolean;
+  /** Префикс для сохранения состояния фильтров в URL query (например `mgr_hc`) */
+  persistPrefix?: string;
 };
 
 /**
  * Блок «Клиенты по иерархии»: период, фильтр категория/тип/товар, графики и таблица клиентов.
  * Используется в аналитике и на странице «Аналитика для менеджеров».
  */
-export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled = true }: HierarchyClientsAnalyticsPanelProps) {
+export default function HierarchyClientsAnalyticsPanel({
+  products,
+  fetchEnabled = true,
+  persistPrefix,
+}: HierarchyClientsAnalyticsPanelProps) {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const [clientScopeLevel, setClientScopeLevel] = useState<CompareLevel>('category');
-  const [clientScopeCategory, setClientScopeCategory] = useState<string | null>(null);
-  const [clientScopeType, setClientScopeType] = useState<string | null>(null);
-  const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(null);
-  const [hierarchyPeriodPreset, setHierarchyPeriodPreset] = useState<HierarchyPeriodPreset>('month');
-  const [hierarchyCustomDays, setHierarchyCustomDays] = useState<number>(30);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qp = (name: string) => (persistPrefix ? `${persistPrefix}_${name}` : '');
+  const readPersist = (name: string): string | null => {
+    if (!persistPrefix) return null;
+    const key = qp(name);
+    return key ? searchParams.get(key) : null;
+  };
+
+  const persistedLevel = readPersist('level');
+  const persistedPreset = readPersist('period');
+  const persistedView = readPersist('view');
+  const persistedDays = Number(readPersist('days') ?? 30);
+
+  const [clientScopeLevel, setClientScopeLevel] = useState<CompareLevel>(
+    persistedLevel === 'category' || persistedLevel === 'type' || persistedLevel === 'product' ? persistedLevel : 'category',
+  );
+  const [clientScopeCategory, setClientScopeCategory] = useState<string | null>(readPersist('category'));
+  const [clientScopeType, setClientScopeType] = useState<string | null>(readPersist('type'));
+  const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(readPersist('product'));
+  const [hierarchyPeriodPreset, setHierarchyPeriodPreset] = useState<HierarchyPeriodPreset>(
+    persistedPreset === 'week' || persistedPreset === 'month' || persistedPreset === 'quarter' || persistedPreset === 'year' || persistedPreset === 'custom'
+      ? persistedPreset
+      : 'month',
+  );
+  const [hierarchyCustomDays, setHierarchyCustomDays] = useState<number>(
+    Number.isFinite(persistedDays) && persistedDays > 0 ? persistedDays : 30,
+  );
+  const [clientViewMode, setClientViewMode] = useState<ClientViewMode>(
+    persistedView === 'matrix' ? 'matrix' : 'table',
+  );
+
+  const writePersist = useCallback((name: string, value: string | null) => {
+    if (!persistPrefix) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const key = qp(name);
+      if (!key) return next;
+      if (!value) next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { replace: true });
+  }, [persistPrefix, setSearchParams]);
 
   const visibleProducts = useMemo(
     () => products.filter((p: Product) => p.isActive),
@@ -151,6 +194,28 @@ export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled 
     () => categories.map((c) => ({ label: c.name, value: c.name })),
     [categories],
   );
+
+  useEffect(() => {
+    writePersist('level', clientScopeLevel);
+  }, [clientScopeLevel, writePersist]);
+  useEffect(() => {
+    writePersist('category', clientScopeCategory);
+  }, [clientScopeCategory, writePersist]);
+  useEffect(() => {
+    writePersist('type', clientScopeType);
+  }, [clientScopeType, writePersist]);
+  useEffect(() => {
+    writePersist('product', clientScopeProductId);
+  }, [clientScopeProductId, writePersist]);
+  useEffect(() => {
+    writePersist('period', hierarchyPeriodPreset);
+  }, [hierarchyPeriodPreset, writePersist]);
+  useEffect(() => {
+    writePersist('days', hierarchyPeriodPreset === 'custom' ? String(hierarchyCustomDays) : null);
+  }, [hierarchyCustomDays, hierarchyPeriodPreset, writePersist]);
+  useEffect(() => {
+    writePersist('view', clientViewMode);
+  }, [clientViewMode, writePersist]);
 
   const hierarchyStale = 120_000;
 
@@ -283,6 +348,39 @@ export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
 
+  const matrixRows = useMemo(() => {
+    const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
+    const monthSet = new Set<string>();
+    for (const row of rows) monthSet.add(row.saleAt.slice(0, 7));
+    const monthKeys = [...monthSet].sort();
+    const monthLabel = (monthKey: string) => {
+      const [y, m] = monthKey.split('-');
+      return `${m}.${String(y).slice(-2)}`;
+    };
+
+    const byClient = new Map<string, { clientId: string; clientName: string; clientIsSvip: boolean; monthly: Record<string, number> }>();
+    for (const row of rows) {
+      const month = row.saleAt.slice(0, 7);
+      const current = byClient.get(row.clientId) ?? {
+        clientId: row.clientId,
+        clientName: row.clientName,
+        clientIsSvip: row.clientIsSvip,
+        monthly: {},
+      };
+      current.monthly[month] = (current.monthly[month] ?? 0) + row.salesRevenue;
+      byClient.set(row.clientId, current);
+    }
+
+    const clients = [...byClient.values()].sort((a, b) => {
+      const sumA = Object.values(a.monthly).reduce((acc, v) => acc + v, 0);
+      const sumB = Object.values(b.monthly).reduce((acc, v) => acc + v, 0);
+      return sumB - sumA;
+    });
+
+    const maxRevenue = Math.max(1, ...clients.flatMap((c) => monthKeys.map((m) => c.monthly[m] ?? 0)));
+    return { monthKeys, monthLabel, clients, maxRevenue };
+  }, [purchaseRows, selectedClientScopeProductIds]);
+
   if (visibleProducts.length === 0) {
     return (
       <Typography.Text type="secondary">Нет активных товаров для анализа иерархии.</Typography.Text>
@@ -362,6 +460,15 @@ export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled 
               optionFilterProp="label"
             />
           )}
+
+          <Segmented
+            value={clientViewMode}
+            onChange={(v) => setClientViewMode(v as ClientViewMode)}
+            options={[
+              { label: 'Таблица', value: 'table' },
+              { label: 'Матрица по месяцам', value: 'matrix' },
+            ]}
+          />
         </Space>
 
         {hierarchyClientLoading ? (
@@ -423,110 +530,161 @@ export default function HierarchyClientsAnalyticsPanel({ products, fetchEnabled 
               </Col>
             </Row>
 
-            <Table
-              size="small"
-              rowKey="clientId"
-              pagination={false}
-              dataSource={clientPurchaseSummaryRows}
-              locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
-              expandable={{
-                expandedRowRender: (record) => (
-                  <Table
-                    size="small"
-                    pagination={false}
-                    rowKey="key"
-                    dataSource={record.purchaseLines}
-                    columns={[
-                      {
-                        title: 'Товар',
-                        dataIndex: 'productName',
-                        key: 'productName',
-                        ellipsis: true,
-                      },
-                      {
-                        title: 'Сделка',
-                        dataIndex: 'dealTitle',
-                        key: 'dealTitle',
-                        render: (title: string, line: { dealId: string }) => (
-                          <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
-                            {title}
-                          </Button>
-                        ),
-                      },
-                      {
-                        title: 'Дата',
-                        dataIndex: 'saleAt',
-                        key: 'saleAt',
-                        width: 110,
-                        render: (iso: string) =>
-                          new Date(iso).toLocaleDateString('ru-RU', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                          }),
-                      },
-                      {
-                        title: 'Шт.',
-                        dataIndex: 'soldQty',
-                        key: 'soldQty',
-                        width: 72,
-                        align: 'right',
-                        render: (v: number) => v.toLocaleString('ru-RU'),
-                      },
-                      {
-                        title: 'Выручка',
-                        dataIndex: 'salesRevenue',
-                        key: 'salesRevenue',
-                        width: 120,
-                        align: 'right',
-                        render: (v: number) => formatUZS(v),
-                      },
-                    ]}
-                  />
-                ),
-              }}
-              columns={[
-                {
-                  title: 'Клиент',
-                  dataIndex: 'clientName',
-                  key: 'clientName',
-                  render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
-                    <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
-                      {r.clientIsSvip ? `👑 ${v}` : v}
-                    </Button>
+            {clientViewMode === 'table' ? (
+              <Table
+                size="small"
+                rowKey="clientId"
+                pagination={false}
+                dataSource={clientPurchaseSummaryRows}
+                locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+                expandable={{
+                  expandedRowRender: (record) => (
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey="key"
+                      dataSource={record.purchaseLines}
+                      columns={[
+                        {
+                          title: 'Товар',
+                          dataIndex: 'productName',
+                          key: 'productName',
+                          ellipsis: true,
+                        },
+                        {
+                          title: 'Сделка',
+                          dataIndex: 'dealTitle',
+                          key: 'dealTitle',
+                          render: (title: string, line: { dealId: string }) => (
+                            <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
+                              {title}
+                            </Button>
+                          ),
+                        },
+                        {
+                          title: 'Дата',
+                          dataIndex: 'saleAt',
+                          key: 'saleAt',
+                          width: 110,
+                          render: (iso: string) =>
+                            new Date(iso).toLocaleDateString('ru-RU', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            }),
+                        },
+                        {
+                          title: 'Шт.',
+                          dataIndex: 'soldQty',
+                          key: 'soldQty',
+                          width: 72,
+                          align: 'right',
+                          render: (v: number) => v.toLocaleString('ru-RU'),
+                        },
+                        {
+                          title: 'Выручка',
+                          dataIndex: 'salesRevenue',
+                          key: 'salesRevenue',
+                          width: 120,
+                          align: 'right',
+                          render: (v: number) => formatUZS(v),
+                        },
+                      ]}
+                    />
                   ),
-                },
-                {
-                  title: 'Сделок',
-                  dataIndex: 'dealsCount',
-                  key: 'dealsCount',
-                  width: 90,
-                  align: 'right',
-                },
-                {
-                  title: 'Куплено (шт.)',
-                  dataIndex: 'soldQty',
-                  key: 'soldQty',
-                  width: 120,
-                  align: 'right',
-                  render: (v: number) => v.toLocaleString('ru-RU'),
-                },
-                {
-                  title: 'Выручка',
-                  dataIndex: 'salesRevenue',
-                  key: 'salesRevenue',
-                  width: 170,
-                  align: 'right',
-                  render: (v: number) => formatUZS(v),
-                },
-                {
-                  title: 'Что купил',
-                  dataIndex: 'purchasedInfo',
-                  key: 'purchasedInfo',
-                  render: (v: string) => v || '-',
-                },
-              ]}
-            />
+                }}
+                columns={[
+                  {
+                    title: 'Клиент',
+                    dataIndex: 'clientName',
+                    key: 'clientName',
+                    render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                      <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+                        {r.clientIsSvip ? `👑 ${v}` : v}
+                      </Button>
+                    ),
+                  },
+                  {
+                    title: 'Сделок',
+                    dataIndex: 'dealsCount',
+                    key: 'dealsCount',
+                    width: 90,
+                    align: 'right',
+                  },
+                  {
+                    title: 'Куплено (шт.)',
+                    dataIndex: 'soldQty',
+                    key: 'soldQty',
+                    width: 120,
+                    align: 'right',
+                    render: (v: number) => v.toLocaleString('ru-RU'),
+                  },
+                  {
+                    title: 'Выручка',
+                    dataIndex: 'salesRevenue',
+                    key: 'salesRevenue',
+                    width: 170,
+                    align: 'right',
+                    render: (v: number) => formatUZS(v),
+                  },
+                  {
+                    title: 'Что купил',
+                    dataIndex: 'purchasedInfo',
+                    key: 'purchasedInfo',
+                    render: (v: string) => v || '-',
+                  },
+                ]}
+              />
+            ) : (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="clientId"
+                dataSource={matrixRows.clients}
+                locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+                scroll={{ x: Math.max(900, 220 + matrixRows.monthKeys.length * 78) }}
+                columns={[
+                  {
+                    title: 'Клиент',
+                    dataIndex: 'clientName',
+                    key: 'clientName',
+                    width: 220,
+                    fixed: 'left',
+                    render: (v: string, r: { clientId: string; clientIsSvip: boolean }) => (
+                      <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+                        {r.clientIsSvip ? `👑 ${v}` : v}
+                      </Button>
+                    ),
+                  },
+                  ...matrixRows.monthKeys.map((monthKey) => ({
+                    title: matrixRows.monthLabel(monthKey),
+                    key: `m_${monthKey}`,
+                    width: 78,
+                    align: 'center' as const,
+                    render: (_: unknown, row: { monthly: Record<string, number> }) => {
+                      const revenue = row.monthly[monthKey] ?? 0;
+                      const ratio = Math.min(1, revenue / matrixRows.maxRevenue);
+                      const bg = revenue > 0
+                        ? `rgba(56, 218, 17, ${Math.max(0.2, ratio).toFixed(2)})`
+                        : (token.colorFillTertiary || '#f0f0f0');
+                      return (
+                        <div
+                          title={revenue > 0 ? formatUZS(revenue) : 'Нет покупки'}
+                          style={{
+                            width: 24,
+                            height: 24,
+                            margin: '0 auto',
+                            borderRadius: 6,
+                            background: bg,
+                            border: `1px solid ${token.colorBorderSecondary}`,
+                          }}
+                        />
+                      );
+                    },
+                  })),
+                ]}
+              />
+            )}
           </>
         )}
       </Card>
