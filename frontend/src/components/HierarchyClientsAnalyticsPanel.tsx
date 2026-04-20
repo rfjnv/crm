@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
 import { formatUZS } from '../utils/currency';
@@ -44,6 +45,7 @@ type MatrixClientRow = {
   clientIsSvip: boolean;
   monthly: Record<string, number>;
 };
+type BasicClientRow = { clientId: string; clientIsSvip: boolean };
 
 type CategorySummary = {
   name: string;
@@ -388,6 +390,136 @@ export default function HierarchyClientsAnalyticsPanel({
     return { monthKeys, monthLabel, clients, maxRevenue };
   }, [purchaseRows, selectedClientScopeProductIds]);
 
+  const purchaseLinesColumns: ColumnsType<PurchaseLineRow> = [
+    {
+      title: 'Товар',
+      dataIndex: 'productName',
+      key: 'productName',
+      ellipsis: true,
+    },
+    {
+      title: 'Сделка',
+      dataIndex: 'dealTitle',
+      key: 'dealTitle',
+      render: (title, line) => (
+        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
+          {title}
+        </Button>
+      ),
+    },
+    {
+      title: 'Дата',
+      dataIndex: 'saleAt',
+      key: 'saleAt',
+      width: 110,
+      render: (iso: string) =>
+        new Date(iso).toLocaleDateString('ru-RU', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }),
+    },
+    {
+      title: 'Шт.',
+      dataIndex: 'soldQty',
+      key: 'soldQty',
+      width: 72,
+      align: 'right',
+      render: (v: number) => v.toLocaleString('ru-RU'),
+    },
+    {
+      title: 'Выручка',
+      dataIndex: 'salesRevenue',
+      key: 'salesRevenue',
+      width: 120,
+      align: 'right',
+      render: (v: number) => formatUZS(v),
+    },
+  ];
+
+  const clientSummaryColumns: ColumnsType<ClientPurchaseSummaryRow> = [
+    {
+      title: 'Клиент',
+      dataIndex: 'clientName',
+      key: 'clientName',
+      render: (v, r: BasicClientRow) => (
+        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+          {r.clientIsSvip ? `👑 ${v}` : v}
+        </Button>
+      ),
+    },
+    {
+      title: 'Сделок',
+      dataIndex: 'dealsCount',
+      key: 'dealsCount',
+      width: 90,
+      align: 'right',
+    },
+    {
+      title: 'Куплено (шт.)',
+      dataIndex: 'soldQty',
+      key: 'soldQty',
+      width: 120,
+      align: 'right',
+      render: (v: number) => v.toLocaleString('ru-RU'),
+    },
+    {
+      title: 'Выручка',
+      dataIndex: 'salesRevenue',
+      key: 'salesRevenue',
+      width: 170,
+      align: 'right',
+      render: (v: number) => formatUZS(v),
+    },
+    {
+      title: 'Что купил',
+      dataIndex: 'purchasedInfo',
+      key: 'purchasedInfo',
+      render: (v: string) => v || '-',
+    },
+  ];
+
+  const matrixColumns: ColumnsType<MatrixClientRow> = [
+    {
+      title: 'Клиент',
+      dataIndex: 'clientName',
+      key: 'clientName',
+      width: 220,
+      fixed: 'left',
+      render: (v, r: BasicClientRow) => (
+        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
+          {r.clientIsSvip ? `👑 ${v}` : v}
+        </Button>
+      ),
+    },
+    ...matrixRows.monthKeys.map((monthKey) => ({
+      title: matrixRows.monthLabel(monthKey),
+      key: `m_${monthKey}`,
+      width: 78,
+      align: 'center' as const,
+      render: (_value: unknown, row: MatrixClientRow) => {
+        const revenue = row.monthly[monthKey] ?? 0;
+        const ratio = Math.min(1, revenue / matrixRows.maxRevenue);
+        const bg = revenue > 0
+          ? `rgba(56, 218, 17, ${Math.max(0.2, ratio).toFixed(2)})`
+          : (token.colorFillTertiary || '#f0f0f0');
+        return (
+          <div
+            title={revenue > 0 ? formatUZS(revenue) : 'Нет покупки'}
+            style={{
+              width: 24,
+              height: 24,
+              margin: '0 auto',
+              borderRadius: 6,
+              background: bg,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          />
+        );
+      },
+    })),
+  ];
+
   if (visibleProducts.length === 0) {
     return (
       <Typography.Text type="secondary">Нет активных товаров для анализа иерархии.</Typography.Text>
@@ -551,96 +683,11 @@ export default function HierarchyClientsAnalyticsPanel({
                       pagination={false}
                       rowKey="key"
                       dataSource={record.purchaseLines}
-                      columns={[
-                        {
-                          title: 'Товар',
-                          dataIndex: 'productName',
-                          key: 'productName',
-                          ellipsis: true,
-                        },
-                        {
-                          title: 'Сделка',
-                          dataIndex: 'dealTitle',
-                          key: 'dealTitle',
-                          render: (title: string, line) => (
-                            <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
-                              {title}
-                            </Button>
-                          ),
-                        },
-                        {
-                          title: 'Дата',
-                          dataIndex: 'saleAt',
-                          key: 'saleAt',
-                          width: 110,
-                          render: (iso: string) =>
-                            new Date(iso).toLocaleDateString('ru-RU', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                            }),
-                        },
-                        {
-                          title: 'Шт.',
-                          dataIndex: 'soldQty',
-                          key: 'soldQty',
-                          width: 72,
-                          align: 'right',
-                          render: (v: number) => v.toLocaleString('ru-RU'),
-                        },
-                        {
-                          title: 'Выручка',
-                          dataIndex: 'salesRevenue',
-                          key: 'salesRevenue',
-                          width: 120,
-                          align: 'right',
-                          render: (v: number) => formatUZS(v),
-                        },
-                      ]}
+                      columns={purchaseLinesColumns}
                     />
                   ),
                 }}
-                columns={[
-                  {
-                    title: 'Клиент',
-                    dataIndex: 'clientName',
-                    key: 'clientName',
-                    render: (v: string, r) => (
-                      <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
-                        {r.clientIsSvip ? `👑 ${v}` : v}
-                      </Button>
-                    ),
-                  },
-                  {
-                    title: 'Сделок',
-                    dataIndex: 'dealsCount',
-                    key: 'dealsCount',
-                    width: 90,
-                    align: 'right',
-                  },
-                  {
-                    title: 'Куплено (шт.)',
-                    dataIndex: 'soldQty',
-                    key: 'soldQty',
-                    width: 120,
-                    align: 'right',
-                    render: (v: number) => v.toLocaleString('ru-RU'),
-                  },
-                  {
-                    title: 'Выручка',
-                    dataIndex: 'salesRevenue',
-                    key: 'salesRevenue',
-                    width: 170,
-                    align: 'right',
-                    render: (v: number) => formatUZS(v),
-                  },
-                  {
-                    title: 'Что купил',
-                    dataIndex: 'purchasedInfo',
-                    key: 'purchasedInfo',
-                    render: (v: string) => v || '-',
-                  },
-                ]}
+                columns={clientSummaryColumns}
               />
             ) : (
               <Table
@@ -650,46 +697,7 @@ export default function HierarchyClientsAnalyticsPanel({
                 dataSource={matrixRows.clients}
                 locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
                 scroll={{ x: Math.max(900, 220 + matrixRows.monthKeys.length * 78) }}
-                columns={[
-                  {
-                    title: 'Клиент',
-                    dataIndex: 'clientName',
-                    key: 'clientName',
-                    width: 220,
-                    fixed: 'left',
-                    render: (v: string, r) => (
-                      <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
-                        {r.clientIsSvip ? `👑 ${v}` : v}
-                      </Button>
-                    ),
-                  },
-                  ...matrixRows.monthKeys.map((monthKey) => ({
-                    title: matrixRows.monthLabel(monthKey),
-                    key: `m_${monthKey}`,
-                    width: 78,
-                    align: 'center' as const,
-                    render: (_: unknown, row) => {
-                      const revenue = row.monthly[monthKey] ?? 0;
-                      const ratio = Math.min(1, revenue / matrixRows.maxRevenue);
-                      const bg = revenue > 0
-                        ? `rgba(56, 218, 17, ${Math.max(0.2, ratio).toFixed(2)})`
-                        : (token.colorFillTertiary || '#f0f0f0');
-                      return (
-                        <div
-                          title={revenue > 0 ? formatUZS(revenue) : 'Нет покупки'}
-                          style={{
-                            width: 24,
-                            height: 24,
-                            margin: '0 auto',
-                            borderRadius: 6,
-                            background: bg,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                          }}
-                        />
-                      );
-                    },
-                  })),
-                ]}
+                columns={matrixColumns}
               />
             )}
           </>
