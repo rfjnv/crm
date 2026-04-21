@@ -127,6 +127,9 @@ export default function ClientDetailPage() {
   const [stockQty, setStockQty] = useState<number>(1);
   const [stockPrice, setStockPrice] = useState<number | undefined>(undefined);
   const [stockComment, setStockComment] = useState('');
+  const [stockSendModalOpen, setStockSendModalOpen] = useState(false);
+  const [stockSendProductId, setStockSendProductId] = useState<string | null>(null);
+  const [stockSendQty, setStockSendQty] = useState<number>(0);
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -410,13 +413,34 @@ export default function ClientDetailPage() {
       message.error('Нет доступного остатка');
       return;
     }
+    setStockSendProductId(productId);
+    setStockSendQty(Number(position.qtyTotal));
+    setStockSendModalOpen(true);
+  };
+
+  const confirmSendOnePositionToWork = () => {
+    if (!stockSendProductId) return;
+    const position = stockData?.positions.find((p) => p.productId === stockSendProductId);
+    if (!position || position.qtyTotal <= 0) {
+      message.error('Нет доступного остатка');
+      return;
+    }
+    if (!stockSendQty || stockSendQty <= 0) {
+      message.error('Укажите корректное количество');
+      return;
+    }
+    if (stockSendQty > Number(position.qtyTotal)) {
+      message.error('Нельзя отправить больше, чем доступный остаток');
+      return;
+    }
     sendStockPartialMut.mutate({
       items: [{
-        productId,
-        qty: position.qtyTotal,
+        productId: stockSendProductId,
+        qty: stockSendQty,
         price: position.product?.salePrice ?? undefined,
       }],
     });
+    setStockSendModalOpen(false);
   };
 
   // ── Analytics chart data ──
@@ -1008,6 +1032,30 @@ export default function ClientDetailPage() {
             </Form.Item>
           ))}
         </Form>
+      </Modal>
+
+      <Modal
+        title="Отправить в работу"
+        open={stockSendModalOpen}
+        onCancel={() => setStockSendModalOpen(false)}
+        onOk={confirmSendOnePositionToWork}
+        okText="Отправить"
+        cancelText="Отмена"
+        confirmLoading={sendStockPartialMut.isPending}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Typography.Text type="secondary">
+            Доступный остаток: {stockData?.positions.find((p) => p.productId === stockSendProductId)?.qtyTotal ?? 0}
+          </Typography.Text>
+          <InputNumber
+            min={0.001}
+            precision={3}
+            step={0.1}
+            value={stockSendQty}
+            onChange={(v) => setStockSendQty(Number(v ?? 0))}
+            style={{ width: '100%' }}
+          />
+        </Space>
       </Modal>
 
       {/* Edit Modal */}

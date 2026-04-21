@@ -495,7 +495,7 @@ export class ClientsService {
   }
 
   async addStock(id: string, dto: AddClientStockDto, user: AuthUser) {
-    await this.getAccessibleClient(id, user);
+    const client = await this.getAccessibleClient(id, user);
 
     const result = await prisma.$transaction(async (tx) => {
       const touchedProductIds = new Set<string>();
@@ -504,12 +504,16 @@ export class ClientsService {
       for (const item of dto.items) {
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { id: true, name: true, isActive: true, salePrice: true },
+          select: { id: true, name: true, isActive: true, salePrice: true, stock: true },
         });
         if (!product || !product.isActive) {
           throw new AppError(404, 'Товар не найден или неактивен');
         }
         const qty = Number(item.qty);
+        const warehouseStock = Number(product.stock ?? 0);
+        if (warehouseStock < qty) {
+          throw new AppError(400, `Недостаточно товара на складе: ${product.name}`);
+        }
         const before = await tx.clientStockPosition.findUnique({
           where: { clientId_productId: { clientId: id, productId: item.productId } },
           select: { id: true, qtyTotal: true },
@@ -518,6 +522,14 @@ export class ClientsService {
         const qtyAfter = qtyBefore + qty;
         const unitPrice = item.price ?? (product.salePrice != null ? Number(product.salePrice) : undefined);
         const lineTotal = unitPrice != null ? qty * unitPrice : undefined;
+
+        const dec = await tx.product.updateMany({
+          where: { id: item.productId, stock: { gte: qty } },
+          data: { stock: { decrement: qty } },
+        });
+        if (dec.count === 0) {
+          throw new AppError(400, `Недостаточно товара на складе: ${product.name}`);
+        }
 
         await tx.clientStockPosition.upsert({
           where: { clientId_productId: { clientId: id, productId: item.productId } },
@@ -538,6 +550,15 @@ export class ClientsService {
             lineTotal: lineTotal ?? null,
           },
           select: { id: true },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'OUT',
+            quantity: qty,
+            note: `Перенос в товары клиента: ${client.companyName}${item.comment?.trim() ? ` (${item.comment.trim()})` : ''}`,
+            createdBy: user.userId,
+          },
         });
         eventIds.push(ev.id);
         touchedProductIds.add(item.productId);
@@ -758,9 +779,9 @@ export class ClientsService {
     const totalDeals = allDeals.length;
     const completedDeals = allDeals.filter((d) => d.status === 'CLOSED').length;
     const canceledDeals = allDeals.filter((d) => d.status === 'CANCELED').length;
-    const currentDebt = nonCanceled.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount)), 0);
+    const dealsDebt = nonCanceled.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount)), 0);
 
-    const [revAgg, revByDayRaw, topProductsRaw, stockRevAgg, stockRevByDayRaw, stockTopProductsRaw] = await Promise.all([
+    const [revAgg, revByDayRaw, topProductsRaw, stockRevAgg, stockRevByDayRaw, stockTopProductsRaw, stockDebtAllRaw] = await Promise.all([
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
         SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
@@ -825,9 +846,18 @@ export class ClientsService {
         ORDER BY SUM(cse.qty_delta) DESC
         LIMIT 5`,
       ),
+      prisma.$queryRaw<{ total: string }[]>(
+        Prisma.sql`
+        SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+        FROM client_stock_events cse
+        WHERE cse.client_id = ${id}
+          AND cse.type = 'ADD'`,
+      ),
     ]);
 
     const totalSpent = (revAgg[0] ? Number(revAgg[0].total) : 0) + (stockRevAgg[0] ? Number(stockRevAgg[0].total) : 0);
+    const stockDebtAll = stockDebtAllRaw[0] ? Number(stockDebtAllRaw[0].total) : 0;
+    const currentDebt = dealsDebt + stockDebtAll;
 
     // Last payment
     const lastPayment = await prisma.payment.findFirst({
