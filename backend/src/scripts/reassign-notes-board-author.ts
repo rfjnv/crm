@@ -4,9 +4,16 @@ import prisma from '../lib/prisma';
 type Candidate = {
   rowId: string;
   clientId: string;
+  clientName: string;
+  managerId: string;
   currentAuthorId: string;
   inferredAuthorId: string | null;
-  reason: 'client_note_match' | 'client_manager' | 'unknown' | 'ambiguous';
+  reason:
+    | 'client_note_match'
+    | 'ambiguous_resolved_by_manager'
+    | 'client_manager'
+    | 'unknown'
+    | 'ambiguous';
 };
 
 function parseArg(name: string): string | undefined {
@@ -38,6 +45,9 @@ async function resolveAuthorId(raw?: string): Promise<string | null> {
 
 async function run(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  const strategyRaw = parseArg('--strategy') ?? 'auto';
+  const strategy = strategyRaw === 'note' || strategyRaw === 'manager' || strategyRaw === 'auto' ? strategyRaw : 'auto';
+
   const authorArg = parseArg('--author');
   const authorId = await resolveAuthorId(authorArg);
 
@@ -53,9 +63,46 @@ async function run(): Promise<void> {
     },
   });
 
+  const managerIds = [...new Set(rows.map((r) => r.client.managerId))];
+  const managers = managerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: managerIds } },
+        select: { id: true, role: true },
+      })
+    : [];
+  const managerRoleById = new Map(managers.map((m) => [m.id, m.role] as const));
+
   const candidates: Candidate[] = [];
 
   for (const row of rows) {
+    const managerId = row.client.managerId;
+    const managerRole = managerRoleById.get(managerId);
+
+    if (strategy === 'manager') {
+      if (managerId && managerId !== authorId && managerRole !== 'SUPER_ADMIN') {
+        candidates.push({
+          rowId: row.id,
+          clientId: row.clientId,
+          clientName: row.client.companyName,
+          managerId,
+          currentAuthorId: row.authorId,
+          inferredAuthorId: managerId,
+          reason: 'client_manager',
+        });
+      } else {
+        candidates.push({
+          rowId: row.id,
+          clientId: row.clientId,
+          clientName: row.client.companyName,
+          managerId,
+          currentAuthorId: row.authorId,
+          inferredAuthorId: null,
+          reason: 'unknown',
+        });
+      }
+      continue;
+    }
+
     const from = new Date(row.createdAt.getTime() - 10 * 60 * 1000);
     const to = new Date(row.createdAt.getTime() + 10 * 60 * 1000);
     const commentNeedle = row.comment.trim().slice(0, 80);
@@ -84,6 +131,8 @@ async function run(): Promise<void> {
       candidates.push({
         rowId: row.id,
         clientId: row.clientId,
+        clientName: row.client.companyName,
+        managerId,
         currentAuthorId: row.authorId,
         inferredAuthorId: uniqueUsers[0],
         reason: 'client_note_match',
@@ -92,9 +141,29 @@ async function run(): Promise<void> {
     }
 
     if (uniqueUsers.length > 1) {
+      if (
+        strategy === 'auto' &&
+        managerId &&
+        managerId !== authorId &&
+        uniqueUsers.includes(managerId) &&
+        managerRole !== 'SUPER_ADMIN'
+      ) {
+        candidates.push({
+          rowId: row.id,
+          clientId: row.clientId,
+          clientName: row.client.companyName,
+          managerId,
+          currentAuthorId: row.authorId,
+          inferredAuthorId: managerId,
+          reason: 'ambiguous_resolved_by_manager',
+        });
+        continue;
+      }
       candidates.push({
         rowId: row.id,
         clientId: row.clientId,
+        clientName: row.client.companyName,
+        managerId,
         currentAuthorId: row.authorId,
         inferredAuthorId: null,
         reason: 'ambiguous',
@@ -102,12 +171,19 @@ async function run(): Promise<void> {
       continue;
     }
 
-    if (row.client.managerId && row.client.managerId !== authorId) {
+    if (
+      strategy !== 'note' &&
+      managerId &&
+      managerId !== authorId &&
+      managerRole !== 'SUPER_ADMIN'
+    ) {
       candidates.push({
         rowId: row.id,
         clientId: row.clientId,
+        clientName: row.client.companyName,
+        managerId,
         currentAuthorId: row.authorId,
-        inferredAuthorId: row.client.managerId,
+        inferredAuthorId: managerId,
         reason: 'client_manager',
       });
       continue;
@@ -116,6 +192,8 @@ async function run(): Promise<void> {
     candidates.push({
       rowId: row.id,
       clientId: row.clientId,
+      clientName: row.client.companyName,
+      managerId,
       currentAuthorId: row.authorId,
       inferredAuthorId: null,
       reason: 'unknown',
@@ -128,6 +206,7 @@ async function run(): Promise<void> {
     resolvable: resolvable.length,
     byReason: {
       client_note_match: candidates.filter((c) => c.reason === 'client_note_match').length,
+      ambiguous_resolved_by_manager: candidates.filter((c) => c.reason === 'ambiguous_resolved_by_manager').length,
       client_manager: candidates.filter((c) => c.reason === 'client_manager').length,
       ambiguous: candidates.filter((c) => c.reason === 'ambiguous').length,
       unknown: candidates.filter((c) => c.reason === 'unknown').length,
