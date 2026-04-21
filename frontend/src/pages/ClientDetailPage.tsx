@@ -510,7 +510,7 @@ export default function ClientDetailPage() {
                   <Descriptions column={{ xs: 1, sm: 2 }} size="small">
                     <Descriptions.Item label="Контакт">{client.contactName}</Descriptions.Item>
                     <Descriptions.Item label="Телефон">{client.phone || '—'}</Descriptions.Item>
-                    <Descriptions.Item label="Email">{client.email || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Telegram">{client.email || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Адрес">{client.address || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Координаты">
                       {(client.latitude != null && client.longitude != null)
@@ -1079,8 +1079,8 @@ export default function ClientDetailPage() {
             <Form.Item name="phone" label="Телефон" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
               <Input placeholder="+998 99 999 99 99" />
             </Form.Item>
-            <Form.Item name="email" label="Email" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
-              <Input />
+            <Form.Item name="email" label="Telegram" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
+              <Input placeholder="@username" />
             </Form.Item>
           </Space>
           <Form.Item name="address" label="Адрес">

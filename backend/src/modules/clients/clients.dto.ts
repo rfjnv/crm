@@ -1,10 +1,18 @@
 import { z } from 'zod';
 
+const telegramValueSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^(@[a-zA-Z0-9_]{5,32}|https?:\/\/t\.me\/[a-zA-Z0-9_]{5,32}|t\.me\/[a-zA-Z0-9_]{5,32}|[a-zA-Z0-9_]{5,32})$/,
+    'Некорректный Telegram (пример: @username)',
+  );
+
 export const createClientDto = z.object({
   companyName: z.string().min(1, 'Название компании обязательно'),
   contactName: z.string().min(1, 'Контактное лицо обязательно'),
   phone: z.string().optional(),
-  email: z.string().email('Некорректный email').optional().or(z.literal('')),
+  email: telegramValueSchema.optional().or(z.literal('')),
   address: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
@@ -27,7 +35,7 @@ export const updateClientDto = z.object({
   companyName: z.string().min(1).optional(),
   contactName: z.string().min(1).optional(),
   phone: z.string().optional(),
-  email: z.string().email('Некорректный email').optional().or(z.literal('')),
+  email: telegramValueSchema.optional().or(z.literal('')),
   address: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),

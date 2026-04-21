@@ -8,7 +8,7 @@ const CLIENT_FIELD_LABELS: Record<string, string> = {
   companyName: 'Компания',
   contactName: 'Контакт',
   phone: 'Телефон',
-  email: 'Email',
+  email: 'Telegram',
   address: 'Адрес',
   notes: 'Примечания',
   inn: 'ИНН',

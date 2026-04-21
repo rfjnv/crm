@@ -305,7 +305,7 @@ export default function ClientsPage() {
     },
     { title: 'Контакт', dataIndex: 'contactName' },
     { title: 'Телефон', dataIndex: 'phone' },
-    { title: 'Email', dataIndex: 'email' },
+    { title: 'Telegram', dataIndex: 'email' },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
     {
       title: 'Последний контакт',
@@ -383,8 +383,8 @@ export default function ClientsPage() {
         <Form.Item name="phone" label="Телефон" style={{ flex: 1 }}>
           <PhoneInput />
         </Form.Item>
-        <Form.Item name="email" label="Email" style={{ flex: 1 }}>
-          <Input />
+        <Form.Item name="email" label="Telegram" style={{ flex: 1 }}>
+          <Input placeholder="@username" />
         </Form.Item>
       </Space>
       <Form.Item name="address" label="Адрес">
@@ -471,7 +471,7 @@ export default function ClientsPage() {
         <Space wrap>
           <Input.Search
             className={APP_INPUT}
-            placeholder="Поиск (компания, контакт, телефон, email)..."
+            placeholder="Поиск (компания, контакт, телефон, Telegram)..."
             style={{ width: isMobile ? '100%' : 300 }}
             allowClear
             value={searchDraft}
