@@ -630,6 +630,8 @@ router.get(
       canceledCount,
       revenueByDayOperationalRaw,
       revenueByDayShippedRaw,
+      stockRevenueOperationalRaw,
+      stockRevenueByDayRaw,
       dealsByStatus,
       topClientsRaw,
       topProductsRaw,
@@ -651,6 +653,46 @@ router.get(
       }),
       revenueByDayOperational(),
       revenueByDayShipped(),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+             FROM client_stock_events cse
+             JOIN clients c ON c.id = cse.client_id
+             WHERE cse.type = 'ADD'
+               AND c.manager_id = ${dealScope.managerId}
+               AND cse.created_at >= ${start}
+               AND cse.created_at < ${end}`
+          )
+        : prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+             FROM client_stock_events cse
+             WHERE cse.type = 'ADD'
+               AND cse.created_at >= ${start}
+               AND cse.created_at < ${end}`
+          ),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+               COALESCE(SUM(cse.line_total), 0)::text as total
+             FROM client_stock_events cse
+             JOIN clients c ON c.id = cse.client_id
+             WHERE cse.type = 'ADD'
+               AND c.manager_id = ${dealScope.managerId}
+               AND cse.created_at >= ${start}
+               AND cse.created_at < ${end}
+             GROUP BY day
+             ORDER BY day ASC`
+          )
+        : prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+               COALESCE(SUM(cse.line_total), 0)::text as total
+             FROM client_stock_events cse
+             WHERE cse.type = 'ADD'
+               AND cse.created_at >= ${start}
+               AND cse.created_at < ${end}
+             GROUP BY day
+             ORDER BY day ASC`
+          ),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -678,6 +720,10 @@ router.get(
       r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
 
     const opByDay = new Map(revenueByDayOperationalRaw.map((r) => [dayKey(r), Number(r.total)]));
+    for (const r of stockRevenueByDayRaw) {
+      const k = dayKey(r);
+      opByDay.set(k, (opByDay.get(k) ?? 0) + Number(r.total));
+    }
     const shByDay = new Map(revenueByDayShippedRaw.map((r) => [dayKey(r), Number(r.total)]));
     const allDayKeys = new Set([...opByDay.keys(), ...shByDay.keys()]);
     const revenueByDay = [...allDayKeys]
@@ -690,7 +736,9 @@ router.get(
         shippedTotal: shByDay.get(day) ?? 0,
       }));
 
-    const operationalTotal = salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0;
+    const operationalTotal =
+      (salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0)
+      + (stockRevenueOperationalRaw[0] ? Number(stockRevenueOperationalRaw[0].total) : 0);
     const shippedTotal = salesRevenueShippedRaw[0] ? Number(salesRevenueShippedRaw[0].total) : 0;
 
     const sales = {

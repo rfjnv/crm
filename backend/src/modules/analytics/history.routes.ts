@@ -62,7 +62,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'overview-v6' });
+      const cached = await getSnapshot({ year, month: 0, type: 'overview-v7' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -87,6 +87,21 @@ router.get(
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}`,
+    );
+    const stockOverviewRaw = await prisma.$queryRaw<{ total_revenue: string }[]>(
+      dealScope.managerId
+        ? Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total_revenue
+          FROM client_stock_events cse
+          JOIN clients c ON c.id = cse.client_id
+          WHERE cse.type = 'ADD'
+            AND c.manager_id = ${dealScope.managerId}
+            AND cse.created_at >= ${yearStart}
+            AND cse.created_at < ${yearEnd}`
+        : Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total_revenue
+          FROM client_stock_events cse
+          WHERE cse.type = 'ADD'
+            AND cse.created_at >= ${yearStart}
+            AND cse.created_at < ${yearEnd}`,
     );
 
     // Total collected (from payments table by paid_at)
@@ -115,6 +130,7 @@ router.get(
     );
 
     const ov = overviewRaw[0];
+    const stockRevenueYear = stockOverviewRaw[0] ? Number(stockOverviewRaw[0].total_revenue) : 0;
     const debtPositive = Number(debtRaw[0].total_debt);
     const totalOverpayments = Number(debtRaw[0].total_overpayments);
     const netBalanceFromClients = Number(debtRaw[0].net_balance);
@@ -161,7 +177,7 @@ router.get(
     const overview = {
       totalDeals: Number(ov.total_deals),
       totalClients: Number(ov.total_clients),
-      totalRevenue: Number(ov.total_revenue),
+      totalRevenue: Number(ov.total_revenue) + stockRevenueYear,
       totalPaid: Number(collectedRaw[0].total_paid),
       totalDebt: debtPositive,
       totalDebtPositive: debtPositive,
@@ -185,6 +201,33 @@ router.get(
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}
       GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
+    );
+    const stockRevenueByMonthRaw = await prisma.$queryRaw<
+      { month: number; revenue: string; active_clients: string }[]
+    >(
+      dealScope.managerId
+        ? Prisma.sql`SELECT
+          EXTRACT(MONTH FROM (cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+          COALESCE(SUM(cse.line_total), 0)::text as revenue,
+          COUNT(DISTINCT cse.client_id)::text as active_clients
+        FROM client_stock_events cse
+        JOIN clients c ON c.id = cse.client_id
+        WHERE cse.type = 'ADD'
+          AND c.manager_id = ${dealScope.managerId}
+          AND cse.created_at >= ${yearStart}
+          AND cse.created_at < ${yearEnd}
+        GROUP BY EXTRACT(MONTH FROM (cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+        ORDER BY month`
+        : Prisma.sql`SELECT
+          EXTRACT(MONTH FROM (cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+          COALESCE(SUM(cse.line_total), 0)::text as revenue,
+          COUNT(DISTINCT cse.client_id)::text as active_clients
+        FROM client_stock_events cse
+        WHERE cse.type = 'ADD'
+          AND cse.created_at >= ${yearStart}
+          AND cse.created_at < ${yearEnd}
+        GROUP BY EXTRACT(MONTH FROM (cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+        ORDER BY month`,
     );
 
     // Collected grouped by payment date month (Tashkent TZ) — NOT by deal creation
@@ -277,7 +320,17 @@ router.get(
     );
     const shippedRevenueMap = new Map(shippedRevenueByMonthRaw.map((r) => [r.month, Number(r.shipped_revenue)]));
     const shippedMap = new Map(shippedAtByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
-    const revenueMap = new Map(revenueByMonthRaw.map((r) => [r.month, { revenue: Number(r.revenue), activeClients: Number(r.active_clients) }]));
+    const revenueMap = new Map<number, { revenue: number; activeClients: number }>();
+    for (const r of revenueByMonthRaw) {
+      revenueMap.set(r.month, { revenue: Number(r.revenue), activeClients: Number(r.active_clients) });
+    }
+    for (const r of stockRevenueByMonthRaw) {
+      const prev = revenueMap.get(r.month) || { revenue: 0, activeClients: 0 };
+      revenueMap.set(r.month, {
+        revenue: prev.revenue + Number(r.revenue),
+        activeClients: prev.activeClients + Number(r.active_clients),
+      });
+    }
 
     // Build trend for all months 1–currentMonth (always include zero-data months for correct charts)
     const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12;
@@ -586,7 +639,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'overview-v6' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'overview-v7' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
