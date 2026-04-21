@@ -90,6 +90,8 @@ export default function DealsPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isManager = user?.role === 'MANAGER';
+  const isSalesAssistant = user?.role === 'HR';
+  const canWorkSales = isManager || isSalesAssistant;
   const entityLabel = isManager ? 'Заявки' : 'Сделки';
   const oneEntityLabel = isManager ? 'Заявка' : 'Сделка';
   const openLabel = isManager ? 'Открыть заявку' : 'Открыть сделку';
@@ -146,7 +148,7 @@ export default function DealsPage() {
     },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
-    ...(isManager
+    ...(canWorkSales
       ? [{
         title: '',
         width: 150,
@@ -170,7 +172,7 @@ export default function DealsPage() {
       : []),
   ];
 
-  const canCreate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canCreate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'HR';
   const isMobile = useIsMobile();
 
   return (

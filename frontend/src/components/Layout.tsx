@@ -184,14 +184,14 @@ export default function Layout() {
       icon: <DashboardOutlined />,
       label: <Link to="/dashboard">Дашборд</Link>,
     },
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER', 'HR')
       ? [{
         key: '/clients',
         icon: <TeamOutlined />,
         label: <Link to="/clients">Клиенты</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR')
       ? [{
         key: '/reviews',
         icon: <StarOutlined />,
@@ -212,7 +212,7 @@ export default function Layout() {
         label: <Link to="/power-of-attorney">Доверенности</Link>,
       }]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/deals',
         icon: <FundProjectionScreenOutlined />,
@@ -306,6 +306,13 @@ export default function Layout() {
       icon: <ProjectOutlined />,
       label: <Link to="/tasks">Задачи</Link>,
     },
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR')
+      ? [{
+        key: '/notes-board',
+        icon: <ContainerOutlined />,
+        label: <Link to="/notes-board">Заметки</Link>,
+      }]
+      : []),
 
     // ── ФИНАНСЫ ──
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') || hasPermission('manage_expenses')
@@ -386,7 +393,7 @@ export default function Layout() {
       : []),
 
     // ── АНАЛИТИКА ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR')
       ? [
         { type: 'divider' as const },
         ...(showGroupLabels
@@ -456,7 +463,7 @@ export default function Layout() {
         }]
       : []),
     // ── AI-ассистент ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR')
       ? [{
         key: '/ai-assistant',
         icon: <OpenAiIcon />,

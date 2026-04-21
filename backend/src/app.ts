@@ -34,6 +34,7 @@ import debugRoutes from './modules/debug/debug.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
 import { internalReportsRoutes } from './modules/internal/reports.routes';
+import notesBoardRoutes from './modules/notes-board/notes-board.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
 
@@ -112,6 +113,7 @@ app.use('/api/telegram', telegramRoutes);
 app.use('/api/power-of-attorney', poaRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/ai-assistant', aiAssistantRoutes);
+app.use('/api/notes-board', notesBoardRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

@@ -43,6 +43,7 @@ const roleLabels: Record<string, string> = {
   ADMIN: 'Администратор',
   OPERATOR: 'Оператор',
   MANAGER: 'Менеджер',
+  HR: 'HR',
   ACCOUNTANT: 'Бухгалтер',
   WAREHOUSE: 'Склад',
   WAREHOUSE_MANAGER: 'Зав. складом',
@@ -54,6 +55,7 @@ const roleColors: Record<string, string> = {
   ADMIN: 'gold',
   OPERATOR: 'cyan',
   MANAGER: 'blue',
+  HR: 'geekblue',
   ACCOUNTANT: 'purple',
   WAREHOUSE: 'green',
   WAREHOUSE_MANAGER: 'lime',
@@ -455,6 +457,7 @@ export default function UsersPage() {
               options={[
                 { label: 'Оператор', value: 'OPERATOR' },
                 { label: 'Менеджер', value: 'MANAGER' },
+                { label: 'HR', value: 'HR' },
                 { label: 'Бухгалтер', value: 'ACCOUNTANT' },
                 { label: 'Склад', value: 'WAREHOUSE' },
                 { label: 'Зав. складом', value: 'WAREHOUSE_MANAGER' },

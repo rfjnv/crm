@@ -6,7 +6,7 @@ const badgeIconEnum = z.enum(USER_BADGE_ICON_KEYS as unknown as [string, ...stri
 
 const permissionValues = ALL_PERMISSIONS as unknown as readonly [string, ...string[]];
 
-const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'DRIVER', 'LOADER'] as const;
+const roleValues = ['ADMIN', 'OPERATOR', 'MANAGER', 'HR', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'DRIVER', 'LOADER'] as const;
 
 export const createUserDto = z.object({
   login: z.string().min(1, 'Логин обязателен').max(50),

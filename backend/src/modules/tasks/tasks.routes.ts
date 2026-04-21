@@ -46,11 +46,19 @@ router.get(
     const assigneeId = req.query.assigneeId as string | undefined;
     const status = req.query.status as string | undefined;
     const createdById = req.query.createdById as string | undefined;
+    const plannedDateFrom = req.query.plannedDateFrom as string | undefined;
+    const plannedDateTo = req.query.plannedDateTo as string | undefined;
 
     const where: Record<string, unknown> = {};
     if (assigneeId) where.assigneeId = assigneeId;
     if (status) where.status = status;
     if (createdById) where.createdById = createdById;
+    if (plannedDateFrom || plannedDateTo) {
+      where.plannedDate = {
+        ...(plannedDateFrom ? { gte: new Date(plannedDateFrom) } : {}),
+        ...(plannedDateTo ? { lte: new Date(plannedDateTo) } : {}),
+      };
+    }
 
     const tasks = await prisma.task.findMany({
       where,
@@ -75,6 +83,8 @@ router.post(
         assigneeId: data.assigneeId,
         createdById: req.user!.userId,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+        plannedDate: data.plannedDate ? new Date(data.plannedDate) : undefined,
+        color: data.color,
       },
       include: taskInclude,
     });
@@ -98,6 +108,12 @@ router.patch(
     if (data.description !== undefined) updateData.description = data.description;
     if (data.dueDate !== undefined) {
       updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+    }
+    if (data.plannedDate !== undefined) {
+      updateData.plannedDate = data.plannedDate ? new Date(data.plannedDate) : null;
+    }
+    if (data.color !== undefined) {
+      updateData.color = data.color;
     }
 
     const task = await prisma.task.update({

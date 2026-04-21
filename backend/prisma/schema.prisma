@@ -15,6 +15,7 @@ enum Role {
   ADMIN
   OPERATOR
   MANAGER
+  HR
   ACCOUNTANT
   WAREHOUSE
   WAREHOUSE_MANAGER
@@ -188,6 +189,7 @@ model User {
   medalsRemoved       UserMedalHistory[] @relation("MedalHistoryRemovedBy")
   monthlyGoals        UserMonthlyGoal[]
   monthlyGoalsUpdated UserMonthlyGoal[] @relation("UserMonthlyGoalUpdatedBy")
+  notesBoardRowsAuthored NotesBoardRow[] @relation("NotesBoardAuthor")
 
   @@map("users")
 }
@@ -287,6 +289,7 @@ model Client {
   contracts   Contract[]
   payments    Payment[]
   clientNotes ClientNote[]
+  notesBoardRows NotesBoardRow[]
   stockPositions ClientStockPosition[]
   stockEvents ClientStockEvent[]
 
@@ -809,15 +812,22 @@ enum TaskStatus {
   APPROVED
 }
 
+enum CallResult {
+  ANSWERED
+  NO_ANSWER
+}
+
 model Task {
   id           String      @id @default(uuid())
   title        String
   description  String?
   status       TaskStatus  @default(TODO)
+  color        String?     @map("color")
   assigneeId   String      @map("assignee_id")
   createdById  String      @map("created_by_id")
   report       String?
   dueDate      DateTime?   @map("due_date")
+  plannedDate  DateTime?   @map("planned_date")
   approvedById String?     @map("approved_by_id")
   approvedAt   DateTime?   @map("approved_at")
   createdAt    DateTime    @default(now()) @map("created_at")
@@ -830,7 +840,29 @@ model Task {
 
   @@index([assigneeId, status])
   @@index([createdById])
+  @@index([plannedDate, status])
   @@map("tasks")
+}
+
+model NotesBoardRow {
+  id          String     @id @default(uuid())
+  clientId    String     @map("client_id")
+  authorId    String     @map("author_id")
+  callResult  CallResult @map("call_result")
+  status      String?
+  comment     String     @db.Text
+  lastCallAt  DateTime   @map("last_call_at")
+  nextCallAt  DateTime?  @map("next_call_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author User   @relation("NotesBoardAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, lastCallAt])
+  @@index([authorId, createdAt])
+  @@index([nextCallAt])
+  @@map("notes_board_rows")
 }
 
 model TaskAttachment {

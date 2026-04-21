@@ -466,13 +466,14 @@ export default function DealDetailPage() {
   const deal = dealData;
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const isSalesRole = role === 'MANAGER' || role === 'HR';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   /** Менеджер/админ: добавление и удаление позиций во всех статусах, кроме закрытой и отменённой сделки. */
   const canEditItems =
     !deal.isArchived &&
     deal.status !== 'CLOSED' &&
     deal.status !== 'CANCELED' &&
-    (isAdmin || role === 'MANAGER');
+    (isAdmin || isSalesRole);
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
@@ -512,7 +513,7 @@ export default function DealDetailPage() {
     const actions: React.ReactNode[] = [];
 
     // NEW → Send to warehouse (WAITING_STOCK_CONFIRMATION)
-    if (deal.status === 'NEW' && (isAdmin || role === 'MANAGER')) {
+    if (deal.status === 'NEW' && (isAdmin || isSalesRole)) {
       actions.push(
         <Button key="to-warehouse" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
           Отправить на склад
@@ -555,7 +556,7 @@ export default function DealDetailPage() {
     }
 
     // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
-    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
+    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || isSalesRole)) {
       actions.push(
         <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
           {/*
@@ -576,7 +577,7 @@ export default function DealDetailPage() {
     }
 
     // IN_PROGRESS without quantities → Set quantities
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole) && !hasQuantities) {
       actions.push(
         <Button key="set-quantities-ip" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
           {/*
@@ -605,7 +606,7 @@ export default function DealDetailPage() {
     }
 
     // IN_PROGRESS with quantities → Send to finance (payment method selection)
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole) && hasQuantities) {
       const dilnozaManager = isDilnozaUser(user?.fullName, user?.login) && role === 'MANAGER';
       const presetPm = deal.paymentMethod;
 
@@ -692,7 +693,7 @@ export default function DealDetailPage() {
     }
 
     // IN_PROGRESS → Go back to warehouse
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER')) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole)) {
       actions.push(
         <Popconfirm key="back-to-warehouse-ip" title="Вернуть на склад?" onConfirm={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
           <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
@@ -727,7 +728,7 @@ export default function DealDetailPage() {
     }
 
     // WAITING_FINANCE → Go back to IN_PROGRESS
-    if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'MANAGER')) {
+    if (deal.status === 'WAITING_FINANCE' && (isAdmin || isSalesRole)) {
       actions.push(
         <Popconfirm key="back-to-ip-wf" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
           <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
@@ -774,7 +775,7 @@ export default function DealDetailPage() {
     }
 
     // REJECTED → Return to IN_PROGRESS
-    if (deal.status === 'REJECTED' && (isAdmin || role === 'MANAGER')) {
+    if (deal.status === 'REJECTED' && (isAdmin || isSalesRole)) {
       actions.push(
         <Button key="rework" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('IN_PROGRESS')}>
           Вернуть в работу
@@ -783,7 +784,7 @@ export default function DealDetailPage() {
     }
 
     // Cancel button (available on most statuses)
-    if (!isReadOnly && deal.status !== 'REJECTED' && (isAdmin || role === 'MANAGER')) {
+    if (!isReadOnly && deal.status !== 'REJECTED' && (isAdmin || isSalesRole)) {
       actions.push(
         <Popconfirm key="cancel" title="Отменить сделку?" onConfirm={() => statusMut.mutate('CANCELED')}>
           <Button danger icon={<CloseCircleOutlined />} loading={statusMut.isPending}>
@@ -1126,7 +1127,7 @@ export default function DealDetailPage() {
                   <Tooltip title="Скачать чек">
                     <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }} />
                   </Tooltip>
-                  {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                  {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
                       <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
@@ -1489,10 +1490,10 @@ export default function DealDetailPage() {
                       extra={
                         <Space>
                           <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }}>Чек</Button>
-                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
                           )}
-                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
                           )}
                         </Space>

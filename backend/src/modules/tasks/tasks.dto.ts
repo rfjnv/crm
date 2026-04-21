@@ -5,12 +5,16 @@ export const createTaskDto = z.object({
   description: z.string().optional(),
   assigneeId: z.string().uuid(),
   dueDate: z.string().optional(),
+  plannedDate: z.string().optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
 });
 
 export const updateTaskDto = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   dueDate: z.string().nullable().optional(),
+  plannedDate: z.string().nullable().optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
 });
 
 export const moveTaskDto = z.object({

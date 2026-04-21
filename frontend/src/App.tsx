@@ -52,6 +52,7 @@ import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import AiTrainingPage from './pages/AiTrainingPage';
+import NotesBoardPage from './pages/NotesBoardPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -119,7 +120,7 @@ export default function App() {
                   <Route path="/users" element={<UsersPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER']} />}>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
                 </Route>
@@ -142,6 +143,9 @@ export default function App() {
                   <Route path="/finance/balance" element={<CompanyBalancePage />} />
                 </Route>
                 <Route path="/tasks" element={<TasksPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
+                  <Route path="/notes-board" element={<NotesBoardPage />} />
+                </Route>
                 <Route path="/shipment" element={<WarehouseShipmentsPage />} />
                 <Route path="/warehouse/shipments" element={<Navigate to="/shipment" replace />} />
                 <Route path="/stock-confirmation" element={<StockConfirmationPage />} />

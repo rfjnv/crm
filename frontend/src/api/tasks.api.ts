@@ -2,13 +2,32 @@ import client, { API_URL } from './client';
 import type { Task, TaskAttachment, TaskStatus } from '../types';
 
 export const tasksApi = {
-  list: (params?: { assigneeId?: string; status?: string; createdById?: string }) =>
+  list: (params?: {
+    assigneeId?: string;
+    status?: string;
+    createdById?: string;
+    plannedDateFrom?: string;
+    plannedDateTo?: string;
+  }) =>
     client.get<Task[]>('/tasks', { params }).then((r) => r.data),
 
-  create: (data: { title: string; description?: string; assigneeId: string; dueDate?: string }) =>
+  create: (data: {
+    title: string;
+    description?: string;
+    assigneeId: string;
+    dueDate?: string;
+    plannedDate?: string;
+    color?: string;
+  }) =>
     client.post<Task>('/tasks', data).then((r) => r.data),
 
-  update: (id: string, data: { title?: string; description?: string; dueDate?: string | null }) =>
+  update: (id: string, data: {
+    title?: string;
+    description?: string;
+    dueDate?: string | null;
+    plannedDate?: string | null;
+    color?: string | null;
+  }) =>
     client.patch<Task>(`/tasks/${id}`, data).then((r) => r.data),
 
   moveStatus: (id: string, data: { status: TaskStatus; report?: string }) =>

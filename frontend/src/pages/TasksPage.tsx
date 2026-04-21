@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Button, Modal, Form, Input, Select, Typography, message, Tag, Space,
-  DatePicker, Drawer, Upload, List, Badge, Popconfirm, Row, Col, theme,
+  DatePicker, Drawer, Upload, List, Badge, Popconfirm, Row, Col, theme, Segmented, Calendar, ColorPicker,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, UploadOutlined, PaperClipOutlined,
   ArrowRightOutlined, ArrowLeftOutlined, CheckOutlined, FileTextOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { tasksApi } from '../api/tasks.api';
 import { usersApi } from '../api/users.api';
@@ -30,6 +31,8 @@ export default function TasksPage() {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [reportModal, setReportModal] = useState<Task | null>(null);
   const [reportText, setReportText] = useState('');
+  const [dateViewMode, setDateViewMode] = useState<'ALL' | 'TODAY' | 'SELECTED'>('TODAY');
+  const [selectedDate, setSelectedDate] = useState(dayjs());
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
@@ -129,8 +132,18 @@ export default function TasksPage() {
     return allowed;
   };
 
+  const matchesActiveDate = (task: Task) => {
+    if (dateViewMode === 'ALL') return true;
+    const base = task.plannedDate || task.dueDate;
+    if (!base) return false;
+    const compareDate = dateViewMode === 'TODAY' ? dayjs() : selectedDate;
+    return dayjs(base).isSame(compareDate, 'day');
+  };
+
+  const visibleTasks = tasks.filter(matchesActiveDate);
+
   const tasksByStatus = (status: TaskStatus) =>
-    tasks.filter((t) => t.status === status).sort((a, b) =>
+    visibleTasks.filter((t) => t.status === status).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
@@ -145,7 +158,7 @@ export default function TasksPage() {
         style={{
           marginBottom: 8,
           cursor: 'pointer',
-          borderLeft: `3px solid ${isOverdue ? token.colorError : token.colorPrimary}`,
+          borderLeft: `3px solid ${task.color || (isOverdue ? token.colorError : token.colorPrimary)}`,
         }}
         onClick={() => setDetailTask(task)}
       >
@@ -165,6 +178,11 @@ export default function TasksPage() {
             </Typography.Text>
           )}
         </div>
+        {task.plannedDate && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            План: {dayjs(task.plannedDate).format('DD.MM.YYYY')}
+          </Typography.Text>
+        )}
         {(task._count?.attachments ?? 0) > 0 && (
           <div style={{ marginTop: 4 }}>
             <PaperClipOutlined style={{ fontSize: 11, color: token.colorTextSecondary }} />
@@ -201,10 +219,59 @@ export default function TasksPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Задачи</Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          Новая задача
-        </Button>
+        <Space>
+          <Segmented
+            value={dateViewMode}
+            onChange={(v) => setDateViewMode(v as 'ALL' | 'TODAY' | 'SELECTED')}
+            options={[
+              { label: 'Сегодня', value: 'TODAY' },
+              { label: 'Выбранная дата', value: 'SELECTED' },
+              { label: 'Все', value: 'ALL' },
+            ]}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            Новая задача
+          </Button>
+        </Space>
       </div>
+
+      <Card size="small" style={{ marginBottom: 12 }}>
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={10}>
+            <Typography.Text type="secondary">
+              <CalendarOutlined /> Календарь планов
+            </Typography.Text>
+            <Calendar
+              fullscreen={false}
+              value={selectedDate}
+              onSelect={(d) => {
+                setSelectedDate(d);
+                setDateViewMode('SELECTED');
+              }}
+            />
+          </Col>
+          <Col xs={24} md={14}>
+            <Typography.Text strong>
+              Планы на {dateViewMode === 'TODAY' ? 'сегодня' : selectedDate.format('DD.MM.YYYY')}
+            </Typography.Text>
+            <List
+              size="small"
+              style={{ marginTop: 8 }}
+              locale={{ emptyText: 'На выбранную дату задач нет' }}
+              dataSource={visibleTasks.slice(0, 8)}
+              renderItem={(task) => (
+                <List.Item>
+                  <Space>
+                    <span style={{ width: 10, height: 10, borderRadius: 10, background: task.color || token.colorPrimary }} />
+                    <Typography.Text>{task.title}</Typography.Text>
+                    <Tag>{STATUS_CONFIG[task.status].label}</Tag>
+                  </Space>
+                </List.Item>
+              )}
+            />
+          </Col>
+        </Row>
+      </Card>
 
       {myGoal && (myGoal.targets.deals != null || myGoal.targets.revenue != null || myGoal.targets.callNotes != null) && (
         <Card size="small" style={{ marginBottom: 12 }}>
@@ -281,6 +348,8 @@ export default function TasksPage() {
             description: v.description,
             assigneeId: v.assigneeId,
             dueDate: v.dueDate ? v.dueDate.toISOString() : undefined,
+            plannedDate: v.plannedDate ? v.plannedDate.toISOString() : undefined,
+            color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.(),
           });
         }}>
           <Form.Item name="title" label="Заголовок" rules={[{ required: true, message: 'Обязательно' }]}>
@@ -298,6 +367,18 @@ export default function TasksPage() {
           </Form.Item>
           <Form.Item name="dueDate" label="Срок">
             <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+          </Form.Item>
+          <Form.Item name="plannedDate" label="План на дату">
+            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+          </Form.Item>
+          <Form.Item
+            name="color"
+            label="Цвет задачи"
+            getValueFromEvent={(v: string | { toHexString?: () => string }) =>
+              typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
+            }
+          >
+            <ColorPicker showText format="hex" disabledAlpha />
           </Form.Item>
         </Form>
       </Modal>
@@ -366,6 +447,22 @@ export default function TasksPage() {
                 <div>
                   <Typography.Text type="secondary">Срок</Typography.Text>
                   <div><Typography.Text>{dayjs(detailTask.dueDate).format('DD.MM.YYYY')}</Typography.Text></div>
+                </div>
+              )}
+
+              {detailTask.plannedDate && (
+                <div>
+                  <Typography.Text type="secondary">Плановая дата</Typography.Text>
+                  <div><Typography.Text>{dayjs(detailTask.plannedDate).format('DD.MM.YYYY')}</Typography.Text></div>
+                </div>
+              )}
+
+              {detailTask.color && (
+                <div>
+                  <Typography.Text type="secondary">Цвет</Typography.Text>
+                  <div>
+                    <Tag color={detailTask.color}>{detailTask.color}</Tag>
+                  </div>
                 </div>
               )}
 

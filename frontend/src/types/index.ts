@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER';
 
 export type Permission =
   | 'manage_users'
@@ -63,6 +63,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN: ALL_PERMISSIONS.map((p) => p.key).filter((p) => !SUPER_ONLY.includes(p)),
   OPERATOR: ['manage_leads', 'view_all_clients'],
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
+  HR: ['manage_deals', 'view_all_clients', 'edit_client'],
   ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses'],
   WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals', 'create_inventory_in'],
   WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute', 'manage_expenses', 'loading_execute'],
@@ -837,10 +838,12 @@ export interface Task {
   title: string;
   description?: string | null;
   status: TaskStatus;
+  color?: string | null;
   assigneeId: string;
   createdById: string;
   report?: string | null;
   dueDate?: string | null;
+  plannedDate?: string | null;
   approvedById?: string | null;
   approvedAt?: string | null;
   createdAt: string;
@@ -850,6 +853,20 @@ export interface Task {
   approvedBy?: { id: string; fullName: string } | null;
   attachments?: TaskAttachment[];
   _count?: { attachments: number };
+}
+
+export interface NotesBoardRow {
+  id: string;
+  clientId: string;
+  callResult: 'ANSWERED' | 'NO_ANSWER';
+  status: string | null;
+  comment: string;
+  lastCallAt: string;
+  nextCallAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; fullName: string };
+  client: { id: string; companyName: string };
 }
 
 // ──── Client Debt Detail ────

@@ -44,9 +44,9 @@ function hasRole(role: UserRole | undefined, ...allowed: UserRole[]): boolean {
 export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   const { role, isAdmin, hasPermission } = ctx;
 
-  const dealsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
-  const clientsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER'];
-  const productsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
+  const dealsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
+  const clientsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER', 'HR'];
+  const productsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
   const warehouseRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
 
   const dealsLabel = role === 'MANAGER' ? 'Заявки' : 'Сделки';
@@ -104,6 +104,17 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
       { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'База и визиты' },
       { path: '/inventory/products', label: 'Товары', Icon: AppstoreOutlined, rationale: 'Прайс / наличие для КП' },
       { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'Ежедневные задачи' },
+    ];
+  }
+
+  // ── HR: close to manager workflow + notes board
+  if (role === 'HR') {
+    return [
+      { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Ежедневная сводка' },
+      { path: '/deals', label: 'Сделки', Icon: FundProjectionScreenOutlined, rationale: 'Помощь в продажах' },
+      { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'Работа с базой клиентов' },
+      { path: '/notes-board', label: 'Заметки', Icon: AuditOutlined, rationale: 'Контроль обзвонов' },
+      { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'План на день' },
     ];
   }
 
