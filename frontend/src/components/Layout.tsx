@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme, Dropdown } from 'antd';
+import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme, Dropdown, List, Tag } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -51,6 +51,7 @@ import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
+import { tasksApi } from '../api/tasks.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
 import { APP_BUTTON } from './ui/AppClassNames';
@@ -59,8 +60,9 @@ import NotificationPermissionBanner from './NotificationPermissionBanner';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
-import type { UserRole, Permission } from '../types';
+import type { UserRole, Permission, Task } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS } from '../constants/dilnozaPayments';
+import dayjs from 'dayjs';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -77,6 +79,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
+  const [quickTasksOpen, setQuickTasksOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, refreshToken, logout, setUser } = useAuthStore();
@@ -170,6 +173,23 @@ export default function Layout() {
   const totalUnread = unreadCounts
     ? Object.values(unreadCounts).reduce((sum, c) => sum + c, 0)
     : 0;
+  const { data: myTasks = [] } = useQuery({
+    queryKey: ['quick-my-tasks', user?.id],
+    queryFn: () => tasksApi.list({ assigneeId: user?.id }),
+    enabled: Boolean(user?.id),
+    refetchInterval: 30_000,
+  });
+  const hasMyTasks = myTasks.length > 0;
+  const activeMyTasks = myTasks.filter((task) => task.status !== 'APPROVED');
+  const quickTaskCount = activeMyTasks.length;
+  const quickTaskList: Task[] = (activeMyTasks.length > 0 ? activeMyTasks : myTasks)
+    .slice()
+    .sort((a, b) => {
+      const aDate = a.plannedDate || a.dueDate || a.createdAt;
+      const bDate = b.plannedDate || b.dueDate || b.createdAt;
+      return new Date(aDate).getTime() - new Date(bDate).getTime();
+    })
+    .slice(0, 8);
 
   const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
   const showGroupLabels = isMobile || !collapsed;
@@ -693,6 +713,94 @@ export default function Layout() {
         </Content>
         <NotificationPermissionBanner />
       </AntLayout>
+
+      {hasMyTasks && (
+        <>
+          <Button
+            type="primary"
+            icon={<ProjectOutlined />}
+            onClick={() => setQuickTasksOpen(true)}
+            style={{
+              position: 'fixed',
+              right: 16,
+              bottom: isMobile ? 92 : 24,
+              zIndex: 1200,
+              borderRadius: 999,
+              boxShadow: themeToken.boxShadowSecondary,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            Мои задачи
+            <Badge
+              count={quickTaskCount}
+              showZero
+              style={{ backgroundColor: '#fff', color: themeToken.colorPrimary, marginInlineStart: 4 }}
+            />
+          </Button>
+
+          <Drawer
+            title="Быстрый доступ к задачам"
+            placement="right"
+            open={quickTasksOpen}
+            onClose={() => setQuickTasksOpen(false)}
+            width={isMobile ? '100%' : 420}
+            extra={(
+              <Button
+                size="small"
+                onClick={() => {
+                  setQuickTasksOpen(false);
+                  navigate('/tasks');
+                }}
+              >
+                Все задачи
+              </Button>
+            )}
+          >
+            <List
+              dataSource={quickTaskList}
+              locale={{ emptyText: 'Задач нет' }}
+              renderItem={(task) => (
+                <List.Item
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setQuickTasksOpen(false);
+                    navigate('/tasks');
+                  }}
+                >
+                  <List.Item.Meta
+                    title={(
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <Typography.Text strong ellipsis style={{ maxWidth: 250 }}>
+                          {task.title}
+                        </Typography.Text>
+                        <Tag color={task.status === 'IN_PROGRESS' ? 'processing' : task.status === 'DONE' ? 'warning' : 'default'}>
+                          {task.status === 'TODO' ? 'К выполнению' : task.status === 'IN_PROGRESS' ? 'В работе' : task.status === 'DONE' ? 'Готово' : 'Утверждено'}
+                        </Tag>
+                      </div>
+                    )}
+                    description={(
+                      <Space direction="vertical" size={2}>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {task.plannedDate
+                            ? `План: ${dayjs(task.plannedDate).format('DD.MM.YYYY')}`
+                            : task.dueDate
+                              ? `Срок: ${dayjs(task.dueDate).format('DD.MM.YYYY')}`
+                              : 'Без даты'}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {task.createdBy?.fullName || 'Без постановщика'}
+                        </Typography.Text>
+                      </Space>
+                    )}
+                  />
+                </List.Item>
+              )}
+            />
+          </Drawer>
+        </>
+      )}
 
       {isMobile && (
         <BottomTabBar />
