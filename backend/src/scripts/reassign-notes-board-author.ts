@@ -36,11 +36,20 @@ async function resolveAuthorId(raw?: string): Promise<string | null> {
   const byId = await prisma.user.findUnique({ where: { id: raw }, select: { id: true } });
   if (byId) return byId.id;
 
-  const byUsername = await prisma.user.findFirst({
-    where: { username: raw },
+  const byLogin = await prisma.user.findUnique({
+    where: { login: raw },
     select: { id: true },
   });
-  return byUsername?.id ?? null;
+  if (byLogin) return byLogin.id;
+
+  const byFullNameMatches = await prisma.user.findMany({
+    where: { fullName: raw },
+    select: { id: true },
+    take: 3,
+  });
+  if (byFullNameMatches.length === 1) return byFullNameMatches[0].id;
+
+  return null;
 }
 
 async function run(): Promise<void> {
@@ -52,7 +61,7 @@ async function run(): Promise<void> {
   const authorId = await resolveAuthorId(authorArg);
 
   if (!authorId) {
-    throw new Error('Не удалось определить автора. Передайте --author <id|username>.');
+    throw new Error('Не удалось определить автора. Передайте --author <uuid|login>. Если несколько пользователей с одинаковым ФИО — используйте uuid или login.');
   }
 
   const rows = await prisma.notesBoardRow.findMany({
