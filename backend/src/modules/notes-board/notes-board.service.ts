@@ -77,14 +77,9 @@ function mapRow(row: {
 }
 
 function buildClientNoteText(input: {
-  callResult: 'ANSWERED' | 'NO_ANSWER';
-  status: string | null;
   comment: string;
-  lastCallAt: Date;
 }) {
-  const callResultLabel = input.callResult === 'ANSWERED' ? 'Взял трубку' : 'Не взял трубку';
-  const status = input.status?.trim() || '—';
-  return `[NOTES_BOARD] Дозвон: ${callResultLabel}\nСтатус: ${status}\nДата контакта: ${input.lastCallAt.toISOString()}\nКомментарий: ${input.comment}`;
+  return `Перенесено из "Заметок".\nКомментарий: ${input.comment}`;
 }
 
 export class NotesBoardService {
@@ -160,10 +155,7 @@ export class NotesBoardService {
         clientId: row.clientId,
         userId: user.userId,
         content: buildClientNoteText({
-          callResult: row.callResult,
-          status: row.status,
           comment: row.comment,
-          lastCallAt: row.lastCallAt,
         }),
       },
     });
@@ -206,10 +198,7 @@ export class NotesBoardService {
         clientId: updated.clientId,
         userId: user.userId,
         content: buildClientNoteText({
-          callResult: updated.callResult,
-          status: updated.status,
           comment: updated.comment,
-          lastCallAt: updated.lastCallAt,
         }),
       },
     });
@@ -261,7 +250,7 @@ export class NotesBoardService {
       data: {
         clientId: updated.clientId,
         userId: user.userId,
-        content: `[NOTES_BOARD_EDIT_REQUEST] Запрос на правку (${updated.editRequestCount}/3): ${dto.comment.trim()}`,
+        content: `Перенесено из "Заметок" (запрос на правку ${updated.editRequestCount}/3).\nКомментарий: ${dto.comment.trim()}`,
       },
     });
 
