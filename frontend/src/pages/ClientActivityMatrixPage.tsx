@@ -8,7 +8,7 @@ import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { smartFilterOption } from '../utils/translit';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 import type { HistoryClientActivity, Product } from '../types';
 
 const { Title } = Typography;
@@ -174,9 +174,9 @@ export default function ClientActivityMatrixPage() {
     if (selectedClients.length > 0) {
       rows = rows.filter((c) => selectedClients.includes(c.clientId));
     }
-    const q = clientSearch.trim().toLowerCase();
+    const q = clientSearch.trim();
     if (!q) return rows;
-    return rows.filter((c) => c.companyName.toLowerCase().includes(q));
+    return rows.filter((c) => matchesSearch(c.companyName, q));
   }, [clientActivity, clientSearch, selectedClients]);
 
   const patchListParams = useCallback(

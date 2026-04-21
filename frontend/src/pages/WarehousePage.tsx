@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import type { Product } from '../types';
+import { matchesSearch } from '../utils/translit';
 import dayjs from 'dayjs';
 
 type StockFilter = 'all' | 'zero' | 'low' | 'normal';
@@ -88,13 +89,12 @@ export default function WarehousePage() {
       list = list.filter((p) => !p.isActive);
     }
 
-    // Search by name or SKU
     if (searchText.trim()) {
-      const lower = searchText.trim().toLowerCase();
+      const q = searchText.trim();
       list = list.filter(
         (p) =>
-          p.name.toLowerCase().includes(lower) ||
-          (p.sku && p.sku.toLowerCase().includes(lower))
+          matchesSearch(p.name, q) ||
+          matchesSearch(p.sku, q)
       );
     }
 

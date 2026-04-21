@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
-import { smartFilterOption } from '../utils/translit';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   LEGEND_OPERATIONAL,
   LEGEND_SHIPPED_REVENUE,
@@ -255,11 +255,11 @@ export default function HistoryAnalyticsPage() {
     let list = dataQuality?.problemRows || [];
     if (dqOpTypeFilter.length > 0) list = list.filter((r) => dqOpTypeFilter.includes(r.opType));
     if (dqSearch.trim()) {
-      const lower = dqSearch.trim().toLowerCase();
+      const q = dqSearch.trim();
       list = list.filter((r) =>
-        r.productName.toLowerCase().includes(lower) ||
-        r.companyName.toLowerCase().includes(lower) ||
-        r.managerName.toLowerCase().includes(lower)
+        matchesSearch(r.productName, q) ||
+        matchesSearch(r.companyName, q) ||
+        matchesSearch(r.managerName, q)
       );
     }
     return list;

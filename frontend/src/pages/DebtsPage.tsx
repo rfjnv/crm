@@ -8,6 +8,7 @@ import MobileCardList from '../components/MobileCardList';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
+import { matchesSearch } from '../utils/translit';
 import type { ClientDebtRow } from '../types';
 import dayjs from 'dayjs';
 
@@ -64,12 +65,12 @@ export default function DebtsPage() {
   const filtered = useMemo(() => {
     let result = clients;
 
-    if (search) {
-      const q = search.toLowerCase();
+    if (search.trim()) {
+      const q = search.trim();
       result = result.filter(
         (c) =>
-          c.clientName.toLowerCase().includes(q) ||
-          c.manager?.fullName.toLowerCase().includes(q),
+          matchesSearch(c.clientName, q) ||
+          matchesSearch(c.manager?.fullName, q),
       );
     }
 

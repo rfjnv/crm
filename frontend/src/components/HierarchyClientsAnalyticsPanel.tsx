@@ -6,7 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
 import { formatUZS } from '../utils/currency';
-import { smartFilterOption } from '../utils/translit';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   inferTypeLabel,
   safePrice,
@@ -115,7 +115,7 @@ export default function HierarchyClientsAnalyticsPanel({
   );
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
 
-  const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim().toLowerCase();
+  const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim();
 
   const writePersist = useCallback((name: string, value: string | null) => {
     if (!persistPrefix) return;
@@ -355,7 +355,7 @@ export default function HierarchyClientsAnalyticsPanel({
       }))
       .filter((row) => {
         if (!effectiveClientSearch) return true;
-        return row.clientName.toLowerCase().includes(effectiveClientSearch);
+        return matchesSearch(row.clientName, effectiveClientSearch);
       })
       .sort((a, b) => b.salesRevenue - a.salesRevenue);
   }, [effectiveClientSearch, productsById, purchaseRows, selectedClientScopeProductIds]);

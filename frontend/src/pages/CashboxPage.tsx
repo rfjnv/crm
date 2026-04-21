@@ -297,12 +297,12 @@ export default function CashboxPage() {
   const filteredDebtors = useMemo(() => {
     let result = debtorClients;
 
-    if (debtSearch) {
-      const q = debtSearch.toLowerCase();
+    if (debtSearch.trim()) {
+      const q = debtSearch.trim();
       result = result.filter(
         (c) =>
-          c.clientName.toLowerCase().includes(q) ||
-          c.manager?.fullName.toLowerCase().includes(q),
+          matchesSearch(c.clientName, q) ||
+          matchesSearch(c.manager?.fullName, q),
       );
     }
 
