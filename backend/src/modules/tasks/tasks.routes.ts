@@ -39,10 +39,32 @@ const taskInclude = {
   _count: { select: { attachments: true } },
 };
 
+function isTaskAdmin(role: Role): boolean {
+  return role === 'ADMIN' || role === 'SUPER_ADMIN';
+}
+
+function canAccessTask(userId: string, role: Role, task: { assigneeId: string }): boolean {
+  return isTaskAdmin(role) || task.assigneeId === userId;
+}
+
+function normalizeChecklist(
+  input?: Array<{ text: string; checked?: boolean }> | null,
+): Array<{ text: string; checked: boolean }> | undefined {
+  if (input === undefined) return undefined;
+  if (input === null) return [];
+  return input
+    .map((item) => ({
+      text: item.text.trim(),
+      checked: Boolean(item.checked),
+    }))
+    .filter((item) => item.text.length > 0);
+}
+
 // ──── LIST ────
 router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
+    const role = req.user!.role as Role;
     const assigneeId = req.query.assigneeId as string | undefined;
     const status = req.query.status as string | undefined;
     const createdById = req.query.createdById as string | undefined;
@@ -50,9 +72,13 @@ router.get(
     const plannedDateTo = req.query.plannedDateTo as string | undefined;
 
     const where: Record<string, unknown> = {};
-    if (assigneeId) where.assigneeId = assigneeId;
+    if (!isTaskAdmin(role)) {
+      where.assigneeId = req.user!.userId;
+    } else if (assigneeId) {
+      where.assigneeId = assigneeId;
+    }
     if (status) where.status = status;
-    if (createdById) where.createdById = createdById;
+    if (createdById && isTaskAdmin(role)) where.createdById = createdById;
     if (plannedDateFrom || plannedDateTo) {
       where.plannedDate = {
         ...(plannedDateFrom ? { gte: new Date(plannedDateFrom) } : {}),
@@ -76,8 +102,9 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const data = createTaskDto.parse(req.body);
     const role = req.user!.role as Role;
-    const canPickAssignee = role === 'ADMIN' || role === 'SUPER_ADMIN';
+    const canPickAssignee = isTaskAdmin(role);
     const assigneeId = canPickAssignee ? data.assigneeId : req.user!.userId;
+    const checklist = normalizeChecklist(data.checklist);
 
     const task = await prisma.task.create({
       data: {
@@ -88,6 +115,7 @@ router.post(
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         plannedDate: data.plannedDate ? new Date(data.plannedDate) : undefined,
         color: data.color,
+        checklist,
       },
       include: taskInclude,
     });
@@ -102,9 +130,13 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const data = updateTaskDto.parse(req.body);
+    const role = req.user!.role as Role;
 
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Задача не найдена');
+    if (!canAccessTask(req.user!.userId, role, existing)) {
+      throw new AppError(403, 'Недостаточно прав для изменения задачи');
+    }
 
     const updateData: Record<string, unknown> = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -117,6 +149,9 @@ router.patch(
     }
     if (data.color !== undefined) {
       updateData.color = data.color;
+    }
+    if (data.checklist !== undefined) {
+      updateData.checklist = normalizeChecklist(data.checklist);
     }
 
     const task = await prisma.task.update({
@@ -139,6 +174,9 @@ router.patch(
 
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Задача не найдена');
+    if (!canAccessTask(req.user!.userId, role, existing)) {
+      throw new AppError(403, 'Недостаточно прав для изменения статуса задачи');
+    }
 
     const from = existing.status;
     const to = status;
@@ -197,9 +235,13 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { report } = req.body;
+    const role = req.user!.role as Role;
 
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Задача не найдена');
+    if (!canAccessTask(req.user!.userId, role, existing)) {
+      throw new AppError(403, 'Недостаточно прав для изменения отчёта задачи');
+    }
 
     const task = await prisma.task.update({
       where: { id },
@@ -217,9 +259,13 @@ router.post(
   upload.single('file'),
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    const role = req.user!.role as Role;
 
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Задача не найдена');
+    if (!canAccessTask(req.user!.userId, role, existing)) {
+      throw new AppError(403, 'Недостаточно прав для загрузки файла');
+    }
 
     if (!req.file) throw new AppError(400, 'Файл не загружен');
 
@@ -243,6 +289,13 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const taskId = req.params.id as string;
     const attachmentId = req.params.attachmentId as string;
+    const role = req.user!.role as Role;
+
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new AppError(404, 'Задача не найдена');
+    if (!canAccessTask(req.user!.userId, role, task)) {
+      throw new AppError(403, 'Недостаточно прав для просмотра вложения');
+    }
 
     const attachment = await prisma.taskAttachment.findFirst({
       where: {

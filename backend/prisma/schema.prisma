@@ -824,6 +824,7 @@ model Task {
   description  String?
   status       TaskStatus  @default(TODO)
   color        String?     @map("color")
+  checklist    Json?       @map("checklist")
   assigneeId   String      @map("assignee_id")
   createdById  String      @map("created_by_id")
   report       String?

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Button, Modal, Form, Input, Select, Typography, message, Tag, Space,
-  DatePicker, Drawer, Upload, List, Badge, Popconfirm, Row, Col, theme, Segmented, Calendar, ColorPicker,
+  DatePicker, Drawer, Upload, List, Badge, Popconfirm, Row, Col, theme, Segmented, Calendar, ColorPicker, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, UploadOutlined, PaperClipOutlined,
@@ -16,7 +16,7 @@ import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useThemeStore } from '../store/themeStore';
-import type { Task, TaskStatus } from '../types';
+import type { Task, TaskChecklistItem, TaskStatus } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -51,6 +51,15 @@ function sortTasksByAnchor(items: Task[]) {
     if (!aAnchor && bAnchor) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+}
+
+function normalizeChecklist(items: Array<{ text?: string; checked?: boolean }> | undefined): TaskChecklistItem[] {
+  return (items || [])
+    .map((item) => ({
+      text: (item.text || '').trim(),
+      checked: Boolean(item.checked),
+    }))
+    .filter((item) => item.text.length > 0);
 }
 
 export default function TasksPage() {
@@ -125,6 +134,16 @@ export default function TasksPage() {
       setDetailTask(null);
     },
     onError: () => message.error('Ошибка удаления'),
+  });
+
+  const updateTaskMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof tasksApi.update>[1] }) =>
+      tasksApi.update(id, data),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setDetailTask((current) => (current?.id === updated.id ? updated : current));
+    },
+    onError: () => message.error('Не удалось обновить задачу'),
   });
 
   const handleMove = (task: Task, targetStatus: TaskStatus) => {
@@ -221,6 +240,12 @@ export default function TasksPage() {
     return 'Без даты';
   };
 
+  const getChecklistMeta = (task: Task) => {
+    const items = task.checklist || [];
+    const done = items.filter((item) => item.checked).length;
+    return { total: items.length, done };
+  };
+
   const sectionSurface = isDark
     ? `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 45%, ${token.colorBgLayout} 100%)`
     : token.colorBgContainer;
@@ -241,6 +266,7 @@ export default function TasksPage() {
     const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
     const nextStatuses = getNextStatuses(task.status);
     const accent = getTaskAccent(task);
+    const checklistMeta = getChecklistMeta(task);
 
     return (
       <Card
@@ -290,6 +316,13 @@ export default function TasksPage() {
             </Typography.Text>
           </div>
         )}
+        {checklistMeta.total > 0 && (
+          <div style={{ marginTop: 6 }}>
+            <Tag bordered={false} style={{ margin: 0, borderRadius: 999, background: token.colorFillTertiary }}>
+              Чеклист: {checklistMeta.done}/{checklistMeta.total}
+            </Tag>
+          </div>
+        )}
         {nextStatuses.length > 0 && (
           <div style={{ marginTop: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
             {nextStatuses.map((s) => {
@@ -318,6 +351,7 @@ export default function TasksPage() {
     const accent = getTaskAccent(task);
     const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
     const statusLabel = STATUS_CONFIG[task.status].label;
+    const checklistMeta = getChecklistMeta(task);
 
     return (
       <div
@@ -413,6 +447,11 @@ export default function TasksPage() {
             {!lane && (task._count?.attachments ?? 0) > 0 ? (
               <Tag bordered={false} style={{ margin: 0, borderRadius: 999, background: token.colorFillTertiary }}>
                 <PaperClipOutlined /> {task._count?.attachments}
+              </Tag>
+            ) : null}
+            {!lane && checklistMeta.total > 0 ? (
+              <Tag bordered={false} style={{ margin: 0, borderRadius: 999, background: token.colorFillTertiary }}>
+                Чеклист: {checklistMeta.done}/{checklistMeta.total}
               </Tag>
             ) : null}
             {isOverdue ? (
@@ -980,6 +1019,7 @@ export default function TasksPage() {
             dueDate: v.dueDate ? v.dueDate.toISOString() : undefined,
             plannedDate: v.plannedDate ? v.plannedDate.toISOString() : undefined,
             color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.(),
+            checklist: normalizeChecklist(v.checklist),
           });
         }}>
           <div
@@ -1046,6 +1086,61 @@ export default function TasksPage() {
               </Form.Item>
             </Col>
           </Row>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 14,
+              marginTop: 8,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+              <div>
+                <Typography.Text strong style={{ display: 'block' }}>Чеклист задачи</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Добавьте несколько пунктов, которые нужно отметить по ходу выполнения.
+                </Typography.Text>
+              </div>
+            </div>
+            <Form.List name="checklist">
+              {(fields, { add, remove }) => (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {fields.map((field, index) => (
+                    <div
+                      key={field.key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '28px minmax(0, 1fr) auto',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Form.Item name={[field.name, 'checked']} valuePropName="checked" style={{ margin: 0 }}>
+                        <Checkbox />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'text']}
+                        rules={[{ required: true, message: 'Введите текст пункта' }]}
+                        style={{ margin: 0 }}
+                      >
+                        <Input
+                          size="large"
+                          placeholder={`Пункт ${index + 1}`}
+                        />
+                      </Form.Item>
+                      <Button danger onClick={() => remove(field.name)}>
+                        Удалить
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ text: '', checked: false })}>
+                    Добавить чекбокс
+                  </Button>
+                </div>
+              )}
+            </Form.List>
+          </div>
         </Form>
       </Modal>
 
@@ -1174,6 +1269,41 @@ export default function TasksPage() {
                   </div>
                 </Col>
               </Row>
+
+              <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                  <Typography.Text type="secondary">Чеклист</Typography.Text>
+                  {detailTask.checklist?.length ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      Выполнено {getChecklistMeta(detailTask).done}/{getChecklistMeta(detailTask).total}
+                    </Typography.Text>
+                  ) : null}
+                </div>
+                {!detailTask.checklist?.length ? (
+                  <Typography.Text type="secondary">Чеклист не добавлен.</Typography.Text>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {detailTask.checklist.map((item, index) => (
+                      <Checkbox
+                        key={`${detailTask.id}-${index}-${item.text}`}
+                        checked={item.checked}
+                        disabled={updateTaskMut.isPending}
+                        onChange={(e) => {
+                          const nextChecklist = (detailTask.checklist || []).map((entry, entryIndex) =>
+                            entryIndex === index ? { ...entry, checked: e.target.checked } : entry,
+                          );
+                          updateTaskMut.mutate({
+                            id: detailTask.id,
+                            data: { checklist: nextChecklist },
+                          });
+                        }}
+                      >
+                        <Typography.Text delete={item.checked}>{item.text}</Typography.Text>
+                      </Checkbox>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Report section */}
               <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>

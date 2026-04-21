@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const taskChecklistItemDto = z.object({
+  text: z.string().trim().min(1).max(300),
+  checked: z.boolean().optional(),
+});
+
 export const createTaskDto = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
@@ -7,6 +12,7 @@ export const createTaskDto = z.object({
   dueDate: z.string().optional(),
   plannedDate: z.string().optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  checklist: z.array(taskChecklistItemDto).max(50).optional(),
 });
 
 export const updateTaskDto = z.object({
@@ -15,6 +21,7 @@ export const updateTaskDto = z.object({
   dueDate: z.string().nullable().optional(),
   plannedDate: z.string().nullable().optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+  checklist: z.array(taskChecklistItemDto).max(50).optional(),
 });
 
 export const moveTaskDto = z.object({

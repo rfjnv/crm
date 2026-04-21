@@ -823,6 +823,11 @@ export interface Expense {
 
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'APPROVED';
 
+export interface TaskChecklistItem {
+  text: string;
+  checked: boolean;
+}
+
 export interface TaskAttachment {
   id: string;
   taskId: string;
@@ -839,6 +844,7 @@ export interface Task {
   description?: string | null;
   status: TaskStatus;
   color?: string | null;
+  checklist?: TaskChecklistItem[] | null;
   assigneeId: string;
   createdById: string;
   report?: string | null;

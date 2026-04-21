@@ -1,5 +1,5 @@
 import client, { API_URL } from './client';
-import type { Task, TaskAttachment, TaskStatus } from '../types';
+import type { Task, TaskAttachment, TaskChecklistItem, TaskStatus } from '../types';
 
 export const tasksApi = {
   list: (params?: {
@@ -18,6 +18,7 @@ export const tasksApi = {
     dueDate?: string;
     plannedDate?: string;
     color?: string;
+    checklist?: TaskChecklistItem[];
   }) =>
     client.post<Task>('/tasks', data).then((r) => r.data),
 
@@ -27,6 +28,7 @@ export const tasksApi = {
     dueDate?: string | null;
     plannedDate?: string | null;
     color?: string | null;
+    checklist?: TaskChecklistItem[];
   }) =>
     client.patch<Task>(`/tasks/${id}`, data).then((r) => r.data),
 
