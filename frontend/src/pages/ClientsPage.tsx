@@ -12,6 +12,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
+import { matchesSearch, smartFilterOption } from '../utils/translit';
 
 type ClientSortMode = 'name_asc' | 'name_desc' | 'created_desc' | 'contact_desc';
 
@@ -194,13 +195,13 @@ export default function ClientsPage() {
 
   const filteredClients = useMemo(() => {
     let list = clients ?? [];
-    const q = searchDraft.trim().toLowerCase();
+    const q = searchDraft.trim();
     if (q) {
-      list = list.filter(c =>
-        c.companyName.toLowerCase().includes(q) ||
-        c.contactName.toLowerCase().includes(q) ||
-        (c.phone && c.phone.includes(q)) ||
-        (c.email && c.email.toLowerCase().includes(q))
+      list = list.filter((c) =>
+        matchesSearch(
+          [c.companyName, c.contactName, c.phone || '', c.email || ''].join(' '),
+          q,
+        ),
       );
     }
     if (managerFilter) {
@@ -424,7 +425,7 @@ export default function ClientsPage() {
         <Form.Item name="managerId" label="Менеджер">
           <Select
             showSearch
-            optionFilterProp="label"
+            filterOption={smartFilterOption}
             placeholder={isEditMode ? undefined : 'По умолчанию — вы'}
             allowClear={!isEditMode}
             options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
@@ -487,7 +488,7 @@ export default function ClientsPage() {
               className={APP_INPUT}
               allowClear
               showSearch
-              optionFilterProp="label"
+              filterOption={smartFilterOption}
               placeholder="Менеджер"
               style={{ width: isMobile ? '100%' : 200 }}
               value={managerFilter}

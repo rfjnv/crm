@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -17,12 +17,25 @@ import {
   Alert,
   Drawer,
   Divider,
+  Row,
+  Col,
+  Statistic,
+  Progress,
+  theme as antdTheme,
 } from 'antd';
 import dayjs from 'dayjs';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  PhoneOutlined,
+  CloseCircleOutlined,
+  TeamOutlined,
+  PieChartOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import { notesBoardApi } from '../api/notes-board.api';
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
+import { smartFilterOption } from '../utils/translit';
 
 type CallResult = 'ANSWERED' | 'NO_ANSWER';
 
@@ -61,11 +74,14 @@ function normalizeStatusField(v: unknown): string | undefined {
 }
 
 export default function NotesBoardPage() {
+  const { token: tk } = antdTheme.useToken();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [searchDraft, setSearchDraft] = useState('');
   const [q, setQ] = useState('');
   const [callResultFilter, setCallResultFilter] = useState<CallResult | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [authorFilter, setAuthorFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [quickClientOpen, setQuickClientOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -89,8 +105,18 @@ export default function NotesBoardPage() {
     queryFn: () => clientsApi.list(),
   });
 
+  // Debounce search input so typed spaces / multi-word queries work naturally.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (searchDraft === q) return;
+      setPage(1);
+      setQ(searchDraft);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchDraft, q]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['notes-board', page, pageSize, q, callResultFilter, statusFilter],
+    queryKey: ['notes-board', page, pageSize, q, callResultFilter, statusFilter, authorFilter],
     queryFn: () =>
       notesBoardApi.list({
         page,
@@ -98,7 +124,16 @@ export default function NotesBoardPage() {
         q: q.trim() || undefined,
         callResult: callResultFilter,
         status: statusFilter || undefined,
+        authorId: authorFilter,
       }),
+  });
+
+  const canSeeAnalytics = isSuperAdmin || isAdmin;
+  const { data: stats } = useQuery({
+    queryKey: ['notes-board-stats'],
+    queryFn: () => notesBoardApi.stats(),
+    enabled: canSeeAnalytics,
+    refetchInterval: 30_000,
   });
 
   const { data: myRequestsData, isLoading: myRequestsLoading } = useQuery({
@@ -109,6 +144,7 @@ export default function NotesBoardPage() {
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['notes-board'] });
+    void queryClient.invalidateQueries({ queryKey: ['notes-board-stats'] });
     void queryClient.invalidateQueries({ queryKey: ['client-notes'] });
     void queryClient.invalidateQueries({ queryKey: ['manager-client-activity'] });
   };
@@ -178,13 +214,100 @@ export default function NotesBoardPage() {
 
   const rows = data?.items ?? [];
 
+  const answeredCount = useMemo(
+    () => stats?.byCallResult.find((r) => r.callResult === 'ANSWERED')?.count || 0,
+    [stats],
+  );
+  const noAnswerCount = useMemo(
+    () => stats?.byCallResult.find((r) => r.callResult === 'NO_ANSWER')?.count || 0,
+    [stats],
+  );
+  const answerRate = stats && stats.total > 0 ? Math.round((answeredCount / stats.total) * 100) : 0;
+  const statusCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    (stats?.byStatus || []).forEach((s) => {
+      const name = (s.status || '').trim();
+      if (name) map.set(name, (map.get(name) || 0) + s.count);
+    });
+    return map;
+  }, [stats]);
+  const customStatuses = useMemo(
+    () =>
+      Array.from(statusCounts.keys())
+        .filter((s) => !(BASE_STATUSES as readonly string[]).includes(s))
+        .sort((a, b) => (statusCounts.get(b) || 0) - (statusCounts.get(a) || 0))
+        .slice(0, 6),
+    [statusCounts],
+  );
+  const noStatusCount =
+    (stats?.total || 0) -
+    Array.from(statusCounts.values()).reduce((acc, v) => acc + v, 0);
+  const activeFilterChips = [
+    q && { key: 'q', label: `Поиск: "${q}"`, onClose: () => { setSearchDraft(''); setQ(''); setPage(1); } },
+    callResultFilter && {
+      key: 'cr',
+      label: `Дозвон: ${CALL_RESULT_LABEL[callResultFilter]}`,
+      onClose: () => { setCallResultFilter(undefined); setPage(1); },
+    },
+    statusFilter && {
+      key: 'st',
+      label: `Статус: ${statusFilter}`,
+      onClose: () => { setStatusFilter(undefined); setPage(1); },
+    },
+    authorFilter && {
+      key: 'au',
+      label: `Автор: ${stats?.byAuthor.find((a) => a.authorId === authorFilter)?.authorName || '—'}`,
+      onClose: () => { setAuthorFilter(undefined); setPage(1); },
+    },
+  ].filter(Boolean) as Array<{ key: string; label: string; onClose: () => void }>;
+
+  const statPill = (opts: {
+    label: string;
+    value: number;
+    color: string;
+    active: boolean;
+    onClick: () => void;
+  }) => (
+    <Card
+      size="small"
+      hoverable
+      onClick={opts.onClick}
+      styles={{ body: { padding: '12px 14px' } }}
+      style={{
+        borderRadius: 14,
+        cursor: 'pointer',
+        borderColor: opts.active ? opts.color : tk.colorBorderSecondary,
+        borderWidth: opts.active ? 2 : 1,
+        background: opts.active ? `${opts.color}14` : tk.colorBgContainer,
+        transition: 'all 0.18s ease',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Typography.Text style={{ color: opts.color, fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}>
+          {opts.label.toUpperCase()}
+        </Typography.Text>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: opts.active ? opts.color : tk.colorBorder,
+          }}
+        />
+      </div>
+      <Typography.Title level={3} style={{ margin: '4px 0 0', color: opts.color }}>
+        {opts.value.toLocaleString('ru-RU')}
+      </Typography.Title>
+    </Card>
+  );
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           Заметки обзвонов
         </Typography.Title>
-        <Space>
+        <Space wrap>
           <Button onClick={() => setMyRequestsOpen(true)}>Мои запросы правки</Button>
           <Button
             type="primary"
@@ -200,20 +323,186 @@ export default function NotesBoardPage() {
         </Space>
       </div>
 
-      <Card size="small" style={{ marginBottom: 12 }}>
+      {canSeeAnalytics && stats ? (
+        <Card
+          size="small"
+          style={{ marginBottom: 12, borderRadius: 16 }}
+          styles={{ body: { padding: 16 } }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <Space>
+              <PieChartOutlined style={{ color: tk.colorPrimary }} />
+              <Typography.Text strong>Аналитика звонков</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                нажмите на карточку, чтобы отфильтровать
+              </Typography.Text>
+            </Space>
+            {activeFilterChips.length > 0 ? (
+              <Space wrap size={[4, 4]}>
+                {activeFilterChips.map((c) => (
+                  <Tag key={c.key} closable onClose={c.onClose} color="blue">
+                    {c.label}
+                  </Tag>
+                ))}
+              </Space>
+            ) : null}
+          </div>
+
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={6}>
+              <Card
+                size="small"
+                hoverable
+                onClick={() => {
+                  setCallResultFilter(undefined);
+                  setStatusFilter(undefined);
+                  setAuthorFilter(undefined);
+                  setPage(1);
+                }}
+                style={{
+                  borderRadius: 14,
+                  borderColor: tk.colorBorderSecondary,
+                  background: `linear-gradient(135deg, ${tk.colorPrimary}18 0%, ${tk.colorBgContainer} 100%)`,
+                  cursor: 'pointer',
+                }}
+                styles={{ body: { padding: 14 } }}
+              >
+                <Statistic
+                  title={<span style={{ fontSize: 12, color: tk.colorTextSecondary }}>ВСЕГО ЗВОНКОВ</span>}
+                  value={stats.total}
+                  valueStyle={{ fontSize: 28, fontWeight: 700 }}
+                />
+                <Progress
+                  percent={answerRate}
+                  size="small"
+                  strokeColor={tk.colorSuccess}
+                  format={(p) => `${p}% дозвон`}
+                  style={{ marginTop: 6 }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} md={3}>
+              {statPill({
+                label: 'Дозвонились',
+                value: answeredCount,
+                color: tk.colorSuccess,
+                active: callResultFilter === 'ANSWERED',
+                onClick: () => {
+                  setCallResultFilter(callResultFilter === 'ANSWERED' ? undefined : 'ANSWERED');
+                  setPage(1);
+                },
+              })}
+            </Col>
+            <Col xs={12} md={3}>
+              {statPill({
+                label: 'Не взяли',
+                value: noAnswerCount,
+                color: tk.colorError,
+                active: callResultFilter === 'NO_ANSWER',
+                onClick: () => {
+                  setCallResultFilter(callResultFilter === 'NO_ANSWER' ? undefined : 'NO_ANSWER');
+                  setPage(1);
+                },
+              })}
+            </Col>
+            {BASE_STATUSES.map((s) => {
+              const count = statusCounts.get(s) || 0;
+              const colorName = STATUS_COLORS[s];
+              const colorHex: Record<string, string> = {
+                green: tk.colorSuccess,
+                gold: tk.colorWarning,
+                blue: tk.colorPrimary,
+                default: tk.colorTextTertiary,
+              };
+              return (
+                <Col xs={12} md={3} key={s}>
+                  {statPill({
+                    label: s,
+                    value: count,
+                    color: colorHex[colorName] || tk.colorPrimary,
+                    active: statusFilter === s,
+                    onClick: () => {
+                      setStatusFilter(statusFilter === s ? undefined : s);
+                      setPage(1);
+                    },
+                  })}
+                </Col>
+              );
+            })}
+          </Row>
+
+          {(customStatuses.length > 0 || (stats.byAuthor || []).length > 0 || noStatusCount > 0) ? (
+            <>
+              <Divider style={{ margin: '14px 0 10px' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {customStatuses.length > 0 ? (
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>Доп. статусы:</Typography.Text>
+                    <Space wrap size={[4, 6]}>
+                      {noStatusCount > 0 ? (
+                        <Tag
+                          style={{ cursor: 'default' }}
+                        >
+                          без статуса · {noStatusCount}
+                        </Tag>
+                      ) : null}
+                      {customStatuses.map((s) => (
+                        <Tag
+                          key={s}
+                          color={statusColor(s)}
+                          style={{ cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            setStatusFilter(statusFilter === s ? undefined : s);
+                            setPage(1);
+                          }}
+                        >
+                          {s} · {statusCounts.get(s) || 0}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                ) : null}
+                {(stats.byAuthor || []).length > 0 ? (
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>
+                      <TeamOutlined /> Авторы:
+                    </Typography.Text>
+                    <Space wrap size={[4, 6]}>
+                      {(stats.byAuthor || []).slice(0, 10).map((a) => (
+                        <Tag
+                          key={a.authorId}
+                          color={authorFilter === a.authorId ? 'processing' : undefined}
+                          style={{ cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            setAuthorFilter(authorFilter === a.authorId ? undefined : a.authorId);
+                            setPage(1);
+                          }}
+                        >
+                          {a.authorName} · {a.count}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
+      <Card size="small" style={{ marginBottom: 12, borderRadius: 14 }}>
         <Space wrap>
-          <Input.Search
+          <Input
             allowClear
-            placeholder="Поиск по клиенту / комменту"
-            style={{ width: 320 }}
-            onSearch={(v) => {
-              setPage(1);
-              setQ(v);
-            }}
+            prefix={<SearchOutlined style={{ color: tk.colorTextTertiary }} />}
+            placeholder="Поиск (RU/EN): клиент, коммент, статус..."
+            style={{ width: 340 }}
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
           />
           <Select
             allowClear
-            placeholder="Дозвон"
+            placeholder={<span><PhoneOutlined /> Дозвон</span>}
             value={callResultFilter}
             style={{ width: 180 }}
             onChange={(v) => {
@@ -224,6 +513,7 @@ export default function NotesBoardPage() {
               { label: CALL_RESULT_LABEL.ANSWERED, value: 'ANSWERED' },
               { label: CALL_RESULT_LABEL.NO_ANSWER, value: 'NO_ANSWER' },
             ]}
+            suffixIcon={<CloseCircleOutlined style={{ display: 'none' }} />}
           />
           <Select
             allowClear
@@ -231,6 +521,7 @@ export default function NotesBoardPage() {
             placeholder="Статус"
             value={statusFilter}
             style={{ width: 220 }}
+            filterOption={smartFilterOption}
             onChange={(v) => {
               setPage(1);
               setStatusFilter(v);
@@ -240,6 +531,24 @@ export default function NotesBoardPage() {
               value: s,
             }))}
           />
+          {canSeeAnalytics && (stats?.byAuthor || []).length > 0 ? (
+            <Select
+              allowClear
+              showSearch
+              placeholder="Автор"
+              value={authorFilter}
+              style={{ width: 220 }}
+              filterOption={smartFilterOption}
+              onChange={(v) => {
+                setPage(1);
+                setAuthorFilter(v);
+              }}
+              options={(stats?.byAuthor || []).map((a) => ({
+                label: `${a.authorName} (${a.count})`,
+                value: a.authorId,
+              }))}
+            />
+          ) : null}
         </Space>
       </Card>
 
@@ -403,7 +712,8 @@ export default function NotesBoardPage() {
           >
             <Select
               showSearch
-              optionFilterProp="label"
+              placeholder="Введите название (RU/EN работает одинаково)"
+              filterOption={smartFilterOption}
               options={clients.map((c) => ({ value: c.id, label: c.companyName }))}
             />
           </Form.Item>

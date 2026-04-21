@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
 import { formatUZS } from '../utils/currency';
+import { smartFilterOption } from '../utils/translit';
 import {
   inferTypeLabel,
   safePrice,
@@ -627,7 +628,7 @@ export default function HierarchyClientsAnalyticsPanel({
             onChange={(v) => setClientScopeCategory(v)}
             options={categoryOptionsForClients}
             showSearch
-            optionFilterProp="label"
+            filterOption={smartFilterOption}
           />
 
           {(clientScopeLevel === 'type' || clientScopeLevel === 'product') && (
@@ -638,7 +639,7 @@ export default function HierarchyClientsAnalyticsPanel({
               onChange={(v) => setClientScopeType(v)}
               options={typeOptionsForClients}
               showSearch
-              optionFilterProp="label"
+              filterOption={smartFilterOption}
             />
           )}
 
@@ -657,7 +658,7 @@ export default function HierarchyClientsAnalyticsPanel({
               }}
               options={productOptionsForClients}
               showSearch
-              optionFilterProp="label"
+              filterOption={smartFilterOption}
             />
           )}
 

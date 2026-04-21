@@ -13,6 +13,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
+import { matchesSearch } from '../utils/translit';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -588,10 +589,9 @@ export default function CashboxPage() {
                   filterOption={(input, option) => {
                     const c = clients?.find((x) => x.id === option?.value);
                     if (!c) return false;
-                    const q = input.toLowerCase();
-                    return (
-                      c.companyName.toLowerCase().includes(q) ||
-                      (c.contactName ?? '').toLowerCase().includes(q)
+                    return matchesSearch(
+                      [c.companyName, c.contactName || '', c.phone || ''].join(' '),
+                      input,
                     );
                   }}
                 />

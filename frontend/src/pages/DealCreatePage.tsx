@@ -17,6 +17,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS, needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
@@ -371,7 +372,7 @@ export default function DealCreatePage() {
           <Typography.Text type="secondary" className="deal-create-field-label">Товар</Typography.Text>
           <Select
             showSearch
-            optionFilterProp="label"
+            filterOption={smartFilterOption}
             placeholder="Выберите товар"
             style={{ width: '100%' }}
             value={item.productId}
@@ -492,10 +493,9 @@ export default function DealCreatePage() {
                 filterOption={(input, option) => {
                   const c = clients?.find((x) => x.id === option?.value);
                   if (!c) return false;
-                  const q = input.toLowerCase();
-                  return (
-                    c.companyName.toLowerCase().includes(q) ||
-                    (c.manager?.fullName ?? '').toLowerCase().includes(q)
+                  return matchesSearch(
+                    [c.companyName, c.contactName || '', c.phone || '', c.manager?.fullName || ''].join(' '),
+                    input,
                   );
                 }}
               />
@@ -698,7 +698,7 @@ export default function DealCreatePage() {
                     return (
                       <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                         <td style={{ padding: '6px 8px' }}>
-                          <Select showSearch optionFilterProp="label" placeholder="Выберите товар" style={{ width: '100%' }}
+                          <Select showSearch filterOption={smartFilterOption} placeholder="Выберите товар" style={{ width: '100%' }}
                             value={item.productId}
                             onChange={(v) => handleProductChange(item.key, v)}
                             options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({

@@ -32,6 +32,13 @@ export type NotesBoardUpdatePayload = Partial<Omit<NotesBoardCreatePayload, 'sta
   status?: string | null;
 };
 
+export type NotesBoardStats = {
+  total: number;
+  byCallResult: Array<{ callResult: 'ANSWERED' | 'NO_ANSWER'; count: number }>;
+  byStatus: Array<{ status: string | null; count: number }>;
+  byAuthor: Array<{ authorId: string; authorName: string; count: number }>;
+};
+
 export const notesBoardApi = {
   list: (params?: {
     page?: number;
@@ -58,4 +65,7 @@ export const notesBoardApi = {
 
   remove: (id: string) =>
     client.delete<{ ok: true }>(`/notes-board/${id}`).then((r) => r.data),
+
+  stats: (params?: { from?: string; to?: string }) =>
+    client.get<NotesBoardStats>('/notes-board/stats', { params }).then((r) => r.data),
 };

@@ -15,6 +15,7 @@ import { contractsApi } from '../api/contracts.api';
 import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { matchesSearch } from '../utils/translit';
 import type { Client, ContractListItem, ContractDetail, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import DealStatusTag from '../components/DealStatusTag';
@@ -183,7 +184,11 @@ export default function ContractsPage() {
 
   const filterClientByName = (input: string, option: { value?: string } | undefined) => {
     const c = (clients ?? []).find((x) => x.id === option?.value);
-    return (c?.companyName ?? '').toLowerCase().includes(input.toLowerCase());
+    if (!c) return false;
+    return matchesSearch(
+      [c.companyName, c.contactName || '', c.phone || ''].join(' '),
+      input,
+    );
   };
 
   const filteredContracts = useMemo(() => {

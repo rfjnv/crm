@@ -4,6 +4,7 @@ import { Table, Select, Typography, Tag, Card } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { smartFilterOption } from '../utils/translit';
 import MobileCardList from '../components/MobileCardList';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -125,7 +126,7 @@ export default function MovementsPage() {
           value={productFilter}
           onChange={(v) => setProductFilter(v)}
           showSearch
-          optionFilterProp="label"
+          filterOption={smartFilterOption}
           options={(products ?? []).map((p) => ({ label: `${p.name} (${p.sku})`, value: p.id }))}
         />
       </div>

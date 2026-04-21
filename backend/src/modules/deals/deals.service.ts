@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
 import { PERMISSIONS } from '../../lib/permissions';
@@ -1582,14 +1583,16 @@ export class DealsService {
     }
 
     const q = search?.trim();
-    if (q) {
+    const variants = q ? buildSearchVariants(q) : [];
+    if (variants.length > 0) {
       where.AND = [
         {
-          OR: [
-            { title: { contains: q, mode: 'insensitive' } },
-            { client: { companyName: { contains: q, mode: 'insensitive' } } },
-            { manager: { fullName: { contains: q, mode: 'insensitive' } } },
-          ],
+          OR: variants.flatMap((v) => [
+            { title: { contains: v, mode: 'insensitive' as const } },
+            { client: { companyName: { contains: v, mode: 'insensitive' as const } } },
+            { client: { contactName: { contains: v, mode: 'insensitive' as const } } },
+            { manager: { fullName: { contains: v, mode: 'insensitive' as const } } },
+          ]),
         },
       ];
     }

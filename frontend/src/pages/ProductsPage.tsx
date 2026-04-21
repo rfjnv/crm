@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined, Apartment
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { matchesSearch } from '../utils/translit';
 import type { Product } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
@@ -53,11 +54,8 @@ export default function ProductsPage() {
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
       if (debouncedSearch) {
-        const q = debouncedSearch.toLowerCase();
-        const inName = p.name.toLowerCase().includes(q);
-        const skuStr = (p.sku ?? '').trim();
-        const inSku = skuStr.length > 0 && skuStr.toLowerCase().includes(q);
-        if (!inName && !inSku) return false;
+        const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? ''].join(' ');
+        if (!matchesSearch(haystack, debouncedSearch)) return false;
       }
       if (activeFilter === 'active' && !p.isActive) return false;
       if (activeFilter === 'inactive' && p.isActive) return false;

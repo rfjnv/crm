@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
+import { smartFilterOption } from '../utils/translit';
 import {
   LEGEND_OPERATIONAL,
   LEGEND_SHIPPED_REVENUE,
@@ -944,7 +945,7 @@ export default function HistoryAnalyticsPage() {
             style={{ width: isMobile ? '100%' : 300 }} maxTagCount={2}
             value={selectedClients} onChange={setSelectedClients}
             options={(clientActivity || []).map((c) => ({ label: c.companyName, value: c.clientId }))}
-            filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())} />
+            filterOption={smartFilterOption} />
         }
       >
         <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>

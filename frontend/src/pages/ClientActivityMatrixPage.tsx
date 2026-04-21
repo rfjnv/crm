@@ -8,6 +8,7 @@ import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { smartFilterOption } from '../utils/translit';
 import type { HistoryClientActivity, Product } from '../types';
 
 const { Title } = Typography;
@@ -396,7 +397,7 @@ export default function ClientActivityMatrixPage() {
               value={selectedClients}
               onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
               options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
-              filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+              filterOption={smartFilterOption}
             />
             <Input.Search
               allowClear

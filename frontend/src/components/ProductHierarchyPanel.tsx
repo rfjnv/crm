@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { smartFilterOption } from '../utils/translit';
 import {
   Collapse,
   Input,
@@ -546,7 +547,7 @@ export default function ProductHierarchyPanel({
           onChange={(v) => setMoveTargetCategory(v === '__none__' ? null : v)}
           options={categoryOptions}
           showSearch
-          optionFilterProp="label"
+          filterOption={smartFilterOption}
         />
       </Modal>
 

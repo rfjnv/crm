@@ -7,6 +7,7 @@ import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/ic
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type OverrideDealData } from '../api/admin.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import DealStatusTag from './DealStatusTag';
@@ -33,7 +34,7 @@ export interface SuperOverridePanelProps {
   payments: PaymentRecord[];
   products: Product[];
   users: User[];
-  clients: { id: string; companyName: string; isSvip?: boolean }[];
+  clients: { id: string; companyName: string; contactName?: string | null; phone?: string | null; isSvip?: boolean }[];
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -370,7 +371,7 @@ export default function SuperOverridePanel({
                 <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
                   <Select
                     showSearch
-                    optionFilterProp="label"
+                    filterOption={smartFilterOption}
                     placeholder="Товар"
                     style={{ width: '100%', minWidth: 160 }}
                     value={item.productId || undefined}
@@ -541,12 +542,12 @@ export default function SuperOverridePanel({
                       filterOption={(input, option) => {
                         const c = clients.find((x) => x.id === option?.value);
                         if (!c) return false;
-                        return c.companyName.toLowerCase().includes(input.toLowerCase());
+                        return matchesSearch(`${c.companyName || ''} ${c.contactName || ''} ${c.phone || ''}`, input);
                       }}
                     />
                   </Form.Item>
                   <Form.Item name="managerId" label="Менеджер">
-                    <Select showSearch optionFilterProp="label"
+                    <Select showSearch filterOption={smartFilterOption}
                       options={(users ?? []).filter((u) => u.isActive).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
                     />
                   </Form.Item>
@@ -567,12 +568,12 @@ export default function SuperOverridePanel({
                     <Input placeholder="Комментарий..." />
                   </Form.Item>
                   <Form.Item name="loadingAssigneeId" label="Грузил (исполнитель)">
-                    <Select allowClear showSearch optionFilterProp="label" placeholder="Не назначен"
+                    <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
                       options={(users ?? []).filter((u) => u.isActive && ['WAREHOUSE', 'DRIVER', 'LOADER'].includes(u.role)).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
                     />
                   </Form.Item>
                   <Form.Item name="deliveryDriverId" label="Водитель доставки">
-                    <Select allowClear showSearch optionFilterProp="label" placeholder="Не назначен"
+                    <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
                       options={(users ?? []).filter((u) => u.isActive && u.role === 'DRIVER').map((u) => ({ label: u.fullName, value: u.id }))}
                     />
                   </Form.Item>

@@ -15,6 +15,7 @@ import {
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import BackButton from '../components/BackButton';
+import { smartFilterOption } from '../utils/translit';
 import { contractsApi } from '../api/contracts.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
@@ -700,7 +701,7 @@ export default function ClientDetailPage() {
                       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Товар</Typography.Text>
                       <Select
                         showSearch
-                        optionFilterProp="label"
+                        filterOption={smartFilterOption}
                         placeholder="Выберите товар"
                         value={stockProductId}
                         onChange={(v) => {

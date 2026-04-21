@@ -16,6 +16,7 @@ import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useThemeStore } from '../store/themeStore';
+import { smartFilterOption } from '../utils/translit';
 import type { Task, TaskChecklistItem, TaskStatus } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
@@ -1059,7 +1060,7 @@ export default function TasksPage() {
                   size="large"
                   showSearch
                   disabled={!isAdmin}
-                  optionFilterProp="label"
+                  filterOption={smartFilterOption}
                   placeholder="Выберите исполнителя"
                   options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
                 />

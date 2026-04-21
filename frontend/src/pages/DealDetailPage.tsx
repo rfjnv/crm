@@ -24,6 +24,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
+import { smartFilterOption } from '../utils/translit';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
@@ -1042,7 +1043,7 @@ export default function DealDetailPage() {
                     loading={managerMut.isPending}
                     style={{ minWidth: 120 }}
                     showSearch
-                    optionFilterProp="label"
+                    filterOption={smartFilterOption}
                     options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
                   />
                 ) : (
@@ -1411,7 +1412,7 @@ export default function DealDetailPage() {
                             loading={managerMut.isPending}
                             style={{ minWidth: 200 }}
                             showSearch
-                            optionFilterProp="label"
+                            filterOption={smartFilterOption}
                             options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
                           />
                         ) : (
@@ -1729,7 +1730,7 @@ export default function DealDetailPage() {
           <Form.Item name="productId" label="Товар" rules={[{ required: true, message: 'Выберите товар' }]}>
             <Select
               showSearch
-              optionFilterProp="label"
+              filterOption={smartFilterOption}
               placeholder="Выберите товар"
               options={(products ?? []).filter((p) => p.isActive).map((p) => ({ label: `${p.name} (${p.sku}) — остаток: ${p.stock}`, value: p.id }))}
               onChange={(pid) => {

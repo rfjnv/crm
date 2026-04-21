@@ -23,6 +23,12 @@ function assertAccess(role: Role) {
   }
 }
 
+function assertAdmin(role: Role) {
+  if (!['SUPER_ADMIN', 'ADMIN'].includes(role)) {
+    throw new AppError(403, 'Доступно только администраторам');
+  }
+}
+
 router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
@@ -44,6 +50,17 @@ router.post(
       permissions: req.user!.permissions || [],
     });
     res.status(201).json(row);
+  }),
+);
+
+router.get(
+  '/stats',
+  asyncHandler(async (req: Request, res: Response) => {
+    assertAdmin(req.user!.role as Role);
+    const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+    const to = typeof req.query.to === 'string' ? req.query.to : undefined;
+    const data = await notesBoardService.stats({ from, to });
+    res.json(data);
   }),
 );
 

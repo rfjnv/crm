@@ -2,6 +2,7 @@ import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
+import { buildSearchVariants } from '../../lib/translit';
 import type {
   CreateNotesBoardDto,
   ListNotesBoardQueryDto,
@@ -92,19 +93,21 @@ export class NotesBoardService {
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
     const q = query.q?.trim();
+    const variants = q ? buildSearchVariants(q) : [];
 
     const where = {
       ...(query.clientId ? { clientId: query.clientId } : {}),
       ...(query.authorId ? { authorId: query.authorId } : {}),
       ...(query.callResult ? { callResult: query.callResult } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...(q
+      ...(variants.length > 0
         ? {
-            OR: [
-              { comment: { contains: q, mode: 'insensitive' as const } },
-              { status: { contains: q, mode: 'insensitive' as const } },
-              { client: { companyName: { contains: q, mode: 'insensitive' as const } } },
-            ],
+            OR: variants.flatMap((v) => [
+              { comment: { contains: v, mode: 'insensitive' as const } },
+              { status: { contains: v, mode: 'insensitive' as const } },
+              { client: { companyName: { contains: v, mode: 'insensitive' as const } } },
+              { client: { contactName: { contains: v, mode: 'insensitive' as const } } },
+            ]),
           }
         : {}),
     };
@@ -308,6 +311,67 @@ export class NotesBoardService {
         lastCallAt: r.row.lastCallAt.toISOString(),
       })),
       meta: { page: p, pageSize: ps, total },
+    };
+  }
+
+  async stats(options: {
+    from?: string;
+    to?: string;
+  } = {}) {
+    const where: Record<string, unknown> = {};
+    if (options.from || options.to) {
+      const range: { gte?: Date; lte?: Date } = {};
+      if (options.from) range.gte = new Date(options.from);
+      if (options.to) range.lte = new Date(options.to);
+      where.lastCallAt = range;
+    }
+
+    const [total, byCallResult, byStatus, byAuthor] = await Promise.all([
+      prisma.notesBoardRow.count({ where }),
+      prisma.notesBoardRow.groupBy({
+        by: ['callResult'],
+        where,
+        _count: { _all: true },
+      }),
+      prisma.notesBoardRow.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+        orderBy: { _count: { status: 'desc' } },
+      }),
+      prisma.notesBoardRow.groupBy({
+        by: ['authorId'],
+        where,
+        _count: { _all: true },
+        orderBy: { _count: { authorId: 'desc' } },
+        take: 20,
+      }),
+    ]);
+
+    const authorIds = byAuthor.map((r) => r.authorId);
+    const authors = authorIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: authorIds } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+    const authorsById = new Map(authors.map((a) => [a.id, a.fullName] as const));
+
+    return {
+      total,
+      byCallResult: byCallResult.map((r) => ({
+        callResult: r.callResult,
+        count: r._count._all,
+      })),
+      byStatus: byStatus.map((r) => ({
+        status: r.status,
+        count: r._count._all,
+      })),
+      byAuthor: byAuthor.map((r) => ({
+        authorId: r.authorId,
+        authorName: authorsById.get(r.authorId) || '—',
+        count: r._count._all,
+      })),
     };
   }
 

@@ -11,6 +11,7 @@ import { dealsApi } from '../api/deals.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { BroadcastTargets, UserRole, Deal } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { smartFilterOption, matchesSearch } from '../utils/translit';
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Супер Админ',
@@ -152,10 +153,9 @@ export default function BroadcastPage() {
                   filterOption={(input, option) => {
                     const d = (deals ?? []).find((x: Deal) => x.id === option?.value);
                     if (!d) return false;
-                    const q = input.toLowerCase();
-                    return (
-                      d.title.toLowerCase().includes(q) ||
-                      (d.client?.companyName ?? '').toLowerCase().includes(q)
+                    return matchesSearch(
+                      [d.title, d.client?.companyName || '', d.client?.contactName || ''].join(' '),
+                      input,
                     );
                   }}
                   options={(deals ?? []).map((d) => ({
@@ -196,7 +196,7 @@ export default function BroadcastPage() {
                 <Select
                   mode="multiple"
                   showSearch
-                  optionFilterProp="label"
+                  filterOption={smartFilterOption}
                   placeholder="Выберите пользователей"
                   options={(users ?? []).filter((u) => u.isActive).map((u) => ({
                     label: `${u.fullName} (${roleLabels[u.role] || u.role})`,
