@@ -208,8 +208,9 @@ export default function Layout() {
     queryFn: () => clientsApi.list(),
     enabled: canQuickNote,
   });
+  const myTasksQueryKey = ['tasks', 'quick-my', user?.id] as const;
   const { data: myTasks = [] } = useQuery({
-    queryKey: ['quick-my-tasks', user?.id],
+    queryKey: myTasksQueryKey,
     queryFn: () => tasksApi.list({ assigneeId: user?.id }),
     enabled: Boolean(user?.id),
     refetchInterval: 30_000,
@@ -230,7 +231,7 @@ export default function Layout() {
     mutationFn: ({ id, checklist }: { id: string; checklist: NonNullable<Task['checklist']> }) =>
       tasksApi.update(id, { checklist }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['quick-my-tasks', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: myTasksQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
     onError: () => message.error('Не удалось обновить чеклист'),
