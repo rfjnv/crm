@@ -4,7 +4,13 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { AppError } from '../../lib/errors';
-import { listNotesBoardQueryDto, createNotesBoardDto, requestNotesBoardEditDto, updateNotesBoardDto } from './notes-board.dto';
+import {
+  listMyEditRequestsQueryDto,
+  listNotesBoardQueryDto,
+  createNotesBoardDto,
+  requestNotesBoardEditDto,
+  updateNotesBoardDto,
+} from './notes-board.dto';
 import { notesBoardService } from './notes-board.service';
 
 const router = Router();
@@ -38,6 +44,24 @@ router.post(
       permissions: req.user!.permissions || [],
     });
     res.status(201).json(row);
+  }),
+);
+
+router.get(
+  '/edit-requests/mine',
+  asyncHandler(async (req: Request, res: Response) => {
+    assertAccess(req.user!.role as Role);
+    const q = listMyEditRequestsQueryDto.parse(req.query);
+    const data = await notesBoardService.listMyRequests(
+      {
+        userId: req.user!.userId,
+        role: req.user!.role as Role,
+        permissions: req.user!.permissions || [],
+      },
+      q.page,
+      q.pageSize,
+    );
+    res.json(data);
   }),
 );
 

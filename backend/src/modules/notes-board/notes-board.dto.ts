@@ -14,6 +14,11 @@ export const listNotesBoardQueryDto = z.object({
   q: z.string().trim().max(200).optional(),
 });
 
+export const listMyEditRequestsQueryDto = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 export const createNotesBoardDto = z.object({
   clientId: z.string().uuid('Некорректный ID клиента'),
   callResult: z.enum(notesBoardCallResultValues),
@@ -36,6 +41,7 @@ export const requestNotesBoardEditDto = z.object({
 });
 
 export type ListNotesBoardQueryDto = z.infer<typeof listNotesBoardQueryDto>;
+export type ListMyEditRequestsQueryDto = z.infer<typeof listMyEditRequestsQueryDto>;
 export type CreateNotesBoardDto = z.infer<typeof createNotesBoardDto>;
 export type UpdateNotesBoardDto = z.infer<typeof updateNotesBoardDto>;
 export type RequestNotesBoardEditDto = z.infer<typeof requestNotesBoardEditDto>;

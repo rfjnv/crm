@@ -190,6 +190,7 @@ model User {
   monthlyGoals        UserMonthlyGoal[]
   monthlyGoalsUpdated UserMonthlyGoal[] @relation("UserMonthlyGoalUpdatedBy")
   notesBoardRowsAuthored NotesBoardRow[] @relation("NotesBoardAuthor")
+  notesBoardEditRequests NotesBoardEditRequest[] @relation("NotesBoardRequester")
 
   @@map("users")
 }
@@ -862,11 +863,27 @@ model NotesBoardRow {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   author User   @relation("NotesBoardAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  editRequests NotesBoardEditRequest[]
 
   @@index([clientId, lastCallAt])
   @@index([authorId, createdAt])
   @@index([nextCallAt])
   @@map("notes_board_rows")
+}
+
+model NotesBoardEditRequest {
+  id          String   @id @default(uuid())
+  rowId       String   @map("row_id")
+  requesterId String   @map("requester_id")
+  comment     String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  row       NotesBoardRow @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  requester User          @relation("NotesBoardRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@index([rowId, createdAt])
+  @@index([requesterId, createdAt])
+  @@map("notes_board_edit_requests")
 }
 
 model TaskAttachment {

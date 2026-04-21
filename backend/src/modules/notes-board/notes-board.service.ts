@@ -31,6 +31,10 @@ function canDeleteRow(user: AuthUser, authorId: string): boolean {
   return user.role === 'SUPER_ADMIN' || user.userId === authorId;
 }
 
+function canEditRow(user: AuthUser, authorId: string): boolean {
+  return user.role === 'SUPER_ADMIN' || user.userId === authorId;
+}
+
 function mapRow(row: {
   id: string;
   clientId: string;
@@ -161,32 +165,28 @@ export class NotesBoardService {
   }
 
   async update(id: string, dto: UpdateNotesBoardDto, user: AuthUser) {
-    void id;
-    void dto;
-    void user;
-    throw new AppError(403, 'Редактирование заметок отключено. Используйте запрос на правку.');
-  }
-
-  async requestEdit(id: string, dto: RequestNotesBoardEditDto, user: AuthUser) {
-    const existing = await prisma.notesBoardRow.findUnique({ where: { id } });
-    if (!existing) throw new AppError(404, 'Запись не найдена');
-    if (existing.editRequestCount >= 3) {
-      throw new AppError(400, 'Лимит запросов на правку исчерпан (3/3)');
-    }
-
-    const actor = await prisma.user.findUnique({
-      where: { id: user.userId },
-      select: { fullName: true },
+    const existing = await prisma.notesBoardRow.findUnique({
+      where: { id },
+      include: {
+        author: { select: { id: true, fullName: true } },
+        client: { select: { id: true, companyName: true } },
+      },
     });
-    const actorName = actor?.fullName || 'Сотрудник';
+    if (!existing) throw new AppError(404, 'Запись не найдена');
+    if (!canEditRow(user, existing.authorId)) {
+      throw new AppError(403, 'Редактировать может только автор или супер-админ');
+    }
 
     const updated = await prisma.notesBoardRow.update({
       where: { id },
       data: {
-        editRequestCount: { increment: 1 },
-        lastEditRequestComment: dto.comment.trim(),
-        lastEditRequestByName: actorName,
-        lastEditRequestAt: new Date(),
+        ...(dto.callResult ? { callResult: dto.callResult } : {}),
+        ...(dto.status !== undefined ? { status: dto.status?.trim() || null } : {}),
+        ...(dto.comment !== undefined ? { comment: dto.comment.trim() } : {}),
+        ...(dto.lastCallAt ? { lastCallAt: new Date(dto.lastCallAt) } : {}),
+        ...(dto.nextCallAt !== undefined
+          ? { nextCallAt: dto.nextCallAt ? new Date(dto.nextCallAt) : null }
+          : {}),
       },
       include: {
         author: { select: { id: true, fullName: true } },
@@ -198,11 +198,113 @@ export class NotesBoardService {
       data: {
         clientId: updated.clientId,
         userId: user.userId,
+        content: buildClientNoteText({
+          callResult: updated.callResult,
+          status: updated.status,
+          comment: updated.comment,
+          lastCallAt: updated.lastCallAt,
+        }),
+      },
+    });
+
+    return mapRow(updated);
+  }
+
+  async requestEdit(id: string, dto: RequestNotesBoardEditDto, user: AuthUser) {
+    const existing = await prisma.notesBoardRow.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'Запись не найдена');
+    if (existing.authorId === user.userId) {
+      throw new AppError(400, 'Нельзя отправить запрос на правку самому себе');
+    }
+    if (existing.editRequestCount >= 3) {
+      throw new AppError(400, 'Лимит запросов на правку исчерпан (3/3)');
+    }
+
+    const actor = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { fullName: true },
+    });
+    const actorName = actor?.fullName || 'Сотрудник';
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.notesBoardEditRequest.create({
+        data: {
+          rowId: id,
+          requesterId: user.userId,
+          comment: dto.comment.trim(),
+        },
+      });
+
+      return tx.notesBoardRow.update({
+        where: { id },
+        data: {
+          editRequestCount: { increment: 1 },
+          lastEditRequestComment: dto.comment.trim(),
+          lastEditRequestByName: actorName,
+          lastEditRequestAt: new Date(),
+        },
+        include: {
+          author: { select: { id: true, fullName: true } },
+          client: { select: { id: true, companyName: true } },
+        },
+      });
+    });
+
+    await prisma.clientNote.create({
+      data: {
+        clientId: updated.clientId,
+        userId: user.userId,
         content: `[NOTES_BOARD_EDIT_REQUEST] Запрос на правку (${updated.editRequestCount}/3): ${dto.comment.trim()}`,
       },
     });
 
     return mapRow(updated);
+  }
+
+  async listMyRequests(user: AuthUser, page?: number, pageSize?: number) {
+    const p = page ?? 1;
+    const ps = pageSize ?? 20;
+    const skip = (p - 1) * ps;
+    const [items, total] = await Promise.all([
+      prisma.notesBoardEditRequest.findMany({
+        where: { requesterId: user.userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: ps,
+        include: {
+          row: {
+            include: {
+              client: { select: { id: true, companyName: true } },
+              author: { select: { id: true, fullName: true } },
+            },
+          },
+        },
+      }),
+      prisma.notesBoardEditRequest.count({ where: { requesterId: user.userId } }),
+    ]);
+
+    return {
+      items: items.map((r: {
+        id: string;
+        comment: string;
+        createdAt: Date;
+        rowId: string;
+        row: {
+          client: { id: string; companyName: string };
+          author: { id: string; fullName: string };
+          lastCallAt: Date;
+        };
+      }) => ({
+        id: r.id,
+        comment: r.comment,
+        createdAt: r.createdAt.toISOString(),
+        rowId: r.rowId,
+        client: r.row.client,
+        noteAuthor: r.row.author,
+        lastCallAt: r.row.lastCallAt.toISOString(),
+      })),
+      meta: { page: p, pageSize: ps, total },
+    };
   }
 
   async remove(id: string, user: AuthUser) {

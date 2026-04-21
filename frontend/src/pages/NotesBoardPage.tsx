@@ -15,6 +15,8 @@ import {
   Tag,
   Typography,
   Alert,
+  Drawer,
+  Divider,
 } from 'antd';
 import dayjs from 'dayjs';
 import { PlusOutlined } from '@ant-design/icons';
@@ -55,10 +57,14 @@ export default function NotesBoardPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [quickClientOpen, setQuickClientOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editRequestOpen, setEditRequestOpen] = useState(false);
   const [requestRowId, setRequestRowId] = useState<string | null>(null);
   const [requestComment, setRequestComment] = useState('');
+  const [myRequestsOpen, setMyRequestsOpen] = useState(false);
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [clientForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -79,6 +85,12 @@ export default function NotesBoardPage() {
         callResult: callResultFilter,
         status: statusFilter || undefined,
       }),
+  });
+
+  const { data: myRequestsData, isLoading: myRequestsLoading } = useQuery({
+    queryKey: ['notes-board-my-edit-requests', myRequestsOpen],
+    queryFn: () => notesBoardApi.listMyEditRequests({ page: 1, pageSize: 100 }),
+    enabled: myRequestsOpen,
   });
 
   const invalidate = () => {
@@ -122,6 +134,22 @@ export default function NotesBoardPage() {
     },
   });
 
+  const updateMut = useMutation({
+    mutationFn: ({ id, data: payload }: { id: string; data: Parameters<typeof notesBoardApi.update>[1] }) =>
+      notesBoardApi.update(id, payload),
+    onSuccess: () => {
+      message.success('Заметка обновлена');
+      setEditOpen(false);
+      setEditingId(null);
+      form.resetFields();
+      invalidate();
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Не удалось обновить заметку';
+      message.error(msg);
+    },
+  });
+
   const quickClientMut = useMutation({
     mutationFn: clientsApi.create,
     onSuccess: (client) => {
@@ -142,17 +170,20 @@ export default function NotesBoardPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>
           Заметки обзвонов
         </Typography.Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            form.resetFields();
-            form.setFieldsValue({ lastCallAt: dayjs(), callResult: 'ANSWERED' });
-            setCreateOpen(true);
-          }}
-        >
-          Новая запись
-        </Button>
+        <Space>
+          <Button onClick={() => setMyRequestsOpen(true)}>Мои запросы правки</Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              form.resetFields();
+              form.setFieldsValue({ lastCallAt: dayjs(), callResult: 'ANSWERED' });
+              setCreateOpen(true);
+            }}
+          >
+            Новая запись
+          </Button>
+        </Space>
       </div>
 
       <Card size="small" style={{ marginBottom: 12 }}>
@@ -278,17 +309,37 @@ export default function NotesBoardPage() {
             width: 210,
             render: (_v, r) => (
               <Space>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setRequestRowId(r.id);
-                    setRequestComment('');
-                    setEditRequestOpen(true);
-                  }}
-                  disabled={r.editRequestCount >= 3}
-                >
-                  Запрос правки
-                </Button>
+                {(isSuperAdmin || user?.id === r.author.id) ? (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setEditingId(r.id);
+                      editForm.setFieldsValue({
+                        clientId: r.clientId,
+                        callResult: r.callResult,
+                        status: r.status || undefined,
+                        comment: r.comment,
+                        lastCallAt: dayjs(r.lastCallAt),
+                        nextCallAt: r.nextCallAt ? dayjs(r.nextCallAt) : null,
+                      });
+                      setEditOpen(true);
+                    }}
+                  >
+                    Редактировать
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setRequestRowId(r.id);
+                      setRequestComment('');
+                      setEditRequestOpen(true);
+                    }}
+                    disabled={r.editRequestCount >= 3}
+                  >
+                    Запрос правки
+                  </Button>
+                )}
                 {(isSuperAdmin || user?.id === r.author.id) && (
                   <Popconfirm title="Удалить запись?" onConfirm={() => removeMut.mutate(r.id)}>
                     <Button danger size="small">
@@ -372,6 +423,58 @@ export default function NotesBoardPage() {
       </Modal>
 
       <Modal
+        title="Редактировать заметку"
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        onOk={() => editForm.submit()}
+        confirmLoading={updateMut.isPending}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(v) => {
+            if (!editingId) return;
+            updateMut.mutate({
+              id: editingId,
+              data: {
+                callResult: v.callResult as CallResult,
+                status: (v.status || '').trim() || null,
+                comment: (v.comment || '').trim(),
+                lastCallAt: v.lastCallAt?.toISOString(),
+                nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
+              },
+            });
+          }}
+        >
+          <Form.Item name="callResult" label="Дозвон" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: 'ANSWERED', label: CALL_RESULT_LABEL.ANSWERED },
+                { value: 'NO_ANSWER', label: CALL_RESULT_LABEL.NO_ANSWER },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="lastCallAt" label="Дата последнего обзвона" rules={[{ required: true }]}>
+            <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+          </Form.Item>
+          <Form.Item name="nextCallAt" label="Напомнить на дату">
+            <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+          </Form.Item>
+          <Form.Item name="status" label="Статус">
+            <Select
+              mode="tags"
+              maxCount={1}
+              tokenSeparators={[',']}
+              options={BASE_STATUSES.map((s) => ({ value: s, label: s }))}
+            />
+          </Form.Item>
+          <Form.Item name="comment" label="Комментарий" rules={[{ required: true }]}>
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title="Запрос на правку"
         open={editRequestOpen}
         onCancel={() => setEditRequestOpen(false)}
@@ -402,6 +505,33 @@ export default function NotesBoardPage() {
           showCount
         />
       </Modal>
+
+      <Drawer
+        title="Мои отправленные запросы"
+        open={myRequestsOpen}
+        onClose={() => setMyRequestsOpen(false)}
+        width={460}
+      >
+        {myRequestsLoading ? (
+          <Typography.Text type="secondary">Загрузка...</Typography.Text>
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            {(myRequestsData?.items || []).map((item) => (
+              <Card key={item.id} size="small" style={{ borderRadius: 12 }}>
+                <Typography.Text strong>{item.client.companyName}</Typography.Text>
+                <Typography.Paragraph style={{ margin: '8px 0' }}>{item.comment}</Typography.Paragraph>
+                <Divider style={{ margin: '8px 0' }} />
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')} · Автор заметки: {item.noteAuthor.fullName}
+                </Typography.Text>
+              </Card>
+            ))}
+            {(myRequestsData?.items || []).length === 0 && (
+              <Typography.Text type="secondary">Вы еще не отправляли запросы на правку.</Typography.Text>
+            )}
+          </Space>
+        )}
+      </Drawer>
 
       <Modal
         title="Быстро создать клиента"
