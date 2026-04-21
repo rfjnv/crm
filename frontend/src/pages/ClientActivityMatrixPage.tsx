@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs, Input } from 'antd';
-import { CalendarOutlined, ApartmentOutlined } from '@ant-design/icons';
+import { CalendarOutlined, ApartmentOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
@@ -399,8 +399,9 @@ export default function ClientActivityMatrixPage() {
               options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
               filterOption={smartFilterOption}
             />
-            <Input.Search
+            <Input
               allowClear
+              prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder="Поиск по клиенту"
               value={clientSearch}
               onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}

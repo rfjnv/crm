@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
@@ -670,8 +671,9 @@ export default function HierarchyClientsAnalyticsPanel({
               { label: 'Матрица по месяцам', value: 'matrix' },
             ]}
           />
-          <Input.Search
+          <Input
             allowClear
+            prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
             placeholder="Поиск клиента"
             value={clientSearchTerm ?? internalClientSearch}
             onChange={(e) => {
@@ -810,7 +812,7 @@ export default function HierarchyClientsAnalyticsPanel({
             )}
 
             <Affix offsetBottom={16}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: 180, pointerEvents: 'none' }}>
                 <Card
                   size="small"
                   style={{
