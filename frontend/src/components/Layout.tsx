@@ -86,6 +86,7 @@ import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission, Task } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS } from '../constants/dilnozaPayments';
+import { BASE_NOTE_STATUSES, normalizeNoteStatusField } from '../constants/noteStatuses';
 import { smartFilterOption } from '../utils/translit';
 import dayjs from 'dayjs';
 
@@ -148,6 +149,23 @@ export default function Layout() {
   useEffect(() => {
     if (isMobile) setMobileMenuOpen(false);
   }, [location.pathname, isMobile]);
+
+  // Safety-net: guarantee the space key works inside Select/AutoComplete/TreeSelect
+  // search inputs (role="combobox"). Rc-select 1.6.10+ already fixes this, but we
+  // also neutralize any downstream preventDefault in case a custom handler swallows it.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (e.key !== ' ') return;
+      if (target.tagName !== 'INPUT') return;
+      if (target.getAttribute('role') !== 'combobox') return;
+      if ((target as HTMLInputElement).readOnly) return;
+      e.preventDefault = () => {};
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -783,7 +801,7 @@ export default function Layout() {
             }}
             style={{
               position: 'fixed',
-              right: 16,
+              left: 16,
               bottom: (isMobile ? 92 : 24) + (hasMyTasks ? 56 : 0),
               zIndex: 1200,
               borderRadius: 999,
@@ -809,7 +827,7 @@ export default function Layout() {
                 quickNoteMut.mutate({
                   clientId: v.clientId,
                   callResult: v.callResult,
-                  status: v.status?.trim() || undefined,
+                  status: normalizeNoteStatusField(v.status),
                   comment: (v.comment || '').trim(),
                   lastCallAt: v.lastCallAt.toISOString(),
                   nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -839,7 +857,13 @@ export default function Layout() {
                 <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
               </Form.Item>
               <Form.Item name="status" label="Статус">
-                <Input placeholder="Например: Пока думает" />
+                <Select
+                  mode="tags"
+                  maxCount={1}
+                  tokenSeparators={[',']}
+                  placeholder="Выберите базовый или введите свой"
+                  options={BASE_NOTE_STATUSES.map((s) => ({ value: s, label: s }))}
+                />
               </Form.Item>
               <Form.Item name="comment" label="Комментарий" rules={[{ required: true, message: 'Введите комментарий' }]}>
                 <Input.TextArea rows={4} placeholder="Введите заметку..." />
@@ -860,7 +884,7 @@ export default function Layout() {
             }}
             style={{
               position: 'fixed',
-              right: 16,
+              left: 16,
               bottom: isMobile ? 92 : 24,
               zIndex: 1200,
               borderRadius: 999,
