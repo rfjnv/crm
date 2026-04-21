@@ -13,6 +13,8 @@ import {
   List,
   Tag,
   Space,
+  Divider,
+  Checkbox,
   Modal,
   Form,
   Select,
@@ -66,7 +68,7 @@ const OpenAiSvg = () => (
 );
 const OpenAiIcon = (props: any) => <Icon component={OpenAiSvg} {...props} />;
 import type { MenuProps } from 'antd';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
@@ -103,8 +105,10 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
   const [quickTasksOpen, setQuickTasksOpen] = useState(false);
+  const [selectedQuickTaskId, setSelectedQuickTaskId] = useState<string | null>(null);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   const [quickNoteForm] = Form.useForm();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, refreshToken, logout, setUser } = useAuthStore();
@@ -221,6 +225,16 @@ export default function Layout() {
       return new Date(aDate).getTime() - new Date(bDate).getTime();
     })
     .slice(0, 8);
+  const selectedQuickTask = quickTaskList.find((task) => task.id === selectedQuickTaskId) ?? quickTaskList[0] ?? null;
+  const quickTaskChecklistMut = useMutation({
+    mutationFn: ({ id, checklist }: { id: string; checklist: NonNullable<Task['checklist']> }) =>
+      tasksApi.update(id, { checklist }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['quick-my-tasks', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: () => message.error('Не удалось обновить чеклист'),
+  });
   const quickNoteMut = useMutation({
     mutationFn: notesBoardApi.create,
     onSuccess: () => {
@@ -839,7 +853,10 @@ export default function Layout() {
           <Button
             type="primary"
             icon={<ProjectOutlined />}
-            onClick={() => setQuickTasksOpen(true)}
+            onClick={() => {
+              setSelectedQuickTaskId(quickTaskList[0]?.id ?? null);
+              setQuickTasksOpen(true);
+            }}
             style={{
               position: 'fixed',
               right: 16,
@@ -881,52 +898,85 @@ export default function Layout() {
             <List
               dataSource={quickTaskList}
               locale={{ emptyText: 'Задач нет' }}
-              renderItem={(task, index) => (
+              renderItem={(task) => (
                 <List.Item
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    setQuickTasksOpen(false);
-                    navigate('/tasks');
+                  style={{
+                    cursor: 'pointer',
+                    borderRadius: 10,
+                    paddingInline: 8,
+                    background: selectedQuickTask?.id === task.id ? themeToken.colorPrimaryBg : undefined,
                   }}
+                  onClick={() => setSelectedQuickTaskId(task.id)}
                 >
                   <List.Item.Meta
-                    title={(
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <Typography.Text
-                          strong
-                          style={{
-                            maxWidth: 250,
-                            whiteSpace: index === 0 ? 'normal' : 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: index === 0 ? 'unset' : 'ellipsis',
-                            lineHeight: 1.25,
-                          }}
-                        >
-                          {task.title}
-                        </Typography.Text>
-                        <Tag color={task.status === 'IN_PROGRESS' ? 'processing' : task.status === 'DONE' ? 'warning' : 'default'}>
-                          {task.status === 'TODO' ? 'К выполнению' : task.status === 'IN_PROGRESS' ? 'В работе' : task.status === 'DONE' ? 'Готово' : 'Утверждено'}
-                        </Tag>
-                      </div>
-                    )}
+                    title={<Typography.Text strong>{task.title}</Typography.Text>}
                     description={(
-                      <Space direction="vertical" size={2}>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {task.plannedDate
-                            ? `План: ${dayjs(task.plannedDate).format('DD.MM.YYYY')}`
-                            : task.dueDate
-                              ? `Срок: ${dayjs(task.dueDate).format('DD.MM.YYYY')}`
-                              : 'Без даты'}
-                        </Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {task.createdBy?.fullName || 'Без постановщика'}
-                        </Typography.Text>
-                      </Space>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {task.plannedDate
+                          ? `План: ${dayjs(task.plannedDate).format('DD.MM.YYYY')}`
+                          : task.dueDate
+                            ? `Срок: ${dayjs(task.dueDate).format('DD.MM.YYYY')}`
+                            : 'Без даты'}
+                      </Typography.Text>
                     )}
                   />
                 </List.Item>
               )}
             />
+            {selectedQuickTask && (
+              <>
+                <Divider style={{ margin: '12px 0' }} />
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                    <Typography.Text strong style={{ fontSize: 16, lineHeight: 1.3 }}>
+                      {selectedQuickTask.title}
+                    </Typography.Text>
+                    <Tag color={selectedQuickTask.status === 'IN_PROGRESS' ? 'processing' : selectedQuickTask.status === 'DONE' ? 'warning' : 'default'}>
+                      {selectedQuickTask.status === 'TODO' ? 'К выполнению' : selectedQuickTask.status === 'IN_PROGRESS' ? 'В работе' : selectedQuickTask.status === 'DONE' ? 'Готово' : 'Утверждено'}
+                    </Tag>
+                  </div>
+                  {selectedQuickTask.description ? (
+                    <Typography.Text>{selectedQuickTask.description}</Typography.Text>
+                  ) : null}
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Исполнитель: {selectedQuickTask.assignee?.fullName || '—'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Постановщик: {selectedQuickTask.createdBy?.fullName || '—'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {selectedQuickTask.plannedDate
+                      ? `План: ${dayjs(selectedQuickTask.plannedDate).format('DD.MM.YYYY')}`
+                      : selectedQuickTask.dueDate
+                        ? `Срок: ${dayjs(selectedQuickTask.dueDate).format('DD.MM.YYYY')}`
+                        : 'Без даты'}
+                  </Typography.Text>
+                  <Divider style={{ margin: '8px 0' }}>Чеклист</Divider>
+                  {selectedQuickTask.checklist?.length ? (
+                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      {selectedQuickTask.checklist.map((item, idx) => (
+                        <Checkbox
+                          key={`${selectedQuickTask.id}-${idx}-${item.text}`}
+                          checked={item.checked}
+                          disabled={quickTaskChecklistMut.isPending}
+                          onChange={(e) => {
+                            const current = selectedQuickTask.checklist || [];
+                            const nextChecklist = current.map((entry, entryIdx) =>
+                              entryIdx === idx ? { ...entry, checked: e.target.checked } : entry,
+                            );
+                            quickTaskChecklistMut.mutate({ id: selectedQuickTask.id, checklist: nextChecklist });
+                          }}
+                        >
+                          {item.text}
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Typography.Text type="secondary">Чеклист не добавлен.</Typography.Text>
+                  )}
+                </Space>
+              </>
+            )}
           </Drawer>
         </>
       )}
