@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Button, Modal, Form, Input, Select, Typography, message, Tag, Space,
@@ -7,7 +7,8 @@ import {
 import {
   PlusOutlined, DeleteOutlined, UploadOutlined, PaperClipOutlined,
   ArrowRightOutlined, ArrowLeftOutlined, CheckOutlined, FileTextOutlined,
-  CalendarOutlined,
+  CalendarOutlined, LeftOutlined, RightOutlined, ClockCircleOutlined,
+  AppstoreOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { tasksApi } from '../api/tasks.api';
 import { usersApi } from '../api/users.api';
@@ -17,7 +18,9 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { Task, TaskStatus } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
+import isoWeek from 'dayjs/plugin/isoWeek';
 
+dayjs.extend(isoWeek);
 dayjs.locale('ru');
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
@@ -29,12 +32,32 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
 
 const COLUMNS: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'DONE', 'APPROVED'];
 
+type DateViewMode = 'TODAY' | 'WEEK' | 'ALL';
+
+function getTaskAnchorDate(task: Task) {
+  const base = task.plannedDate || task.dueDate;
+  return base ? dayjs(base) : null;
+}
+
+function sortTasksByAnchor(items: Task[]) {
+  return [...items].sort((a, b) => {
+    const aAnchor = getTaskAnchorDate(a);
+    const bAnchor = getTaskAnchorDate(b);
+    if (aAnchor && bAnchor && !aAnchor.isSame(bAnchor)) {
+      return aAnchor.valueOf() - bAnchor.valueOf();
+    }
+    if (aAnchor && !bAnchor) return -1;
+    if (!aAnchor && bAnchor) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
+
 export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [reportModal, setReportModal] = useState<Task | null>(null);
   const [reportText, setReportText] = useState('');
-  const [dateViewMode, setDateViewMode] = useState<'ALL' | 'TODAY' | 'SELECTED'>('TODAY');
+  const [dateViewMode, setDateViewMode] = useState<DateViewMode>('WEEK');
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
@@ -135,46 +158,92 @@ export default function TasksPage() {
     return allowed;
   };
 
-  const matchesActiveDate = (task: Task) => {
-    if (dateViewMode === 'ALL') return true;
-    const base = task.plannedDate || task.dueDate;
-    if (!base) return false;
-    const compareDate = dateViewMode === 'TODAY' ? dayjs() : selectedDate;
-    return dayjs(base).isSame(compareDate, 'day');
-  };
+  const weekStart = selectedDate.startOf('isoWeek');
+  const weekEnd = selectedDate.endOf('isoWeek');
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => weekStart.add(index, 'day')),
+    [weekStart],
+  );
 
-  const visibleTasks = tasks.filter(matchesActiveDate);
+  const todayTasks = useMemo(
+    () => sortTasksByAnchor(tasks.filter((task) => getTaskAnchorDate(task)?.isSame(dayjs(), 'day'))),
+    [tasks],
+  );
+  const selectedDayTasks = useMemo(
+    () => sortTasksByAnchor(tasks.filter((task) => getTaskAnchorDate(task)?.isSame(selectedDate, 'day'))),
+    [selectedDate, tasks],
+  );
+  const weekTasks = useMemo(
+    () => sortTasksByAnchor(tasks.filter((task) => getTaskAnchorDate(task)?.isSame(selectedDate, 'isoWeek'))),
+    [selectedDate, tasks],
+  );
+  const tasksWithoutDate = useMemo(
+    () => tasks.filter((task) => !getTaskAnchorDate(task)),
+    [tasks],
+  );
+  const overdueTasks = useMemo(
+    () => tasks.filter((task) => {
+      if (!task.dueDate || task.status === 'APPROVED') return false;
+      return dayjs(task.dueDate).isBefore(dayjs(), 'day');
+    }),
+    [tasks],
+  );
+
+  const visibleTasks = useMemo(() => {
+    if (dateViewMode === 'ALL') return sortTasksByAnchor(tasks);
+    if (dateViewMode === 'TODAY') return todayTasks;
+    return weekTasks;
+  }, [dateViewMode, tasks, todayTasks, weekTasks]);
+  const agendaTasks = dateViewMode === 'TODAY' ? todayTasks : dateViewMode === 'ALL' ? visibleTasks : weekTasks;
+  const agendaLabel = dateViewMode === 'TODAY'
+    ? 'Фокус на сегодня'
+    : dateViewMode === 'ALL'
+      ? 'Все задачи'
+      : 'План недели';
+  const upcomingTasks = agendaTasks.slice(0, 3);
 
   const tasksOnCalendarDay = (d: dayjs.Dayjs) =>
-    tasks.filter((t) => {
-      const base = t.plannedDate || t.dueDate;
-      return base && dayjs(base).isSame(d, 'day');
-    });
+    sortTasksByAnchor(tasks.filter((task) => getTaskAnchorDate(task)?.isSame(d, 'day')));
 
   const tasksByStatus = (status: TaskStatus) =>
-    visibleTasks.filter((t) => t.status === status).sort((a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    sortTasksByAnchor(visibleTasks.filter((task) => task.status === status));
+
+  const getTaskAccent = (task: Task) => {
+    const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
+    return task.color || (isOverdue ? token.colorError : token.colorPrimary);
+  };
+
+  const formatTaskAnchor = (task: Task) => {
+    if (task.plannedDate) return `План: ${dayjs(task.plannedDate).format('DD MMM')}`;
+    if (task.dueDate) return `Срок: ${dayjs(task.dueDate).format('DD MMM')}`;
+    return 'Без даты';
+  };
 
   const renderTaskCard = (task: Task) => {
     const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
     const nextStatuses = getNextStatuses(task.status);
+    const accent = getTaskAccent(task);
 
     return (
       <Card
         key={task.id}
         size="small"
         style={{
-          marginBottom: 8,
+          marginBottom: 10,
           cursor: 'pointer',
-          borderLeft: `6px solid ${task.color || (isOverdue ? token.colorError : token.colorPrimary)}`,
-          background: task.color ? `${task.color}12` : token.colorBgContainer,
-          borderRadius: 12,
+          borderLeft: `5px solid ${accent}`,
+          background: task.color ? `${task.color}14` : token.colorBgContainer,
+          borderRadius: 18,
+          borderColor: token.colorBorderSecondary,
+          boxShadow: token.boxShadowSecondary,
         }}
         onClick={() => setDetailTask(task)}
       >
-        <div style={{ marginBottom: 4 }}>
-          <Typography.Text strong style={{ fontSize: 13 }}>{task.title}</Typography.Text>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+          <Typography.Text strong style={{ fontSize: 13, lineHeight: 1.35 }}>{task.title}</Typography.Text>
+          <Tag color={STATUS_CONFIG[task.status].color} style={{ margin: 0 }}>
+            {STATUS_CONFIG[task.status].label}
+          </Tag>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
@@ -189,11 +258,12 @@ export default function TasksPage() {
             </Typography.Text>
           )}
         </div>
-        {task.plannedDate && (
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            План: {dayjs(task.plannedDate).format('DD.MM.YYYY')}
+            {formatTaskAnchor(task)}
           </Typography.Text>
-        )}
+          {isOverdue ? <Tag color="error" style={{ margin: 0 }}>Просрочено</Tag> : null}
+        </div>
         {(task._count?.attachments ?? 0) > 0 && (
           <div style={{ marginTop: 4 }}>
             <PaperClipOutlined style={{ fontSize: 11, color: token.colorTextSecondary }} />
@@ -203,7 +273,7 @@ export default function TasksPage() {
           </div>
         )}
         {nextStatuses.length > 0 && (
-          <div style={{ marginTop: 6, display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ marginTop: 10, display: 'flex', gap: 4, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
             {nextStatuses.map((s) => {
               const isForward = COLUMNS.indexOf(s) > COLUMNS.indexOf(task.status);
               return (
@@ -226,17 +296,116 @@ export default function TasksPage() {
     );
   };
 
+  const renderScheduleCard = (task: Task, compact = false) => {
+    const accent = getTaskAccent(task);
+    const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
+
+    return (
+      <div
+        key={task.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setDetailTask(task)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') setDetailTask(task);
+        }}
+        style={{
+          padding: compact ? '10px 12px' : '12px 14px',
+          borderRadius: 18,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          background: task.color ? `${task.color}18` : token.colorBgContainer,
+          boxShadow: token.boxShadowSecondary,
+          borderLeft: `5px solid ${accent}`,
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+          <Typography.Text strong style={{ fontSize: compact ? 12 : 13, lineHeight: 1.35 }}>
+            {task.title}
+          </Typography.Text>
+          <Tag color={STATUS_CONFIG[task.status].color} style={{ margin: 0, flexShrink: 0 }}>
+            {STATUS_CONFIG[task.status].label}
+          </Tag>
+        </div>
+
+        <Space size={6} wrap style={{ marginBottom: 4 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {task.assignee?.fullName || 'Без исполнителя'}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {formatTaskAnchor(task)}
+          </Typography.Text>
+        </Space>
+
+        {task.description ? (
+          <Typography.Paragraph
+            ellipsis={{ rows: compact ? 1 : 2 }}
+            style={{ margin: 0, color: token.colorTextSecondary, fontSize: 11 }}
+          >
+            {task.description}
+          </Typography.Paragraph>
+        ) : null}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <Space size={6}>
+            {(task._count?.attachments ?? 0) > 0 ? (
+              <Tag bordered={false} style={{ margin: 0, borderRadius: 999, background: token.colorFillTertiary }}>
+                <PaperClipOutlined /> {task._count?.attachments}
+              </Tag>
+            ) : null}
+            {isOverdue ? (
+              <Tag color="error" style={{ margin: 0 }}>
+                Просрочено
+              </Tag>
+            ) : null}
+          </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {dayjs(task.createdAt).format('DD.MM')}
+          </Typography.Text>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Задачи</Typography.Title>
-        <Space>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+          padding: isMobile ? '8px 0' : '8px 4px',
+        }}
+      >
+        <div>
+          <Typography.Text
+            type="secondary"
+            style={{
+              display: 'inline-block',
+              marginBottom: 6,
+              padding: '6px 10px',
+              borderRadius: 999,
+              background: token.colorFillQuaternary,
+              fontSize: 11,
+              letterSpacing: 0.3,
+            }}
+          >
+            TASKS CALENDAR
+          </Typography.Text>
+          <Typography.Title level={4} style={{ margin: 0 }}>Задачи</Typography.Title>
+          <Typography.Text type="secondary">
+            Неделя, фокус дня, срочные задачи и быстрый переход к работе.
+          </Typography.Text>
+        </div>
+        <Space wrap>
           <Segmented
             value={dateViewMode}
-            onChange={(v) => setDateViewMode(v as 'ALL' | 'TODAY' | 'SELECTED')}
+            onChange={(v) => setDateViewMode(v as DateViewMode)}
             options={[
               { label: 'Сегодня', value: 'TODAY' },
-              { label: 'Выбранная дата', value: 'SELECTED' },
+              { label: 'Неделя', value: 'WEEK' },
               { label: 'Все', value: 'ALL' },
             ]}
           />
@@ -258,133 +427,392 @@ export default function TasksPage() {
       <Card
         size="small"
         style={{
-          marginBottom: 12,
-          borderRadius: 20,
-          background: `linear-gradient(165deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 100%)`,
+          marginBottom: 16,
+          borderRadius: 32,
+          background: `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 45%, ${token.colorBgLayout} 100%)`,
           borderColor: token.colorBorderSecondary,
+          boxShadow: token.boxShadowSecondary,
         }}
-        styles={{ body: { padding: 16 } }}
+        styles={{ body: { padding: isMobile ? 14 : 18 } }}
       >
-        <Row gutter={[16, 16]}>
-          <Col xs={24} md={10}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-              <CalendarOutlined /> Календарь планов
-            </Typography.Text>
-            <div
-              style={{
-                borderRadius: 18,
-                padding: 8,
-                background: token.colorBgContainer,
-                boxShadow: `inset 0 1px 0 ${token.colorBorderSecondary}`,
-              }}
-            >
-              <Calendar
-                fullscreen={false}
-                showWeek
-                value={selectedDate}
-                style={{ borderRadius: 12 }}
-                onSelect={(d) => {
-                  setSelectedDate(d);
-                  setDateViewMode('SELECTED');
+        <Row gutter={[18, 18]}>
+          <Col xs={24} xl={7}>
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div
+                style={{
+                  borderRadius: 24,
+                  padding: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  boxShadow: token.boxShadowSecondary,
                 }}
-                dateCellRender={(d) => {
-                  const dayTasks = tasksOnCalendarDay(d);
-                  if (dayTasks.length === 0) return null;
-                  return (
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                      <CalendarOutlined /> Календарь месяца
+                    </Typography.Text>
+                    <Typography.Text strong style={{ fontSize: 16 }}>
+                      {selectedDate.format('MMMM YYYY')}
+                    </Typography.Text>
+                  </div>
+                  <Tag bordered={false} style={{ borderRadius: 999, padding: '4px 10px', background: token.colorFillQuaternary }}>
+                    {weekStart.format('D MMM')} - {weekEnd.format('D MMM')}
+                  </Tag>
+                </div>
+                <Calendar
+                  fullscreen={false}
+                  value={selectedDate}
+                  style={{ borderRadius: 16 }}
+                  onSelect={(d) => {
+                    setSelectedDate(d);
+                    setDateViewMode('WEEK');
+                  }}
+                  dateCellRender={(d) => {
+                    const dayTasks = tasksOnCalendarDay(d);
+                    if (dayTasks.length === 0) return null;
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginTop: 2, flexWrap: 'wrap' }}>
+                        {dayTasks.slice(0, 3).map((task) => (
+                          <span
+                            key={task.id}
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 999,
+                              background: getTaskAccent(task),
+                              boxShadow: `0 0 0 1px ${token.colorBgContainer}`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 24,
+                  padding: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  boxShadow: token.boxShadowSecondary,
+                }}
+              >
+                <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
+                  Быстрый обзор
+                </Typography.Text>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                  {[
+                    { label: 'На сегодня', value: todayTasks.length, color: token.colorPrimary, icon: <ClockCircleOutlined /> },
+                    { label: 'На неделю', value: weekTasks.length, color: token.colorSuccess, icon: <CalendarOutlined /> },
+                    { label: 'Просрочено', value: overdueTasks.length, color: token.colorError, icon: <WarningOutlined /> },
+                    { label: 'Без даты', value: tasksWithoutDate.length, color: token.colorWarning, icon: <AppstoreOutlined /> },
+                  ].map((item) => (
                     <div
+                      key={item.label}
                       style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        gap: 3,
-                        flexWrap: 'wrap',
-                        marginTop: 2,
-                        minHeight: 14,
+                        borderRadius: 18,
+                        padding: '12px 14px',
+                        background: `${item.color}12`,
+                        border: `1px solid ${item.color}22`,
                       }}
                     >
-                      {dayTasks.slice(0, 5).map((t) => (
-                        <span
-                          key={t.id}
-                          title={t.title}
-                          style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: 999,
-                            background: t.color || token.colorPrimary,
-                            boxShadow: `0 0 0 1px ${token.colorBgContainer}`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  );
-                }}
-              />
-            </div>
-          </Col>
-          <Col xs={24} md={14}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-              <Typography.Text strong style={{ fontSize: 15 }}>
-                {dateViewMode === 'TODAY' ? 'Сегодня' : dateViewMode === 'ALL' ? 'Все задачи' : selectedDate.format('dddd, D MMMM')}
-              </Typography.Text>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Всего: {visibleTasks.length}
-              </Typography.Text>
-            </div>
-            <div
-              style={{
-                maxHeight: 240,
-                overflowY: 'auto',
-                paddingRight: 4,
-              }}
-            >
-              {visibleTasks.length === 0 ? (
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  На выбранную дату задач нет
-                </Typography.Text>
-              ) : (
-                visibleTasks.slice(0, 12).map((task) => (
-                  <div
-                    key={task.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setDetailTask(task)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') setDetailTask(task);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 10,
-                      padding: '10px 12px',
-                      marginBottom: 8,
-                      borderRadius: 14,
-                      cursor: 'pointer',
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      background: task.color ? `${task.color}18` : token.colorBgContainer,
-                      borderLeft: `4px solid ${task.color || token.colorPrimary}`,
-                      transition: 'box-shadow 0.15s ease, transform 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = token.boxShadowSecondary;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Typography.Text strong style={{ fontSize: 13, display: 'block' }}>
-                        {task.title}
+                      <div style={{ color: item.color, marginBottom: 8 }}>{item.icon}</div>
+                      <Typography.Text strong style={{ display: 'block', fontSize: 18 }}>
+                        {item.value}
                       </Typography.Text>
                       <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                        {task.assignee?.fullName}
-                        {task.plannedDate ? ` · план ${dayjs(task.plannedDate).format('DD.MM')}` : ''}
-                        {task.dueDate && !task.plannedDate ? ` · срок ${dayjs(task.dueDate).format('DD.MM')}` : ''}
+                        {item.label}
                       </Typography.Text>
                     </div>
-                    <Tag style={{ margin: 0, flexShrink: 0 }} color={STATUS_CONFIG[task.status].color}>
-                      {STATUS_CONFIG[task.status].label}
-                    </Tag>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 24,
+                  padding: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  boxShadow: token.boxShadowSecondary,
+                }}
+              >
+                <Typography.Text strong style={{ display: 'block', marginBottom: 10 }}>
+                  Фокус дня
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                  {selectedDate.format('dddd, D MMMM')}
+                </Typography.Text>
+                <div
+                  style={{
+                    borderRadius: 18,
+                    padding: '12px 14px',
+                    marginBottom: 12,
+                    background: `linear-gradient(135deg, ${token.colorPrimaryBg} 0%, ${token.colorBgElevated} 100%)`,
+                    border: `1px solid ${token.colorPrimaryBorder}`,
+                  }}
+                >
+                  <Typography.Text strong style={{ display: 'block' }}>
+                    {selectedDayTasks.length} задач на день
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Нажмите на день в сетке, чтобы быстро менять фокус.
+                  </Typography.Text>
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {selectedDayTasks.length === 0 ? (
+                    <Typography.Text type="secondary">На выбранный день задач нет.</Typography.Text>
+                  ) : (
+                    selectedDayTasks.slice(0, 4).map((task) => renderScheduleCard(task, true))
+                  )}
+                </div>
+              </div>
+            </div>
+          </Col>
+
+          <Col xs={24} xl={17}>
+            <div
+              style={{
+                borderRadius: 28,
+                padding: isMobile ? 14 : 18,
+                background: `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorBgElevated} 100%)`,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: token.boxShadowSecondary,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                  marginBottom: 16,
+                  padding: isMobile ? 0 : '4px 2px',
+                }}
+              >
+                <div>
+                  <Typography.Text
+                    type="secondary"
+                    style={{
+                      display: 'inline-block',
+                      marginBottom: 6,
+                      padding: '5px 10px',
+                      borderRadius: 999,
+                      background: token.colorFillQuaternary,
+                      fontSize: 11,
+                    }}
+                  >
+                    {agendaLabel.toUpperCase()}
+                  </Typography.Text>
+                  <Typography.Title level={5} style={{ margin: 0 }}>
+                    Недельный календарь задач
+                  </Typography.Title>
+                  <Typography.Text type="secondary">
+                    {weekStart.format('D MMMM')} - {weekEnd.format('D MMMM YYYY')}
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <Button icon={<LeftOutlined />} onClick={() => setSelectedDate((prev) => prev.subtract(1, 'week'))}>
+                    Назад
+                  </Button>
+                  <Button onClick={() => setSelectedDate(dayjs())}>Эта неделя</Button>
+                  <Button icon={<RightOutlined />} iconPosition="end" onClick={() => setSelectedDate((prev) => prev.add(1, 'week'))}>
+                    Вперёд
+                  </Button>
+                </Space>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.1fr) minmax(0, 1.9fr)',
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  style={{
+                    borderRadius: 22,
+                    padding: 16,
+                    background: `linear-gradient(135deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`,
+                    border: `1px solid ${token.colorPrimaryBorder}`,
+                  }}
+                >
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                    Активный обзор
+                  </Typography.Text>
+                  <Typography.Title level={3} style={{ margin: 0, lineHeight: 1.1 }}>
+                    {agendaTasks.length}
+                  </Typography.Title>
+                  <Typography.Text type="secondary">
+                    {dateViewMode === 'TODAY'
+                      ? 'задач на сегодня'
+                      : dateViewMode === 'ALL'
+                        ? 'задач во всем списке'
+                        : 'задач в текущей неделе'}
+                  </Typography.Text>
+                </div>
+
+                <div
+                  style={{
+                    borderRadius: 22,
+                    padding: 16,
+                    background: token.colorBgContainer,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                    <Typography.Text strong>Ближайшее</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {upcomingTasks.length > 0 ? 'Следующие задачи' : 'Пока пусто'}
+                    </Typography.Text>
                   </div>
-                ))
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: upcomingTasks.length > 0
+                        ? `repeat(${Math.max(1, Math.min(upcomingTasks.length, isMobile ? 1 : 3))}, minmax(0, 1fr))`
+                        : '1fr',
+                      gap: 10,
+                    }}
+                  >
+                    {upcomingTasks.length === 0 ? (
+                      <Typography.Text type="secondary">Нет задач в текущем режиме отображения.</Typography.Text>
+                    ) : (
+                      upcomingTasks.map((task) => renderScheduleCard(task, true))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {isMobile ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {weekDays.map((day) => {
+                    const dayTasks = tasksOnCalendarDay(day);
+                    const isCurrentDay = day.isSame(dayjs(), 'day');
+                    const isSelectedDay = day.isSame(selectedDate, 'day');
+
+                    return (
+                      <div
+                        key={day.toISOString()}
+                        style={{
+                          borderRadius: 22,
+                          padding: 14,
+                          background: isSelectedDay
+                            ? `linear-gradient(180deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
+                            : token.colorBgElevated,
+                          border: `1px solid ${isCurrentDay ? token.colorPrimary : token.colorBorderSecondary}`,
+                          boxShadow: isSelectedDay ? token.boxShadowSecondary : undefined,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div>
+                            <Typography.Text strong>{day.format('dddd')}</Typography.Text>
+                            <div>
+                              <Typography.Text type="secondary">{day.format('D MMMM')}</Typography.Text>
+                            </div>
+                          </div>
+                          <Badge count={dayTasks.length} showZero style={{ backgroundColor: isCurrentDay ? token.colorPrimary : token.colorTextQuaternary }} />
+                        </div>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {dayTasks.length === 0 ? (
+                            <Typography.Text type="secondary">Нет задач</Typography.Text>
+                          ) : (
+                            dayTasks.map((task) => renderScheduleCard(task, true))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                    gap: 12,
+                  }}
+                >
+                  {weekDays.map((day) => {
+                    const dayTasks = tasksOnCalendarDay(day);
+                    const isCurrentDay = day.isSame(dayjs(), 'day');
+                    const isSelectedDay = day.isSame(selectedDate, 'day');
+
+                    return (
+                      <div
+                        key={day.toISOString()}
+                        style={{
+                          minHeight: 420,
+                          borderRadius: 26,
+                          padding: 12,
+                          background: isSelectedDay
+                            ? `linear-gradient(180deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
+                            : `linear-gradient(180deg, ${token.colorBgElevated} 0%, ${token.colorBgContainer} 100%)`,
+                          border: `1px solid ${isCurrentDay ? token.colorPrimary : token.colorBorderSecondary}`,
+                          boxShadow: isSelectedDay ? token.boxShadowSecondary : undefined,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDate(day)}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            marginBottom: 12,
+                            padding: 0,
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Tag
+                            bordered={false}
+                            style={{
+                              margin: 0,
+                              borderRadius: 999,
+                              padding: '4px 10px',
+                              background: isCurrentDay ? token.colorPrimary : token.colorFillQuaternary,
+                              color: isCurrentDay ? token.colorWhite : token.colorTextSecondary,
+                            }}
+                          >
+                            {day.format('ddd')}
+                          </Tag>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                            <Typography.Text strong style={{ fontSize: 24, lineHeight: 1 }}>
+                              {day.format('DD')}
+                            </Typography.Text>
+                            <Badge count={dayTasks.length} showZero style={{ backgroundColor: isCurrentDay ? token.colorPrimary : token.colorTextQuaternary }} />
+                          </div>
+                        </button>
+
+                        <div style={{ display: 'grid', gap: 10, maxHeight: 320, overflowY: 'auto', paddingRight: 2 }}>
+                          {dayTasks.length === 0 ? (
+                            <div
+                              style={{
+                                borderRadius: 18,
+                                minHeight: 88,
+                                border: `1px dashed ${token.colorBorderSecondary}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 8,
+                              }}
+                            >
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Свободно
+                              </Typography.Text>
+                            </div>
+                          ) : (
+                            dayTasks.map((task) => renderScheduleCard(task, true))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </Col>
@@ -428,10 +856,12 @@ export default function TasksPage() {
           return (
             <Col key={status} xs={24} sm={12} lg={6}>
               <div style={{
-                background: token.colorBgLayout,
-                borderRadius: 8,
-                padding: 12,
-                minHeight: 400,
+                background: token.colorBgContainer,
+                borderRadius: 24,
+                padding: 14,
+                minHeight: 420,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: token.boxShadowSecondary,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                   <Tag color={STATUS_CONFIG[status].color}>
