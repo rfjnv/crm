@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Typography, Switch, Badge, Drawer, theme, Dropdown, List, Tag, Space } from 'antd';
+import {
+  Layout as AntLayout,
+  Menu,
+  Button,
+  Typography,
+  Switch,
+  Badge,
+  Drawer,
+  theme,
+  Dropdown,
+  List,
+  Tag,
+  Space,
+  Modal,
+  Form,
+  Select,
+  DatePicker,
+  Input,
+  message,
+} from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -36,6 +55,7 @@ import {
   IdcardOutlined,
   UserOutlined,
   DownOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -46,12 +66,14 @@ const OpenAiSvg = () => (
 );
 const OpenAiIcon = (props: any) => <Icon component={OpenAiSvg} {...props} />;
 import type { MenuProps } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
 import { tasksApi } from '../api/tasks.api';
+import { notesBoardApi } from '../api/notes-board.api';
+import { clientsApi } from '../api/clients.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
 import { APP_BUTTON } from './ui/AppClassNames';
@@ -62,6 +84,7 @@ import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission, Task } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS } from '../constants/dilnozaPayments';
+import { smartFilterOption } from '../utils/translit';
 import dayjs from 'dayjs';
 
 const { Header, Sider, Content } = AntLayout;
@@ -80,6 +103,8 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
   const [quickTasksOpen, setQuickTasksOpen] = useState(false);
+  const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+  const [quickNoteForm] = Form.useForm();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, refreshToken, logout, setUser } = useAuthStore();
@@ -155,6 +180,7 @@ export default function Layout() {
     || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
 
   const hasRole = (...roles: UserRole[]) => role ? roles.includes(role) : false;
+  const canQuickNote = hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR');
 
   // Presence ping
   useEffect(() => {
@@ -173,6 +199,11 @@ export default function Layout() {
   const totalUnread = unreadCounts
     ? Object.values(unreadCounts).reduce((sum, c) => sum + c, 0)
     : 0;
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list(),
+    enabled: canQuickNote,
+  });
   const { data: myTasks = [] } = useQuery({
     queryKey: ['quick-my-tasks', user?.id],
     queryFn: () => tasksApi.list({ assigneeId: user?.id }),
@@ -190,6 +221,15 @@ export default function Layout() {
       return new Date(aDate).getTime() - new Date(bDate).getTime();
     })
     .slice(0, 8);
+  const quickNoteMut = useMutation({
+    mutationFn: notesBoardApi.create,
+    onSuccess: () => {
+      message.success('Заметка сохранена');
+      setQuickNoteOpen(false);
+      quickNoteForm.resetFields();
+    },
+    onError: () => message.error('Не удалось сохранить заметку'),
+  });
 
   const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
   const showGroupLabels = isMobile || !collapsed;
@@ -714,6 +754,86 @@ export default function Layout() {
         <NotificationPermissionBanner />
       </AntLayout>
 
+      {canQuickNote && (
+        <>
+          <Button
+            type="default"
+            icon={<EditOutlined />}
+            onClick={() => {
+              quickNoteForm.setFieldsValue({
+                callResult: 'ANSWERED',
+                lastCallAt: dayjs(),
+              });
+              setQuickNoteOpen(true);
+            }}
+            style={{
+              position: 'fixed',
+              right: 16,
+              bottom: (isMobile ? 92 : 24) + (hasMyTasks ? 56 : 0),
+              zIndex: 1200,
+              borderRadius: 999,
+              boxShadow: themeToken.boxShadowSecondary,
+            }}
+          >
+            Заметка
+          </Button>
+
+          <Modal
+            title="Быстрая заметка"
+            open={quickNoteOpen}
+            onCancel={() => setQuickNoteOpen(false)}
+            onOk={() => quickNoteForm.submit()}
+            confirmLoading={quickNoteMut.isPending}
+            okText="Сохранить"
+            cancelText="Отмена"
+          >
+            <Form
+              form={quickNoteForm}
+              layout="vertical"
+              onFinish={(v) => {
+                quickNoteMut.mutate({
+                  clientId: v.clientId,
+                  callResult: v.callResult,
+                  status: v.status?.trim() || undefined,
+                  comment: (v.comment || '').trim(),
+                  lastCallAt: v.lastCallAt.toISOString(),
+                  nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
+                });
+              }}
+            >
+              <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
+                <Select
+                  showSearch
+                  filterOption={smartFilterOption}
+                  placeholder="Выберите клиента"
+                  options={clients.map((c) => ({ value: c.id, label: c.companyName }))}
+                />
+              </Form.Item>
+              <Form.Item name="callResult" label="Дозвон" rules={[{ required: true, message: 'Выберите статус дозвона' }]}>
+                <Select
+                  options={[
+                    { value: 'ANSWERED', label: 'Взял трубку' },
+                    { value: 'NO_ANSWER', label: 'Не взял' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="lastCallAt" label="Дата обзвона" rules={[{ required: true, message: 'Укажите дату' }]}>
+                <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+              </Form.Item>
+              <Form.Item name="nextCallAt" label="Напомнить на дату">
+                <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+              </Form.Item>
+              <Form.Item name="status" label="Статус">
+                <Input placeholder="Например: Пока думает" />
+              </Form.Item>
+              <Form.Item name="comment" label="Комментарий" rules={[{ required: true, message: 'Введите комментарий' }]}>
+                <Input.TextArea rows={4} placeholder="Введите заметку..." />
+              </Form.Item>
+            </Form>
+          </Modal>
+        </>
+      )}
+
       {hasMyTasks && (
         <>
           <Button
@@ -761,7 +881,7 @@ export default function Layout() {
             <List
               dataSource={quickTaskList}
               locale={{ emptyText: 'Задач нет' }}
-              renderItem={(task) => (
+              renderItem={(task, index) => (
                 <List.Item
                   style={{ cursor: 'pointer' }}
                   onClick={() => {
@@ -772,7 +892,16 @@ export default function Layout() {
                   <List.Item.Meta
                     title={(
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <Typography.Text strong ellipsis style={{ maxWidth: 250 }}>
+                        <Typography.Text
+                          strong
+                          style={{
+                            maxWidth: 250,
+                            whiteSpace: index === 0 ? 'normal' : 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: index === 0 ? 'unset' : 'ellipsis',
+                            lineHeight: 1.25,
+                          }}
+                        >
                           {task.title}
                         </Typography.Text>
                         <Tag color={task.status === 'IN_PROGRESS' ? 'processing' : task.status === 'DONE' ? 'warning' : 'default'}>
