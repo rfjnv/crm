@@ -31,6 +31,11 @@ export const updateNotesBoardDto = z.object({
   nextCallAt: isoDate.optional().nullable(),
 });
 
+export const requestNotesBoardEditDto = z.object({
+  comment: z.string().trim().min(1, 'Комментарий обязателен').max(1000),
+});
+
 export type ListNotesBoardQueryDto = z.infer<typeof listNotesBoardQueryDto>;
 export type CreateNotesBoardDto = z.infer<typeof createNotesBoardDto>;
 export type UpdateNotesBoardDto = z.infer<typeof updateNotesBoardDto>;
+export type RequestNotesBoardEditDto = z.infer<typeof requestNotesBoardEditDto>;

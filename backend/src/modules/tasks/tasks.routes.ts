@@ -75,12 +75,15 @@ router.post(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
     const data = createTaskDto.parse(req.body);
+    const role = req.user!.role as Role;
+    const canPickAssignee = role === 'ADMIN' || role === 'SUPER_ADMIN';
+    const assigneeId = canPickAssignee ? data.assigneeId : req.user!.userId;
 
     const task = await prisma.task.create({
       data: {
         title: data.title,
         description: data.description,
-        assigneeId: data.assigneeId,
+        assigneeId,
         createdById: req.user!.userId,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         plannedDate: data.plannedDate ? new Date(data.plannedDate) : undefined,

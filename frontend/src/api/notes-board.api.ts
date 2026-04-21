@@ -35,6 +35,9 @@ export const notesBoardApi = {
   update: (id: string, data: NotesBoardUpdatePayload) =>
     client.patch<NotesBoardRow>(`/notes-board/${id}`, data).then((r) => r.data),
 
+  requestEdit: (id: string, comment: string) =>
+    client.post<NotesBoardRow>(`/notes-board/${id}/edit-request`, { comment }).then((r) => r.data),
+
   remove: (id: string) =>
     client.delete<{ ok: true }>(`/notes-board/${id}`).then((r) => r.data),
 };

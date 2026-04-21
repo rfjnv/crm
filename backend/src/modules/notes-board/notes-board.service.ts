@@ -2,7 +2,12 @@ import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
-import type { CreateNotesBoardDto, ListNotesBoardQueryDto, UpdateNotesBoardDto } from './notes-board.dto';
+import type {
+  CreateNotesBoardDto,
+  ListNotesBoardQueryDto,
+  RequestNotesBoardEditDto,
+  UpdateNotesBoardDto,
+} from './notes-board.dto';
 
 type NotesBoardRowDto = {
   id: string;
@@ -14,14 +19,16 @@ type NotesBoardRowDto = {
   nextCallAt: string | null;
   createdAt: string;
   updatedAt: string;
+  editRequestCount: number;
+  lastEditRequestComment: string | null;
+  lastEditRequestByName: string | null;
+  lastEditRequestAt: string | null;
   author: { id: string; fullName: string };
   client: { id: string; companyName: string };
 };
 
-const MANAGE_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN'];
-
-function canManageRow(user: AuthUser, authorId: string): boolean {
-  return MANAGE_ROLES.includes(user.role) || user.userId === authorId;
+function canDeleteRow(user: AuthUser, authorId: string): boolean {
+  return user.role === 'SUPER_ADMIN' || user.userId === authorId;
 }
 
 function mapRow(row: {
@@ -34,6 +41,10 @@ function mapRow(row: {
   nextCallAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  editRequestCount: number;
+  lastEditRequestComment: string | null;
+  lastEditRequestByName: string | null;
+  lastEditRequestAt: Date | null;
   author: { id: string; fullName: string };
   client: { id: string; companyName: string };
 }): NotesBoardRowDto {
@@ -47,6 +58,10 @@ function mapRow(row: {
     nextCallAt: row.nextCallAt ? row.nextCallAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    editRequestCount: row.editRequestCount,
+    lastEditRequestComment: row.lastEditRequestComment,
+    lastEditRequestByName: row.lastEditRequestByName,
+    lastEditRequestAt: row.lastEditRequestAt ? row.lastEditRequestAt.toISOString() : null,
     author: row.author,
     client: row.client,
   };
@@ -146,26 +161,32 @@ export class NotesBoardService {
   }
 
   async update(id: string, dto: UpdateNotesBoardDto, user: AuthUser) {
-    const existing = await prisma.notesBoardRow.findUnique({
-      where: { id },
-      include: {
-        author: { select: { id: true, fullName: true } },
-        client: { select: { id: true, companyName: true } },
-      },
-    });
+    void id;
+    void dto;
+    void user;
+    throw new AppError(403, 'Редактирование заметок отключено. Используйте запрос на правку.');
+  }
+
+  async requestEdit(id: string, dto: RequestNotesBoardEditDto, user: AuthUser) {
+    const existing = await prisma.notesBoardRow.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Запись не найдена');
-    if (!canManageRow(user, existing.authorId)) throw new AppError(403, 'Недостаточно прав');
+    if (existing.editRequestCount >= 3) {
+      throw new AppError(400, 'Лимит запросов на правку исчерпан (3/3)');
+    }
+
+    const actor = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { fullName: true },
+    });
+    const actorName = actor?.fullName || 'Сотрудник';
 
     const updated = await prisma.notesBoardRow.update({
       where: { id },
       data: {
-        ...(dto.callResult ? { callResult: dto.callResult } : {}),
-        ...(dto.status !== undefined ? { status: dto.status?.trim() || null } : {}),
-        ...(dto.comment !== undefined ? { comment: dto.comment.trim() } : {}),
-        ...(dto.lastCallAt ? { lastCallAt: new Date(dto.lastCallAt) } : {}),
-        ...(dto.nextCallAt !== undefined
-          ? { nextCallAt: dto.nextCallAt ? new Date(dto.nextCallAt) : null }
-          : {}),
+        editRequestCount: { increment: 1 },
+        lastEditRequestComment: dto.comment.trim(),
+        lastEditRequestByName: actorName,
+        lastEditRequestAt: new Date(),
       },
       include: {
         author: { select: { id: true, fullName: true } },
@@ -177,12 +198,7 @@ export class NotesBoardService {
       data: {
         clientId: updated.clientId,
         userId: user.userId,
-        content: buildClientNoteText({
-          callResult: updated.callResult,
-          status: updated.status,
-          comment: updated.comment,
-          lastCallAt: updated.lastCallAt,
-        }),
+        content: `[NOTES_BOARD_EDIT_REQUEST] Запрос на правку (${updated.editRequestCount}/3): ${dto.comment.trim()}`,
       },
     });
 
@@ -192,7 +208,7 @@ export class NotesBoardService {
   async remove(id: string, user: AuthUser) {
     const existing = await prisma.notesBoardRow.findUnique({ where: { id } });
     if (!existing) throw new AppError(404, 'Запись не найдена');
-    if (!canManageRow(user, existing.authorId)) throw new AppError(403, 'Недостаточно прав');
+    if (!canDeleteRow(user, existing.authorId)) throw new AppError(403, 'Удаление доступно только автору или супер-админу');
 
     await prisma.notesBoardRow.delete({ where: { id } });
     return { ok: true };

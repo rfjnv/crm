@@ -851,6 +851,10 @@ model NotesBoardRow {
   callResult  CallResult @map("call_result")
   status      String?
   comment     String     @db.Text
+  editRequestCount Int   @default(0) @map("edit_request_count")
+  lastEditRequestComment String? @map("last_edit_request_comment") @db.Text
+  lastEditRequestByName String? @map("last_edit_request_by_name")
+  lastEditRequestAt DateTime? @map("last_edit_request_at")
   lastCallAt  DateTime   @map("last_call_at")
   nextCallAt  DateTime?  @map("next_call_at")
   createdAt   DateTime   @default(now()) @map("created_at")

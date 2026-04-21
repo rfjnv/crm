@@ -861,6 +861,10 @@ export interface NotesBoardRow {
   callResult: 'ANSWERED' | 'NO_ANSWER';
   status: string | null;
   comment: string;
+  editRequestCount: number;
+  lastEditRequestComment: string | null;
+  lastEditRequestByName: string | null;
+  lastEditRequestAt: string | null;
   lastCallAt: string;
   nextCallAt: string | null;
   createdAt: string;

@@ -14,11 +14,13 @@ import {
   Table,
   Tag,
   Typography,
+  Alert,
 } from 'antd';
 import dayjs from 'dayjs';
 import { PlusOutlined } from '@ant-design/icons';
 import { notesBoardApi } from '../api/notes-board.api';
 import { clientsApi } from '../api/clients.api';
+import { useAuthStore } from '../store/authStore';
 
 type CallResult = 'ANSWERED' | 'NO_ANSWER';
 
@@ -27,17 +29,40 @@ const CALL_RESULT_LABEL: Record<CallResult, string> = {
   NO_ANSWER: 'Не взял',
 };
 
+const BASE_STATUSES = ['Успешный', 'Н/А', 'Пока думает', 'Дал запрос'] as const;
+const STATUS_COLORS: Record<string, string> = {
+  Успешный: 'green',
+  'Н/А': 'default',
+  'Пока думает': 'gold',
+  'Дал запрос': 'blue',
+};
+
+function statusColor(name?: string | null): string {
+  const v = (name || '').trim();
+  if (!v) return 'default';
+  if (STATUS_COLORS[v]) return STATUS_COLORS[v];
+  const palette = ['magenta', 'purple', 'cyan', 'orange', 'lime', 'geekblue'];
+  let hash = 0;
+  for (let i = 0; i < v.length; i += 1) hash = (hash * 31 + v.charCodeAt(i)) | 0;
+  return palette[Math.abs(hash) % palette.length];
+}
+
 export default function NotesBoardPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [q, setQ] = useState('');
   const [callResultFilter, setCallResultFilter] = useState<CallResult | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [quickClientOpen, setQuickClientOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRequestOpen, setEditRequestOpen] = useState(false);
+  const [requestRowId, setRequestRowId] = useState<string | null>(null);
+  const [requestComment, setRequestComment] = useState('');
   const [form] = Form.useForm();
   const [clientForm] = Form.useForm();
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
@@ -45,13 +70,14 @@ export default function NotesBoardPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['notes-board', page, pageSize, q, callResultFilter],
+    queryKey: ['notes-board', page, pageSize, q, callResultFilter, statusFilter],
     queryFn: () =>
       notesBoardApi.list({
         page,
         pageSize,
         q: q.trim() || undefined,
         callResult: callResultFilter,
+        status: statusFilter || undefined,
       }),
   });
 
@@ -66,24 +92,10 @@ export default function NotesBoardPage() {
     onSuccess: () => {
       message.success('Запись добавлена');
       setCreateOpen(false);
-      setEditingId(null);
       form.resetFields();
       invalidate();
     },
     onError: () => message.error('Не удалось сохранить запись'),
-  });
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, data: payload }: { id: string; data: Parameters<typeof notesBoardApi.update>[1] }) =>
-      notesBoardApi.update(id, payload),
-    onSuccess: () => {
-      message.success('Запись обновлена');
-      setCreateOpen(false);
-      setEditingId(null);
-      form.resetFields();
-      invalidate();
-    },
-    onError: () => message.error('Не удалось обновить запись'),
   });
 
   const removeMut = useMutation({
@@ -93,6 +105,21 @@ export default function NotesBoardPage() {
       invalidate();
     },
     onError: () => message.error('Не удалось удалить запись'),
+  });
+
+  const requestEditMut = useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment: string }) => notesBoardApi.requestEdit(id, comment),
+    onSuccess: () => {
+      message.success('Запрос на правку отправлен');
+      setEditRequestOpen(false);
+      setRequestRowId(null);
+      setRequestComment('');
+      invalidate();
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Не удалось отправить запрос';
+      message.error(msg);
+    },
   });
 
   const quickClientMut = useMutation({
@@ -119,7 +146,6 @@ export default function NotesBoardPage() {
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => {
-            setEditingId(null);
             form.resetFields();
             form.setFieldsValue({ lastCallAt: dayjs(), callResult: 'ANSWERED' });
             setCreateOpen(true);
@@ -153,6 +179,21 @@ export default function NotesBoardPage() {
               { label: CALL_RESULT_LABEL.ANSWERED, value: 'ANSWERED' },
               { label: CALL_RESULT_LABEL.NO_ANSWER, value: 'NO_ANSWER' },
             ]}
+          />
+          <Select
+            allowClear
+            showSearch
+            placeholder="Статус"
+            value={statusFilter}
+            style={{ width: 220 }}
+            onChange={(v) => {
+              setPage(1);
+              setStatusFilter(v);
+            }}
+            options={[...BASE_STATUSES, ...Array.from(new Set(rows.map((r) => (r.status || '').trim()).filter(Boolean)))].map((s) => ({
+              label: s,
+              value: s,
+            }))}
           />
         </Space>
       </Card>
@@ -202,8 +243,8 @@ export default function NotesBoardPage() {
             title: 'Статус',
             dataIndex: 'status',
             key: 'status',
-            width: 140,
-            render: (v: string | null) => v || '—',
+            width: 160,
+            render: (v: string | null) => (v ? <Tag color={statusColor(v)}>{v}</Tag> : '—'),
           },
           {
             title: 'Коммент',
@@ -217,33 +258,44 @@ export default function NotesBoardPage() {
             render: (_v, r) => r.author.fullName,
           },
           {
+            title: 'Правка',
+            key: 'editReq',
+            width: 200,
+            render: (_v, r) => (
+              <Space direction="vertical" size={2}>
+                <Tag color={r.editRequestCount >= 3 ? 'red' : 'processing'}>{r.editRequestCount}/3 запросов</Tag>
+                {r.lastEditRequestComment ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    Последний: {r.lastEditRequestByName || '—'}
+                  </Typography.Text>
+                ) : null}
+              </Space>
+            ),
+          },
+          {
             title: '',
             key: 'actions',
-            width: 140,
+            width: 210,
             render: (_v, r) => (
               <Space>
                 <Button
                   size="small"
                   onClick={() => {
-                    setEditingId(r.id);
-                    form.setFieldsValue({
-                      clientId: r.clientId,
-                      callResult: r.callResult,
-                      status: r.status || undefined,
-                      comment: r.comment,
-                      lastCallAt: dayjs(r.lastCallAt),
-                      nextCallAt: r.nextCallAt ? dayjs(r.nextCallAt) : null,
-                    });
-                    setCreateOpen(true);
+                    setRequestRowId(r.id);
+                    setRequestComment('');
+                    setEditRequestOpen(true);
                   }}
+                  disabled={r.editRequestCount >= 3}
                 >
-                  Изм.
+                  Запрос правки
                 </Button>
-                <Popconfirm title="Удалить запись?" onConfirm={() => removeMut.mutate(r.id)}>
-                  <Button danger size="small">
-                    Удалить
-                  </Button>
-                </Popconfirm>
+                {(isSuperAdmin || user?.id === r.author.id) && (
+                  <Popconfirm title="Удалить запись?" onConfirm={() => removeMut.mutate(r.id)}>
+                    <Button danger size="small">
+                      Удалить
+                    </Button>
+                  </Popconfirm>
+                )}
               </Space>
             ),
           },
@@ -251,14 +303,13 @@ export default function NotesBoardPage() {
       />
 
       <Modal
-        title={editingId ? 'Редактировать запись' : 'Новая запись'}
+        title="Новая запись"
         open={createOpen}
         onCancel={() => {
           setCreateOpen(false);
-          setEditingId(null);
         }}
         onOk={() => form.submit()}
-        confirmLoading={createMut.isPending || updateMut.isPending}
+        confirmLoading={createMut.isPending}
       >
         <Form
           form={form}
@@ -272,10 +323,6 @@ export default function NotesBoardPage() {
               lastCallAt: v.lastCallAt.toISOString(),
               nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
             };
-            if (editingId) {
-              updateMut.mutate({ id: editingId, data: payload });
-              return;
-            }
             createMut.mutate(payload);
           }}
         >
@@ -310,12 +357,50 @@ export default function NotesBoardPage() {
             <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
           </Form.Item>
           <Form.Item name="status" label="Статус">
-            <Input placeholder="Например: Повторный звонок" />
+            <Select
+              mode="tags"
+              maxCount={1}
+              tokenSeparators={[',']}
+              placeholder="Выберите базовый или введите свой"
+              options={BASE_STATUSES.map((s) => ({ value: s, label: s }))}
+            />
           </Form.Item>
           <Form.Item name="comment" label="Коммент" rules={[{ required: true, message: 'Введите комментарий' }]}>
             <Input.TextArea rows={4} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Запрос на правку"
+        open={editRequestOpen}
+        onCancel={() => setEditRequestOpen(false)}
+        onOk={() => {
+          const t = requestComment.trim();
+          if (!requestRowId) return;
+          if (!t) {
+            message.warning('Введите комментарий для запроса');
+            return;
+          }
+          requestEditMut.mutate({ id: requestRowId, comment: t });
+        }}
+        confirmLoading={requestEditMut.isPending}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 10 }}
+          message="Редактирование записей отключено"
+          description="Можно отправить до 3 запросов на правку с комментарием."
+        />
+        <Input.TextArea
+          rows={4}
+          value={requestComment}
+          onChange={(e) => setRequestComment(e.target.value)}
+          placeholder="Что нужно исправить?"
+          maxLength={1000}
+          showCount
+        />
       </Modal>
 
       <Modal

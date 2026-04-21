@@ -4,7 +4,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { AppError } from '../../lib/errors';
-import { listNotesBoardQueryDto, createNotesBoardDto, updateNotesBoardDto } from './notes-board.dto';
+import { listNotesBoardQueryDto, createNotesBoardDto, requestNotesBoardEditDto, updateNotesBoardDto } from './notes-board.dto';
 import { notesBoardService } from './notes-board.service';
 
 const router = Router();
@@ -47,6 +47,20 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     assertAccess(req.user!.role as Role);
     const row = await notesBoardService.update(req.params.id as string, req.body, {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+    });
+    res.json(row);
+  }),
+);
+
+router.post(
+  '/:id/edit-request',
+  validate(requestNotesBoardEditDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    assertAccess(req.user!.role as Role);
+    const row = await notesBoardService.requestEdit(req.params.id as string, req.body, {
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],

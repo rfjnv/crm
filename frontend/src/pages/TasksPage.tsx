@@ -158,7 +158,9 @@ export default function TasksPage() {
         style={{
           marginBottom: 8,
           cursor: 'pointer',
-          borderLeft: `3px solid ${task.color || (isOverdue ? token.colorError : token.colorPrimary)}`,
+          borderLeft: `6px solid ${task.color || (isOverdue ? token.colorError : token.colorPrimary)}`,
+          background: task.color ? `${task.color}12` : token.colorBgContainer,
+          borderRadius: 12,
         }}
         onClick={() => setDetailTask(task)}
       >
@@ -229,13 +231,22 @@ export default function TasksPage() {
               { label: 'Все', value: 'ALL' },
             ]}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setCreateOpen(true);
+              if (!isAdmin && user?.id) {
+                form.setFieldValue('assigneeId', user.id);
+              }
+            }}
+          >
             Новая задача
           </Button>
         </Space>
       </div>
 
-      <Card size="small" style={{ marginBottom: 12 }}>
+      <Card size="small" style={{ marginBottom: 12, borderRadius: 16 }}>
         <Row gutter={[12, 12]}>
           <Col xs={24} md={10}>
             <Typography.Text type="secondary">
@@ -244,6 +255,7 @@ export default function TasksPage() {
             <Calendar
               fullscreen={false}
               value={selectedDate}
+              style={{ borderRadius: 14, background: token.colorBgContainer }}
               onSelect={(d) => {
                 setSelectedDate(d);
                 setDateViewMode('SELECTED');
@@ -343,10 +355,15 @@ export default function TasksPage() {
         cancelText="Отмена"
       >
         <Form form={form} layout="vertical" onFinish={(v) => {
+          const assigneeId = isAdmin ? v.assigneeId : user?.id;
+          if (!assigneeId) {
+            message.error('Не удалось определить исполнителя');
+            return;
+          }
           createMut.mutate({
             title: v.title,
             description: v.description,
-            assigneeId: v.assigneeId,
+            assigneeId,
             dueDate: v.dueDate ? v.dueDate.toISOString() : undefined,
             plannedDate: v.plannedDate ? v.plannedDate.toISOString() : undefined,
             color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.(),
@@ -358,9 +375,15 @@ export default function TasksPage() {
           <Form.Item name="description" label="Описание">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="assigneeId" label="Исполнитель" rules={[{ required: true, message: 'Обязательно' }]}>
+          <Form.Item
+            name="assigneeId"
+            label="Исполнитель"
+            rules={[{ required: true, message: 'Обязательно' }]}
+            extra={!isAdmin ? 'Исполнитель назначается автоматически: вы' : undefined}
+          >
             <Select
               showSearch
+              disabled={!isAdmin}
               optionFilterProp="label"
               options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
             />
