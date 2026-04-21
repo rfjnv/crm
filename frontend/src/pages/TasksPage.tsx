@@ -15,6 +15,7 @@ import { usersApi } from '../api/users.api';
 import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useThemeStore } from '../store/themeStore';
 import type { Task, TaskStatus } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
@@ -63,6 +64,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isMobile = useIsMobile();
 
@@ -219,6 +221,22 @@ export default function TasksPage() {
     return 'Без даты';
   };
 
+  const sectionSurface = isDark
+    ? `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 45%, ${token.colorBgLayout} 100%)`
+    : token.colorBgContainer;
+  const panelSurface = isDark
+    ? `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorBgElevated} 100%)`
+    : token.colorBgContainer;
+  const accentSurface = isDark
+    ? `linear-gradient(135deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
+    : token.colorPrimaryBg;
+  const selectedDaySurface = isDark
+    ? `linear-gradient(180deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
+    : token.colorPrimaryBg;
+  const daySurface = isDark
+    ? `linear-gradient(180deg, ${token.colorBgElevated} 0%, ${token.colorBgContainer} 100%)`
+    : token.colorBgElevated;
+
   const renderTaskCard = (task: Task) => {
     const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
     const nextStatuses = getNextStatuses(task.status);
@@ -296,9 +314,10 @@ export default function TasksPage() {
     );
   };
 
-  const renderScheduleCard = (task: Task, compact = false) => {
+  const renderScheduleCard = (task: Task, compact = false, lane = false) => {
     const accent = getTaskAccent(task);
     const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && task.status !== 'APPROVED';
+    const statusLabel = STATUS_CONFIG[task.status].label;
 
     return (
       <div
@@ -310,34 +329,77 @@ export default function TasksPage() {
           if (e.key === 'Enter' || e.key === ' ') setDetailTask(task);
         }}
         style={{
-          padding: compact ? '10px 12px' : '12px 14px',
+          padding: lane ? '8px 9px' : compact ? '10px 12px' : '12px 14px',
           borderRadius: 18,
           border: `1px solid ${token.colorBorderSecondary}`,
           background: task.color ? `${task.color}18` : token.colorBgContainer,
           boxShadow: token.boxShadowSecondary,
           borderLeft: `5px solid ${accent}`,
           cursor: 'pointer',
+          minWidth: 0,
+          overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-          <Typography.Text strong style={{ fontSize: compact ? 12 : 13, lineHeight: 1.35 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: lane ? 4 : 6, minWidth: 0 }}>
+          <Typography.Paragraph
+            ellipsis={{ rows: lane ? 2 : compact ? 2 : 3 }}
+            style={{
+              margin: 0,
+              minWidth: 0,
+              fontSize: lane ? 11 : compact ? 12 : 13,
+              lineHeight: lane ? 1.25 : 1.35,
+              fontWeight: 600,
+              color: token.colorText,
+            }}
+          >
             {task.title}
-          </Typography.Text>
-          <Tag color={STATUS_CONFIG[task.status].color} style={{ margin: 0, flexShrink: 0 }}>
-            {STATUS_CONFIG[task.status].label}
-          </Tag>
+          </Typography.Paragraph>
+          {lane ? (
+            <span
+              title={statusLabel}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: accent,
+                flexShrink: 0,
+                marginTop: 3,
+              }}
+            />
+          ) : (
+            <Tag color={STATUS_CONFIG[task.status].color} style={{ margin: 0, flexShrink: 0 }}>
+              {statusLabel}
+            </Tag>
+          )}
         </div>
 
-        <Space size={6} wrap style={{ marginBottom: 4 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {task.assignee?.fullName || 'Без исполнителя'}
-          </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        {lane ? (
+          <Typography.Text
+            type="secondary"
+            style={{
+              fontSize: 10,
+              display: 'block',
+              marginBottom: 4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             {formatTaskAnchor(task)}
           </Typography.Text>
-        </Space>
+        ) : (
+          <Space size={6} wrap style={{ marginBottom: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {task.assignee?.fullName || 'Без исполнителя'}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {formatTaskAnchor(task)}
+            </Typography.Text>
+          </Space>
+        )}
 
-        {task.description ? (
+        {task.description && !lane ? (
           <Typography.Paragraph
             ellipsis={{ rows: compact ? 1 : 2 }}
             style={{ margin: 0, color: token.colorTextSecondary, fontSize: 11 }}
@@ -346,21 +408,27 @@ export default function TasksPage() {
           </Typography.Paragraph>
         ) : null}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: lane ? 6 : 8, gap: 6 }}>
           <Space size={6}>
-            {(task._count?.attachments ?? 0) > 0 ? (
+            {!lane && (task._count?.attachments ?? 0) > 0 ? (
               <Tag bordered={false} style={{ margin: 0, borderRadius: 999, background: token.colorFillTertiary }}>
                 <PaperClipOutlined /> {task._count?.attachments}
               </Tag>
             ) : null}
             {isOverdue ? (
-              <Tag color="error" style={{ margin: 0 }}>
-                Просрочено
-              </Tag>
+              lane ? (
+                <Typography.Text style={{ color: token.colorError, fontSize: 10 }}>
+                  Просрочено
+                </Typography.Text>
+              ) : (
+                <Tag color="error" style={{ margin: 0 }}>
+                  Просрочено
+                </Tag>
+              )
             ) : null}
           </Space>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {dayjs(task.createdAt).format('DD.MM')}
+          <Typography.Text type="secondary" style={{ fontSize: lane ? 10 : 11, flexShrink: 0 }}>
+            {lane ? statusLabel : dayjs(task.createdAt).format('DD.MM')}
           </Typography.Text>
         </div>
       </div>
@@ -429,7 +497,7 @@ export default function TasksPage() {
         style={{
           marginBottom: 16,
           borderRadius: 32,
-          background: `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 45%, ${token.colorBgLayout} 100%)`,
+          background: sectionSurface,
           borderColor: token.colorBorderSecondary,
           boxShadow: token.boxShadowSecondary,
         }}
@@ -442,7 +510,7 @@ export default function TasksPage() {
                 style={{
                   borderRadius: 24,
                   padding: 16,
-                  background: token.colorBgContainer,
+                  background: panelSurface,
                   border: `1px solid ${token.colorBorderSecondary}`,
                   boxShadow: token.boxShadowSecondary,
                 }}
@@ -495,7 +563,7 @@ export default function TasksPage() {
                 style={{
                   borderRadius: 24,
                   padding: 16,
-                  background: token.colorBgContainer,
+                  background: panelSurface,
                   border: `1px solid ${token.colorBorderSecondary}`,
                   boxShadow: token.boxShadowSecondary,
                 }}
@@ -535,7 +603,7 @@ export default function TasksPage() {
                 style={{
                   borderRadius: 24,
                   padding: 16,
-                  background: token.colorBgContainer,
+                  background: panelSurface,
                   border: `1px solid ${token.colorBorderSecondary}`,
                   boxShadow: token.boxShadowSecondary,
                 }}
@@ -551,7 +619,7 @@ export default function TasksPage() {
                     borderRadius: 18,
                     padding: '12px 14px',
                     marginBottom: 12,
-                    background: `linear-gradient(135deg, ${token.colorPrimaryBg} 0%, ${token.colorBgElevated} 100%)`,
+                    background: accentSurface,
                     border: `1px solid ${token.colorPrimaryBorder}`,
                   }}
                 >
@@ -578,7 +646,7 @@ export default function TasksPage() {
               style={{
                 borderRadius: 28,
                 padding: isMobile ? 14 : 18,
-                background: `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorBgElevated} 100%)`,
+                background: panelSurface,
                 border: `1px solid ${token.colorBorderSecondary}`,
                 boxShadow: token.boxShadowSecondary,
               }}
@@ -637,7 +705,7 @@ export default function TasksPage() {
                   style={{
                     borderRadius: 22,
                     padding: 16,
-                    background: `linear-gradient(135deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`,
+                    background: accentSurface,
                     border: `1px solid ${token.colorPrimaryBorder}`,
                   }}
                 >
@@ -660,7 +728,7 @@ export default function TasksPage() {
                   style={{
                     borderRadius: 22,
                     padding: 16,
-                    background: token.colorBgContainer,
+                    background: panelSurface,
                     border: `1px solid ${token.colorBorderSecondary}`,
                   }}
                 >
@@ -702,8 +770,8 @@ export default function TasksPage() {
                           borderRadius: 22,
                           padding: 14,
                           background: isSelectedDay
-                            ? `linear-gradient(180deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
-                            : token.colorBgElevated,
+                            ? selectedDaySurface
+                            : daySurface,
                           border: `1px solid ${isCurrentDay ? token.colorPrimary : token.colorBorderSecondary}`,
                           boxShadow: isSelectedDay ? token.boxShadowSecondary : undefined,
                         }}
@@ -721,7 +789,7 @@ export default function TasksPage() {
                           {dayTasks.length === 0 ? (
                             <Typography.Text type="secondary">Нет задач</Typography.Text>
                           ) : (
-                            dayTasks.map((task) => renderScheduleCard(task, true))
+                            dayTasks.map((task) => renderScheduleCard(task, true, true))
                           )}
                         </div>
                       </div>
@@ -749,10 +817,12 @@ export default function TasksPage() {
                           borderRadius: 26,
                           padding: 12,
                           background: isSelectedDay
-                            ? `linear-gradient(180deg, ${token.colorPrimaryBg} 0%, ${token.colorBgContainer} 100%)`
-                            : `linear-gradient(180deg, ${token.colorBgElevated} 0%, ${token.colorBgContainer} 100%)`,
+                            ? selectedDaySurface
+                            : daySurface,
                           border: `1px solid ${isCurrentDay ? token.colorPrimary : token.colorBorderSecondary}`,
                           boxShadow: isSelectedDay ? token.boxShadowSecondary : undefined,
+                          minWidth: 0,
+                          overflow: 'hidden',
                         }}
                       >
                         <button
@@ -788,7 +858,7 @@ export default function TasksPage() {
                           </div>
                         </button>
 
-                        <div style={{ display: 'grid', gap: 10, maxHeight: 320, overflowY: 'auto', paddingRight: 2 }}>
+                        <div style={{ display: 'grid', gap: 8, maxHeight: 320, overflowY: 'auto', paddingRight: 2, minWidth: 0 }}>
                           {dayTasks.length === 0 ? (
                             <div
                               style={{
@@ -806,7 +876,7 @@ export default function TasksPage() {
                               </Typography.Text>
                             </div>
                           ) : (
-                            dayTasks.map((task) => renderScheduleCard(task, true))
+                            dayTasks.map((task) => renderScheduleCard(task, true, true))
                           )}
                         </div>
                       </div>
@@ -882,13 +952,20 @@ export default function TasksPage() {
 
       {/* Create Modal */}
       <Modal
-        title="Новая задача"
+        title={(
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Новая задача</Typography.Text>
+            <Typography.Title level={5} style={{ margin: 0 }}>Создать и запланировать задачу</Typography.Title>
+          </div>
+        )}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={createMut.isPending}
-        okText="Создать"
+        okText="Создать задачу"
         cancelText="Отмена"
+        width={isMobile ? undefined : 720}
+        styles={{ body: { paddingTop: 8 } }}
       >
         <Form form={form} layout="vertical" onFinish={(v) => {
           const assigneeId = isAdmin ? v.assigneeId : user?.id;
@@ -905,40 +982,70 @@ export default function TasksPage() {
             color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.(),
           });
         }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: '12px 14px',
+              marginBottom: 16,
+              background: accentSurface,
+              border: `1px solid ${token.colorPrimaryBorder}`,
+            }}
+          >
+            <Typography.Text strong style={{ display: 'block' }}>
+              Коротко и понятно
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Укажите задачу, дату плана и цвет, чтобы она была заметнее в недельном календаре.
+            </Typography.Text>
+          </div>
           <Form.Item name="title" label="Заголовок" rules={[{ required: true, message: 'Обязательно' }]}>
-            <Input />
+            <Input size="large" placeholder="Например: Позвонить клиенту и согласовать заказ" />
           </Form.Item>
           <Form.Item name="description" label="Описание">
-            <Input.TextArea rows={3} />
+            <Input.TextArea rows={4} placeholder="Что именно нужно сделать, какие детали важно не забыть?" />
           </Form.Item>
-          <Form.Item
-            name="assigneeId"
-            label="Исполнитель"
-            rules={[{ required: true, message: 'Обязательно' }]}
-            extra={!isAdmin ? 'Исполнитель назначается автоматически: вы' : undefined}
-          >
-            <Select
-              showSearch
-              disabled={!isAdmin}
-              optionFilterProp="label"
-              options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
-            />
-          </Form.Item>
-          <Form.Item name="dueDate" label="Срок">
-            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
-          </Form.Item>
-          <Form.Item name="plannedDate" label="План на дату">
-            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
-          </Form.Item>
-          <Form.Item
-            name="color"
-            label="Цвет задачи"
-            getValueFromEvent={(v: string | { toHexString?: () => string }) =>
-              typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
-            }
-          >
-            <ColorPicker showText format="hex" disabledAlpha />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="assigneeId"
+                label="Исполнитель"
+                rules={[{ required: true, message: 'Обязательно' }]}
+                extra={!isAdmin ? 'Исполнитель назначается автоматически: вы' : undefined}
+              >
+                <Select
+                  size="large"
+                  showSearch
+                  disabled={!isAdmin}
+                  optionFilterProp="label"
+                  placeholder="Выберите исполнителя"
+                  options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="color"
+                label="Цвет задачи"
+                getValueFromEvent={(v: string | { toHexString?: () => string }) =>
+                  typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
+                }
+              >
+                <ColorPicker showText format="hex" disabledAlpha size="large" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item name="dueDate" label="Срок">
+                <DatePicker size="large" style={{ width: '100%' }} format="DD.MM.YYYY" placeholder="Когда дедлайн" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="plannedDate" label="План на дату">
+                <DatePicker size="large" style={{ width: '100%' }} format="DD.MM.YYYY" placeholder="Когда делать" />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 
@@ -965,10 +1072,16 @@ export default function TasksPage() {
 
       {/* Task Detail Drawer */}
       <Drawer
-        title={detailTask?.title}
+        title={(
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Карточка задачи</Typography.Text>
+            <Typography.Title level={5} style={{ margin: 0 }}>{detailTask?.title}</Typography.Title>
+          </div>
+        )}
         open={!!detailTask}
         onClose={() => setDetailTask(null)}
-        width={isMobile ? '100%' : 480}
+        width={isMobile ? '100%' : 560}
+        styles={{ body: { paddingTop: 12 } }}
         extra={
           detailTask && (isAdmin || detailTask.createdById === user?.id) ? (
             <Popconfirm title="Удалить задачу?" onConfirm={() => deleteMut.mutate(detailTask.id)}>
@@ -980,65 +1093,97 @@ export default function TasksPage() {
         {detailTask && (
           <div>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <div>
-                <Typography.Text type="secondary">Статус</Typography.Text>
-                <div><Tag color={STATUS_CONFIG[detailTask.status].color}>{STATUS_CONFIG[detailTask.status].label}</Tag></div>
+              <div
+                style={{
+                  borderRadius: 20,
+                  padding: 16,
+                  background: accentSurface,
+                  border: `1px solid ${token.colorPrimaryBorder}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                      Текущий статус
+                    </Typography.Text>
+                    <Tag color={STATUS_CONFIG[detailTask.status].color} style={{ marginTop: 8 }}>
+                      {STATUS_CONFIG[detailTask.status].label}
+                    </Tag>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {detailTask.color ? (
+                      <>
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 999,
+                            background: detailTask.color,
+                            border: `1px solid ${token.colorBorder}`,
+                          }}
+                        />
+                        <Typography.Text type="secondary">{detailTask.color}</Typography.Text>
+                      </>
+                    ) : (
+                      <Typography.Text type="secondary">Без цвета</Typography.Text>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {detailTask.description && (
-                <div>
+                <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                   <Typography.Text type="secondary">Описание</Typography.Text>
-                  <div><Typography.Text>{detailTask.description}</Typography.Text></div>
+                  <div style={{ marginTop: 6 }}><Typography.Text>{detailTask.description}</Typography.Text></div>
                 </div>
               )}
 
-              <div>
-                <Typography.Text type="secondary">Исполнитель</Typography.Text>
-                <div><Typography.Text>{detailTask.assignee?.fullName}</Typography.Text></div>
-              </div>
-
-              <div>
-                <Typography.Text type="secondary">Постановщик</Typography.Text>
-                <div><Typography.Text>{detailTask.createdBy?.fullName}</Typography.Text></div>
-              </div>
-
-              {detailTask.dueDate && (
-                <div>
-                  <Typography.Text type="secondary">Срок</Typography.Text>
-                  <div><Typography.Text>{dayjs(detailTask.dueDate).format('DD.MM.YYYY')}</Typography.Text></div>
-                </div>
-              )}
-
-              {detailTask.plannedDate && (
-                <div>
-                  <Typography.Text type="secondary">Плановая дата</Typography.Text>
-                  <div><Typography.Text>{dayjs(detailTask.plannedDate).format('DD.MM.YYYY')}</Typography.Text></div>
-                </div>
-              )}
-
-              {detailTask.color && (
-                <div>
-                  <Typography.Text type="secondary">Цвет</Typography.Text>
-                  <div>
-                    <Tag color={detailTask.color}>{detailTask.color}</Tag>
+              <Row gutter={[12, 12]}>
+                <Col xs={24} sm={12}>
+                  <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                    <Typography.Text type="secondary">Исполнитель</Typography.Text>
+                    <div style={{ marginTop: 6 }}><Typography.Text strong>{detailTask.assignee?.fullName}</Typography.Text></div>
                   </div>
-                </div>
-              )}
-
-              <div>
-                <Typography.Text type="secondary">Создано</Typography.Text>
-                <div><Typography.Text>{dayjs(detailTask.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
-              </div>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                    <Typography.Text type="secondary">Постановщик</Typography.Text>
+                    <div style={{ marginTop: 6 }}><Typography.Text strong>{detailTask.createdBy?.fullName}</Typography.Text></div>
+                  </div>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                    <Typography.Text type="secondary">Срок</Typography.Text>
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text>{detailTask.dueDate ? dayjs(detailTask.dueDate).format('DD.MM.YYYY') : 'Не задан'}</Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                    <Typography.Text type="secondary">Плановая дата</Typography.Text>
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text>{detailTask.plannedDate ? dayjs(detailTask.plannedDate).format('DD.MM.YYYY') : 'Не задана'}</Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={24}>
+                  <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+                    <Typography.Text type="secondary">Создано</Typography.Text>
+                    <div style={{ marginTop: 6 }}><Typography.Text>{dayjs(detailTask.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                  </div>
+                </Col>
+              </Row>
 
               {/* Report section */}
-              <div>
+              <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                 <Typography.Text type="secondary">Отчёт</Typography.Text>
                 {detailTask.report ? (
                   <div style={{
-                    background: token.colorBgLayout,
+                    background: token.colorBgElevated,
                     padding: 12,
-                    borderRadius: 6,
-                    marginTop: 4,
+                    borderRadius: 12,
+                    marginTop: 8,
                   }}>
                     <Typography.Text>{detailTask.report}</Typography.Text>
                   </div>
@@ -1064,9 +1209,9 @@ export default function TasksPage() {
 
               {/* Approval info */}
               {detailTask.approvedBy && (
-                <div>
+                <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                   <Typography.Text type="secondary">Утверждено</Typography.Text>
-                  <div>
+                  <div style={{ marginTop: 6 }}>
                     <Typography.Text>
                       {detailTask.approvedBy.fullName} — {dayjs(detailTask.approvedAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
@@ -1087,7 +1232,7 @@ export default function TasksPage() {
               )}
 
               {/* Attachments */}
-              <div>
+              <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                 <Typography.Text type="secondary">Вложения</Typography.Text>
                 <List
                   size="small"
