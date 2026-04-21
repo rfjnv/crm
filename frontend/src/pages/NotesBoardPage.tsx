@@ -49,6 +49,17 @@ function statusColor(name?: string | null): string {
   return palette[Math.abs(hash) % palette.length];
 }
 
+/** Select mode="tags" может вернуть строку или массив из одного тега — иначе .trim() ломает сохранение. */
+function normalizeStatusField(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (Array.isArray(v)) {
+    const s = v[0];
+    return typeof s === 'string' ? s.trim() || undefined : undefined;
+  }
+  if (typeof v === 'string') return v.trim() || undefined;
+  return undefined;
+}
+
 export default function NotesBoardPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -69,6 +80,9 @@ export default function NotesBoardPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isAdmin = user?.role === 'ADMIN';
+  const canEditNote = (authorId: string) =>
+    !!user?.id && (isSuperAdmin || isAdmin || user.id === authorId);
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
@@ -141,7 +155,7 @@ export default function NotesBoardPage() {
       message.success('Заметка обновлена');
       setEditOpen(false);
       setEditingId(null);
-      form.resetFields();
+      editForm.resetFields();
       invalidate();
     },
     onError: (e: unknown) => {
@@ -309,7 +323,7 @@ export default function NotesBoardPage() {
             width: 210,
             render: (_v, r) => (
               <Space>
-                {(isSuperAdmin || user?.id === r.author.id) ? (
+                {canEditNote(r.author.id) ? (
                   <Button
                     size="small"
                     onClick={() => {
@@ -369,7 +383,7 @@ export default function NotesBoardPage() {
             const payload = {
               clientId: v.clientId,
               callResult: v.callResult as CallResult,
-              status: (v.status || '').trim() || undefined,
+              status: normalizeStatusField(v.status),
               comment: (v.comment || '').trim(),
               lastCallAt: v.lastCallAt.toISOString(),
               nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -425,7 +439,10 @@ export default function NotesBoardPage() {
       <Modal
         title="Редактировать заметку"
         open={editOpen}
-        onCancel={() => setEditOpen(false)}
+        onCancel={() => {
+          setEditOpen(false);
+          setEditingId(null);
+        }}
         onOk={() => editForm.submit()}
         confirmLoading={updateMut.isPending}
       >
@@ -434,11 +451,12 @@ export default function NotesBoardPage() {
           layout="vertical"
           onFinish={(v) => {
             if (!editingId) return;
+            const st = normalizeStatusField(v.status);
             updateMut.mutate({
               id: editingId,
               data: {
                 callResult: v.callResult as CallResult,
-                status: (v.status || '').trim() || null,
+                status: st ?? null,
                 comment: (v.comment || '').trim(),
                 lastCallAt: v.lastCallAt?.toISOString(),
                 nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -493,8 +511,8 @@ export default function NotesBoardPage() {
           type="info"
           showIcon
           style={{ marginBottom: 10 }}
-          message="Редактирование записей отключено"
-          description="Можно отправить до 3 запросов на правку с комментарием."
+          message="Запрос автору на правку"
+          description="Автор и администраторы могут править запись сами. Остальные — до 3 запросов с комментарием."
         />
         <Input.TextArea
           rows={4}

@@ -16,6 +16,9 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { Task, TaskStatus } from '../types';
 import dayjs from 'dayjs';
+import 'dayjs/locale/ru';
+
+dayjs.locale('ru');
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
   TODO: { label: 'К выполнению', color: 'default' },
@@ -142,6 +145,12 @@ export default function TasksPage() {
 
   const visibleTasks = tasks.filter(matchesActiveDate);
 
+  const tasksOnCalendarDay = (d: dayjs.Dayjs) =>
+    tasks.filter((t) => {
+      const base = t.plannedDate || t.dueDate;
+      return base && dayjs(base).isSame(d, 'day');
+    });
+
   const tasksByStatus = (status: TaskStatus) =>
     visibleTasks.filter((t) => t.status === status).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
@@ -246,41 +255,138 @@ export default function TasksPage() {
         </Space>
       </div>
 
-      <Card size="small" style={{ marginBottom: 12, borderRadius: 16 }}>
-        <Row gutter={[12, 12]}>
+      <Card
+        size="small"
+        style={{
+          marginBottom: 12,
+          borderRadius: 20,
+          background: `linear-gradient(165deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 100%)`,
+          borderColor: token.colorBorderSecondary,
+        }}
+        styles={{ body: { padding: 16 } }}
+      >
+        <Row gutter={[16, 16]}>
           <Col xs={24} md={10}>
-            <Typography.Text type="secondary">
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
               <CalendarOutlined /> Календарь планов
             </Typography.Text>
-            <Calendar
-              fullscreen={false}
-              value={selectedDate}
-              style={{ borderRadius: 14, background: token.colorBgContainer }}
-              onSelect={(d) => {
-                setSelectedDate(d);
-                setDateViewMode('SELECTED');
+            <div
+              style={{
+                borderRadius: 18,
+                padding: 8,
+                background: token.colorBgContainer,
+                boxShadow: `inset 0 1px 0 ${token.colorBorderSecondary}`,
               }}
-            />
+            >
+              <Calendar
+                fullscreen={false}
+                showWeek
+                value={selectedDate}
+                style={{ borderRadius: 12 }}
+                onSelect={(d) => {
+                  setSelectedDate(d);
+                  setDateViewMode('SELECTED');
+                }}
+                dateCellRender={(d) => {
+                  const dayTasks = tasksOnCalendarDay(d);
+                  if (dayTasks.length === 0) return null;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: 3,
+                        flexWrap: 'wrap',
+                        marginTop: 2,
+                        minHeight: 14,
+                      }}
+                    >
+                      {dayTasks.slice(0, 5).map((t) => (
+                        <span
+                          key={t.id}
+                          title={t.title}
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: 999,
+                            background: t.color || token.colorPrimary,
+                            boxShadow: `0 0 0 1px ${token.colorBgContainer}`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                }}
+              />
+            </div>
           </Col>
           <Col xs={24} md={14}>
-            <Typography.Text strong>
-              Планы на {dateViewMode === 'TODAY' ? 'сегодня' : selectedDate.format('DD.MM.YYYY')}
-            </Typography.Text>
-            <List
-              size="small"
-              style={{ marginTop: 8 }}
-              locale={{ emptyText: 'На выбранную дату задач нет' }}
-              dataSource={visibleTasks.slice(0, 8)}
-              renderItem={(task) => (
-                <List.Item>
-                  <Space>
-                    <span style={{ width: 10, height: 10, borderRadius: 10, background: task.color || token.colorPrimary }} />
-                    <Typography.Text>{task.title}</Typography.Text>
-                    <Tag>{STATUS_CONFIG[task.status].label}</Tag>
-                  </Space>
-                </List.Item>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <Typography.Text strong style={{ fontSize: 15 }}>
+                {dateViewMode === 'TODAY' ? 'Сегодня' : dateViewMode === 'ALL' ? 'Все задачи' : selectedDate.format('dddd, D MMMM')}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Всего: {visibleTasks.length}
+              </Typography.Text>
+            </div>
+            <div
+              style={{
+                maxHeight: 240,
+                overflowY: 'auto',
+                paddingRight: 4,
+              }}
+            >
+              {visibleTasks.length === 0 ? (
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                  На выбранную дату задач нет
+                </Typography.Text>
+              ) : (
+                visibleTasks.slice(0, 12).map((task) => (
+                  <div
+                    key={task.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetailTask(task)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') setDetailTask(task);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      padding: '10px 12px',
+                      marginBottom: 8,
+                      borderRadius: 14,
+                      cursor: 'pointer',
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      background: task.color ? `${task.color}18` : token.colorBgContainer,
+                      borderLeft: `4px solid ${task.color || token.colorPrimary}`,
+                      transition: 'box-shadow 0.15s ease, transform 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = token.boxShadowSecondary;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Typography.Text strong style={{ fontSize: 13, display: 'block' }}>
+                        {task.title}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        {task.assignee?.fullName}
+                        {task.plannedDate ? ` · план ${dayjs(task.plannedDate).format('DD.MM')}` : ''}
+                        {task.dueDate && !task.plannedDate ? ` · срок ${dayjs(task.dueDate).format('DD.MM')}` : ''}
+                      </Typography.Text>
+                    </div>
+                    <Tag style={{ margin: 0, flexShrink: 0 }} color={STATUS_CONFIG[task.status].color}>
+                      {STATUS_CONFIG[task.status].label}
+                    </Tag>
+                  </div>
+                ))
               )}
-            />
+            </div>
           </Col>
         </Row>
       </Card>

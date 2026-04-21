@@ -32,7 +32,11 @@ function canDeleteRow(user: AuthUser, authorId: string): boolean {
 }
 
 function canEditRow(user: AuthUser, authorId: string): boolean {
-  return user.role === 'SUPER_ADMIN' || user.userId === authorId;
+  return (
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'ADMIN' ||
+    user.userId === authorId
+  );
 }
 
 function mapRow(row: {
@@ -174,7 +178,7 @@ export class NotesBoardService {
     });
     if (!existing) throw new AppError(404, 'Запись не найдена');
     if (!canEditRow(user, existing.authorId)) {
-      throw new AppError(403, 'Редактировать может только автор или супер-админ');
+      throw new AppError(403, 'Редактировать может только автор, администратор или супер-админ');
     }
 
     const updated = await prisma.notesBoardRow.update({

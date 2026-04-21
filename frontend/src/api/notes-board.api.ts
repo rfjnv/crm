@@ -28,7 +28,9 @@ export type NotesBoardCreatePayload = {
   nextCallAt?: string | null;
 };
 
-export type NotesBoardUpdatePayload = Partial<NotesBoardCreatePayload>;
+export type NotesBoardUpdatePayload = Partial<Omit<NotesBoardCreatePayload, 'status'>> & {
+  status?: string | null;
+};
 
 export const notesBoardApi = {
   list: (params?: {
