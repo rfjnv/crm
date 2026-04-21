@@ -8,7 +8,7 @@ import {
   PlusOutlined, DeleteOutlined, UploadOutlined, PaperClipOutlined,
   ArrowRightOutlined, ArrowLeftOutlined, CheckOutlined, FileTextOutlined,
   CalendarOutlined, LeftOutlined, RightOutlined, ClockCircleOutlined,
-  AppstoreOutlined, WarningOutlined,
+  AppstoreOutlined, WarningOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { tasksApi } from '../api/tasks.api';
 import { usersApi } from '../api/users.api';
@@ -64,12 +64,14 @@ function normalizeChecklist(items: Array<{ text?: string; checked?: boolean }> |
 
 export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [reportModal, setReportModal] = useState<Task | null>(null);
   const [reportText, setReportText] = useState('');
   const [dateViewMode, setDateViewMode] = useState<DateViewMode>('WEEK');
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -245,6 +247,7 @@ export default function TasksPage() {
     const done = items.filter((item) => item.checked).length;
     return { total: items.length, done };
   };
+  const canEditTask = (task: Task) => isAdmin || task.assigneeId === user?.id;
 
   const sectionSurface = isDark
     ? `linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillAlter} 45%, ${token.colorBgLayout} 100%)`
@@ -1177,13 +1180,34 @@ export default function TasksPage() {
         onClose={() => setDetailTask(null)}
         width={isMobile ? '100%' : 560}
         styles={{ body: { paddingTop: 12 } }}
-        extra={
-          detailTask && (isAdmin || detailTask.createdById === user?.id) ? (
-            <Popconfirm title="Удалить задачу?" onConfirm={() => deleteMut.mutate(detailTask.id)}>
-              <Button danger icon={<DeleteOutlined />} size="small">Удалить</Button>
-            </Popconfirm>
-          ) : null
-        }
+        extra={detailTask ? (
+          <Space>
+            {canEditTask(detailTask) && (
+              <Button
+                icon={<EditOutlined />}
+                size="small"
+                onClick={() => {
+                  editForm.setFieldsValue({
+                    title: detailTask.title,
+                    description: detailTask.description || '',
+                    dueDate: detailTask.dueDate ? dayjs(detailTask.dueDate) : null,
+                    plannedDate: detailTask.plannedDate ? dayjs(detailTask.plannedDate) : null,
+                    color: detailTask.color || undefined,
+                    checklist: (detailTask.checklist || []).map((item) => ({ text: item.text, checked: item.checked })),
+                  });
+                  setEditOpen(true);
+                }}
+              >
+                Редактировать
+              </Button>
+            )}
+            {(isAdmin || detailTask.createdById === user?.id) ? (
+              <Popconfirm title="Удалить задачу?" onConfirm={() => deleteMut.mutate(detailTask.id)}>
+                <Button danger icon={<DeleteOutlined />} size="small">Удалить</Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        ) : null}
       >
         {detailTask && (
           <div>
@@ -1399,6 +1423,108 @@ export default function TasksPage() {
           </div>
         )}
       </Drawer>
+
+      <Modal
+        title={(
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Редактирование</Typography.Text>
+            <Typography.Title level={5} style={{ margin: 0 }}>Обновить задачу</Typography.Title>
+          </div>
+        )}
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        onOk={() => editForm.submit()}
+        confirmLoading={updateTaskMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+        width={isMobile ? undefined : 720}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(v) => {
+            if (!detailTask) return;
+            updateTaskMut.mutate({
+              id: detailTask.id,
+              data: {
+                title: (v.title || '').trim(),
+                description: (v.description || '').trim() || undefined,
+                dueDate: v.dueDate ? v.dueDate.toISOString() : null,
+                plannedDate: v.plannedDate ? v.plannedDate.toISOString() : null,
+                color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.() || null,
+                checklist: normalizeChecklist(v.checklist),
+              },
+            }, {
+              onSuccess: () => {
+                message.success('Задача обновлена');
+                setEditOpen(false);
+              },
+            });
+          }}
+        >
+          <Form.Item name="title" label="Заголовок" rules={[{ required: true, message: 'Обязательно' }]}>
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item name="description" label="Описание">
+            <Input.TextArea rows={4} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item name="dueDate" label="Срок">
+                <DatePicker size="large" style={{ width: '100%' }} format="DD.MM.YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="plannedDate" label="План на дату">
+                <DatePicker size="large" style={{ width: '100%' }} format="DD.MM.YYYY" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item
+            name="color"
+            label="Цвет задачи"
+            getValueFromEvent={(v: string | { toHexString?: () => string }) =>
+              typeof v === 'string' ? v : v?.toHexString?.() ?? '#22609A'
+            }
+          >
+            <ColorPicker showText format="hex" disabledAlpha size="large" />
+          </Form.Item>
+
+          <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 10 }}>Чеклист</Typography.Text>
+            <Form.List name="checklist">
+              {(fields, { add, remove }) => (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {fields.map((field, index) => (
+                    <div
+                      key={field.key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '28px minmax(0, 1fr) auto',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Form.Item name={[field.name, 'checked']} valuePropName="checked" style={{ margin: 0 }}>
+                        <Checkbox />
+                      </Form.Item>
+                      <Form.Item name={[field.name, 'text']} rules={[{ required: true, message: 'Введите текст пункта' }]} style={{ margin: 0 }}>
+                        <Input size="large" placeholder={`Пункт ${index + 1}`} />
+                      </Form.Item>
+                      <Button danger onClick={() => remove(field.name)}>
+                        Удалить
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ text: '', checked: false })}>
+                    Добавить пункт
+                  </Button>
+                </div>
+              )}
+            </Form.List>
+          </div>
+        </Form>
+      </Modal>
     </div>
   );
 }
