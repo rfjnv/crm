@@ -56,7 +56,7 @@ function parseMatrixListParams(sp: URLSearchParams): {
   const selectedClients = clientsPart
     ? [...new Set(clientsPart.split(',').map((s) => s.trim()).filter(Boolean))]
     : [];
-  const clientSearch = (sp.get('clientSearch') || '').trim();
+  const clientSearch = sp.get('clientSearch') || '';
 
   const rawPage = parseInt(sp.get('page') || '1', 10);
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
@@ -102,7 +102,7 @@ function mergeMatrixListSearchParams(
   if (next.selectedClients.length) merged.set('clients', next.selectedClients.join(','));
   else merged.delete('clients');
 
-  if (next.clientSearch.trim()) merged.set('clientSearch', next.clientSearch.trim());
+  if (next.clientSearch.trim()) merged.set('clientSearch', next.clientSearch);
   else merged.delete('clientSearch');
 
   if (next.page !== 1) merged.set('page', String(next.page));

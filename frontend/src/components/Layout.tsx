@@ -801,7 +801,7 @@ export default function Layout() {
             }}
             style={{
               position: 'fixed',
-              left: 16,
+              right: 16,
               bottom: (isMobile ? 92 : 24) + (hasMyTasks ? 56 : 0),
               zIndex: 1200,
               borderRadius: 999,
@@ -884,7 +884,7 @@ export default function Layout() {
             }}
             style={{
               position: 'fixed',
-              left: 16,
+              right: 16,
               bottom: isMobile ? 92 : 24,
               zIndex: 1200,
               borderRadius: 999,
