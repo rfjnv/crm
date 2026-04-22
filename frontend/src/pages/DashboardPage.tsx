@@ -113,6 +113,16 @@ export default function DashboardPage() {
   const chartRange = useDashboardChartRange();
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
 
+  // NOTE: must be before the early return — React rules of hooks
+  const topProductClientsByRevenue = useMemo(() => {
+    const clients = data?.productOfDay?.[productDayPeriod]?.clients;
+    if (!clients?.length) return [];
+    return [...clients]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6)
+      .map((client) => ({ companyName: client.companyName, revenue: client.revenue }));
+  }, [data, productDayPeriod]);
+
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -165,16 +175,6 @@ export default function DashboardPage() {
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const selectedProductOfDay = data.productOfDay?.[productDayPeriod] ?? null;
-  const topProductClientsByRevenue = useMemo(() => {
-    if (!selectedProductOfDay?.clients?.length) return [];
-    return [...selectedProductOfDay.clients]
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 6)
-      .map((client) => ({
-        companyName: client.companyName,
-        revenue: client.revenue,
-      }));
-  }, [selectedProductOfDay]);
 
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
