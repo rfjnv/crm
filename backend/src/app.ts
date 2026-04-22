@@ -37,6 +37,7 @@ import { internalReportsRoutes } from './modules/internal/reports.routes';
 import notesBoardRoutes from './modules/notes-board/notes-board.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
+import './modules/notes-board/notes-board-reminders.scheduler';
 
 const app = express();
 
