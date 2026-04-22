@@ -19,7 +19,7 @@ import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
-import SuperOverrideModal from '../components/SuperOverrideModal';
+import SuperOverridePanel from '../components/SuperOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
@@ -136,9 +136,22 @@ export default function DealDetailPage() {
     }
   }, [dealData?.items, setQuantitiesModal, quantitiesForm]);
 
+  useEffect(() => {
+    if (!warehouseResponseModal || !dealData?.items) return;
+    warehouseForm.setFieldsValue({
+      items: dealData.items.map((item) => ({
+        dealItemId: item.id,
+        productName: item.product?.name || 'Товар',
+        requestComment: item.requestComment || '',
+        requestedQty: Number(item.requestedQty) || 1,
+        warehouseComment: item.warehouseComment || '',
+      })),
+    });
+  }, [warehouseResponseModal, dealData?.items, warehouseForm]);
+
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: usersApi.list,
+    queryFn: () => usersApi.list(),
     enabled: role === 'SUPER_ADMIN' || role === 'ADMIN',
   });
 
@@ -215,7 +228,7 @@ export default function DealDetailPage() {
   });
 
   const addItemMut = useMutation({
-    mutationFn: (data: { productId: string; requestComment?: string }) => dealsApi.addItem(id!, data),
+    mutationFn: (data: { productId: string; requestedQty: number; price: number; requestComment?: string }) => dealsApi.addItem(id!, data),
     onSuccess: () => {
       invalidate();
       // If setting quantities modal is open, don't close item modal
@@ -240,7 +253,7 @@ export default function DealDetailPage() {
   });
 
   const warehouseResponseMut = useMutation({
-    mutationFn: (items: { dealItemId: string; warehouseComment: string }[]) =>
+    mutationFn: (items: { dealItemId: string; warehouseComment: string; requestedQty: number }[]) =>
       dealsApi.submitWarehouseResponse(id!, items),
     onSuccess: () => { invalidate(); setWarehouseResponseModal(false); warehouseForm.resetFields(); message.success('Ответ склада отправлен'); },
     onError: (err: unknown) => {
@@ -1490,7 +1503,19 @@ export default function DealDetailPage() {
         okText="Добавить"
         cancelText="Отмена"
       >
-        <Form form={itemForm} layout="vertical" onFinish={(v) => addItemMut.mutate({ productId: v.productId, requestComment: v.requestComment || undefined })}>
+        <Form
+          form={itemForm}
+          layout="vertical"
+          onFinish={(v) => {
+            const selectedProduct = (products ?? []).find((p) => p.id === v.productId);
+            addItemMut.mutate({
+              productId: v.productId,
+              requestedQty: 1,
+              price: Number(selectedProduct?.salePrice ?? 0),
+              requestComment: v.requestComment || undefined,
+            });
+          }}
+        >
           <Form.Item name="productId" label="Товар" rules={[{ required: true, message: 'Выберите товар' }]}>
             <Select
               showSearch
@@ -1546,6 +1571,7 @@ export default function DealDetailPage() {
           const items = values.items.map((item: Record<string, unknown>) => ({
             dealItemId: item.dealItemId,
             warehouseComment: item.warehouseComment as string,
+            requestedQty: Number(item.requestedQty) || 1,
           }));
           warehouseResponseMut.mutate(items);
         }}>
@@ -1558,6 +1584,7 @@ export default function DealDetailPage() {
                     <Card key={field.key} size="small" title={itemData?.productName || 'Товар'} bordered>
                       <Form.Item name={[field.name, 'dealItemId']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'productName']} hidden><Input /></Form.Item>
+                      <Form.Item name={[field.name, 'requestedQty']} hidden><Input /></Form.Item>
                       {itemData?.requestComment && (
                         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                           Запрос менеджера: {itemData.requestComment}
@@ -2026,16 +2053,27 @@ export default function DealDetailPage() {
 
       {/* Override Modal */}
       {canSuperOverride && (
-        <SuperOverrideModal
+        <Modal
+          title="Super Override"
           open={overrideModal}
-          deal={deal}
-          payments={dealPayments ?? []}
-          products={products ?? []}
-          users={users ?? []}
-          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
-          onClose={() => setOverrideModal(false)}
-          onSuccess={() => invalidate()}
-        />
+          onCancel={() => setOverrideModal(false)}
+          footer={null}
+          width={1200}
+          destroyOnClose
+        >
+          <SuperOverridePanel
+            deal={deal}
+            payments={dealPayments ?? []}
+            products={products ?? []}
+            users={users ?? []}
+            clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
+            onCancel={() => setOverrideModal(false)}
+            onSuccess={() => {
+              setOverrideModal(false);
+              invalidate();
+            }}
+          />
+        </Modal>
       )}
 
       {/* SUPER_ADMIN: Delete Confirm Modal */}
