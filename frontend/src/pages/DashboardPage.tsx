@@ -151,22 +151,33 @@ export default function DashboardPage() {
   const productDayChartData = useMemo(() => {
     const topRows = productDayItems.slice(0, 8);
     const totalRevenue = topRows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
+    const maxRevenue = Math.max(1, ...topRows.map((row) => Number(row.revenue || 0)));
     return topRows.map((item, idx) => {
       const rawName = item.product.name || 'Товар';
-      const shortName = rawName.length > 18 ? `${rawName.slice(0, 18)}…` : rawName;
-      const baseTier = idx === 0 ? 'top1' : idx < 3 ? 'top3' : 'base';
+      const shortName = rawName.length > 14 ? `${rawName.slice(0, 14)}…` : rawName;
+      const revenue = Number(item.revenue || 0);
+      const rank = idx + 1;
+      const isTop = rank === 1;
+      const isActive = activeProductId === item.product.id;
+      const opacity = isTop ? 1 : Math.max(0.35, revenue / maxRevenue);
+      const fill = isTop
+        ? '#84cc16'
+        : isActive
+          ? (isDark ? '#4ade80' : '#22c55e')
+          : (isDark ? `rgba(148, 163, 184, ${opacity.toFixed(3)})` : `rgba(71, 85, 105, ${opacity.toFixed(3)})`);
       return {
         id: item.product.id,
         name: rawName,
         shortName,
-        revenue: Number(item.revenue || 0),
+        revenue,
         qty: Number(item.qty || 0),
-        rank: idx + 1,
-        tier: activeProductId && activeProductId === item.product.id ? 'active' : baseTier,
+        rank,
+        fill,
+        labelValue: formatShortNumber(revenue),
         share: totalRevenue > 0 ? (Number(item.revenue || 0) / totalRevenue) * 100 : 0,
       };
     });
-  }, [productDayItems, activeProductId]);
+  }, [productDayItems, activeProductId, isDark]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -756,18 +767,17 @@ export default function DashboardPage() {
                         data={productDayChartData}
                         xField="shortName"
                         yField="revenue"
-                        colorField="tier"
-                        height={240}
+                        height={236}
                         theme={chartTheme}
-                        scale={{
-                          color: {
-                            domain: ['top1', 'top3', 'base', 'active'],
-                            range: ['#84cc16', '#34d399', isDark ? '#334155' : '#94a3b8', '#22c55e'],
-                          },
-                        }}
+                        legend={false}
                         interaction={{ elementHighlight: true }}
                         axis={{
-                          x: { labelAutoHide: true, labelFill: tk.colorTextSecondary, labelFontSize: 11 },
+                          x: {
+                            label: false,
+                            title: false,
+                            tick: false,
+                            line: false,
+                          },
                           y: {
                             labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
                             labelFill: tk.colorTextSecondary,
@@ -777,21 +787,54 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          items: [{
-                            channel: 'y',
-                            name: 'Выручка',
-                            valueFormatter: (v: string | number) => formatUZS(Number(v)),
-                          }],
+                          title: () => 'Товар',
+                          items: [
+                            {
+                              channel: 'y',
+                              name: 'Выручка',
+                              valueFormatter: (v: string | number) => formatUZS(Number(v)),
+                            },
+                            {
+                              channel: 'color',
+                              name: 'Название',
+                              valueFormatter: (_v: unknown, row: unknown) => ((row as { name?: string } | null)?.name || '—'),
+                            },
+                            {
+                              channel: 'color',
+                              name: 'Продано',
+                              valueFormatter: (_v: unknown, row: unknown) => formatCount(Number((row as { qty?: number } | null)?.qty || 0)),
+                            },
+                            {
+                              channel: 'color',
+                              name: 'Доля',
+                              valueFormatter: (_v: unknown, row: unknown) => `${Number((row as { share?: number } | null)?.share || 0).toFixed(1)}%`,
+                            },
+                          ],
                         }}
                         labels={[
                           {
-                            text: (d: { rank?: number | string }) => (Number(d.rank) <= 3 ? `#${d.rank}` : ''),
-                            position: 'top',
-                            fill: tk.colorTextSecondary,
-                            fontSize: 11,
+                            text: (d: { labelValue?: string }) => d.labelValue || '',
+                            position: 'inside-top',
+                            fill: '#f8fafc',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            dy: 6,
                           },
                         ]}
-                        style={{ radiusTopLeft: 7, radiusTopRight: 7 }}
+                        style={(d: { fill?: string }) => ({
+                          radiusTopLeft: 8,
+                          radiusTopRight: 8,
+                          fill: d.fill || '#64748b',
+                        })}
+                        onReady={(plot) => {
+                          plot.on('element:mouseenter', (evt: unknown) => {
+                            const id = ((evt as { data?: { data?: { id?: string } } })?.data?.data)?.id;
+                            if (id) setActiveProductId(id);
+                          });
+                          plot.on('element:mouseleave', () => {
+                            setActiveProductId(null);
+                          });
+                        }}
                       />
                     ) : null}
                   </Col>
