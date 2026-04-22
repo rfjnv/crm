@@ -120,6 +120,7 @@ export default function DashboardPage() {
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
   const [productDayPage, setProductDayPage] = useState(1);
   const [productDayPageSize, setProductDayPageSize] = useState<number>(5);
+  const [activeProductId, setActiveProductId] = useState<string | null>(null);
 
   // NOTE: must be before the early return — React rules of hooks
   const productDayItems = useMemo(() => {
@@ -147,10 +148,25 @@ export default function DashboardPage() {
     return productDayItems.slice(start, start + productDayPageSize);
   }, [productDayItems, productDayPage, productDayPageSize]);
 
-  const productDayChartData = useMemo(
-    () => productDayItems.slice(0, 10).map((item) => ({ name: item.product.name, revenue: item.revenue })),
-    [productDayItems],
-  );
+  const productDayChartData = useMemo(() => {
+    const topRows = productDayItems.slice(0, 8);
+    const totalRevenue = topRows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
+    return topRows.map((item, idx) => {
+      const rawName = item.product.name || 'Товар';
+      const shortName = rawName.length > 18 ? `${rawName.slice(0, 18)}…` : rawName;
+      const baseTier = idx === 0 ? 'top1' : idx < 3 ? 'top3' : 'base';
+      return {
+        id: item.product.id,
+        name: rawName,
+        shortName,
+        revenue: Number(item.revenue || 0),
+        qty: Number(item.qty || 0),
+        rank: idx + 1,
+        tier: activeProductId && activeProductId === item.product.id ? 'active' : baseTier,
+        share: totalRevenue > 0 ? (Number(item.revenue || 0) / totalRevenue) * 100 : 0,
+      };
+    });
+  }, [productDayItems, activeProductId]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -174,6 +190,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
   }, [productDayPage, maxProductDayPage]);
+  useEffect(() => {
+    setActiveProductId(null);
+  }, [productDayPeriod]);
 
   if (isLoading || !data) {
     return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
@@ -638,7 +657,7 @@ export default function DashboardPage() {
               ) : (
                 <Row gutter={[16, 12]} align="top">
                   <Col xs={24} lg={14}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
@@ -659,35 +678,60 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {pagedProductDayItems.map((item, idx) => {
                           const unit = item.product.unit?.trim() || 'шт';
                           const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
+                          const isActive = activeProductId === item.product.id;
+                          const topAccent = rank === 1 ? (isDark ? '#84cc16' : '#65a30d') : rank <= 3 ? (isDark ? '#34d399' : '#059669') : tk.colorBorderSecondary;
                           return (
                             <div
                               key={item.product.id}
+                              onMouseEnter={() => setActiveProductId(item.product.id)}
+                              onMouseLeave={() => setActiveProductId(null)}
                               style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                gap: 10,
-                                padding: '8px 0',
-                                borderBottom: idx < pagedProductDayItems.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
+                                gap: 12,
+                                padding: '9px 10px',
+                                borderRadius: 10,
+                                border: `1px solid ${isActive ? (isDark ? '#84cc16' : '#65a30d') : tk.colorBorderSecondary}`,
+                                background: isActive ? (isDark ? 'rgba(132, 204, 22, 0.12)' : 'rgba(101, 163, 13, 0.08)') : 'transparent',
+                                boxShadow: isActive ? (isDark ? '0 0 0 1px rgba(132, 204, 22, 0.2)' : '0 0 0 1px rgba(101, 163, 13, 0.14)') : 'none',
+                                transition: 'all 160ms ease',
                               }}
                             >
-                              <div style={{ minWidth: 0 }}>
+                              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <span
+                                  style={{
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: 7,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: rank <= 3 ? '#f8fafc' : tk.colorTextSecondary,
+                                    background: rank <= 3 ? topAccent : tk.colorFillQuaternary,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {rank}
+                                </span>
                                 <Typography.Text strong style={{ fontSize: 14 }}>
-                                  {rank === 1 ? '👑 ' : ''}{rank}. {item.product.name}
+                                  {rank === 1 ? '👑 ' : ''}{item.product.name}
                                 </Typography.Text>
-                                <div>
-                                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                    {item.product.sku ? `${item.product.sku} · ` : ''}Продано: {formatCount(item.qty)} {unit}
-                                  </Typography.Text>
-                                </div>
                               </div>
-                              <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                                {formatUZS(item.revenue)}
-                              </Typography.Text>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                                  {item.product.sku ? `${item.product.sku} · ` : ''}{formatCount(item.qty)} {unit}
+                                </Typography.Text>
+                                <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                                  {formatUZS(item.revenue)}
+                                </Typography.Text>
+                              </div>
                             </div>
                           );
                         })}
@@ -710,15 +754,26 @@ export default function DashboardPage() {
                     {productDayChartData.length > 0 ? (
                       <Column
                         data={productDayChartData}
-                        xField="name"
+                        xField="shortName"
                         yField="revenue"
-                        height={220}
+                        colorField="tier"
+                        height={240}
                         theme={chartTheme}
+                        scale={{
+                          color: {
+                            domain: ['top1', 'top3', 'base', 'active'],
+                            range: ['#84cc16', '#34d399', isDark ? '#334155' : '#94a3b8', '#22c55e'],
+                          },
+                        }}
+                        interaction={{ elementHighlight: true }}
                         axis={{
-                          x: { labelAutoHide: true, labelFill: tk.colorTextSecondary },
+                          x: { labelAutoHide: true, labelFill: tk.colorTextSecondary, labelFontSize: 11 },
                           y: {
                             labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
                             labelFill: tk.colorTextSecondary,
+                            grid: true,
+                            gridLineDash: [4, 4],
+                            gridStroke: isDark ? 'rgba(148,163,184,0.2)' : 'rgba(51,65,85,0.15)',
                           },
                         }}
                         tooltip={{
@@ -728,7 +783,15 @@ export default function DashboardPage() {
                             valueFormatter: (v: string | number) => formatUZS(Number(v)),
                           }],
                         }}
-                        style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
+                        labels={[
+                          {
+                            text: (d: { rank?: number | string }) => (Number(d.rank) <= 3 ? `#${d.rank}` : ''),
+                            position: 'top',
+                            fill: tk.colorTextSecondary,
+                            fontSize: 11,
+                          },
+                        ]}
+                        style={{ radiusTopLeft: 7, radiusTopRight: 7 }}
                       />
                     ) : null}
                   </Col>
