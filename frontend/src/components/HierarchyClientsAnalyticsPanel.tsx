@@ -117,7 +117,6 @@ export default function HierarchyClientsAnalyticsPanel({
   );
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
   const [clientListSort, setClientListSort] = useState<ClientListSort>('revenue_desc');
-  const [clientPurchaseFilter, setClientPurchaseFilter] = useState<'all' | 'with_purchases' | 'without_purchases'>('all');
   const [clientRevenueFilter, setClientRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
 
   const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim();
@@ -364,8 +363,6 @@ export default function HierarchyClientsAnalyticsPanel({
       });
 
     let filteredRows = summaryRows;
-    if (clientPurchaseFilter === 'with_purchases') filteredRows = filteredRows.filter((r) => r.soldQty > 0);
-    if (clientPurchaseFilter === 'without_purchases') filteredRows = filteredRows.filter((r) => r.soldQty <= 0);
     if (clientRevenueFilter === 'gt_0') filteredRows = filteredRows.filter((r) => r.salesRevenue > 0);
     if (clientRevenueFilter === 'gte_1m') filteredRows = filteredRows.filter((r) => r.salesRevenue >= 1_000_000);
     if (clientRevenueFilter === 'gte_10m') filteredRows = filteredRows.filter((r) => r.salesRevenue >= 10_000_000);
@@ -385,7 +382,6 @@ export default function HierarchyClientsAnalyticsPanel({
     return sortedRows;
   }, [
     clientListSort,
-    clientPurchaseFilter,
     clientRevenueFilter,
     effectiveClientSearch,
     productsById,
@@ -836,16 +832,6 @@ export default function HierarchyClientsAnalyticsPanel({
                   { label: 'Сорт: куплено (возр.)', value: 'qty_asc' },
                   { label: 'Сорт: сделки (убыв.)', value: 'deals_desc' },
                   { label: 'Сорт: сделки (возр.)', value: 'deals_asc' },
-                ]}
-              />
-              <Select
-                value={clientPurchaseFilter}
-                onChange={(v) => setClientPurchaseFilter(v)}
-                style={{ minWidth: 190 }}
-                options={[
-                  { label: 'Покупки: все', value: 'all' },
-                  { label: 'Только купили', value: 'with_purchases' },
-                  { label: 'Без покупок', value: 'without_purchases' },
                 ]}
               />
               <Select

@@ -129,7 +129,6 @@ export default function ClientActivityMatrixPage() {
   const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
   const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [listSort, setListSort] = useState<'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'active_desc' | 'active_asc'>('name_asc');
-  const [purchaseFilter, setPurchaseFilter] = useState<'all' | 'with_purchases' | 'without_purchases'>('all');
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
 
@@ -214,9 +213,6 @@ export default function ClientActivityMatrixPage() {
       rows = rows.filter((r) => (r.managerDepartment || '').trim() === departmentFilter);
     }
 
-    if (purchaseFilter === 'with_purchases') rows = rows.filter((r) => r.periodRevenue > 0);
-    if (purchaseFilter === 'without_purchases') rows = rows.filter((r) => r.periodRevenue <= 0);
-
     if (revenueFilter === 'gt_0') rows = rows.filter((r) => r.periodRevenue > 0);
     if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
     if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
@@ -234,7 +230,6 @@ export default function ClientActivityMatrixPage() {
   }, [
     filteredActivity,
     listSort,
-    purchaseFilter,
     revenueFilter,
     departmentFilter,
     selectedMonths,
@@ -492,19 +487,6 @@ export default function ClientActivityMatrixPage() {
               { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' },
               { label: 'Сорт: активные мес. (убыв.)', value: 'active_desc' },
               { label: 'Сорт: активные мес. (возр.)', value: 'active_asc' },
-            ]}
-          />
-          <Select
-            value={purchaseFilter}
-            onChange={(v) => {
-              setPurchaseFilter(v);
-              patchListParams({ page: 1 });
-            }}
-            style={{ width: isMobile ? 220 : 190 }}
-            options={[
-              { label: 'Покупки: все', value: 'all' },
-              { label: 'Только купили', value: 'with_purchases' },
-              { label: 'Без покупок', value: 'without_purchases' },
             ]}
           />
           <Select
