@@ -128,6 +128,10 @@ export default function ClientActivityMatrixPage() {
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
   const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
   const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [listSort, setListSort] = useState<'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'active_desc' | 'active_asc'>('name_asc');
+  const [purchaseFilter, setPurchaseFilter] = useState<'all' | 'with_purchases' | 'without_purchases'>('all');
+  const [revenueFilter, setRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
 
   const matrixStale = 120_000;
 
@@ -179,6 +183,64 @@ export default function ClientActivityMatrixPage() {
     return rows.filter((c) => matchesSearch(c.companyName, q));
   }, [clientActivity, clientSearch, selectedClients]);
 
+  const departmentOptions = useMemo(() => {
+    const depts = Array.from(
+      new Set(
+        clientActivity
+          .map((c) => (c.managerDepartment || '').trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b, 'ru'));
+    return depts.map((d) => ({ label: d, value: d }));
+  }, [clientActivity]);
+
+  const listRows = useMemo(() => {
+    const toPeriodRevenue = (row: HistoryClientActivity): number => {
+      const source = selectedMonths.length
+        ? row.monthlyData.filter((m) => selectedMonths.includes(m.month))
+        : row.monthlyData;
+      return source.reduce((sum, m) => sum + Number(m.revenue || 0), 0);
+    };
+
+    let rows = filteredActivity.map((r) => ({
+      ...r,
+      periodRevenue: toPeriodRevenue(r),
+      periodActiveMonths: (selectedMonths.length ? selectedMonths : visibleMonths).filter((m) =>
+        r.monthlyData.some((x) => x.month === m && Number(x.revenue) > 0),
+      ).length,
+    }));
+
+    if (departmentFilter !== 'all') {
+      rows = rows.filter((r) => (r.managerDepartment || '').trim() === departmentFilter);
+    }
+
+    if (purchaseFilter === 'with_purchases') rows = rows.filter((r) => r.periodRevenue > 0);
+    if (purchaseFilter === 'without_purchases') rows = rows.filter((r) => r.periodRevenue <= 0);
+
+    if (revenueFilter === 'gt_0') rows = rows.filter((r) => r.periodRevenue > 0);
+    if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
+    if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
+
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      if (listSort === 'name_asc') return a.companyName.localeCompare(b.companyName, 'ru');
+      if (listSort === 'name_desc') return b.companyName.localeCompare(a.companyName, 'ru');
+      if (listSort === 'revenue_desc') return b.periodRevenue - a.periodRevenue;
+      if (listSort === 'revenue_asc') return a.periodRevenue - b.periodRevenue;
+      if (listSort === 'active_desc') return b.periodActiveMonths - a.periodActiveMonths;
+      return a.periodActiveMonths - b.periodActiveMonths;
+    });
+    return sorted;
+  }, [
+    filteredActivity,
+    listSort,
+    purchaseFilter,
+    revenueFilter,
+    departmentFilter,
+    selectedMonths,
+    visibleMonths,
+  ]);
+
   const patchListParams = useCallback(
     (patch: Parameters<typeof mergeMatrixListSearchParams>[1], nav?: { replace?: boolean }) => {
       setSearchParams((prev) => mergeMatrixListSearchParams(prev, patch), nav);
@@ -186,20 +248,20 @@ export default function ClientActivityMatrixPage() {
     [setSearchParams],
   );
 
-  const totalPages = Math.max(1, Math.ceil(filteredActivity.length / pageSize) || 1);
+  const totalPages = Math.max(1, Math.ceil(listRows.length / pageSize) || 1);
   const safePage = Math.min(page, totalPages);
 
   useEffect(() => {
-    if (filteredActivity.length === 0) return;
+    if (listRows.length === 0) return;
     if (page !== safePage) {
       patchListParams({ page: safePage }, { replace: true });
     }
-  }, [filteredActivity.length, page, safePage, patchListParams]);
+  }, [listRows.length, page, safePage, patchListParams]);
 
   const pagedActivity = useMemo(() => {
     const start = (safePage - 1) * pageSize;
-    return filteredActivity.slice(start, start + pageSize);
-  }, [filteredActivity, safePage, pageSize]);
+    return listRows.slice(start, start + pageSize);
+  }, [listRows, safePage, pageSize]);
 
   useEffect(() => {
     if (!cellDrawer) return;
@@ -399,14 +461,6 @@ export default function ClientActivityMatrixPage() {
               options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
               filterOption={smartFilterOption}
             />
-            <Input
-              allowClear
-              prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
-              placeholder="Поиск по клиенту"
-              value={clientSearch}
-              onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
-              style={{ width: isMobile ? 220 : 260 }}
-            />
           </div>
         )}
       >
@@ -414,6 +468,68 @@ export default function ClientActivityMatrixPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
+            placeholder="Поиск по клиенту"
+            value={clientSearch}
+            onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
+            style={{ width: isMobile ? 220 : 280 }}
+          />
+          <Select
+            value={listSort}
+            onChange={(v) => {
+              setListSort(v);
+              patchListParams({ page: 1 });
+            }}
+            style={{ width: isMobile ? 220 : 220 }}
+            options={[
+              { label: 'Сорт: А-Я', value: 'name_asc' },
+              { label: 'Сорт: Я-А', value: 'name_desc' },
+              { label: 'Сорт: выручка (убыв.)', value: 'revenue_desc' },
+              { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' },
+              { label: 'Сорт: активные мес. (убыв.)', value: 'active_desc' },
+              { label: 'Сорт: активные мес. (возр.)', value: 'active_asc' },
+            ]}
+          />
+          <Select
+            value={purchaseFilter}
+            onChange={(v) => {
+              setPurchaseFilter(v);
+              patchListParams({ page: 1 });
+            }}
+            style={{ width: isMobile ? 220 : 190 }}
+            options={[
+              { label: 'Покупки: все', value: 'all' },
+              { label: 'Только купили', value: 'with_purchases' },
+              { label: 'Без покупок', value: 'without_purchases' },
+            ]}
+          />
+          <Select
+            value={revenueFilter}
+            onChange={(v) => {
+              setRevenueFilter(v);
+              patchListParams({ page: 1 });
+            }}
+            style={{ width: isMobile ? 220 : 200 }}
+            options={[
+              { label: 'Выручка: все', value: 'all' },
+              { label: 'Выручка > 0', value: 'gt_0' },
+              { label: 'Выручка ≥ 1 млн', value: 'gte_1m' },
+              { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
+            ]}
+          />
+          <Select
+            value={departmentFilter}
+            onChange={(v) => {
+              setDepartmentFilter(v);
+              patchListParams({ page: 1 });
+            }}
+            style={{ width: isMobile ? 220 : 220 }}
+            options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
+          />
         </div>
 
         {isMobile ? (
@@ -456,11 +572,11 @@ export default function ClientActivityMatrixPage() {
               </div>
               ))}
             </div>
-            {filteredActivity.length > pageSize && (
+            {listRows.length > pageSize && (
               <div style={{ textAlign: 'center', marginTop: 12 }}>
                 <Pagination
                   current={safePage}
-                  total={filteredActivity.length}
+                  total={listRows.length}
                   pageSize={pageSize}
                   showSizeChanger
                   pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
@@ -472,14 +588,14 @@ export default function ClientActivityMatrixPage() {
           </div>
         ) : (
           <Table
-            dataSource={filteredActivity}
+            dataSource={listRows}
             columns={activityCols}
             rowKey="clientId"
             size="small"
             pagination={{
               current: safePage,
               pageSize,
-              total: filteredActivity.length,
+              total: listRows.length,
               showSizeChanger: true,
               pageSizeOptions: [...PAGE_SIZE_OPTIONS],
               showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
