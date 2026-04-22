@@ -127,7 +127,8 @@ export default function DashboardPage() {
     if (list?.length) {
       const merged = new Map<string, (typeof list)[number]>();
       for (const item of list) {
-        const key = `${item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
+        if (!item?.product?.name) continue;
+        const key = `${item.product.id || item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
         const existing = merged.get(key);
         if (!existing) {
           merged.set(key, { ...item, qty: Number(item.qty || 0), revenue: Number(item.revenue || 0) });
@@ -147,10 +148,15 @@ export default function DashboardPage() {
     return productDayItems.slice(start, start + productDayPageSize);
   }, [productDayItems, productDayPage, productDayPageSize]);
 
-  const productDayChartData = useMemo(
-    () => productDayItems.slice(0, 10).map((item) => ({ name: item.product.name, revenue: item.revenue })),
-    [productDayItems],
-  );
+  const productDayChartData = useMemo(() => (
+    productDayItems
+      .slice(0, 10)
+      .map((item, idx) => ({
+        name: `${idx + 1}. ${item.product.name || 'Товар'}`,
+        revenue: Number(item.revenue || 0),
+      }))
+      .filter((x) => Number.isFinite(x.revenue))
+  ), [productDayItems]);
 
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
@@ -689,7 +695,7 @@ export default function DashboardPage() {
                     const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
                     return (
                       <div
-                        key={item.product.id}
+                        key={`${item.product.id || item.product.name}-${rank}`}
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
