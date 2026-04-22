@@ -1,0 +1,286 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+.wrap { padding: 1rem 0; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+.filter-btn { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); background: transparent; cursor: pointer; color: var(--color-text-secondary); transition: all 0.15s; }
+.filter-btn.active { background: var(--color-text-primary); color: var(--color-background-primary); border-color: var(--color-text-primary); }
+.filter-btn:hover:not(.active) { background: var(--color-background-secondary); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 1.25rem; }
+.stat { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.stat-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 2px; }
+.stat-val { font-size: 20px; font-weight: 500; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+th { text-align: left; padding: 8px 10px; font-weight: 500; font-size: 11px; color: var(--color-text-secondary); border-bottom: 0.5px solid var(--color-border-tertiary); white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: top; line-height: 1.4; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--color-background-secondary); }
+.badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 500; }
+.badge-yann { background: #E6F1FB; color: #0C447C; }
+.badge-bit { background: #EAF3DE; color: #27500A; }
+.badge-avanta { background: #FAEEDA; color: #633806; }
+.badge-foil { background: #FBEAF0; color: #72243E; }
+@media (prefers-color-scheme: dark) {
+  .badge-yann { background: #0C447C; color: #B5D4F4; }
+  .badge-bit { background: #27500A; color: #C0DD97; }
+  .badge-avanta { background: #633806; color: #FAC775; }
+  .badge-foil { background: #72243E; color: #F4C0D1; }
+}
+.cheaper { color: #0F6E56; font-weight: 500; }
+.pricier { color: #A32D2D; font-weight: 500; }
+.same { color: var(--color-text-secondary); }
+.match-type { font-size: 10px; color: var(--color-text-tertiary); margin-top: 2px; }
+.search-wrap { position: relative; margin-bottom: 1rem; }
+.search-wrap input { width: 100%; padding: 8px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); font-size: 13px; }
+.col-our { width: 22%; }
+.col-their { width: 22%; }
+.col-comp { width: 10%; }
+.col-price-us { width: 11%; }
+.col-price-them { width: 11%; }
+.col-diff { width: 13%; }
+.col-pct { width: 11%; }
+</style>
+
+<div class="wrap">
+<h2 class="sr-only">Сравнение цен Polygraph Business с конкурентами</h2>
+
+<div class="stats" id="stats"></div>
+<div class="search-wrap"><input type="text" placeholder="Поиск по названию товара..." id="search" oninput="render()"></div>
+<div class="filters" id="filters"></div>
+<div class="tbl-wrap">
+<table>
+<colgroup>
+<col class="col-our"><col class="col-their"><col class="col-comp">
+<col class="col-price-us"><col class="col-price-them"><col class="col-diff"><col class="col-pct">
+</colgroup>
+<thead>
+<tr>
+<th>Наш товар (Polygraph Business)</th>
+<th>Товар конкурента</th>
+<th>Компания</th>
+<th>Наша цена</th>
+<th>Их цена</th>
+<th>Разница</th>
+<th>Разница %</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+<p id="empty" style="display:none; text-align:center; padding:2rem; color:var(--color-text-secondary); font-size:13px;">Нет совпадений по фильтру</p>
+</div>
+
+<script>
+const data = [
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 50×35", them:"Самоклеящаяся бумага 35×50, 195 г", comp:"Yann", usp:1000, theirp:1000, type:"Точное"},
+  {cat:"Самоклеящаяся бумага", us:"без насечки (Китай), 50×35", them:"Самоклеящаяся бумага 35×50, 195 г", comp:"Yann", usp:1000, theirp:1000, type:"Точное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 50×70", them:"Самоклеящаяся бумага 50×70, 195 г", comp:"Yann", usp:2000, theirp:2000, type:"Точное"},
+  {cat:"Самоклеящаяся бумага", us:"без насечки (Китай), 50×70", them:"Самоклеящаяся бумага 50×70, 195 г", comp:"Yann", usp:2000, theirp:2000, type:"Точное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 70×100", them:"Самоклеящаяся бумага 70×100, 195 г", comp:"Yann", usp:4000, theirp:4000, type:"Точное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 50×70", them:"Самоклеящаяся в листах (глянцевая) 50×70 (slit/non-slit)", comp:"Avanta Trade", usp:2000, theirp:1800, type:"Потенциальное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 70×100", them:"Самоклеящаяся в листах (глянцевая) 70×100 (slit/non-slit)", comp:"Avanta Trade", usp:4000, theirp:3600, type:"Потенциальное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (ТУРЦИЯ), полуглянец, 50×70", them:"Турция ADCOAT (полуглянцевая) 45×64 slit/non-slit", comp:"Avanta Trade", usp:2700, theirp:2500, type:"Потенциальное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (ТУРЦИЯ), полуглянец, 70×100", them:"Турция ADCOAT (полуглянцевая) 70×100 slit/non-slit", comp:"Avanta Trade", usp:5400, theirp:6000, type:"Точное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 170 г/м²", them:"HiKote C2S Art Paper глянцевая, 150 г, 70×100", comp:"Yann", usp:1790, theirp:1628, type:"Потенциальное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 250 г/м²", them:"HiKote C2S Art Paper глянцевая, 250 г, 70×100", comp:"Yann", usp:2630, theirp:2190, type:"Точное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 250 г/м²", them:"HiKote C2S Art Paper глянцевая, 300 г, 70×100", comp:"Yann", usp:2630, theirp:2625, type:"Потенциальное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ (64×120 м)", them:"Фольга горячего тиснения Золотая, 64×120 м", comp:"Avanta Trade", usp:150000, theirp:150000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"СЕРЕБРЯНАЯ (64×120 м)", them:"Фольга горячего тиснения Серебряная, 64×120 м", comp:"Avanta Trade", usp:150000, theirp:150000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗЕЛЕНАЯ (64×120 м)", them:"Фольга горячего тиснения Зелёная, 64×120 м", comp:"Avanta Trade", usp:230000, theirp:230000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"КРАСНАЯ / СИНЯЯ / ТЕМНО-СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ", them:"Фольга горячего тиснения Красная, 64×120 м", comp:"Avanta Trade", usp:230000, theirp:230000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"КРАСНАЯ / СИНЯЯ / ТЕМНО-СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ", them:"Фольга горячего тиснения Фиолетовая, 64×120 м", comp:"Avanta Trade", usp:230000, theirp:230000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"БЕЛАЯ (64×120 м)", them:"Фольга горячего тиснения Белая, 64×120 м", comp:"Avanta Trade", usp:280000, theirp:230000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ГОЛОГРАММА (64×120 м)", them:"Фольга горячего тиснения Голограмма Золотистая, 64×120 м", comp:"Avanta Trade", usp:250000, theirp:250000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ, 64×240 м", them:"Фольга горячего тиснения Золотая, 64×240 м", comp:"Avanta Trade", usp:300000, theirp:300000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"СЕРЕБРЯНАЯ, 64×240 м", them:"Фольга горячего тиснения Серебряная, 64×240 м", comp:"Avanta Trade", usp:300000, theirp:300000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ, 64×360 м", them:"Фольга горячего тиснения Золотая, 64×360 м", comp:"Avanta Trade", usp:450000, theirp:450000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"СЕРЕБРЯНАЯ, 64×360 м", them:"Фольга горячего тиснения Серебряная, 64×360 м", comp:"Avanta Trade", usp:450000, theirp:450000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ (64×120 м)", them:"Горячего тиснения: Золотистая, 64×120 м", comp:"Foil Trading", usp:150000, theirp:150000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"СЕРЕБРЯНАЯ (64×120 м)", them:"Горячего тиснения: Серебристая, 64×120 м", comp:"Foil Trading", usp:150000, theirp:150000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"КРАСНАЯ / СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ / ЗЕЛЕНАЯ", them:"Горячего тиснения: Фиолетовая/Красная/Голубая/Чёрная/Белая..., 64×120 м", comp:"Foil Trading", usp:230000, theirp:230000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ГОЛОГРАММА (64×120 м)", them:"Горячего тиснения: Голограмма Золотистая/Серебристая, 64×120 м", comp:"Foil Trading", usp:250000, theirp:250000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ, 64×240 м", them:"Горячего тиснения: Золотистая, 64×240 м", comp:"Foil Trading", usp:300000, theirp:300000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ, 64×240 м", them:"NEW FOIL Silver/Gold 640×240", comp:"Bit Trade", usp:300000, theirp:274000, type:"Потенциальное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ (64×120 м)", them:"NEW FOIL Silver/Gold 640×120", comp:"Bit Trade", usp:150000, theirp:138000, type:"Потенциальное"},
+  {cat:"Фольга для горячего тиснения", us:"КРАСНАЯ / СИНЯЯ / ФИОЛЕТОВАЯ / ЧЁРНАЯ", them:"HOT STAMPING FOIL Black/Red/Green/Blue/Violet 640×120", comp:"Bit Trade", usp:230000, theirp:152000, type:"Точное"},
+  {cat:"Фольга для горячего тиснения", us:"ЗОЛОТАЯ, 64×360 м", them:"Горячего тиснения: Золотистая, 64×360 м", comp:"Foil Trading", usp:450000, theirp:450000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"Глянцевая пленка 18 микрон, 3000 м", comp:"Yann", usp:43000, theirp:45000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"Матовая пленка 18 микрон, 3000 м", comp:"Yann", usp:43000, theirp:46000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Золото, 20–22 мкрн", them:"Металлизированная пленка Gold, 22 мкрн", comp:"Yann", usp:115000, theirp:100000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Серебро, 20–22 мкрн", them:"Металлизированная пленка Silver, 22 мкрн", comp:"Yann", usp:110000, theirp:85000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Soft touch, 27 мкрн", them:"Softtouch 28 микрон, 2000 м", comp:"Yann", usp:200000, theirp:190000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"ГЛЯНЦЕВАЯ (3000м), 18 микрон", comp:"Avanta Trade", usp:43000, theirp:44000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"МАТОВАЯ (3000м), 18 микрон", comp:"Avanta Trade", usp:43000, theirp:45000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Золото, 20–22 мкрн", them:"Металлизированная золотистая 25 мкрн", comp:"Avanta Trade", usp:115000, theirp:115000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Серебро, 20–22 мкрн", them:"Металлизированная серебристая 25 мкрн", comp:"Avanta Trade", usp:110000, theirp:100000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"Глянцевая (18 микрон)", comp:"Foil Trading", usp:43000, theirp:45000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"Матовая (18 микрон)", comp:"Foil Trading", usp:43000, theirp:45000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Золото, 20–22 мкрн", them:"Металлизированная золотистая 25 мкрн", comp:"Foil Trading", usp:115000, theirp:115000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Серебро, 20–22 мкрн", them:"Металлизированная серебристая 25 мкрн", comp:"Foil Trading", usp:110000, theirp:100000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"BOPP 18 mic Gloss", comp:"Bit Trade", usp:43000, theirp:49000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"BOPP 18 mic Matt", comp:"Bit Trade", usp:43000, theirp:49000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Золото, 20–22 мкрн", them:"BOPP 26 mic GOLD", comp:"Bit Trade", usp:115000, theirp:148000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Серебро, 20–22 мкрн", them:"BOPP 26 mic SILVER", comp:"Bit Trade", usp:110000, theirp:106000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Soft touch, 27 мкрн", them:"BOPP Soft Touch 30 mic", comp:"Bit Trade", usp:200000, theirp:203000, type:"Потенциальное"},
+  {cat:"Офсетные краски", us:"POWER-BRANCHER CMYK, 2,5 кг", them:"GLOBY (Китай) CMYK, 2,5 кг", comp:"Avanta Trade", usp:86000, theirp:88000, type:"Потенциальное"},
+  {cat:"Офсетные краски", us:"FOCUS-BRANCHER CMYK, 2,5 кг", them:"SUNNY (Китай) CMYK, 2,5 кг", comp:"Avanta Trade", usp:82000, theirp:84000, type:"Потенциальное"},
+  {cat:"Офсетные краски", us:"INNAVTION CF CMYK, 2,5 кг", them:"SPEEDY (Китай) CMYK, 2,5 кг", comp:"Avanta Trade", usp:90000, theirp:92000, type:"Потенциальное"},
+  {cat:"Пантонные краски", us:"WARM RED", them:"PANTONE Warm red", comp:"Yann", usp:150000, theirp:165000, type:"Точное"},
+  {cat:"Пантонные краски", us:"PROCESS BLUE", them:"PANTONE Process blue", comp:"Yann", usp:135000, theirp:135000, type:"Точное"},
+  {cat:"Пантонные краски", us:"GREEN", them:"PANTONE Green", comp:"Yann", usp:165000, theirp:145000, type:"Точное"},
+  {cat:"Пантонные краски", us:"OPAQUE WHITE", them:"PANTONE Opaque White", comp:"Yann", usp:140000, theirp:115000, type:"Точное"},
+  {cat:"Пантонные краски", us:"BLACK", them:"PANTONE Black", comp:"Yann", usp:135000, theirp:127000, type:"Точное"},
+  {cat:"Пантонные краски", us:"RUBINE RED", them:"PANTONE Rubine red", comp:"Bit Trade", usp:135000, theirp:134000, type:"Точное"},
+  {cat:"Пантонные краски", us:"GOLD 871/873/875", them:"COMAX P.T 871/873/875/876", comp:"Bit Trade", usp:300000, theirp:303000, type:"Точное"},
+  {cat:"Пантонные краски", us:"SILVER 877", them:"COMAX P.T 877 C", comp:"Bit Trade", usp:170000, theirp:165000, type:"Точное"},
+  {cat:"Пантонные краски", us:"BLACK", them:"COMAX P.T BLACK", comp:"Bit Trade", usp:135000, theirp:121000, type:"Точное"},
+  {cat:"Пантонные краски", us:"GREEN", them:"COMAX P.T GREEN", comp:"Bit Trade", usp:165000, theirp:138000, type:"Точное"},
+  {cat:"Пантонные краски", us:"OPAQUE WHITE", them:"COMAX P.T OPAQUE WHITE", comp:"Bit Trade", usp:140000, theirp:110000, type:"Точное"},
+  {cat:"Пантонные краски", us:"PROCESS BLUE", them:"COMAX P.T PROCESS BLUE", comp:"Bit Trade", usp:135000, theirp:128000, type:"Точное"},
+  {cat:"Пантонные краски", us:"PURPLE", them:"COMAX P.T PURPLE", comp:"Bit Trade", usp:280000, theirp:234000, type:"Точное"},
+  {cat:"Пантонные краски", us:"WARM RED", them:"COMAX P.T WARM RED", comp:"Bit Trade", usp:150000, theirp:138000, type:"Точное"},
+  {cat:"Пантонные краски", us:"BLUE 072", them:"COMAX P.T BLUE 072", comp:"Bit Trade", usp:155000, theirp:201000, type:"Точное"},
+  {cat:"Пантонные краски", us:"WARM RED", them:"PANTONE Warm red", comp:"Foil Trading", usp:150000, theirp:160000, type:"Точное"},
+  {cat:"Пантонные краски", us:"RUBINE RED", them:"PANTONE Rubine red", comp:"Foil Trading", usp:135000, theirp:140000, type:"Точное"},
+  {cat:"Пантонные краски", us:"BLACK", them:"PANTONE Black", comp:"Foil Trading", usp:135000, theirp:150000, type:"Точное"},
+  {cat:"Пантонные краски", us:"OPAQUE WHITE", them:"PANTONE Opaque White", comp:"Foil Trading", usp:140000, theirp:140000, type:"Точное"},
+  {cat:"Пантонные краски", us:"PROCESS BLUE", them:"PANTONE Process blue", comp:"Foil Trading", usp:135000, theirp:140000, type:"Точное"},
+  {cat:"Пантонные краски", us:"PURPLE", them:"PANTONE Purple", comp:"Foil Trading", usp:280000, theirp:300000, type:"Точное"},
+  {cat:"Пантонные краски", us:"SILVER 877", them:"PANTONE Silver 877", comp:"Foil Trading", usp:170000, theirp:185000, type:"Точное"},
+  {cat:"Пантонные краски", us:"GOLD 871/873/875", them:"PANTONE Gold E871/E873/E875", comp:"Foil Trading", usp:300000, theirp:283000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 780 мм", them:"Офсетная резина в рулонах 780×1,95 мм", comp:"Yann", usp:660000, theirp:780000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1060 мм", them:"Офсетная резина в рулонах 1060×1,95 мм", comp:"Yann", usp:1150000, theirp:950000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1350 мм", them:"Офсетная резина в рулонах 1360×1,95 мм", comp:"Yann", usp:1150000, theirp:1220000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1450 мм", them:"Офсетная резина в рулонах 1450×1,95 мм", comp:"Yann", usp:1200000, theirp:1250000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 520×440", them:"Офсетная резина с планками 520×440×1,95 мм, 3-слойная", comp:"Yann", usp:480000, theirp:420000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 772×627", them:"Офсетная резина с планками 772×627×1,95 мм", comp:"Yann", usp:700000, theirp:700000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 791×665", them:"Офсетная резина с планками 791×665×1,95 мм", comp:"Yann", usp:700000, theirp:700000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1052×840", them:"Офсетная резина с планками 1052×840×1,95 мм, 3-слойная", comp:"Yann", usp:850000, theirp:990000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1060×860", them:"Офсетная резина с планками 1060×860×1,95 мм, 3-слойная", comp:"Yann", usp:850000, theirp:990000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 780 мм", them:"В рулонах 780×1,95 мм", comp:"Foil Trading", usp:660000, theirp:770000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1060 мм", them:"В рулонах 1060×1,95 мм", comp:"Foil Trading", usp:1150000, theirp:1000000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 520×440", them:"С планкой 520×440×1,95 мм", comp:"Foil Trading", usp:480000, theirp:470000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 772×627", them:"С планкой 772×627×1,95 мм", comp:"Foil Trading", usp:700000, theirp:720000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 791×665", them:"С планкой 791×665×1,95 мм", comp:"Foil Trading", usp:700000, theirp:750000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1052×840", them:"С планкой 1052×840×1,95 мм", comp:"Foil Trading", usp:850000, theirp:930000, type:"Точное"},
+  {cat:"Офсетная резина", us:"Офсетная резина: 1060×860", them:"С планкой 1060×860×1,95 мм", comp:"Foil Trading", usp:850000, theirp:950000, type:"Точное"},
+  {cat:"Химия", us:"Смывка для валов WASH60/100 (TEKNOVA), 1 л", them:"Смывка офсетной резины ABW60, 1 л", comp:"Yann", usp:50000, theirp:44000, type:"Точное"},
+  {cat:"Химия", us:"Добавка к увлажнению ALFA PLUS (TEKNOVA), 1 л", them:"Добавка концентрат увлажнения M Fount, 1 л", comp:"Yann", usp:50000, theirp:45000, type:"Потенциальное"},
+  {cat:"Химия", us:"Очиститель для пластин NOVAFIX PLUS (TEKNOVA), 1 л", them:"Universal Plate Cleaner (розовый), 1 л", comp:"Yann", usp:65000, theirp:65000, type:"Потенциальное"},
+  {cat:"Химия", us:"Противоотмарывающий порошок (ТАЛЬК) 15–25 мкрн, 1 кг", them:"Противоотмарывающий порошок ABC, 1 кг", comp:"Yann", usp:70000, theirp:65000, type:"Точное"},
+  {cat:"Химия", us:"Смывка для валов WASH60/100 (TEKNOVA), 1 л", them:"Ротоваш/смывка, 1 л", comp:"Foil Trading", usp:50000, theirp:45000, type:"Потенциальное"},
+  {cat:"Химия", us:"Добавка к увлажнению ALFA PLUS (TEKNOVA), 1 л", them:"MARK Стабилат синий 2.0, 1 л", comp:"Foil Trading", usp:50000, theirp:50000, type:"Потенциальное"},
+  {cat:"Химия", us:"Очиститель для пластин NOVAFIX PLUS (TEKNOVA), 1 л", them:"Mark Plate cleaner, 1 л", comp:"Foil Trading", usp:65000, theirp:65000, type:"Потенциальное"},
+  {cat:"Химия", us:"Противоотмарывающий порошок (ТАЛЬК), 1 кг", them:"Противоотмарывающий порошок 10–60 мкрн, 1 кг", comp:"Foil Trading", usp:70000, theirp:65000, type:"Точное"},
+  {cat:"Гребенки и расходники", us:"1/4 (6,4 мм), 84 000 витков", them:"Металлическая пружина 1/4\" (6,4), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"5/16 (7,9 мм), 60 000 витков", them:"Металлическая пружина 5/16\" (7,9), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"3/8 (9,5 мм), 43 000 витков", them:"Металлическая пружина 3/8\" (9,5), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"7/16 (11,1 мм), 32 000 витков", them:"Металлическая пружина 7/16\" (11,1), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"1/2 (12,7 мм), 24 000 витков", them:"Металлическая пружина 1/2\" (12,7), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"9/16 (14,3 мм), 18 000 витков", them:"Металлическая пружина 9/16\" (14,3), шаг 3:1", comp:"Avanta Trade", usp:1200000, theirp:null, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"Ригель 32, 100 шт.", them:"Ригель для календаря, Длина 25 см", comp:"Avanta Trade", usp:310000, theirp:200000, type:"Потенциальное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,1", them:"Калиброванный картон 0,10 мм, 103×79,5 см", comp:"Yann", usp:35000, theirp:50000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,2", them:"Калиброванный картон 0,20 мм, 103×79,5 см", comp:"Yann", usp:65000, theirp:54000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,3", them:"Калиброванный картон 0,30 мм, 103×79,5 см", comp:"Yann", usp:75000, theirp:57000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,4", them:"Калиброванный картон 0,40 мм, 103×79,5 см", comp:"Yann", usp:95000, theirp:60000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Вискозная губка", them:"Вискозная губка", comp:"Foil Trading", usp:25000, theirp:35000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,1", them:"Калиброванный картон 1030×795×0,10 мм", comp:"Bit Trade", usp:35000, theirp:22000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,2", them:"Калиброванный картон 1030×795×0,20 мм", comp:"Bit Trade", usp:65000, theirp:36000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,3", them:"Калиброванный картон 1030×795×0,30 мм", comp:"Bit Trade", usp:75000, theirp:56000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,4", them:"Калиброванный картон 1030×795×0,40 мм", comp:"Bit Trade", usp:95000, theirp:71000, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Калиброванный картон 0,5", them:"Калиброванный картон 1030×795×0,50 мм", comp:"Bit Trade", usp:115000, theirp:87000, type:"Точное"},
+];
+
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil'};
+const cats = [...new Set(data.map(d=>d.cat))];
+const comps = [...new Set(data.map(d=>d.comp))];
+let activeComp = 'all', activeCat = 'all', searchQ = '';
+
+function fmt(n) { return n ? n.toLocaleString('ru-RU') + ' сум' : '—'; }
+function pct(us, them) { if (!us || !them) return null; return Math.round((them-us)/us*100); }
+function diff(us, them) { if (!us || !them) return null; return them-us; }
+
+function render() {
+  searchQ = document.getElementById('search').value.toLowerCase();
+  const filtered = data.filter(d => {
+    if (activeComp !== 'all' && d.comp !== activeComp) return false;
+    if (activeCat !== 'all' && d.cat !== activeCat) return false;
+    if (searchQ && !d.us.toLowerCase().includes(searchQ) && !d.them.toLowerCase().includes(searchQ)) return false;
+    return true;
+  });
+  const tbody = document.getElementById('tbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    document.getElementById('empty').style.display = 'block';
+  } else {
+    document.getElementById('empty').style.display = 'none';
+    tbody.innerHTML = filtered.map(d => {
+      const p = pct(d.usp, d.theirp);
+      const dv = diff(d.usp, d.theirp);
+      let pclass = 'same', pstr = '=', dstr = '—';
+      if (p !== null) {
+        dstr = (dv > 0 ? '+' : '') + dv.toLocaleString('ru-RU') + ' сум';
+        if (p > 0) { pclass='pricier'; pstr='+'+p+'%'; }
+        else if (p < 0) { pclass='cheaper'; pstr=p+'%'; }
+        else { pstr='0%'; }
+      }
+      return `<tr>
+        <td><span style="font-size:12px;color:var(--color-text-tertiary);">${d.cat}</span><br>${d.us}</td>
+        <td>${d.them}<div class="match-type">${d.type} совпадение</div></td>
+        <td><span class="badge ${compColors[d.comp]}">${d.comp}</span></td>
+        <td>${fmt(d.usp)}</td>
+        <td>${fmt(d.theirp)}</td>
+        <td class="${pclass}">${dstr}</td>
+        <td class="${pclass}" style="font-weight:500;">${pstr}</td>
+      </tr>`;
+    }).join('');
+  }
+  updateStats(filtered);
+}
+
+function updateStats(filtered) {
+  const withPrice = filtered.filter(d => d.theirp);
+  const cheaper = withPrice.filter(d => d.theirp < d.usp).length;
+  const pricier = withPrice.filter(d => d.theirp > d.usp).length;
+  const same = withPrice.filter(d => d.theirp === d.usp).length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="stat-label">Всего совпадений</div><div class="stat-val">${filtered.length}</div></div>
+    <div class="stat"><div class="stat-label">У них дешевле</div><div class="stat-val" style="color:#0F6E56;">${cheaper}</div></div>
+    <div class="stat"><div class="stat-label">У нас дешевле</div><div class="stat-val" style="color:#A32D2D;">${pricier}</div></div>
+    <div class="stat"><div class="stat-label">Одинаково</div><div class="stat-val">${same}</div></div>
+  `;
+}
+
+function buildFilters() {
+  const f = document.getElementById('filters');
+  let html = '<span style="font-size:11px;color:var(--color-text-secondary);">Компания:</span>';
+  html += `<button class="filter-btn active" onclick="setComp('all',this)">Все</button>`;
+  comps.forEach(c => { html += `<button class="filter-btn" onclick="setComp('${c}',this)">${c}</button>`; });
+  html += '<span style="font-size:11px;color:var(--color-text-secondary);margin-left:8px;">Категория:</span>';
+  html += `<button class="filter-btn active" onclick="setCat('all',this)">Все</button>`;
+  cats.forEach(c => { html += `<button class="filter-btn" onclick="setCat('${c}',this)">${c}</button>`; });
+  f.innerHTML = html;
+}
+
+function setComp(val, btn) {
+  activeComp = val;
+  document.querySelectorAll('#filters .filter-btn').forEach(b => {
+    if (b.onclick && b.onclick.toString().includes('setComp')) b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  render();
+}
+function setCat(val, btn) {
+  activeCat = val;
+  document.querySelectorAll('#filters .filter-btn').forEach(b => {
+    if (b.onclick && b.onclick.toString().includes('setCat')) b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  render();
+}
+
+buildFilters();
+render();
+</script>

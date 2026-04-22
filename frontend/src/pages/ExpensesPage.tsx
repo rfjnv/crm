@@ -23,17 +23,7 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
-import type { Expense, ExpenseMethod } from '../types';
-
-const EXPENSE_METHOD_OPTIONS: { value: ExpenseMethod; label: string; color: string }[] = [
-  { value: 'CASH', label: 'Наличные', color: 'green' },
-  { value: 'TRANSFER', label: 'Перечисление', color: 'blue' },
-  { value: 'PAYME', label: 'Payme', color: 'cyan' },
-  { value: 'QR', label: 'QR', color: 'purple' },
-  { value: 'CLICK', label: 'Click', color: 'geekblue' },
-  { value: 'TERMINAL', label: 'Терминал', color: 'orange' },
-  { value: 'INSTALLMENT', label: 'Рассрочка', color: 'magenta' },
-];
+import type { Expense } from '../types';
 
 const EXPENSE_CATEGORIES = [
   'Аренда',
@@ -71,14 +61,12 @@ export default function ExpensesPage() {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | undefined>(undefined);
-  const [methodFilter, setMethodFilter] = useState<ExpenseMethod | undefined>(undefined);
 
-  const queryParams: { from?: string; to?: string; category?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED'; method?: ExpenseMethod } = {};
+  const queryParams: { from?: string; to?: string; category?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED' } = {};
   if (dateRange?.[0]) queryParams.from = dateRange[0].format('YYYY-MM-DD');
   if (dateRange?.[1]) queryParams.to = dateRange[1].format('YYYY-MM-DD');
   if (categoryFilter) queryParams.category = categoryFilter;
   if (statusFilter) queryParams.status = statusFilter;
-  if (methodFilter) queryParams.method = methodFilter;
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', queryParams],
@@ -134,7 +122,6 @@ export default function ExpensesPage() {
         category: values.category,
         amount: values.amount,
         note: values.note || undefined,
-        method: (values.method as ExpenseMethod) || 'CASH',
       });
     } catch {
       // validation error
@@ -183,16 +170,6 @@ export default function ExpensesPage() {
       render: (v: 'PENDING' | 'APPROVED' | 'REJECTED') => {
         const status = EXPENSE_STATUS_OPTIONS.find((s) => s.value === v);
         return <Tag color={status?.color}>{status?.label || v}</Tag>;
-      },
-    },
-    {
-      title: 'Способ',
-      dataIndex: 'method',
-      width: 140,
-      render: (v: ExpenseMethod | null | undefined) => {
-        if (!v) return <Tag>—</Tag>;
-        const opt = EXPENSE_METHOD_OPTIONS.find((m) => m.value === v);
-        return <Tag color={opt?.color}>{opt?.label || v}</Tag>;
       },
     },
     {
@@ -298,14 +275,6 @@ export default function ExpensesPage() {
             style={{ width: isMobile ? '100%' : 180 }}
             options={EXPENSE_STATUS_OPTIONS.map((s) => ({ label: s.label, value: s.value }))}
           />
-          <Select
-            placeholder="Способ оплаты"
-            value={methodFilter}
-            onChange={(v) => setMethodFilter(v)}
-            allowClear
-            style={{ width: isMobile ? '100%' : 180 }}
-            options={EXPENSE_METHOD_OPTIONS.map((m) => ({ label: m.label, value: m.value }))}
-          />
         </Space>
 
         {isMobile ? (
@@ -319,16 +288,7 @@ export default function ExpensesPage() {
                   <div>
                     <Typography.Text strong>{item.category}</Typography.Text>
                     <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.date).format('DD.MM.YYYY')}</Typography.Text></div>
-                    <div>
-                      <Space size={4} wrap>
-                        <Tag color={EXPENSE_STATUS_OPTIONS.find((s) => s.value === item.status)?.color}>{EXPENSE_STATUS_OPTIONS.find((s) => s.value === item.status)?.label || item.status}</Tag>
-                        {item.method && (
-                          <Tag color={EXPENSE_METHOD_OPTIONS.find((m) => m.value === item.method)?.color}>
-                            {EXPENSE_METHOD_OPTIONS.find((m) => m.value === item.method)?.label || item.method}
-                          </Tag>
-                        )}
-                      </Space>
-                    </div>
+                    <div><Tag color={EXPENSE_STATUS_OPTIONS.find((s) => s.value === item.status)?.color}>{EXPENSE_STATUS_OPTIONS.find((s) => s.value === item.status)?.label || item.status}</Tag></div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Typography.Text strong>{formatUZS(item.amount)}</Typography.Text>
@@ -388,11 +348,7 @@ export default function ExpensesPage() {
         cancelText="Отмена"
         width={isMobile ? '100%' : 520}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ method: 'CASH' as ExpenseMethod }}
-        >
+        <Form form={form} layout="vertical">
           <Form.Item name="date" label="Дата" rules={[{ required: true, message: 'Выберите дату' }]}>
             <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} />
           </Form.Item>
@@ -401,16 +357,6 @@ export default function ExpensesPage() {
               placeholder="Выберите категорию"
               options={EXPENSE_CATEGORIES.map((c) => ({ label: c, value: c }))}
               showSearch
-            />
-          </Form.Item>
-          <Form.Item
-            name="method"
-            label="Способ оплаты"
-            rules={[{ required: true, message: 'Выберите способ оплаты' }]}
-          >
-            <Select
-              placeholder="Способ оплаты"
-              options={EXPENSE_METHOD_OPTIONS.map((m) => ({ label: m.label, value: m.value }))}
             />
           </Form.Item>
           <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]}>

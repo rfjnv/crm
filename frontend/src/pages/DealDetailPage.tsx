@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
@@ -9,23 +9,21 @@ import {
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
-  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, FilePdfOutlined,
+  FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
-import BackButton from '../components/BackButton';
 import { adminApi } from '../api/admin.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
+import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
+import SuperOverrideModal from '../components/SuperOverrideModal';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
-import { smartFilterOption } from '../utils/translit';
-import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import dayjs from 'dayjs';
 
@@ -45,32 +43,11 @@ const paymentMethodLabels: Record<string, string> = {
   INSTALLMENT: 'Рассрочка',
 };
 
-function inventoryMovementTag(type: string): { color: string; label: string } {
-  if (type === 'IN') return { color: 'green', label: 'Приход' };
-  if (type === 'CORRECTION') return { color: 'orange', label: 'Коррекция' };
-  return { color: 'red', label: 'Расход' };
-}
-
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
 
 function getDefaultContractEndDate(start?: dayjs.Dayjs) {
   return dayjs(start ?? dayjs()).endOf('year');
-}
-
-/** Менеджер Дильноза: способ оплаты уже задаётся при создании сделки */
-function isDilnozaUser(fullName?: string, login?: string): boolean {
-  const f = (fullName || '').trim().toLowerCase();
-  const l = (login || '').trim().toLowerCase();
-  return l === 'dilnoza' || f === 'dilnoza' || f.includes('дилноза');
-}
-
-const DILNOZA_QUICK_FINANCE_METHODS: PaymentMethod[] = ['CASH', 'PAYME', 'QR', 'CLICK', 'TERMINAL'];
-
-function dilnozaHasCompleteTransferOnDeal(d: Deal): boolean {
-  const inn = d.transferInn?.trim();
-  const docs = d.transferDocuments;
-  return !!(inn && Array.isArray(docs) && docs.length > 0);
 }
 
 /** Format qty: integers without .0, decimals up to 3 digits */
@@ -103,6 +80,7 @@ export default function DealDetailPage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
+  const [overrideModal, setOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
@@ -160,7 +138,7 @@ export default function DealDetailPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: () => usersApi.list(),
+    queryFn: usersApi.list,
     enabled: role === 'SUPER_ADMIN' || role === 'ADMIN',
   });
 
@@ -183,6 +161,12 @@ export default function DealDetailPage() {
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const canSuperOverride = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const canDeleteAnyDeal = isSuperAdmin;
+
+  const { data: clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: clientsApi.list,
+    enabled: canSuperOverride,
+  });
 
   const { data: clientContracts } = useQuery({
     queryKey: ['client-contracts', dealData?.clientId],
@@ -231,7 +215,7 @@ export default function DealDetailPage() {
   });
 
   const addItemMut = useMutation({
-    mutationFn: (data: { productId: string; requestedQty: number; price: number; requestComment?: string }) => dealsApi.addItem(id!, data),
+    mutationFn: (data: { productId: string; requestComment?: string }) => dealsApi.addItem(id!, data),
     onSuccess: () => {
       invalidate();
       // If setting quantities modal is open, don't close item modal
@@ -241,12 +225,7 @@ export default function DealDetailPage() {
       itemForm.resetFields();
       message.success('Товар добавлен');
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
-        || (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || 'Ошибка добавления товара';
-      message.error(msg);
-    },
+    onError: () => message.error('Ошибка добавления товара'),
   });
 
   const removeItemMut = useMutation({
@@ -261,7 +240,7 @@ export default function DealDetailPage() {
   });
 
   const warehouseResponseMut = useMutation({
-    mutationFn: (items: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number }[]) =>
+    mutationFn: (items: { dealItemId: string; warehouseComment: string }[]) =>
       dealsApi.submitWarehouseResponse(id!, items),
     onSuccess: () => { invalidate(); setWarehouseResponseModal(false); warehouseForm.resetFields(); message.success('Ответ склада отправлен'); },
     onError: (err: unknown) => {
@@ -467,14 +446,8 @@ export default function DealDetailPage() {
   const deal = dealData;
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
-  const isSalesRole = role === 'MANAGER' || role === 'HR';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
-  /** Менеджер/админ: добавление и удаление позиций во всех статусах, кроме закрытой и отменённой сделки. */
-  const canEditItems =
-    !deal.isArchived &&
-    deal.status !== 'CLOSED' &&
-    deal.status !== 'CANCELED' &&
-    (isAdmin || isSalesRole);
+  const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
@@ -514,7 +487,7 @@ export default function DealDetailPage() {
     const actions: React.ReactNode[] = [];
 
     // NEW → Send to warehouse (WAITING_STOCK_CONFIRMATION)
-    if (deal.status === 'NEW' && (isAdmin || isSalesRole)) {
+    if (deal.status === 'NEW' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Button key="to-warehouse" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
           Отправить на склад
@@ -522,42 +495,8 @@ export default function DealDetailPage() {
       );
     }
 
-    // WAITING_STOCK_CONFIRMATION → ответ склада / грузчика (только строки без количества)
-    const stockResponderRoles: UserRole[] = ['WAREHOUSE', 'WAREHOUSE_MANAGER', 'LOADER', 'SUPER_ADMIN', 'ADMIN'];
-    const canRespondStock = role !== undefined && stockResponderRoles.includes(role);
-    if (deal.status === 'WAITING_STOCK_CONFIRMATION' && canRespondStock) {
-      const pendingStock = (deal.items ?? []).filter(dealItemNeedsWarehouseStock);
-      if (pendingStock.length > 0) {
-        actions.push(
-          <Button
-            key="warehouse-respond-deal"
-            type="primary"
-            icon={<CheckCircleOutlined />}
-            loading={warehouseResponseMut.isPending}
-            onClick={() => {
-              const initialValues = pendingStock.map((item) => {
-                const defPrice = item.product?.salePrice ? Number(item.product.salePrice) : undefined;
-                return {
-                  dealItemId: item.id,
-                  productName: item.product?.name || 'Товар',
-                  unit: item.product?.unit || 'шт',
-                  requestComment: item.requestComment || '',
-                  warehouseComment: '',
-                  price: defPrice,
-                };
-              });
-              warehouseForm.setFieldsValue({ items: initialValues });
-              setWarehouseResponseModal(true);
-            }}
-          >
-            Ответить по складу
-          </Button>,
-        );
-      }
-    }
-
     // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
-    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || isSalesRole)) {
+    if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Button key="set-quantities" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
           {/*
@@ -578,7 +517,7 @@ export default function DealDetailPage() {
     }
 
     // IN_PROGRESS without quantities → Set quantities
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole) && !hasQuantities) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && !hasQuantities) {
       actions.push(
         <Button key="set-quantities-ip" type="primary" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
           {/*
@@ -607,94 +546,19 @@ export default function DealDetailPage() {
     }
 
     // IN_PROGRESS with quantities → Send to finance (payment method selection)
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole) && hasQuantities) {
-      const dilnozaManager = isDilnozaUser(user?.fullName, user?.login) && role === 'MANAGER';
-      const presetPm = deal.paymentMethod;
-
-      const openFinanceMethodModal = () => {
-        setSelectedPaymentMethod(null);
-        setSendToFinanceModal(true);
-      };
-
-      const sendToFinanceUsingDealPreset = () => {
-        if (!presetPm) {
-          openFinanceMethodModal();
-          return;
-        }
-        if (DILNOZA_QUICK_FINANCE_METHODS.includes(presetPm)) {
-          sendToFinanceMut.mutate({ paymentMethod: presetPm });
-          return;
-        }
-        if (
-          (presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT')
-          && dilnozaHasCompleteTransferOnDeal(deal)
-        ) {
-          sendToFinanceMut.mutate({
-            paymentMethod: presetPm,
-            transferInn: deal.transferInn!.trim(),
-            transferDocuments: deal.transferDocuments!,
-            transferType: deal.transferType === 'ANNUAL' ? 'ANNUAL' : 'ONE_TIME',
-          });
-          return;
-        }
-        if (presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT') {
-          setSelectedPaymentMethod(presetPm);
-          openTransferPaymentModal();
-          return;
-        }
-        openFinanceMethodModal();
-      };
-
-      if (dilnozaManager && presetPm) {
-        const pmLabel = paymentMethodLabels[presetPm] || presetPm;
-        const canConfirmInOneStep =
-          DILNOZA_QUICK_FINANCE_METHODS.includes(presetPm)
-          || ((presetPm === 'TRANSFER' || presetPm === 'INSTALLMENT') && dilnozaHasCompleteTransferOnDeal(deal));
-
-        actions.push(
-          <Space key="send-finance-dilnoza" wrap align="center">
-            {canConfirmInOneStep ? (
-              <Popconfirm
-                title={`Отправить в финансы со способом «${pmLabel}» (как при создании сделки)?`}
-                okText="Да, отправить"
-                cancelText="Отмена"
-                onConfirm={() => sendToFinanceUsingDealPreset()}
-              >
-                <Button type="primary" icon={<DollarOutlined />} loading={sendToFinanceMut.isPending}>
-                  Отправить в финансы
-                </Button>
-              </Popconfirm>
-            ) : (
-              <Button
-                type="primary"
-                icon={<DollarOutlined />}
-                loading={sendToFinanceMut.isPending}
-                onClick={() => sendToFinanceUsingDealPreset()}
-              >
-                Отправить в финансы
-              </Button>
-            )}
-            <Button type="link" onClick={openFinanceMethodModal}>
-              Выбрать другой способ
-            </Button>
-          </Space>,
-        );
-      } else {
-        actions.push(
-          <Button
-            key="send-finance"
-            type="primary"
-            icon={<DollarOutlined />}
-            onClick={openFinanceMethodModal}
-          >
-            Отправить в финансы
-          </Button>,
-        );
-      }
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
+      actions.push(
+        <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
+          setSelectedPaymentMethod(null);
+          setSendToFinanceModal(true);
+        }}>
+          Отправить в финансы
+        </Button>,
+      );
     }
 
     // IN_PROGRESS → Go back to warehouse
-    if (deal.status === 'IN_PROGRESS' && (isAdmin || isSalesRole)) {
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Popconfirm key="back-to-warehouse-ip" title="Вернуть на склад?" onConfirm={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
           <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
@@ -729,7 +593,7 @@ export default function DealDetailPage() {
     }
 
     // WAITING_FINANCE → Go back to IN_PROGRESS
-    if (deal.status === 'WAITING_FINANCE' && (isAdmin || isSalesRole)) {
+    if (deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Popconfirm key="back-to-ip-wf" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
           <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
@@ -776,7 +640,7 @@ export default function DealDetailPage() {
     }
 
     // REJECTED → Return to IN_PROGRESS
-    if (deal.status === 'REJECTED' && (isAdmin || isSalesRole)) {
+    if (deal.status === 'REJECTED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Button key="rework" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('IN_PROGRESS')}>
           Вернуть в работу
@@ -785,7 +649,7 @@ export default function DealDetailPage() {
     }
 
     // Cancel button (available on most statuses)
-    if (!isReadOnly && deal.status !== 'REJECTED' && (isAdmin || isSalesRole)) {
+    if (!isReadOnly && deal.status !== 'REJECTED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
         <Popconfirm key="cancel" title="Отменить сделку?" onConfirm={() => statusMut.mutate('CANCELED')}>
           <Button danger icon={<CloseCircleOutlined />} loading={statusMut.isPending}>
@@ -801,7 +665,7 @@ export default function DealDetailPage() {
         <Button
           key="override"
           icon={<ThunderboltOutlined />}
-          onClick={() => navigate(`/deals/${id}/override`)}
+          onClick={() => setOverrideModal(true)}
           style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
         >
           Super Override
@@ -971,11 +835,7 @@ export default function DealDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <BackButton fallback="/deals" />
-        <Typography.Title level={4} style={{ margin: 0 }}>{deal.title}</Typography.Title>
-        {deal.isSessionDeal && <Tag color="blue">Сессионная</Tag>}
-      </div>
+      <Typography.Title level={4}>{deal.title}</Typography.Title>
 
       <Card bordered={false} style={{ marginBottom: 16 }}>
         <DealPipeline status={deal.status} />
@@ -1019,9 +879,7 @@ export default function DealDetailPage() {
         >
           <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
             <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
-            <Descriptions.Item label="Клиент">
-              <ClientCompanyDisplay client={deal.client} link variant="full" />
-            </Descriptions.Item>
+            <Descriptions.Item label="Клиент">{deal.client?.companyName}</Descriptions.Item>
             <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
           </Descriptions>
         </Card>
@@ -1033,7 +891,7 @@ export default function DealDetailPage() {
           <Card bordered={false} size="small">
             <Descriptions column={1} size="small">
               <Descriptions.Item label="Клиент">
-                <ClientCompanyDisplay client={deal.client} link variant="full" />
+                <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
               </Descriptions.Item>
               <Descriptions.Item label="Менеджер">
                 {isAdmin ? (
@@ -1043,7 +901,7 @@ export default function DealDetailPage() {
                     loading={managerMut.isPending}
                     style={{ minWidth: 120 }}
                     showSearch
-                    filterOption={smartFilterOption}
+                    optionFilterProp="label"
                     options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
                   />
                 ) : (
@@ -1059,22 +917,6 @@ export default function DealDetailPage() {
               <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
               {deal.contract && (
                 <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
-              )}
-              {deal.deliveryType && (
-                <Descriptions.Item label="Доставка">
-                  <Tag color={deal.deliveryType === 'DELIVERY' ? 'orange' : deal.deliveryType === 'YANDEX' ? 'purple' : 'blue'}>
-                    {{ SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' }[deal.deliveryType] || deal.deliveryType}
-                  </Tag>
-                </Descriptions.Item>
-              )}
-              {deal.vehicleNumber && (
-                <Descriptions.Item label="Номер машины">{deal.vehicleNumber}</Descriptions.Item>
-              )}
-              {deal.vehicleType && (
-                <Descriptions.Item label="Тип машины">{deal.vehicleType}</Descriptions.Item>
-              )}
-              {deal.deliveryComment && (
-                <Descriptions.Item label="Комментарий доставки">{deal.deliveryComment}</Descriptions.Item>
               )}
               {deal.paymentMethod && (
                 <Descriptions.Item label="Способ оплаты">
@@ -1102,16 +944,6 @@ export default function DealDetailPage() {
                   )}
                 </>
               )}
-              {(deal as any).loadingAssignee && (
-                <Descriptions.Item label="Грузил">
-                  <Tag color="cyan">{(deal as any).loadingAssignee.fullName}</Tag>
-                </Descriptions.Item>
-              )}
-              {deal.deliveryDriver && (
-                <Descriptions.Item label="Водитель доставки">
-                  <Tag color="green">{deal.deliveryDriver.fullName}</Tag>
-                </Descriptions.Item>
-              )}
               <Descriptions.Item label="Статус">
                 <DealStatusTag status={deal.status} />
               </Descriptions.Item>
@@ -1124,17 +956,12 @@ export default function DealDetailPage() {
               title="Оплата"
               size="small"
               extra={
-                <Space>
-                  <Tooltip title="Скачать чек">
-                    <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }} />
-                  </Tooltip>
-                  {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
-                    <>
-                      <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
-                      <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
-                    </>
-                  )}
-                </Space>
+                !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                  <Space>
+                    <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
+                    <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
+                  </Space>
+                )
               }
               bordered={false}
             >
@@ -1364,20 +1191,17 @@ export default function DealDetailPage() {
                           ),
                         };
                       }
-                      {
-                        const mv = inventoryMovementTag(entry.type);
-                        return {
-                          color: mv.color,
-                          children: (
-                            <div>
-                              <Tag color={mv.color} style={{ fontSize: 11 }}>{mv.label}</Tag>{' '}
-                              <Typography.Text strong style={{ fontSize: 12 }}>{entry.product?.name}</Typography.Text>{' '}
-                              <Typography.Text style={{ fontSize: 12 }}>x {entry.quantity}</Typography.Text>
-                              <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
-                            </div>
-                          ),
-                        };
-                      }
+                      return {
+                        color: entry.type === 'IN' ? 'green' : 'red',
+                        children: (
+                          <div>
+                            <Tag color={entry.type === 'IN' ? 'green' : 'red'} style={{ fontSize: 11 }}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
+                            <Typography.Text strong style={{ fontSize: 12 }}>{entry.product?.name}</Typography.Text>{' '}
+                            <Typography.Text style={{ fontSize: 12 }}>x {entry.quantity}</Typography.Text>
+                            <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                          </div>
+                        ),
+                      };
                     })}
                   />
                 ),
@@ -1400,9 +1224,9 @@ export default function DealDetailPage() {
               children: (
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <Card bordered={false}>
-                    <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} size="small">
+                    <Descriptions column={{ xs: 1, sm: 2 }} size="small">
                       <Descriptions.Item label="Клиент">
-                        <ClientCompanyDisplay client={deal.client} link variant="full" />
+                        <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
                       </Descriptions.Item>
                       <Descriptions.Item label="Менеджер">
                         {isAdmin ? (
@@ -1412,15 +1236,12 @@ export default function DealDetailPage() {
                             loading={managerMut.isPending}
                             style={{ minWidth: 200 }}
                             showSearch
-                            filterOption={smartFilterOption}
+                            optionFilterProp="label"
                             options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
                           />
                         ) : (
                           deal.manager?.fullName
                         )}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Статус">
-                        <DealStatusTag status={deal.status} />
                       </Descriptions.Item>
                       <Descriptions.Item label="Сумма">
                         {hasQuantities ? formatUZS(deal.amount) : <Typography.Text type="secondary">Не установлено</Typography.Text>}
@@ -1437,51 +1258,9 @@ export default function DealDetailPage() {
                           <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
                         </Descriptions.Item>
                       )}
-                      {deal.paymentMethod === 'TRANSFER' && deal.transferInn && (
-                        <Descriptions.Item label="ИНН (перечисление)">
-                          <Typography.Text code>{deal.transferInn}</Typography.Text>
-                        </Descriptions.Item>
-                      )}
-                      {deal.paymentMethod === 'TRANSFER' && deal.transferDocuments && Array.isArray(deal.transferDocuments) && (
-                        <Descriptions.Item label="Документы">
-                          <Space wrap>
-                            {(deal.transferDocuments as unknown as string[]).map((doc: string) => (
-                              <Tag key={doc} color="cyan">{doc}</Tag>
-                            ))}
-                          </Space>
-                        </Descriptions.Item>
-                      )}
-                      {deal.paymentMethod === 'TRANSFER' && deal.transferType && (
-                        <Descriptions.Item label="Тип документа">
-                          <Tag color="magenta">{deal.transferType === 'ONE_TIME' ? 'Разовый' : 'Годовой'}</Tag>
-                        </Descriptions.Item>
-                      )}
-                      {deal.deliveryType && (
-                        <Descriptions.Item label="Доставка">
-                          <Tag color={deal.deliveryType === 'DELIVERY' ? 'orange' : deal.deliveryType === 'YANDEX' ? 'purple' : 'blue'}>
-                            {{ SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' }[deal.deliveryType] || deal.deliveryType}
-                          </Tag>
-                        </Descriptions.Item>
-                      )}
-                      {deal.vehicleNumber && (
-                        <Descriptions.Item label="Номер машины">{deal.vehicleNumber}</Descriptions.Item>
-                      )}
-                      {deal.vehicleType && (
-                        <Descriptions.Item label="Тип машины">{deal.vehicleType}</Descriptions.Item>
-                      )}
-                      {deal.deliveryComment && (
-                        <Descriptions.Item label="Комментарий доставки">{deal.deliveryComment}</Descriptions.Item>
-                      )}
-                      {(deal as any).loadingAssignee && (
-                        <Descriptions.Item label="Грузил">
-                          <Tag color="cyan">{(deal as any).loadingAssignee.fullName}</Tag>
-                        </Descriptions.Item>
-                      )}
-                      {deal.deliveryDriver && (
-                        <Descriptions.Item label="Водитель доставки">
-                          <Tag color="green">{deal.deliveryDriver.fullName}</Tag>
-                        </Descriptions.Item>
-                      )}
+                      <Descriptions.Item label="Статус">
+                        <DealStatusTag status={deal.status} />
+                      </Descriptions.Item>
                     </Descriptions>
                   </Card>
 
@@ -1490,11 +1269,10 @@ export default function DealDetailPage() {
                       title="Оплата"
                       extra={
                         <Space>
-                          <Button size="small" icon={<FilePdfOutlined />} onClick={() => { dealsApi.downloadPaymentReceipt(deal.id).catch(() => message.error('Не удалось сформировать чек')); }}>Чек</Button>
-                          {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
                           )}
-                          {!isReadOnly && (isAdmin || isSalesRole || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
                           )}
                         </Space>
@@ -1671,22 +1449,19 @@ export default function DealDetailPage() {
                           ),
                         };
                       }
-                      {
-                        const mv = inventoryMovementTag(entry.type);
-                        return {
-                          color: mv.color,
-                          children: (
-                            <div>
-                              <Tag color={mv.color}>{mv.label}</Tag>{' '}
-                              <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
-                              <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
-                              <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
-                              <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                              {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
-                            </div>
-                          ),
-                        };
-                      }
+                      return {
+                        color: entry.type === 'IN' ? 'green' : 'red',
+                        children: (
+                          <div>
+                            <Tag color={entry.type === 'IN' ? 'green' : 'red'}>{entry.type === 'IN' ? 'Приход' : 'Расход'}</Tag>{' '}
+                            <Typography.Text strong>{entry.product?.name}</Typography.Text>{' '}
+                            <Typography.Text>({entry.product?.sku})</Typography.Text>{' '}
+                            <Typography.Text>x {entry.quantity}</Typography.Text>{' '}
+                            <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                            {entry.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary">{entry.note}</Typography.Text></div>}
+                          </div>
+                        ),
+                      };
                     })}
                   />
                 </Card>
@@ -1714,50 +1489,18 @@ export default function DealDetailPage() {
         confirmLoading={addItemMut.isPending}
         okText="Добавить"
         cancelText="Отмена"
-        width={isMobile ? '100%' : 480}
       >
-        <Form
-          form={itemForm}
-          layout="vertical"
-          initialValues={{ requestedQty: 1 }}
-          onFinish={(v) => addItemMut.mutate({
-            productId: v.productId,
-            requestedQty: Number(v.requestedQty),
-            price: Number(v.price),
-            requestComment: v.requestComment?.trim() || undefined,
-          })}
-        >
+        <Form form={itemForm} layout="vertical" onFinish={(v) => addItemMut.mutate({ productId: v.productId, requestComment: v.requestComment || undefined })}>
           <Form.Item name="productId" label="Товар" rules={[{ required: true, message: 'Выберите товар' }]}>
             <Select
               showSearch
-              filterOption={smartFilterOption}
+              optionFilterProp="label"
               placeholder="Выберите товар"
               options={(products ?? []).filter((p) => p.isActive).map((p) => ({ label: `${p.name} (${p.sku}) — остаток: ${p.stock}`, value: p.id }))}
-              onChange={(pid) => {
-                const p = (products ?? []).find((x) => x.id === pid);
-                const sp = p?.salePrice != null ? Number(p.salePrice) : 0;
-                itemForm.setFieldsValue({ price: Number.isFinite(sp) ? sp : 0 });
-              }}
             />
           </Form.Item>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item name="requestedQty" label="Количество" rules={[{ required: true, message: 'Укажите количество' }]}>
-              <InputNumber
-                style={{ width: '100%' }}
-                min={0.001}
-                step={0.001}
-                parser={(val) => {
-                  const s = String(val ?? '').replace(',', '.');
-                  return Number(s) as unknown as 0;
-                }}
-              />
-            </Form.Item>
-            <Form.Item name="price" label="Цена за ед. (с НДС)" rules={[{ required: true, message: 'Укажите цену' }]}>
-              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
-            </Form.Item>
-          </div>
-          <Form.Item name="requestComment" label="Примечание (необязательно)">
-            <Input.TextArea rows={2} placeholder="Доп. комментарий к позиции" />
+          <Form.Item name="requestComment" label="Комментарий / запрос">
+            <Input.TextArea rows={2} placeholder="Например: нужно 50 тонн, уточнить наличие" />
           </Form.Item>
         </Form>
       </Modal>
@@ -1800,18 +1543,10 @@ export default function DealDetailPage() {
         width={isMobile ? '100%' : 700}
       >
         <Form form={warehouseForm} layout="vertical" onFinish={(values) => {
-          const items = (values.items as Record<string, unknown>[]).map((item) => {
-            const priceVal = item.price as number | null | undefined;
-            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
-              dealItemId: item.dealItemId as string,
-              warehouseComment: String(item.warehouseComment ?? '').trim(),
-              requestedQty: Number(item.requestedQty),
-            };
-            if (priceVal != null && priceVal > 0) {
-              row.price = priceVal;
-            }
-            return row;
-          });
+          const items = values.items.map((item: Record<string, unknown>) => ({
+            dealItemId: item.dealItemId,
+            warehouseComment: item.warehouseComment as string,
+          }));
           warehouseResponseMut.mutate(items);
         }}>
           <Form.List name="items">
@@ -1829,23 +1564,11 @@ export default function DealDetailPage() {
                         </Typography.Text>
                       )}
                       <Form.Item
-                        name={[field.name, 'requestedQty']}
-                        label={`Количество (${itemData?.unit || 'шт'})`}
-                        rules={[{ required: true, message: 'Укажите количество' }]}
-                      >
-                        <InputNumber style={{ width: '100%' }} min={0.001} step={0.001} placeholder="Фактическое количество" />
-                      </Form.Item>
-                      <Form.Item
-                        name={[field.name, 'price']}
-                        label="Цена (пусто — из каталога)"
-                      >
-                        <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="По прайсу" />
-                      </Form.Item>
-                      <Form.Item
                         name={[field.name, 'warehouseComment']}
-                        label="Комментарий склада (необязательно)"
+                        label="Ответ склада"
+                        rules={[{ required: true, message: 'Укажите ответ' }]}
                       >
-                        <Input.TextArea rows={2} placeholder="По желанию: срок, замечание…" />
+                        <Input.TextArea rows={2} placeholder="Есть в наличии 40 тонн, срок доставки 3 дня..." />
                       </Form.Item>
                     </Card>
                   );
@@ -2300,6 +2023,20 @@ export default function DealDetailPage() {
           Создать новый договор
         </Button>
       </Modal>
+
+      {/* Override Modal */}
+      {canSuperOverride && (
+        <SuperOverrideModal
+          open={overrideModal}
+          deal={deal}
+          payments={dealPayments ?? []}
+          products={products ?? []}
+          users={users ?? []}
+          clients={(clients ?? []).map((c) => ({ id: c.id, companyName: c.companyName }))}
+          onClose={() => setOverrideModal(false)}
+          onSuccess={() => invalidate()}
+        />
+      )}
 
       {/* SUPER_ADMIN: Delete Confirm Modal */}
       <Modal
