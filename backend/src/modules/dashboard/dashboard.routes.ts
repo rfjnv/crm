@@ -100,7 +100,7 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY di.product_id, p.name, p.sku
-             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 1`,
           )
         : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[]>(
@@ -116,7 +116,7 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
              GROUP BY di.product_id, p.name, p.sku
-             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 1`,
           );
 
@@ -136,7 +136,7 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY c.id, c.company_name
-             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 20`,
           )
         : prisma.$queryRaw<{ client_id: string; company_name: string; qty: string; revenue: string }[]>(
@@ -152,7 +152,7 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
              GROUP BY c.id, c.company_name
-             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 20`,
           );
 

@@ -17,7 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { Area } from '@ant-design/charts';
+import { Area, Bar } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Permission, UserRole, DealStatus } from '../types';
@@ -165,6 +165,16 @@ export default function DashboardPage() {
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const selectedProductOfDay = data.productOfDay?.[productDayPeriod] ?? null;
+  const topProductClientsByRevenue = useMemo(() => {
+    if (!selectedProductOfDay?.clients?.length) return [];
+    return [...selectedProductOfDay.clients]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6)
+      .map((client) => ({
+        companyName: client.companyName,
+        revenue: client.revenue,
+      }));
+  }, [selectedProductOfDay]);
 
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
@@ -369,92 +379,6 @@ export default function DashboardPage() {
       )}
       </div>
 
-      <div className={isMobile ? 'section' : undefined}>
-        <Card
-          bordered={false}
-          style={{ ...card, marginTop: isMobile ? 0 : 16 }}
-          styles={{ body: { padding: '16px 20px' } }}
-          title={(
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <Typography.Text strong style={{ fontSize: 14 }}>Товар дня</Typography.Text>
-              <Segmented
-                size="small"
-                value={productDayPeriod}
-                onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
-                options={[
-                  { label: 'Сегодня', value: 'today' },
-                  { label: 'Вчера', value: 'yesterday' },
-                ]}
-              />
-            </div>
-          )}
-        >
-          {!selectedProductOfDay ? (
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-              Нет продаж за выбранный день
-            </Typography.Text>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0 }}>
-                  <Typography.Text strong style={{ fontSize: 16 }}>
-                    {selectedProductOfDay.product.name}
-                  </Typography.Text>
-                  {selectedProductOfDay.product.sku && (
-                    <div><Tag style={{ marginTop: 4 }}>{selectedProductOfDay.product.sku}</Tag></div>
-                  )}
-                </div>
-                <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
-                  <Typography.Text style={{ fontSize: 13 }}>
-                    Продано: <Typography.Text strong>{formatFullNumber(selectedProductOfDay.qty)}</Typography.Text>
-                  </Typography.Text>
-                  <div>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      Выручка: {formatUZS(selectedProductOfDay.revenue)}
-                    </Typography.Text>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Кому продали
-                </Typography.Text>
-                {selectedProductOfDay.clients.length === 0 ? (
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                    Нет данных по клиентам
-                  </Typography.Text>
-                ) : (
-                  selectedProductOfDay.clients.slice(0, 8).map((client, idx) => (
-                    <div
-                      key={client.clientId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 10,
-                        padding: '6px 0',
-                        borderBottom:
-                          idx < Math.min(8, selectedProductOfDay.clients.length) - 1
-                            ? `1px solid ${tk.colorBorderSecondary}`
-                            : undefined,
-                      }}
-                    >
-                      <Typography.Text style={{ fontSize: 13 }} ellipsis>
-                        {client.companyName}
-                      </Typography.Text>
-                      <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                        {formatFullNumber(client.qty)}
-                      </Typography.Text>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </Card>
-      </div>
-
       {/* ── Monthly goal (compact, clickable → settings) ── */}
       {hasMyGoal && myGoal && (
         <div className={isMobile ? 'section' : undefined}>
@@ -610,46 +534,136 @@ export default function DashboardPage() {
             </Card>
           </Col>
           <Col xs={24} lg={10}>
-            <Card
-              bordered={false}
-              style={{ ...card, height: '100%' }}
-              styles={{ body: { padding: '16px 20px' } }}
-              title={<Typography.Text strong style={{ fontSize: 14 }}>Сделки по статусам</Typography.Text>}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 270, overflowY: 'auto' }}>
-                {(data.dealsByStatusCounts || [])
-                  .filter((d) => d.count > 0)
-                  .sort((a, b) => b.count - a.count)
-                  .map((d) => {
-                    const cfg = statusConfig[d.status as DealStatus];
-                    const hex: Record<string, string> = {
-                      blue: '#1677ff', processing: '#1677ff', gold: '#faad14', cyan: '#13c2c2',
-                      orange: '#fa8c16', lime: '#a0d911', geekblue: '#2f54eb', purple: '#722ed1',
-                      warning: '#faad14', success: '#52c41a', volcano: '#ff7a45', red: '#ff4d4f',
-                    };
-                    const maxC = Math.max(1, ...(data.dealsByStatusCounts || []).map((x) => x.count));
-                    return (
-                      <div
-                        key={d.status}
-                        style={{ cursor: 'pointer', padding: '6px 0' }}
-                        onClick={() => navigate(`/deals?status=${d.status}`)}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <DealStatusTag status={d.status as DealStatus} />
-                          <Typography.Text strong style={{ fontSize: 13 }}>{d.count}</Typography.Text>
-                        </div>
-                        <Progress
-                          percent={Math.round((d.count / maxC) * 100)}
-                          showInfo={false}
-                          size="small"
-                          strokeColor={hex[cfg?.color || ''] || tk.colorPrimary}
-                          trailColor={tk.colorFillSecondary}
-                        />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+              <Card
+                bordered={false}
+                style={{ ...card }}
+                styles={{ body: { padding: '14px 16px' } }}
+                title={(
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <Typography.Text strong style={{ fontSize: 14 }}>Товар дня (по выручке)</Typography.Text>
+                    <Segmented
+                      size="small"
+                      value={productDayPeriod}
+                      onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
+                      options={[
+                        { label: 'Сегодня', value: 'today' },
+                        { label: 'Вчера', value: 'yesterday' },
+                      ]}
+                    />
+                  </div>
+                )}
+              >
+                {!selectedProductOfDay ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                    Нет продаж за выбранный день
+                  </Typography.Text>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <Typography.Text strong style={{ fontSize: 15 }}>
+                          {selectedProductOfDay.product.name}
+                        </Typography.Text>
+                        {selectedProductOfDay.product.sku && (
+                          <div><Tag style={{ marginTop: 4 }}>{selectedProductOfDay.product.sku}</Tag></div>
+                        )}
                       </div>
-                    );
-                  })}
-              </div>
-            </Card>
+                      <div style={{ textAlign: 'right' }}>
+                        <Typography.Text strong style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+                          {formatUZS(selectedProductOfDay.revenue)}
+                        </Typography.Text>
+                        <div>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            Кол-во: {formatFullNumber(selectedProductOfDay.qty)} шт
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        Топ клиентов по выручке
+                      </Typography.Text>
+                      {topProductClientsByRevenue.length === 0 ? (
+                        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                          Нет данных по клиентам
+                        </Typography.Text>
+                      ) : (
+                        <div style={{ marginTop: 6 }}>
+                          <Bar
+                            data={topProductClientsByRevenue}
+                            xField="companyName"
+                            yField="revenue"
+                            height={170}
+                            theme={chartTheme}
+                            axis={{
+                              x: {
+                                labelAutoHide: true,
+                                labelFill: tk.colorTextSecondary,
+                              },
+                              y: {
+                                labelFormatter: (v: number) => formatShortNumber(v),
+                                labelFill: tk.colorTextSecondary,
+                              },
+                            }}
+                            tooltip={{
+                              items: [{
+                                channel: 'y',
+                                name: 'Выручка',
+                                valueFormatter: (v: number) => formatUZS(v),
+                              }],
+                            }}
+                            style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              <Card
+                bordered={false}
+                style={{ ...card, flex: 1 }}
+                styles={{ body: { padding: '16px 20px' } }}
+                title={<Typography.Text strong style={{ fontSize: 14 }}>Сделки по статусам</Typography.Text>}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 270, overflowY: 'auto' }}>
+                  {(data.dealsByStatusCounts || [])
+                    .filter((d) => d.count > 0)
+                    .sort((a, b) => b.count - a.count)
+                    .map((d) => {
+                      const cfg = statusConfig[d.status as DealStatus];
+                      const hex: Record<string, string> = {
+                        blue: '#1677ff', processing: '#1677ff', gold: '#faad14', cyan: '#13c2c2',
+                        orange: '#fa8c16', lime: '#a0d911', geekblue: '#2f54eb', purple: '#722ed1',
+                        warning: '#faad14', success: '#52c41a', volcano: '#ff7a45', red: '#ff4d4f',
+                      };
+                      const maxC = Math.max(1, ...(data.dealsByStatusCounts || []).map((x) => x.count));
+                      return (
+                        <div
+                          key={d.status}
+                          style={{ cursor: 'pointer', padding: '6px 0' }}
+                          onClick={() => navigate(`/deals?status=${d.status}`)}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <DealStatusTag status={d.status as DealStatus} />
+                            <Typography.Text strong style={{ fontSize: 13 }}>{d.count}</Typography.Text>
+                          </div>
+                          <Progress
+                            percent={Math.round((d.count / maxC) * 100)}
+                            showInfo={false}
+                            size="small"
+                            strokeColor={hex[cfg?.color || ''] || tk.colorPrimary}
+                            trailColor={tk.colorFillSecondary}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </Card>
+            </div>
           </Col>
         </Row>
         </div>
