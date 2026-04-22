@@ -18,6 +18,7 @@ import {
 
 type CompareLevel = 'category' | 'type' | 'product';
 type ClientViewMode = 'table' | 'matrix';
+type ClientListSort = 'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'qty_desc' | 'qty_asc' | 'deals_desc' | 'deals_asc';
 type PurchaseLineRow = {
   key: string;
   dealId: string;
@@ -115,6 +116,9 @@ export default function HierarchyClientsAnalyticsPanel({
     persistedView === 'matrix' ? 'matrix' : 'table',
   );
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
+  const [clientListSort, setClientListSort] = useState<ClientListSort>('revenue_desc');
+  const [clientPurchaseFilter, setClientPurchaseFilter] = useState<'all' | 'with_purchases' | 'without_purchases'>('all');
+  const [clientRevenueFilter, setClientRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
 
   const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim();
 
@@ -341,7 +345,7 @@ export default function HierarchyClientsAnalyticsPanel({
       map.set(row.clientId, existing);
     }
 
-    return [...map.values()]
+    const summaryRows = [...map.values()]
       .map((entry) => ({
         ...entry,
         dealsCount: entry.deals.size,
@@ -357,9 +361,37 @@ export default function HierarchyClientsAnalyticsPanel({
       .filter((row) => {
         if (!effectiveClientSearch) return true;
         return matchesSearch(row.clientName, effectiveClientSearch);
-      })
-      .sort((a, b) => b.salesRevenue - a.salesRevenue);
-  }, [effectiveClientSearch, productsById, purchaseRows, selectedClientScopeProductIds]);
+      });
+
+    let filteredRows = summaryRows;
+    if (clientPurchaseFilter === 'with_purchases') filteredRows = filteredRows.filter((r) => r.soldQty > 0);
+    if (clientPurchaseFilter === 'without_purchases') filteredRows = filteredRows.filter((r) => r.soldQty <= 0);
+    if (clientRevenueFilter === 'gt_0') filteredRows = filteredRows.filter((r) => r.salesRevenue > 0);
+    if (clientRevenueFilter === 'gte_1m') filteredRows = filteredRows.filter((r) => r.salesRevenue >= 1_000_000);
+    if (clientRevenueFilter === 'gte_10m') filteredRows = filteredRows.filter((r) => r.salesRevenue >= 10_000_000);
+
+    const sortedRows = [...filteredRows];
+    sortedRows.sort((a, b) => {
+      if (clientListSort === 'name_asc') return a.clientName.localeCompare(b.clientName, 'ru');
+      if (clientListSort === 'name_desc') return b.clientName.localeCompare(a.clientName, 'ru');
+      if (clientListSort === 'revenue_desc') return b.salesRevenue - a.salesRevenue;
+      if (clientListSort === 'revenue_asc') return a.salesRevenue - b.salesRevenue;
+      if (clientListSort === 'qty_desc') return b.soldQty - a.soldQty;
+      if (clientListSort === 'qty_asc') return a.soldQty - b.soldQty;
+      if (clientListSort === 'deals_desc') return b.dealsCount - a.dealsCount;
+      return a.dealsCount - b.dealsCount;
+    });
+
+    return sortedRows;
+  }, [
+    clientListSort,
+    clientPurchaseFilter,
+    clientRevenueFilter,
+    effectiveClientSearch,
+    productsById,
+    purchaseRows,
+    selectedClientScopeProductIds,
+  ]);
 
   const hierarchyClientRevenueChartData = useMemo(
     () =>
@@ -424,15 +456,26 @@ export default function HierarchyClientsAnalyticsPanel({
       byClient.set(row.clientId, current);
     }
 
-    const clients = [...byClient.values()].sort((a, b) => {
-      const sumA = Object.values(a.monthly).reduce((acc, v) => acc + v, 0);
-      const sumB = Object.values(b.monthly).reduce((acc, v) => acc + v, 0);
-      return sumB - sumA;
-    });
+    const summaryByClientId = new Map(clientPurchaseSummaryRows.map((r) => [r.clientId, r] as const));
+    const clients = [...byClient.values()]
+      .filter((c) => summaryByClientId.has(c.clientId))
+      .sort((a, b) => {
+        const sa = summaryByClientId.get(a.clientId);
+        const sb = summaryByClientId.get(b.clientId);
+        if (!sa || !sb) return 0;
+        if (clientListSort === 'name_asc') return a.clientName.localeCompare(b.clientName, 'ru');
+        if (clientListSort === 'name_desc') return b.clientName.localeCompare(a.clientName, 'ru');
+        if (clientListSort === 'revenue_desc') return sb.salesRevenue - sa.salesRevenue;
+        if (clientListSort === 'revenue_asc') return sa.salesRevenue - sb.salesRevenue;
+        if (clientListSort === 'qty_desc') return sb.soldQty - sa.soldQty;
+        if (clientListSort === 'qty_asc') return sa.soldQty - sb.soldQty;
+        if (clientListSort === 'deals_desc') return sb.dealsCount - sa.dealsCount;
+        return sa.dealsCount - sb.dealsCount;
+      });
 
     const maxRevenue = Math.max(1, ...clients.flatMap((c) => monthKeys.map((m) => c.monthly[m] ?? 0)));
     return { monthKeys, monthLabel, clients, maxRevenue };
-  }, [purchaseRows, selectedClientScopeProductIds]);
+  }, [clientListSort, clientPurchaseSummaryRows, purchaseRows, selectedClientScopeProductIds]);
 
   useEffect(() => {
     if (clientScopeLevel !== 'product' || !clientScopeProductId) return;
@@ -671,18 +714,6 @@ export default function HierarchyClientsAnalyticsPanel({
               { label: 'Матрица по месяцам', value: 'matrix' },
             ]}
           />
-          <Input
-            allowClear
-            prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
-            placeholder="Поиск клиента"
-            value={clientSearchTerm ?? internalClientSearch}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (onClientSearchTermChange) onClientSearchTermChange(next);
-              else setInternalClientSearch(next);
-            }}
-            style={{ minWidth: 220 }}
-          />
         </Space>
 
         {hierarchyClientLoading ? (
@@ -778,6 +809,57 @@ export default function HierarchyClientsAnalyticsPanel({
                 </Card>
               </Col>
             </Row>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Input
+                allowClear
+                prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
+                placeholder="Поиск клиента"
+                value={clientSearchTerm ?? internalClientSearch}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (onClientSearchTermChange) onClientSearchTermChange(next);
+                  else setInternalClientSearch(next);
+                }}
+                style={{ minWidth: 220, width: 280 }}
+              />
+              <Select
+                value={clientListSort}
+                onChange={(v) => setClientListSort(v)}
+                style={{ minWidth: 220 }}
+                options={[
+                  { label: 'Сорт: А-Я', value: 'name_asc' },
+                  { label: 'Сорт: Я-А', value: 'name_desc' },
+                  { label: 'Сорт: выручка (убыв.)', value: 'revenue_desc' },
+                  { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' },
+                  { label: 'Сорт: куплено (убыв.)', value: 'qty_desc' },
+                  { label: 'Сорт: куплено (возр.)', value: 'qty_asc' },
+                  { label: 'Сорт: сделки (убыв.)', value: 'deals_desc' },
+                  { label: 'Сорт: сделки (возр.)', value: 'deals_asc' },
+                ]}
+              />
+              <Select
+                value={clientPurchaseFilter}
+                onChange={(v) => setClientPurchaseFilter(v)}
+                style={{ minWidth: 190 }}
+                options={[
+                  { label: 'Покупки: все', value: 'all' },
+                  { label: 'Только купили', value: 'with_purchases' },
+                  { label: 'Без покупок', value: 'without_purchases' },
+                ]}
+              />
+              <Select
+                value={clientRevenueFilter}
+                onChange={(v) => setClientRevenueFilter(v)}
+                style={{ minWidth: 200 }}
+                options={[
+                  { label: 'Выручка: все', value: 'all' },
+                  { label: 'Выручка > 0', value: 'gt_0' },
+                  { label: 'Выручка ≥ 1 млн', value: 'gte_1m' },
+                  { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
+                ]}
+              />
+            </div>
 
             {clientViewMode === 'table' ? (
               <Table
