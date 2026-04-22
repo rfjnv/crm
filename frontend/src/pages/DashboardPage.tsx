@@ -151,7 +151,7 @@ export default function DashboardPage() {
   const productDayChartData = useMemo(() => {
     const topRows = productDayItems.slice(0, 8);
     const topRevenueId = topRows[0]?.product.id ?? null;
-    return topRows.map((item, idx) => {
+    return topRows.map((item) => {
       const revenue = Number(item.revenue || 0);
       const isTop = item.product.id === topRevenueId;
       const isActive = activeProductId === item.product.id;
@@ -163,7 +163,6 @@ export default function DashboardPage() {
       return {
         id: item.product.id,
         name: item.product.name || 'Товар',
-        shortName: `${idx + 1}`,
         revenue,
         fill,
       };
@@ -756,7 +755,7 @@ export default function DashboardPage() {
                     {productDayChartData.length > 0 ? (
                       <Column
                         data={productDayChartData}
-                        xField="shortName"
+                        xField="name"
                         yField="revenue"
                         height={236}
                         theme={chartTheme}
@@ -789,7 +788,7 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          title: (_title, row) => ((row as { name?: string } | null)?.name || 'Товар'),
+                          title: (title) => String(title || 'Товар'),
                           items: [
                             {
                               channel: 'y',
