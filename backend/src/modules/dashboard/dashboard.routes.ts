@@ -84,6 +84,78 @@ router.get(
              ORDER BY day ASC`,
           );
 
+    const topProductInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
+      dealScope.managerId
+        ? prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[]>(
+            Prisma.sql`SELECT di.product_id,
+                              p.name AS product_name,
+                              p.sku AS product_sku,
+                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
+                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             JOIN products p ON p.id = di.product_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY di.product_id, p.name, p.sku
+             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             LIMIT 1`,
+          )
+        : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[]>(
+            Prisma.sql`SELECT di.product_id,
+                              p.name AS product_name,
+                              p.sku AS product_sku,
+                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
+                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             JOIN products p ON p.id = di.product_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+             GROUP BY di.product_id, p.name, p.sku
+             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             LIMIT 1`,
+          );
+
+    const topProductClientsInRange = (rangeStart: Date, rangeEndExclusive: Date, productId: string) =>
+      dealScope.managerId
+        ? prisma.$queryRaw<{ client_id: string; company_name: string; qty: string; revenue: string }[]>(
+            Prisma.sql`SELECT c.id AS client_id,
+                              c.company_name,
+                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
+                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             JOIN clients c ON c.id = d.client_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND di.product_id = ${productId}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             LIMIT 20`,
+          )
+        : prisma.$queryRaw<{ client_id: string; company_name: string; qty: string; revenue: string }[]>(
+            Prisma.sql`SELECT c.id AS client_id,
+                              c.company_name,
+                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
+                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             JOIN clients c ON c.id = d.client_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND di.product_id = ${productId}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+             GROUP BY c.id, c.company_name
+             ORDER BY SUM(COALESCE(di.requested_qty, 0)) DESC, SUM(${SQL_LINE_REVENUE_DI}) DESC
+             LIMIT 20`,
+          );
+
     const [
       revenueTodayAgg,
       revenueYesterdayAgg,
@@ -96,6 +168,8 @@ router.get(
       closedDealsYesterday,
       revenueLast30DaysRaw,
       dealsByStatusCounts,
+      topProductTodayRaw,
+      topProductYesterdayRaw,
     ] = await Promise.all([
       // 1. Revenue today (operational: line totals, active deals, effective item date)
       revenueTotalInRange(startOfToday, startOfTomorrow),
@@ -198,6 +272,38 @@ router.get(
         where: { ...dealScope, isArchived: false },
         _count: true,
       }),
+      topProductInRange(startOfToday, startOfTomorrow),
+      topProductInRange(startOfYesterday, startOfToday),
+    ]);
+
+    const mapTopProductPeriod = async (
+      rangeStart: Date,
+      rangeEndExclusive: Date,
+      raw: { product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[],
+    ) => {
+      const top = raw[0];
+      if (!top) return null;
+      const clientsRaw = await topProductClientsInRange(rangeStart, rangeEndExclusive, top.product_id);
+      return {
+        product: {
+          id: top.product_id,
+          name: top.product_name,
+          sku: top.product_sku,
+        },
+        qty: Number(top.qty),
+        revenue: Number(top.revenue),
+        clients: clientsRaw.map((c) => ({
+          clientId: c.client_id,
+          companyName: c.company_name,
+          qty: Number(c.qty),
+          revenue: Number(c.revenue),
+        })),
+      };
+    };
+
+    const [topProductToday, topProductYesterday] = await Promise.all([
+      mapTopProductPeriod(startOfToday, startOfTomorrow, topProductTodayRaw),
+      mapTopProductPeriod(startOfYesterday, startOfToday, topProductYesterdayRaw),
     ]);
 
     const lowStockMapped = lowStockProducts.map((p) => ({
@@ -235,6 +341,10 @@ router.get(
         status: d.status,
         count: d._count,
       })),
+      productOfDay: {
+        today: topProductToday,
+        yesterday: topProductYesterday,
+      },
     });
   }),
 );

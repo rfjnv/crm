@@ -500,6 +500,20 @@ export interface DashboardSummary {
   lowStockProducts: { id: string; name: string; sku: string; stock: number; minStock: number }[];
   revenueLast30Days: { day: string; total: number }[];
   dealsByStatusCounts: { status: string; count: number }[];
+  productOfDay: {
+    today: {
+      product: { id: string; name: string; sku?: string | null };
+      qty: number;
+      revenue: number;
+      clients: { clientId: string; companyName: string; qty: number; revenue: number }[];
+    } | null;
+    yesterday: {
+      product: { id: string; name: string; sku?: string | null };
+      qty: number;
+      revenue: number;
+      clients: { clientId: string; companyName: string; qty: number; revenue: number }[];
+    } | null;
+  };
 }
 
 export interface RevenueTodayPayment {

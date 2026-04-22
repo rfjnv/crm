@@ -1,6 +1,6 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge } from 'antd';
+import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -111,6 +111,7 @@ export default function DashboardPage() {
   }, [monthAnalytics]);
 
   const chartRange = useDashboardChartRange();
+  const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
 
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
@@ -163,6 +164,7 @@ export default function DashboardPage() {
   const cardBody = { padding: '16px 20px' };
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
+  const selectedProductOfDay = data.productOfDay?.[productDayPeriod] ?? null;
 
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
@@ -365,6 +367,92 @@ export default function DashboardPage() {
         </Col>
       </Row>
       )}
+      </div>
+
+      <div className={isMobile ? 'section' : undefined}>
+        <Card
+          bordered={false}
+          style={{ ...card, marginTop: isMobile ? 0 : 16 }}
+          styles={{ body: { padding: '16px 20px' } }}
+          title={(
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <Typography.Text strong style={{ fontSize: 14 }}>Товар дня</Typography.Text>
+              <Segmented
+                size="small"
+                value={productDayPeriod}
+                onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
+                options={[
+                  { label: 'Сегодня', value: 'today' },
+                  { label: 'Вчера', value: 'yesterday' },
+                ]}
+              />
+            </div>
+          )}
+        >
+          {!selectedProductOfDay ? (
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              Нет продаж за выбранный день
+            </Typography.Text>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0 }}>
+                  <Typography.Text strong style={{ fontSize: 16 }}>
+                    {selectedProductOfDay.product.name}
+                  </Typography.Text>
+                  {selectedProductOfDay.product.sku && (
+                    <div><Tag style={{ marginTop: 4 }}>{selectedProductOfDay.product.sku}</Tag></div>
+                  )}
+                </div>
+                <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
+                  <Typography.Text style={{ fontSize: 13 }}>
+                    Продано: <Typography.Text strong>{formatFullNumber(selectedProductOfDay.qty)}</Typography.Text>
+                  </Typography.Text>
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      Выручка: {formatUZS(selectedProductOfDay.revenue)}
+                    </Typography.Text>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Кому продали
+                </Typography.Text>
+                {selectedProductOfDay.clients.length === 0 ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                    Нет данных по клиентам
+                  </Typography.Text>
+                ) : (
+                  selectedProductOfDay.clients.slice(0, 8).map((client, idx) => (
+                    <div
+                      key={client.clientId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        padding: '6px 0',
+                        borderBottom:
+                          idx < Math.min(8, selectedProductOfDay.clients.length) - 1
+                            ? `1px solid ${tk.colorBorderSecondary}`
+                            : undefined,
+                      }}
+                    >
+                      <Typography.Text style={{ fontSize: 13 }} ellipsis>
+                        {client.companyName}
+                      </Typography.Text>
+                      <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                        {formatFullNumber(client.qty)}
+                      </Typography.Text>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
 
       {/* ── Monthly goal (compact, clickable → settings) ── */}
