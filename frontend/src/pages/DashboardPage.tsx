@@ -181,6 +181,7 @@ export default function DashboardPage() {
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const selectedProductOfDay = data.productOfDay?.[productDayPeriod] ?? null;
+  const productOfDayUnit = selectedProductOfDay?.product.unit?.trim() || 'шт';
 
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
@@ -627,7 +628,7 @@ export default function DashboardPage() {
                       </Typography.Text>
                       <div>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          Продано: {formatCount(selectedProductOfDay.qty)} шт
+                          Продано: {formatCount(selectedProductOfDay.qty)} {productOfDayUnit}
                         </Typography.Text>
                       </div>
                     </div>
@@ -666,7 +667,7 @@ export default function DashboardPage() {
                                   </Typography.Text>
                                   <div>
                                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                      {formatCount(client.qty)} шт
+                                      {formatCount(client.qty)} {productOfDayUnit}
                                     </Typography.Text>
                                   </div>
                                 </div>

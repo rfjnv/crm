@@ -86,10 +86,11 @@ router.get(
 
     const topProductInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
       dealScope.managerId
-        ? prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[]>(
+        ? prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
             Prisma.sql`SELECT di.product_id,
                               p.name AS product_name,
                               p.sku AS product_sku,
+                              p.unit AS product_unit,
                               COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
                               COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
              FROM deal_items di
@@ -99,14 +100,15 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
-             GROUP BY di.product_id, p.name, p.sku
+             GROUP BY di.product_id, p.name, p.sku, p.unit
              ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 1`,
           )
-        : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[]>(
+        : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
             Prisma.sql`SELECT di.product_id,
                               p.name AS product_name,
                               p.sku AS product_sku,
+                              p.unit AS product_unit,
                               COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
                               COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
              FROM deal_items di
@@ -115,7 +117,7 @@ router.get(
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-             GROUP BY di.product_id, p.name, p.sku
+             GROUP BY di.product_id, p.name, p.sku, p.unit
              ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
              LIMIT 1`,
           );
@@ -279,7 +281,7 @@ router.get(
     const mapTopProductPeriod = async (
       rangeStart: Date,
       rangeEndExclusive: Date,
-      raw: { product_id: string; product_name: string; product_sku: string | null; qty: string; revenue: string }[],
+      raw: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
     ) => {
       const top = raw[0];
       if (!top) return null;
@@ -289,6 +291,7 @@ router.get(
           id: top.product_id,
           name: top.product_name,
           sku: top.product_sku,
+          unit: top.product_unit,
         },
         qty: Number(top.qty),
         revenue: Number(top.revenue),
