@@ -757,6 +757,8 @@ export default function DashboardPage() {
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
+                        colorField="id"
+                        color={(d: { fill?: string }) => d.fill || '#334155'}
                         height={236}
                         theme={chartTheme}
                         legend={false}
@@ -788,19 +790,25 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          title: (title) => String(title || 'Товар'),
-                          items: [
-                            {
-                              channel: 'y',
-                              name: 'Выручка',
-                              valueFormatter: (v: string | number) => formatUZS(Number(v)),
-                            },
-                          ],
+                          customContent: (_title: string, items: Array<{ data?: { name?: string; revenue?: number | string } }> = []) => {
+                            const item = items?.[0]?.data;
+                            if (!item) return '';
+                            return `
+                              <div style="padding:8px">
+                                <div style="font-size:12px; opacity:0.7">
+                                  ${item.name ?? 'Товар'}
+                                </div>
+                                <div style="font-weight:600">
+                                  ${Number(item.revenue ?? 0).toLocaleString()} so'm
+                                </div>
+                              </div>
+                            `;
+                          },
                         }}
                         style={(d: { fill?: string }) => ({
                           radiusTopLeft: 8,
                           radiusTopRight: 8,
-                          fill: d.fill || '#64748b',
+                          fill: d.fill,
                         })}
                         onReady={(plot) => {
                           plot.on('element:mouseenter', (evt: unknown) => {
