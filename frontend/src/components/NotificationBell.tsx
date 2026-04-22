@@ -59,20 +59,55 @@ export default function NotificationBell() {
       // Emoji based on severity
       const severityEmoji = latest.severity === 'URGENT' ? '🚨' : latest.severity === 'WARNING' ? '⚠️' : '🔔';
 
-      // Show system notification via Service Worker (like Telegram/Instagram)
-      const systemNotificationsEnabled = localStorage.getItem('system-notifications-enabled') === 'true';
-
-      if (systemNotificationsEnabled && 'serviceWorker' in navigator && Notification.permission === 'granted') {
-        navigator.serviceWorker.ready.then((reg) => {
-          reg.showNotification(`${severityEmoji} ${latest.title}`, {
-            body: latest.body,
-            icon: '/logo-icon.png',
-            badge: '/logo-icon.png',
-            tag: `notification-${latest.id}`,
-            requireInteraction: true,
-            data: { url: latest.link || '/notifications' }
-          } as NotificationOptions);
-        });
+      // Always attempt system notification when browser permission is granted.
+      if (Notification.permission === 'granted') {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready
+            .then((reg) => {
+              return reg.showNotification(`${severityEmoji} ${latest.title}`, {
+                body: latest.body,
+                icon: '/logo-icon.png',
+                badge: '/logo-icon.png',
+                tag: `notification-${latest.id}`,
+                requireInteraction: true,
+                data: { url: latest.link || '/notifications' }
+              } as NotificationOptions);
+            })
+            .catch(() => {
+              // Fallback when SW is not ready
+              try {
+                const n = new Notification(`${severityEmoji} ${latest.title}`, {
+                  body: latest.body,
+                  icon: '/logo-icon.png',
+                  tag: `notification-${latest.id}`,
+                  requireInteraction: true,
+                });
+                n.onclick = () => {
+                  window.focus();
+                  if (latest.link) navigate(latest.link);
+                  n.close();
+                };
+              } catch {
+                // ignore
+              }
+            });
+        } else {
+          try {
+            const n = new Notification(`${severityEmoji} ${latest.title}`, {
+              body: latest.body,
+              icon: '/logo-icon.png',
+              tag: `notification-${latest.id}`,
+              requireInteraction: true,
+            });
+            n.onclick = () => {
+              window.focus();
+              if (latest.link) navigate(latest.link);
+              n.close();
+            };
+          } catch {
+            // ignore
+          }
+        }
       }
 
       // Show modal inside browser only for URGENT

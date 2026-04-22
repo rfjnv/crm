@@ -62,7 +62,7 @@ async function tick(): Promise<void> {
         userId: row.authorId,
         title: REMINDER_TITLE,
         body,
-        severity: 'INFO',
+        severity: 'URGENT',
         link,
         createdByUserId: row.authorId,
       },
@@ -72,13 +72,13 @@ async function tick(): Promise<void> {
       title: REMINDER_TITLE,
       body,
       url: '/notes-board',
-      severity: 'INFO',
+      severity: 'URGENT',
     }).catch(() => {});
     void telegramService.sendToUser(row.authorId, {
       title: REMINDER_TITLE,
       body,
       url: '/notes-board',
-      severity: 'INFO',
+      severity: 'URGENT',
     }).catch(() => {});
   }
 }
