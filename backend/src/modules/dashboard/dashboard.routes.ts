@@ -1,12 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
-import {
-  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
-  SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
-  SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_LINE_REVENUE_DI,
-} from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -38,53 +32,7 @@ router.get(
     const startOfMonth = new Date(Date.UTC(y, mo, 1) - TASHKENT_OFFSET);
     const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
 
-    const revenueTotalInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-               AND d.manager_id = ${dealScope.managerId}`,
-          )
-        : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}`,
-          );
-
-    const revenueByDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-               AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          );
-
-    const topProductInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
+    const productsOfDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
       dealScope.managerId
         ? prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
             Prisma.sql`SELECT di.product_id,
@@ -92,17 +40,17 @@ router.get(
                               p.sku AS product_sku,
                               p.unit AS product_unit,
                               COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+                              COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text AS revenue
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              JOIN products p ON p.id = di.product_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${rangeStart}
+               AND COALESCE(di.deal_date, d.created_at) < ${rangeEndExclusive}
                AND d.manager_id = ${dealScope.managerId}
              GROUP BY di.product_id, p.name, p.sku, p.unit
-             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
-             LIMIT 1`,
+             ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC`
           )
         : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
             Prisma.sql`SELECT di.product_id,
@@ -110,52 +58,16 @@ router.get(
                               p.sku AS product_sku,
                               p.unit AS product_unit,
                               COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
+                              COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text AS revenue
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              JOIN products p ON p.id = di.product_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${rangeStart}
+               AND COALESCE(di.deal_date, d.created_at) < ${rangeEndExclusive}
              GROUP BY di.product_id, p.name, p.sku, p.unit
-             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
-             LIMIT 1`,
-          );
-
-    const topProductClientsInRange = (rangeStart: Date, rangeEndExclusive: Date, productId: string) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ client_id: string; company_name: string; qty: string; revenue: string }[]>(
-            Prisma.sql`SELECT c.id AS client_id,
-                              c.company_name,
-                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             JOIN clients c ON c.id = d.client_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND di.product_id = ${productId}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-               AND d.manager_id = ${dealScope.managerId}
-             GROUP BY c.id, c.company_name
-             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
-             LIMIT 20`,
-          )
-        : prisma.$queryRaw<{ client_id: string; company_name: string; qty: string; revenue: string }[]>(
-            Prisma.sql`SELECT c.id AS client_id,
-                              c.company_name,
-                              COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             JOIN clients c ON c.id = d.client_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND di.product_id = ${productId}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-             GROUP BY c.id, c.company_name
-             ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC
-             LIMIT 20`,
+             ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC`
           );
 
     const [
@@ -170,23 +82,80 @@ router.get(
       closedDealsYesterday,
       revenueLast30DaysRaw,
       dealsByStatusCounts,
-      topProductTodayRaw,
-      topProductYesterdayRaw,
+      productsOfDayTodayRaw,
+      productsOfDayYesterdayRaw,
     ] = await Promise.all([
-      // 1. Revenue today (operational: line totals, active deals, effective item date)
-      revenueTotalInRange(startOfToday, startOfTomorrow),
+      // 1. Revenue today (Excel-style: sum line_total from column I by deal date)
+      dealScope.managerId
+        ? prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}`
+          )
+        : prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
+          ),
 
       // 2. Revenue yesterday (for delta)
-      revenueTotalInRange(startOfYesterday, startOfToday),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}
+               AND d.manager_id = ${dealScope.managerId}`
+          )
+        : prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfYesterday}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfToday}`
+          ),
 
       // 3. Revenue this month
-      revenueTotalInRange(startOfMonth, startOfTomorrow),
+      dealScope.managerId
+        ? prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}`
+          )
+        : prisma.$queryRaw<{ total: string }[]>(
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${startOfMonth}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}`
+          ),
 
-      // 4. Active deals count (все не завершённые статусы, включая новый контур склада/доставки)
+      // 4. Active deals count
       prisma.deal.count({
         where: {
           ...dealScope,
-          status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
+          status: { in: ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD'] },
           isArchived: false,
         },
       }),
@@ -245,13 +214,13 @@ router.get(
          ORDER BY stock ASC`
       ),
 
-      // 8. Closed deals today (по closedAt в календарный день Ташкент; updatedAt трогают платежи и миграции)
+      // 8. Closed deals today
       prisma.deal.count({
         where: {
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          closedAt: { gte: startOfToday, lt: startOfTomorrow },
+          updatedAt: { gte: startOfToday, lt: startOfTomorrow },
         },
       }),
 
@@ -261,12 +230,37 @@ router.get(
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          closedAt: { gte: startOfYesterday, lt: startOfToday },
+          updatedAt: { gte: startOfYesterday, lt: startOfToday },
         },
       }),
 
-      // 10. Revenue last 30 days (by Tashkent calendar day)
-      revenueByDayInRange(thirtyDaysAgo, startOfTomorrow),
+      // 10. Revenue last 30 days
+      dealScope.managerId
+        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+               AND d.manager_id = ${dealScope.managerId}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+             ORDER BY day ASC`
+          )
+        : prisma.$queryRaw<{ day: Date; total: string }[]>(
+            Prisma.sql`SELECT DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
+                              SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::text as total
+             FROM deal_items di
+             JOIN deals d ON d.id = di.deal_id
+             WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+               AND d.is_archived = false
+               AND COALESCE(di.deal_date, d.created_at) >= ${thirtyDaysAgo}
+               AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+             GROUP BY DATE((COALESCE(di.deal_date, d.created_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')
+             ORDER BY day ASC`
+          ),
 
       // 11. Deals by status counts
       prisma.deal.groupBy({
@@ -274,40 +268,26 @@ router.get(
         where: { ...dealScope, isArchived: false },
         _count: true,
       }),
-      topProductInRange(startOfToday, startOfTomorrow),
-      topProductInRange(startOfYesterday, startOfToday),
+      productsOfDayInRange(startOfToday, startOfTomorrow),
+      productsOfDayInRange(startOfYesterday, startOfToday),
     ]);
 
-    const mapTopProductPeriod = async (
-      rangeStart: Date,
-      rangeEndExclusive: Date,
-      raw: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
-    ) => {
-      const top = raw[0];
-      if (!top) return null;
-      const clientsRaw = await topProductClientsInRange(rangeStart, rangeEndExclusive, top.product_id);
-      return {
+    const mapProductsOfDay = (
+      rows: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
+    ) =>
+      rows.map((row) => ({
         product: {
-          id: top.product_id,
-          name: top.product_name,
-          sku: top.product_sku,
-          unit: top.product_unit,
+          id: row.product_id,
+          name: row.product_name,
+          sku: row.product_sku,
+          unit: row.product_unit,
         },
-        qty: Number(top.qty),
-        revenue: Number(top.revenue),
-        clients: clientsRaw.map((c) => ({
-          clientId: c.client_id,
-          companyName: c.company_name,
-          qty: Number(c.qty),
-          revenue: Number(c.revenue),
-        })),
-      };
-    };
+        qty: Number(row.qty),
+        revenue: Number(row.revenue),
+      }));
 
-    const [topProductToday, topProductYesterday] = await Promise.all([
-      mapTopProductPeriod(startOfToday, startOfTomorrow, topProductTodayRaw),
-      mapTopProductPeriod(startOfYesterday, startOfToday, topProductYesterdayRaw),
-    ]);
+    const productsOfDayToday = mapProductsOfDay(productsOfDayTodayRaw);
+    const productsOfDayYesterday = mapProductsOfDay(productsOfDayYesterdayRaw);
 
     const lowStockMapped = lowStockProducts.map((p) => ({
       id: p.id,
@@ -345,8 +325,12 @@ router.get(
         count: d._count,
       })),
       productOfDay: {
-        today: topProductToday,
-        yesterday: topProductYesterday,
+        today: productsOfDayToday[0] ?? null,
+        yesterday: productsOfDayYesterday[0] ?? null,
+      },
+      productOfDayList: {
+        today: productsOfDayToday,
+        yesterday: productsOfDayYesterday,
       },
     });
   }),
@@ -373,16 +357,15 @@ router.get(
       deal_title: string;
       client_id: string;
       company_name: string;
-      is_svip: boolean;
       manager_id: string;
       manager_name: string;
       product_name: string;
     }[]>(
       Prisma.sql`SELECT di.id,
-                        ${SQL_LINE_REVENUE_DI}::text as line_total,
-                        ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as deal_date,
+                        COALESCE(di.line_total, di.requested_qty * di.price, 0)::text as line_total,
+                        COALESCE(di.deal_date, d.created_at) as deal_date,
                         d.id as deal_id, d.title as deal_title,
-                        c.id as client_id, c.company_name, c.is_svip as is_svip,
+                        c.id as client_id, c.company_name,
                         u.id as manager_id, u.full_name as manager_name,
                         p.name as product_name
        FROM deal_items di
@@ -390,10 +373,11 @@ router.get(
        JOIN clients c ON c.id = d.client_id
        JOIN users u ON u.id = d.manager_id
        JOIN products p ON p.id = di.product_id
-       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${startOfToday}
-         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
-       ORDER BY ${SQL_EFFECTIVE_REVENUE_ITEM_TS} DESC`
+       WHERE d.status NOT IN ('CANCELED', 'REJECTED')
+         AND d.is_archived = false
+         AND COALESCE(di.deal_date, d.created_at) >= ${startOfToday}
+         AND COALESCE(di.deal_date, d.created_at) < ${startOfTomorrow}
+       ORDER BY COALESCE(di.deal_date, d.created_at) DESC`
     );
 
     const items = rows.map((r) => ({
@@ -402,7 +386,7 @@ router.get(
       paidAt: r.deal_date,
       method: null,
       deal: { id: r.deal_id, title: r.deal_title },
-      client: { id: r.client_id, companyName: r.company_name, isSvip: !!r.is_svip },
+      client: { id: r.client_id, companyName: r.company_name },
       creator: { id: r.manager_id, fullName: r.manager_name },
       productName: r.product_name,
     }));

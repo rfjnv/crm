@@ -514,6 +514,18 @@ export interface DashboardSummary {
       clients: { clientId: string; companyName: string; qty: number; revenue: number }[];
     } | null;
   };
+  productOfDayList?: {
+    today: Array<{
+      product: { id: string; name: string; sku?: string | null; unit?: string | null };
+      qty: number;
+      revenue: number;
+    }>;
+    yesterday: Array<{
+      product: { id: string; name: string; sku?: string | null; unit?: string | null };
+      qty: number;
+      revenue: number;
+    }>;
+  };
 }
 
 export interface RevenueTodayPayment {

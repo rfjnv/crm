@@ -17,7 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { Area, Column } from '@ant-design/charts';
+import { Area } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Permission, UserRole, DealStatus } from '../types';
@@ -120,13 +120,11 @@ export default function DashboardPage() {
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
 
   // NOTE: must be before the early return — React rules of hooks
-  const topProductClientsByRevenue = useMemo(() => {
-    const clients = data?.productOfDay?.[productDayPeriod]?.clients;
-    if (!clients?.length) return [];
-    return [...clients]
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 6)
-      .map((client) => ({ companyName: client.companyName, revenue: client.revenue }));
+  const productDayItems = useMemo(() => {
+    const list = data?.productOfDayList?.[productDayPeriod];
+    if (list?.length) return list;
+    const topOnly = data?.productOfDay?.[productDayPeriod];
+    return topOnly ? [topOnly] : [];
   }, [data, productDayPeriod]);
 
   const revenueChartSlice = useMemo(() => {
@@ -180,9 +178,6 @@ export default function DashboardPage() {
   const cardBody = { padding: '16px 20px' };
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
-  const selectedProductOfDay = data.productOfDay?.[productDayPeriod] ?? null;
-  const productOfDayUnit = selectedProductOfDay?.product.unit?.trim() || 'шт';
-
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
       <style>{`
@@ -607,118 +602,42 @@ export default function DashboardPage() {
                 </div>
               )}
             >
-              {!selectedProductOfDay ? (
+              {productDayItems.length === 0 ? (
                 <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                   Нет продаж за выбранный день
                 </Typography.Text>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <Typography.Text strong style={{ fontSize: 15 }}>
-                        {selectedProductOfDay.product.name}
-                      </Typography.Text>
-                      {selectedProductOfDay.product.sku && (
-                        <div><Tag style={{ marginTop: 4 }}>{selectedProductOfDay.product.sku}</Tag></div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <Typography.Text strong style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
-                        {formatUZS(selectedProductOfDay.revenue)}
-                      </Typography.Text>
-                      <div>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          Продано: {formatCount(selectedProductOfDay.qty)} {productOfDayUnit}
-                        </Typography.Text>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} lg={10}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          Кто купил товар дня
-                        </Typography.Text>
-                        {selectedProductOfDay.clients.length === 0 ? (
-                          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                            Нет данных по клиентам
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {productDayItems.map((item, idx) => {
+                    const unit = item.product.unit?.trim() || 'шт';
+                    return (
+                      <div
+                        key={item.product.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 0',
+                          borderBottom: idx < productDayItems.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <Typography.Text strong style={{ fontSize: 14 }}>
+                            {idx === 0 ? '👑 ' : ''}{item.product.name}
                           </Typography.Text>
-                        ) : (
-                          selectedProductOfDay.clients
-                            .slice()
-                            .sort((a, b) => b.revenue - a.revenue)
-                            .slice(0, 8)
-                            .map((client, idx, arr) => (
-                              <div
-                                key={client.clientId}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 10,
-                                  padding: '7px 0',
-                                  borderBottom: idx < arr.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
-                                }}
-                              >
-                                <div style={{ minWidth: 0 }}>
-                                  <Typography.Text style={{ fontSize: 13 }} ellipsis>
-                                    {client.companyName}
-                                  </Typography.Text>
-                                  <div>
-                                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                      {formatCount(client.qty)} {productOfDayUnit}
-                                    </Typography.Text>
-                                  </div>
-                                </div>
-                                <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                                  {formatUZS(client.revenue)}
-                                </Typography.Text>
-                              </div>
-                            ))
-                        )}
-                      </div>
-                    </Col>
-
-                    <Col xs={24} lg={14}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        Топ клиентов по выручке
-                      </Typography.Text>
-                      {topProductClientsByRevenue.length === 0 ? (
-                        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                          Нет данных по клиентам
-                        </Typography.Text>
-                      ) : (
-                        <div style={{ marginTop: 6 }}>
-                          <Column
-                            data={topProductClientsByRevenue}
-                            xField="companyName"
-                            yField="revenue"
-                            height={220}
-                            theme={chartTheme}
-                            axis={{
-                              x: {
-                                labelAutoHide: true,
-                                labelFill: tk.colorTextSecondary,
-                              },
-                              y: {
-                                labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
-                                labelFill: tk.colorTextSecondary,
-                              },
-                            }}
-                            tooltip={{
-                              items: [{
-                                channel: 'y',
-                                name: 'Выручка',
-                                valueFormatter: (v: string | number) => formatUZS(Number(v)),
-                              }],
-                            }}
-                            style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
-                          />
+                          <div>
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                              {item.product.sku ? `${item.product.sku} · ` : ''}Продано: {formatCount(item.qty)} {unit}
+                            </Typography.Text>
+                          </div>
                         </div>
-                      )}
-                    </Col>
-                  </Row>
+                        <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                          {formatUZS(item.revenue)}
+                        </Typography.Text>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>
