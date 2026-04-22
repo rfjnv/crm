@@ -14,13 +14,16 @@ export const tasksApi = {
   create: (data: {
     title: string;
     description?: string;
-    assigneeId: string;
+    assigneeId?: string;
+    assigneeIds?: string[];
+    assignmentMode?: 'MANUAL' | 'ALL' | 'ROLES';
+    roleFilters?: string[];
     dueDate?: string;
     plannedDate?: string;
     color?: string;
     checklist?: TaskChecklistItem[];
   }) =>
-    client.post<Task>('/tasks', data).then((r) => r.data),
+    client.post<{ createdCount: number; tasks: Task[] }>('/tasks', data).then((r) => r.data),
 
   update: (id: string, data: {
     title?: string;

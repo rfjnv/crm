@@ -33,6 +33,23 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
 };
 
 const COLUMNS: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'DONE', 'APPROVED'];
+const TASK_ASSIGNMENT_MODES = [
+  { label: 'Вручную', value: 'MANUAL' },
+  { label: 'Всем', value: 'ALL' },
+  { label: 'По ролям', value: 'ROLES' },
+];
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: 'Супер-админ',
+  ADMIN: 'Админ',
+  OPERATOR: 'Оператор',
+  MANAGER: 'Менеджер',
+  HR: 'HR',
+  ACCOUNTANT: 'Бухгалтер',
+  WAREHOUSE: 'Склад',
+  WAREHOUSE_MANAGER: 'Нач. склада',
+  DRIVER: 'Водитель',
+  LOADER: 'Грузчик',
+};
 
 type DateViewMode = 'TODAY' | 'WEEK' | 'ALL';
 
@@ -79,6 +96,7 @@ export default function TasksPage() {
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isMobile = useIsMobile();
+  const assignmentMode = Form.useWatch('assignmentMode', form) || 'MANUAL';
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['tasks'],
@@ -98,9 +116,9 @@ export default function TasksPage() {
 
   const createMut = useMutation({
     mutationFn: tasksApi.create,
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      message.success('Задача создана');
+      message.success(result.createdCount > 1 ? `Создано задач: ${result.createdCount}` : 'Задача создана');
       setCreateOpen(false);
       form.resetFields();
     },
@@ -525,6 +543,7 @@ export default function TasksPage() {
             icon={<PlusOutlined />}
             onClick={() => {
               setCreateOpen(true);
+              form.setFieldValue('assignmentMode', 'MANUAL');
               if (!isAdmin && user?.id) {
                 form.setFieldValue('assigneeId', user.id);
               }
@@ -1011,15 +1030,20 @@ export default function TasksPage() {
         styles={{ body: { paddingTop: 8 } }}
       >
         <Form form={form} layout="vertical" onFinish={(v) => {
-          const assigneeId = isAdmin ? v.assigneeId : user?.id;
-          if (!assigneeId) {
-            message.error('Не удалось определить исполнителя');
+          const mode = isAdmin ? (v.assignmentMode || 'MANUAL') : 'MANUAL';
+          const manualIds: string[] = Array.isArray(v.assigneeIds) ? v.assigneeIds.filter(Boolean) : [];
+          const manualAssigneeId = manualIds[0] || v.assigneeId || (!isAdmin ? user?.id : undefined);
+          if (mode === 'MANUAL' && !manualAssigneeId && manualIds.length === 0) {
+            message.error('Выберите исполнителя');
             return;
           }
           createMut.mutate({
             title: v.title,
             description: v.description,
-            assigneeId,
+            assignmentMode: mode,
+            assigneeId: manualAssigneeId,
+            assigneeIds: manualIds.length > 0 ? manualIds : undefined,
+            roleFilters: mode === 'ROLES' ? v.roleFilters : undefined,
             dueDate: v.dueDate ? v.dueDate.toISOString() : undefined,
             plannedDate: v.plannedDate ? v.plannedDate.toISOString() : undefined,
             color: typeof v.color === 'string' ? v.color : v.color?.toHexString?.(),
@@ -1050,21 +1074,59 @@ export default function TasksPage() {
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
+              {isAdmin && (
+                <Form.Item name="assignmentMode" label="Кому поставить" initialValue="MANUAL">
+                  <Segmented block options={TASK_ASSIGNMENT_MODES} />
+                </Form.Item>
+              )}
+              {isAdmin && assignmentMode === 'ROLES' && (
+                <Form.Item
+                  name="roleFilters"
+                  label="Роли"
+                  rules={[{ required: true, message: 'Выберите хотя бы одну роль' }]}
+                >
+                  <Select
+                    size="large"
+                    mode="multiple"
+                    showSearch
+                    filterOption={smartFilterOption}
+                    placeholder="Выберите роли"
+                    options={Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))}
+                  />
+                </Form.Item>
+              )}
+              {isAdmin && assignmentMode === 'MANUAL' ? (
+                <Form.Item
+                  name="assigneeIds"
+                  label="Исполнители"
+                  rules={[{ required: true, message: 'Обязательно' }]}
+                >
+                  <Select
+                    size="large"
+                    mode="multiple"
+                    showSearch
+                    filterOption={smartFilterOption}
+                    placeholder="Выберите сотрудников"
+                    options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
+                  />
+                </Form.Item>
+              ) : (
               <Form.Item
                 name="assigneeId"
                 label="Исполнитель"
-                rules={[{ required: true, message: 'Обязательно' }]}
+                rules={[{ required: !isAdmin, message: 'Обязательно' }]}
                 extra={!isAdmin ? 'Исполнитель назначается автоматически: вы' : undefined}
               >
                 <Select
                   size="large"
                   showSearch
-                  disabled={!isAdmin}
+                  disabled={!isAdmin || assignmentMode !== 'MANUAL'}
                   filterOption={smartFilterOption}
-                  placeholder="Выберите исполнителя"
+                  placeholder={assignmentMode === 'ALL' ? 'Задача будет создана для всех активных' : 'Выберите исполнителя'}
                   options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
                 />
               </Form.Item>
+              )}
             </Col>
             <Col xs={24} md={12}>
               <Form.Item

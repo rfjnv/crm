@@ -103,24 +103,63 @@ router.post(
     const data = createTaskDto.parse(req.body);
     const role = req.user!.role as Role;
     const canPickAssignee = isTaskAdmin(role);
-    const assigneeId = canPickAssignee ? data.assigneeId : req.user!.userId;
     const checklist = normalizeChecklist(data.checklist);
+    const assignmentMode = canPickAssignee ? (data.assignmentMode ?? 'MANUAL') : 'MANUAL';
 
-    const task = await prisma.task.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        assigneeId,
-        createdById: req.user!.userId,
-        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
-        plannedDate: data.plannedDate ? new Date(data.plannedDate) : undefined,
-        color: data.color,
-        checklist,
-      },
-      include: taskInclude,
+    let assigneeIds: string[] = [];
+    if (!canPickAssignee) {
+      assigneeIds = [req.user!.userId];
+    } else if (assignmentMode === 'ALL') {
+      const users = await prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      });
+      assigneeIds = users.map((u) => u.id);
+    } else if (assignmentMode === 'ROLES') {
+      const roleFilters = data.roleFilters || [];
+      if (roleFilters.length === 0) {
+        throw new AppError(400, 'Выберите хотя бы одну роль');
+      }
+      const users = await prisma.user.findMany({
+        where: { isActive: true, role: { in: roleFilters } },
+        select: { id: true },
+      });
+      assigneeIds = users.map((u) => u.id);
+    } else {
+      const manualIds = (data.assigneeIds || []).filter(Boolean);
+      if (manualIds.length > 0) assigneeIds = manualIds;
+      else if (data.assigneeId) assigneeIds = [data.assigneeId];
+    }
+
+    assigneeIds = [...new Set(assigneeIds)];
+    if (assigneeIds.length === 0) {
+      throw new AppError(400, 'Не найдено исполнителей для создания задачи');
+    }
+
+    const dueDate = data.dueDate ? new Date(data.dueDate) : undefined;
+    const plannedDate = data.plannedDate ? new Date(data.plannedDate) : undefined;
+    const createdTasks = await prisma.$transaction(
+      assigneeIds.map((assigneeId) =>
+        prisma.task.create({
+          data: {
+            title: data.title,
+            description: data.description,
+            assigneeId,
+            createdById: req.user!.userId,
+            dueDate,
+            plannedDate,
+            color: data.color,
+            checklist,
+          },
+          include: taskInclude,
+        })
+      ),
+    );
+
+    res.status(201).json({
+      createdCount: createdTasks.length,
+      tasks: createdTasks,
     });
-
-    res.status(201).json(task);
   }),
 );
 
