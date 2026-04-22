@@ -760,13 +760,14 @@ export default function DashboardPage() {
                         colorField="id"
                         color={(d: { fill?: string }) => d.fill || '#334155'}
                         height={236}
+                        padding={[16, 12, 0, 12]}
                         theme={chartTheme}
                         legend={false}
-                        interaction={{ elementHighlight: true }}
+                        interaction={{ elementHighlight: true, elementHighlightByColor: true }}
                         scale={{
                           y: {
                             min: 0,
-                            tickCount: 4,
+                            nice: false,
                           },
                         }}
                         axis={{
@@ -790,25 +791,26 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          customContent: (_title: string, items: Array<{ data?: { name?: string; revenue?: number | string } }> = []) => {
-                            const item = items?.[0]?.data;
-                            if (!item) return '';
+                          customContent: (_: string, items: Array<{ data?: { name?: string; revenue?: number | string } }> = []) => {
+                            const d = items?.[0]?.data;
+                            if (!d) return '';
                             return `
                               <div style="padding:8px">
                                 <div style="font-size:12px; opacity:0.7">
-                                  ${item.name ?? 'Товар'}
+                                  ${d.name}
                                 </div>
                                 <div style="font-weight:600">
-                                  ${Number(item.revenue ?? 0).toLocaleString()} so'm
+                                  ${Number(d.revenue).toLocaleString()} so'm
                                 </div>
                               </div>
                             `;
                           },
                         }}
-                        style={(d: { fill?: string }) => ({
-                          radiusTopLeft: 8,
-                          radiusTopRight: 8,
-                          fill: d.fill,
+                        style={() => ({
+                          radiusTopLeft: 10,
+                          radiusTopRight: 10,
+                          stroke: 'rgba(255,255,255,0.05)',
+                          lineWidth: 1,
                         })}
                         onReady={(plot) => {
                           plot.on('element:mouseenter', (evt: unknown) => {
