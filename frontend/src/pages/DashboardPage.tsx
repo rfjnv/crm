@@ -17,7 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { Area, Bar } from '@ant-design/charts';
+import { Area, Column } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Permission, UserRole, DealStatus } from '../types';
@@ -591,7 +591,7 @@ export default function DashboardPage() {
                         </Typography.Text>
                       ) : (
                         <div style={{ marginTop: 6 }}>
-                          <Bar
+                          <Column
                             data={topProductClientsByRevenue}
                             xField="companyName"
                             yField="revenue"
@@ -603,7 +603,7 @@ export default function DashboardPage() {
                                 labelFill: tk.colorTextSecondary,
                               },
                               y: {
-                                labelFormatter: (v: number) => formatShortNumber(v),
+                                labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
                                 labelFill: tk.colorTextSecondary,
                               },
                             }}
@@ -611,7 +611,7 @@ export default function DashboardPage() {
                               items: [{
                                 channel: 'y',
                                 name: 'Выручка',
-                                valueFormatter: (v: number) => formatUZS(v),
+                                valueFormatter: (v: string | number) => formatUZS(Number(v)),
                               }],
                             }}
                             style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
