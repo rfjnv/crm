@@ -1,6 +1,6 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented } from 'antd';
+import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination, Select } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -17,7 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { Area } from '@ant-design/charts';
+import { Area, Column } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Permission, UserRole, DealStatus } from '../types';
@@ -118,14 +118,39 @@ export default function DashboardPage() {
 
   const chartRange = useDashboardChartRange();
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
+  const [productDayPage, setProductDayPage] = useState(1);
+  const [productDayPageSize, setProductDayPageSize] = useState<number>(10);
 
   // NOTE: must be before the early return — React rules of hooks
   const productDayItems = useMemo(() => {
     const list = data?.productOfDayList?.[productDayPeriod];
-    if (list?.length) return list;
+    if (list?.length) {
+      const merged = new Map<string, (typeof list)[number]>();
+      for (const item of list) {
+        const key = `${item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
+        const existing = merged.get(key);
+        if (!existing) {
+          merged.set(key, { ...item, qty: Number(item.qty || 0), revenue: Number(item.revenue || 0) });
+        } else {
+          existing.qty += Number(item.qty || 0);
+          existing.revenue += Number(item.revenue || 0);
+        }
+      }
+      return [...merged.values()].sort((a, b) => b.revenue - a.revenue);
+    }
     const topOnly = data?.productOfDay?.[productDayPeriod];
     return topOnly ? [topOnly] : [];
   }, [data, productDayPeriod]);
+
+  const pagedProductDayItems = useMemo(() => {
+    const start = (productDayPage - 1) * productDayPageSize;
+    return productDayItems.slice(start, start + productDayPageSize);
+  }, [productDayItems, productDayPage, productDayPageSize]);
+
+  const productDayChartData = useMemo(
+    () => productDayItems.slice(0, 10).map((item) => ({ name: item.product.name, revenue: item.revenue })),
+    [productDayItems],
+  );
 
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
@@ -178,6 +203,11 @@ export default function DashboardPage() {
   const cardBody = { padding: '16px 20px' };
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
+
+  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / productDayPageSize));
+  useEffect(() => {
+    if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
+  }, [productDayPage, maxProductDayPage]);
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
       <style>{`
@@ -607,9 +637,56 @@ export default function DashboardPage() {
                   Нет продаж за выбранный день
                 </Typography.Text>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {productDayItems.map((item, idx) => {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {productDayChartData.length > 0 ? (
+                    <Column
+                      data={productDayChartData}
+                      xField="name"
+                      yField="revenue"
+                      height={220}
+                      theme={chartTheme}
+                      axis={{
+                        x: { labelAutoHide: true, labelFill: tk.colorTextSecondary },
+                        y: {
+                          labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
+                          labelFill: tk.colorTextSecondary,
+                        },
+                      }}
+                      tooltip={{
+                        items: [{
+                          channel: 'y',
+                          name: 'Выручка',
+                          valueFormatter: (v: string | number) => formatUZS(Number(v)),
+                        }],
+                      }}
+                      style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
+                    />
+                  ) : null}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
+                      {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
+                    </Typography.Text>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
+                      <Select
+                        size="small"
+                        value={productDayPageSize}
+                        style={{ width: 80 }}
+                        options={[10, 20, 50].map((v) => ({ label: v, value: v }))}
+                        onChange={(v) => {
+                          setProductDayPageSize(v);
+                          setProductDayPage(1);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pagedProductDayItems.map((item, idx) => {
                     const unit = item.product.unit?.trim() || 'шт';
+                    const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
                     return (
                       <div
                         key={item.product.id}
@@ -624,7 +701,7 @@ export default function DashboardPage() {
                       >
                         <div style={{ minWidth: 0 }}>
                           <Typography.Text strong style={{ fontSize: 14 }}>
-                            {idx === 0 ? '👑 ' : ''}{item.product.name}
+                            {rank === 1 ? '👑 ' : ''}{rank}. {item.product.name}
                           </Typography.Text>
                           <div>
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -638,6 +715,18 @@ export default function DashboardPage() {
                       </div>
                     );
                   })}
+                  </div>
+
+                  {productDayItems.length > productDayPageSize ? (
+                    <Pagination
+                      size="small"
+                      current={productDayPage}
+                      pageSize={productDayPageSize}
+                      total={productDayItems.length}
+                      showSizeChanger={false}
+                      onChange={(p) => setProductDayPage(p)}
+                    />
+                  ) : null}
                 </div>
               )}
             </Card>
