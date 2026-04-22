@@ -150,34 +150,25 @@ export default function DashboardPage() {
 
   const productDayChartData = useMemo(() => {
     const topRows = productDayItems.slice(0, 8);
-    const totalRevenue = topRows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
-    const maxRevenue = Math.max(1, ...topRows.map((row) => Number(row.revenue || 0)));
+    const topRevenueId = topRows[0]?.product.id ?? null;
     return topRows.map((item, idx) => {
-      const rawName = item.product.name || 'Товар';
-      const shortName = rawName.length > 14 ? `${rawName.slice(0, 14)}…` : rawName;
       const revenue = Number(item.revenue || 0);
-      const rank = idx + 1;
-      const isTop = rank === 1;
+      const isTop = item.product.id === topRevenueId;
       const isActive = activeProductId === item.product.id;
-      const opacity = isTop ? 1 : Math.max(0.35, revenue / maxRevenue);
       const fill = isTop
-        ? '#84cc16'
+        ? (isActive ? '#4ade80' : '#22c55e')
         : isActive
-          ? (isDark ? '#4ade80' : '#22c55e')
-          : (isDark ? `rgba(148, 163, 184, ${opacity.toFixed(3)})` : `rgba(71, 85, 105, ${opacity.toFixed(3)})`);
+          ? '#475569'
+          : '#334155';
       return {
         id: item.product.id,
-        name: rawName,
-        shortName,
+        name: item.product.name || 'Товар',
+        shortName: `${idx + 1}`,
         revenue,
-        qty: Number(item.qty || 0),
-        rank,
         fill,
-        labelValue: formatShortNumber(revenue),
-        share: totalRevenue > 0 ? (Number(item.revenue || 0) / totalRevenue) * 100 : 0,
       };
     });
-  }, [productDayItems, activeProductId, isDark]);
+  }, [productDayItems, activeProductId]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -771,6 +762,12 @@ export default function DashboardPage() {
                         theme={chartTheme}
                         legend={false}
                         interaction={{ elementHighlight: true }}
+                        scale={{
+                          y: {
+                            min: 0,
+                            tickCount: 4,
+                          },
+                        }}
                         axis={{
                           x: {
                             label: false,
@@ -779,7 +776,12 @@ export default function DashboardPage() {
                             line: false,
                           },
                           y: {
-                            labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
+                            labelFormatter: (v: string | number) => {
+                              const n = Number(v);
+                              if (!Number.isFinite(n)) return '0';
+                              if (n === 0) return '0';
+                              return `${Math.round(n / 1_000_000)} млн`;
+                            },
                             labelFill: tk.colorTextSecondary,
                             grid: true,
                             gridLineDash: [4, 4],
@@ -787,40 +789,15 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          title: () => 'Товар',
+                          title: (_title, row) => ((row as { name?: string } | null)?.name || 'Товар'),
                           items: [
                             {
                               channel: 'y',
                               name: 'Выручка',
                               valueFormatter: (v: string | number) => formatUZS(Number(v)),
                             },
-                            {
-                              channel: 'color',
-                              name: 'Название',
-                              valueFormatter: (_v: unknown, row: unknown) => ((row as { name?: string } | null)?.name || '—'),
-                            },
-                            {
-                              channel: 'color',
-                              name: 'Продано',
-                              valueFormatter: (_v: unknown, row: unknown) => formatCount(Number((row as { qty?: number } | null)?.qty || 0)),
-                            },
-                            {
-                              channel: 'color',
-                              name: 'Доля',
-                              valueFormatter: (_v: unknown, row: unknown) => `${Number((row as { share?: number } | null)?.share || 0).toFixed(1)}%`,
-                            },
                           ],
                         }}
-                        labels={[
-                          {
-                            text: (d: { labelValue?: string }) => d.labelValue || '',
-                            position: 'inside-top',
-                            fill: '#f8fafc',
-                            fontSize: 10,
-                            fontWeight: 600,
-                            dy: 6,
-                          },
-                        ]}
                         style={(d: { fill?: string }) => ({
                           radiusTopLeft: 8,
                           radiusTopRight: 8,
