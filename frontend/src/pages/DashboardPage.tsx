@@ -49,7 +49,7 @@ function DeltaBadge({ value, suffix }: { value: number | null; suffix?: string }
 }
 
 export default function DashboardPage() {
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: dashboardApi.summary,
     refetchInterval: 10_000,
@@ -151,23 +151,6 @@ export default function DashboardPage() {
     () => productDayItems.slice(0, 10).map((item) => ({ name: item.product.name, revenue: item.revenue })),
     [productDayItems],
   );
-  const invalidProductDayItem = useMemo(
-    () =>
-      productDayItems.find(
-        (item) =>
-          !item ||
-          !item.product ||
-          typeof item.product.name !== 'string' ||
-          Number.isNaN(Number(item.revenue)) ||
-          Number.isNaN(Number(item.qty)),
-      ),
-    [productDayItems],
-  );
-  const invalidChartPoint = useMemo(
-    () => productDayChartData.find((p) => typeof p.name !== 'string' || Number.isNaN(Number(p.revenue))),
-    [productDayChartData],
-  );
-
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
