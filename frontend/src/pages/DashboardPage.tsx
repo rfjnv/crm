@@ -49,7 +49,7 @@ function DeltaBadge({ value, suffix }: { value: number | null; suffix?: string }
 }
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: dashboardApi.summary,
     refetchInterval: 10_000,
@@ -127,8 +127,7 @@ export default function DashboardPage() {
     if (list?.length) {
       const merged = new Map<string, (typeof list)[number]>();
       for (const item of list) {
-        if (!item?.product?.name) continue;
-        const key = `${item.product.id || item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
+        const key = `${item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
         const existing = merged.get(key);
         if (!existing) {
           merged.set(key, { ...item, qty: Number(item.qty || 0), revenue: Number(item.revenue || 0) });
@@ -148,15 +147,26 @@ export default function DashboardPage() {
     return productDayItems.slice(start, start + productDayPageSize);
   }, [productDayItems, productDayPage, productDayPageSize]);
 
-  const productDayChartData = useMemo(() => (
-    productDayItems
-      .slice(0, 10)
-      .map((item, idx) => ({
-        name: `${idx + 1}. ${item.product.name || 'Товар'}`,
-        revenue: Number(item.revenue || 0),
-      }))
-      .filter((x) => Number.isFinite(x.revenue))
-  ), [productDayItems]);
+  const productDayChartData = useMemo(
+    () => productDayItems.slice(0, 10).map((item) => ({ name: item.product.name, revenue: item.revenue })),
+    [productDayItems],
+  );
+  const invalidProductDayItem = useMemo(
+    () =>
+      productDayItems.find(
+        (item) =>
+          !item ||
+          !item.product ||
+          typeof item.product.name !== 'string' ||
+          Number.isNaN(Number(item.revenue)) ||
+          Number.isNaN(Number(item.qty)),
+      ),
+    [productDayItems],
+  );
+  const invalidChartPoint = useMemo(
+    () => productDayChartData.find((p) => typeof p.name !== 'string' || Number.isNaN(Number(p.revenue))),
+    [productDayChartData],
+  );
 
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
@@ -177,6 +187,10 @@ export default function DashboardPage() {
     };
     return { rows: sliced, xLabelFormatter };
   }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep]);
+  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / productDayPageSize));
+  useEffect(() => {
+    if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
+  }, [productDayPage, maxProductDayPage]);
 
   if (isLoading || !data) {
     return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
@@ -210,10 +224,6 @@ export default function DashboardPage() {
   const kpiGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
   const blockGutter: [number, number] = isMobile ? [0, 12] : [16, 16];
 
-  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / productDayPageSize));
-  useEffect(() => {
-    if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
-  }, [productDayPage, maxProductDayPage]);
   return (
     <div className="dashboard-page" style={{ paddingBottom: isMobile ? undefined : 32 }}>
       <style>{`
@@ -695,7 +705,7 @@ export default function DashboardPage() {
                     const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
                     return (
                       <div
-                        key={`${item.product.id || item.product.name}-${rank}`}
+                        key={item.product.id}
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
