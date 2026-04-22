@@ -119,7 +119,7 @@ export default function DashboardPage() {
   const chartRange = useDashboardChartRange();
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
   const [productDayPage, setProductDayPage] = useState(1);
-  const [productDayPageSize, setProductDayPageSize] = useState<number>(10);
+  const [productDayPageSize, setProductDayPageSize] = useState<number>(5);
 
   // NOTE: must be before the early return — React rules of hooks
   const productDayItems = useMemo(() => {
@@ -636,97 +636,103 @@ export default function DashboardPage() {
                   Нет продаж за выбранный день
                 </Typography.Text>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {productDayChartData.length > 0 ? (
-                    <Column
-                      data={productDayChartData}
-                      xField="name"
-                      yField="revenue"
-                      height={220}
-                      theme={chartTheme}
-                      axis={{
-                        x: { labelAutoHide: true, labelFill: tk.colorTextSecondary },
-                        y: {
-                          labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
-                          labelFill: tk.colorTextSecondary,
-                        },
-                      }}
-                      tooltip={{
-                        items: [{
-                          channel: 'y',
-                          name: 'Выручка',
-                          valueFormatter: (v: string | number) => formatUZS(Number(v)),
-                        }],
-                      }}
-                      style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
-                    />
-                  ) : null}
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
-                      {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
-                    </Typography.Text>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
-                      <Select
-                        size="small"
-                        value={productDayPageSize}
-                        style={{ width: 80 }}
-                        options={[10, 20, 50].map((v) => ({ label: v, value: v }))}
-                        onChange={(v) => {
-                          setProductDayPageSize(v);
-                          setProductDayPage(1);
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {pagedProductDayItems.map((item, idx) => {
-                    const unit = item.product.unit?.trim() || 'шт';
-                    const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
-                    return (
-                      <div
-                        key={item.product.id}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: '8px 0',
-                          borderBottom: idx < productDayItems.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <Typography.Text strong style={{ fontSize: 14 }}>
-                            {rank === 1 ? '👑 ' : ''}{rank}. {item.product.name}
-                          </Typography.Text>
-                          <div>
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              {item.product.sku ? `${item.product.sku} · ` : ''}Продано: {formatCount(item.qty)} {unit}
-                            </Typography.Text>
-                          </div>
-                        </div>
-                        <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                          {formatUZS(item.revenue)}
+                <Row gutter={[16, 12]} align="top">
+                  <Col xs={24} lg={14}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
+                          {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
                         </Typography.Text>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
+                          <Select
+                            size="small"
+                            value={productDayPageSize}
+                            style={{ width: 80 }}
+                            options={[5, 10, 20, 50].map((v) => ({ label: v, value: v }))}
+                            onChange={(v) => {
+                              setProductDayPageSize(v);
+                              setProductDayPage(1);
+                            }}
+                          />
+                        </div>
                       </div>
-                    );
-                  })}
-                  </div>
 
-                  {productDayItems.length > productDayPageSize ? (
-                    <Pagination
-                      size="small"
-                      current={productDayPage}
-                      pageSize={productDayPageSize}
-                      total={productDayItems.length}
-                      showSizeChanger={false}
-                      onChange={(p) => setProductDayPage(p)}
-                    />
-                  ) : null}
-                </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {pagedProductDayItems.map((item, idx) => {
+                          const unit = item.product.unit?.trim() || 'шт';
+                          const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
+                          return (
+                            <div
+                              key={item.product.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '8px 0',
+                                borderBottom: idx < pagedProductDayItems.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <Typography.Text strong style={{ fontSize: 14 }}>
+                                  {rank === 1 ? '👑 ' : ''}{rank}. {item.product.name}
+                                </Typography.Text>
+                                <div>
+                                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                    {item.product.sku ? `${item.product.sku} · ` : ''}Продано: {formatCount(item.qty)} {unit}
+                                  </Typography.Text>
+                                </div>
+                              </div>
+                              <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                                {formatUZS(item.revenue)}
+                              </Typography.Text>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {productDayItems.length > productDayPageSize ? (
+                        <Pagination
+                          size="small"
+                          current={productDayPage}
+                          pageSize={productDayPageSize}
+                          total={productDayItems.length}
+                          showSizeChanger={false}
+                          onChange={(p) => setProductDayPage(p)}
+                        />
+                      ) : null}
+                    </div>
+                  </Col>
+
+                  <Col xs={24} lg={10}>
+                    {productDayChartData.length > 0 ? (
+                      <Column
+                        data={productDayChartData}
+                        xField="name"
+                        yField="revenue"
+                        height={220}
+                        theme={chartTheme}
+                        axis={{
+                          x: { labelAutoHide: true, labelFill: tk.colorTextSecondary },
+                          y: {
+                            labelFormatter: (v: string | number) => formatShortNumber(Number(v)),
+                            labelFill: tk.colorTextSecondary,
+                          },
+                        }}
+                        tooltip={{
+                          items: [{
+                            channel: 'y',
+                            name: 'Выручка',
+                            valueFormatter: (v: string | number) => formatUZS(Number(v)),
+                          }],
+                        }}
+                        style={{ radiusTopLeft: 6, radiusTopRight: 6, fill: '#52c41a' }}
+                      />
+                    ) : null}
+                  </Col>
+                </Row>
               )}
             </Card>
           </Col>
