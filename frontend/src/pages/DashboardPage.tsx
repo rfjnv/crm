@@ -776,7 +776,6 @@ export default function DashboardPage() {
                         xField="name"
                         yField="revenue"
                         colorField="name"
-                        theme={chartTheme}
                         color={(d: { fill?: string }) => d.fill || '#334155'}
                         height={236}
                         padding={[16, 12, 0, 12]}
@@ -819,7 +818,8 @@ export default function DashboardPage() {
                             }),
                           ],
                         }}
-                        style={() => ({
+                        style={(d: { fill?: string }) => ({
+                          fill: d.fill || '#334155',
                           radiusTopLeft: 10,
                           radiusTopRight: 10,
                         })}
