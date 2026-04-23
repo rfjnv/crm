@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination, Select } from 'antd';
 import {
@@ -179,6 +179,22 @@ export default function DashboardPage() {
     const maxRev = Math.max(1, ...top8);
     return Math.max(5_000_000, Math.ceil(maxRev / 5_000_000) * 5_000_000);
   }, [productDayItems]);
+
+  const productDayListMeasureRef = useRef<HTMLDivElement>(null);
+  const [productDayChartHeight, setProductDayChartHeight] = useState(260);
+
+  useLayoutEffect(() => {
+    const el = productDayListMeasureRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setProductDayChartHeight(Math.round(Math.max(180, h)));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [productDayItems.length, productDayPage, productDayPageSize, pagedProductDayItems.length, isMobile]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -703,9 +719,12 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <Row gutter={[16, 12]} align="top" wrap>
-                    <Col xs={24} lg={14}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Row gutter={[16, 12]} align="stretch" wrap>
+                    <Col xs={24} lg={14} style={{ display: 'flex', minWidth: 0 }}>
+                      <div
+                        ref={productDayListMeasureRef}
+                        style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}
+                      >
                         {pagedProductDayItems.map((item, idx) => {
                           const unit = item.product.unit?.trim() || 'шт';
                           const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
@@ -776,14 +795,15 @@ export default function DashboardPage() {
                       </div>
                     </Col>
 
-                    <Col xs={24} lg={10}>
+                    <Col xs={24} lg={10} style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     {productDayChartData.length > 0 ? (
                       <Column
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
-                        height={236}
-                        padding={[0, 12, 0, 12]}
+                        colorField="fill"
+                        height={productDayChartHeight}
+                        padding={[4, 12, 4, 12]}
                         legend={false}
                         interaction={{ elementHighlight: true }}
                         scale={{
@@ -793,6 +813,7 @@ export default function DashboardPage() {
                             nice: false,
                             tickCount: productDayChartYMax / 5_000_000 + 1,
                           },
+                          color: { type: 'identity' as const },
                         }}
                         axis={{
                           x: {
@@ -823,8 +844,7 @@ export default function DashboardPage() {
                             }),
                           ],
                         }}
-                        style={(d: { fill?: string }) => ({
-                          fill: d.fill || '#334155',
+                        style={() => ({
                           radius: [10, 10, 0, 0],
                         })}
                         onReady={(plot) => {
