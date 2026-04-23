@@ -171,6 +171,8 @@ export default function DashboardPage() {
         name: item.product.name || 'Товар',
         revenue,
         fill,
+        /** Ordinal series for palette (avoid colorField=hex → tooltip shows #rrggbb). */
+        rankIdx: index,
       };
     });
   }, [productDayItems]);
@@ -778,6 +780,8 @@ export default function DashboardPage() {
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
+                        seriesField="rankIdx"
+                        color={[...PRODUCT_DAY_BAR_COLORS]}
                         height={productDayChartHeight}
                         padding={[4, 12, 4, 12]}
                         legend={false}
@@ -813,15 +817,18 @@ export default function DashboardPage() {
                         tooltip={{
                           title: { field: 'name' },
                           items: [
-                            (datum: { revenue?: number | string; fill?: string }) => ({
-                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
+                            (datum: { revenue?: number | string; fill?: string; rankIdx?: number }) => ({
+                              color:
+                                datum.fill ||
+                                PRODUCT_DAY_BAR_COLORS[
+                                  (Number(datum.rankIdx) || 0) % PRODUCT_DAY_BAR_COLORS.length
+                                ],
                               name: '',
                               value: formatUZS(Number(datum.revenue ?? 0)),
                             }),
                           ],
                         }}
-                        style={(d: { fill?: string }) => ({
-                          fill: d.fill || '#334155',
+                        style={() => ({
                           radius: [10, 10, 0, 0],
                         })}
                         onReady={(plot) => {
