@@ -45,13 +45,35 @@ body {
   box-shadow: var(--shadow-soft) !important;
 }
 
-/* @antv/G2 tooltips mount on document.body — keep values readable in light/dark */
+/* @antv/G2 tooltips mount on document.body */
 .g2-tooltip {
   z-index: 2000 !important;
-  color: var(--text-primary) !important;
+  box-sizing: border-box;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  box-shadow: var(--shadow-soft) !important;
 }
+
+html[data-theme='light'] .g2-tooltip {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+html[data-theme='dark'] .g2-tooltip {
+  background: rgba(15, 23, 42, 0.96) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+}
+
+.g2-tooltip .g2-tooltip-title,
 .g2-tooltip .g2-tooltip-list-item-name,
-.g2-tooltip .g2-tooltip-list-item-value,
-.g2-tooltip .g2-tooltip-title {
+.g2-tooltip .g2-tooltip-list-item-value {
   color: inherit !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='dark'] .g2-tooltip .g2-tooltip-list-item-marker {
+  opacity: 1 !important;
 }

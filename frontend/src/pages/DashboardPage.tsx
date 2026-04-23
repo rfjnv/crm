@@ -673,29 +673,38 @@ export default function DashboardPage() {
                   Нет продаж за выбранный день
                 </Typography.Text>
               ) : (
-                <Row gutter={[16, 12]} align="top">
-                  <Col xs={24} lg={14}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
-                          {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
-                        </Typography.Text>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
-                          <Select
-                            size="small"
-                            value={productDayPageSize}
-                            style={{ width: 80 }}
-                            options={[5, 10, 20, 50].map((v) => ({ label: v, value: v }))}
-                            onChange={(v) => {
-                              setProductDayPageSize(v);
-                              setProductDayPage(1);
-                            }}
-                          />
-                        </div>
-                      </div>
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
+                      {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
+                    </Typography.Text>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
+                      <Select
+                        size="small"
+                        value={productDayPageSize}
+                        style={{ width: 80 }}
+                        options={[5, 10, 20, 50].map((v) => ({ label: v, value: v }))}
+                        onChange={(v) => {
+                          setProductDayPageSize(v);
+                          setProductDayPage(1);
+                        }}
+                      />
+                    </div>
+                  </div>
 
+                  <Row gutter={[16, 12]} align="top" wrap>
+                    <Col xs={24} lg={14}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {pagedProductDayItems.map((item, idx) => {
                           const unit = item.product.unit?.trim() || 'шт';
@@ -754,33 +763,29 @@ export default function DashboardPage() {
                             </div>
                           );
                         })}
+                        {productDayItems.length > productDayPageSize ? (
+                          <Pagination
+                            size="small"
+                            current={productDayPage}
+                            pageSize={productDayPageSize}
+                            total={productDayItems.length}
+                            showSizeChanger={false}
+                            onChange={(p) => setProductDayPage(p)}
+                          />
+                        ) : null}
                       </div>
+                    </Col>
 
-                      {productDayItems.length > productDayPageSize ? (
-                        <Pagination
-                          size="small"
-                          current={productDayPage}
-                          pageSize={productDayPageSize}
-                          total={productDayItems.length}
-                          showSizeChanger={false}
-                          onChange={(p) => setProductDayPage(p)}
-                        />
-                      ) : null}
-                    </div>
-                  </Col>
-
-                  <Col xs={24} lg={10}>
+                    <Col xs={24} lg={10}>
                     {productDayChartData.length > 0 ? (
                       <Column
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
-                        colorField="name"
-                        color={(d: { fill?: string }) => d.fill || '#334155'}
                         height={236}
-                        padding={[16, 12, 0, 12]}
+                        padding={[0, 12, 0, 12]}
                         legend={false}
-                        interaction={{ elementHighlight: true, elementHighlightByColor: true }}
+                        interaction={{ elementHighlight: true }}
                         scale={{
                           y: {
                             min: 0,
@@ -820,8 +825,7 @@ export default function DashboardPage() {
                         }}
                         style={(d: { fill?: string }) => ({
                           fill: d.fill || '#334155',
-                          radiusTopLeft: 10,
-                          radiusTopRight: 10,
+                          radius: [10, 10, 0, 0],
                         })}
                         onReady={(plot) => {
                           plot.on('element:mouseenter', (evt: unknown) => {
@@ -834,8 +838,9 @@ export default function DashboardPage() {
                         }}
                       />
                     ) : null}
-                  </Col>
-                </Row>
+                    </Col>
+                  </Row>
+                </>
               )}
             </Card>
           </Col>
