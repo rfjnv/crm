@@ -44,3 +44,14 @@ body {
   border: 1px solid var(--border-color) !important;
   box-shadow: var(--shadow-soft) !important;
 }
+
+/* @antv/G2 tooltips mount on document.body — keep values readable in light/dark */
+.g2-tooltip {
+  z-index: 2000 !important;
+  color: var(--text-primary) !important;
+}
+.g2-tooltip .g2-tooltip-list-item-name,
+.g2-tooltip .g2-tooltip-list-item-value,
+.g2-tooltip .g2-tooltip-title {
+  color: inherit !important;
+}

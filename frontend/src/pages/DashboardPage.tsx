@@ -37,14 +37,6 @@ const PRODUCT_DAY_BAR_COLORS = [
   '#94a3b8',
 ] as const;
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function formatCount(value: number | string): string {
   const num = typeof value === 'string' ? Number(value) : value;
   if (!Number.isFinite(num)) return '0';
@@ -593,11 +585,17 @@ export default function DashboardPage() {
                     },
                   }}
                   tooltip={{
-                    items: [{
-                      channel: 'y',
-                      name: 'Выручка',
-                      valueFormatter: (v: number) => formatFullNumber(v),
-                    }],
+                    title: { channel: 'x' },
+                    items: [
+                      {
+                        channel: 'y',
+                        name: 'Выручка',
+                        valueFormatter: (v: unknown) =>
+                          formatFullNumber(
+                            typeof v === 'number' && Number.isFinite(v) ? v : Number(v),
+                          ),
+                      },
+                    ],
                   }}
                 />
               </div>
@@ -778,6 +776,7 @@ export default function DashboardPage() {
                         xField="name"
                         yField="revenue"
                         colorField="name"
+                        theme={chartTheme}
                         color={(d: { fill?: string }) => d.fill || '#334155'}
                         height={236}
                         padding={[16, 12, 0, 12]}
@@ -812,29 +811,13 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          render: (
-                            dom: HTMLElement,
-                            evt: {
-                              data?: {
-                                data?: { name?: string; revenue?: number | string; fill?: string };
-                              };
-                            },
-                          ) => {
-                            const d = evt?.data?.data;
-                            if (!d) return;
-                            const fill = d.fill || PRODUCT_DAY_BAR_COLORS[0];
-                            const title = escapeHtml(d.name ?? '');
-                            const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
-                            dom.innerHTML = `
-                              <div style="padding:10px 12px;border-radius:8px;background:rgba(15,23,42,0.92);box-shadow:0 4px 14px rgba(0,0,0,0.35);max-width:280px">
-                                <div style="font-size:12px;font-weight:600;color:#f8fafc;line-height:1.35;margin:0 0 6px">${title}</div>
-                                <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#e2e8f0;margin:0">
-                                  <span style="width:7px;height:7px;border-radius:50%;background:${fill};flex-shrink:0"></span>
-                                  <span>${amount}</span>
-                                </div>
-                              </div>
-                            `;
-                          },
+                          title: { field: 'name' },
+                          items: [
+                            (datum: { revenue?: number | string; fill?: string }) => ({
+                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
+                              value: formatUZS(Number(datum.revenue ?? 0)),
+                            }),
+                          ],
                         }}
                         style={() => ({
                           radiusTopLeft: 10,
