@@ -74,6 +74,12 @@ html[data-theme='dark'] .g2-tooltip {
   opacity: 1 !important;
 }
 
-html[data-theme='dark'] .g2-tooltip .g2-tooltip-list-item-marker {
+.g2-tooltip .g2-tooltip-list-item-marker {
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 8px !important;
+  min-height: 8px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
   opacity: 1 !important;
 }

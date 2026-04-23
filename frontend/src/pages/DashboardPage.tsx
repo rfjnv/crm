@@ -778,7 +778,6 @@ export default function DashboardPage() {
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
-                        colorField="fill"
                         height={productDayChartHeight}
                         padding={[4, 12, 4, 12]}
                         legend={false}
@@ -790,7 +789,6 @@ export default function DashboardPage() {
                             nice: false,
                             tickCount: productDayChartYMax / 5_000_000 + 1,
                           },
-                          color: { type: 'identity' as const },
                         }}
                         axis={{
                           x: {
@@ -815,18 +813,15 @@ export default function DashboardPage() {
                         tooltip={{
                           title: { field: 'name' },
                           items: [
-                            {
-                              channel: 'y',
+                            (datum: { revenue?: number | string; fill?: string }) => ({
+                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
                               name: '',
-                              color: (d: { fill?: string }) => d.fill || PRODUCT_DAY_BAR_COLORS[0],
-                              valueFormatter: (v: unknown) =>
-                                formatUZS(
-                                  typeof v === 'number' && Number.isFinite(v) ? v : Number(v),
-                                ),
-                            },
+                              value: formatUZS(Number(datum.revenue ?? 0)),
+                            }),
                           ],
                         }}
-                        style={() => ({
+                        style={(d: { fill?: string }) => ({
+                          fill: d.fill || '#334155',
                           radius: [10, 10, 0, 0],
                         })}
                         onReady={(plot) => {
