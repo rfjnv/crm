@@ -815,10 +815,15 @@ export default function DashboardPage() {
                         tooltip={{
                           title: { field: 'name' },
                           items: [
-                            (datum: { revenue?: number | string; fill?: string }) => ({
-                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
-                              value: formatUZS(Number(datum.revenue ?? 0)),
-                            }),
+                            {
+                              channel: 'y',
+                              name: '',
+                              color: (d: { fill?: string }) => d.fill || PRODUCT_DAY_BAR_COLORS[0],
+                              valueFormatter: (v: unknown) =>
+                                formatUZS(
+                                  typeof v === 'number' && Number.isFinite(v) ? v : Number(v),
+                                ),
+                            },
                           ],
                         }}
                         style={() => ({
