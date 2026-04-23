@@ -39,12 +39,19 @@ const PRODUCT_DAY_BAR_COLORS = [
 
 const PRODUCT_DAY_PAGE_SIZE = 5;
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+/** G2 adds extra tooltip rows for color (hex) and raw y; keep only our formatted row. */
+function stripProductDayTooltipExtraRows(): void {
+  document.querySelectorAll('.g2-tooltip .g2-tooltip-list-item').forEach((row) => {
+    const valueCell = row.querySelector('.g2-tooltip-list-item-value');
+    const valTxt = (valueCell?.textContent ?? '').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(valTxt)) {
+      (row as HTMLElement).style.display = 'none';
+      return;
+    }
+    if (/^\d+$/.test(valTxt) && valTxt.length >= 4) {
+      (row as HTMLElement).style.display = 'none';
+    }
+  });
 }
 
 function formatCount(value: number | string): string {
@@ -821,53 +828,37 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          title: false,
-                          items: false,
-                          render: (
-                            evt: unknown,
-                            tooltipData?: { title?: unknown; items?: Array<{ datum?: unknown; value?: unknown }> },
-                          ) => {
-                            const pickDatum = (): {
-                              name?: string;
-                              revenue?: number;
-                              fill?: string;
-                            } | null => {
-                              const a = evt as { data?: { data?: Record<string, unknown> } };
-                              const fromEvent = a?.data?.data as
-                                | { name?: string; revenue?: number; fill?: string }
-                                | undefined;
-                              if (fromEvent && typeof fromEvent.revenue !== 'undefined') return fromEvent;
-                              const it = tooltipData?.items?.[0] as { datum?: Record<string, unknown> } | undefined;
-                              const raw = it?.datum as { name?: string; revenue?: number; fill?: string } | undefined;
-                              return raw && typeof raw.revenue !== 'undefined' ? raw : null;
-                            };
-                            const d = pickDatum();
-                            if (!d) return '';
-                            const rawFill = String(d.fill || '');
-                            const fill = /^#[0-9A-Fa-f]{6}$/.test(rawFill) ? rawFill : PRODUCT_DAY_BAR_COLORS[0];
-                            const title = escapeHtml(d.name ?? '');
-                            const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
-                            return `
-                              <div style="padding:2px 0">
-                                <div style="font-weight:600;font-size:12px;margin-bottom:6px;line-height:1.35">${title}</div>
-                                <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600">
-                                  <span style="width:8px;height:8px;border-radius:50%;background:${fill};flex-shrink:0"></span>
-                                  <span>${amount}</span>
-                                </div>
-                              </div>`;
-                          },
+                          title: { field: 'name' },
+                          items: [
+                            (datum: { revenue?: number | string; fill?: string }) => ({
+                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
+                              name: '',
+                              value: formatUZS(Number(datum.revenue ?? 0)),
+                            }),
+                          ],
                         }}
                         style={() => ({
                           radius: [10, 10, 0, 0],
                         })}
                         onReady={(plot) => {
+                          const scheduleStrip = () => {
+                            requestAnimationFrame(() => {
+                              requestAnimationFrame(() => stripProductDayTooltipExtraRows());
+                            });
+                          };
                           plot.on('element:mouseenter', (evt: unknown) => {
                             const id = ((evt as { data?: { data?: { id?: string } } })?.data?.data)?.id;
                             if (id) setActiveProductId(id);
+                            scheduleStrip();
+                            window.setTimeout(scheduleStrip, 24);
                           });
                           plot.on('element:mouseleave', () => {
                             setActiveProductId(null);
                           });
+                          (plot as { on?: (ev: string, fn: () => void) => void }).on?.(
+                            'tooltip:show',
+                            scheduleStrip,
+                          );
                         }}
                       />
                     ) : null}
