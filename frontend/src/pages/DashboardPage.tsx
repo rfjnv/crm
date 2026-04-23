@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination, Select } from 'antd';
+import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -36,6 +36,8 @@ const PRODUCT_DAY_BAR_COLORS = [
   '#fb923c',
   '#94a3b8',
 ] as const;
+
+const PRODUCT_DAY_PAGE_SIZE = 5;
 
 function formatCount(value: number | string): string {
   const num = typeof value === 'string' ? Number(value) : value;
@@ -131,7 +133,6 @@ export default function DashboardPage() {
   const chartRange = useDashboardChartRange();
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
   const [productDayPage, setProductDayPage] = useState(1);
-  const [productDayPageSize, setProductDayPageSize] = useState<number>(5);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
 
   // NOTE: must be before the early return — React rules of hooks
@@ -156,9 +157,9 @@ export default function DashboardPage() {
   }, [data, productDayPeriod]);
 
   const pagedProductDayItems = useMemo(() => {
-    const start = (productDayPage - 1) * productDayPageSize;
-    return productDayItems.slice(start, start + productDayPageSize);
-  }, [productDayItems, productDayPage, productDayPageSize]);
+    const start = (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE;
+    return productDayItems.slice(start, start + PRODUCT_DAY_PAGE_SIZE);
+  }, [productDayItems, productDayPage]);
 
   const productDayChartData = useMemo(() => {
     const topRows = productDayItems.slice(0, 8);
@@ -194,7 +195,7 @@ export default function DashboardPage() {
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
     return () => ro?.disconnect();
-  }, [productDayItems.length, productDayPage, productDayPageSize, pagedProductDayItems.length, isMobile]);
+  }, [productDayItems.length, productDayPage, pagedProductDayItems.length, isMobile]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -214,7 +215,7 @@ export default function DashboardPage() {
     };
     return { rows: sliced, xLabelFormatter };
   }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep]);
-  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / productDayPageSize));
+  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / PRODUCT_DAY_PAGE_SIZE));
   useEffect(() => {
     if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
   }, [productDayPage, maxProductDayPage]);
@@ -690,34 +691,10 @@ export default function DashboardPage() {
                 </Typography.Text>
               ) : (
                 <>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                      marginBottom: 12,
-                    }}
-                  >
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      Показано {Math.min(productDayItems.length, (productDayPage - 1) * productDayPageSize + 1)}-
-                      {Math.min(productDayItems.length, productDayPage * productDayPageSize)} из {productDayItems.length}
-                    </Typography.Text>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>На странице:</Typography.Text>
-                      <Select
-                        size="small"
-                        value={productDayPageSize}
-                        style={{ width: 80 }}
-                        options={[5, 10, 20, 50].map((v) => ({ label: v, value: v }))}
-                        onChange={(v) => {
-                          setProductDayPageSize(v);
-                          setProductDayPage(1);
-                        }}
-                      />
-                    </div>
-                  </div>
+                  <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+                    Показано {Math.min(productDayItems.length, (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE + 1)}-
+                    {Math.min(productDayItems.length, productDayPage * PRODUCT_DAY_PAGE_SIZE)} из {productDayItems.length}
+                  </Typography.Text>
 
                   <Row gutter={[16, 12]} align="stretch" wrap>
                     <Col xs={24} lg={14} style={{ display: 'flex', minWidth: 0 }}>
@@ -727,7 +704,7 @@ export default function DashboardPage() {
                       >
                         {pagedProductDayItems.map((item, idx) => {
                           const unit = item.product.unit?.trim() || 'шт';
-                          const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
+                          const rank = (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE + idx + 1;
                           const isActive = activeProductId === item.product.id;
                           const badgeColor =
                             PRODUCT_DAY_BAR_COLORS[(rank - 1) % PRODUCT_DAY_BAR_COLORS.length];
@@ -782,11 +759,11 @@ export default function DashboardPage() {
                             </div>
                           );
                         })}
-                        {productDayItems.length > productDayPageSize ? (
+                        {productDayItems.length > PRODUCT_DAY_PAGE_SIZE ? (
                           <Pagination
                             size="small"
                             current={productDayPage}
-                            pageSize={productDayPageSize}
+                            pageSize={PRODUCT_DAY_PAGE_SIZE}
                             total={productDayItems.length}
                             showSizeChanger={false}
                             onChange={(p) => setProductDayPage(p)}
