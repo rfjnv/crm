@@ -39,6 +39,14 @@ const PRODUCT_DAY_BAR_COLORS = [
 
 const PRODUCT_DAY_PAGE_SIZE = 5;
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function formatCount(value: number | string): string {
   const num = typeof value === 'string' ? Number(value) : value;
   if (!Number.isFinite(num)) return '0';
@@ -171,8 +179,6 @@ export default function DashboardPage() {
         name: item.product.name || 'Товар',
         revenue,
         fill,
-        /** Ordinal series for palette (avoid colorField=hex → tooltip shows #rrggbb). */
-        rankIdx: index,
       };
     });
   }, [productDayItems]);
@@ -780,12 +786,35 @@ export default function DashboardPage() {
                         data={productDayChartData}
                         xField="name"
                         yField="revenue"
-                        seriesField="rankIdx"
-                        color={[...PRODUCT_DAY_BAR_COLORS]}
+                        colorField="fill"
                         height={productDayChartHeight}
                         padding={[4, 12, 4, 12]}
                         legend={false}
-                        interaction={{ elementHighlight: true }}
+                        interaction={{
+                          elementHighlight: true,
+                          tooltip: {
+                            render: (
+                              evt: unknown,
+                              _tooltipData?: { title?: unknown; items?: unknown[] },
+                            ) => {
+                              const d = (evt as { data?: { data?: { name?: string; revenue?: number; fill?: string } } })
+                                ?.data?.data;
+                              if (!d) return '';
+                              const rawFill = String(d.fill || '');
+                              const fill = /^#[0-9A-Fa-f]{6}$/.test(rawFill) ? rawFill : PRODUCT_DAY_BAR_COLORS[0];
+                              const title = escapeHtml(d.name ?? '');
+                              const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
+                              return `
+                                <div style="padding:2px 0">
+                                  <div style="font-weight:600;font-size:12px;margin-bottom:6px;line-height:1.35">${title}</div>
+                                  <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600">
+                                    <span style="width:8px;height:8px;border-radius:50%;background:${fill};flex-shrink:0"></span>
+                                    <span>${amount}</span>
+                                  </div>
+                                </div>`;
+                            },
+                          },
+                        }}
                         scale={{
                           y: {
                             min: 0,
@@ -793,6 +822,7 @@ export default function DashboardPage() {
                             nice: false,
                             tickCount: productDayChartYMax / 5_000_000 + 1,
                           },
+                          color: { type: 'identity' as const },
                         }}
                         axis={{
                           x: {
@@ -814,20 +844,7 @@ export default function DashboardPage() {
                             gridStroke: isDark ? 'rgba(148,163,184,0.2)' : 'rgba(51,65,85,0.15)',
                           },
                         }}
-                        tooltip={{
-                          title: { field: 'name' },
-                          items: [
-                            (datum: { revenue?: number | string; fill?: string; rankIdx?: number }) => ({
-                              color:
-                                datum.fill ||
-                                PRODUCT_DAY_BAR_COLORS[
-                                  (Number(datum.rankIdx) || 0) % PRODUCT_DAY_BAR_COLORS.length
-                                ],
-                              name: '',
-                              value: formatUZS(Number(datum.revenue ?? 0)),
-                            }),
-                          ],
-                        }}
+                        tooltip={{ title: { field: 'name' } }}
                         style={() => ({
                           radius: [10, 10, 0, 0],
                         })}
