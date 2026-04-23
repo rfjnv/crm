@@ -790,31 +790,7 @@ export default function DashboardPage() {
                         height={productDayChartHeight}
                         padding={[4, 12, 4, 12]}
                         legend={false}
-                        interaction={{
-                          elementHighlight: true,
-                          tooltip: {
-                            render: (
-                              evt: unknown,
-                              _tooltipData?: { title?: unknown; items?: unknown[] },
-                            ) => {
-                              const d = (evt as { data?: { data?: { name?: string; revenue?: number; fill?: string } } })
-                                ?.data?.data;
-                              if (!d) return '';
-                              const rawFill = String(d.fill || '');
-                              const fill = /^#[0-9A-Fa-f]{6}$/.test(rawFill) ? rawFill : PRODUCT_DAY_BAR_COLORS[0];
-                              const title = escapeHtml(d.name ?? '');
-                              const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
-                              return `
-                                <div style="padding:2px 0">
-                                  <div style="font-weight:600;font-size:12px;margin-bottom:6px;line-height:1.35">${title}</div>
-                                  <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600">
-                                    <span style="width:8px;height:8px;border-radius:50%;background:${fill};flex-shrink:0"></span>
-                                    <span>${amount}</span>
-                                  </div>
-                                </div>`;
-                            },
-                          },
-                        }}
+                        interaction={{ elementHighlight: true }}
                         scale={{
                           y: {
                             min: 0,
@@ -844,7 +820,43 @@ export default function DashboardPage() {
                             gridStroke: isDark ? 'rgba(148,163,184,0.2)' : 'rgba(51,65,85,0.15)',
                           },
                         }}
-                        tooltip={{ title: { field: 'name' } }}
+                        tooltip={{
+                          title: false,
+                          items: false,
+                          render: (
+                            evt: unknown,
+                            tooltipData?: { title?: unknown; items?: Array<{ datum?: unknown; value?: unknown }> },
+                          ) => {
+                            const pickDatum = (): {
+                              name?: string;
+                              revenue?: number;
+                              fill?: string;
+                            } | null => {
+                              const a = evt as { data?: { data?: Record<string, unknown> } };
+                              const fromEvent = a?.data?.data as
+                                | { name?: string; revenue?: number; fill?: string }
+                                | undefined;
+                              if (fromEvent && typeof fromEvent.revenue !== 'undefined') return fromEvent;
+                              const it = tooltipData?.items?.[0] as { datum?: Record<string, unknown> } | undefined;
+                              const raw = it?.datum as { name?: string; revenue?: number; fill?: string } | undefined;
+                              return raw && typeof raw.revenue !== 'undefined' ? raw : null;
+                            };
+                            const d = pickDatum();
+                            if (!d) return '';
+                            const rawFill = String(d.fill || '');
+                            const fill = /^#[0-9A-Fa-f]{6}$/.test(rawFill) ? rawFill : PRODUCT_DAY_BAR_COLORS[0];
+                            const title = escapeHtml(d.name ?? '');
+                            const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
+                            return `
+                              <div style="padding:2px 0">
+                                <div style="font-weight:600;font-size:12px;margin-bottom:6px;line-height:1.35">${title}</div>
+                                <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600">
+                                  <span style="width:8px;height:8px;border-radius:50%;background:${fill};flex-shrink:0"></span>
+                                  <span>${amount}</span>
+                                </div>
+                              </div>`;
+                          },
+                        }}
                         style={() => ({
                           radius: [10, 10, 0, 0],
                         })}
