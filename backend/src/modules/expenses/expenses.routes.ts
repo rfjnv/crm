@@ -7,6 +7,8 @@ import { AppError } from '../../lib/errors';
 import { createExpenseDto, rejectExpenseDto } from './expenses.dto';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
+import { moneyService } from '../foreign-trade/money.service';
+import { recalcImportOrderUzs } from '../import-orders/import-orders.service';
 
 const router = Router();
 
@@ -15,6 +17,7 @@ router.use(authenticate);
 const expenseInclude = {
   creator: { select: { id: true, fullName: true } },
   approver: { select: { id: true, fullName: true } },
+  importOrder: { select: { id: true, number: true, currency: true } },
 };
 
 const EXPENSES_PAGE_URL = '/finance/expenses';
@@ -58,12 +61,31 @@ router.post(
     const userRole = req.user!.role;
     const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
+    // MVP-4: при привязке к импорт-заказу проверяем, что он существует
+    if (data.importOrderId) {
+      const exists = await prisma.importOrder.findUnique({
+        where: { id: data.importOrderId },
+        select: { id: true },
+      });
+      if (!exists) throw new AppError(404, 'Импорт-заказ не найден');
+    }
+
+    // MVP-4: конверсия в UZS по курсу ЦБ на дату расхода
+    const conv = await moneyService.toUzs(data.amount, data.currency, data.date);
+    const amountUzs = conv ? conv.amountUzs : null;
+    const exchangeRate = conv ? conv.rate : null;
+
     const expense = await prisma.expense.create({
       data: {
         date: new Date(data.date),
         category: data.category,
         amount: data.amount,
         note: data.note,
+        method: data.method,
+        currency: data.currency,
+        exchangeRate,
+        amountUzs,
+        importOrderId: data.importOrderId ?? null,
         createdBy: req.user!.userId,
         status: isAdmin ? 'APPROVED' : 'PENDING',
         approvedBy: isAdmin ? req.user!.userId : undefined,
@@ -71,6 +93,11 @@ router.post(
       },
       include: expenseInclude,
     });
+
+    // Если сразу APPROVED и привязан к заказу — пересчитываем landed cost
+    if (isAdmin && expense.importOrderId) {
+      await recalcImportOrderUzs(expense.importOrderId);
+    }
 
     // Notify admins about pending expense
     if (!isAdmin) {
@@ -107,6 +134,10 @@ router.patch(
       },
       include: expenseInclude,
     });
+
+    if (updated.importOrderId) {
+      await recalcImportOrderUzs(updated.importOrderId);
+    }
 
     // Notify creator
     const payload = {
@@ -145,6 +176,12 @@ router.patch(
       include: expenseInclude,
     });
 
+    // REJECTED расход не влияет на overhead, но на всякий случай пересчитаем
+    // (на случай смены статуса APPROVED → REJECTED, хотя тут было PENDING)
+    if (updated.importOrderId) {
+      await recalcImportOrderUzs(updated.importOrderId);
+    }
+
     // Notify creator (URGENT)
     const payload = {
       title: 'Расход отклонён',
@@ -175,7 +212,13 @@ router.delete(
       throw new AppError(403, 'Недостаточно прав для удаления');
     }
 
+    const linkedOrderId = expense.importOrderId;
     await prisma.expense.delete({ where: { id: expenseId } });
+
+    if (linkedOrderId) {
+      await recalcImportOrderUzs(linkedOrderId);
+    }
+
     res.json({ ok: true });
   }),
 );

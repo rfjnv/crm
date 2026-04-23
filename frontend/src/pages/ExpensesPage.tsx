@@ -19,11 +19,13 @@ import {
 import { PlusOutlined, DeleteOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { expensesApi } from '../api/expenses.api';
+import { importOrdersApi } from '../api/import-orders.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import type { Expense } from '../types';
+import { Link } from 'react-router-dom';
 
 const EXPENSE_CATEGORIES = [
   'Аренда',
@@ -36,7 +38,17 @@ const EXPENSE_CATEGORIES = [
   'Налоги',
   'Аванс',
   'Прочее',
+  // MVP-4: категории ВЭД — используются для landed cost
+  'Фрахт',
+  'Таможенная пошлина',
+  'НДС на импорт',
+  'Страховка груза',
+  'Брокер',
+  'СВХ / склад',
+  'Погрузка/разгрузка',
 ];
+
+const EXPENSE_CURRENCIES = ['UZS', 'USD', 'EUR', 'CNY', 'RUB', 'GBP'] as const;
 
 const EXPENSE_STATUS_OPTIONS = [
   { label: 'На одобрении', value: 'PENDING' as const, color: 'gold' },
@@ -71,6 +83,17 @@ export default function ExpensesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', queryParams],
     queryFn: () => expensesApi.list(queryParams),
+  });
+
+  // MVP-4: список импорт-заказов для привязки расхода (недоступные заказы просто не появятся)
+  const canSeeImportOrders =
+    isAdmin
+    || !!user?.permissions?.includes('view_import_orders')
+    || !!user?.permissions?.includes('manage_import_orders');
+  const { data: importOrders } = useQuery({
+    queryKey: ['import-orders-for-expense'],
+    queryFn: () => importOrdersApi.list(),
+    enabled: canSeeImportOrders,
   });
 
   const createMutation = useMutation({
@@ -122,6 +145,8 @@ export default function ExpensesPage() {
         category: values.category,
         amount: values.amount,
         note: values.note || undefined,
+        currency: values.currency || 'UZS',
+        importOrderId: values.importOrderId || null,
       });
     } catch {
       // validation error
@@ -176,8 +201,39 @@ export default function ExpensesPage() {
       title: 'Сумма',
       dataIndex: 'amount',
       align: 'right' as const,
+      width: 140,
+      render: (v: string, r: Expense) => {
+        const ccy = r.currency || 'UZS';
+        const num = Number(v).toLocaleString('ru-RU');
+        return ccy === 'UZS' ? formatUZS(v) : `${num} ${ccy}`;
+      },
+    },
+    {
+      title: 'В UZS',
+      dataIndex: 'amountUzs',
+      align: 'right' as const,
+      width: 140,
+      render: (v: string | number | null | undefined, r: Expense) => {
+        if (v == null) {
+          // backfill: если currency=UZS, то показываем amount
+          if (!r.currency || r.currency === 'UZS') return formatUZS(r.amount);
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        return formatUZS(v);
+      },
+    },
+    {
+      title: 'Импорт-заказ',
+      dataIndex: 'importOrder',
       width: 160,
-      render: (v: string) => formatUZS(v),
+      render: (_: unknown, r: Expense) => {
+        if (!r.importOrder) return <Typography.Text type="secondary">—</Typography.Text>;
+        return (
+          <Link to={`/foreign-trade/import-orders/${r.importOrder.id}`}>
+            {r.importOrder.number}
+          </Link>
+        );
+      },
     },
     {
       title: 'Описание',
@@ -348,7 +404,7 @@ export default function ExpensesPage() {
         cancelText="Отмена"
         width={isMobile ? '100%' : 520}
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" initialValues={{ currency: 'UZS' }}>
           <Form.Item name="date" label="Дата" rules={[{ required: true, message: 'Выберите дату' }]}>
             <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} />
           </Form.Item>
@@ -359,15 +415,39 @@ export default function ExpensesPage() {
               showSearch
             />
           </Form.Item>
-          <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]}>
-            <InputNumber
-              style={{ width: '100%' }}
-              min={0}
-              formatter={moneyFormatter}
-              parser={moneyParser as never}
-              placeholder="0"
-            />
-          </Form.Item>
+          <Space.Compact style={{ width: '100%' }}>
+            <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]} style={{ flex: 2 }}>
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
+                formatter={moneyFormatter}
+                parser={moneyParser as never}
+                placeholder="0"
+              />
+            </Form.Item>
+            <Form.Item name="currency" label="Валюта" style={{ flex: 1, marginLeft: 8 }}>
+              <Select
+                options={EXPENSE_CURRENCIES.map((c) => ({ value: c, label: c }))}
+              />
+            </Form.Item>
+          </Space.Compact>
+          {canSeeImportOrders ? (
+            <Form.Item
+              name="importOrderId"
+              label="Привязать к импорт-заказу (необязательно, для landed cost)"
+            >
+              <Select
+                allowClear
+                showSearch
+                placeholder="— не привязывать —"
+                optionFilterProp="label"
+                options={(importOrders ?? []).map((o) => ({
+                  value: o.id,
+                  label: `${o.number} · ${o.supplier?.companyName ?? ''} · ${o.currency}`,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
           <Form.Item name="note" label="Описание">
             <Input placeholder="Необязательно" />
           </Form.Item>

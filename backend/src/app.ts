@@ -35,9 +35,14 @@ import ratingsRoutes from './modules/ratings/ratings.routes';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
 import { internalReportsRoutes } from './modules/internal/reports.routes';
 import notesBoardRoutes from './modules/notes-board/notes-board.routes';
+import suppliersRoutes from './modules/suppliers/suppliers.routes';
+import importOrdersRoutes from './modules/import-orders/import-orders.routes';
+import cbuRatesRoutes from './modules/foreign-trade/cbu-rates.routes';
+import exchangeRatesRoutes from './modules/foreign-trade/exchange-rates.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
 import './modules/notes-board/notes-board-reminders.scheduler';
+import './modules/foreign-trade/exchange-rates.scheduler';
 
 const app = express();
 
@@ -115,6 +120,10 @@ app.use('/api/power-of-attorney', poaRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/ai-assistant', aiAssistantRoutes);
 app.use('/api/notes-board', notesBoardRoutes);
+app.use('/api/suppliers', suppliersRoutes);
+app.use('/api/import-orders', importOrdersRoutes);
+app.use('/api/foreign-trade', cbuRatesRoutes);
+app.use('/api/foreign-trade', exchangeRatesRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

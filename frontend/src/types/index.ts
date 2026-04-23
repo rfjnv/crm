@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER' | 'FOREIGN_TRADE';
 
 export type Permission =
   | 'manage_users'
@@ -26,7 +26,10 @@ export type Permission =
   | 'view_audit_history'
   | 'manage_expenses'
   | 'loading_execute'
-  | 'delivery_execute';
+  | 'delivery_execute'
+  | 'manage_suppliers'
+  | 'manage_import_orders'
+  | 'view_import_orders';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -55,6 +58,9 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_expenses', label: 'Управление расходами' },
   { key: 'loading_execute', label: 'Выполнение отгрузки' },
   { key: 'delivery_execute', label: 'Выполнение доставки' },
+  { key: 'manage_suppliers', label: 'Управление поставщиками (ВЭД)' },
+  { key: 'manage_import_orders', label: 'Управление импорт-заказами (ВЭД)' },
+  { key: 'view_import_orders', label: 'Просмотр импорт-заказов (ВЭД)' },
 ];
 
 const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history'];
@@ -64,7 +70,8 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   OPERATOR: ['manage_leads', 'view_all_clients'],
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
   HR: ['manage_deals', 'view_all_clients', 'edit_client'],
-  ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses'],
+  ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses', 'view_import_orders'],
+  FOREIGN_TRADE: ['manage_inventory', 'create_inventory_in', 'manage_products', 'view_all_deals', 'view_all_clients', 'manage_contract', 'manage_expenses', 'manage_suppliers', 'manage_import_orders', 'view_import_orders'],
   WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals', 'create_inventory_in'],
   WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute', 'manage_expenses', 'loading_execute'],
   DRIVER: ['view_all_deals', 'loading_execute', 'delivery_execute'],
@@ -843,6 +850,15 @@ export interface Expense {
   createdAt: string;
   creator?: { id: string; fullName: string };
   approver?: { id: string; fullName: string } | null;
+  /** MVP-4: валюта расхода (NULL или 'UZS' — базовая) */
+  currency?: string | null;
+  /** MVP-4: курс ЦБ на дату расхода (UZS per 1 unit) */
+  exchangeRate?: string | number | null;
+  /** MVP-4: UZS-эквивалент amount */
+  amountUzs?: string | number | null;
+  /** MVP-4: привязка к импорт-заказу */
+  importOrderId?: string | null;
+  importOrder?: { id: string; number: string; currency: string } | null;
 }
 
 // ──── Tasks ────
@@ -1503,3 +1519,236 @@ export interface PrepaymentData {
   byMonth: PrepaymentByMonth[];
   topClients: PrepaymentClient[];
 }
+
+// ==================== FOREIGN TRADE (ВЭД) ====================
+
+export type SupplierCurrency = 'USD' | 'EUR' | 'CNY' | 'RUB' | 'UZS';
+
+export type Incoterms = 'EXW' | 'FCA' | 'FOB' | 'CFR' | 'CIF' | 'DAP' | 'DDP';
+
+export type ImportOrderStatus =
+  | 'DRAFT'
+  | 'ORDERED'
+  | 'IN_PRODUCTION'
+  | 'SHIPPED'
+  | 'IN_TRANSIT'
+  | 'AT_CUSTOMS'
+  | 'CLEARED'
+  | 'RECEIVED'
+  | 'CANCELED';
+
+export type ImportDocumentType =
+  | 'INVOICE'
+  | 'PACKING_LIST'
+  | 'BILL_OF_LADING'
+  | 'CMR'
+  | 'CERT_OF_ORIGIN'
+  | 'CUSTOMS_DECLARATION'
+  | 'SWIFT'
+  | 'OTHER';
+
+export interface Supplier {
+  id: string;
+  companyName: string;
+  country: string | null;
+  contactPerson: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: SupplierCurrency;
+  incoterms: Incoterms | null;
+  paymentTerms: string | null;
+  bankSwift: string | null;
+  iban: string | null;
+  notes: string | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierListItem extends Supplier {
+  ordersCount: number;
+  productsCount: number;
+}
+
+export interface SupplierProductSummary {
+  id: string;
+  name: string;
+  sku: string | null;
+  unit: string | null;
+  countryOfOrigin: string | null;
+  stock: number | string;
+  isActive: boolean;
+}
+
+export interface SupplierOrderSummary {
+  id: string;
+  number: string;
+  status: ImportOrderStatus;
+  orderDate: string;
+  etd: string | null;
+  eta: string | null;
+  currency: SupplierCurrency;
+  totalAmount: number | string;
+}
+
+export interface SupplierDetail extends Supplier {
+  products: SupplierProductSummary[];
+  importOrders: SupplierOrderSummary[];
+}
+
+export interface ImportOrderItem {
+  id: string;
+  importOrderId: string;
+  productId: string;
+  qty: number | string;
+  unitPrice: number | string;
+  lineTotal: number | string;
+  comment: string | null;
+  createdAt: string;
+  product?: { id: string; name: string; sku: string | null; unit: string | null };
+}
+
+export interface ImportOrderAttachment {
+  id: string;
+  importOrderId: string;
+  documentType: ImportDocumentType;
+  filename: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  createdAt: string;
+  uploader?: { id: string; fullName: string };
+}
+
+export interface ImportOrder {
+  id: string;
+  number: string;
+  supplierId: string;
+  createdById: string;
+  status: ImportOrderStatus;
+  currency: SupplierCurrency;
+  orderDate: string;
+  etd: string | null;
+  eta: string | null;
+  containerNumber: string | null;
+  invoiceNumber: string | null;
+  invoiceRate: string | number | null;
+  totalAmount: string | number;
+  /** UZS-эквивалент totalAmount по invoiceRate (MVP-4) */
+  totalAmountUzs?: string | number | null;
+  /** Сумма расходов по заказу в UZS (MVP-4) */
+  overheadUzs?: string | number | null;
+  /** Себестоимость в UZS: totalAmountUzs + overheadUzs (MVP-4) */
+  landedCostUzs?: string | number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportOrderListItem extends ImportOrder {
+  supplier: { id: string; companyName: string; country: string | null; currency: SupplierCurrency };
+  createdBy: { id: string; fullName: string };
+  itemsCount: number;
+  attachmentsCount: number;
+}
+
+export interface ImportOrderDetail extends ImportOrder {
+  supplier: Supplier;
+  createdBy: { id: string; fullName: string };
+  items: ImportOrderItem[];
+  attachments: ImportOrderAttachment[];
+  /** MVP-4: актуальный курс ЦБ на сегодня (для расчёта разницы) */
+  currentRate?: number | null;
+  currentRateDate?: string | null;
+  /** Разница (currentRate − invoiceRate) × totalAmount, в UZS */
+  currencyDiffUzs?: number | null;
+}
+
+/** MVP-4: отчёт landed cost по позициям импорт-заказа. */
+export interface LandedCostItem {
+  itemId: string;
+  product: { id: string; name: string; sku: string | null; unit: string | null };
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+  sharePct: number;
+  lineTotalUzs: number | null;
+  allocatedOverheadUzs: number;
+  landedUzs: number | null;
+  unitLandedUzs: number | null;
+}
+
+export interface LandedCostOverhead {
+  id: string;
+  date: string;
+  category: string;
+  amount: number;
+  currency: string;
+  amountUzs: number | null;
+  note: string | null;
+}
+
+export interface LandedCostReport {
+  orderId: string;
+  number: string;
+  currency: SupplierCurrency;
+  invoiceRate: number | null;
+  totalInOrderCcy: number;
+  totalAmountUzs: number | null;
+  overheadUzs: number;
+  landedCostUzs: number | null;
+  items: LandedCostItem[];
+  overheadItems: LandedCostOverhead[];
+}
+
+/** Pipeline переходов статусов — зеркало backend DTO. */
+export const IMPORT_ORDER_STATUS_PIPELINE: Record<ImportOrderStatus, ImportOrderStatus[]> = {
+  DRAFT:         ['ORDERED', 'CANCELED'],
+  ORDERED:       ['IN_PRODUCTION', 'SHIPPED', 'CANCELED'],
+  IN_PRODUCTION: ['SHIPPED', 'CANCELED'],
+  SHIPPED:       ['IN_TRANSIT', 'AT_CUSTOMS', 'CANCELED'],
+  IN_TRANSIT:    ['AT_CUSTOMS', 'CANCELED'],
+  AT_CUSTOMS:    ['CLEARED', 'CANCELED'],
+  CLEARED:       ['RECEIVED', 'CANCELED'],
+  RECEIVED:      [],
+  CANCELED:      [],
+};
+
+export const IMPORT_ORDER_STATUS_LABELS: Record<ImportOrderStatus, string> = {
+  DRAFT:         'Черновик',
+  ORDERED:       'Заказ размещён',
+  IN_PRODUCTION: 'В производстве',
+  SHIPPED:       'Отгружено',
+  IN_TRANSIT:    'В пути',
+  AT_CUSTOMS:    'На таможне',
+  CLEARED:       'Растаможено',
+  RECEIVED:      'Принято на склад',
+  CANCELED:      'Отменён',
+};
+
+export const IMPORT_ORDER_STATUS_COLORS: Record<ImportOrderStatus, string> = {
+  DRAFT:         'default',
+  ORDERED:       'blue',
+  IN_PRODUCTION: 'geekblue',
+  SHIPPED:       'cyan',
+  IN_TRANSIT:    'gold',
+  AT_CUSTOMS:    'orange',
+  CLEARED:       'lime',
+  RECEIVED:      'green',
+  CANCELED:      'red',
+};
+
+export const IMPORT_DOCUMENT_TYPE_LABELS: Record<ImportDocumentType, string> = {
+  INVOICE:             'Инвойс',
+  PACKING_LIST:        'Упаковочный лист',
+  BILL_OF_LADING:      'Коносамент (B/L)',
+  CMR:                 'CMR',
+  CERT_OF_ORIGIN:      'Сертификат происхождения',
+  CUSTOMS_DECLARATION: 'ГТД',
+  SWIFT:               'SWIFT-платёж',
+  OTHER:               'Прочее',
+};
+
+export const SUPPLIER_CURRENCIES: SupplierCurrency[] = ['USD', 'EUR', 'CNY', 'RUB', 'UZS'];
+export const INCOTERMS_LIST: Incoterms[] = ['EXW', 'FCA', 'FOB', 'CFR', 'CIF', 'DAP', 'DDP'];

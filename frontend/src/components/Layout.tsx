@@ -454,6 +454,29 @@ export default function Layout() {
       }]
       : []),
 
+    // ── ВЭД ──
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'FOREIGN_TRADE', 'ACCOUNTANT') || hasPermission('view_import_orders')
+      ? [
+        { type: 'divider' as const },
+        ...(showGroupLabels ? [{ type: 'group' as const, label: 'ВЭД' }] : []),
+        {
+          key: '/foreign-trade/suppliers',
+          icon: <TruckOutlined />,
+          label: <Link to="/foreign-trade/suppliers">Поставщики</Link>,
+        },
+        {
+          key: '/foreign-trade/import-orders',
+          icon: <InboxOutlined />,
+          label: <Link to="/foreign-trade/import-orders">Импорт-заказы</Link>,
+        },
+        {
+          key: '/foreign-trade/exchange-rates',
+          icon: <DollarOutlined />,
+          label: <Link to="/foreign-trade/exchange-rates">Курсы ЦБ</Link>,
+        },
+      ]
+      : []),
+
     // ── Сделки: история закрытых / архив (скрытые) ──
     ...(canViewClosedDealsHistory || isAdmin
       ? [

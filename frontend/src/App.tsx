@@ -53,6 +53,11 @@ import MyVehiclePage from './pages/MyVehiclePage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import AiTrainingPage from './pages/AiTrainingPage';
 import NotesBoardPage from './pages/NotesBoardPage';
+import SuppliersPage from './pages/SuppliersPage';
+import SupplierDetailPage from './pages/SupplierDetailPage';
+import ImportOrdersPage from './pages/ImportOrdersPage';
+import ImportOrderDetailPage from './pages/ImportOrderDetailPage';
+import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -158,6 +163,13 @@ export default function App() {
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />
+                <Route element={<PrivateRoute permission="view_import_orders" />}>
+                  <Route path="/foreign-trade/suppliers" element={<SuppliersPage />} />
+                  <Route path="/foreign-trade/suppliers/:id" element={<SupplierDetailPage />} />
+                  <Route path="/foreign-trade/import-orders" element={<ImportOrdersPage />} />
+                  <Route path="/foreign-trade/import-orders/:id" element={<ImportOrderDetailPage />} />
+                  <Route path="/foreign-trade/exchange-rates" element={<ExchangeRatesHistoryPage />} />
+                </Route>
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
