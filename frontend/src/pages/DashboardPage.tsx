@@ -25,6 +25,26 @@ import './DashboardPage.css';
 
 const DEFAULT_GOAL = 250_000_000;
 
+/** Bar + rank badge colors for «Товар дня» (top-N order matches chart). */
+const PRODUCT_DAY_BAR_COLORS = [
+  '#22c55e',
+  '#14b8a6',
+  '#64748b',
+  '#f59e0b',
+  '#a855f7',
+  '#38bdf8',
+  '#fb923c',
+  '#94a3b8',
+] as const;
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function formatCount(value: number | string): string {
   const num = typeof value === 'string' ? Number(value) : value;
   if (!Number.isFinite(num)) return '0';
@@ -150,16 +170,9 @@ export default function DashboardPage() {
 
   const productDayChartData = useMemo(() => {
     const topRows = productDayItems.slice(0, 8);
-    const topRevenueId = topRows[0]?.product.id ?? null;
-    return topRows.map((item) => {
+    return topRows.map((item, index) => {
       const revenue = Number(item.revenue || 0);
-      const isTop = item.product.id === topRevenueId;
-      const isActive = activeProductId === item.product.id;
-      const fill = isTop
-        ? (isActive ? '#4ade80' : '#22c55e')
-        : isActive
-          ? '#475569'
-          : '#334155';
+      const fill = PRODUCT_DAY_BAR_COLORS[index % PRODUCT_DAY_BAR_COLORS.length];
       return {
         id: item.product.id,
         name: item.product.name || 'Товар',
@@ -167,7 +180,13 @@ export default function DashboardPage() {
         fill,
       };
     });
-  }, [productDayItems, activeProductId]);
+  }, [productDayItems]);
+
+  const productDayChartYMax = useMemo(() => {
+    const top8 = productDayItems.slice(0, 8).map((i) => Number(i.revenue || 0));
+    const maxRev = Math.max(1, ...top8);
+    return Math.max(5_000_000, Math.ceil(maxRev / 5_000_000) * 5_000_000);
+  }, [productDayItems]);
   const revenueChartSlice = useMemo(() => {
     const raw = data?.revenueLast30Days;
     if (!raw?.length) {
@@ -684,7 +703,8 @@ export default function DashboardPage() {
                           const unit = item.product.unit?.trim() || 'шт';
                           const rank = (productDayPage - 1) * productDayPageSize + idx + 1;
                           const isActive = activeProductId === item.product.id;
-                          const topAccent = rank === 1 ? (isDark ? '#84cc16' : '#65a30d') : rank <= 3 ? (isDark ? '#34d399' : '#059669') : tk.colorBorderSecondary;
+                          const badgeColor =
+                            PRODUCT_DAY_BAR_COLORS[(rank - 1) % PRODUCT_DAY_BAR_COLORS.length];
                           return (
                             <div
                               key={item.product.id}
@@ -697,9 +717,9 @@ export default function DashboardPage() {
                                 gap: 12,
                                 padding: '9px 10px',
                                 borderRadius: 10,
-                                border: `1px solid ${isActive ? (isDark ? '#84cc16' : '#65a30d') : tk.colorBorderSecondary}`,
-                                background: isActive ? (isDark ? 'rgba(132, 204, 22, 0.12)' : 'rgba(101, 163, 13, 0.08)') : 'transparent',
-                                boxShadow: isActive ? (isDark ? '0 0 0 1px rgba(132, 204, 22, 0.2)' : '0 0 0 1px rgba(101, 163, 13, 0.14)') : 'none',
+                                border: `1px solid ${isActive ? badgeColor : tk.colorBorderSecondary}`,
+                                background: isActive ? `${badgeColor}1f` : 'transparent',
+                                boxShadow: isActive ? `0 0 0 1px ${badgeColor}33` : 'none',
                                 transition: 'all 160ms ease',
                               }}
                             >
@@ -714,8 +734,8 @@ export default function DashboardPage() {
                                     justifyContent: 'center',
                                     fontSize: 11,
                                     fontWeight: 700,
-                                    color: rank <= 3 ? '#f8fafc' : tk.colorTextSecondary,
-                                    background: rank <= 3 ? topAccent : tk.colorFillQuaternary,
+                                    color: '#f8fafc',
+                                    background: badgeColor,
                                     flexShrink: 0,
                                   }}
                                 >
@@ -766,7 +786,9 @@ export default function DashboardPage() {
                         scale={{
                           y: {
                             min: 0,
+                            max: productDayChartYMax,
                             nice: false,
+                            tickCount: productDayChartYMax / 5_000_000 + 1,
                           },
                         }}
                         axis={{
@@ -790,16 +812,25 @@ export default function DashboardPage() {
                           },
                         }}
                         tooltip={{
-                          render: (dom: HTMLElement, evt: { data?: { data?: { name?: string; revenue?: number | string } } }) => {
+                          render: (
+                            dom: HTMLElement,
+                            evt: {
+                              data?: {
+                                data?: { name?: string; revenue?: number | string; fill?: string };
+                              };
+                            },
+                          ) => {
                             const d = evt?.data?.data;
                             if (!d) return;
+                            const fill = d.fill || PRODUCT_DAY_BAR_COLORS[0];
+                            const title = escapeHtml(d.name ?? '');
+                            const amount = escapeHtml(formatUZS(Number(d.revenue ?? 0)));
                             dom.innerHTML = `
-                              <div style="padding:8px">
-                                <div style="font-size:12px; opacity:0.7">
-                                  ${d.name ?? 'Товар'}
-                                </div>
-                                <div style="font-weight:600">
-                                  ${Number(d.revenue ?? 0).toLocaleString()} so'm
+                              <div style="padding:10px 12px;border-radius:8px;background:rgba(15,23,42,0.92);box-shadow:0 4px 14px rgba(0,0,0,0.35);max-width:280px">
+                                <div style="font-size:12px;font-weight:600;color:#f8fafc;line-height:1.35;margin:0 0 6px">${title}</div>
+                                <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#e2e8f0;margin:0">
+                                  <span style="width:7px;height:7px;border-radius:50%;background:${fill};flex-shrink:0"></span>
+                                  <span>${amount}</span>
                                 </div>
                               </div>
                             `;
