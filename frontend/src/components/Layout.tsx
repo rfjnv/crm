@@ -544,6 +544,11 @@ export default function Layout() {
               icon: <BarChartOutlined />,
               label: <Link to="/analytics/price-comparison">Сравнение цен</Link>,
             },
+            {
+              key: '/analytics/unique-products',
+              icon: <BarChartOutlined />,
+              label: <Link to="/analytics/unique-products">Уникальные товары</Link>,
+            },
           ]
           : []),
       ]
