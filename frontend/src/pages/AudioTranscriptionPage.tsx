@@ -68,15 +68,6 @@ export default function AudioTranscriptionPage() {
     message.success('Анализ скопирован');
   };
 
-  const handleAnalyze = () => {
-    const text = transcript.trim();
-    if (!text) {
-      message.warning('Сначала получите расшифровку');
-      return;
-    }
-    analyzeMutation.mutate(text);
-  };
-
   const handleTranscribeAndAnalyze = async () => {
     if (!selectedFile) {
       message.warning('Сначала выберите аудио файл');
