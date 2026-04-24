@@ -3,6 +3,8 @@ import { hashPassword } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { DEFAULT_PERMISSIONS } from '../../lib/permissions';
+import { pushService } from '../push/push.service';
+import { telegramService } from '../telegram/telegram.service';
 import { CreateUserDto, UpdateUserDto, UpsertMonthlyGoalDto } from './users.dto';
 
 const userSelect = {
@@ -190,6 +192,32 @@ export class UsersService {
           grantedById: performedBy,
         },
       });
+
+      const medalTitle = 'Вам выдана медаль';
+      const label = updated.badgeLabel?.trim();
+      const medalBody = label
+        ? `Новая награда: «${label}». Поздравляем!`
+        : 'Вам присвоена новая медаль — откройте профиль, чтобы посмотреть.';
+
+      await prisma.notification.create({
+        data: {
+          userId: id,
+          title: medalTitle,
+          body: medalBody,
+          severity: 'WARNING',
+          link: '/profile',
+          createdByUserId: performedBy,
+        },
+      });
+
+      const pushPayload = {
+        title: medalTitle,
+        body: medalBody,
+        url: '/profile',
+        severity: 'WARNING' as const,
+      };
+      pushService.sendPushToUser(id, pushPayload).catch(() => {});
+      telegramService.sendToUser(id, pushPayload).catch(() => {});
     }
 
     await auditLog({

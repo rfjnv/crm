@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Space, Tag, Tooltip, Typography, Button, Alert, message } from 'antd';
 import { ReloadOutlined, ArrowUpOutlined, ArrowDownOutlined, CloudSyncOutlined } from '@ant-design/icons';
+import { isAxiosError } from 'axios';
 import { cbuApi, type CbuRate } from '../api/cbu.api';
 import { useAuthStore } from '../store/authStore';
 import type { SupplierCurrency } from '../types';
@@ -16,6 +17,32 @@ function formatRate(r: CbuRate): string {
   return `${r.rate.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}${unit}`;
 }
 
+function cbuLoadErrorText(err: unknown): { message: string; description?: string } {
+  if (isAxiosError(err)) {
+    const status = err.response?.status;
+    const body = err.response?.data;
+    const apiMsg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as { error: string }).error === 'string'
+        ? (body as { error: string }).error
+        : err.message;
+    if (status === 403) {
+      return {
+        message: 'Нет доступа к курсам ЦБ',
+        description:
+          'Нужно право «Просмотр импортных заказов». Обратитесь к администратору или откройте раздел импорта под учётной записью с этим правом.',
+      };
+    }
+    if (status === 502) {
+      return {
+        message: 'Сервер не смог получить данные с cbu.uz',
+        description: apiMsg,
+      };
+    }
+    return { message: apiMsg || 'Ошибка загрузки курсов' };
+  }
+  return { message: err instanceof Error ? err.message : 'Ошибка загрузки курсов' };
+}
+
 export default function CbuRatesWidget({ onPick, compact }: Props) {
   const user = useAuthStore((s) => s.user);
   const canSync =
@@ -26,7 +53,7 @@ export default function CbuRatesWidget({ onPick, compact }: Props) {
 
   const queryClient = useQueryClient();
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['cbu-rates'],
     queryFn: cbuApi.rates,
     staleTime: 30 * 60 * 1000,
@@ -49,6 +76,7 @@ export default function CbuRatesWidget({ onPick, compact }: Props) {
   });
 
   const rates = data?.rates ?? [];
+  const loadErr = isError ? cbuLoadErrorText(error) : null;
 
   return (
     <Card
@@ -94,8 +122,25 @@ export default function CbuRatesWidget({ onPick, compact }: Props) {
     >
       {isLoading ? (
         <Typography.Text type="secondary">Загрузка…</Typography.Text>
+      ) : loadErr ? (
+        <Alert
+          type="error"
+          showIcon
+          message={loadErr.message}
+          description={loadErr.description}
+          action={(
+            <Button size="small" onClick={() => refetch()}>
+              Повторить
+            </Button>
+          )}
+        />
       ) : rates.length === 0 ? (
-        <Alert type="warning" showIcon message="Курсы ЦБ недоступны" />
+        <Alert
+          type="warning"
+          showIcon
+          message="Курсы ЦБ недоступны"
+          description="Ответ получен, но нет данных по валютам USD, EUR, CNY, RUB, GBP. Попробуйте обновить позже."
+        />
       ) : (
         <Space wrap size={compact ? 8 : 14}>
           {rates.map((r) => {
