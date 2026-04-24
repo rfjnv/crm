@@ -253,6 +253,36 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+async function splitTranscriptBySides(rawTranscript: string): Promise<string> {
+  const cleaned = rawTranscript.trim();
+  if (!cleaned) return '';
+
+  const openai = getOpenAIClient();
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a strict transcript formatter.
+Task: split one plain transcript into dialogue lines by sides.
+Rules:
+- Do not invent phrases. Use only provided words.
+- If role is clear: use prefixes "Menedjer:" and "Mijoz:".
+- If role is NOT clear: use "Spiker A:" / "Spiker B:".
+- Keep original language words (ru/uz mixed) unchanged as much as possible.
+- Keep output concise and line-based (one utterance per line).`,
+      },
+      {
+        role: 'user',
+        content: `Transcript:\n${cleaned}\n\nReturn only the formatted dialogue text.`,
+      },
+    ],
+  });
+
+  return res.choices[0]?.message?.content?.trim() || cleaned;
+}
+
 export async function transcribeAudioFile(file: Express.Multer.File): Promise<{ text: string }> {
   if (!file) {
     throw new AppError(400, 'Аудио файл не передан');
@@ -262,11 +292,13 @@ export async function transcribeAudioFile(file: Express.Multer.File): Promise<{ 
     const openai = getOpenAIClient();
     const transcription = await openai.audio.transcriptions.create({
       file: await OpenAI.toFile(fs.readFile(file.path), file.originalname),
-      model: 'gpt-4o-mini-transcribe',
+      model: 'gpt-4o-transcribe',
       language: 'ru',
+      prompt: 'Это телефонный разговор менеджера и клиента на русском и узбекском. Сохраняй имена, цифры, суммы и ключевые слова максимально точно.',
     });
-
-    return { text: transcription.text || '' };
+    const rawText = transcription.text || '';
+    const dialogueText = await splitTranscriptBySides(rawText);
+    return { text: dialogueText };
   } catch (error) {
     throw new AppError(500, 'Не удалось распознать аудио. Попробуйте другой файл.');
   }
@@ -279,7 +311,9 @@ const SALES_AUDIT_SYSTEM_PROMPT = `Ты — строгий и объективн
 - 80% ответа пиши на узбекском (латиница)
 - 20% на русском
 - Будь строгим, не пытайся "похвалить" без причины
-- Оценивай как реальный руководитель продаж`;
+- Оценивай как реальный руководитель продаж
+- НИЧЕГО не выдумывай: каждый вывод должен опираться на цитату из расшифровки
+- Если данных недостаточно, прямо пиши: "Dalil yetarli emas / Недостаточно данных"`;
 
 const SALES_AUDIT_OUTPUT_FORMAT = `Пиши строго в формате:
 
@@ -309,11 +343,13 @@ export async function analyzeSalesCallTranscript(transcript: string): Promise<{ 
 
   try {
     const openai = getOpenAIClient();
+    const customRules = await getActiveTrainingRules();
+    const auditSystemPrompt = `${SALES_AUDIT_SYSTEM_PROMPT}\n\n${customRules}`.trim();
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.2,
+      model: 'gpt-4o',
+      temperature: 0.1,
       messages: [
-        { role: 'system', content: SALES_AUDIT_SYSTEM_PROMPT },
+        { role: 'system', content: auditSystemPrompt },
         {
           role: 'user',
           content: `=== ВХОДНЫЕ ДАННЫЕ ===
@@ -376,6 +412,12 @@ ${transcript}
 Очень коротко:
 - хороший звонок или плохой
 - главная причина
+
+КРИТИЧЕСКИЕ ПРАВИЛА КАЧЕСТВА:
+- Har bir xulosa uchun 1 ta aniq iqtibos yoz ("misol: ...").
+- Agar iqtibos bo'lmasa, xatoni tasdiqlama.
+- "Menedjer yo'q" degan xulosa faqat matnda haqiqatan menedjer replikalari bo'lmasa yozilsin.
+- Umumiy, shablon gaplar yozma. Faqat aniq fakt + iqtibos.
 
 ${SALES_AUDIT_OUTPUT_FORMAT}`,
         },

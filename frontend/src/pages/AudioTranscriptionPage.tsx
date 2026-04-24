@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Space, Typography, Upload, message } from 'antd';
-import { CopyOutlined, UploadOutlined, AuditOutlined } from '@ant-design/icons';
+import { Button, Card, Input, Space, Typography, Upload, message } from 'antd';
+import { CopyOutlined, UploadOutlined, AuditOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
-import { aiAssistantApi } from '../api/ai-assistant.api';
+import { aiAssistantApi, aiTrainingApi } from '../api/ai-assistant.api';
+import { useAuthStore } from '../store/authStore';
 
 const { Title, Text } = Typography;
 
@@ -11,6 +12,9 @@ export default function AudioTranscriptionPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [transcript, setTranscript] = useState('');
   const [analysis, setAnalysis] = useState('');
+  const [knowledgeText, setKnowledgeText] = useState('');
+  const role = useAuthStore((s) => s.user?.role);
+  const isTrainingEditor = role === 'SUPER_ADMIN' || role === 'ADMIN';
 
   const selectedFile = useMemo(() => fileList[0]?.originFileObj ?? null, [fileList]);
 
@@ -36,6 +40,21 @@ export default function AudioTranscriptionPage() {
     onError: (error: any) => {
       const serverMessage = error?.response?.data?.message;
       message.error(serverMessage || 'Не удалось проанализировать звонок');
+    },
+  });
+
+  const saveKnowledgeMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const title = `Call Audit Rule ${new Date().toLocaleString('ru-RU')}`;
+      return aiTrainingApi.create({ title, content });
+    },
+    onSuccess: () => {
+      message.success('Правило добавлено в AI Training');
+      setKnowledgeText('');
+    },
+    onError: (error: any) => {
+      const serverMessage = error?.response?.data?.message;
+      message.error(serverMessage || 'Не удалось сохранить правило');
     },
   });
 
@@ -89,9 +108,21 @@ export default function AudioTranscriptionPage() {
       if (!analyzeRes?.analysis) {
         message.warning('Анализ завершен, но ответ пустой');
       }
+      if (!knowledgeText.trim() && analyzeRes?.analysis) {
+        setKnowledgeText(`Konkret qoida:\n${analyzeRes.analysis}\n\nTalab: har bir xulosa iqtibos bilan bo'lsin.`);
+      }
     } catch {
       // errors are handled inside mutation onError callbacks
     }
+  };
+
+  const handleSaveKnowledge = () => {
+    const content = knowledgeText.trim();
+    if (!content) {
+      message.warning('Введите текст правила для обучения');
+      return;
+    }
+    saveKnowledgeMutation.mutate(content);
   };
 
   return (
@@ -170,6 +201,34 @@ export default function AudioTranscriptionPage() {
           </Text>
         )}
       </Card>
+
+      {isTrainingEditor && (
+        <Card
+          title="Накачать знания в CRM"
+          extra={(
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSaveKnowledge}
+              loading={saveKnowledgeMutation.isPending}
+            >
+              Сохранить в AI Training
+            </Button>
+          )}
+        >
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Text type="secondary">
+              Добавьте сюда правило/критерий, и оно сразу попадет в обучение AI ассистента.
+            </Text>
+            <Input.TextArea
+              value={knowledgeText}
+              onChange={(e) => setKnowledgeText(e.target.value)}
+              rows={8}
+              placeholder="Masalan: Har bir xato uchun aniq iqtibos majburiy. Dalilsiz xulosa yozilmasin."
+            />
+          </Space>
+        </Card>
+      )}
     </Space>
   );
 }
