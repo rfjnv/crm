@@ -52,6 +52,7 @@ import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import AiTrainingPage from './pages/AiTrainingPage';
+import AudioTranscriptionPage from './pages/AudioTranscriptionPage';
 import NotesBoardPage from './pages/NotesBoardPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
@@ -160,6 +161,7 @@ export default function App() {
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
                 <Route path="/ai-assistant" element={<AiAssistantPage />} />
                 <Route path="/ai-assistant/training" element={<AiTrainingPage />} />
+                <Route path="/ai-assistant/transcribe" element={<AudioTranscriptionPage />} />
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import fs from 'fs/promises';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -250,6 +251,146 @@ function getOpenAIClient(): OpenAI {
     throw new AppError(500, 'OPENAI_API_KEY не настроен. Обратитесь к администратору.');
   }
   return new OpenAI({ apiKey });
+}
+
+export async function transcribeAudioFile(file: Express.Multer.File): Promise<{ text: string }> {
+  if (!file) {
+    throw new AppError(400, 'Аудио файл не передан');
+  }
+
+  try {
+    const openai = getOpenAIClient();
+    const transcription = await openai.audio.transcriptions.create({
+      file: await OpenAI.toFile(fs.readFile(file.path), file.originalname),
+      model: 'gpt-4o-mini-transcribe',
+      language: 'ru',
+    });
+
+    return { text: transcription.text || '' };
+  } catch (error) {
+    throw new AppError(500, 'Не удалось распознать аудио. Попробуйте другой файл.');
+  }
+}
+
+const SALES_AUDIT_SYSTEM_PROMPT = `Ты — строгий и объективный AI-аудитор отдела продаж.
+Твоя задача — глубоко анализировать разговор между менеджером и клиентом.
+
+ВАЖНО:
+- 80% ответа пиши на узбекском (латиница)
+- 20% на русском
+- Будь строгим, не пытайся "похвалить" без причины
+- Оценивай как реальный руководитель продаж`;
+
+const SALES_AUDIT_OUTPUT_FORMAT = `Пиши строго в формате:
+
+1. Rol ajratish:
+...
+2. Ton tahlili:
+...
+3. Xatolar:
+...
+4. Kuchli tomonlar:
+...
+5. Sotuv bosqichlari:
+...
+6. Baho:
+...
+7. Sotuv ehtimoli:
+...
+8. Tavsiyalar:
+...
+9. Xulosa:
+...`;
+
+export async function analyzeSalesCallTranscript(transcript: string): Promise<{ analysis: string }> {
+  if (!transcript || transcript.trim().length < 20) {
+    throw new AppError(400, 'Недостаточно текста для анализа');
+  }
+
+  try {
+    const openai = getOpenAIClient();
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: SALES_AUDIT_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `=== ВХОДНЫЕ ДАННЫЕ ===
+Вот расшифровка звонка:
+${transcript}
+
+=== ЗАДАЧИ ===
+
+1. Определи роли:
+- Кто менеджер
+- Кто клиент
+
+2. Анализ тона (эмоции):
+- Клиент: (раздражён / нейтральный / заинтересован / сомневается)
+- Менеджер: (уверенный / давящий / неуверенный / дружелюбный)
+
+Оцени по шкале 1–10:
+- Эмоциональное состояние клиента
+- Качество коммуникации менеджера
+
+3. Анализ ошибок менеджера:
+Найди ВСЕ ошибки:
+- перебивает клиента
+- не выявил потребность
+- не задал вопросы
+- давит
+- не закрыл сделку
+- не отработал возражение
+- говорит слишком много
+- не слушает
+
+Для каждой ошибки:
+- кратко объясни
+- приведи пример из текста
+
+4. Анализ сильных сторон:
+- что менеджер сделал хорошо
+
+5. Проверка структуры продаж:
+Отметь (ДА/НЕТ):
+- приветствие
+- выявление потребностей
+- презентация
+- работа с возражениями
+- закрытие сделки
+
+6. Общая оценка:
+Поставь оценку менеджеру от 1 до 10
+
+7. Вероятность продажи:
+- % вероятность, что клиент купит
+
+8. Рекомендации (САМОЕ ВАЖНОЕ):
+Дай конкретные советы:
+- что исправить
+- как говорить лучше
+- какие фразы использовать
+
+9. КРАТКИЙ ВЫВОД:
+Очень коротко:
+- хороший звонок или плохой
+- главная причина
+
+${SALES_AUDIT_OUTPUT_FORMAT}`,
+        },
+      ],
+    });
+
+    const analysis = completion.choices[0]?.message?.content?.trim();
+    if (!analysis) {
+      throw new AppError(500, 'AI не вернул результат анализа');
+    }
+
+    return { analysis };
+  } catch (error) {
+    throw new AppError(500, 'Не удалось выполнить анализ звонка');
+  }
 }
 
 function validateSQL(sql: string): void {

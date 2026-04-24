@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs/promises';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto } from './ai-assistant.dto';
+import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto, analyzeCallDto } from './ai-assistant.dto';
+import { generateStorageName } from '../../lib/uploadSecurity';
+import { config } from '../../lib/config';
 import {
   listChats,
   createChat,
@@ -14,9 +19,19 @@ import {
   createTrainingRule,
   updateTrainingRule,
   deleteTrainingRule,
+  transcribeAudioFile,
+  analyzeSalesCallTranscript,
 } from './ai-assistant.service';
 
 const router = Router();
+const uploadsDir = path.resolve(config.uploads.dir);
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDir,
+    filename: (_req, file, cb) => cb(null, generateStorageName(file.originalname)),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 
 router.use(authenticate);
 router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER'));
@@ -59,6 +74,34 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     await deleteTrainingRule(req.params.ruleId as string);
     res.status(204).end();
+  }),
+);
+
+router.post(
+  '/transcribe',
+  upload.single('audio'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ message: 'Аудио файл не передан' });
+      return;
+    }
+
+    try {
+      const result = await transcribeAudioFile(file);
+      res.json(result);
+    } finally {
+      await fs.unlink(file.path).catch(() => {});
+    }
+  }),
+);
+
+router.post(
+  '/analyze-call',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { transcript } = analyzeCallDto.parse(req.body);
+    const result = await analyzeSalesCallTranscript(transcript);
+    res.json(result);
   }),
 );
 

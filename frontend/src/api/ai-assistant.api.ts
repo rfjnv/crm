@@ -31,6 +31,14 @@ export interface AiAssistantResponse {
   chatTitle?: string;
 }
 
+export interface AudioTranscriptionResponse {
+  text: string;
+}
+
+export interface SalesCallAnalysisResponse {
+  analysis: string;
+}
+
 export interface AiTrainingRule {
   id: string;
   title: string;
@@ -74,4 +82,15 @@ export const aiAssistantApi = {
 
   deleteChat: (chatId: string) =>
     client.delete(`/ai-assistant/${chatId}`),
+
+  transcribeAudio: (audioFile: File) => {
+    const formData = new FormData();
+    formData.append('audio', audioFile);
+    return client.post<AudioTranscriptionResponse>('/ai-assistant/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data);
+  },
+
+  analyzeSalesCall: (transcript: string) =>
+    client.post<SalesCallAnalysisResponse>('/ai-assistant/analyze-call', { transcript }).then((r) => r.data),
 };

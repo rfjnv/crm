@@ -58,6 +58,7 @@ import {
   UserOutlined,
   DownOutlined,
   EditOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -581,11 +582,18 @@ export default function Layout() {
       : []),
     // ── AI-ассистент ──
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR')
-      ? [{
-        key: '/ai-assistant',
-        icon: <OpenAiIcon />,
-        label: <Link to="/ai-assistant">AI Ассистент</Link>,
-      }]
+      ? [
+        {
+          key: '/ai-assistant',
+          icon: <OpenAiIcon />,
+          label: <Link to="/ai-assistant">AI Ассистент</Link>,
+        },
+        {
+          key: '/ai-assistant/transcribe',
+          icon: <SoundOutlined />,
+          label: <Link to="/ai-assistant/transcribe">Аудио в текст</Link>,
+        },
+      ]
       : []),
     // ── Уведомления (все роли) ──
     ...(role !== 'OPERATOR' ? [{
