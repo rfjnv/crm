@@ -172,15 +172,27 @@ export default function UniqueProductsComparisonPage() {
         />
       </Space>
 
-      <Table
-        rowKey="key"
-        columns={tab === 'them' ? themColumns : usColumns}
-        dataSource={tab === 'them' ? filteredThem : filteredUs}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
-        scroll={{ x: 1200 }}
-        locale={{ emptyText: 'Нет товаров по фильтру' }}
-        size="small"
-      />
+      {tab === 'them' ? (
+        <Table<TheirOnlyRow>
+          rowKey="key"
+          columns={themColumns}
+          dataSource={filteredThem}
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 1200 }}
+          locale={{ emptyText: 'Нет товаров по фильтру' }}
+          size="small"
+        />
+      ) : (
+        <Table<OurOnlyRow>
+          rowKey="key"
+          columns={usColumns}
+          dataSource={filteredUs}
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 1200 }}
+          locale={{ emptyText: 'Нет товаров по фильтру' }}
+          size="small"
+        />
+      )}
     </div>
   );
 }
