@@ -328,7 +328,8 @@ export default function Layout() {
         },
       ]
       : []),
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+    ...((hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+      || hasPermission('manage_products'))
       ? [{
         key: '/inventory/products',
         icon: <AppstoreOutlined />,

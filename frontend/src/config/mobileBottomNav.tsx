@@ -149,7 +149,7 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   if (hasRole(role, ...clientsRoles)) {
     out.push({ path: '/clients', label: 'Клиенты', Icon: TeamOutlined });
   }
-  if (hasRole(role, ...productsRoles)) {
+  if (hasRole(role, ...productsRoles) || hasPermission('manage_products')) {
     out.push({ path: '/inventory/products', label: 'Товары', Icon: AppstoreOutlined });
   }
   if (hasRole(role, ...warehouseRoles)) {
