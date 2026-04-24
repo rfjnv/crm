@@ -7,6 +7,28 @@ import { aiAssistantApi, aiTrainingApi } from '../api/ai-assistant.api';
 import { useAuthStore } from '../store/authStore';
 
 const { Title, Text } = Typography;
+const TRAINING_MAX_LEN = 5000;
+const TRAINING_FILE_ACCEPT = '.txt,.md,.csv,.json';
+
+function splitIntoChunks(text: string, maxLen: number): string[] {
+  const normalized = text.trim().replace(/\r\n/g, '\n');
+  if (!normalized) return [];
+  if (normalized.length <= maxLen) return [normalized];
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < normalized.length) {
+    let end = Math.min(start + maxLen, normalized.length);
+    if (end < normalized.length) {
+      const splitAt = normalized.lastIndexOf('\n', end);
+      if (splitAt > start + 200) end = splitAt;
+    }
+    const part = normalized.slice(start, end).trim();
+    if (part) chunks.push(part);
+    start = end;
+  }
+  return chunks;
+}
 
 export default function AudioTranscriptionPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -53,8 +75,43 @@ export default function AudioTranscriptionPage() {
       setKnowledgeText('');
     },
     onError: (error: any) => {
-      const serverMessage = error?.response?.data?.message;
+      const serverMessage =
+        error?.response?.data?.message
+        || error?.response?.data?.error
+        || error?.message;
       message.error(serverMessage || 'Не удалось сохранить правило');
+    },
+  });
+
+  const uploadKnowledgeFileMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const content = (await file.text()).trim();
+      if (!content) {
+        throw new Error('Файл пустой');
+      }
+      const chunks = splitIntoChunks(content, TRAINING_MAX_LEN);
+      if (chunks.length === 0) {
+        throw new Error('Файл пустой');
+      }
+      const now = new Date().toLocaleString('ru-RU');
+      for (let i = 0; i < chunks.length; i += 1) {
+        const suffix = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+        await aiTrainingApi.create({
+          title: `Call Audit File ${now}${suffix}`,
+          content: chunks[i],
+        });
+      }
+      return chunks.length;
+    },
+    onSuccess: (chunksCount) => {
+      message.success(`Файл загружен в AI Training: ${chunksCount} часть(ей) сохранено`);
+    },
+    onError: (error: any) => {
+      const serverMessage =
+        error?.response?.data?.message
+        || error?.response?.data?.error
+        || error?.message;
+      message.error(serverMessage || 'Не удалось загрузить файл знаний');
     },
   });
 
@@ -120,6 +177,10 @@ export default function AudioTranscriptionPage() {
     const content = knowledgeText.trim();
     if (!content) {
       message.warning('Введите текст правила для обучения');
+      return;
+    }
+    if (content.length > TRAINING_MAX_LEN) {
+      message.warning(`Слишком длинное правило: ${content.length} символов. Максимум ${TRAINING_MAX_LEN}.`);
       return;
     }
     saveKnowledgeMutation.mutate(content);
@@ -220,10 +281,27 @@ export default function AudioTranscriptionPage() {
             <Text type="secondary">
               Добавьте сюда правило/критерий, и оно сразу попадет в обучение AI ассистента.
             </Text>
+            <Upload
+              accept={TRAINING_FILE_ACCEPT}
+              showUploadList={false}
+              beforeUpload={(file) => {
+                uploadKnowledgeFileMutation.mutate(file as File);
+                return false;
+              }}
+            >
+              <Button
+                icon={<UploadOutlined />}
+                loading={uploadKnowledgeFileMutation.isPending}
+              >
+                Загрузить текстовый файл в AI Training
+              </Button>
+            </Upload>
             <Input.TextArea
               value={knowledgeText}
               onChange={(e) => setKnowledgeText(e.target.value)}
               rows={8}
+              maxLength={TRAINING_MAX_LEN}
+              showCount
               placeholder="Masalan: Har bir xato uchun aniq iqtibos majburiy. Dalilsiz xulosa yozilmasin."
             />
           </Space>
