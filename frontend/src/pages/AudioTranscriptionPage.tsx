@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Input, Space, Typography, Upload, message } from 'antd';
+import { Button, Card, Input, Select, Space, Tag, Typography, Upload, message } from 'antd';
 import { CopyOutlined, UploadOutlined, AuditOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
-import { aiAssistantApi, aiTrainingApi } from '../api/ai-assistant.api';
+import { aiAssistantApi, aiTrainingApi, type AsrLanguageMode } from '../api/ai-assistant.api';
 import { useAuthStore } from '../store/authStore';
 
 const { Title, Text } = Typography;
@@ -34,6 +34,11 @@ export default function AudioTranscriptionPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [transcript, setTranscript] = useState('');
   const [analysis, setAnalysis] = useState('');
+  const [languageMode, setLanguageMode] = useState<AsrLanguageMode>('auto');
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [needsHumanReview, setNeedsHumanReview] = useState<boolean | null>(null);
+  const [auditRecommended, setAuditRecommended] = useState<boolean | null>(null);
+  const [audioWarnings, setAudioWarnings] = useState<string[]>([]);
   const [knowledgeText, setKnowledgeText] = useState('');
   const role = useAuthStore((s) => s.user?.role);
   const isTrainingEditor = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -41,10 +46,14 @@ export default function AudioTranscriptionPage() {
   const selectedFile = useMemo(() => fileList[0]?.originFileObj ?? null, [fileList]);
 
   const transcribeMutation = useMutation({
-    mutationFn: async (file: File) => aiAssistantApi.transcribeAudio(file),
+    mutationFn: async (file: File) => aiAssistantApi.transcribeAudio(file, languageMode),
     onSuccess: (data) => {
       setTranscript(data.text || '');
       setAnalysis('');
+      setQualityScore(typeof data.qualityScore === 'number' ? data.qualityScore : null);
+      setNeedsHumanReview(typeof data.needsHumanReview === 'boolean' ? data.needsHumanReview : null);
+      setAuditRecommended(typeof data.auditRecommended === 'boolean' ? data.auditRecommended : null);
+      setAudioWarnings(Array.isArray(data.audioQuality?.warnings) ? data.audioQuality.warnings : []);
       if (!data.text) message.warning('Распознавание завершено, но текст пустой');
     },
     onError: (error: any) => {
@@ -125,10 +134,18 @@ export default function AudioTranscriptionPage() {
       setFileList(info.fileList.slice(-1));
       setTranscript('');
       setAnalysis('');
+      setQualityScore(null);
+      setNeedsHumanReview(null);
+      setAuditRecommended(null);
+      setAudioWarnings([]);
     },
     onRemove: () => {
       setTranscript('');
       setAnalysis('');
+      setQualityScore(null);
+      setNeedsHumanReview(null);
+      setAuditRecommended(null);
+      setAudioWarnings([]);
     },
   };
 
@@ -157,6 +174,12 @@ export default function AudioTranscriptionPage() {
 
       if (!text) {
         message.warning('Распознавание завершено, но текст пустой');
+        return;
+      }
+
+      if (transcribeRes?.auditRecommended === false) {
+        setAnalysis(transcribeRes.auditSkipReason || 'Аудит не запущен из-за низкого качества записи.');
+        message.warning('Низкое качество транскрипта: аудит пропущен');
         return;
       }
 
@@ -197,6 +220,20 @@ export default function AudioTranscriptionPage() {
 
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <Text>Язык ASR:</Text>
+            <Select<AsrLanguageMode>
+              value={languageMode}
+              onChange={(v) => setLanguageMode(v)}
+              style={{ minWidth: 220 }}
+              options={[
+                { value: 'auto', label: 'auto (рекомендуется)' },
+                { value: 'mixed', label: 'mixed (ru+uz prompt)' },
+                { value: 'ru', label: 'ru' },
+                { value: 'uz', label: 'uz' },
+              ]}
+            />
+          </div>
           <Upload.Dragger {...uploadProps} style={{ padding: '12px 0' }}>
             <p className="ant-upload-drag-icon">
               <UploadOutlined />
@@ -222,16 +259,31 @@ export default function AudioTranscriptionPage() {
       <Card
         title="Транскрипт"
         extra={(
-          <Button
-            type="text"
-            icon={<CopyOutlined />}
-            onClick={copyResult}
-            disabled={!transcript}
-          >
-            Копировать
-          </Button>
+          <Space wrap>
+            {qualityScore !== null && (
+              <Tag color={qualityScore >= 7 ? 'green' : qualityScore >= 5 ? 'gold' : 'red'}>
+                Quality: {qualityScore}/10
+              </Tag>
+            )}
+            {needsHumanReview === true && <Tag color="gold">Проверь вручную</Tag>}
+            {auditRecommended === false && <Tag color="default">Аудит пропущен</Tag>}
+            <Button
+              type="text"
+              icon={<CopyOutlined />}
+              onClick={copyResult}
+              disabled={!transcript}
+            >
+              Копировать
+            </Button>
+          </Space>
         )}
       >
+        {audioWarnings.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <Text type="secondary">Предупреждения аудио: </Text>
+            <Text>{audioWarnings.join(', ')}</Text>
+          </div>
+        )}
         {transcript ? (
           <Text style={{ whiteSpace: 'pre-wrap' }}>{transcript}</Text>
         ) : (

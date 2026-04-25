@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto, analyzeCallDto } from './ai-assistant.dto';
+import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto, analyzeCallDto, transcribeAudioDto } from './ai-assistant.dto';
 import { generateStorageName } from '../../lib/uploadSecurity';
 import { config } from '../../lib/config';
 import {
@@ -88,7 +88,10 @@ router.post(
     }
 
     try {
-      const result = await transcribeAudioFile(file);
+      const { languageMode } = transcribeAudioDto.parse({
+        languageMode: req.body?.languageMode,
+      });
+      const result = await transcribeAudioFile(file, { languageMode });
       res.json(result);
     } finally {
       await fs.unlink(file.path).catch(() => {});

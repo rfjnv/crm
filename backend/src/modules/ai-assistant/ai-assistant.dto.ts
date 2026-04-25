@@ -12,6 +12,12 @@ export const analyzeCallDto = z.object({
   transcript: z.string().min(20, 'Транскрипт слишком короткий').max(120000),
 });
 
+export const languageModeSchema = z.enum(['ru', 'uz', 'auto', 'mixed']);
+
+export const transcribeAudioDto = z.object({
+  languageMode: languageModeSchema.optional().default('auto'),
+});
+
 export const createTrainingRuleDto = z.object({
   title: z.string().min(1, 'Название обязательно').max(200),
   content: z.string().min(1, 'Содержание обязательно').max(5000),
@@ -25,6 +31,7 @@ export const updateTrainingRuleDto = z.object({
 
 export type AskQuestionDto = z.infer<typeof askQuestionDto>;
 export type AnalyzeCallDto = z.infer<typeof analyzeCallDto>;
+export type TranscribeAudioDto = z.infer<typeof transcribeAudioDto>;
 
 export interface AiAssistantEntity {
   type: 'client' | 'deal' | 'product' | 'user';

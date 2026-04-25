@@ -31,8 +31,39 @@ export interface AiAssistantResponse {
   chatTitle?: string;
 }
 
+export type AsrLanguageMode = 'ru' | 'uz' | 'auto' | 'mixed';
+
+export interface AudioQuality {
+  sampleRate: number;
+  channels: number;
+  durationSec: number;
+  isLowQuality: boolean;
+  warnings: string[];
+}
+
+export interface TranscriptSegment {
+  id: number;
+  start: number;
+  end: number;
+  speaker: string;
+  speakerRole: 'manager' | 'client' | null;
+  text: string;
+  language: string | null;
+  confidence: number | null;
+}
+
 export interface AudioTranscriptionResponse {
   text: string;
+  rawText: string;
+  dialogueText: string;
+  languageMode: AsrLanguageMode;
+  audioQuality: AudioQuality;
+  qualityScore: number;
+  needsHumanReview: boolean;
+  auditRecommended: boolean;
+  auditSkipReason?: string;
+  model: string;
+  segments: TranscriptSegment[];
 }
 
 export interface SalesCallAnalysisResponse {
@@ -83,9 +114,10 @@ export const aiAssistantApi = {
   deleteChat: (chatId: string) =>
     client.delete(`/ai-assistant/${chatId}`),
 
-  transcribeAudio: (audioFile: File) => {
+  transcribeAudio: (audioFile: File, languageMode: AsrLanguageMode = 'auto') => {
     const formData = new FormData();
     formData.append('audio', audioFile);
+    formData.append('languageMode', languageMode);
     return client.post<AudioTranscriptionResponse>('/ai-assistant/transcribe', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then((r) => r.data);

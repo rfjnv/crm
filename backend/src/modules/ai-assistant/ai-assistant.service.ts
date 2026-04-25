@@ -4,6 +4,7 @@ import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AiAssistantResponse } from './ai-assistant.dto';
+import { PolygraphTranscriber, type LanguageMode, type TranscriptionResult } from '../asr/polygraph-transcriber';
 
 const FORBIDDEN_KEYWORDS = [
   'DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'TRUNCATE',
@@ -283,22 +284,43 @@ Rules:
   return res.choices[0]?.message?.content?.trim() || cleaned;
 }
 
-export async function transcribeAudioFile(file: Express.Multer.File): Promise<{ text: string }> {
+export type TranscribeAudioResponse = TranscriptionResult & {
+  text: string;
+  rawText: string;
+  dialogueText: string;
+  auditRecommended: boolean;
+  auditSkipReason?: string;
+};
+
+export async function transcribeAudioFile(
+  file: Express.Multer.File,
+  opts: { languageMode?: LanguageMode } = {},
+): Promise<TranscribeAudioResponse> {
   if (!file) {
     throw new AppError(400, 'Аудио файл не передан');
   }
 
   try {
-    const openai = getOpenAIClient();
-    const transcription = await openai.audio.transcriptions.create({
-      file: await OpenAI.toFile(fs.readFile(file.path), file.originalname),
-      model: 'gpt-4o-transcribe',
-      language: 'ru',
-      prompt: 'Это телефонный разговор менеджера и клиента на русском и узбекском. Сохраняй имена, цифры, суммы и ключевые слова максимально точно.',
-    });
-    const rawText = transcription.text || '';
-    const dialogueText = await splitTranscriptBySides(rawText);
-    return { text: dialogueText };
+    const apiKey = config.openai.apiKey;
+    if (!apiKey) {
+      throw new AppError(500, 'OPENAI_API_KEY не настроен. Обратитесь к администратору.');
+    }
+
+    const languageMode: LanguageMode = opts.languageMode ?? 'auto';
+    const transcriber = new PolygraphTranscriber({ apiKey });
+    const asr = await transcriber.transcribeWithQualityGate(file.path, { languageMode }, 5.0);
+
+    const rawText = (asr.text || '').trim();
+    const dialogueText = rawText ? await splitTranscriptBySides(rawText) : '';
+
+    return {
+      ...asr,
+      text: dialogueText || rawText,
+      rawText,
+      dialogueText,
+      auditRecommended: Boolean(asr.auditRecommended),
+      auditSkipReason: asr.auditSkipReason,
+    };
   } catch (error) {
     throw new AppError(500, 'Не удалось распознать аудио. Попробуйте другой файл.');
   }
