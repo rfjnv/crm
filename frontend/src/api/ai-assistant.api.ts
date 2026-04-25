@@ -120,9 +120,12 @@ export const aiAssistantApi = {
     formData.append('languageMode', languageMode);
     return client.post<AudioTranscriptionResponse>('/ai-assistant/transcribe', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 240000,
     }).then((r) => r.data);
   },
 
   analyzeSalesCall: (transcript: string) =>
-    client.post<SalesCallAnalysisResponse>('/ai-assistant/analyze-call', { transcript }).then((r) => r.data),
+    client.post<SalesCallAnalysisResponse>('/ai-assistant/analyze-call', { transcript }, {
+      timeout: 180000,
+    }).then((r) => r.data),
 };

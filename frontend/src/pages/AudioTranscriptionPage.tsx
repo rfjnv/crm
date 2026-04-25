@@ -40,6 +40,7 @@ export default function AudioTranscriptionPage() {
   const [auditRecommended, setAuditRecommended] = useState<boolean | null>(null);
   const [audioWarnings, setAudioWarnings] = useState<string[]>([]);
   const [knowledgeText, setKnowledgeText] = useState('');
+  const [progressText, setProgressText] = useState('');
   const role = useAuthStore((s) => s.user?.role);
   const isTrainingEditor = role === 'SUPER_ADMIN' || role === 'ADMIN';
 
@@ -58,7 +59,7 @@ export default function AudioTranscriptionPage() {
     },
     onError: (error: any) => {
       const serverMessage = error?.response?.data?.message;
-      message.error(serverMessage || 'Не удалось распознать аудио');
+      message.error(serverMessage || 'Не удалось распознать аудио (проверьте размер файла и сеть)');
     },
   });
 
@@ -70,7 +71,7 @@ export default function AudioTranscriptionPage() {
     },
     onError: (error: any) => {
       const serverMessage = error?.response?.data?.message;
-      message.error(serverMessage || 'Не удалось проанализировать звонок');
+      message.error(serverMessage || 'Не удалось проанализировать звонок (таймаут или перегрузка)');
     },
   });
 
@@ -168,6 +169,7 @@ export default function AudioTranscriptionPage() {
     }
 
     try {
+      setProgressText('Шаг 1/2: распознаем аудио...');
       const transcribeRes = await transcribeMutation.mutateAsync(selectedFile);
       const text = (transcribeRes?.text || '').trim();
       setTranscript(text);
@@ -180,9 +182,11 @@ export default function AudioTranscriptionPage() {
       if (transcribeRes?.auditRecommended === false) {
         setAnalysis(transcribeRes.auditSkipReason || 'Аудит не запущен из-за низкого качества записи.');
         message.warning('Низкое качество транскрипта: аудит пропущен');
+        setProgressText('');
         return;
       }
 
+      setProgressText('Шаг 2/2: анализируем разговор...');
       const analyzeRes = await analyzeMutation.mutateAsync(text);
       setAnalysis(analyzeRes?.analysis || '');
       if (!analyzeRes?.analysis) {
@@ -193,6 +197,8 @@ export default function AudioTranscriptionPage() {
       }
     } catch {
       // errors are handled inside mutation onError callbacks
+    } finally {
+      setProgressText('');
     }
   };
 
@@ -251,7 +257,7 @@ export default function AudioTranscriptionPage() {
             loading={transcribeMutation.isPending || analyzeMutation.isPending}
             disabled={!selectedFile}
           >
-            Распознать + Анализировать
+            {progressText || 'Распознать + Анализировать'}
           </Button>
         </Space>
       </Card>

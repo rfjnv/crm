@@ -257,6 +257,8 @@ function getOpenAIClient(): OpenAI {
 async function splitTranscriptBySides(rawTranscript: string): Promise<string> {
   const cleaned = rawTranscript.trim();
   if (!cleaned) return '';
+  // Keep one-click flow responsive on long calls.
+  if (cleaned.length > 3500) return cleaned;
 
   const openai = getOpenAIClient();
   const res = await openai.chat.completions.create({
