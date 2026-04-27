@@ -59,6 +59,7 @@ import {
   DownOutlined,
   EditOutlined,
   SoundOutlined,
+  NodeIndexOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -470,6 +471,11 @@ export default function Layout() {
           key: '/foreign-trade/import-orders',
           icon: <InboxOutlined />,
           label: <Link to="/foreign-trade/import-orders">Импорт-заказы</Link>,
+        },
+        {
+          key: '/foreign-trade/process-board',
+          icon: <NodeIndexOutlined />,
+          label: <Link to="/foreign-trade/process-board">Трекинг и документы</Link>,
         },
         {
           key: '/foreign-trade/exchange-rates',

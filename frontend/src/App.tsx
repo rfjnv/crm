@@ -60,6 +60,7 @@ import SupplierDetailPage from './pages/SupplierDetailPage';
 import ImportOrdersPage from './pages/ImportOrdersPage';
 import ImportOrderDetailPage from './pages/ImportOrderDetailPage';
 import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
+import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -173,6 +174,7 @@ export default function App() {
                   <Route path="/foreign-trade/import-orders" element={<ImportOrdersPage />} />
                   <Route path="/foreign-trade/import-orders/:id" element={<ImportOrderDetailPage />} />
                   <Route path="/foreign-trade/exchange-rates" element={<ExchangeRatesHistoryPage />} />
+                  <Route path="/foreign-trade/process-board" element={<VedProcessBoardPage />} />
                 </Route>
               </Route>
             </Route>
