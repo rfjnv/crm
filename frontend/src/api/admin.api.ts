@@ -58,12 +58,16 @@ export interface OverrideDealData {
 export interface CorrectClientStockAddPayload {
   qty?: number;
   occurredAt?: string;
+  unitPrice?: number | null;
   reason?: string;
 }
 
 export const adminApi = {
   correctClientStockAdd: (clientId: string, eventId: string, data: CorrectClientStockAddPayload) =>
     client.patch<ClientStockResponse>(`/admin/clients/${clientId}/stock/events/${eventId}`, data).then((r) => r.data),
+
+  deleteClientStockAdd: (clientId: string, eventId: string, data?: { reason?: string }) =>
+    client.delete<ClientStockResponse>(`/admin/clients/${clientId}/stock/events/${eventId}`, { data: data ?? {} }).then((r) => r.data),
 
   overrideDeal: (id: string, data: OverrideDealData) =>
     client.patch<Deal>(`/admin/deals/${id}/override`, data).then((r) => r.data),

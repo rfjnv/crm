@@ -10,6 +10,7 @@ import {
   SendClientStockAllDto,
   SendClientStockPartialDto,
   SuperCorrectClientStockAddDto,
+  SuperDeleteClientStockAddDto,
 } from './clients.dto';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
@@ -456,6 +457,105 @@ export class ClientsService {
     });
   }
 
+  /** Проверка: если убрать событие из цепочки, остаток нигде не уходит в минус. */
+  private assertClientStockChainOkWithoutEvent(
+    events: { id: string; qtyDelta: Prisma.Decimal }[],
+    skipEventId: string,
+  ) {
+    let running = new Prisma.Decimal(0);
+    for (const ev of events) {
+      if (ev.id === skipEventId) continue;
+      running = running.plus(ev.qtyDelta);
+      if (running.lt(0)) {
+        throw new AppError(
+          400,
+          'Нельзя удалить поступление: после удаления остаток у клиента стал бы отрицательным (есть последующие отгрузки со склада клиента).',
+        );
+      }
+    }
+  }
+
+  /**
+   * Суперадмин: удалить поступление ADD (ошибочная запись). Возвращает количество на основной склад.
+   */
+  async superDeleteClientStockAddEvent(
+    clientId: string,
+    eventId: string,
+    dto: SuperDeleteClientStockAddDto,
+    user: AuthUser,
+  ) {
+    if (user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только суперадминистратор может удалять историю склада клиента');
+    }
+
+    const event = await prisma.clientStockEvent.findFirst({
+      where: { id: eventId, clientId },
+      include: { product: { select: { name: true } } },
+    });
+    if (!event || event.type !== 'ADD') {
+      throw new AppError(404, 'Событие не найдено или не является поступлением (ADD)');
+    }
+
+    const chain = await prisma.clientStockEvent.findMany({
+      where: { clientId, productId: event.productId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, qtyDelta: true },
+    });
+    this.assertClientStockChainOkWithoutEvent(chain, eventId);
+
+    const oldQty = Number(event.qtyDelta);
+    const beforeSnap = {
+      qtyDelta: oldQty,
+      createdAt: event.createdAt.toISOString(),
+      unitPrice: event.unitPrice != null ? event.unitPrice.toString() : null,
+      lineTotal: event.lineTotal != null ? event.lineTotal.toString() : null,
+    };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.product.update({
+        where: { id: event.productId },
+        data: { stock: { increment: oldQty } },
+      });
+
+      const mov =
+        (await tx.inventoryMovement.findFirst({
+          where: { clientStockEventId: eventId },
+        })) ||
+        (await tx.inventoryMovement.findFirst({
+          where: {
+            productId: event.productId,
+            type: 'OUT',
+            createdBy: event.authorId,
+            quantity: event.qtyDelta,
+            createdAt: {
+              gte: new Date(event.createdAt.getTime() - 15_000),
+              lte: new Date(event.createdAt.getTime() + 15_000),
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        }));
+
+      if (mov) {
+        await tx.inventoryMovement.delete({ where: { id: mov.id } });
+      }
+
+      await tx.clientStockEvent.delete({ where: { id: eventId } });
+      await this.replayClientStockChain(tx, clientId, event.productId);
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_DELETE',
+      entityType: 'client_stock_event',
+      entityId: eventId,
+      before: beforeSnap,
+      after: { deleted: true, reason: dto.reason ?? null },
+      reason: dto.reason,
+    });
+
+    return this.getStock(clientId, user, { historyLimit: 100 });
+  }
+
   /**
    * Суперадмин: исправить количество и/или фактическую дату поступления на склад клиента (ADD),
    * чтобы выручка и движения склада попадали в нужный день. Синхронизирует остаток основного склада и движение OUT.
@@ -493,7 +593,13 @@ export class ClientsService {
       newCreatedAt = d;
     }
 
-    if (dto.qty === undefined && newCreatedAt.getTime() === event.createdAt.getTime()) {
+    const oldPriceNum = event.unitPrice != null ? Number(event.unitPrice) : null;
+    const newPriceNum: number | null =
+      dto.unitPrice !== undefined ? dto.unitPrice : oldPriceNum;
+    const sameQty = newQty === oldQty;
+    const sameDate = newCreatedAt.getTime() === event.createdAt.getTime();
+    const samePrice = newPriceNum === oldPriceNum || (newPriceNum == null && oldPriceNum == null);
+    if (sameQty && sameDate && samePrice) {
       throw new AppError(400, 'Нет изменений');
     }
 
@@ -502,6 +608,7 @@ export class ClientsService {
     const beforeSnap = {
       qtyDelta: oldQty,
       createdAt: event.createdAt.toISOString(),
+      unitPrice: oldPriceNum,
       lineTotal: event.lineTotal != null ? event.lineTotal.toString() : null,
     };
 
@@ -527,8 +634,10 @@ export class ClientsService {
         });
       }
 
-      const unitPrice = event.unitPrice != null ? new Prisma.Decimal(event.unitPrice.toString()) : null;
-      const lineTotal = unitPrice != null ? unitPrice.mul(new Prisma.Decimal(newQty)) : null;
+      const unitPriceDec =
+        newPriceNum != null && !Number.isNaN(newPriceNum) ? new Prisma.Decimal(newPriceNum) : null;
+      const lineTotal =
+        unitPriceDec != null ? unitPriceDec.mul(new Prisma.Decimal(newQty)) : null;
       if (lineTotal != null) {
         afterLineTotal = lineTotal.toString();
       }
@@ -538,6 +647,7 @@ export class ClientsService {
         data: {
           qtyDelta: newQty,
           createdAt: newCreatedAt,
+          unitPrice: unitPriceDec,
           lineTotal,
         },
       });
@@ -583,6 +693,7 @@ export class ClientsService {
       after: {
         qtyDelta: newQty,
         createdAt: newCreatedAt.toISOString(),
+        unitPrice: newPriceNum,
         lineTotal: afterLineTotal,
         reason: dto.reason ?? null,
       },

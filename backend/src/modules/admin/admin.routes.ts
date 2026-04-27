@@ -7,7 +7,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
 import { dealsService } from '../deals/deals.service';
 import { warehouseService } from '../warehouse/warehouse.service';
-import { superCorrectClientStockAddDto } from '../clients/clients.dto';
+import { superCorrectClientStockAddDto, superDeleteClientStockAddDto } from '../clients/clients.dto';
 import { clientsService } from '../clients/clients.service';
 import { AuthUser } from '../../lib/scope';
 
@@ -48,6 +48,21 @@ router.patch(
   validate(superCorrectClientStockAddDto),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await clientsService.superCorrectClientStockAddEvent(
+      req.params.clientId as string,
+      req.params.eventId as string,
+      req.body,
+      getUser(req),
+    );
+    res.json(result);
+  }),
+);
+
+router.delete(
+  '/clients/:clientId/stock/events/:eventId',
+  authorize('SUPER_ADMIN'),
+  validate(superDeleteClientStockAddDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await clientsService.superDeleteClientStockAddEvent(
       req.params.clientId as string,
       req.params.eventId as string,
       req.body,

@@ -102,11 +102,22 @@ export const superCorrectClientStockAddDto = z
   .object({
     qty: z.number().positive('Количество должно быть больше 0').optional(),
     occurredAt: z.string().min(1).optional(),
+    /** Цена за единицу (выручка = qty × цена). null — сбросить цену и сумму. */
+    unitPrice: z.union([z.number().min(0, 'Цена не может быть отрицательной'), z.null()]).optional(),
     reason: z.string().max(2000).optional(),
   })
-  .refine((d) => d.qty !== undefined || (d.occurredAt != null && d.occurredAt.trim().length > 0), {
-    message: 'Укажите количество и/или дату события',
-  });
+  .refine(
+    (d) =>
+      d.qty !== undefined ||
+      (d.occurredAt != null && d.occurredAt.trim().length > 0) ||
+      d.unitPrice !== undefined,
+    { message: 'Укажите количество, дату и/или цену' },
+  );
+
+/** Суперадмин: удаление ошибочного поступления ADD (возврат на основной склад, пересчёт цепочки). */
+export const superDeleteClientStockAddDto = z.object({
+  reason: z.string().max(2000).optional(),
+});
 
 export type CreateClientDto = z.infer<typeof createClientDto>;
 export type UpdateClientDto = z.infer<typeof updateClientDto>;
@@ -116,6 +127,7 @@ export type AddClientStockDto = z.infer<typeof addClientStockDto>;
 export type SendClientStockPartialDto = z.infer<typeof sendClientStockPartialDto>;
 export type SendClientStockAllDto = z.infer<typeof sendClientStockAllDto>;
 export type SuperCorrectClientStockAddDto = z.infer<typeof superCorrectClientStockAddDto>;
+export type SuperDeleteClientStockAddDto = z.infer<typeof superDeleteClientStockAddDto>;
 
 export const createClientNoteDto = z.object({
   content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),

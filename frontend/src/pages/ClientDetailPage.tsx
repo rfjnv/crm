@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse, Dropdown, Select, InputNumber,
+  message, theme, Collapse, Dropdown, Select, InputNumber, Popconfirm,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -135,6 +135,8 @@ export default function ClientDetailPage() {
   const [stockCorrectOpen, setStockCorrectOpen] = useState(false);
   const [stockCorrectEventId, setStockCorrectEventId] = useState<string | null>(null);
   const [stockCorrectForm] = Form.useForm();
+  const watchedCorrectQty = Form.useWatch('qty', stockCorrectForm);
+  const watchedCorrectPrice = Form.useWatch('unitPrice', stockCorrectForm);
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -270,12 +272,26 @@ export default function ClientDetailPage() {
     },
   });
 
+  const invalidateAfterStockAdmin = () => {
+    queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
+    queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['revenue-today'] });
+  };
+
   const correctStockAddMut = useMutation({
-    mutationFn: (payload: { eventId: string; qty: number; occurredAt: string; reason?: string }) => {
+    mutationFn: (payload: {
+      eventId: string;
+      qty: number;
+      occurredAt: string;
+      unitPrice: number | null;
+      reason?: string;
+    }) => {
       if (!id) throw new Error('Клиент не выбран');
       return adminApi.correctClientStockAdd(id, payload.eventId, {
         qty: payload.qty,
         occurredAt: payload.occurredAt,
+        unitPrice: payload.unitPrice,
         ...(payload.reason ? { reason: payload.reason } : {}),
       });
     },
@@ -284,13 +300,28 @@ export default function ClientDetailPage() {
       setStockCorrectOpen(false);
       setStockCorrectEventId(null);
       stockCorrectForm.resetFields();
-      queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
-      queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-today'] });
+      invalidateAfterStockAdmin();
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения';
+      message.error(msg);
+    },
+  });
+
+  const deleteStockAddMut = useMutation({
+    mutationFn: (payload: { eventId: string; reason?: string }) => {
+      if (!id) throw new Error('Клиент не выбран');
+      return adminApi.deleteClientStockAdd(id, payload.eventId, payload.reason ? { reason: payload.reason } : {});
+    },
+    onSuccess: () => {
+      message.success('Поступление удалено, товар возвращён на основной склад');
+      setStockCorrectOpen(false);
+      setStockCorrectEventId(null);
+      stockCorrectForm.resetFields();
+      invalidateAfterStockAdmin();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления';
       message.error(msg);
     },
   });
@@ -314,6 +345,18 @@ export default function ClientDetailPage() {
         dataIndex: 'qtyDelta',
         align: 'right' as const,
         render: (v: number, r: StockEventTableRow) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim(),
+      },
+      {
+        title: 'Цена',
+        dataIndex: 'unitPrice',
+        align: 'right' as const,
+        render: (v: number | null | undefined) => (v != null ? formatUZS(v) : '—'),
+      },
+      {
+        title: 'Сумма',
+        dataIndex: 'lineTotal',
+        align: 'right' as const,
+        render: (v: number | null | undefined) => (v != null ? formatUZS(v) : '—'),
       },
       {
         title: 'Было → Стало',
@@ -348,6 +391,7 @@ export default function ClientDetailPage() {
                 stockCorrectForm.setFieldsValue({
                   qty: r.qtyDelta,
                   occurredAt: dayjs(r.createdAt),
+                  unitPrice: r.unitPrice ?? null,
                   reason: undefined,
                 });
                 setStockCorrectOpen(true);
@@ -1153,13 +1197,13 @@ export default function ClientDetailPage() {
           stockCorrectForm.resetFields();
         }}
         onOk={() => stockCorrectForm.submit()}
-        confirmLoading={correctStockAddMut.isPending}
+        confirmLoading={correctStockAddMut.isPending || deleteStockAddMut.isPending}
         okText="Сохранить"
         cancelText="Отмена"
         width={520}
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 12 }}>
-          Для строк «Добавление»: укажите фактическое количество и дату/время — так учитываются выручка и движение склада. Остатки на основном складе и у клиента пересчитываются автоматически.
+          Количество, дата и цена влияют на выручку и движение склада. Итоговая сумма = количество × цена. Удаление возвращает количество на основной склад (нельзя, если уже списали больше, чем осталось бы после удаления).
         </Typography.Paragraph>
         <Form
           form={stockCorrectForm}
@@ -1176,8 +1220,16 @@ export default function ClientDetailPage() {
               return;
             }
             const nextAt = dayjs(v.occurredAt).toISOString();
+            const rawP = v.unitPrice as number | null | undefined;
+            const nextPrice = rawP === undefined || rawP === null ? null : Number(rawP);
             const orig = stockData?.events?.find((e) => e.id === stockCorrectEventId);
-            if (orig && qty === orig.qtyDelta && dayjs(nextAt).valueOf() === dayjs(orig.createdAt).valueOf()) {
+            const origP = orig?.unitPrice != null ? Number(orig.unitPrice) : null;
+            if (
+              orig &&
+              qty === orig.qtyDelta &&
+              dayjs(nextAt).valueOf() === dayjs(orig.createdAt).valueOf() &&
+              (nextPrice ?? null) === (origP ?? null)
+            ) {
               message.info('Нет изменений');
               return;
             }
@@ -1185,6 +1237,7 @@ export default function ClientDetailPage() {
               eventId: stockCorrectEventId,
               qty,
               occurredAt: nextAt,
+              unitPrice: nextPrice,
               reason: (v.reason as string | undefined)?.trim() || undefined,
             });
           }}
@@ -1195,9 +1248,39 @@ export default function ClientDetailPage() {
           <Form.Item name="occurredAt" label="Дата и время поступления" rules={[{ required: true, message: 'Обязательно' }]}>
             <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
           </Form.Item>
+          <Form.Item name="unitPrice" label="Цена за ед.">
+            <InputNumber min={0} step={1000} style={{ width: '100%' }} placeholder="Пусто — без суммы в выручке" allowClear />
+          </Form.Item>
+          <Typography.Paragraph style={{ marginBottom: 16 }}>
+            <Typography.Text type="secondary">Итоговая сумма: </Typography.Text>
+            <Typography.Text strong>
+              {watchedCorrectQty != null &&
+              watchedCorrectPrice != null &&
+              !Number.isNaN(Number(watchedCorrectQty)) &&
+              !Number.isNaN(Number(watchedCorrectPrice))
+                ? formatUZS(Number(watchedCorrectQty) * Number(watchedCorrectPrice))
+                : '—'}
+            </Typography.Text>
+          </Typography.Paragraph>
           <Form.Item name="reason" label="Причина (аудит)">
             <Input placeholder="Необязательно" />
           </Form.Item>
+          <Popconfirm
+            title="Удалить это поступление?"
+            description="Товар вернётся на основной склад. Действие необратимо в смысле истории (запись удалится)."
+            okText="Удалить"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => {
+              if (!stockCorrectEventId || !id) return;
+              const reason = (stockCorrectForm.getFieldValue('reason') as string | undefined)?.trim();
+              deleteStockAddMut.mutate({ eventId: stockCorrectEventId, ...(reason ? { reason } : {}) });
+            }}
+          >
+            <Button danger loading={deleteStockAddMut.isPending} disabled={correctStockAddMut.isPending}>
+              Удалить поступление
+            </Button>
+          </Popconfirm>
         </Form>
       </Modal>
 
