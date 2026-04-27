@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse, Dropdown, Select, InputNumber, Popconfirm,
+  message, theme, Collapse, Dropdown, Select, InputNumber, Popconfirm, Checkbox,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -309,9 +309,13 @@ export default function ClientDetailPage() {
   });
 
   const deleteStockAddMut = useMutation({
-    mutationFn: (payload: { eventId: string; reason?: string }) => {
+    mutationFn: (payload: { eventId: string; reason?: string; removeOrphanReservesFirst?: boolean }) => {
       if (!id) throw new Error('Клиент не выбран');
-      return adminApi.deleteClientStockAdd(id, payload.eventId, payload.reason ? { reason: payload.reason } : {});
+      const { eventId, reason, removeOrphanReservesFirst } = payload;
+      return adminApi.deleteClientStockAdd(id, eventId, {
+        ...(reason ? { reason } : {}),
+        ...(removeOrphanReservesFirst ? { removeOrphanReservesFirst: true } : {}),
+      });
     },
     onSuccess: () => {
       message.success('Поступление удалено, товар возвращён на основной склад');
@@ -393,6 +397,7 @@ export default function ClientDetailPage() {
                   occurredAt: dayjs(r.createdAt),
                   unitPrice: r.unitPrice ?? null,
                   reason: undefined,
+                  removeOrphanReservesFirst: false,
                 });
                 setStockCorrectOpen(true);
               }}
@@ -488,6 +493,7 @@ export default function ClientDetailPage() {
                       occurredAt: dayjs(e.createdAt),
                       unitPrice: e.unitPrice ?? null,
                       reason: undefined,
+                      removeOrphanReservesFirst: false,
                     });
                     setStockCorrectOpen(true);
                   }}
@@ -1341,6 +1347,14 @@ export default function ClientDetailPage() {
           <Form.Item name="reason" label="Причина (аудит)">
             <Input placeholder="Необязательно" />
           </Form.Item>
+          <Form.Item
+            name="removeOrphanReservesFirst"
+            valuePropName="checked"
+            style={{ marginBottom: 12 }}
+            tooltip="Удаляет строки «Отправка в работу» без привязанной сделки по этому товару (типично после удаления сделки до обновления системы). Иначе удаление ADD может быть заблокировано."
+          >
+            <Checkbox>Убрать застрявшие резервы без сделки по этому товару</Checkbox>
+          </Form.Item>
           <Popconfirm
             title="Удалить это поступление?"
             description="Товар вернётся на основной склад. Действие необратимо в смысле истории (запись удалится)."
@@ -1350,7 +1364,12 @@ export default function ClientDetailPage() {
             onConfirm={() => {
               if (!stockCorrectEventId || !id) return;
               const reason = (stockCorrectForm.getFieldValue('reason') as string | undefined)?.trim();
-              deleteStockAddMut.mutate({ eventId: stockCorrectEventId, ...(reason ? { reason } : {}) });
+              const removeOrphanReservesFirst = Boolean(stockCorrectForm.getFieldValue('removeOrphanReservesFirst'));
+              deleteStockAddMut.mutate({
+                eventId: stockCorrectEventId,
+                ...(reason ? { reason } : {}),
+                ...(removeOrphanReservesFirst ? { removeOrphanReservesFirst: true } : {}),
+              });
             }}
           >
             <Button danger loading={deleteStockAddMut.isPending} disabled={correctStockAddMut.isPending}>

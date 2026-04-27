@@ -469,7 +469,8 @@ export class ClientsService {
       if (running.lt(0)) {
         throw new AppError(
           400,
-          'Нельзя удалить поступление: после удаления остаток у клиента стал бы отрицательным (есть последующие отгрузки со склада клиента).',
+          'Нельзя удалить поступление: после удаления остаток у клиента стал бы отрицательным (есть последующие отгрузки со склада клиента). ' +
+            'Если сделку уже удалили, а в истории осталась «Отправка в работу» без сделки — включите опцию «Убрать застрявшие резервы без сделки» и повторите удаление.',
         );
       }
     }
@@ -496,13 +497,6 @@ export class ClientsService {
       throw new AppError(404, 'Событие не найдено или не является поступлением (ADD)');
     }
 
-    const chain = await prisma.clientStockEvent.findMany({
-      where: { clientId, productId: event.productId },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, qtyDelta: true },
-    });
-    this.assertClientStockChainOkWithoutEvent(chain, eventId);
-
     const oldQty = Number(event.qtyDelta);
     const beforeSnap = {
       qtyDelta: oldQty,
@@ -511,7 +505,38 @@ export class ClientsService {
       lineTotal: event.lineTotal != null ? event.lineTotal.toString() : null,
     };
 
+    let removedOrphanReserveIds: string[] = [];
+
     await prisma.$transaction(async (tx) => {
+      if (dto.removeOrphanReservesFirst) {
+        const orphans = await tx.clientStockEvent.findMany({
+          where: {
+            clientId,
+            productId: event.productId,
+            type: 'RESERVE_TO_DEAL',
+            sourceDealId: null,
+          },
+          select: { id: true },
+        });
+        if (orphans.length > 0) {
+          removedOrphanReserveIds = orphans.map((o) => o.id);
+          const oids = removedOrphanReserveIds;
+          await tx.inventoryMovement.updateMany({
+            where: { clientStockEventId: { in: oids } },
+            data: { clientStockEventId: null },
+          });
+          await tx.clientStockEvent.deleteMany({ where: { id: { in: oids } } });
+          await this.replayClientStockChain(tx, clientId, event.productId);
+        }
+      }
+
+      const chain = await tx.clientStockEvent.findMany({
+        where: { clientId, productId: event.productId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, qtyDelta: true },
+      });
+      this.assertClientStockChainOkWithoutEvent(chain, eventId);
+
       await tx.product.update({
         where: { id: event.productId },
         data: { stock: { increment: oldQty } },
@@ -549,7 +574,11 @@ export class ClientsService {
       entityType: 'client_stock_event',
       entityId: eventId,
       before: beforeSnap,
-      after: { deleted: true, reason: dto.reason ?? null },
+      after: {
+        deleted: true,
+        reason: dto.reason ?? null,
+        ...(removedOrphanReserveIds.length > 0 ? { removedOrphanReserveIds } : {}),
+      },
       reason: dto.reason,
     });
 

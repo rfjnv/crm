@@ -117,6 +117,12 @@ export const superCorrectClientStockAddDto = z
 /** Суперадмин: удаление ошибочного поступления ADD (возврат на основной склад, пересчёт цепочки). */
 export const superDeleteClientStockAddDto = z.object({
   reason: z.string().max(2000).optional(),
+  /**
+   * Удалить перед этим все RESERVE_TO_DEAL по этому товару у клиента без привязки к сделке
+   * (`source_deal_id` = null). Нужно после старого удаления сделки, когда резерв «застрял» в истории
+   * и мешает удалить ADD.
+   */
+  removeOrphanReservesFirst: z.boolean().optional(),
 });
 
 export type CreateClientDto = z.infer<typeof createClientDto>;
