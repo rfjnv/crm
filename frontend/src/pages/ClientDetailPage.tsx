@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
+import { adminApi } from '../api/admin.api';
 import BackButton from '../components/BackButton';
 import { smartFilterOption } from '../utils/translit';
 import { contractsApi } from '../api/contracts.api';
@@ -131,6 +132,9 @@ export default function ClientDetailPage() {
   const [stockSendModalOpen, setStockSendModalOpen] = useState(false);
   const [stockSendProductId, setStockSendProductId] = useState<string | null>(null);
   const [stockSendQty, setStockSendQty] = useState<number>(0);
+  const [stockCorrectOpen, setStockCorrectOpen] = useState(false);
+  const [stockCorrectEventId, setStockCorrectEventId] = useState<string | null>(null);
+  const [stockCorrectForm] = Form.useForm();
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -266,6 +270,98 @@ export default function ClientDetailPage() {
     },
   });
 
+  const correctStockAddMut = useMutation({
+    mutationFn: (payload: { eventId: string; qty: number; occurredAt: string; reason?: string }) => {
+      if (!id) throw new Error('Клиент не выбран');
+      return adminApi.correctClientStockAdd(id, payload.eventId, {
+        qty: payload.qty,
+        occurredAt: payload.occurredAt,
+        ...(payload.reason ? { reason: payload.reason } : {}),
+      });
+    },
+    onSuccess: () => {
+      message.success('Поступление обновлено');
+      setStockCorrectOpen(false);
+      setStockCorrectEventId(null);
+      stockCorrectForm.resetFields();
+      queryClient.invalidateQueries({ queryKey: ['client-stock', id] });
+      queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-today'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения';
+      message.error(msg);
+    },
+  });
+
+  const stockEventColumns: ColumnsType<StockEventTableRow> = useMemo(() => {
+    const base: ColumnsType<StockEventTableRow> = [
+      { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+      {
+        title: 'Тип',
+        dataIndex: 'type',
+        render: (v: string) =>
+          v === 'ADD' ? <Tag color="green">Добавление</Tag> : v === 'RESERVE_TO_DEAL' ? <Tag color="blue">Отправка в работу</Tag> : <Tag>Коррекция</Tag>,
+      },
+      {
+        title: 'Товар',
+        dataIndex: ['product', 'name'],
+        render: (_: unknown, r: StockEventTableRow) => (r.product ? `${r.product.name} (${r.product.sku})` : '—'),
+      },
+      {
+        title: 'Изменение',
+        dataIndex: 'qtyDelta',
+        align: 'right' as const,
+        render: (v: number, r: StockEventTableRow) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim(),
+      },
+      {
+        title: 'Было → Стало',
+        key: 'beforeAfter',
+        render: (_: unknown, r: StockEventTableRow) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim(),
+      },
+      { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => v || '—' },
+      {
+        title: 'Сделка',
+        dataIndex: ['sourceDeal', 'id'],
+        render: (_: unknown, r: StockEventTableRow) =>
+          r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—',
+      },
+      { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
+    ];
+    if (user?.role !== 'SUPER_ADMIN') {
+      return base;
+    }
+    return [
+      ...base,
+      {
+        title: 'Супер',
+        key: 'superStockCorrect',
+        width: 96,
+        render: (_: unknown, r: StockEventTableRow) =>
+          r.type === 'ADD' ? (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                setStockCorrectEventId(r.id);
+                stockCorrectForm.setFieldsValue({
+                  qty: r.qtyDelta,
+                  occurredAt: dayjs(r.createdAt),
+                  reason: undefined,
+                });
+                setStockCorrectOpen(true);
+              }}
+            >
+              Дата/кол-во
+            </Button>
+          ) : (
+            '—'
+          ),
+      },
+    ];
+  }, [user?.role, stockCorrectForm]);
+
   // Client-side filtering of deals by payment status
   const filteredDeals = useMemo(() => {
     const deals = client?.deals ?? [];
@@ -381,17 +477,6 @@ export default function ClientDetailPage() {
     { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: StockPositionTableRow) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
     { title: 'Остаток', dataIndex: 'qtyTotal', align: 'right' as const, render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim() },
     { title: 'Цена по умолчанию', dataIndex: ['product', 'salePrice'], align: 'right' as const, render: (v: number | null | undefined) => v != null ? formatUZS(v) : '—' },
-  ];
-
-  const stockEventColumns: ColumnsType<StockEventTableRow> = [
-    { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
-    { title: 'Тип', dataIndex: 'type', render: (v: string) => v === 'ADD' ? <Tag color="green">Добавление</Tag> : v === 'RESERVE_TO_DEAL' ? <Tag color="blue">Отправка в работу</Tag> : <Tag>Коррекция</Tag> },
-    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: StockEventTableRow) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
-    { title: 'Изменение', dataIndex: 'qtyDelta', align: 'right' as const, render: (v: number, r: StockEventTableRow) => `${v > 0 ? '+' : ''}${v} ${r.product?.unit ?? ''}`.trim() },
-    { title: 'Было → Стало', key: 'beforeAfter', render: (_: unknown, r: StockEventTableRow) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim() },
-    { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => v || '—' },
-    { title: 'Сделка', dataIndex: ['sourceDeal', 'id'], render: (_: unknown, r: StockEventTableRow) => r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—' },
-    { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
   ];
 
   const submitAddStock = () => {
@@ -1057,6 +1142,63 @@ export default function ClientDetailPage() {
             style={{ width: '100%' }}
           />
         </Space>
+      </Modal>
+
+      <Modal
+        title="Правка поступления на склад клиента"
+        open={stockCorrectOpen}
+        onCancel={() => {
+          setStockCorrectOpen(false);
+          setStockCorrectEventId(null);
+          stockCorrectForm.resetFields();
+        }}
+        onOk={() => stockCorrectForm.submit()}
+        confirmLoading={correctStockAddMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+        width={520}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 12 }}>
+          Для строк «Добавление»: укажите фактическое количество и дату/время — так учитываются выручка и движение склада. Остатки на основном складе и у клиента пересчитываются автоматически.
+        </Typography.Paragraph>
+        <Form
+          form={stockCorrectForm}
+          layout="vertical"
+          onFinish={(v) => {
+            if (!stockCorrectEventId || !id) return;
+            const qty = Number(v.qty);
+            if (!qty || qty <= 0) {
+              message.error('Укажите количество больше 0');
+              return;
+            }
+            if (!v.occurredAt) {
+              message.error('Укажите дату поступления');
+              return;
+            }
+            const nextAt = dayjs(v.occurredAt).toISOString();
+            const orig = stockData?.events?.find((e) => e.id === stockCorrectEventId);
+            if (orig && qty === orig.qtyDelta && dayjs(nextAt).valueOf() === dayjs(orig.createdAt).valueOf()) {
+              message.info('Нет изменений');
+              return;
+            }
+            correctStockAddMut.mutate({
+              eventId: stockCorrectEventId,
+              qty,
+              occurredAt: nextAt,
+              reason: (v.reason as string | undefined)?.trim() || undefined,
+            });
+          }}
+        >
+          <Form.Item name="qty" label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
+            <InputNumber min={0.001} step={0.1} precision={3} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="occurredAt" label="Дата и время поступления" rules={[{ required: true, message: 'Обязательно' }]}>
+            <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+          </Form.Item>
+          <Form.Item name="reason" label="Причина (аудит)">
+            <Input placeholder="Необязательно" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* Edit Modal */}

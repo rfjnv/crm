@@ -37,9 +37,8 @@ export default function RevenueTodayPage() {
     {
       title: 'Сделка',
       dataIndex: ['deal', 'title'],
-      render: (v: string, r: RevenueTodayPayment) => (
-        <Link to={`/deals/${r.deal.id}`}>{v}</Link>
-      ),
+      render: (v: string, r: RevenueTodayPayment) =>
+        r.deal.id ? <Link to={`/deals/${r.deal.id}`}>{v}</Link> : <span>{v}</span>,
     },
     {
       title: 'Менеджер',
@@ -83,7 +82,13 @@ export default function RevenueTodayPage() {
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('HH:mm')}</Typography.Text>
                   </div>
                   <div style={{ marginTop: 4 }}>
-                    <Link to={`/deals/${p.deal.id}`}><Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text></Link>
+                    {p.deal.id ? (
+                      <Link to={`/deals/${p.deal.id}`}>
+                        <Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text>
+                      </Link>
+                    ) : (
+                      <Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text>
+                    )}
                   </div>
                   <div style={{ fontSize: 11 }}>
                     <ClientCompanyDisplay client={p.client} secondary />

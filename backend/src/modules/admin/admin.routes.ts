@@ -7,6 +7,8 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { superOverrideDealDto, superDeleteDealDto } from '../deals/deals.dto';
 import { dealsService } from '../deals/deals.service';
 import { warehouseService } from '../warehouse/warehouse.service';
+import { superCorrectClientStockAddDto } from '../clients/clients.dto';
+import { clientsService } from '../clients/clients.service';
 import { AuthUser } from '../../lib/scope';
 
 const router = Router();
@@ -35,6 +37,22 @@ router.delete(
   validate(superDeleteDealDto),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await dealsService.hardDelete(req.params.id as string, req.body.reason, getUser(req));
+    res.json(result);
+  }),
+);
+
+// ──── SUPER_ADMIN: правка поступления на склад клиента (дата/кол-во для аналитики) ────
+router.patch(
+  '/clients/:clientId/stock/events/:eventId',
+  authorize('SUPER_ADMIN'),
+  validate(superCorrectClientStockAddDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await clientsService.superCorrectClientStockAddEvent(
+      req.params.clientId as string,
+      req.params.eventId as string,
+      req.body,
+      getUser(req),
+    );
     res.json(result);
   }),
 );

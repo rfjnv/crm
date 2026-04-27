@@ -5,7 +5,8 @@ import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_LINE_REVENUE_DI,
+  SQL_CLIENT_STOCK_ADD_LINE,
 } from '../../lib/analytics';
 import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -458,7 +459,7 @@ router.get(
     const revenueTotalOperational = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -467,7 +468,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -478,7 +479,7 @@ router.get(
     const revenueTotalShipped = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -487,7 +488,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -501,7 +502,7 @@ router.get(
         ? prisma.$queryRaw<{ avg_amount: string }[]>(
             Prisma.sql`SELECT COALESCE(AVG(sub.rev), 0)::text as avg_amount
              FROM (
-               SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
+               SELECT SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
                WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -514,7 +515,7 @@ router.get(
         : prisma.$queryRaw<{ avg_amount: string }[]>(
             Prisma.sql`SELECT COALESCE(AVG(sub.rev), 0)::text as avg_amount
              FROM (
-               SELECT SUM(${SQL_LINE_REVENUE_DI})::numeric as rev
+               SELECT SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::numeric as rev
                FROM deals d
                INNER JOIN deal_items di ON di.deal_id = d.id
                WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -528,7 +529,7 @@ router.get(
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
+                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -540,7 +541,7 @@ router.get(
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
+                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -554,7 +555,7 @@ router.get(
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
+                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -566,7 +567,7 @@ router.get(
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_LINE_REVENUE_DI})::text as total
+                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -586,8 +587,8 @@ router.get(
             shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -596,7 +597,7 @@ router.get(
                  AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name, c.is_svip
-               ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
+               ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           )
         : prisma.$queryRaw<{
@@ -607,8 +608,8 @@ router.get(
             shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -616,7 +617,7 @@ router.get(
                  AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
                  AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
                GROUP BY c.id, c.company_name, c.is_svip
-               ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST
+               ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST
                LIMIT 5`,
           );
 
@@ -655,7 +656,7 @@ router.get(
       revenueByDayShipped(),
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
              FROM client_stock_events cse
              JOIN clients c ON c.id = cse.client_id
              WHERE cse.type = 'ADD'
@@ -664,7 +665,7 @@ router.get(
                AND cse.created_at < ${end}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
              FROM client_stock_events cse
              WHERE cse.type = 'ADD'
                AND cse.created_at >= ${start}
@@ -673,7 +674,7 @@ router.get(
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(cse.line_total), 0)::text as total
+               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
              FROM client_stock_events cse
              JOIN clients c ON c.id = cse.client_id
              WHERE cse.type = 'ADD'
@@ -685,7 +686,7 @@ router.get(
           )
         : prisma.$queryRaw<{ day: Date; total: string }[]>(
             Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(cse.line_total), 0)::text as total
+               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
              FROM client_stock_events cse
              WHERE cse.type = 'ADD'
                AND cse.created_at >= ${start}

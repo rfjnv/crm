@@ -9,12 +9,15 @@ import {
   AddClientStockDto,
   SendClientStockAllDto,
   SendClientStockPartialDto,
+  SuperCorrectClientStockAddDto,
 } from './clients.dto';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_LINE_REVENUE_DI,
+  SQL_CLIENT_STOCK_ADD_LINE,
 } from '../../lib/analytics';
 
 function clientAuditSnapshot(c: Client) {
@@ -422,6 +425,173 @@ export class ClientsService {
     return updated;
   }
 
+  /** Пересчёт цепочки qtyBefore/qtyAfter и итоговой позиции по (клиент, товар). */
+  private async replayClientStockChain(
+    tx: Prisma.TransactionClient,
+    clientId: string,
+    productId: string,
+  ) {
+    const events = await tx.clientStockEvent.findMany({
+      where: { clientId, productId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, qtyDelta: true },
+    });
+    let running = new Prisma.Decimal(0);
+    for (const ev of events) {
+      const qtyBefore = running;
+      running = running.plus(ev.qtyDelta);
+      await tx.clientStockEvent.update({
+        where: { id: ev.id },
+        data: { qtyBefore, qtyAfter: running },
+      });
+    }
+    if (events.length === 0) {
+      await tx.clientStockPosition.deleteMany({ where: { clientId, productId } });
+      return;
+    }
+    await tx.clientStockPosition.upsert({
+      where: { clientId_productId: { clientId, productId } },
+      create: { clientId, productId, qtyTotal: running },
+      update: { qtyTotal: running },
+    });
+  }
+
+  /**
+   * Суперадмин: исправить количество и/или фактическую дату поступления на склад клиента (ADD),
+   * чтобы выручка и движения склада попадали в нужный день. Синхронизирует остаток основного склада и движение OUT.
+   */
+  async superCorrectClientStockAddEvent(
+    clientId: string,
+    eventId: string,
+    dto: SuperCorrectClientStockAddDto,
+    user: AuthUser,
+  ) {
+    if (user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только суперадминистратор может править историю склада клиента');
+    }
+
+    const event = await prisma.clientStockEvent.findFirst({
+      where: { id: eventId, clientId },
+      include: { product: { select: { name: true } } },
+    });
+    if (!event || event.type !== 'ADD') {
+      throw new AppError(404, 'Событие не найдено или не является поступлением (ADD)');
+    }
+
+    const oldQty = Number(event.qtyDelta);
+    const newQty = dto.qty !== undefined ? dto.qty : oldQty;
+    if (newQty <= 0) {
+      throw new AppError(400, 'Количество должно быть больше 0');
+    }
+
+    let newCreatedAt = event.createdAt;
+    if (dto.occurredAt !== undefined && dto.occurredAt.trim().length > 0) {
+      const d = new Date(dto.occurredAt);
+      if (Number.isNaN(d.getTime())) {
+        throw new AppError(400, 'Некорректная дата');
+      }
+      newCreatedAt = d;
+    }
+
+    if (dto.qty === undefined && newCreatedAt.getTime() === event.createdAt.getTime()) {
+      throw new AppError(400, 'Нет изменений');
+    }
+
+    const qtyDiff = newQty - oldQty;
+
+    const beforeSnap = {
+      qtyDelta: oldQty,
+      createdAt: event.createdAt.toISOString(),
+      lineTotal: event.lineTotal != null ? event.lineTotal.toString() : null,
+    };
+
+    let afterLineTotal: string | null = null;
+
+    await prisma.$transaction(async (tx) => {
+      if (qtyDiff !== 0) {
+        const product = await tx.product.findUnique({
+          where: { id: event.productId },
+          select: { stock: true, name: true },
+        });
+        if (!product) throw new AppError(404, 'Товар не найден');
+        const wh = Number(product.stock);
+        if (qtyDiff > 0 && wh < qtyDiff) {
+          throw new AppError(
+            400,
+            `Недостаточно товара на складе (${product.name}): нужно ещё ${qtyDiff}, доступно ${wh}`,
+          );
+        }
+        await tx.product.update({
+          where: { id: event.productId },
+          data: { stock: { increment: -qtyDiff } },
+        });
+      }
+
+      const unitPrice = event.unitPrice != null ? new Prisma.Decimal(event.unitPrice.toString()) : null;
+      const lineTotal = unitPrice != null ? unitPrice.mul(new Prisma.Decimal(newQty)) : null;
+      if (lineTotal != null) {
+        afterLineTotal = lineTotal.toString();
+      }
+
+      await tx.clientStockEvent.update({
+        where: { id: eventId },
+        data: {
+          qtyDelta: newQty,
+          createdAt: newCreatedAt,
+          lineTotal,
+        },
+      });
+
+      const mov =
+        (await tx.inventoryMovement.findFirst({
+          where: { clientStockEventId: eventId },
+        })) ||
+        (await tx.inventoryMovement.findFirst({
+          where: {
+            productId: event.productId,
+            type: 'OUT',
+            createdBy: event.authorId,
+            quantity: event.qtyDelta,
+            createdAt: {
+              gte: new Date(event.createdAt.getTime() - 15_000),
+              lte: new Date(event.createdAt.getTime() + 15_000),
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        }));
+
+      if (mov) {
+        await tx.inventoryMovement.update({
+          where: { id: mov.id },
+          data: {
+            quantity: newQty,
+            createdAt: newCreatedAt,
+            clientStockEventId: eventId,
+          },
+        });
+      }
+
+      await this.replayClientStockChain(tx, clientId, event.productId);
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_UPDATE',
+      entityType: 'client_stock_event',
+      entityId: eventId,
+      before: beforeSnap,
+      after: {
+        qtyDelta: newQty,
+        createdAt: newCreatedAt.toISOString(),
+        lineTotal: afterLineTotal,
+        reason: dto.reason ?? null,
+      },
+      reason: dto.reason,
+    });
+
+    return this.getStock(clientId, user, { historyLimit: 100 });
+  }
+
   private async getAccessibleClient(id: string, user: AuthUser) {
     const client = await prisma.client.findFirst({
       where: { id, ...clientOwnerScope(user), isArchived: false },
@@ -556,6 +726,7 @@ export class ClientsService {
             productId: item.productId,
             type: 'OUT',
             quantity: qty,
+            clientStockEventId: ev.id,
             note: `Перенос в товары клиента: ${client.companyName}${item.comment?.trim() ? ` (${item.comment.trim()})` : ''}`,
             createdBy: user.userId,
           },
@@ -651,6 +822,7 @@ export class ClientsService {
             requestedQty: item.qty,
             price: item.price,
             lineTotal: item.qty * item.price,
+            sourceOpType: 'CLIENT_STOCK',
             requestComment: item.requestComment?.trim() || null,
           },
         });
@@ -784,7 +956,7 @@ export class ClientsService {
     const [revAgg, revByDayRaw, topProductsRaw, stockRevAgg, stockRevByDayRaw, stockTopProductsRaw, stockDebtAllRaw] = await Promise.all([
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
-        SELECT COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total
+        SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
@@ -794,7 +966,7 @@ export class ClientsService {
       prisma.$queryRaw<{ day: Date; amount: string }[]>(
         Prisma.sql`
         SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-               SUM(${SQL_LINE_REVENUE_DI})::text as amount
+               SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as amount
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
@@ -818,7 +990,7 @@ export class ClientsService {
       ),
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
-        SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+        SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
         FROM client_stock_events cse
         WHERE cse.client_id = ${id}
           AND cse.type = 'ADD'
@@ -827,7 +999,7 @@ export class ClientsService {
       prisma.$queryRaw<ClientStockRevenueRow[]>(
         Prisma.sql`
         SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(cse.line_total), 0)::text as amount
+               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as amount
         FROM client_stock_events cse
         WHERE cse.client_id = ${id}
           AND cse.type = 'ADD'
@@ -848,7 +1020,7 @@ export class ClientsService {
       ),
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
-        SELECT COALESCE(SUM(cse.line_total), 0)::text as total
+        SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
         FROM client_stock_events cse
         WHERE cse.client_id = ${id}
           AND cse.type = 'ADD'`,

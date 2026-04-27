@@ -5,7 +5,7 @@ import {
   SQL_ANALYTICS_TZ,
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -156,7 +156,7 @@ router.get(
     const [productRevRaw, clientRevRaw, productMonthlyRaw, clientMonthlyRaw] = await Promise.all([
       prisma.$queryRaw<{ id: string; name: string; revenue: string }[]>(
         Prisma.sql`
-        SELECT p.id, p.name, COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+        SELECT p.id, p.name, COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN products p ON p.id = di.product_id
@@ -165,12 +165,12 @@ router.get(
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
           ${mgrFilter}
         GROUP BY p.id, p.name
-        HAVING COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) > 0
-        ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC`,
+        HAVING COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0) > 0
+        ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC`,
       ),
       prisma.$queryRaw<{ id: string; name: string; revenue: string }[]>(
         Prisma.sql`
-        SELECT c.id, c.company_name as name, COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+        SELECT c.id, c.company_name as name, COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN clients c ON c.id = d.client_id
@@ -180,14 +180,14 @@ router.get(
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
           ${mgrFilter}
         GROUP BY c.id, c.company_name
-        HAVING COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) > 0
-        ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC`,
+        HAVING COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0) > 0
+        ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC`,
       ),
       prisma.$queryRaw<{ id: string; month: Date; rev: string }[]>(
         Prisma.sql`
         SELECT di.product_id as id,
           DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
-          SUM(${SQL_LINE_REVENUE_DI})::text as rev
+          SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -199,7 +199,7 @@ router.get(
         Prisma.sql`
         SELECT d.client_id as id,
           DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
-          SUM(${SQL_LINE_REVENUE_DI})::text as rev
+          SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}

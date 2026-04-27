@@ -540,7 +540,8 @@ export interface RevenueTodayPayment {
   amount: string;
   paidAt: string;
   method: string | null;
-  deal: { id: string; title: string };
+  /** id отсутствует для строк «Поступление на склад клиента» */
+  deal: { id: string | null; title: string };
   client: { id: string; companyName: string; isSvip?: boolean };
   creator: { id: string; fullName: string };
 }

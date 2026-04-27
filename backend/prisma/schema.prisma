@@ -630,15 +630,19 @@ model InventoryMovement {
   type      MovementType
   quantity  Decimal      @db.Decimal(12, 3)
   dealId    String?      @map("deal_id")
+  /** Связь с событием «поступление на склад клиента» (тип ADD) для корректировок суперадмином */
+  clientStockEventId String? @map("client_stock_event_id")
   note      String?
   createdBy String       @map("created_by")
   createdAt DateTime     @default(now()) @map("created_at")
 
   product Product @relation(fields: [productId], references: [id])
   deal    Deal?   @relation(fields: [dealId], references: [id])
+  clientStockEvent ClientStockEvent? @relation(fields: [clientStockEventId], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([dealId])
+  @@index([clientStockEventId])
   @@index([createdAt])
   @@map("inventory_movements")
 }
@@ -679,6 +683,7 @@ model ClientStockEvent {
   product    Product  @relation(fields: [productId], references: [id])
   sourceDeal Deal?    @relation(fields: [sourceDealId], references: [id], onDelete: SetNull)
   author     User     @relation("ClientStockEventAuthor", fields: [authorId], references: [id])
+  inventoryMovements InventoryMovement[]
 
   @@index([clientId, createdAt])
   @@index([clientId, productId])

@@ -97,6 +97,17 @@ export const sendClientStockAllDto = z.object({
   deliveryComment: z.string().optional(),
 });
 
+/** Суперадмин: правка фактического количества/даты поступления на склад клиента (ADD). */
+export const superCorrectClientStockAddDto = z
+  .object({
+    qty: z.number().positive('Количество должно быть больше 0').optional(),
+    occurredAt: z.string().min(1).optional(),
+    reason: z.string().max(2000).optional(),
+  })
+  .refine((d) => d.qty !== undefined || (d.occurredAt != null && d.occurredAt.trim().length > 0), {
+    message: 'Укажите количество и/или дату события',
+  });
+
 export type CreateClientDto = z.infer<typeof createClientDto>;
 export type UpdateClientDto = z.infer<typeof updateClientDto>;
 export type SetClientCreditStatusDto = z.infer<typeof setClientCreditStatusDto>;
@@ -104,6 +115,7 @@ export type ClientStockQueryDto = z.infer<typeof clientStockQueryDto>;
 export type AddClientStockDto = z.infer<typeof addClientStockDto>;
 export type SendClientStockPartialDto = z.infer<typeof sendClientStockPartialDto>;
 export type SendClientStockAllDto = z.infer<typeof sendClientStockAllDto>;
+export type SuperCorrectClientStockAddDto = z.infer<typeof superCorrectClientStockAddDto>;
 
 export const createClientNoteDto = z.object({
   content: z.string().min(1, 'Текст заметки обязателен').max(20000, 'Слишком длинный текст'),

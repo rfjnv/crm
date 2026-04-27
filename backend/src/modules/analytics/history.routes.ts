@@ -4,7 +4,7 @@ import prisma from '../../lib/prisma';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_LINE_REVENUE_DI,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -80,8 +80,8 @@ router.get(
       Prisma.sql`SELECT
         COUNT(DISTINCT d.id)::text as total_deals,
         COUNT(DISTINCT d.client_id)::text as total_clients,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -192,7 +192,7 @@ router.get(
     >(
       Prisma.sql`SELECT
         EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
         COUNT(DISTINCT d.client_id)::text as active_clients
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -293,7 +293,7 @@ router.get(
     >(
       Prisma.sql`SELECT
         EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -367,7 +367,7 @@ router.get(
       }[]
     >(
       Prisma.sql`WITH line_scope AS (
-        SELECT di.deal_id, d.client_id, ${SQL_LINE_REVENUE_DI} AS ln
+        SELECT di.deal_id, d.client_id, ${SQL_ANALYTICS_LINE_REVENUE_DI} AS ln
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -426,7 +426,7 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name, p.unit,
         COALESCE(SUM(di.requested_qty), 0)::text as total_qty,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue,
         COUNT(DISTINCT d.client_id)::text as unique_buyers
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -464,7 +464,7 @@ router.get(
       Prisma.sql`WITH mgr_rev AS (
         SELECT d.manager_id,
           COUNT(DISTINCT d.id)::text AS deals_count,
-          COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text AS revenue,
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS revenue,
           COUNT(DISTINCT d.client_id)::text AS clients
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
@@ -557,7 +557,7 @@ router.get(
         c.company_name,
         MAX(mu.department) as manager_department,
         EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
@@ -803,7 +803,7 @@ router.get(
     >(
       Prisma.sql`SELECT p.id, p.name,
         SUM(di.requested_qty)::text as qty,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
@@ -823,7 +823,7 @@ router.get(
     >(
       Prisma.sql`SELECT u.id, u.full_name,
         COUNT(DISTINCT d.id)::text as deals_count,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN users u ON u.id = d.manager_id
@@ -831,7 +831,7 @@ router.get(
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart} AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}
         AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}${dealFilter}
       GROUP BY u.id, u.full_name
-      ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC NULLS LAST`,
+      ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST`,
     );
 
     // Payments in this month (by paid_at — cashflow)
@@ -1047,7 +1047,7 @@ router.get(
       { id: string; company_name: string; revenue: string; running_total: string; grand_total: string }[]
     >(
       Prisma.sql`WITH client_revenue AS (
-        SELECT c.id, c.company_name, COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) as revenue
+        SELECT c.id, c.company_name, COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0) as revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN clients c ON c.id = d.client_id
@@ -1134,7 +1134,7 @@ router.get(
     >(
       Prisma.sql`SELECT d.manager_id, u.full_name,
         EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
         COUNT(DISTINCT d.id)::text as deals_count
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1191,7 +1191,7 @@ router.get(
       monthly_activity AS (
         SELECT d.client_id,
           EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
-          COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) as revenue
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0) as revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -1260,9 +1260,9 @@ router.get(
       { month: number; revenue: string; deals_count: string; avg_deal_size: string }[]
     >(
       Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
         COUNT(DISTINCT d.id)::text as deals_count,
-        (COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0) / NULLIF(COUNT(DISTINCT d.id), 0))::text as avg_deal_size
+        (COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0) / NULLIF(COUNT(DISTINCT d.id), 0))::text as avg_deal_size
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -1284,7 +1284,7 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         COUNT(DISTINCT d.id)::text as deals_count,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue,
         MAX(EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))::int as last_active_month
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1459,7 +1459,7 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         SUM(di.requested_qty)::text as total_qty,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue,
         COUNT(DISTINCT d.id)::text as deals_count
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1470,7 +1470,7 @@ router.get(
         AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(${SQL_LINE_REVENUE_DI}) DESC`,
+      ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC`,
     );
 
     res.json({
@@ -1998,7 +1998,7 @@ router.get(
         SELECT d.client_id,
           d.id as deal_id,
           EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
-          SUM(${SQL_LINE_REVENUE_DI}) as rev
+          SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) as rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}

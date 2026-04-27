@@ -13,6 +13,20 @@ export const SQL_ANALYTICS_TZ = Prisma.sql`'Asia/Tashkent'`;
  */
 export const SQL_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.requested_qty * di.price, 0)`;
 
+/** deal_items source_op_type: строки отгрузки со склада клиента (см. clients.service sendStockPartial). */
+export const DEAL_ITEM_SOURCE_CLIENT_STOCK = 'CLIENT_STOCK';
+
+/**
+ * Выручка по строке сделки для аналитики: не учитываем повторно отгрузку со склада клиента
+ * (выручка уже признана при ADD на склад клиента).
+ */
+export const SQL_ANALYTICS_LINE_REVENUE_DI = Prisma.sql`CASE WHEN COALESCE(di.source_op_type, '') = ${DEAL_ITEM_SOURCE_CLIENT_STOCK} THEN 0 ELSE COALESCE(di.line_total, di.requested_qty * di.price, 0) END`;
+
+/**
+ * Сумма по событию «поступление на склад клиента» (ADD): line_total или qty × unit_price.
+ */
+export const SQL_CLIENT_STOCK_ADD_LINE = Prisma.sql`COALESCE(cse.line_total, ABS(cse.qty_delta) * COALESCE(cse.unit_price, 0), 0)`;
+
 /**
  * Effective timestamp for bucketing line revenue: Excel/import deal_date → день закрытия сделки → создание сделки.
  */

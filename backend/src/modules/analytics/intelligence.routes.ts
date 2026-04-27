@@ -4,7 +4,7 @@ import prisma from '../../lib/prisma';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_LINE_REVENUE_DI,
+  SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_ANALYTICS_TZ,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -254,7 +254,7 @@ router.get(
       FROM (
         SELECT di.product_id,
           DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
-          SUM(${SQL_LINE_REVENUE_DI})::numeric as monthly_rev
+          SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::numeric as monthly_rev
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
@@ -281,7 +281,7 @@ router.get(
     }[]>(
       Prisma.sql`SELECT EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})::int as month,
         COALESCE(SUM(di.requested_qty), 0)::text as total_quantity,
-        COALESCE(SUM(${SQL_LINE_REVENUE_DI}), 0)::text as total_revenue
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
