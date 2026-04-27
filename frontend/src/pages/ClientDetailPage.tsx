@@ -413,6 +413,105 @@ export default function ClientDetailPage() {
     return deals.filter((d) => getPaymentCategory(d) === paymentFilter);
   }, [client?.deals, paymentFilter]);
 
+  const sendOnePositionToWork = (productId: string) => {
+    const position = stockData?.positions.find((p) => p.productId === productId);
+    if (!position || position.qtyTotal <= 0) {
+      message.error('Нет доступного остатка');
+      return;
+    }
+    setStockSendProductId(productId);
+    setStockSendQty(Number(position.qtyTotal));
+    setStockSendModalOpen(true);
+  };
+
+  /** Оценка стоимости остатков: Σ (кол-во × цена из карточки товара), где цена задана. */
+  const stockPositionsEstimatedTotal = useMemo(() => {
+    let s = 0;
+    for (const p of stockData?.positions ?? []) {
+      const px = p.product?.salePrice;
+      if (px != null) s += Number(p.qtyTotal) * Number(px);
+    }
+    return s;
+  }, [stockData?.positions]);
+
+  const stockPositionsColumns = useMemo((): ColumnsType<StockPositionTableRow> => {
+    const cols: ColumnsType<StockPositionTableRow> = [
+      {
+        title: 'Товар',
+        dataIndex: ['product', 'name'],
+        render: (_: unknown, r: StockPositionTableRow) => (r.product ? `${r.product.name} (${r.product.sku})` : '—'),
+      },
+      {
+        title: 'Остаток',
+        dataIndex: 'qtyTotal',
+        align: 'right' as const,
+        render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim(),
+      },
+      {
+        title: 'Цена',
+        key: 'unitPrice',
+        align: 'right' as const,
+        render: (_: unknown, r: StockPositionTableRow) =>
+          r.product?.salePrice != null ? formatUZS(r.product.salePrice) : '—',
+      },
+      {
+        title: 'Сумма',
+        key: 'lineTotal',
+        align: 'right' as const,
+        render: (_: unknown, r: StockPositionTableRow) => {
+          const px = r.product?.salePrice;
+          if (px == null) return '—';
+          return formatUZS(Number(r.qtyTotal) * Number(px));
+        },
+      },
+    ];
+    if (user?.role === 'SUPER_ADMIN') {
+      cols.push({
+        title: 'Поступления',
+        key: 'addEvents',
+        width: 140,
+        render: (_: unknown, r: StockPositionTableRow) => {
+          const adds = (stockData?.events ?? []).filter((e) => e.type === 'ADD' && e.productId === r.productId);
+          if (!adds.length) return '—';
+          return (
+            <Space direction="vertical" size={0}>
+              {adds.map((e) => (
+                <Button
+                  key={e.id}
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto', textAlign: 'left' }}
+                  onClick={() => {
+                    setStockCorrectEventId(e.id);
+                    stockCorrectForm.setFieldsValue({
+                      qty: e.qtyDelta,
+                      occurredAt: dayjs(e.createdAt),
+                      unitPrice: e.unitPrice ?? null,
+                      reason: undefined,
+                    });
+                    setStockCorrectOpen(true);
+                  }}
+                >
+                  {dayjs(e.createdAt).format('DD.MM')} (+{e.qtyDelta})
+                </Button>
+              ))}
+            </Space>
+          );
+        },
+      });
+    }
+    cols.push({
+      title: 'Действие',
+      key: 'action',
+      render: (_: unknown, r: StockPositionTableRow) => (
+        <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
+          Отправить в работу
+        </Button>
+      ),
+    });
+    return cols;
+  }, [user?.role, stockData?.events, stockData?.positions, stockCorrectForm, sendStockPartialMut.isPending]);
+
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!client) return <Typography.Text>Клиент не найден</Typography.Text>;
 
@@ -531,17 +630,6 @@ export default function ClientDetailPage() {
     });
   };
 
-  const sendOnePositionToWork = (productId: string) => {
-    const position = stockData?.positions.find((p) => p.productId === productId);
-    if (!position || position.qtyTotal <= 0) {
-      message.error('Нет доступного остатка');
-      return;
-    }
-    setStockSendProductId(productId);
-    setStockSendQty(Number(position.qtyTotal));
-    setStockSendModalOpen(true);
-  };
-
   const confirmSendOnePositionToWork = () => {
     if (!stockSendProductId) return;
     const position = stockData?.positions.find((p) => p.productId === stockSendProductId);
@@ -566,94 +654,6 @@ export default function ClientDetailPage() {
     });
     setStockSendModalOpen(false);
   };
-
-  /** Оценка стоимости остатков: Σ (кол-во × цена из карточки товара), где цена задана. */
-  const stockPositionsEstimatedTotal = useMemo(() => {
-    let s = 0;
-    for (const p of stockData?.positions ?? []) {
-      const px = p.product?.salePrice;
-      if (px != null) s += Number(p.qtyTotal) * Number(px);
-    }
-    return s;
-  }, [stockData?.positions]);
-
-  const stockPositionsColumns = useMemo((): ColumnsType<StockPositionTableRow> => {
-    const cols: ColumnsType<StockPositionTableRow> = [
-      {
-        title: 'Товар',
-        dataIndex: ['product', 'name'],
-        render: (_: unknown, r: StockPositionTableRow) => (r.product ? `${r.product.name} (${r.product.sku})` : '—'),
-      },
-      {
-        title: 'Остаток',
-        dataIndex: 'qtyTotal',
-        align: 'right' as const,
-        render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim(),
-      },
-      {
-        title: 'Цена',
-        key: 'unitPrice',
-        align: 'right' as const,
-        render: (_: unknown, r: StockPositionTableRow) =>
-          r.product?.salePrice != null ? formatUZS(r.product.salePrice) : '—',
-      },
-      {
-        title: 'Сумма',
-        key: 'lineTotal',
-        align: 'right' as const,
-        render: (_: unknown, r: StockPositionTableRow) => {
-          const px = r.product?.salePrice;
-          if (px == null) return '—';
-          return formatUZS(Number(r.qtyTotal) * Number(px));
-        },
-      },
-    ];
-    if (user?.role === 'SUPER_ADMIN') {
-      cols.push({
-        title: 'Поступления',
-        key: 'addEvents',
-        width: 140,
-        render: (_: unknown, r: StockPositionTableRow) => {
-          const adds = (stockData?.events ?? []).filter((e) => e.type === 'ADD' && e.productId === r.productId);
-          if (!adds.length) return '—';
-          return (
-            <Space direction="vertical" size={0}>
-              {adds.map((e) => (
-                <Button
-                  key={e.id}
-                  type="link"
-                  size="small"
-                  style={{ padding: 0, height: 'auto', textAlign: 'left' }}
-                  onClick={() => {
-                    setStockCorrectEventId(e.id);
-                    stockCorrectForm.setFieldsValue({
-                      qty: e.qtyDelta,
-                      occurredAt: dayjs(e.createdAt),
-                      unitPrice: e.unitPrice ?? null,
-                      reason: undefined,
-                    });
-                    setStockCorrectOpen(true);
-                  }}
-                >
-                  {dayjs(e.createdAt).format('DD.MM')} (+{e.qtyDelta})
-                </Button>
-              ))}
-            </Space>
-          );
-        },
-      });
-    }
-    cols.push({
-      title: 'Действие',
-      key: 'action',
-      render: (_: unknown, r: StockPositionTableRow) => (
-        <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
-          Отправить в работу
-        </Button>
-      ),
-    });
-    return cols;
-  }, [user?.role, stockData?.events, stockData?.positions, stockCorrectForm, sendStockPartialMut.isPending]);
 
   // ── Analytics chart data ──
   const lineData = (analytics?.revenueByDay ?? []).map((d) => ({
