@@ -517,12 +517,6 @@ export default function ClientDetailPage() {
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
   ];
 
-  const stockColumns: ColumnsType<StockPositionTableRow> = [
-    { title: 'Товар', dataIndex: ['product', 'name'], render: (_: unknown, r: StockPositionTableRow) => r.product ? `${r.product.name} (${r.product.sku})` : '—' },
-    { title: 'Остаток', dataIndex: 'qtyTotal', align: 'right' as const, render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim() },
-    { title: 'Цена по умолчанию', dataIndex: ['product', 'salePrice'], align: 'right' as const, render: (v: number | null | undefined) => v != null ? formatUZS(v) : '—' },
-  ];
-
   const submitAddStock = () => {
     if (!stockProductId) {
       message.error('Выберите товар');
@@ -572,6 +566,94 @@ export default function ClientDetailPage() {
     });
     setStockSendModalOpen(false);
   };
+
+  /** Оценка стоимости остатков: Σ (кол-во × цена из карточки товара), где цена задана. */
+  const stockPositionsEstimatedTotal = useMemo(() => {
+    let s = 0;
+    for (const p of stockData?.positions ?? []) {
+      const px = p.product?.salePrice;
+      if (px != null) s += Number(p.qtyTotal) * Number(px);
+    }
+    return s;
+  }, [stockData?.positions]);
+
+  const stockPositionsColumns = useMemo((): ColumnsType<StockPositionTableRow> => {
+    const cols: ColumnsType<StockPositionTableRow> = [
+      {
+        title: 'Товар',
+        dataIndex: ['product', 'name'],
+        render: (_: unknown, r: StockPositionTableRow) => (r.product ? `${r.product.name} (${r.product.sku})` : '—'),
+      },
+      {
+        title: 'Остаток',
+        dataIndex: 'qtyTotal',
+        align: 'right' as const,
+        render: (v: number, r: StockPositionTableRow) => `${v} ${r.product?.unit ?? ''}`.trim(),
+      },
+      {
+        title: 'Цена',
+        key: 'unitPrice',
+        align: 'right' as const,
+        render: (_: unknown, r: StockPositionTableRow) =>
+          r.product?.salePrice != null ? formatUZS(r.product.salePrice) : '—',
+      },
+      {
+        title: 'Сумма',
+        key: 'lineTotal',
+        align: 'right' as const,
+        render: (_: unknown, r: StockPositionTableRow) => {
+          const px = r.product?.salePrice;
+          if (px == null) return '—';
+          return formatUZS(Number(r.qtyTotal) * Number(px));
+        },
+      },
+    ];
+    if (user?.role === 'SUPER_ADMIN') {
+      cols.push({
+        title: 'Поступления',
+        key: 'addEvents',
+        width: 140,
+        render: (_: unknown, r: StockPositionTableRow) => {
+          const adds = (stockData?.events ?? []).filter((e) => e.type === 'ADD' && e.productId === r.productId);
+          if (!adds.length) return '—';
+          return (
+            <Space direction="vertical" size={0}>
+              {adds.map((e) => (
+                <Button
+                  key={e.id}
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto', textAlign: 'left' }}
+                  onClick={() => {
+                    setStockCorrectEventId(e.id);
+                    stockCorrectForm.setFieldsValue({
+                      qty: e.qtyDelta,
+                      occurredAt: dayjs(e.createdAt),
+                      unitPrice: e.unitPrice ?? null,
+                      reason: undefined,
+                    });
+                    setStockCorrectOpen(true);
+                  }}
+                >
+                  {dayjs(e.createdAt).format('DD.MM')} (+{e.qtyDelta})
+                </Button>
+              ))}
+            </Space>
+          );
+        },
+      });
+    }
+    cols.push({
+      title: 'Действие',
+      key: 'action',
+      render: (_: unknown, r: StockPositionTableRow) => (
+        <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
+          Отправить в работу
+        </Button>
+      ),
+    });
+    return cols;
+  }, [user?.role, stockData?.events, stockData?.positions, stockCorrectForm, sendStockPartialMut.isPending]);
 
   // ── Analytics chart data ──
   const lineData = (analytics?.revenueByDay ?? []).map((d) => ({
@@ -865,8 +947,13 @@ export default function ClientDetailPage() {
                   bordered={false}
                   loading={stockLoading}
                   extra={(
-                    <Space>
+                    <Space wrap>
                       <Typography.Text strong>Всего: {stockData?.totals.totalQty ?? 0}</Typography.Text>
+                      {stockPositionsEstimatedTotal > 0 && (
+                        <Typography.Text type="secondary">
+                          Оценка: <Typography.Text strong>{formatUZS(stockPositionsEstimatedTotal)}</Typography.Text>
+                        </Typography.Text>
+                      )}
                       <Button type="primary" onClick={() => sendStockAllMut.mutate()} loading={sendStockAllMut.isPending} disabled={!stockData?.positions?.length}>
                         Отправить все в работу
                       </Button>
@@ -875,21 +962,10 @@ export default function ClientDetailPage() {
                 >
                   <Table<StockPositionTableRow>
                     dataSource={(stockData?.positions ?? []).map((p) => ({ ...p, key: p.id }))}
-                    columns={[
-                      ...stockColumns,
-                      {
-                        title: 'Действие',
-                        key: 'action',
-                        render: (_: unknown, r: StockPositionTableRow) => (
-                          <Button size="small" onClick={() => sendOnePositionToWork(r.productId)} loading={sendStockPartialMut.isPending}>
-                            Отправить в работу
-                          </Button>
-                        ),
-                      },
-                    ]}
+                    columns={stockPositionsColumns}
                     pagination={false}
                     size="small"
-                    scroll={{ x: 700 }}
+                    scroll={{ x: user?.role === 'SUPER_ADMIN' ? 980 : 820 }}
                   />
                 </Card>
 
