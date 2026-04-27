@@ -667,15 +667,31 @@ export class DealsService {
     }
 
     const prevStatusForTg = deal.status as DealStatus;
-    const updated = await prisma.deal.update({
-      where: { id },
-      data,
-      include: {
-        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
-        manager: { select: { id: true, fullName: true } },
-        contract: { select: { id: true, contractNumber: true } },
-      },
-    });
+    const cancelingDeal =
+      dto.status !== undefined && dto.status === 'CANCELED' && deal.status !== 'CANCELED';
+
+    const updated = cancelingDeal
+      ? await prisma.$transaction(async (tx) => {
+          await this.revertClientStockReservationsForDealInTx(tx, id);
+          return tx.deal.update({
+            where: { id },
+            data,
+            include: {
+              client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
+              manager: { select: { id: true, fullName: true } },
+              contract: { select: { id: true, contractNumber: true } },
+            },
+          });
+        })
+      : await prisma.deal.update({
+          where: { id },
+          data,
+          include: {
+            client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
+            manager: { select: { id: true, fullName: true } },
+            contract: { select: { id: true, contractNumber: true } },
+          },
+        });
 
     if (dto.status !== undefined && dto.status !== prevStatusForTg) {
       void onDealStatusChanged(id, prevStatusForTg, dto.status as DealStatus).catch((err) => {
@@ -3036,6 +3052,10 @@ export class DealsService {
         });
       }
 
+      if (dto.status !== undefined && dto.status === 'CANCELED' && deal.status !== 'CANCELED') {
+        await this.revertClientStockReservationsForDealInTx(tx, id);
+      }
+
       if (dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
         await this.deductInventoryForDealInTx(tx, id, user.userId);
       }
@@ -3140,6 +3160,44 @@ export class DealsService {
     return this.findById(id, user);
   }
 
+  /**
+   * Откат «отправки со склада клиента в работу»: вернуть количество на склад клиента
+   * и удалить события RESERVE_TO_DEAL по этой сделке (иначе остаётся «фантом» в истории
+   * и заниженный остаток; FK на сделку при удалении только обнуляется).
+   */
+  private async revertClientStockReservationsForDealInTx(tx: Prisma.TransactionClient, dealId: string): Promise<void> {
+    const reserveEvents = await tx.clientStockEvent.findMany({
+      where: { sourceDealId: dealId, type: 'RESERVE_TO_DEAL' },
+    });
+    if (reserveEvents.length === 0) return;
+
+    const eventIds = reserveEvents.map((e) => e.id);
+    await tx.inventoryMovement.updateMany({
+      where: { clientStockEventId: { in: eventIds } },
+      data: { clientStockEventId: null },
+    });
+
+    for (const ev of reserveEvents) {
+      const restoreQty = Math.abs(Number(ev.qtyDelta));
+      if (restoreQty <= 0) continue;
+      await tx.clientStockPosition.upsert({
+        where: {
+          clientId_productId: { clientId: ev.clientId, productId: ev.productId },
+        },
+        create: {
+          clientId: ev.clientId,
+          productId: ev.productId,
+          qtyTotal: restoreQty,
+        },
+        update: { qtyTotal: { increment: restoreQty } },
+      });
+    }
+
+    await tx.clientStockEvent.deleteMany({
+      where: { id: { in: eventIds } },
+    });
+  }
+
   async hardDelete(id: string, reason: string, user: AuthUser) {
     const deal = await prisma.deal.findUnique({
       where: { id },
@@ -3176,6 +3234,8 @@ export class DealsService {
     };
 
     await prisma.$transaction(async (tx) => {
+      await this.revertClientStockReservationsForDealInTx(tx, id);
+
       // Reverse inventory movements: keep history, unlink from deal, create reverse entries
       if (deal.movements.length > 0) {
         const dealLabel = deal.title || id.slice(0, 8);
