@@ -1249,7 +1249,7 @@ export default function ClientDetailPage() {
             <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
           </Form.Item>
           <Form.Item name="unitPrice" label="Цена за ед.">
-            <InputNumber min={0} step={1000} style={{ width: '100%' }} placeholder="Пусто — без суммы в выручке" allowClear />
+            <InputNumber min={0} step={1000} style={{ width: '100%' }} placeholder="Пусто — без суммы в выручке" />
           </Form.Item>
           <Typography.Paragraph style={{ marginBottom: 16 }}>
             <Typography.Text type="secondary">Итоговая сумма: </Typography.Text>
