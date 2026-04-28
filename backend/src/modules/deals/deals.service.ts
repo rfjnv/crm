@@ -3681,7 +3681,28 @@ export class DealsService {
     });
 
     const totalAmount = Number(deal.amount) || 0;
-    const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+    const totalPaidFromPaymentRows = payments.reduce((s, p) => s + Number(p.amount), 0);
+    const totalPaid =
+      payments.length > 0 ? totalPaidFromPaymentRows : Math.max(0, Number(deal.paidAmount) || 0);
+
+    const paymentsForPdf =
+      payments.length > 0
+        ? payments.map((p, i) => ({
+            num: i + 1,
+            amount: Number(p.amount),
+            method: p.method,
+            paidAt: p.paidAt.toISOString(),
+          }))
+        : totalPaid > 0
+          ? [
+              {
+                num: 1,
+                amount: totalPaid,
+                method: deal.paymentMethod,
+                paidAt: (deal.closedAt ?? deal.updatedAt ?? new Date()).toISOString(),
+              },
+            ]
+          : [];
 
     const { buildPaymentReceiptHtml, generateDocumentPdf } = await import('../../lib/pdf-generator');
     const companyForPdf = company ? {
@@ -3714,12 +3735,7 @@ export class DealsService {
         } : null,
         manager: deal.manager ? { fullName: deal.manager.fullName } : null,
         items,
-        payments: payments.map((p, i) => ({
-          num: i + 1,
-          amount: Number(p.amount),
-          method: p.method,
-          paidAt: p.paidAt.toISOString(),
-        })),
+        payments: paymentsForPdf,
         totalAmount,
         totalPaid,
         remaining: Math.max(0, totalAmount - totalPaid),
