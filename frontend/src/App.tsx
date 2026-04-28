@@ -45,8 +45,7 @@ import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
-import PriceComparisonPage from './pages/PriceComparisonPage';
-import UniqueProductsComparisonPage from './pages/UniqueProductsComparisonPage';
+import MarketAnalysisPage from './pages/MarketAnalysisPage';
 import ReviewsPage from './pages/ReviewsPage';
 import WarehouseManagerPage from './pages/WarehouseManagerPage';
 import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
@@ -139,8 +138,9 @@ export default function App() {
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
-                  <Route path="/analytics/price-comparison" element={<PriceComparisonPage />} />
-                  <Route path="/analytics/unique-products" element={<UniqueProductsComparisonPage />} />
+                  <Route path="/analytics/market" element={<MarketAnalysisPage />} />
+                  <Route path="/analytics/price-comparison" element={<Navigate to="/analytics/market" replace />} />
+                  <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 </Route>

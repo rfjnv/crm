@@ -546,14 +546,9 @@ export default function Layout() {
               label: <Link to="/history-analytics">Аналитика (история)</Link>,
             },
             {
-              key: '/analytics/price-comparison',
+              key: '/analytics/market',
               icon: <BarChartOutlined />,
-              label: <Link to="/analytics/price-comparison">Сравнение цен</Link>,
-            },
-            {
-              key: '/analytics/unique-products',
-              icon: <BarChartOutlined />,
-              label: <Link to="/analytics/unique-products">Уникальные товары</Link>,
+              label: <Link to="/analytics/market">Анализ рынка</Link>,
             },
           ]
           : []),
