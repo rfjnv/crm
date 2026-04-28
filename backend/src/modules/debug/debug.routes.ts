@@ -27,7 +27,7 @@ function todayYmdTashkent(): string {
   return `${y}-${mo}-${d}`;
 }
 
-router.get('/debug/test', (_req, res) => {
+router.get('/test', (_req, res) => {
   res.json({ ok: true });
 });
 
@@ -37,7 +37,7 @@ function firstQueryString(v: unknown): string {
   return '';
 }
 
-router.get('/debug/revenue-diff', async (req, res) => {
+router.get('/revenue-diff', async (req, res) => {
   const fromQuery = firstQueryString(req.query.date);
   const dateStr = fromQuery ? parseYmd(fromQuery) : todayYmdTashkent();
   if (fromQuery && !dateStr) {
@@ -67,7 +67,7 @@ router.get('/debug/revenue-diff', async (req, res) => {
   res.json(rows);
 });
 
-router.get('/debug/revenue-gap', async (_req, res) => {
+router.get('/revenue-gap', async (_req, res) => {
   const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
   const nowTZ = new Date(Date.now() + TASHKENT_OFFSET);
   const y = nowTZ.getUTCFullYear(), mo = nowTZ.getUTCMonth(), d = nowTZ.getUTCDate();

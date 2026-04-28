@@ -94,7 +94,8 @@ app.get('/api/health', async (_req, res) => {
   res.status(200).json({ status, db: dbOk, timestamp: new Date().toISOString() });
 });
 
-app.use('/api', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
+/** Только отладочные маршруты под SUPER_ADMIN — не монтировать на весь `/api`, иначе ломаются POST /auth/login и прочее без Bearer. */
+app.use('/api/debug', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
 app.use('/api/internal/reports', internalReportsRoutes);
 
 // Public routes (no auth)
