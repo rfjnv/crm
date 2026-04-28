@@ -1,8 +1,19 @@
 import { Request, Response } from 'express';
 import { DealStatus, Role } from '@prisma/client';
+import { z } from 'zod';
 import { clientsService } from './clients.service';
 import { clientNotesService } from './client-notes.service';
 import type { AuthUser } from '../../lib/scope';
+import { AppError } from '../../lib/errors';
+
+const DEAL_STATUSES = ['NEW', 'IN_PROGRESS', 'CLOSED', 'CANCELED', 'REJECTED', 'SENT_TO_FINANCE', 'APPROVED', 'PARTIALLY_PAID'] as const;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const clientFiltersSchema = z.object({
+  dealStatus: z.enum(DEAL_STATUSES).optional(),
+  from: z.string().regex(ISO_DATE_RE, 'from должна быть в формате YYYY-MM-DD').optional(),
+  to: z.string().regex(ISO_DATE_RE, 'to должна быть в формате YYYY-MM-DD').optional(),
+});
 
 function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
@@ -15,12 +26,15 @@ export class ClientsController {
   }
 
   async findById(req: Request, res: Response): Promise<void> {
-    const filters = {
-      dealStatus: req.query.dealStatus as DealStatus | undefined,
-      from: req.query.from as string | undefined,
-      to: req.query.to as string | undefined,
-    };
-    const client = await clientsService.findById(req.params.id as string, getUser(req), filters);
+    const parsed = clientFiltersSchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AppError(400, parsed.error.errors.map((e) => e.message).join('; '));
+    }
+    const client = await clientsService.findById(req.params.id as string, getUser(req), parsed.data as {
+      dealStatus?: DealStatus;
+      from?: string;
+      to?: string;
+    });
     res.json(client);
   }
 

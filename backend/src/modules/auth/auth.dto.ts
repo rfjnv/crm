@@ -6,7 +6,7 @@ export const loginDto = z.object({
 });
 
 export const refreshDto = z.object({
-  refreshToken: z.string().min(1, 'Refresh token обязателен'),
+  refreshToken: z.string().optional(),
 });
 
 export type LoginDto = z.infer<typeof loginDto>;

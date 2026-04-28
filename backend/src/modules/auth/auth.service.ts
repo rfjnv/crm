@@ -88,6 +88,25 @@ export class AuthService {
       data: { revokedAt: new Date(), lastUsedAt: new Date() },
     });
 
+    // Log suspicious device/IP changes for security monitoring
+    if (session.ip && meta.ip && session.ip !== meta.ip) {
+      await auditLog({
+        userId: session.userId,
+        action: 'SUSPICIOUS_ACTIVITY',
+        entityType: 'session',
+        entityId: session.id,
+        after: { reason: 'IP changed on token refresh', from: session.ip, to: meta.ip },
+      });
+    } else if (session.userAgent && meta.userAgent && session.userAgent !== meta.userAgent) {
+      await auditLog({
+        userId: session.userId,
+        action: 'SUSPICIOUS_ACTIVITY',
+        entityType: 'session',
+        entityId: session.id,
+        after: { reason: 'UserAgent changed on token refresh', from: session.userAgent, to: meta.userAgent },
+      });
+    }
+
     // Create new session (rotation)
     const tokens = await this.createSession(
       session.userId,

@@ -5,12 +5,25 @@ import { monthlyGoalQueryDto } from './users.dto';
 
 export class UsersController {
   async findAll(req: Request, res: Response): Promise<void> {
+    const role = req.user!.role;
+    const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+
     const raw = req.query.includeInactive;
     const includeInactive = raw === 'true' || raw === '1';
-    if (includeInactive && req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+    if (includeInactive && !isAdmin) {
       throw new AppError(403, 'Полный список пользователей доступен только администраторам');
     }
+
     const users = await usersService.findAll({ includeInactive });
+
+    // Non-admins get only the fields needed for dropdowns (id, fullName, role, isActive)
+    if (!isAdmin) {
+      res.json(users.map(({ id, fullName, role: r, isActive, badgeIcon, badgeColor, badgeLabel }) => ({
+        id, fullName, role: r, isActive, badgeIcon, badgeColor, badgeLabel,
+      })));
+      return;
+    }
+
     res.json(users);
   }
 

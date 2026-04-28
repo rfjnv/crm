@@ -1,5 +1,17 @@
 import { Request, Response } from 'express';
+import { config } from '../../lib/config';
+import { AppError } from '../../lib/errors';
 import { authService } from './auth.service';
+
+const REFRESH_COOKIE = 'crm_rt';
+
+const cookieOpts = {
+  httpOnly: true,
+  secure: config.isProduction,
+  sameSite: 'strict' as const,
+  maxAge: config.jwt.refreshExpiresInMs,
+  path: '/',
+};
 
 function getSessionMeta(req: Request) {
   return {
@@ -8,21 +20,34 @@ function getSessionMeta(req: Request) {
   };
 }
 
+function resolveRefreshToken(req: Request): string {
+  const fromCookie = req.cookies?.[REFRESH_COOKIE];
+  const fromBody = req.body?.refreshToken;
+  const token = fromCookie || fromBody;
+  if (!token) {
+    throw new AppError(401, 'Refresh token не предоставлен');
+  }
+  return token;
+}
+
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
     const tokens = await authService.login(req.body, getSessionMeta(req));
-    res.json(tokens);
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, cookieOpts);
+    res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
   }
 
   async refresh(req: Request, res: Response): Promise<void> {
-    const { refreshToken } = req.body;
+    const refreshToken = resolveRefreshToken(req);
     const tokens = await authService.refresh(refreshToken, getSessionMeta(req));
-    res.json(tokens);
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, cookieOpts);
+    res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
   }
 
   async logout(req: Request, res: Response): Promise<void> {
-    const { refreshToken } = req.body;
+    const refreshToken = resolveRefreshToken(req);
     await authService.logout(refreshToken);
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
     res.json({ message: 'Выход выполнен' });
   }
 

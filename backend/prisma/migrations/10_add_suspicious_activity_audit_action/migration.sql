@@ -1,0 +1,2 @@
+-- Adding SUSPICIOUS_ACTIVITY to AuditAction enum (safe: no table rebuild)
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUSPICIOUS_ACTIVITY' AFTER 'LOGIN_FAILED';
