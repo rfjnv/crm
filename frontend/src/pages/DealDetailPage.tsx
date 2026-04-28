@@ -167,10 +167,6 @@ export default function DealDetailPage() {
     enabled: !!id,
   });
 
-  /** Чек PDF: показываем и при строках платежей, и при сумме только в поле сделки (без отдельных Payment). */
-  const showPaymentReceiptBtn =
-    (dealPayments?.length ?? 0) > 0 || Number(dealData?.paidAmount) > 0;
-
   // Contracts for the deal's client (for attach modal)
   const needsContract = !!dealData?.paymentMethod && CONTRACT_REQUIRED_METHODS.includes(dealData.paymentMethod);
   const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
@@ -974,21 +970,19 @@ export default function DealDetailPage() {
               size="small"
               extra={
                 <Space wrap>
-                  {showPaymentReceiptBtn && (
-                    <Tooltip title="Скачать чек об оплате (PDF)">
-                      <Button
-                        size="small"
-                        icon={<FilePdfOutlined />}
-                        onClick={() => {
-                          dealsApi.downloadPaymentReceipt(deal.id).catch(() =>
-                            message.error('Не удалось сформировать чек'),
-                          );
-                        }}
-                      >
-                        Чек PDF
-                      </Button>
-                    </Tooltip>
-                  )}
+                  <Tooltip title="Скачать чек об оплате (PDF)">
+                    <Button
+                      size="small"
+                      icon={<FilePdfOutlined />}
+                      onClick={() => {
+                        dealsApi.downloadPaymentReceipt(deal.id).catch(() =>
+                          message.error('Не удалось сформировать чек'),
+                        );
+                      }}
+                    >
+                      Чек PDF
+                    </Button>
+                  </Tooltip>
                   {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
@@ -1303,21 +1297,19 @@ export default function DealDetailPage() {
                       title="Оплата"
                       extra={
                         <Space wrap>
-                          {showPaymentReceiptBtn && (
-                            <Tooltip title="Скачать чек об оплате (PDF)">
-                              <Button
-                                size="small"
-                                icon={<FilePdfOutlined />}
-                                onClick={() => {
-                                  dealsApi.downloadPaymentReceipt(deal.id).catch(() =>
-                                    message.error('Не удалось сформировать чек'),
-                                  );
-                                }}
-                              >
-                                Чек PDF
-                              </Button>
-                            </Tooltip>
-                          )}
+                          <Tooltip title="Скачать чек об оплате (PDF)">
+                            <Button
+                              size="small"
+                              icon={<FilePdfOutlined />}
+                              onClick={() => {
+                                dealsApi.downloadPaymentReceipt(deal.id).catch(() =>
+                                  message.error('Не удалось сформировать чек'),
+                                );
+                              }}
+                            >
+                              Чек PDF
+                            </Button>
+                          </Tooltip>
                           {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                             <>
                               <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
