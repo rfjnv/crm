@@ -8,6 +8,9 @@ export interface AuthUser {
 
 const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'OPERATOR', 'DRIVER', 'LOADER', 'HR'];
 
+/** Roles that have no business reason to browse the client list */
+const CLIENT_BLOCKED_ROLES: Role[] = ['DRIVER', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'HR'];
+
 export function ownerScope(user: AuthUser): { managerId?: string } {
   if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_deals')) {
     return {};
@@ -15,7 +18,12 @@ export function ownerScope(user: AuthUser): { managerId?: string } {
   return { managerId: user.userId };
 }
 
-export function clientOwnerScope(_user: AuthUser): { managerId?: string } {
-  // All users can see all clients; managerId tracks "last served by"
+export function clientOwnerScope(user: AuthUser): { managerId?: string } {
+  if (CLIENT_BLOCKED_ROLES.includes(user.role)) {
+    // Return impossible condition — effectively returns zero results
+    return { managerId: '__NO_ACCESS__' };
+  }
+  // All sales roles (MANAGER, OPERATOR, ADMIN, etc.) see all clients;
+  // managerId in clients tracks "last served by", not ownership
   return {};
 }

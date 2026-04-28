@@ -459,26 +459,46 @@ ${SALES_AUDIT_OUTPUT_FORMAT}`,
   }
 }
 
-function validateSQL(sql: string): void {
-  const upper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
+function stripSqlComments(sql: string): string {
+  // Remove block comments /* ... */
+  let s = sql.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  // Remove line comments -- ...
+  s = s.replace(/--[^\r\n]*/g, ' ');
+  return s.replace(/\s+/g, ' ').trim();
+}
 
-  if (!upper.startsWith('SELECT')) {
+function validateSQL(sql: string): void {
+  const clean = stripSqlComments(sql);
+  const upper = clean.toUpperCase();
+
+  if (!upper.trimStart().startsWith('SELECT')) {
     throw new AppError(400, 'AI сгенерировал недопустимый запрос. Разрешены только SELECT.');
   }
 
   for (const keyword of FORBIDDEN_KEYWORDS) {
-    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-    if (regex.test(upper) && keyword !== 'UPDATE') {
-      throw new AppError(400, `Запрос содержит запрещённое ключевое слово: ${keyword}`);
-    }
-    if (keyword === 'UPDATE' && regex.test(upper) && !upper.includes('UPDATED_AT') && !upper.includes('UPDATE_')) {
-      throw new AppError(400, `Запрос содержит запрещённое ключевое слово: ${keyword}`);
+    if (keyword === 'UPDATE') {
+      // Allow updated_at / update_ column names, but block UPDATE statement
+      const withoutColumns = upper
+        .replace(/\bUPDATED_AT\b/g, '')
+        .replace(/\bUPDATE_\w*/g, '');
+      if (/\bUPDATE\b/.test(withoutColumns)) {
+        throw new AppError(400, 'Запрос содержит запрещённое ключевое слово: UPDATE');
+      }
+    } else {
+      if (new RegExp(`\\b${keyword}\\b`).test(upper)) {
+        throw new AppError(400, `Запрос содержит запрещённое ключевое слово: ${keyword}`);
+      }
     }
   }
 
-  if (!/LIMIT\s+\d/i.test(upper)) {
+  if (!/\bLIMIT\s+\d/i.test(upper)) {
     throw new AppError(400, 'Запрос должен содержать LIMIT.');
   }
+}
+
+/** Wraps AI-generated SQL in a subquery enforcing a hard row cap of 500. */
+function capRows(sql: string): string {
+  return `SELECT * FROM (${sql.replace(/;+\s*$/, '')}) AS _ai_q LIMIT 500`;
 }
 
 function serialize(obj: unknown): unknown {
@@ -753,7 +773,7 @@ Return ONLY valid JSON.`,
     }
 
     try {
-      const queryResult = await prisma.$queryRawUnsafe(sql);
+      const queryResult = await prisma.$queryRawUnsafe(capRows(sql));
       allResults.push({ query: sql, result: serialize(queryResult) });
       allSqls.push(sql);
     } catch (err) {
@@ -792,7 +812,7 @@ Return: { "queries": ["SELECT ..."] }`,
             if (!sql) continue;
             try {
               validateSQL(sql);
-              const queryResult = await prisma.$queryRawUnsafe(sql);
+              const queryResult = await prisma.$queryRawUnsafe(capRows(sql));
               allResults.push({ query: sql, result: serialize(queryResult) });
               allSqls.push(sql);
             } catch {

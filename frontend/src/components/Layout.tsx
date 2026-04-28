@@ -114,7 +114,7 @@ export default function Layout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, refreshToken, logout, setUser } = useAuthStore();
+  const { user, logout, setUser } = useAuthStore();
   const syncedProfileOnce = useRef(false);
 
   // Права и роль в меню берутся из localStorage; после правок в «Пользователях» подтягиваем актуальный профиль с сервера.
@@ -171,7 +171,7 @@ export default function Layout() {
 
   const handleLogout = async () => {
     try {
-      if (refreshToken) await authApi.logout(refreshToken);
+      await authApi.logout();
     } catch { /* ignore */ }
     logout();
     navigate('/login');

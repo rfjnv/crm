@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
@@ -14,7 +15,14 @@ function assertInternalToken(req: Request): void {
     throw new AppError(503, 'INTERNAL_REPORTS_TOKEN не настроен на сервере');
   }
   const provided = String(req.header('x-internal-token') || '');
-  if (!provided || provided !== expected) {
+  if (!provided) {
+    throw new AppError(401, 'Неверный internal token');
+  }
+  // timingSafeEqual prevents timing attacks on token comparison
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.alloc(expectedBuf.length);
+  providedBuf.write(provided.slice(0, expectedBuf.length));
+  if (!timingSafeEqual(expectedBuf, providedBuf) || provided.length !== expected.length) {
     throw new AppError(401, 'Неверный internal token');
   }
 }

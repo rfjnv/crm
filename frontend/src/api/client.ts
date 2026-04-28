@@ -6,6 +6,7 @@ export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'h
 const client = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
 // Request interceptor: attach access token
@@ -61,15 +62,9 @@ client.interceptors.response.use(
     originalRequest._retry = true;
     isRefreshing = true;
 
-    const refreshToken = useAuthStore.getState().refreshToken;
-    if (!refreshToken) {
-      useAuthStore.getState().logout();
-      window.location.href = '/login';
-      return Promise.reject(error);
-    }
-
     try {
-      const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+      // refreshToken comes from HttpOnly cookie automatically (withCredentials: true)
+      const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
       useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
       // Refresh user data so permissions stay up-to-date
       try {

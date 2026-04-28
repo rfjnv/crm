@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { config } from './lib/config';
 import { errorHandler } from './middleware/errorHandler';
+import { authenticate } from './middleware/authenticate';
+import { authorize } from './middleware/authorize';
 import prisma from './lib/prisma';
 
 import authRoutes from './modules/auth/auth.routes';
@@ -51,9 +54,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'"],
       styleSrc: ["'self'"],
       scriptSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
     },
   },
 }));
@@ -70,6 +76,7 @@ app.use(cors({
 
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
 
 // Static files (uploaded attachments)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -87,7 +94,7 @@ app.get('/api/health', async (_req, res) => {
   res.status(200).json({ status, db: dbOk, timestamp: new Date().toISOString() });
 });
 
-app.use('/api', debugRoutes);
+app.use('/api', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
 app.use('/api/internal/reports', internalReportsRoutes);
 
 // Public routes (no auth)

@@ -4,9 +4,10 @@ import type { User } from '../types';
 interface AuthState {
   user: User | null;
   accessToken: string | null;
+  /** @deprecated refreshToken is now stored in HttpOnly cookie — do not use */
   refreshToken: string | null;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setAuth: (user: User, accessToken: string, refreshToken?: string) => void;
+  setTokens: (accessToken: string, refreshToken?: string) => void;
   /** Обновить профиль (роль, permissions) с сервера, не меняя токены — после смены прав админом. */
   setUser: (user: User) => void;
   logout: () => void;
@@ -24,19 +25,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   })(),
   accessToken: localStorage.getItem('crm_access_token'),
-  refreshToken: localStorage.getItem('crm_refresh_token'),
+  refreshToken: null,
 
-  setAuth: (user, accessToken, refreshToken) => {
+  setAuth: (user, accessToken) => {
     localStorage.setItem('crm_user', JSON.stringify(user));
     localStorage.setItem('crm_access_token', accessToken);
-    localStorage.setItem('crm_refresh_token', refreshToken);
-    set({ user, accessToken, refreshToken });
+    localStorage.removeItem('crm_refresh_token');
+    set({ user, accessToken, refreshToken: null });
   },
 
-  setTokens: (accessToken, refreshToken) => {
+  setTokens: (accessToken) => {
     localStorage.setItem('crm_access_token', accessToken);
-    localStorage.setItem('crm_refresh_token', refreshToken);
-    set({ accessToken, refreshToken });
+    localStorage.removeItem('crm_refresh_token');
+    set({ accessToken, refreshToken: null });
   },
 
   setUser: (user) => {
