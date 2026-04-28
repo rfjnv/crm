@@ -30,6 +30,28 @@ function formatMoney(value: number | null): string {
   return `${value.toLocaleString('ru-RU')} сум`;
 }
 
+const COLOR_WE_CHEAPER = '#389e0d';
+const COLOR_THEY_CHEAPER = '#cf1322';
+
+type RelationFilter = 'all' | 'they_cheaper' | 'we_cheaper' | 'same';
+type TheirPricePick = number | 'missing' | null;
+
+function priceDelta(ourPrice: number, competitorPrice: number | null): { diff: number; percent: number } | null {
+  if (competitorPrice === null || ourPrice <= 0) return null;
+  const diff = competitorPrice - ourPrice;
+  const percent = Math.round((diff / ourPrice) * 100);
+  return { diff, percent };
+}
+
+function clickableStyle(active?: boolean): CSSProperties {
+  return {
+    cursor: 'pointer',
+    borderRadius: 4,
+    textDecoration: active ? 'underline' : undefined,
+    outline: 'none',
+  };
+}
+
 // ─── Tab 1: All Competitor Products ─────────────────────────────────────────
 
 type CompetitorRow = {
@@ -67,11 +89,15 @@ const ALL_COMPETITOR_ROWS: CompetitorRow[] = [
 ];
 
 function CompetitorProductsTab() {
+  const { token } = theme.useToken();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [competitor, setCompetitor] = useState<'all' | Competitor>('all');
   const [category, setCategory] = useState('all');
   const [matchFilter, setMatchFilter] = useState<'all' | 'matched' | 'unique'>('all');
+  const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
+  const [pickedOurPrice, setPickedOurPrice] = useState<number | null>(null);
+  const [pickedTheirPrice, setPickedTheirPrice] = useState<TheirPricePick>(null);
 
   const competitors = useMemo(
     () => ['all', ...Array.from(new Set(ALL_COMPETITOR_ROWS.map((r) => r.competitor)))],
@@ -82,7 +108,7 @@ function CompetitorProductsTab() {
     [],
   );
 
-  const filtered = useMemo(() => {
+  const rowsAfterSelectors = useMemo(() => {
     const q = search.trim().toLowerCase();
     return ALL_COMPETITOR_ROWS.filter((r) => {
       if (competitor !== 'all' && r.competitor !== competitor) return false;
@@ -98,11 +124,73 @@ function CompetitorProductsTab() {
     });
   }, [search, competitor, category, matchFilter]);
 
-  const stats = useMemo(() => ({
-    total: filtered.length,
-    matched: filtered.filter((r) => r.hasMatch).length,
-    unique: filtered.filter((r) => !r.hasMatch).length,
-  }), [filtered]);
+  const compareStats = useMemo(() => {
+    const comparable = rowsAfterSelectors.filter(
+      (r) => r.hasMatch && r.price !== null && r.ourPrice !== undefined,
+    );
+    return {
+      total: rowsAfterSelectors.length,
+      theyAreCheaper: comparable.filter((r) => (r.price as number) < (r.ourPrice as number)).length,
+      weAreCheaper: comparable.filter((r) => (r.price as number) > (r.ourPrice as number)).length,
+      samePrice: comparable.filter((r) => r.price === r.ourPrice).length,
+    };
+  }, [rowsAfterSelectors]);
+
+  const filteredRows = useMemo(
+    () => rowsAfterSelectors.filter((r) => {
+      const comparable = Boolean(r.hasMatch && r.price !== null && r.ourPrice !== undefined);
+      const cp = r.price;
+      const op = r.ourPrice;
+
+      if (relationFilter !== 'all') {
+        if (!comparable) return false;
+        if (relationFilter === 'they_cheaper' && (cp === null || cp >= op!)) return false;
+        if (relationFilter === 'we_cheaper' && (cp === null || cp <= op!)) return false;
+        if (relationFilter === 'same' && (cp === null || cp !== op)) return false;
+      }
+
+      if (pickedOurPrice !== null && (!comparable || op !== pickedOurPrice)) return false;
+
+      if (pickedTheirPrice !== null) {
+        if (pickedTheirPrice === 'missing') {
+          if (cp !== null) return false;
+        } else if (cp !== pickedTheirPrice) return false;
+      }
+
+      return true;
+    }),
+    [pickedOurPrice, pickedTheirPrice, relationFilter, rowsAfterSelectors],
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: filteredRows.length,
+      matched: filteredRows.filter((r) => r.hasMatch).length,
+      unique: filteredRows.filter((r) => !r.hasMatch).length,
+    }),
+    [filteredRows],
+  );
+
+  const hasQuickFilter = relationFilter !== 'all' || pickedOurPrice !== null || pickedTheirPrice !== null;
+
+  const clearQuickFilters = () => {
+    setRelationFilter('all');
+    setPickedOurPrice(null);
+    setPickedTheirPrice(null);
+  };
+
+  const toggleRelation = (next: RelationFilter) => {
+    setPickedOurPrice(null);
+    setPickedTheirPrice(null);
+    setRelationFilter((prev) => (prev === next ? 'all' : next));
+  };
+
+  const statCardStyle = (active: boolean): CSSProperties => ({
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+    borderColor: active ? token.colorPrimary : undefined,
+    boxShadow: active ? `0 0 0 1px ${token.colorPrimary}` : undefined,
+  });
 
   const columns: ColumnsType<CompetitorRow> = [
     {
@@ -110,7 +198,13 @@ function CompetitorProductsTab() {
       dataIndex: 'productName',
       render: (value: string, row) => (
         <div>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{row.category}</Typography.Text>
+          <Typography.Text
+            type="secondary"
+            style={{ fontSize: 11, cursor: 'pointer' }}
+            onClick={() => setCategory((c) => (c === row.category ? 'all' : row.category))}
+          >
+            {row.category}
+          </Typography.Text>
           <div>{value}</div>
         </div>
       ),
@@ -119,19 +213,51 @@ function CompetitorProductsTab() {
       title: 'Компания',
       dataIndex: 'competitor',
       width: 150,
-      render: (value: Competitor) => <Tag color={competitorColor[value]}>{value}</Tag>,
+      render: (value: Competitor) => (
+        <span
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer', display: 'inline-block' }}
+          onClick={() => setCompetitor((c) => (c === value ? 'all' : value))}
+          onKeyDown={(e) => { if (e.key === 'Enter') setCompetitor((c) => (c === value ? 'all' : value)); }}
+        >
+          <Tag color={competitorColor[value]}>{value}</Tag>
+        </span>
+      ),
     },
     {
       title: 'Цена конкурента',
       dataIndex: 'price',
-      width: 160,
+      width: 140,
       align: 'right',
-      render: (value: number | null) => formatMoney(value),
+      render: (value: number | null) => {
+        const active = value === null ? pickedTheirPrice === 'missing' : pickedTheirPrice === value;
+        return (
+          <span
+            role="button"
+            tabIndex={0}
+            style={clickableStyle(!!active)}
+            onClick={() => {
+              setPickedOurPrice(null);
+              if (value === null) setPickedTheirPrice((p) => (p === 'missing' ? null : 'missing'));
+              else setPickedTheirPrice((p) => (p === value ? null : value));
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              setPickedOurPrice(null);
+              if (value === null) setPickedTheirPrice((p) => (p === 'missing' ? null : 'missing'));
+              else setPickedTheirPrice((p) => (p === value ? null : value));
+            }}
+          >
+            {formatMoney(value)}
+          </span>
+        );
+      },
     },
     {
       title: 'Наш аналог',
       dataIndex: 'ourAnalog',
-      width: 280,
+      width: 240,
       render: (value?: string, row?: CompetitorRow) =>
         value ? (
           <div>
@@ -149,14 +275,75 @@ function CompetitorProductsTab() {
     {
       title: 'Наша цена',
       dataIndex: 'ourPrice',
-      width: 140,
+      width: 130,
       align: 'right',
-      render: (value?: number) => (value !== undefined ? formatMoney(value) : <Typography.Text type="secondary">—</Typography.Text>),
+      render: (value?: number) => (
+        <span
+          role="button"
+          tabIndex={0}
+          style={clickableStyle(value !== undefined && pickedOurPrice === value)}
+          onClick={() => {
+            if (value === undefined) return;
+            setPickedTheirPrice(null);
+            setPickedOurPrice((p) => (p === value ? null : value));
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || value === undefined) return;
+            setPickedTheirPrice(null);
+            setPickedOurPrice((p) => (p === value ? null : value));
+          }}
+        >
+          {value !== undefined ? formatMoney(value) : <Typography.Text type="secondary">—</Typography.Text>}
+        </span>
+      ),
+    },
+    {
+      title: 'Разница',
+      key: 'diff',
+      width: 120,
+      align: 'right',
+      render: (_: unknown, row: CompetitorRow) => {
+        const delta = row.ourPrice !== undefined ? priceDelta(row.ourPrice, row.price) : null;
+        if (!delta || row.price === null) return <Typography.Text type="secondary">—</Typography.Text>;
+        const color = delta.diff > 0 ? COLOR_WE_CHEAPER : delta.diff < 0 ? COLOR_THEY_CHEAPER : undefined;
+        return (
+          <span
+            role="button"
+            tabIndex={0}
+            style={{ color, ...clickableStyle(false), cursor: 'pointer' }}
+            onClick={() => {
+              setPickedOurPrice(null);
+              setPickedTheirPrice(null);
+              if (delta.diff < 0) toggleRelation('they_cheaper');
+              else if (delta.diff > 0) toggleRelation('we_cheaper');
+              else toggleRelation('same');
+            }}
+          >
+            {delta.diff > 0 ? '+' : ''}{formatMoney(delta.diff)}
+          </span>
+        );
+      },
+    },
+    {
+      title: '%',
+      key: 'pct',
+      width: 76,
+      align: 'right',
+      render: (_: unknown, row: CompetitorRow) => {
+        const delta = row.ourPrice !== undefined ? priceDelta(row.ourPrice, row.price) : null;
+        if (!delta || row.price === null) return '—';
+        const color = delta.percent > 0 ? COLOR_WE_CHEAPER : delta.percent < 0 ? COLOR_THEY_CHEAPER : undefined;
+        return (
+          <span style={{ color, fontWeight: 600 }}>
+            {delta.percent > 0 ? '+' : ''}{delta.percent}%
+          </span>
+        );
+      },
     },
     {
       title: 'Статус',
       key: 'status',
-      width: 140,
+      width: 134,
       render: (_: unknown, row: CompetitorRow) =>
         row.hasMatch ? (
           <Badge status="success" text="Сопоставлен" />
@@ -170,18 +357,23 @@ function CompetitorProductsTab() {
     <>
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 16 }}>
         <Card size="small">
-          <Typography.Text type="secondary">Всего товаров</Typography.Text>
+          <Typography.Text type="secondary">Всего в списке</Typography.Text>
           <div style={{ fontSize: 24, fontWeight: 600 }}>{stats.total}</div>
         </Card>
         <Card size="small">
           <Typography.Text type="secondary">Есть аналог у нас</Typography.Text>
-          <div style={{ fontSize: 24, fontWeight: 600, color: '#389e0d' }}>{stats.matched}</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: COLOR_WE_CHEAPER }}>{stats.matched}</div>
         </Card>
         <Card size="small">
           <Typography.Text type="secondary">Только у конкурентов</Typography.Text>
           <div style={{ fontSize: 24, fontWeight: 600, color: '#d48806' }}>{stats.unique}</div>
         </Card>
       </div>
+
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 12 }}>
+        Как на «Сравнение цен»: карточки ниже и колонка «Разница» задают фильтр по соотношению цен. Клик по категории, компании
+        или сумме в колонках цен — быстрый фильтр.
+      </Typography.Paragraph>
 
       <Space wrap style={{ marginBottom: 16 }}>
         <Input.Search
@@ -213,14 +405,66 @@ function CompetitorProductsTab() {
             { value: 'unique', label: 'Только у них' },
           ]}
         />
+        {hasQuickFilter && (
+          <Button type="link" size="small" onClick={clearQuickFilters} style={{ padding: 0 }}>
+            Сбросить быстрый фильтр
+          </Button>
+        )}
       </Space>
+
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 16 }}>
+        <Card
+          size="small"
+          style={statCardStyle(false)}
+          role="button"
+          tabIndex={0}
+          onClick={clearQuickFilters}
+          onKeyDown={(e) => { if (e.key === 'Enter') clearQuickFilters(); }}
+        >
+          <Typography.Text type="secondary">Все позиции (сброс)</Typography.Text>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>{compareStats.total}</div>
+        </Card>
+        <Card
+          size="small"
+          style={statCardStyle(relationFilter === 'they_cheaper')}
+          role="button"
+          tabIndex={0}
+          onClick={() => toggleRelation('they_cheaper')}
+          onKeyDown={(e) => { if (e.key === 'Enter') toggleRelation('they_cheaper'); }}
+        >
+          <Typography.Text type="secondary">У них дешевле</Typography.Text>
+          <div style={{ fontSize: 24, fontWeight: 600, color: COLOR_THEY_CHEAPER }}>{compareStats.theyAreCheaper}</div>
+        </Card>
+        <Card
+          size="small"
+          style={statCardStyle(relationFilter === 'we_cheaper')}
+          role="button"
+          tabIndex={0}
+          onClick={() => toggleRelation('we_cheaper')}
+          onKeyDown={(e) => { if (e.key === 'Enter') toggleRelation('we_cheaper'); }}
+        >
+          <Typography.Text type="secondary">У нас дешевле</Typography.Text>
+          <div style={{ fontSize: 24, fontWeight: 600, color: COLOR_WE_CHEAPER }}>{compareStats.weAreCheaper}</div>
+        </Card>
+        <Card
+          size="small"
+          style={statCardStyle(relationFilter === 'same')}
+          role="button"
+          tabIndex={0}
+          onClick={() => toggleRelation('same')}
+          onKeyDown={(e) => { if (e.key === 'Enter') toggleRelation('same'); }}
+        >
+          <Typography.Text type="secondary">Одинаково</Typography.Text>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>{compareStats.samePrice}</div>
+        </Card>
+      </div>
 
       <Table<CompetitorRow>
         rowKey="key"
         columns={columns}
-        dataSource={filtered}
+        dataSource={filteredRows}
         pagination={{ pageSize: 25, showSizeChanger: true }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1500 }}
         locale={{ emptyText: 'Нет товаров по фильтру' }}
         size="small"
       />
@@ -232,10 +476,17 @@ function CompetitorProductsTab() {
 
 function UniqueProductsTab() {
   const isMobile = useIsMobile();
+  const { token } = theme.useToken();
   const [subTab, setSubTab] = useState<'them' | 'us'>('them');
   const [search, setSearch] = useState('');
   const [competitor, setCompetitor] = useState<'all' | Competitor>('all');
   const [category, setCategory] = useState('all');
+  /** Быстрый отбор по типу цены (только «у них»). */
+  const [themLineFilter, setThemLineFilter] = useState<'all' | 'priced' | 'unpriced'>('all');
+  /** Клик по конкретной сумме в таблице (только «у них»). */
+  const [pickedTheirPriceExact, setPickedTheirPriceExact] = useState<number | null>(null);
+  /** Клик по тексту цены «только у нас». */
+  const [pickedOurPriceText, setPickedOurPriceText] = useState<string | null>(null);
 
   const competitors = useMemo(
     () => ['all', ...Array.from(new Set(THEIR_ONLY_ROWS.map((r) => r.competitor)))],
@@ -250,7 +501,7 @@ function UniqueProductsTab() {
     [],
   );
 
-  const filteredThem = useMemo(() => {
+  const rowsThemBase = useMemo(() => {
     const q = search.trim().toLowerCase();
     return THEIR_ONLY_ROWS.filter((r) => {
       if (competitor !== 'all' && r.competitor !== competitor) return false;
@@ -259,7 +510,7 @@ function UniqueProductsTab() {
     });
   }, [search, competitor, category]);
 
-  const filteredUs = useMemo(() => {
+  const rowsUsBase = useMemo(() => {
     const q = search.trim().toLowerCase();
     return OUR_ONLY_ROWS.filter((r) => {
       if (category !== 'all' && r.category !== category) return false;
@@ -267,56 +518,168 @@ function UniqueProductsTab() {
     });
   }, [search, category]);
 
-  const themColumns: ColumnsType<TheirOnlyRow> = [
-    {
-      title: 'Товар конкурента',
-      dataIndex: 'name',
-      render: (value: string, row) => (
-        <div>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{row.category}</Typography.Text>
-          <div>{value}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Компания',
-      dataIndex: 'competitor',
-      width: 150,
-      render: (value: Competitor) => <Tag color={competitorColor[value]}>{value}</Tag>,
-    },
-    {
-      title: 'Их цена',
-      dataIndex: 'price',
-      width: 180,
-      align: 'right',
-      render: (value: number | null) =>
-        value === null ? (
-          <Typography.Text type="secondary">— (договорная)</Typography.Text>
-        ) : (
-          formatMoney(value)
-        ),
-    },
-  ];
+  const themStats = useMemo(
+    () => ({
+      total: rowsThemBase.length,
+      priced: rowsThemBase.filter((r) => r.price !== null).length,
+      unpriced: rowsThemBase.filter((r) => r.price === null).length,
+    }),
+    [rowsThemBase],
+  );
 
-  const usColumns: ColumnsType<OurOnlyRow> = [
-    {
-      title: 'Наш товар',
-      dataIndex: 'name',
-      render: (value: string, row) => (
-        <div>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{row.category}</Typography.Text>
-          <div>{value}</div>
-        </div>
-      ),
-    },
-    { title: 'Наша цена', dataIndex: 'price', width: 200, align: 'right' },
-    {
-      title: 'Примечание',
-      dataIndex: 'note',
-      width: 280,
-      render: (value?: string) => value ?? <Typography.Text type="secondary">—</Typography.Text>,
-    },
-  ];
+  const filteredThem = useMemo(
+    () => rowsThemBase.filter((r) => {
+      if (themLineFilter === 'priced' && r.price === null) return false;
+      if (themLineFilter === 'unpriced' && r.price !== null) return false;
+      if (pickedTheirPriceExact !== null && r.price !== pickedTheirPriceExact) return false;
+      return true;
+    }),
+    [pickedTheirPriceExact, rowsThemBase, themLineFilter],
+  );
+
+  const filteredUs = useMemo(
+    () => rowsUsBase.filter((r) => {
+      if (pickedOurPriceText !== null && r.price !== pickedOurPriceText) return false;
+      return true;
+    }),
+    [pickedOurPriceText, rowsUsBase],
+  );
+
+  const hasQuickFilterThem = themLineFilter !== 'all' || pickedTheirPriceExact !== null;
+  const hasQuickFilterUs = pickedOurPriceText !== null;
+
+  const clearQuickThem = () => {
+    setThemLineFilter('all');
+    setPickedTheirPriceExact(null);
+  };
+  const clearQuickUs = () => setPickedOurPriceText(null);
+
+  const statCardStyleU = (active: boolean): CSSProperties => ({
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+    borderColor: active ? token.colorPrimary : undefined,
+    boxShadow: active ? `0 0 0 1px ${token.colorPrimary}` : undefined,
+  });
+
+  const themColumns: ColumnsType<TheirOnlyRow> = useMemo(
+    () => [
+      {
+        title: 'Товар конкурента',
+        dataIndex: 'name',
+        render: (value: string, row) => (
+          <div>
+            <Typography.Text
+              type="secondary"
+              style={{ fontSize: 11, cursor: 'pointer' }}
+              onClick={() => setCategory((c) => (c === row.category ? 'all' : row.category))}
+            >
+              {row.category}
+            </Typography.Text>
+            <div>{value}</div>
+          </div>
+        ),
+      },
+      {
+        title: 'Компания',
+        dataIndex: 'competitor',
+        width: 150,
+        render: (value: Competitor) => (
+          <span
+            role="button"
+            tabIndex={0}
+            style={{ cursor: 'pointer', display: 'inline-block' }}
+            onClick={() => setCompetitor((c) => (c === value ? 'all' : value))}
+            onKeyDown={(e) => { if (e.key === 'Enter') setCompetitor((c) => (c === value ? 'all' : value)); }}
+          >
+            <Tag color={competitorColor[value]}>{value}</Tag>
+          </span>
+        ),
+      },
+      {
+        title: 'Их цена',
+        dataIndex: 'price',
+        width: 200,
+        align: 'right',
+        render: (value: number | null) => {
+          if (value === null) {
+            const active = themLineFilter === 'unpriced' && pickedTheirPriceExact === null;
+            return (
+              <span
+                role="button"
+                tabIndex={0}
+                style={clickableStyle(active)}
+                onClick={() => {
+                  setPickedTheirPriceExact(null);
+                  setThemLineFilter((f) => (f === 'unpriced' ? 'all' : 'unpriced'));
+                }}
+              >
+                <Typography.Text type="secondary">— (договорная)</Typography.Text>
+              </span>
+            );
+          }
+          const activeExact = pickedTheirPriceExact === value;
+          return (
+            <span
+              role="button"
+              tabIndex={0}
+              style={clickableStyle(activeExact)}
+              onClick={() => {
+                setThemLineFilter('all');
+                setPickedTheirPriceExact((p) => (p === value ? null : value));
+              }}
+            >
+              {formatMoney(value)}
+            </span>
+          );
+        },
+      },
+    ],
+    [pickedTheirPriceExact, themLineFilter],
+  );
+
+  const usColumns: ColumnsType<OurOnlyRow> = useMemo(
+    () => [
+      {
+        title: 'Наш товар',
+        dataIndex: 'name',
+        render: (value: string, row) => (
+          <div>
+            <Typography.Text
+              type="secondary"
+              style={{ fontSize: 11, cursor: 'pointer' }}
+              onClick={() => setCategory((c) => (c === row.category ? 'all' : row.category))}
+            >
+              {row.category}
+            </Typography.Text>
+            <div>{value}</div>
+          </div>
+        ),
+      },
+      {
+        title: 'Наша цена',
+        dataIndex: 'price',
+        width: 220,
+        align: 'right',
+        render: (value: string) => (
+          <span
+            role="button"
+            tabIndex={0}
+            style={clickableStyle(pickedOurPriceText === value)}
+            onClick={() => setPickedOurPriceText((p) => (p === value ? null : value))}
+          >
+            {value}
+          </span>
+        ),
+      },
+      {
+        title: 'Примечание',
+        dataIndex: 'note',
+        width: 280,
+        render: (value?: string) => value ?? <Typography.Text type="secondary">—</Typography.Text>,
+      },
+    ],
+    [pickedOurPriceText],
+  );
 
   const total = subTab === 'them' ? filteredThem.length : filteredUs.length;
 
@@ -330,6 +693,8 @@ function UniqueProductsTab() {
           setSearch('');
           setCompetitor('all');
           setCategory('all');
+          clearQuickThem();
+          clearQuickUs();
         }}
         items={[
           { key: 'them', label: `У них есть, у нас нет (${THEIR_ONLY_ROWS.length})` },
@@ -355,76 +720,137 @@ function UniqueProductsTab() {
         </Card>
       </div>
 
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Input.Search
-          placeholder="Поиск по названию или категории..."
-          allowClear
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: isMobile ? '100%' : 340 }}
-        />
-        {subTab === 'them' && (
-          <Select
-            value={competitor}
-            onChange={setCompetitor}
-            style={{ width: isMobile ? '100%' : 200 }}
-            options={competitors.map((v) => ({ value: v, label: v === 'all' ? 'Компания: все' : v }))}
-          />
-        )}
-        <Select
-          value={category}
-          onChange={setCategory}
-          style={{ width: isMobile ? '100%' : 260 }}
-          options={(subTab === 'them' ? categoriesForThem : categoriesForUs).map((v) => ({
-            value: v,
-            label: v === 'all' ? 'Категория: все' : v,
-          }))}
-        />
-      </Space>
-
       {subTab === 'them' ? (
-        <Table<TheirOnlyRow>
-          rowKey="key"
-          columns={themColumns}
-          dataSource={filteredThem}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 800 }}
-          locale={{ emptyText: 'Нет товаров по фильтру' }}
-          size="small"
-        />
+        <>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 12 }}>
+            Как на «Сравнение цен»: карточки ниже — быстрый отбор по типу цены; клик по сумме — только строки с этой ценой;
+            клик по категории или компании — фильтр по полю.
+          </Typography.Paragraph>
+          <Space wrap style={{ marginBottom: 16 }}>
+            <Input.Search
+              placeholder="Поиск по названию или категории..."
+              allowClear
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: isMobile ? '100%' : 340 }}
+            />
+            <Select
+              value={competitor}
+              onChange={setCompetitor}
+              style={{ width: isMobile ? '100%' : 200 }}
+              options={competitors.map((v) => ({ value: v, label: v === 'all' ? 'Компания: все' : v }))}
+            />
+            <Select
+              value={category}
+              onChange={setCategory}
+              style={{ width: isMobile ? '100%' : 260 }}
+              options={categoriesForThem.map((v) => ({
+                value: v,
+                label: v === 'all' ? 'Категория: все' : v,
+              }))}
+            />
+            {hasQuickFilterThem && (
+              <Button type="link" size="small" onClick={clearQuickThem} style={{ padding: 0 }}>
+                Сбросить быстрый фильтр
+              </Button>
+            )}
+          </Space>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 16 }}>
+            <Card size="small" role="button" tabIndex={0} style={statCardStyleU(false)} onClick={clearQuickThem} onKeyDown={(e) => { if (e.key === 'Enter') clearQuickThem(); }}>
+              <Typography.Text type="secondary">Все позиции</Typography.Text>
+              <div style={{ fontSize: 24, fontWeight: 600 }}>{themStats.total}</div>
+            </Card>
+            <Card
+              size="small"
+              role="button"
+              tabIndex={0}
+              style={statCardStyleU(themLineFilter === 'priced' && pickedTheirPriceExact === null)}
+              onClick={() => {
+                setPickedTheirPriceExact(null);
+                setThemLineFilter((f) => (f === 'priced' ? 'all' : 'priced'));
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                setPickedTheirPriceExact(null);
+                setThemLineFilter((f) => (f === 'priced' ? 'all' : 'priced'));
+              }}
+            >
+              <Typography.Text type="secondary">С указанной ценой</Typography.Text>
+              <div style={{ fontSize: 24, fontWeight: 600, color: token.colorPrimary }}>{themStats.priced}</div>
+            </Card>
+            <Card
+              size="small"
+              role="button"
+              tabIndex={0}
+              style={statCardStyleU(themLineFilter === 'unpriced')}
+              onClick={() => {
+                setPickedTheirPriceExact(null);
+                setThemLineFilter((f) => (f === 'unpriced' ? 'all' : 'unpriced'));
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                setPickedTheirPriceExact(null);
+                setThemLineFilter((f) => (f === 'unpriced' ? 'all' : 'unpriced'));
+              }}
+            >
+              <Typography.Text type="secondary">Договорная / без суммы</Typography.Text>
+              <div style={{ fontSize: 24, fontWeight: 600, color: '#d48806' }}>{themStats.unpriced}</div>
+            </Card>
+          </div>
+          <Table<TheirOnlyRow>
+            rowKey="key"
+            columns={themColumns}
+            dataSource={filteredThem}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            scroll={{ x: 820 }}
+            locale={{ emptyText: 'Нет товаров по фильтру' }}
+            size="small"
+          />
+        </>
       ) : (
-        <Table<OurOnlyRow>
-          rowKey="key"
-          columns={usColumns}
-          dataSource={filteredUs}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 800 }}
-          locale={{ emptyText: 'Нет товаров по фильтру' }}
-          size="small"
-        />
+        <>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 12 }}>
+            Клик по тексту цены оставляет только строки с таким же значением; клик по категории — по категории.
+          </Typography.Paragraph>
+          <Space wrap style={{ marginBottom: 16 }}>
+            <Input.Search
+              placeholder="Поиск по названию или категории..."
+              allowClear
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: isMobile ? '100%' : 340 }}
+            />
+            <Select
+              value={category}
+              onChange={setCategory}
+              style={{ width: isMobile ? '100%' : 260 }}
+              options={categoriesForUs.map((v) => ({
+                value: v,
+                label: v === 'all' ? 'Категория: все' : v,
+              }))}
+            />
+            {hasQuickFilterUs && (
+              <Button type="link" size="small" onClick={clearQuickUs} style={{ padding: 0 }}>
+                Сбросить быстрый фильтр
+              </Button>
+            )}
+          </Space>
+          <Table<OurOnlyRow>
+            rowKey="key"
+            columns={usColumns}
+            dataSource={filteredUs}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            scroll={{ x: 900 }}
+            locale={{ emptyText: 'Нет товаров по фильтру' }}
+            size="small"
+          />
+        </>
       )}
     </>
   );
 }
 
 // ─── Tab 3: Price Comparison ─────────────────────────────────────────────────
-
-const COLOR_WE_CHEAPER = '#389e0d';
-const COLOR_THEY_CHEAPER = '#cf1322';
-
-type RelationFilter = 'all' | 'they_cheaper' | 'we_cheaper' | 'same';
-type TheirPricePick = number | 'missing' | null;
-
-function priceDelta(ourPrice: number, competitorPrice: number | null) {
-  if (competitorPrice === null || ourPrice <= 0) return null;
-  const diff = competitorPrice - ourPrice;
-  const percent = Math.round((diff / ourPrice) * 100);
-  return { diff, percent };
-}
-
-function clickableStyle(active?: boolean): CSSProperties {
-  return { cursor: 'pointer', borderRadius: 4, textDecoration: active ? 'underline' : undefined, outline: 'none' };
-}
 
 function PriceComparisonTab() {
   const { token } = theme.useToken();

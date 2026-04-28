@@ -43,7 +43,6 @@ import {
   SendOutlined,
   AuditOutlined,
   CarOutlined,
-  TruckOutlined,
   CheckSquareOutlined,
   MessageOutlined,
   WalletOutlined,
@@ -60,6 +59,9 @@ import {
   EditOutlined,
   SoundOutlined,
   NodeIndexOutlined,
+  GlobalOutlined,
+  FileTextOutlined,
+  ImportOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -348,7 +350,7 @@ export default function Layout() {
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
         key: '/shipment',
-        icon: <TruckOutlined />,
+        icon: <FileTextOutlined />,
         label: <Link to="/shipment">Накладные</Link>,
       }]
       : []),
@@ -464,7 +466,7 @@ export default function Layout() {
         ...(showGroupLabels ? [{ type: 'group' as const, label: 'ВЭД' }] : []),
         {
           key: '/foreign-trade/suppliers',
-          icon: <TruckOutlined />,
+          icon: <ImportOutlined />,
           label: <Link to="/foreign-trade/suppliers">Поставщики</Link>,
         },
         {
@@ -547,7 +549,7 @@ export default function Layout() {
             },
             {
               key: '/analytics/market',
-              icon: <BarChartOutlined />,
+              icon: <GlobalOutlined />,
               label: <Link to="/analytics/market">Анализ рынка</Link>,
             },
           ]
