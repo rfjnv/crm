@@ -23,6 +23,7 @@ export type NotesBoardCreatePayload = {
   clientId: string;
   callResult: 'ANSWERED' | 'NO_ANSWER';
   status?: string;
+  phoneNumber?: string | null;
   comment: string;
   lastCallAt: string;
   nextCallAt?: string | null;

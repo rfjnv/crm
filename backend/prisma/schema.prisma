@@ -918,6 +918,8 @@ model NotesBoardRow {
   authorId    String     @map("author_id")
   callResult  CallResult @map("call_result")
   status      String?
+  /** Номер, на который звонили (необязательно) */
+  phoneNumber String?    @map("phone_number")
   comment     String     @db.Text
   editRequestCount Int   @default(0) @map("edit_request_count")
   lastEditRequestComment String? @map("last_edit_request_comment") @db.Text

@@ -10,7 +10,7 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined, DollarOutlined, ShoppingCartOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined,
-  CommentOutlined, IdcardOutlined, CrownFilled,
+  CommentOutlined, IdcardOutlined, CrownFilled, PhoneOutlined,
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
@@ -25,7 +25,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
-import { formatUZS } from '../utils/currency';
+import { notesBoardApi } from '../api/notes-board.api';
 import type {
   DealStatus,
   DealShort,
@@ -34,6 +34,7 @@ import type {
   Product,
   ClientStockPosition,
   ClientStockEvent,
+  NotesBoardRow,
 } from '../types';
 import type { CreateClientData } from '../api/clients.api';
 import {
@@ -42,6 +43,9 @@ import {
   type ClientPortraitField,
 } from '../constants/clientPortraitTemplates';
 import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
+
+dayjs.extend(isoWeek);
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -104,6 +108,25 @@ function parseCoordinatesText(raw: string): { latitude: number; longitude: numbe
 
   if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
   return { latitude, longitude };
+}
+
+const CALL_RESULT_LABELS: Record<'ANSWERED' | 'NO_ANSWER', string> = {
+  ANSWERED: 'Взял трубку',
+  NO_ANSWER: 'Не взял',
+};
+
+const NOTE_STATUS_COLORS: Record<string, string> = {
+  Успешный: 'green',
+  'Н/А': 'default',
+  'Пока думает': 'gold',
+  'Дал запрос': 'blue',
+};
+
+function noteStatusColor(name?: string | null): string {
+  const v = (name || '').trim();
+  if (!v) return 'default';
+  if (NOTE_STATUS_COLORS[v]) return NOTE_STATUS_COLORS[v];
+  return 'processing';
 }
 
 export default function ClientDetailPage() {
@@ -178,6 +201,75 @@ export default function ClientDetailPage() {
     queryKey: ['products'],
     queryFn: inventoryApi.listProducts,
   });
+
+  const canSeeNotesBoardCalls =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'ADMIN' ||
+    user?.role === 'MANAGER' ||
+    user?.role === 'HR';
+
+  const { data: clientCallBoardData, isLoading: clientCallBoardLoading } = useQuery({
+    queryKey: ['notes-board', 'client', id],
+    queryFn: () => notesBoardApi.list({ clientId: id!, pageSize: 500, page: 1 }),
+    enabled: !!id && canSeeNotesBoardCalls,
+  });
+
+  const weeklyCallRows = useMemo(() => {
+    const items = clientCallBoardData?.items ?? [];
+    const start = dayjs().startOf('isoWeek');
+    const end = dayjs().endOf('isoWeek');
+    return items.filter((r) => {
+      const t = dayjs(r.lastCallAt);
+      return !t.isBefore(start) && !t.isAfter(end);
+    });
+  }, [clientCallBoardData?.items]);
+
+  const callBoardColumns: ColumnsType<NotesBoardRow> = useMemo(
+    () => [
+      {
+        title: 'Дозвон',
+        key: 'callResult',
+        width: 120,
+        render: (_: unknown, r: NotesBoardRow) => (
+          <Tag color={r.callResult === 'ANSWERED' ? 'green' : 'orange'}>
+            {CALL_RESULT_LABELS[r.callResult]}
+          </Tag>
+        ),
+      },
+      {
+        title: 'Дата обзвона',
+        key: 'lastCallAt',
+        width: 150,
+        render: (_: unknown, r: NotesBoardRow) => dayjs(r.lastCallAt).format('DD.MM.YYYY HH:mm'),
+      },
+      {
+        title: 'Статус',
+        key: 'status',
+        width: 130,
+        render: (_: unknown, r: NotesBoardRow) =>
+          r.status ? <Tag color={noteStatusColor(r.status)}>{r.status}</Tag> : '—',
+      },
+      {
+        title: 'Номер',
+        dataIndex: 'phoneNumber',
+        width: 120,
+        render: (v: string | null) => v?.trim() || '—',
+      },
+      {
+        title: 'Комментарий',
+        dataIndex: 'comment',
+        key: 'comment',
+        ellipsis: true,
+      },
+      {
+        title: 'Кто связался',
+        key: 'author',
+        width: 160,
+        render: (_: unknown, r: NotesBoardRow) => r.author.fullName,
+      },
+    ],
+    [],
+  );
 
   const createContractMut = useMutation({
     mutationFn: (data: { clientId: string; contractNumber: string; startDate: string; endDate?: string; notes?: string }) =>
@@ -762,6 +854,29 @@ export default function ClientDetailPage() {
                     }]} />
                   )}
                 </Card>
+                {canSeeNotesBoardCalls ? (
+                  <Card bordered={false} title="Обзвоны за текущую неделю" loading={clientCallBoardLoading}>
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                      Данные из «Заметки обзвонов»: дозвон, дата обзвона, статус, номер (если указан), комментарий и автор.
+                      Отображаются только записи с датой обзвона в текущей календарной неделе (понедельник–воскресенье). При наступлении новой недели блок пересчитывается; если звонков не было — показывается текст ниже.
+                    </Typography.Paragraph>
+                    {weeklyCallRows.length === 0 ? (
+                      <Typography.Text type="secondary">
+                        За эту неделю никто не связался с клиентом по данным заметок обзвонов.
+                      </Typography.Text>
+                    ) : (
+                      <Table<NotesBoardRow>
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                        dataSource={weeklyCallRows}
+                        columns={callBoardColumns}
+                        locale={{ emptyText: 'Нет записей' }}
+                        scroll={{ x: 900 }}
+                      />
+                    )}
+                  </Card>
+                ) : null}
                 {(client.latitude != null && client.longitude != null) || client.address?.trim() ? (
                   <Card title="Местоположение" bordered={false}>
                     <iframe
@@ -1153,6 +1268,40 @@ export default function ClientDetailPage() {
               </Card>
             ),
           },
+          ...(canSeeNotesBoardCalls
+            ? [
+                {
+                  key: 'call-history',
+                  label: (
+                    <span>
+                      <PhoneOutlined /> История обзвона
+                    </span>
+                  ),
+                  children: (
+                    <Card bordered={false} loading={clientCallBoardLoading}>
+                      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                        Все записи из «Заметки обзвонов» по этому клиенту. Данные не очищаются.
+                        {(clientCallBoardData?.meta?.total ?? 0) > 500 ? (
+                          <>
+                            {' '}
+                            Показано до 500 последних записей.
+                          </>
+                        ) : null}
+                      </Typography.Paragraph>
+                      <Table<NotesBoardRow>
+                        rowKey="id"
+                        size="small"
+                        dataSource={clientCallBoardData?.items ?? []}
+                        columns={callBoardColumns}
+                        pagination={{ pageSize: 20 }}
+                        locale={{ emptyText: 'Нет записей обзвонов' }}
+                        scroll={{ x: 900 }}
+                      />
+                    </Card>
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'notes',
             label: (

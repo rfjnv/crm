@@ -909,6 +909,8 @@ export interface NotesBoardRow {
   clientId: string;
   callResult: 'ANSWERED' | 'NO_ANSWER';
   status: string | null;
+  /** Номер для обзвона, необязательно */
+  phoneNumber: string | null;
   comment: string;
   editRequestCount: number;
   lastEditRequestComment: string | null;

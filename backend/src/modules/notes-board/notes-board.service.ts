@@ -15,6 +15,7 @@ type NotesBoardRowDto = {
   clientId: string;
   callResult: 'ANSWERED' | 'NO_ANSWER';
   status: string | null;
+  phoneNumber: string | null;
   comment: string;
   lastCallAt: string;
   nextCallAt: string | null;
@@ -45,6 +46,7 @@ function mapRow(row: {
   clientId: string;
   callResult: 'ANSWERED' | 'NO_ANSWER';
   status: string | null;
+  phoneNumber: string | null;
   comment: string;
   lastCallAt: Date;
   nextCallAt: Date | null;
@@ -62,6 +64,7 @@ function mapRow(row: {
     clientId: row.clientId,
     callResult: row.callResult,
     status: row.status,
+    phoneNumber: row.phoneNumber,
     comment: row.comment,
     lastCallAt: row.lastCallAt.toISOString(),
     nextCallAt: row.nextCallAt ? row.nextCallAt.toISOString() : null,
@@ -76,10 +79,10 @@ function mapRow(row: {
   };
 }
 
-function buildClientNoteText(input: {
-  comment: string;
-}) {
-  return `Перенесено из "Заметок".\nКомментарий: ${input.comment}`;
+function buildClientNoteText(input: { comment: string; phoneNumber?: string | null }) {
+  const phone = input.phoneNumber?.trim();
+  const phoneLine = phone ? `\nНомер: ${phone}` : '';
+  return `Перенесено из "Заметок".${phoneLine}\nКомментарий: ${input.comment}`;
 }
 
 export class NotesBoardService {
@@ -100,6 +103,7 @@ export class NotesBoardService {
             OR: variants.flatMap((v) => [
               { comment: { contains: v, mode: 'insensitive' as const } },
               { status: { contains: v, mode: 'insensitive' as const } },
+              { phoneNumber: { contains: v, mode: 'insensitive' as const } },
               { client: { companyName: { contains: v, mode: 'insensitive' as const } } },
               { client: { contactName: { contains: v, mode: 'insensitive' as const } } },
             ]),
@@ -140,6 +144,7 @@ export class NotesBoardService {
         authorId: user.userId,
         callResult: dto.callResult,
         status: dto.status?.trim() || null,
+        phoneNumber: dto.phoneNumber?.trim() || null,
         comment: dto.comment.trim(),
         lastCallAt: new Date(dto.lastCallAt),
         nextCallAt: dto.nextCallAt ? new Date(dto.nextCallAt) : null,
@@ -156,6 +161,7 @@ export class NotesBoardService {
         userId: user.userId,
         content: buildClientNoteText({
           comment: row.comment,
+          phoneNumber: row.phoneNumber,
         }),
       },
     });
@@ -181,6 +187,9 @@ export class NotesBoardService {
       data: {
         ...(dto.callResult ? { callResult: dto.callResult } : {}),
         ...(dto.status !== undefined ? { status: dto.status?.trim() || null } : {}),
+        ...(dto.phoneNumber !== undefined
+          ? { phoneNumber: dto.phoneNumber?.trim() || null }
+          : {}),
         ...(dto.comment !== undefined ? { comment: dto.comment.trim() } : {}),
         ...(dto.lastCallAt ? { lastCallAt: new Date(dto.lastCallAt) } : {}),
         ...(dto.nextCallAt !== undefined
@@ -199,6 +208,7 @@ export class NotesBoardService {
         userId: user.userId,
         content: buildClientNoteText({
           comment: updated.comment,
+          phoneNumber: updated.phoneNumber,
         }),
       },
     });

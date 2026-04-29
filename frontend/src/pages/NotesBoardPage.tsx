@@ -495,7 +495,7 @@ export default function NotesBoardPage() {
           <Input
             allowClear
             prefix={<SearchOutlined style={{ color: tk.colorTextTertiary }} />}
-            placeholder="Поиск (RU/EN): клиент, коммент, статус..."
+            placeholder="Поиск (RU/EN): клиент, коммент, статус, номер..."
             style={{ width: 340 }}
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
@@ -601,6 +601,13 @@ export default function NotesBoardPage() {
             render: (v: string | null) => (v ? <Tag color={statusColor(v)}>{v}</Tag> : '—'),
           },
           {
+            title: 'Номер',
+            dataIndex: 'phoneNumber',
+            key: 'phoneNumber',
+            width: 130,
+            render: (v: string | null) => v?.trim() || '—',
+          },
+          {
             title: 'Коммент',
             dataIndex: 'comment',
             key: 'comment',
@@ -641,6 +648,7 @@ export default function NotesBoardPage() {
                         clientId: r.clientId,
                         callResult: r.callResult,
                         status: r.status || undefined,
+                        phoneNumber: r.phoneNumber || undefined,
                         comment: r.comment,
                         lastCallAt: dayjs(r.lastCallAt),
                         nextCallAt: r.nextCallAt ? dayjs(r.nextCallAt) : null,
@@ -693,6 +701,7 @@ export default function NotesBoardPage() {
               clientId: v.clientId,
               callResult: v.callResult as CallResult,
               status: normalizeStatusField(v.status),
+              phoneNumber: (v.phoneNumber as string | undefined)?.trim() || null,
               comment: (v.comment || '').trim(),
               lastCallAt: v.lastCallAt.toISOString(),
               nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -743,6 +752,9 @@ export default function NotesBoardPage() {
           <Form.Item name="comment" label="Коммент" rules={[{ required: true, message: 'Введите комментарий' }]}>
             <Input.TextArea rows={4} />
           </Form.Item>
+          <Form.Item name="phoneNumber" label="Номер телефона">
+            <Input placeholder="Необязательно" maxLength={40} allowClear />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -767,6 +779,7 @@ export default function NotesBoardPage() {
               data: {
                 callResult: v.callResult as CallResult,
                 status: st ?? null,
+                phoneNumber: (v.phoneNumber as string | undefined)?.trim() || null,
                 comment: (v.comment || '').trim(),
                 lastCallAt: v.lastCallAt?.toISOString(),
                 nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -798,6 +811,9 @@ export default function NotesBoardPage() {
           </Form.Item>
           <Form.Item name="comment" label="Комментарий" rules={[{ required: true }]}>
             <Input.TextArea rows={4} />
+          </Form.Item>
+          <Form.Item name="phoneNumber" label="Номер телефона">
+            <Input placeholder="Необязательно" maxLength={40} allowClear />
           </Form.Item>
         </Form>
       </Modal>
