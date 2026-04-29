@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { aiAssistantApi, type CallAuditSummary, type CallAuditDetail } from '../api/ai-assistant.api';
+import { aiAssistantApi, type CallAuditSummary } from '../api/ai-assistant.api';
 
 const { Title, Text } = Typography;
 
