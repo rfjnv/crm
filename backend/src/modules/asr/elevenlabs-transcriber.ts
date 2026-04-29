@@ -21,15 +21,29 @@ interface ElevenLabsSTTResponse {
 }
 
 // ── Language code mapping ─────────────────────────────────────────────────────
-// ElevenLabs uses ISO 639-1 codes; 'auto' = omit the param (auto-detect)
+// ElevenLabs uses ISO 639-1 codes.
+// IMPORTANT: Do NOT use auto-detect for Uzbek/mixed content —
+// ElevenLabs misidentifies Uzbek speech as Bashkir (ҡ, ғ, ү characters).
+// Explicitly pass 'uz' for mixed/auto so ElevenLabs uses the correct model.
 
-function resolveElevenLabsLang(languageMode: string): string | null {
+function resolveElevenLabsLang(languageMode: string): string {
   switch (languageMode) {
-    case 'ru': return 'ru';
-    case 'uz': return 'uz';
-    default:   return null; // auto-detect
+    case 'ru':    return 'ru';
+    case 'uz':    return 'uz';
+    case 'mixed': return 'uz'; // Uzbek+Russian — force uz, Russian parts still come through
+    default:      return 'uz'; // safer default than auto-detect for this business
   }
 }
+
+// Characters specific to Bashkir/Tatar that should NOT appear in uz/ru output
+const WRONG_LANG_CHARS = /[ҡҒүҖҫҡҘҙ]/;
+
+export function isWrongLanguageOutput(text: string): boolean {
+  return WRONG_LANG_CHARS.test(text);
+}
+
+// Languages we accept from ElevenLabs (uz, ru, kk=Kazakh is OK too)
+const ACCEPTED_LANG_CODES = new Set(['ru', 'uz', 'kk', 'en', '']);
 
 // ── Build dialogue text from word-level diarization ──────────────────────────
 // ElevenLabs returns speaker_id per word; we group consecutive same-speaker
@@ -127,6 +141,20 @@ export async function transcribeWithElevenLabs(
   const data = (await response.json()) as ElevenLabsSTTResponse;
 
   const rawText = (data.text ?? '').trim();
+  const detectedLang = (data.language_code ?? '').toLowerCase();
+
+  // Guard: if ElevenLabs returned a wrong Turkic language (Bashkir, Tatar, etc.)
+  // or the text contains Bashkir-specific characters → signal caller to fall back
+  if (
+    (!ACCEPTED_LANG_CODES.has(detectedLang) && detectedLang !== '') ||
+    isWrongLanguageOutput(rawText)
+  ) {
+    throw new Error(
+      `ElevenLabs detected wrong language "${detectedLang}" (Bashkir/Tatar misidentification). ` +
+      'Falling back to OpenAI Whisper.',
+    );
+  }
+
   const hasDiarization = data.words?.some((w) => w.speaker_id) ?? false;
   const dialogueText = hasDiarization
     ? buildDialogueFromWords(data.words ?? [])
