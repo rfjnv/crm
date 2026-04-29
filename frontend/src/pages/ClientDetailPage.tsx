@@ -25,6 +25,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { formatUZS } from '../utils/currency';
 import { notesBoardApi } from '../api/notes-board.api';
 import type {
   DealStatus,
