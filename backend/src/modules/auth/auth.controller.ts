@@ -5,10 +5,11 @@ import { authService } from './auth.service';
 
 const REFRESH_COOKIE = 'crm_rt';
 
+/** Strict blocks refresh cookie on cross-origin XHR (отдельный домен фронта и API) — после ~15m access JWT сессия рвётся. В prod: None + Secure. */
 const cookieOpts = {
   httpOnly: true,
   secure: config.isProduction,
-  sameSite: 'strict' as const,
+  sameSite: (config.isProduction ? 'none' : 'lax') as const,
   maxAge: config.jwt.refreshExpiresInMs,
   path: '/',
 };
@@ -47,7 +48,11 @@ export class AuthController {
   async logout(req: Request, res: Response): Promise<void> {
     const refreshToken = resolveRefreshToken(req);
     await authService.logout(refreshToken);
-    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    res.clearCookie(REFRESH_COOKIE, {
+      path: '/',
+      sameSite: cookieOpts.sameSite,
+      secure: cookieOpts.secure,
+    });
     res.json({ message: 'Выход выполнен' });
   }
 
