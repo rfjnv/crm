@@ -68,6 +68,10 @@ export const config = {
     apiKey: trimEnv(process.env.OPENAI_API_KEY),
   },
 
+  elevenlabs: {
+    apiKey: trimEnv(process.env.ELEVENLABS_API_KEY),
+  },
+
   telegram: {
     botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
     clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),
