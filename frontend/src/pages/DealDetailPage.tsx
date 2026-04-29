@@ -21,6 +21,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
 import SuperOverridePanel from '../components/SuperOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
+import BackButton from '../components/BackButton';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
@@ -455,7 +456,16 @@ export default function DealDetailPage() {
   });
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  if (!dealData) return <Typography.Text>Сделка не найдена</Typography.Text>;
+  if (!dealData) {
+    return (
+      <div>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <BackButton fallback="/deals" />
+          <Typography.Text>Сделка не найдена</Typography.Text>
+        </Space>
+      </div>
+    );
+  }
   const deal = dealData;
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -848,7 +858,10 @@ export default function DealDetailPage() {
 
   return (
     <div>
-      <Typography.Title level={4}>{deal.title}</Typography.Title>
+      <Space align="center" wrap style={{ marginBottom: 16 }}>
+        <BackButton fallback="/deals" />
+        <Typography.Title level={4} style={{ margin: 0 }}>{deal.title}</Typography.Title>
+      </Space>
 
       <Card bordered={false} style={{ marginBottom: 16 }}>
         <DealPipeline status={deal.status} />

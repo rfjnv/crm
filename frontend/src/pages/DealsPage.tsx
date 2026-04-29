@@ -8,6 +8,7 @@ import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
+import BackButton from '../components/BackButton';
 import MobileCardList from '../components/MobileCardList';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
@@ -177,6 +178,7 @@ export default function DealsPage() {
     <div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Space wrap>
+          <BackButton fallback="/dashboard" />
           <Typography.Title level={4} style={{ margin: 0 }}>{entityLabel}</Typography.Title>
           {viewMode === 'table' && (
             <Select
