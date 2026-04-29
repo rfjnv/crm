@@ -254,11 +254,71 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+const POST_PROCESS_SYSTEM = `Ты — корректор транскрипта полиграфической компании.
+Задача: исправить ошибки распознавания речи, НЕ меняя смысл и слова.
+
+ПРАВИЛА:
+- Исправляй только явные ошибки ASR: неверные слова, слипшиеся слова, пропущенные пробелы
+- Восстанавливай правильные названия товаров и брендов из этого списка:
+  Polygraph Business, HI-KOTE, NINGBO FOLD, FASSON, LIANG DU, BRANCHER, POWER-BRANCHER,
+  FOCUS-BRANCHER, LANER, TEKNOVA, TETANAL, ELEPHANT, NOVAFIX, ALFA PLUS,
+  самоклейка, ламинация, мелованная бумага, офсетная резина, пластины CTP,
+  пантонные краски, биговальный канал, марзан, термоклей
+- Правь числа и суммы в сумах если они явно искажены
+- Сохраняй язык оригинала (русский/узбекский/смешанный)
+- НЕ добавляй слова, НЕ сокращай, НЕ перефразируй
+- Верни ТОЛЬКО исправленный текст, без пояснений`;
+
+async function postProcessTranscript(rawText: string, openai: OpenAI): Promise<string> {
+  if (!rawText || rawText.length < 30) return rawText;
+
+  // Skip post-processing for very long transcripts to avoid high cost — do it in 4k chunks
+  const MAX_CHUNK = 4000;
+  if (rawText.length <= MAX_CHUNK) {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      messages: [
+        { role: 'system', content: POST_PROCESS_SYSTEM },
+        { role: 'user', content: rawText },
+      ],
+    });
+    return res.choices[0]?.message?.content?.trim() || rawText;
+  }
+
+  // Split into chunks on sentence/paragraph boundaries
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < rawText.length) {
+    let end = Math.min(start + MAX_CHUNK, rawText.length);
+    if (end < rawText.length) {
+      const split = rawText.lastIndexOf('. ', end);
+      if (split > start + 500) end = split + 2;
+    }
+    chunks.push(rawText.slice(start, end).trim());
+    start = end;
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const res = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        messages: [
+          { role: 'system', content: POST_PROCESS_SYSTEM },
+          { role: 'user', content: chunk },
+        ],
+      });
+      return res.choices[0]?.message?.content?.trim() || chunk;
+    }),
+  );
+
+  return results.join(' ');
+}
+
 async function splitTranscriptBySides(rawTranscript: string): Promise<string> {
   const cleaned = rawTranscript.trim();
   if (!cleaned) return '';
-  // Keep one-click flow responsive on long calls.
-  if (cleaned.length > 3500) return cleaned;
 
   const openai = getOpenAIClient();
   const res = await openai.chat.completions.create({
@@ -308,16 +368,20 @@ export async function transcribeAudioFile(
       throw new AppError(500, 'OPENAI_API_KEY не настроен. Обратитесь к администратору.');
     }
 
+    const openai = getOpenAIClient();
     const languageMode: LanguageMode = opts.languageMode ?? 'auto';
     const transcriber = new PolygraphTranscriber({ apiKey });
     const asr = await transcriber.transcribeWithQualityGate(file.path, { languageMode }, 5.0);
 
     const rawText = (asr.text || '').trim();
-    const dialogueText = rawText ? await splitTranscriptBySides(rawText) : '';
+
+    // Post-process: fix ASR errors and domain terms, then split into dialogue
+    const cleanedText = rawText ? await postProcessTranscript(rawText, openai) : '';
+    const dialogueText = cleanedText ? await splitTranscriptBySides(cleanedText) : '';
 
     return {
       ...asr,
-      text: dialogueText || rawText,
+      text: dialogueText || cleanedText || rawText,
       rawText,
       dialogueText,
       auditRecommended: Boolean(asr.auditRecommended),
@@ -328,16 +392,24 @@ export async function transcribeAudioFile(
   }
 }
 
-const SALES_AUDIT_SYSTEM_PROMPT = `Ты — строгий и объективный AI-аудитор отдела продаж.
+const SALES_AUDIT_LANG_INSTRUCTIONS: Record<string, string> = {
+  ru: '- Весь ответ пиши на русском языке',
+  uz: '- Весь ответ пиши на узбекском языке (латиница)',
+  mixed: '- 80% ответа пиши на узбекском (латиница), 20% на русском',
+};
+
+function buildSalesAuditSystemPrompt(auditLanguage: string = 'mixed'): string {
+  const langInstruction = SALES_AUDIT_LANG_INSTRUCTIONS[auditLanguage] ?? SALES_AUDIT_LANG_INSTRUCTIONS['mixed'];
+  return `Ты — строгий и объективный AI-аудитор отдела продаж.
 Твоя задача — глубоко анализировать разговор между менеджером и клиентом.
 
 ВАЖНО:
-- 80% ответа пиши на узбекском (латиница)
-- 20% на русском
+${langInstruction}
 - Будь строгим, не пытайся "похвалить" без причины
 - Оценивай как реальный руководитель продаж
 - НИЧЕГО не выдумывай: каждый вывод должен опираться на цитату из расшифровки
 - Если данных недостаточно, прямо пиши: "Dalil yetarli emas / Недостаточно данных"`;
+}
 
 const SALES_AUDIT_OUTPUT_FORMAT = `Пиши строго в формате:
 
@@ -360,7 +432,38 @@ const SALES_AUDIT_OUTPUT_FORMAT = `Пиши строго в формате:
 9. Xulosa:
 ...`;
 
-export async function analyzeSalesCallTranscript(transcript: string): Promise<{ analysis: string }> {
+function extractScoreFromAnalysis(analysis: string): { score: number | null; saleProbability: number | null } {
+  let score: number | null = null;
+  let saleProbability: number | null = null;
+
+  // Match "Baho: 7/10" or "Оценка: 7/10" or "Baho: 7" patterns
+  const scoreMatch = analysis.match(/(?:baho|оценка)[:\s]*(\d+(?:\.\d+)?)\s*(?:\/\s*10)?/i);
+  if (scoreMatch) {
+    const val = parseFloat(scoreMatch[1]);
+    if (val >= 1 && val <= 10) score = val;
+  }
+
+  // Match "Sotuv ehtimoli: 70%" or "Вероятность продажи: 70%"
+  const probMatch = analysis.match(/(?:sotuv ehtimoli|вероятность продажи)[:\s]*(\d+)\s*%/i);
+  if (probMatch) {
+    const val = parseInt(probMatch[1], 10);
+    if (val >= 0 && val <= 100) saleProbability = val;
+  }
+
+  return { score, saleProbability };
+}
+
+export async function analyzeSalesCallTranscript(
+  transcript: string,
+  auditLanguage: string = 'mixed',
+  opts: {
+    userId?: string;
+    managerName?: string;
+    audioDuration?: number;
+    qualityScore?: number;
+    source?: string;
+  } = {},
+): Promise<{ analysis: string; auditId?: string }> {
   if (!transcript || transcript.trim().length < 20) {
     throw new AppError(400, 'Недостаточно текста для анализа');
   }
@@ -368,7 +471,8 @@ export async function analyzeSalesCallTranscript(transcript: string): Promise<{ 
   try {
     const openai = getOpenAIClient();
     const customRules = await getActiveTrainingRules();
-    const auditSystemPrompt = `${SALES_AUDIT_SYSTEM_PROMPT}\n\n${customRules}`.trim();
+    const basePrompt = buildSalesAuditSystemPrompt(auditLanguage);
+    const auditSystemPrompt = `${basePrompt}\n\n${customRules}`.trim();
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.1,
@@ -453,7 +557,28 @@ ${SALES_AUDIT_OUTPUT_FORMAT}`,
       throw new AppError(500, 'AI не вернул результат анализа');
     }
 
-    return { analysis };
+    let auditId: string | undefined;
+    if (opts.userId) {
+      const { score, saleProbability } = extractScoreFromAnalysis(analysis);
+      const saved = await prisma.callAudit.create({
+        data: {
+          createdBy: opts.userId,
+          managerName: opts.managerName ?? null,
+          transcript,
+          analysis,
+          score,
+          saleProbability,
+          audioDuration: opts.audioDuration ?? null,
+          qualityScore: opts.qualityScore ?? null,
+          auditLanguage,
+          source: opts.source ?? 'audio',
+        },
+        select: { id: true },
+      });
+      auditId = saved.id;
+    }
+
+    return { analysis, auditId };
   } catch (error) {
     throw new AppError(500, 'Не удалось выполнить анализ звонка');
   }
@@ -574,6 +699,92 @@ async function getActiveTrainingRules(): Promise<string> {
   if (rules.length === 0) return '';
   return '\n\nCUSTOM BUSINESS RULES (set by admin):\n' +
     rules.map((r, i) => `${i + 1}. [${r.title}]: ${r.content}`).join('\n');
+}
+
+// ==================== CALL AUDITS CRUD ====================
+
+export async function listCallAudits(userId: string, isAdmin: boolean, limit = 50) {
+  return prisma.callAudit.findMany({
+    where: isAdmin ? undefined : { createdBy: userId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      managerName: true,
+      score: true,
+      saleProbability: true,
+      audioDuration: true,
+      qualityScore: true,
+      auditLanguage: true,
+      source: true,
+      createdAt: true,
+      author: { select: { id: true, fullName: true } },
+    },
+  });
+}
+
+export async function getCallAudit(auditId: string, userId: string, isAdmin: boolean) {
+  const audit = await prisma.callAudit.findUnique({ where: { id: auditId } });
+  if (!audit) throw new AppError(404, 'Аудит не найден');
+  if (!isAdmin && audit.createdBy !== userId) throw new AppError(403, 'Нет доступа');
+  return audit;
+}
+
+export async function deleteCallAudit(auditId: string, userId: string, isAdmin: boolean) {
+  const audit = await prisma.callAudit.findUnique({ where: { id: auditId } });
+  if (!audit) throw new AppError(404, 'Аудит не найден');
+  if (!isAdmin && audit.createdBy !== userId) throw new AppError(403, 'Нет доступа');
+  await prisma.callAudit.delete({ where: { id: auditId } });
+}
+
+export async function getCallAuditStats(isAdmin: boolean, userId: string) {
+  const where = isAdmin ? {} : { createdBy: userId };
+  const audits = await prisma.callAudit.findMany({
+    where,
+    select: {
+      score: true,
+      saleProbability: true,
+      createdAt: true,
+      author: { select: { id: true, fullName: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Group by manager
+  const byManager: Record<string, { name: string; scores: number[]; probs: number[]; count: number }> = {};
+  for (const a of audits) {
+    const key = a.author.id;
+    if (!byManager[key]) byManager[key] = { name: a.author.fullName, scores: [], probs: [], count: 0 };
+    byManager[key].count += 1;
+    if (a.score !== null) byManager[key].scores.push(a.score);
+    if (a.saleProbability !== null) byManager[key].probs.push(a.saleProbability);
+  }
+
+  const managers = Object.entries(byManager).map(([id, m]) => ({
+    id,
+    name: m.name,
+    count: m.count,
+    avgScore: m.scores.length ? Math.round((m.scores.reduce((a, b) => a + b, 0) / m.scores.length) * 10) / 10 : null,
+    avgSaleProbability: m.probs.length ? Math.round(m.probs.reduce((a, b) => a + b, 0) / m.probs.length) : null,
+  })).sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0));
+
+  // Weekly trend (last 8 weeks)
+  const weeklyMap: Record<string, { week: string; count: number; totalScore: number; scoreCount: number }> = {};
+  for (const a of audits) {
+    const d = new Date(a.createdAt);
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay() + 1);
+    const key = weekStart.toISOString().slice(0, 10);
+    if (!weeklyMap[key]) weeklyMap[key] = { week: key, count: 0, totalScore: 0, scoreCount: 0 };
+    weeklyMap[key].count += 1;
+    if (a.score !== null) { weeklyMap[key].totalScore += a.score; weeklyMap[key].scoreCount += 1; }
+  }
+  const weekly = Object.values(weeklyMap)
+    .sort((a, b) => a.week.localeCompare(b.week))
+    .slice(-8)
+    .map((w) => ({ week: w.week, count: w.count, avgScore: w.scoreCount ? Math.round((w.totalScore / w.scoreCount) * 10) / 10 : null }));
+
+  return { total: audits.length, managers, weekly };
 }
 
 // ==================== CHAT CRUD ====================

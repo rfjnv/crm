@@ -601,6 +601,11 @@ export default function Layout() {
           icon: <SoundOutlined />,
           label: <Link to="/ai-assistant/transcribe">Аудио в текст</Link>,
         },
+        {
+          key: '/ai-assistant/call-audits',
+          icon: <PhoneOutlined />,
+          label: <Link to="/ai-assistant/call-audits">История аудитов</Link>,
+        },
       ]
       : []),
     // ── Уведомления (все роли) ──

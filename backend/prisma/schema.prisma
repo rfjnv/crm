@@ -227,6 +227,7 @@ model User {
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
+  callAudits          CallAudit[]      @relation("CallAuditAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
   medalsGranted       UserMedalHistory[] @relation("MedalHistoryGrantedBy")
   medalsRemoved       UserMedalHistory[] @relation("MedalHistoryRemovedBy")
@@ -1087,6 +1088,27 @@ model AiTrainingRule {
   author User @relation("AiTrainingRuleAuthor", fields: [createdBy], references: [id])
 
   @@map("ai_training_rules")
+}
+
+model CallAudit {
+  id              String   @id @default(uuid())
+  createdBy       String   @map("created_by")
+  managerName     String?  @map("manager_name")
+  transcript      String
+  analysis        String
+  score           Float?
+  saleProbability Int?     @map("sale_probability")
+  audioDuration   Float?   @map("audio_duration")
+  qualityScore    Float?   @map("quality_score")
+  auditLanguage   String   @default("mixed") @map("audit_language")
+  source          String   @default("audio")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  author User @relation("CallAuditAuthor", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([createdBy])
+  @@index([createdAt(sort: Desc)])
+  @@map("call_audits")
 }
 
 // ==================== FOREIGN TRADE (ВЭД) ====================
