@@ -749,11 +749,11 @@ export default function NotesBoardPage() {
               options={BASE_STATUSES.map((s) => ({ value: s, label: s }))}
             />
           </Form.Item>
-          <Form.Item name="comment" label="Коммент" rules={[{ required: true, message: 'Введите комментарий' }]}>
-            <Input.TextArea rows={4} />
-          </Form.Item>
           <Form.Item name="phoneNumber" label="Номер телефона">
             <Input placeholder="Необязательно" maxLength={40} allowClear />
+          </Form.Item>
+          <Form.Item name="comment" label="Коммент" rules={[{ required: true, message: 'Введите комментарий' }]}>
+            <Input.TextArea rows={4} />
           </Form.Item>
         </Form>
       </Modal>
@@ -809,11 +809,11 @@ export default function NotesBoardPage() {
               options={BASE_STATUSES.map((s) => ({ value: s, label: s }))}
             />
           </Form.Item>
-          <Form.Item name="comment" label="Комментарий" rules={[{ required: true }]}>
-            <Input.TextArea rows={4} />
-          </Form.Item>
           <Form.Item name="phoneNumber" label="Номер телефона">
             <Input placeholder="Необязательно" maxLength={40} allowClear />
+          </Form.Item>
+          <Form.Item name="comment" label="Комментарий" rules={[{ required: true }]}>
+            <Input.TextArea rows={4} />
           </Form.Item>
         </Form>
       </Modal>

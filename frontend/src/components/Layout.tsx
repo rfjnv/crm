@@ -264,6 +264,10 @@ export default function Layout() {
       message.success('Заметка сохранена');
       setQuickNoteOpen(false);
       quickNoteForm.resetFields();
+      void queryClient.invalidateQueries({ queryKey: ['notes-board'] });
+      void queryClient.invalidateQueries({ queryKey: ['notes-board-stats'] });
+      void queryClient.invalidateQueries({ queryKey: ['client-notes'] });
+      void queryClient.invalidateQueries({ queryKey: ['clients'] });
     },
     onError: () => message.error('Не удалось сохранить заметку'),
   });
@@ -873,6 +877,7 @@ export default function Layout() {
                   clientId: v.clientId,
                   callResult: v.callResult,
                   status: normalizeNoteStatusField(v.status),
+                  phoneNumber: (v.phoneNumber as string | undefined)?.trim() || null,
                   comment: (v.comment || '').trim(),
                   lastCallAt: v.lastCallAt.toISOString(),
                   nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
@@ -909,6 +914,9 @@ export default function Layout() {
                   placeholder="Выберите базовый или введите свой"
                   options={BASE_NOTE_STATUSES.map((s) => ({ value: s, label: s }))}
                 />
+              </Form.Item>
+              <Form.Item name="phoneNumber" label="Номер телефона">
+                <Input placeholder="Необязательно" maxLength={40} allowClear />
               </Form.Item>
               <Form.Item name="comment" label="Комментарий" rules={[{ required: true, message: 'Введите комментарий' }]}>
                 <Input.TextArea rows={4} placeholder="Введите заметку..." />
