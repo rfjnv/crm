@@ -6,10 +6,11 @@ import { authService } from './auth.service';
 const REFRESH_COOKIE = 'crm_rt';
 
 /** Strict blocks refresh cookie on cross-origin XHR (отдельный домен фронта и API) — после ~15m access JWT сессия рвётся. В prod: None + Secure. */
+const sameSite: 'lax' | 'none' = config.isProduction ? 'none' : 'lax';
 const cookieOpts = {
   httpOnly: true,
   secure: config.isProduction,
-  sameSite: (config.isProduction ? 'none' : 'lax') as const,
+  sameSite,
   maxAge: config.jwt.refreshExpiresInMs,
   path: '/',
 };
