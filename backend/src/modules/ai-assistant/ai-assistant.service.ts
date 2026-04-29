@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AiAssistantResponse } from './ai-assistant.dto';
 import { PolygraphTranscriber, type LanguageMode, type TranscriptionResult } from '../asr/polygraph-transcriber';
+import { transcribeWithElevenLabs } from '../asr/elevenlabs-transcriber';
 
 const FORBIDDEN_KEYWORDS = [
   'DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'TRUNCATE',
@@ -362,20 +363,77 @@ export async function transcribeAudioFile(
     throw new AppError(400, 'Аудио файл не передан');
   }
 
+  const languageMode: LanguageMode = opts.languageMode ?? 'auto';
+  const elevenLabsKey = config.elevenlabs.apiKey;
+
+  // ── PATH A: ElevenLabs (primary — higher accuracy + built-in diarization) ──
+  if (elevenLabsKey) {
+    try {
+      const openai = getOpenAIClient();
+      const result = await transcribeWithElevenLabs(file.path, elevenLabsKey, { languageMode });
+
+      const rawText = result.rawText;
+      // ElevenLabs already did diarization — skip the GPT splitTranscriptBySides call.
+      // Only run post-processing to fix domain terms.
+      const cleanedText = rawText ? await postProcessTranscript(rawText, openai) : '';
+      const dialogueText = result.hasDiarization
+        ? result.dialogueText   // already formatted with Menedjer/Mijoz labels
+        : cleanedText ? await splitTranscriptBySides(cleanedText) : '';
+
+      // Build a compatible AudioQuality object
+      const audioQuality = {
+        sampleRate: 0,
+        channels: 0,
+        durationSec: 0,
+        isLowQuality: false,
+        warnings: [] as string[],
+      };
+
+      const qualityScore = rawText.length > 50 ? 9.0 : 5.0;
+
+      return {
+        text: dialogueText || cleanedText || rawText,
+        rawText,
+        dialogueText,
+        languageMode,
+        audioQuality,
+        qualityScore,
+        needsHumanReview: false,
+        auditRecommended: rawText.length > 20,
+        auditSkipReason: rawText.length <= 20 ? 'Транскрипт слишком короткий' : undefined,
+        model: 'elevenlabs/scribe_v1',
+        segments: result.words
+          .filter((w) => w.type === 'word')
+          .map((w, i) => ({
+            id: i,
+            start: w.start,
+            end: w.end,
+            speaker: w.speaker_id ?? 'unknown',
+            speakerRole: null,
+            text: w.text,
+            language: result.languageCode || null,
+            confidence: result.languageProbability ?? null,
+          })),
+      };
+    } catch (err) {
+      // ElevenLabs failed — fall through to OpenAI
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[ASR] ElevenLabs failed, falling back to OpenAI:', msg);
+    }
+  }
+
+  // ── PATH B: OpenAI Whisper (fallback) ────────────────────────────────────
   try {
     const apiKey = config.openai.apiKey;
     if (!apiKey) {
-      throw new AppError(500, 'OPENAI_API_KEY не настроен. Обратитесь к администратору.');
+      throw new AppError(500, 'Ни ELEVENLABS_API_KEY, ни OPENAI_API_KEY не настроены.');
     }
 
     const openai = getOpenAIClient();
-    const languageMode: LanguageMode = opts.languageMode ?? 'auto';
     const transcriber = new PolygraphTranscriber({ apiKey });
     const asr = await transcriber.transcribeWithQualityGate(file.path, { languageMode }, 5.0);
 
     const rawText = (asr.text || '').trim();
-
-    // Post-process: fix ASR errors and domain terms, then split into dialogue
     const cleanedText = rawText ? await postProcessTranscript(rawText, openai) : '';
     const dialogueText = cleanedText ? await splitTranscriptBySides(cleanedText) : '';
 
@@ -388,6 +446,7 @@ export async function transcribeAudioFile(
       auditSkipReason: asr.auditSkipReason,
     };
   } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(500, 'Не удалось распознать аудио. Попробуйте другой файл.');
   }
 }
