@@ -21,6 +21,10 @@ import {
   deleteTrainingRule,
   transcribeAudioFile,
   analyzeSalesCallTranscript,
+  listCallAudits,
+  getCallAudit,
+  deleteCallAudit,
+  getCallAuditStats,
 } from './ai-assistant.service';
 
 const router = Router();
@@ -102,9 +106,57 @@ router.post(
 router.post(
   '/analyze-call',
   asyncHandler(async (req: Request, res: Response) => {
-    const { transcript } = analyzeCallDto.parse(req.body);
-    const result = await analyzeSalesCallTranscript(transcript);
+    const { transcript, auditLanguage } = analyzeCallDto.parse(req.body);
+    const managerName = typeof req.body?.managerName === 'string' ? req.body.managerName : undefined;
+    const audioDuration = typeof req.body?.audioDuration === 'number' ? req.body.audioDuration : undefined;
+    const qualityScore = typeof req.body?.qualityScore === 'number' ? req.body.qualityScore : undefined;
+    const source = typeof req.body?.source === 'string' ? req.body.source : 'audio';
+    const result = await analyzeSalesCallTranscript(transcript, auditLanguage, {
+      userId: req.user!.userId,
+      managerName,
+      audioDuration,
+      qualityScore,
+      source,
+    });
     res.json(result);
+  }),
+);
+
+// ==================== Call Audits History ====================
+
+router.get(
+  '/call-audits',
+  asyncHandler(async (req: Request, res: Response) => {
+    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const audits = await listCallAudits(req.user!.userId, isAdmin);
+    res.json(audits);
+  }),
+);
+
+router.get(
+  '/call-audits/stats',
+  asyncHandler(async (req: Request, res: Response) => {
+    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const stats = await getCallAuditStats(isAdmin, req.user!.userId);
+    res.json(stats);
+  }),
+);
+
+router.get(
+  '/call-audits/:auditId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const audit = await getCallAudit(req.params.auditId as string, req.user!.userId, isAdmin);
+    res.json(audit);
+  }),
+);
+
+router.delete(
+  '/call-audits/:auditId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    await deleteCallAudit(req.params.auditId as string, req.user!.userId, isAdmin);
+    res.status(204).end();
   }),
 );
 

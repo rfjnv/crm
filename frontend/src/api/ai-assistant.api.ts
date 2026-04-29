@@ -68,6 +68,37 @@ export interface AudioTranscriptionResponse {
 
 export interface SalesCallAnalysisResponse {
   analysis: string;
+  auditId?: string;
+}
+
+export interface CallAuditSummary {
+  id: string;
+  managerName: string | null;
+  score: number | null;
+  saleProbability: number | null;
+  audioDuration: number | null;
+  qualityScore: number | null;
+  auditLanguage: string;
+  source: string;
+  createdAt: string;
+  author: { id: string; fullName: string };
+}
+
+export interface CallAuditDetail extends CallAuditSummary {
+  transcript: string;
+  analysis: string;
+}
+
+export interface CallAuditStats {
+  total: number;
+  managers: Array<{
+    id: string;
+    name: string;
+    count: number;
+    avgScore: number | null;
+    avgSaleProbability: number | null;
+  }>;
+  weekly: Array<{ week: string; count: number; avgScore: number | null }>;
 }
 
 export interface AiTrainingRule {
@@ -124,8 +155,26 @@ export const aiAssistantApi = {
     }).then((r) => r.data);
   },
 
-  analyzeSalesCall: (transcript: string) =>
-    client.post<SalesCallAnalysisResponse>('/ai-assistant/analyze-call', { transcript }, {
-      timeout: 180000,
-    }).then((r) => r.data),
+  analyzeSalesCall: (
+    transcript: string,
+    auditLanguage: 'ru' | 'uz' | 'mixed' = 'mixed',
+    opts: { managerName?: string; audioDuration?: number; qualityScore?: number; source?: string } = {},
+  ) =>
+    client.post<SalesCallAnalysisResponse>('/ai-assistant/analyze-call', {
+      transcript,
+      auditLanguage,
+      ...opts,
+    }, { timeout: 180000 }).then((r) => r.data),
+
+  listCallAudits: () =>
+    client.get<CallAuditSummary[]>('/ai-assistant/call-audits').then((r) => r.data),
+
+  getCallAudit: (auditId: string) =>
+    client.get<CallAuditDetail>(`/ai-assistant/call-audits/${auditId}`).then((r) => r.data),
+
+  deleteCallAudit: (auditId: string) =>
+    client.delete(`/ai-assistant/call-audits/${auditId}`),
+
+  getCallAuditStats: () =>
+    client.get<CallAuditStats>('/ai-assistant/call-audits/stats').then((r) => r.data),
 };

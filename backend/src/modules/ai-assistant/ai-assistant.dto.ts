@@ -8,8 +8,11 @@ export const renameChatDto = z.object({
   title: z.string().min(1).max(100),
 });
 
+export const auditLanguageSchema = z.enum(['ru', 'uz', 'mixed']).default('mixed');
+
 export const analyzeCallDto = z.object({
   transcript: z.string().min(20, 'Транскрипт слишком короткий').max(120000),
+  auditLanguage: auditLanguageSchema.optional(),
 });
 
 export const languageModeSchema = z.enum(['ru', 'uz', 'auto', 'mixed']);
@@ -31,6 +34,7 @@ export const updateTrainingRuleDto = z.object({
 
 export type AskQuestionDto = z.infer<typeof askQuestionDto>;
 export type AnalyzeCallDto = z.infer<typeof analyzeCallDto>;
+export type AuditLanguage = z.infer<typeof auditLanguageSchema>;
 export type TranscribeAudioDto = z.infer<typeof transcribeAudioDto>;
 
 export interface AiAssistantEntity {
