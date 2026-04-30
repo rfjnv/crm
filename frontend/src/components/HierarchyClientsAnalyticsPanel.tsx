@@ -740,10 +740,8 @@ export default function HierarchyClientsAnalyticsPanel({
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
-                        formatter: (datum: { name: string; value: number }) => ({
-                          name: 'Продано',
-                          value: `${datum.value.toLocaleString('ru-RU')} шт.`,
-                        }),
+                        title: 'name',
+                        items: [{ field: 'value', channel: 'y', name: 'Продано', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} шт.` }],
                       }}
                       theme={chartTheme}
                     />
@@ -766,10 +764,8 @@ export default function HierarchyClientsAnalyticsPanel({
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
-                        formatter: (datum: { name: string; value: number }) => ({
-                          name: 'Выручка',
-                          value: formatUZS(datum.value),
-                        }),
+                        title: 'name',
+                        items: [{ field: 'value', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => formatUZS(v) }],
                       }}
                       theme={chartTheme}
                     />
@@ -792,10 +788,8 @@ export default function HierarchyClientsAnalyticsPanel({
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
-                        formatter: (datum: { name: string; value: number }) => ({
-                          name: 'Количество',
-                          value: `${datum.value.toLocaleString('ru-RU')} шт.`,
-                        }),
+                        title: 'name',
+                        items: [{ field: 'value', channel: 'y', name: 'Количество', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} шт.` }],
                       }}
                       theme={chartTheme}
                     />
