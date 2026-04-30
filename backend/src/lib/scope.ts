@@ -9,7 +9,7 @@ export interface AuthUser {
 const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'OPERATOR', 'DRIVER', 'LOADER', 'HR'];
 
 /** Roles that have no business reason to browse the client list */
-const CLIENT_BLOCKED_ROLES: Role[] = ['DRIVER', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER', 'HR'];
+const CLIENT_BLOCKED_ROLES: Role[] = ['DRIVER', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
 
 export function ownerScope(user: AuthUser): { managerId?: string } {
   if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_deals')) {
