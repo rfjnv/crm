@@ -741,7 +741,7 @@ export default function HierarchyClientsAnalyticsPanel({
                       }}
                       tooltip={{
                         formatter: (datum: { name: string; value: number }) => ({
-                          name: datum.name,
+                          name: 'Продано',
                           value: `${datum.value.toLocaleString('ru-RU')} шт.`,
                         }),
                       }}
@@ -767,7 +767,7 @@ export default function HierarchyClientsAnalyticsPanel({
                       }}
                       tooltip={{
                         formatter: (datum: { name: string; value: number }) => ({
-                          name: datum.name,
+                          name: 'Выручка',
                           value: formatUZS(datum.value),
                         }),
                       }}
@@ -793,8 +793,8 @@ export default function HierarchyClientsAnalyticsPanel({
                       }}
                       tooltip={{
                         formatter: (datum: { name: string; value: number }) => ({
-                          name: datum.name,
-                          value: datum.value.toLocaleString('ru-RU'),
+                          name: 'Количество',
+                          value: `${datum.value.toLocaleString('ru-RU')} шт.`,
                         }),
                       }}
                       theme={chartTheme}
