@@ -15,11 +15,15 @@ import {
   theme,
   Button,
   Empty,
+  DatePicker,
+  Space,
+  message,
 } from 'antd';
 import { PhoneOutlined, UserOutlined } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { analyticsApi, type CallActivityRange } from '../api/analytics.api';
+import type { Dayjs } from 'dayjs';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import type { UserRole } from '../types';
@@ -31,6 +35,8 @@ export default function CallActivityPage() {
   const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
   const isManager = role === 'MANAGER';
   const [range, setRange] = useState<CallActivityRange>('today');
+  /** Если задано — запрос идёт с `from`/`to` (календарь Ташкента на сервере). */
+  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [managerId, setManagerId] = useState<string | undefined>();
   const [clientSearchInput, setClientSearchInput] = useState('');
   const [debouncedClientSearch, setDebouncedClientSearch] = useState('');
@@ -41,13 +47,27 @@ export default function CallActivityPage() {
   }, [clientSearchInput]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['analytics-call-activity', range, managerId, debouncedClientSearch],
+    queryKey: [
+      'analytics-call-activity',
+      customRange ? 'custom' : range,
+      customRange?.[0]?.format('YYYY-MM-DD'),
+      customRange?.[1]?.format('YYYY-MM-DD'),
+      managerId,
+      debouncedClientSearch,
+    ],
     queryFn: () =>
-      analyticsApi.getCallActivity({
-        range,
-        managerId,
-        clientSearch: debouncedClientSearch || undefined,
-      }),
+      customRange
+        ? analyticsApi.getCallActivity({
+            from: customRange[0].format('YYYY-MM-DD'),
+            to: customRange[1].format('YYYY-MM-DD'),
+            managerId,
+            clientSearch: debouncedClientSearch || undefined,
+          })
+        : analyticsApi.getCallActivity({
+            range,
+            managerId,
+            clientSearch: debouncedClientSearch || undefined,
+          }),
   });
 
   const { data: users = [] } = useQuery({
@@ -160,16 +180,58 @@ export default function CallActivityPage() {
               : 'Активность по заметкам к клиентам (одна заметка = один контакт)'}
           </Text>
         </Col>
-        <Col>
-          <Segmented
-            value={range}
-            onChange={(v) => setRange(v as CallActivityRange)}
-            options={[
-              { label: 'Сегодня', value: 'today' },
-              { label: 'Неделя', value: 'week' },
-              { label: 'Месяц', value: 'month' },
-            ]}
-          />
+        <Col xs={24} style={{ textAlign: 'right' }}>
+          <Space direction="vertical" align="end" size={8} style={{ width: '100%' }}>
+            {customRange ? (
+              <Space wrap align="center">
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Выбраны даты (календарь на сервере — Asia/Tashkent, до 93 дней)
+                </Text>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => {
+                    setCustomRange(null);
+                  }}
+                >
+                  Вернуться к пресетам
+                </Button>
+              </Space>
+            ) : (
+              <Segmented
+                value={range}
+                onChange={(v) => setRange(v as CallActivityRange)}
+                options={[
+                  { label: 'Сегодня', value: 'today' },
+                  { label: 'Неделя', value: 'week' },
+                  { label: 'Месяц', value: 'month' },
+                ]}
+              />
+            )}
+            <DatePicker.RangePicker
+              allowClear
+              format="DD.MM.YYYY"
+              value={customRange ?? undefined}
+              onChange={(v) => {
+                if (v?.[0] && v[1]) {
+                  const days = v[1].diff(v[0], 'day') + 1;
+                  if (days > 93) {
+                    message.warning('Интервал не более 93 дней');
+                    return;
+                  }
+                  setCustomRange([v[0], v[1]]);
+                  return;
+                }
+                setCustomRange(null);
+              }}
+              disabledDate={(current) => {
+                if (!current) return false;
+                const today = dayjs().endOf('day');
+                if (current.isAfter(today)) return true;
+                return false;
+              }}
+            />
+          </Space>
         </Col>
       </Row>
 

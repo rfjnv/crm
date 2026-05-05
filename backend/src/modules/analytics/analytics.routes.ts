@@ -96,6 +96,46 @@ function getCallActivityRange(range: string): { start: Date; end: Date } {
   }
 }
 
+const CALL_ACTIVITY_CUSTOM_YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
+const CALL_ACTIVITY_MAX_CUSTOM_DAYS = 93;
+
+/** Начало календарного дня в Asia/Tashkent как UTC-момент (как у getCallActivityRange). */
+function tashkentDayStartUtc(y: number, monthIndex0: number, day: number): Date {
+  return new Date(Date.UTC(y, monthIndex0, day) - TASHKENT_OFFSET);
+}
+
+/**
+ * Произвольный период по календарным датам Ташкента YYYY-MM-DD, конец дня to включительно; граница end для Prisma — exclusive.
+ */
+function getCallActivityCustomRange(fromYmd: string, toYmd: string): { start: Date; end: Date } {
+  const parseStart = (ymd: string, label: string) => {
+    const m = CALL_ACTIVITY_CUSTOM_YMD.exec(ymd.trim());
+    if (!m) throw new AppError(400, `Некорректная дата ${label} (ожидается YYYY-MM-DD)`);
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    if (mo < 0 || mo > 11 || d < 1 || d > 31) throw new AppError(400, `Некорректная дата ${label}`);
+    const start = tashkentDayStartUtc(y, mo, d);
+    const chk = new Date(start.getTime() + TASHKENT_OFFSET);
+    if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo || chk.getUTCDate() !== d) {
+      throw new AppError(400, `Некорректная дата ${label}`);
+    }
+    return start;
+  };
+
+  const start = parseStart(fromYmd, 'from');
+  const lastDayStart = parseStart(toYmd, 'to');
+  if (lastDayStart < start) {
+    throw new AppError(400, 'Дата «с» не может быть позже даты «по»');
+  }
+  const endExclusive = new Date(lastDayStart.getTime() + 86400000);
+  const spanDays = Math.ceil((endExclusive.getTime() - start.getTime()) / 86400000);
+  if (spanDays > CALL_ACTIVITY_MAX_CUSTOM_DAYS) {
+    throw new AppError(400, `Интервал не более ${CALL_ACTIVITY_MAX_CUSTOM_DAYS} дней`);
+  }
+  return { start, end: endExclusive };
+}
+
 router.get(
   '/call-activity',
   authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER'),
@@ -105,6 +145,11 @@ router.get(
 
     const rangeParam = (req.query.range as string) || 'today';
     const range = rangeParam === 'week' || rangeParam === 'month' ? rangeParam : 'today';
+    const fromYmd = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    const toYmd = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+    const useCustom = Boolean(fromYmd && toYmd);
+    const rangeKey = useCustom ? 'custom' : range;
+
     const managerIdFromQuery =
       typeof req.query.managerId === 'string' && req.query.managerId.length > 0 ? req.query.managerId : undefined;
     /** Managers always see all authors; filter by manager is admin-only. */
@@ -112,7 +157,9 @@ router.get(
     const clientSearch =
       typeof req.query.clientSearch === 'string' ? req.query.clientSearch.trim() : '';
 
-    const { start, end } = getCallActivityRange(range);
+    const { start, end } = useCustom
+      ? getCallActivityCustomRange(fromYmd, toYmd)
+      : getCallActivityRange(range);
 
     const where: Prisma.ClientNoteWhereInput = {
       deletedAt: null,
@@ -154,7 +201,7 @@ router.get(
       }));
 
       res.json({
-        range: { key: range, start: start.toISOString(), end: end.toISOString() },
+        range: { key: rangeKey, start: start.toISOString(), end: end.toISOString() },
         summary: [],
         lineChart: [],
         barChart: [],
@@ -246,7 +293,7 @@ router.get(
     }));
 
     res.json({
-      range: { key: range, start: start.toISOString(), end: end.toISOString() },
+      range: { key: rangeKey, start: start.toISOString(), end: end.toISOString() },
       summary,
       lineChart,
       barChart,

@@ -49,6 +49,8 @@ export type HierarchyClosedItemRow = {
 
 export type CallActivityRange = 'today' | 'week' | 'month';
 
+export type CallActivityRangeKey = CallActivityRange | 'custom';
+
 export type CallActivitySummaryRow = {
   userId: string;
   fullName: string;
@@ -57,7 +59,7 @@ export type CallActivitySummaryRow = {
 };
 
 export type CallActivityResponse = {
-  range: { key: CallActivityRange; start: string; end: string };
+  range: { key: CallActivityRangeKey; start: string; end: string };
   summary: CallActivitySummaryRow[];
   lineChart: { day: string; manager: string; userId: string; count: number }[];
   barChart: { manager: string; userId: string; total: number }[];
@@ -92,6 +94,9 @@ export const analyticsApi = {
 
   getCallActivity: (params: {
     range?: CallActivityRange;
+    /** Календарные даты (YYYY-MM-DD), интервал по Asia/Tashkent; вместе с `to` заменяют `range`. */
+    from?: string;
+    to?: string;
     managerId?: string;
     clientSearch?: string;
   }) =>
