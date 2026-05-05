@@ -25,6 +25,7 @@
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.93.0",
     "@prisma/client": "^6.3.0",
     "@sparticuz/chromium": "^143.0.4",
     "@types/cookie-parser": "^1.4.10",

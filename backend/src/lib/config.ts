@@ -72,6 +72,16 @@ export const config = {
     apiKey: trimEnv(process.env.ELEVENLABS_API_KEY),
   },
 
+  aisha: {
+    apiKey: trimEnv(process.env.AISHA_AI_API_KEY),
+    baseUrl: trimEnv(process.env.AISHA_AI_BASE_URL) || 'https://developer.kotib.ai/api/v1',
+  },
+
+  claude: {
+    apiKey: trimEnv(process.env.CLAUDE_API_KEY) || trimEnv(process.env.ANTHROPIC_API_KEY),
+    model: trimEnv(process.env.CLAUDE_MODEL) || 'claude-sonnet-4-5-20250929',
+  },
+
   telegram: {
     botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
     clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),

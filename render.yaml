@@ -24,6 +24,19 @@ services:
         sync: false
       - key: PORT
         value: "10000"
+      # ── AI / STT keys (set in Render dashboard, not here) ──
+      # OPENAI_API_KEY      — OpenAI Whisper STT + аналитика
+      # ELEVENLABS_API_KEY  — ElevenLabs Scribe STT (диаризация)
+      # AISHA_AI_API_KEY    — KotibAI/AISHA узбекский STT
+      # CLAUDE_API_KEY      — Anthropic Claude (слияние 3 транскриптов)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: AISHA_AI_API_KEY
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
 
   # ──── Frontend: Vite Static Site ────
   - type: web

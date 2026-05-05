@@ -52,6 +52,14 @@ export interface TranscriptSegment {
   confidence: number | null;
 }
 
+export interface EngineMeta {
+  engine: 'aisha' | 'elevenlabs' | 'openai';
+  status: 'success' | 'error' | 'skipped';
+  textLength: number;
+  durationMs: number;
+  error?: string;
+}
+
 export interface AudioTranscriptionResponse {
   text: string;
   rawText: string;
@@ -64,6 +72,10 @@ export interface AudioTranscriptionResponse {
   auditSkipReason?: string;
   model: string;
   segments: TranscriptSegment[];
+  engines: EngineMeta[];
+  disputedNote: string;
+  enginesUsed: number;
+  mergeModel: string;
 }
 
 export interface SalesCallAnalysisResponse {

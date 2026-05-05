@@ -1,11 +1,12 @@
 import OpenAI from 'openai';
-import fs from 'fs/promises';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AiAssistantResponse } from './ai-assistant.dto';
 import { PolygraphTranscriber, type LanguageMode, type TranscriptionResult } from '../asr/polygraph-transcriber';
 import { transcribeWithElevenLabs } from '../asr/elevenlabs-transcriber';
+import { transcribeWithAisha } from '../asr/aisha-transcriber';
+import { mergeTranscriptsWithClaude, type CandidateTranscript } from '../asr/claude-merger';
 
 const FORBIDDEN_KEYWORDS = [
   'DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'TRUNCATE',
@@ -255,105 +256,141 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-const POST_PROCESS_SYSTEM = `Ты — корректор транскрипта полиграфической компании.
-Задача: исправить ошибки распознавания речи, НЕ меняя смысл и слова.
+// ============================================================
+// Multi-engine transcription
+// Запускаем все 3 STT параллельно (AISHA / ElevenLabs / OpenAI),
+// затем Claude собирает один финальный диалог.
+// ============================================================
 
-ПРАВИЛА:
-- Исправляй только явные ошибки ASR: неверные слова, слипшиеся слова, пропущенные пробелы
-- Восстанавливай правильные названия товаров и брендов из этого списка:
-  Polygraph Business, HI-KOTE, NINGBO FOLD, FASSON, LIANG DU, BRANCHER, POWER-BRANCHER,
-  FOCUS-BRANCHER, LANER, TEKNOVA, TETANAL, ELEPHANT, NOVAFIX, ALFA PLUS,
-  самоклейка, ламинация, мелованная бумага, офсетная резина, пластины CTP,
-  пантонные краски, биговальный канал, марзан, термоклей
-- Правь числа и суммы в сумах если они явно искажены
-- Сохраняй язык оригинала (русский/узбекский/смешанный)
-- НЕ добавляй слова, НЕ сокращай, НЕ перефразируй
-- Верни ТОЛЬКО исправленный текст, без пояснений`;
-
-async function postProcessTranscript(rawText: string, openai: OpenAI): Promise<string> {
-  if (!rawText || rawText.length < 30) return rawText;
-
-  // Skip post-processing for very long transcripts to avoid high cost — do it in 4k chunks
-  const MAX_CHUNK = 4000;
-  if (rawText.length <= MAX_CHUNK) {
-    const res = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      messages: [
-        { role: 'system', content: POST_PROCESS_SYSTEM },
-        { role: 'user', content: rawText },
-      ],
-    });
-    return res.choices[0]?.message?.content?.trim() || rawText;
-  }
-
-  // Split into chunks on sentence/paragraph boundaries
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < rawText.length) {
-    let end = Math.min(start + MAX_CHUNK, rawText.length);
-    if (end < rawText.length) {
-      const split = rawText.lastIndexOf('. ', end);
-      if (split > start + 500) end = split + 2;
-    }
-    chunks.push(rawText.slice(start, end).trim());
-    start = end;
-  }
-
-  const results = await Promise.all(
-    chunks.map(async (chunk) => {
-      const res = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        messages: [
-          { role: 'system', content: POST_PROCESS_SYSTEM },
-          { role: 'user', content: chunk },
-        ],
-      });
-      return res.choices[0]?.message?.content?.trim() || chunk;
-    }),
-  );
-
-  return results.join(' ');
+export interface EngineMeta {
+  engine: 'aisha' | 'elevenlabs' | 'openai';
+  status: 'success' | 'error' | 'skipped';
+  textLength: number;
+  durationMs: number;
+  error?: string;
 }
 
-async function splitTranscriptBySides(rawTranscript: string): Promise<string> {
-  const cleaned = rawTranscript.trim();
-  if (!cleaned) return '';
-
-  const openai = getOpenAIClient();
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    temperature: 0,
-    messages: [
-      {
-        role: 'system',
-        content: `You are a strict transcript formatter.
-Task: split one plain transcript into dialogue lines by sides.
-Rules:
-- Do not invent phrases. Use only provided words.
-- If role is clear: use prefixes "Menedjer:" and "Mijoz:".
-- If role is NOT clear: use "Spiker A:" / "Spiker B:".
-- Keep original language words (ru/uz mixed) unchanged as much as possible.
-- Keep output concise and line-based (one utterance per line).`,
-      },
-      {
-        role: 'user',
-        content: `Transcript:\n${cleaned}\n\nReturn only the formatted dialogue text.`,
-      },
-    ],
-  });
-
-  return res.choices[0]?.message?.content?.trim() || cleaned;
-}
-
-export type TranscribeAudioResponse = TranscriptionResult & {
+export interface TranscribeAudioResponse {
   text: string;
   rawText: string;
   dialogueText: string;
+  languageMode: LanguageMode;
+  audioQuality: {
+    sampleRate: number;
+    channels: number;
+    durationSec: number;
+    isLowQuality: boolean;
+    warnings: string[];
+  };
+  qualityScore: number;
+  needsHumanReview: boolean;
   auditRecommended: boolean;
   auditSkipReason?: string;
-};
+  model: string;
+  segments: TranscriptionResult['segments'];
+  engines: EngineMeta[];
+  disputedNote: string;
+  enginesUsed: number;
+  mergeModel: string;
+}
+
+interface EngineRunResult {
+  engine: 'aisha' | 'elevenlabs' | 'openai';
+  text: string;
+  hasDiarization?: boolean;
+  durationMs: number;
+  error?: string;
+  status: 'success' | 'error' | 'skipped';
+  // Optional engine-specific extras for shaping the response
+  audioQuality?: TranscribeAudioResponse['audioQuality'];
+  qualityScore?: number;
+  needsHumanReview?: boolean;
+  segments?: TranscriptionResult['segments'];
+}
+
+async function runAisha(filePath: string, languageMode: LanguageMode): Promise<EngineRunResult> {
+  const start = Date.now();
+  const apiKey = config.aisha.apiKey;
+  if (!apiKey) {
+    return { engine: 'aisha', text: '', status: 'skipped', durationMs: 0, error: 'AISHA_AI_API_KEY не настроен' };
+  }
+  try {
+    const res = await transcribeWithAisha(filePath, apiKey, {
+      languageMode,
+      baseUrl: config.aisha.baseUrl,
+    });
+    return {
+      engine: 'aisha',
+      text: res.text,
+      durationMs: res.durationMs || (Date.now() - start),
+      status: 'success',
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[ASR] AISHA failed:', msg);
+    return { engine: 'aisha', text: '', status: 'error', durationMs: Date.now() - start, error: msg };
+  }
+}
+
+async function runElevenLabs(filePath: string, languageMode: LanguageMode): Promise<EngineRunResult> {
+  const start = Date.now();
+  const apiKey = config.elevenlabs.apiKey;
+  if (!apiKey) {
+    return { engine: 'elevenlabs', text: '', status: 'skipped', durationMs: 0, error: 'ELEVENLABS_API_KEY не настроен' };
+  }
+  try {
+    const res = await transcribeWithElevenLabs(filePath, apiKey, { languageMode });
+    return {
+      engine: 'elevenlabs',
+      text: res.dialogueText || res.rawText,
+      hasDiarization: res.hasDiarization,
+      durationMs: Date.now() - start,
+      status: 'success',
+      segments: res.words
+        .filter((w) => w.type === 'word')
+        .map((w, i) => ({
+          id: i,
+          start: w.start,
+          end: w.end,
+          speaker: w.speaker_id ?? 'unknown',
+          speakerRole: null,
+          text: w.text,
+          language: res.languageCode || null,
+          confidence: res.languageProbability ?? null,
+        })),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[ASR] ElevenLabs failed:', msg);
+    return { engine: 'elevenlabs', text: '', status: 'error', durationMs: Date.now() - start, error: msg };
+  }
+}
+
+async function runOpenAI(filePath: string, languageMode: LanguageMode): Promise<EngineRunResult> {
+  const start = Date.now();
+  const apiKey = config.openai.apiKey;
+  if (!apiKey) {
+    return { engine: 'openai', text: '', status: 'skipped', durationMs: 0, error: 'OPENAI_API_KEY не настроен' };
+  }
+  try {
+    const transcriber = new PolygraphTranscriber({ apiKey });
+    const asr = await transcriber.transcribeWithQualityGate(filePath, { languageMode }, 5.0);
+    return {
+      engine: 'openai',
+      text: (asr.text || '').trim(),
+      durationMs: Date.now() - start,
+      status: 'success',
+      audioQuality: asr.audioQuality,
+      qualityScore: asr.qualityScore,
+      needsHumanReview: asr.needsHumanReview,
+      segments: asr.segments,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[ASR] OpenAI failed:', msg);
+    return { engine: 'openai', text: '', status: 'error', durationMs: Date.now() - start, error: msg };
+  }
+}
 
 export async function transcribeAudioFile(
   file: Express.Multer.File,
@@ -364,91 +401,117 @@ export async function transcribeAudioFile(
   }
 
   const languageMode: LanguageMode = opts.languageMode ?? 'auto';
-  const elevenLabsKey = config.elevenlabs.apiKey;
 
-  // ── PATH A: ElevenLabs (primary — higher accuracy + built-in diarization) ──
-  if (elevenLabsKey) {
+  // ── Run all 3 engines in parallel ──
+  const [aishaRes, elevenRes, openaiRes] = await Promise.all([
+    runAisha(file.path, languageMode),
+    runElevenLabs(file.path, languageMode),
+    runOpenAI(file.path, languageMode),
+  ]);
+
+  const allRuns = [aishaRes, elevenRes, openaiRes];
+  const successful = allRuns.filter((r) => r.status === 'success' && r.text.trim().length > 0);
+
+  if (successful.length === 0) {
+    const errors = allRuns
+      .filter((r) => r.status !== 'success')
+      .map((r) => `${r.engine}: ${r.error || r.status}`)
+      .join('; ');
+    throw new AppError(
+      500,
+      `Ни один из STT движков не справился. ${errors || 'Проверьте ключи AISHA_AI_API_KEY / ELEVENLABS_API_KEY / OPENAI_API_KEY.'}`,
+    );
+  }
+
+  // ── Claude merges the 3 transcripts into one ──
+  const candidates: CandidateTranscript[] = successful.map((r) => ({
+    engine: r.engine,
+    text: r.text,
+    hasDiarization: r.hasDiarization,
+  }));
+
+  let mergedText = '';
+  let disputedNote = '';
+  let mergeModel = 'fallback';
+
+  const claudeKey = config.claude.apiKey;
+  if (claudeKey && candidates.length >= 2) {
     try {
-      const openai = getOpenAIClient();
-      const result = await transcribeWithElevenLabs(file.path, elevenLabsKey, { languageMode });
-
-      const rawText = result.rawText;
-      // ElevenLabs already did diarization — skip the GPT splitTranscriptBySides call.
-      // Only run post-processing to fix domain terms.
-      const cleanedText = rawText ? await postProcessTranscript(rawText, openai) : '';
-      const dialogueText = result.hasDiarization
-        ? result.dialogueText   // already formatted with Menedjer/Mijoz labels
-        : cleanedText ? await splitTranscriptBySides(cleanedText) : '';
-
-      // Build a compatible AudioQuality object
-      const audioQuality = {
-        sampleRate: 0,
-        channels: 0,
-        durationSec: 0,
-        isLowQuality: false,
-        warnings: [] as string[],
-      };
-
-      const qualityScore = rawText.length > 50 ? 9.0 : 5.0;
-
-      return {
-        text: dialogueText || cleanedText || rawText,
-        rawText,
-        dialogueText,
-        languageMode,
-        audioQuality,
-        qualityScore,
-        needsHumanReview: false,
-        auditRecommended: rawText.length > 20,
-        auditSkipReason: rawText.length <= 20 ? 'Транскрипт слишком короткий' : undefined,
-        model: 'elevenlabs/scribe_v1',
-        segments: result.words
-          .filter((w) => w.type === 'word')
-          .map((w, i) => ({
-            id: i,
-            start: w.start,
-            end: w.end,
-            speaker: w.speaker_id ?? 'unknown',
-            speakerRole: null,
-            text: w.text,
-            language: result.languageCode || null,
-            confidence: result.languageProbability ?? null,
-          })),
-      };
+      const merged = await mergeTranscriptsWithClaude(candidates, claudeKey, {
+        model: config.claude.model,
+      });
+      mergedText = merged.mergedText;
+      disputedNote = merged.disputedNote;
+      mergeModel = merged.modelUsed;
     } catch (err) {
-      // ElevenLabs failed — fall through to OpenAI
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[ASR] ElevenLabs failed, falling back to OpenAI:', msg);
+      console.error('[ASR] Claude merge failed, falling back to longest transcript:', msg);
     }
   }
 
-  // ── PATH B: OpenAI Whisper (fallback) ────────────────────────────────────
-  try {
-    const apiKey = config.openai.apiKey;
-    if (!apiKey) {
-      throw new AppError(500, 'Ни ELEVENLABS_API_KEY, ни OPENAI_API_KEY не настроены.');
-    }
-
-    const openai = getOpenAIClient();
-    const transcriber = new PolygraphTranscriber({ apiKey });
-    const asr = await transcriber.transcribeWithQualityGate(file.path, { languageMode }, 5.0);
-
-    const rawText = (asr.text || '').trim();
-    const cleanedText = rawText ? await postProcessTranscript(rawText, openai) : '';
-    const dialogueText = cleanedText ? await splitTranscriptBySides(cleanedText) : '';
-
-    return {
-      ...asr,
-      text: dialogueText || cleanedText || rawText,
-      rawText,
-      dialogueText,
-      auditRecommended: Boolean(asr.auditRecommended),
-      auditSkipReason: asr.auditSkipReason,
-    };
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    throw new AppError(500, 'Не удалось распознать аудио. Попробуйте другой файл.');
+  // Fallback: pick the longest successful transcript
+  if (!mergedText) {
+    const longest = [...successful].sort((a, b) => b.text.length - a.text.length)[0];
+    mergedText = longest.text;
+    disputedNote = claudeKey
+      ? `Claude недоступен — использован самый длинный транскрипт (${longest.engine.toUpperCase()}).`
+      : `CLAUDE_API_KEY не настроен — слияние не выполнялось, использован транскрипт ${longest.engine.toUpperCase()}.`;
   }
+
+  // ── Build response meta ──
+  const engines: EngineMeta[] = allRuns.map((r) => ({
+    engine: r.engine,
+    status: r.status,
+    textLength: r.text.length,
+    durationMs: r.durationMs,
+    error: r.error,
+  }));
+
+  // Prefer OpenAI's audio quality data if available, else fall back to ElevenLabs/zeros
+  const openaiSuccess = allRuns.find((r) => r.engine === 'openai' && r.status === 'success');
+  const audioQuality = openaiSuccess?.audioQuality ?? {
+    sampleRate: 0,
+    channels: 0,
+    durationSec: 0,
+    isLowQuality: false,
+    warnings: [] as string[],
+  };
+
+  const segments =
+    openaiSuccess?.segments ??
+    allRuns.find((r) => r.engine === 'elevenlabs' && r.status === 'success')?.segments ??
+    [];
+
+  // Quality score: high if ≥2 engines succeeded and merged text is substantial
+  const qualityScore =
+    successful.length >= 2 && mergedText.length > 50
+      ? 9.5
+      : successful.length === 1 && mergedText.length > 50
+      ? 7.5
+      : mergedText.length > 20
+      ? 6.0
+      : 4.0;
+
+  const auditRecommended = mergedText.length > 20;
+  const auditSkipReason = auditRecommended ? undefined : 'Транскрипт слишком короткий для аудита';
+
+  return {
+    text: mergedText,
+    rawText: mergedText,
+    dialogueText: mergedText,
+    languageMode,
+    audioQuality,
+    qualityScore,
+    needsHumanReview: successful.length < 2,
+    auditRecommended,
+    auditSkipReason,
+    model: `multi-engine(${successful.map((r) => r.engine).join('+')}) → ${mergeModel}`,
+    segments,
+    engines,
+    disputedNote,
+    enginesUsed: successful.length,
+    mergeModel,
+  };
 }
 
 const SALES_AUDIT_LANG_INSTRUCTIONS: Record<string, string> = {
