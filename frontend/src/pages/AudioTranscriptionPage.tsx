@@ -38,6 +38,8 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import {
   aiAssistantApi,
@@ -141,6 +143,82 @@ function getRiskColor(score: number | null): 'default' | 'green' | 'gold' | 'red
   if (score >= 7) return 'green';
   if (score >= 5) return 'gold';
   return 'red';
+}
+
+function cleanAuditAnalysis(raw: string): string {
+  return raw
+    .replace(/```(?:json|markdown|md)?/gi, '')
+    .replace(/```/g, '')
+    .replace(/^\s*(?:конечно|разумеется|вот|ниже)\s*,?\s*(?:представляю|привожу|даю)?\s*(?:готовый\s*)?(?:ai[-\s]?аудит|аудит|анализ)[^\n]*[:.]?\s*$/gim, '')
+    .replace(/^\s*(?:как\s+(?:ии|ai|искусственный интеллект|языковая модель)[^\n]*|я\s+(?:как\s+)?(?:ии|ai|искусственный интеллект|языковая модель)[^\n]*|не\s+являюсь\s+человеком[^\n]*)\s*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function AuditMarkdown({ content }: { content: string }) {
+  const { token } = theme.useToken();
+  const cleaned = cleanAuditAnalysis(content);
+
+  return (
+    <div style={{ color: token.colorText }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => <Title level={3} style={{ marginTop: 0 }}>{children}</Title>,
+          h2: ({ children }) => <Title level={4} style={{ marginTop: 18 }}>{children}</Title>,
+          h3: ({ children }) => <Title level={5} style={{ marginTop: 16 }}>{children}</Title>,
+          p: ({ children }) => <Paragraph style={{ marginBottom: 10 }}>{children}</Paragraph>,
+          ul: ({ children }) => <ul style={{ marginTop: 0, paddingLeft: 22 }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ marginTop: 0, paddingLeft: 22 }}>{children}</ol>,
+          li: ({ children }) => <li style={{ marginBottom: 6 }}>{children}</li>,
+          strong: ({ children }) => <Text strong>{children}</Text>,
+          table: ({ children }) => (
+            <div style={{ overflowX: 'auto', margin: '12px 0 18px' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'separate',
+                  borderSpacing: 0,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: token.colorBgContainer,
+                }}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th
+              style={{
+                textAlign: 'left',
+                padding: '10px 12px',
+                background: token.colorFillTertiary,
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                fontWeight: 700,
+              }}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td
+              style={{
+                padding: '10px 12px',
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                verticalAlign: 'top',
+              }}
+            >
+              {children}
+            </td>
+          ),
+        }}
+      >
+        {cleaned}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function MetricCard({
@@ -587,8 +665,9 @@ export default function AudioTranscriptionPage() {
   };
 
   const copyAnalysis = async () => {
-    if (!analysis) return;
-    await navigator.clipboard.writeText(analysis);
+    const cleanedAnalysis = cleanAuditAnalysis(analysis);
+    if (!cleanedAnalysis) return;
+    await navigator.clipboard.writeText(cleanedAnalysis);
     message.success('Анализ скопирован');
   };
 
@@ -615,6 +694,7 @@ export default function AudioTranscriptionPage() {
     { key: 'closing', label: 'Bitimni yopish / Закрытие сделки', shortLabel: 'Next step' },
   ];
   const stageDone = stageItems.filter((s) => stageChecklist[s.key]).length;
+  const cleanedAnalysis = useMemo(() => cleanAuditAnalysis(analysis), [analysis]);
   const scoreColor = getScoreColor(analyzeScore, token);
   const saleColor = saleProbability !== null
     ? (saleProbability >= 70 ? token.colorSuccess : saleProbability >= 40 ? token.colorWarning : token.colorError)
@@ -833,8 +913,8 @@ export default function AudioTranscriptionPage() {
                         Копировать аудит
                       </Button>
                     </div>
-                    {analysis ? (
-                      <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{analysis}</Paragraph>
+                    {cleanedAnalysis ? (
+                      <AuditMarkdown content={cleanedAnalysis} />
                     ) : (
                       <Text type="secondary">Аудит появится автоматически после распознавания.</Text>
                     )}
