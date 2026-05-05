@@ -81,6 +81,16 @@ export interface AudioTranscriptionResponse {
 export interface SalesCallAnalysisResponse {
   analysis: string;
   auditId?: string;
+  score?: number | null;
+  saleProbability?: number | null;
+  mentorTips?: string[];
+  stageChecklist?: {
+    greeting: boolean;
+    needsDiscovery: boolean;
+    presentation: boolean;
+    objectionHandling: boolean;
+    closing: boolean;
+  };
 }
 
 export interface CallAuditSummary {

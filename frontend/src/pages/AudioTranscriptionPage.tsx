@@ -4,7 +4,9 @@ import {
   Button,
   Card,
   Collapse,
+  Divider,
   Input,
+  Progress,
   Select,
   Space,
   Tag,
@@ -77,6 +79,37 @@ function formatMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)} с`;
 }
 
+type StageChecklist = {
+  greeting: boolean;
+  needsDiscovery: boolean;
+  presentation: boolean;
+  objectionHandling: boolean;
+  closing: boolean;
+};
+
+const DEFAULT_STAGE_CHECKLIST: StageChecklist = {
+  greeting: false,
+  needsDiscovery: false,
+  presentation: false,
+  objectionHandling: false,
+  closing: false,
+};
+
+function buildMentorPlan(tips: string[]): string[] {
+  if (tips.length === 0) return [];
+  const days = [
+    `1-kun: Qo'ng'iroq skriptini qayta o'qing va 3 ta asosiy savol tayyorlang.`,
+    `2-kun: 5 ta ochiq savol bilan ehtiyoj aniqlash mashqi qiling.`,
+    `3-kun: E'tirozlar ro'yxatini tuzing va har biriga 1 javob yozing.`,
+    `4-kun: Taqdimot blokini 90 soniyaga qisqartirib aytib bering.`,
+    `5-kun: 3 ta \"yopuvchi\" frazani ovoz chiqarib mashq qiling.`,
+    `6-kun: O'zingizning 1 qo'ng'irog'ingizni qayta tinglab self-audit qiling.`,
+    `7-kun: Qayta qo'ng'iroq simulyatsiyasi: ehtiyoj → qiymat → objection → close.`,
+  ];
+  const mappedTips = tips.slice(0, 7).map((tip, idx) => `${idx + 1}-kun mentor fokus: ${tip}`);
+  return days.map((d, idx) => `${d} ${mappedTips[idx] ? `\n${mappedTips[idx]}` : ''}`.trim());
+}
+
 function EngineBadge({ engine }: { engine: EngineMeta }) {
   const label = ENGINE_LABELS[engine.engine];
   const sub = ENGINE_DESCRIPTIONS[engine.engine];
@@ -137,6 +170,11 @@ export default function AudioTranscriptionPage() {
   const [mergeModel, setMergeModel] = useState('');
   const [progressText, setProgressText] = useState('');
   const [knowledgeText, setKnowledgeText] = useState('');
+  const [analyzeScore, setAnalyzeScore] = useState<number | null>(null);
+  const [saleProbability, setSaleProbability] = useState<number | null>(null);
+  const [mentorTips, setMentorTips] = useState<string[]>([]);
+  const [stageChecklist, setStageChecklist] = useState<StageChecklist>(DEFAULT_STAGE_CHECKLIST);
+  const [mentorPlan, setMentorPlan] = useState<string[]>([]);
 
   const navigate = useNavigate();
   const role = useAuthStore((s) => s.user?.role);
@@ -151,6 +189,11 @@ export default function AudioTranscriptionPage() {
     setDisputedNote('');
     setEnginesUsed(0);
     setMergeModel('');
+    setAnalyzeScore(null);
+    setSaleProbability(null);
+    setMentorTips([]);
+    setStageChecklist(DEFAULT_STAGE_CHECKLIST);
+    setMentorPlan([]);
   };
 
   const transcribeMutation = useMutation({
@@ -158,6 +201,9 @@ export default function AudioTranscriptionPage() {
     onSuccess: (data) => {
       setTranscript(data.text || '');
       setAnalysis('');
+      setAnalyzeScore(null);
+      setSaleProbability(null);
+      setMentorTips([]);
       setEngines(data.engines || []);
       setDisputedNote(data.disputedNote || '');
       setEnginesUsed(data.enginesUsed || 0);
@@ -179,6 +225,17 @@ export default function AudioTranscriptionPage() {
       }),
     onSuccess: (data) => {
       setAnalysis(data.analysis || '');
+      setAnalyzeScore(typeof data.score === 'number' ? data.score : null);
+      setSaleProbability(typeof data.saleProbability === 'number' ? data.saleProbability : null);
+      setMentorTips(Array.isArray(data.mentorTips) ? data.mentorTips : []);
+      setStageChecklist({
+        greeting: Boolean(data.stageChecklist?.greeting),
+        needsDiscovery: Boolean(data.stageChecklist?.needsDiscovery),
+        presentation: Boolean(data.stageChecklist?.presentation),
+        objectionHandling: Boolean(data.stageChecklist?.objectionHandling),
+        closing: Boolean(data.stageChecklist?.closing),
+      });
+      setMentorPlan([]);
       if (!data.analysis) message.warning('Анализ завершён, но ответ пустой');
     },
     onError: (error: any) => {
@@ -310,6 +367,21 @@ export default function AudioTranscriptionPage() {
 
   const isLoading = transcribeMutation.isPending || analyzeMutation.isPending;
   const successCount = engines.filter((e) => e.status === 'success').length;
+  const stageItems: Array<{ key: keyof StageChecklist; label: string }> = [
+    { key: 'greeting', label: 'Salomlashish / Приветствие' },
+    { key: 'needsDiscovery', label: 'Talablarni aniqlash / Выявление потребностей' },
+    { key: 'presentation', label: 'Taqdimot / Презентация' },
+    { key: 'objectionHandling', label: "E'tirozlar bilan ishlash / Работа с возражениями" },
+    { key: 'closing', label: 'Bitimni yopish / Закрытие сделки' },
+  ];
+  const stageDone = stageItems.filter((s) => stageChecklist[s.key]).length;
+  const riskLevel = analyzeScore === null
+    ? 'N/A'
+    : analyzeScore >= 7
+      ? 'Низкий риск'
+      : analyzeScore >= 5
+        ? 'Средний риск'
+        : 'Высокий риск';
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -462,6 +534,91 @@ export default function AudioTranscriptionPage() {
           </Button>
         }
       >
+        {(analyzeScore !== null || saleProbability !== null) && (
+          <>
+            <Space size={24} wrap style={{ width: '100%', marginBottom: 8 }}>
+              {analyzeScore !== null && (
+                <div style={{ minWidth: 220 }}>
+                  <Text type="secondary">Оценка менеджера</Text>
+                  <Progress
+                    percent={Math.round((analyzeScore / 10) * 100)}
+                    strokeColor={analyzeScore >= 7 ? '#52c41a' : analyzeScore >= 5 ? '#faad14' : '#ff4d4f'}
+                    format={() => `${analyzeScore}/10`}
+                  />
+                </div>
+              )}
+              {saleProbability !== null && (
+                <div style={{ minWidth: 220 }}>
+                  <Text type="secondary">Вероятность продажи</Text>
+                  <Progress
+                    type="dashboard"
+                    percent={saleProbability}
+                    size={118}
+                    strokeColor={saleProbability >= 70 ? '#52c41a' : saleProbability >= 40 ? '#faad14' : '#ff4d4f'}
+                    format={(p) => `${p}%`}
+                  />
+                </div>
+              )}
+              <div style={{ minWidth: 220 }}>
+                <Text type="secondary">Уровень риска</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Tag color={analyzeScore !== null && analyzeScore >= 7 ? 'green' : analyzeScore !== null && analyzeScore >= 5 ? 'gold' : 'red'}>
+                    {riskLevel}
+                  </Tag>
+                  <Tag color={stageDone >= 4 ? 'green' : stageDone >= 2 ? 'gold' : 'red'}>
+                    Этапы: {stageDone}/5
+                  </Tag>
+                </div>
+              </div>
+            </Space>
+            <Divider style={{ marginTop: 8, marginBottom: 12 }} />
+          </>
+        )}
+
+        <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>Мини-радар этапов продаж</Title>
+        <Space wrap size={[8, 8]} style={{ marginBottom: 10 }}>
+          {stageItems.map((stage) => (
+            <Tag key={stage.key} color={stageChecklist[stage.key] ? 'green' : 'red'}>
+              {stageChecklist[stage.key] ? '✓' : '✗'} {stage.label}
+            </Tag>
+          ))}
+        </Space>
+        <Progress
+          percent={Math.round((stageDone / 5) * 100)}
+          strokeColor={stageDone >= 4 ? '#52c41a' : stageDone >= 2 ? '#faad14' : '#ff4d4f'}
+          format={(p) => `Покрытие этапов: ${p}%`}
+          style={{ marginBottom: 12 }}
+        />
+
+        {mentorTips.length > 0 && (
+          <>
+            <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>Советы от ментора</Title>
+            <ul style={{ marginTop: 0, marginBottom: 12, paddingInlineStart: 20 }}>
+              {mentorTips.map((tip, idx) => (
+                <li key={`${idx}-${tip.slice(0, 20)}`} style={{ marginBottom: 6 }}>
+                  <Text>{tip}</Text>
+                </li>
+              ))}
+            </ul>
+            <Button
+              onClick={() => setMentorPlan(buildMentorPlan(mentorTips))}
+              style={{ marginBottom: 10 }}
+            >
+              Сгенерировать 7-дневный план тренировки
+            </Button>
+            {mentorPlan.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                {mentorPlan.map((item, idx) => (
+                  <Card key={`plan-${idx}`} size="small" style={{ marginBottom: 8 }}>
+                    <Text style={{ whiteSpace: 'pre-wrap' }}>{item}</Text>
+                  </Card>
+                ))}
+              </div>
+            )}
+            <Divider style={{ marginTop: 8, marginBottom: 12 }} />
+          </>
+        )}
+
         {analysis ? (
           <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{analysis}</Paragraph>
         ) : (

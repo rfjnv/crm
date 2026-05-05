@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
@@ -254,6 +255,14 @@ function getOpenAIClient(): OpenAI {
     throw new AppError(500, 'OPENAI_API_KEY не настроен. Обратитесь к администратору.');
   }
   return new OpenAI({ apiKey });
+}
+
+function getClaudeClient(): Anthropic {
+  const apiKey = config.claude.apiKey;
+  if (!apiKey) {
+    throw new AppError(500, 'CLAUDE_API_KEY не настроен. Обратитесь к администратору.');
+  }
+  return new Anthropic({ apiKey });
 }
 
 // ============================================================
@@ -522,18 +531,43 @@ const SALES_AUDIT_LANG_INSTRUCTIONS: Record<string, string> = {
 
 function buildSalesAuditSystemPrompt(auditLanguage: string = 'mixed'): string {
   const langInstruction = SALES_AUDIT_LANG_INSTRUCTIONS[auditLanguage] ?? SALES_AUDIT_LANG_INSTRUCTIONS['mixed'];
-  return `Ты — строгий и объективный AI-аудитор отдела продаж.
-Твоя задача — глубоко анализировать разговор между менеджером и клиентом.
+  return `Ты — строгий и объективный AI-аудитор отдела продаж Polygraph Business.
+Твоя задача — глубоко анализировать разговор между менеджером и клиентом и возвращать СТРОГО JSON.
 
 ВАЖНО:
 ${langInstruction}
 - Будь строгим, не пытайся "похвалить" без причины
 - Оценивай как реальный руководитель продаж
 - НИЧЕГО не выдумывай: каждый вывод должен опираться на цитату из расшифровки
-- Если данных недостаточно, прямо пиши: "Dalil yetarli emas / Недостаточно данных"`;
+- Если данных недостаточно, прямо пиши: "Dalil yetarli emas / Недостаточно данных"
+- Избегай странных/нелитературных слов и опечаток (например "Dushlik"). Используй только нормальные слова.
+- Для тона менеджера используй один из вариантов:
+  ["Do'stona", "Ishonchli", "Bosimli", "Ikkilanuvchan", "Betaraf"]
+- Для тона клиента используй один из вариантов:
+  ["Qiziqqan", "Betaraf", "Shubhali", "Norozilik", "Noma'lum"]
+
+Формат JSON:
+{
+  "analysis": "полный человекочитаемый анализ в 9 пунктах",
+  "score": <number 1-10>,
+  "saleProbability": <number 0-100>,
+  "mentorTips": ["совет 1", "совет 2", "совет 3"],
+  "stageChecklist": {
+    "greeting": true|false,
+    "needsDiscovery": true|false,
+    "presentation": true|false,
+    "objectionHandling": true|false,
+    "closing": true|false
+  }
 }
 
-const SALES_AUDIT_OUTPUT_FORMAT = `Пиши строго в формате:
+Требования к mentorTips:
+- 3-5 конкретных советов
+- советы должны быть практичными и связанными с выявленными ошибками
+- без воды и общих фраз`;
+}
+
+const SALES_AUDIT_OUTPUT_FORMAT = `Пиши analysis строго в формате:
 
 1. Rol ajratish:
 ...
@@ -575,6 +609,36 @@ function extractScoreFromAnalysis(analysis: string): { score: number | null; sal
   return { score, saleProbability };
 }
 
+function extractJsonObject(raw: string): string {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fenced ? fenced[1] : raw;
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('AI не вернул JSON');
+  }
+  return body.slice(start, end + 1);
+}
+
+type SalesStageChecklist = {
+  greeting: boolean;
+  needsDiscovery: boolean;
+  presentation: boolean;
+  objectionHandling: boolean;
+  closing: boolean;
+};
+
+function inferStageChecklistFromAnalysis(analysis: string): SalesStageChecklist {
+  const has = (pattern: RegExp) => pattern.test(analysis);
+  return {
+    greeting: has(/(?:salomlashish|приветствие)\s*:\s*(?:ha|да)/i),
+    needsDiscovery: has(/(?:talablarni aniqlash|выявление потребностей)\s*:\s*(?:ha|да)/i),
+    presentation: has(/(?:taqdimot|презентация)\s*:\s*(?:ha|да)/i),
+    objectionHandling: has(/(?:e'tirozlar bilan ishlash|работа с возражениями)\s*:\s*(?:ha|да)/i),
+    closing: has(/(?:bitimni yopish|закрытие сделки)\s*:\s*(?:ha|да)/i),
+  };
+}
+
 export async function analyzeSalesCallTranscript(
   transcript: string,
   auditLanguage: string = 'mixed',
@@ -585,21 +649,22 @@ export async function analyzeSalesCallTranscript(
     qualityScore?: number;
     source?: string;
   } = {},
-): Promise<{ analysis: string; auditId?: string }> {
+): Promise<{ analysis: string; auditId?: string; score?: number | null; saleProbability?: number | null; mentorTips?: string[]; stageChecklist?: SalesStageChecklist }> {
   if (!transcript || transcript.trim().length < 20) {
     throw new AppError(400, 'Недостаточно текста для анализа');
   }
 
   try {
-    const openai = getOpenAIClient();
+    const claude = getClaudeClient();
     const customRules = await getActiveTrainingRules();
     const basePrompt = buildSalesAuditSystemPrompt(auditLanguage);
     const auditSystemPrompt = `${basePrompt}\n\n${customRules}`.trim();
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.1,
+    const completion = await claude.messages.create({
+      model: config.claude.model,
+      temperature: 0,
+      max_tokens: 4000,
+      system: auditSystemPrompt,
       messages: [
-        { role: 'system', content: auditSystemPrompt },
         {
           role: 'user',
           content: `=== ВХОДНЫЕ ДАННЫЕ ===
@@ -669,19 +734,67 @@ ${transcript}
 - "Menedjer yo'q" degan xulosa faqat matnda haqiqatan menedjer replikalari bo'lmasa yozilsin.
 - Umumiy, shablon gaplar yozma. Faqat aniq fakt + iqtibos.
 
-${SALES_AUDIT_OUTPUT_FORMAT}`,
+${SALES_AUDIT_OUTPUT_FORMAT}
+
+Верни только JSON по заданной выше схеме.`,
         },
       ],
     });
 
-    const analysis = completion.choices[0]?.message?.content?.trim();
+    const raw = completion.content.find((c) => c.type === 'text' && 'text' in c)?.text?.trim() || '';
+    if (!raw) {
+      throw new AppError(500, 'Claude не вернул результат анализа');
+    }
+
+    let analysis = '';
+    let score: number | null = null;
+    let saleProbability: number | null = null;
+    let mentorTips: string[] = [];
+    let stageChecklist: SalesStageChecklist = {
+      greeting: false,
+      needsDiscovery: false,
+      presentation: false,
+      objectionHandling: false,
+      closing: false,
+    };
+    try {
+      const parsed = JSON.parse(extractJsonObject(raw)) as {
+        analysis?: string;
+        score?: number;
+        saleProbability?: number;
+        mentorTips?: string[];
+        stageChecklist?: Partial<SalesStageChecklist>;
+      };
+      analysis = (parsed.analysis || '').trim();
+      score = typeof parsed.score === 'number' && parsed.score >= 1 && parsed.score <= 10 ? parsed.score : null;
+      saleProbability = typeof parsed.saleProbability === 'number' && parsed.saleProbability >= 0 && parsed.saleProbability <= 100
+        ? parsed.saleProbability
+        : null;
+      mentorTips = Array.isArray(parsed.mentorTips)
+        ? parsed.mentorTips.map((s) => String(s).trim()).filter(Boolean).slice(0, 6)
+        : [];
+      stageChecklist = {
+        greeting: Boolean(parsed.stageChecklist?.greeting),
+        needsDiscovery: Boolean(parsed.stageChecklist?.needsDiscovery),
+        presentation: Boolean(parsed.stageChecklist?.presentation),
+        objectionHandling: Boolean(parsed.stageChecklist?.objectionHandling),
+        closing: Boolean(parsed.stageChecklist?.closing),
+      };
+    } catch {
+      analysis = raw;
+      const extracted = extractScoreFromAnalysis(analysis);
+      score = extracted.score;
+      saleProbability = extracted.saleProbability;
+      mentorTips = [];
+      stageChecklist = inferStageChecklistFromAnalysis(analysis);
+    }
+
     if (!analysis) {
       throw new AppError(500, 'AI не вернул результат анализа');
     }
 
     let auditId: string | undefined;
     if (opts.userId) {
-      const { score, saleProbability } = extractScoreFromAnalysis(analysis);
       const saved = await prisma.callAudit.create({
         data: {
           createdBy: opts.userId,
@@ -700,7 +813,7 @@ ${SALES_AUDIT_OUTPUT_FORMAT}`,
       auditId = saved.id;
     }
 
-    return { analysis, auditId };
+    return { analysis, auditId, score, saleProbability, mentorTips, stageChecklist };
   } catch (error) {
     throw new AppError(500, 'Не удалось выполнить анализ звонка');
   }
