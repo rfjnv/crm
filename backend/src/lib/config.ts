@@ -74,7 +74,7 @@ export const config = {
 
   aisha: {
     apiKey: trimEnv(process.env.AISHA_AI_API_KEY),
-    baseUrl: trimEnv(process.env.AISHA_AI_BASE_URL) || 'https://developer.kotib.ai/api/v1',
+    baseUrl: trimEnv(process.env.AISHA_AI_BASE_URL) || 'https://back.aisha.group',
   },
 
   claude: {
