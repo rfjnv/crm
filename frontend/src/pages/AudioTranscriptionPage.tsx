@@ -39,6 +39,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import {
@@ -155,14 +156,65 @@ function cleanAuditAnalysis(raw: string): string {
     .trim();
 }
 
-function AuditMarkdown({ content }: { content: string }) {
+/** Markdown схлопывает одиночные \\n в пробелы внутри абзаца — как раньше с pre-wrap. Вставляем пустые строки между логическими блоками и таблицами. */
+function normalizeAuditMarkdownStructure(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const out: string[] = [];
+
+  const isTableLine = (s: string) => /^\s*\|/.test(s);
+  const isBlockStart = (s: string) =>
+    /^\s*(#{1,6}\s)/.test(s) ||
+    /^\s*шаг\s*\d/i.test(s) ||
+    /^\s*[-*+]\s/.test(s) ||
+    /^\s*\d{1,2}\.\s/.test(s) ||
+    /^\s*\d{1,2}\)\s/.test(s);
+
+  let inTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prev = out[out.length - 1] ?? '';
+
+    const tableLine = isTableLine(line);
+    if (tableLine) {
+      if (!inTable && prev.trim() && !isTableLine(prev)) {
+        out.push('');
+      }
+      inTable = true;
+    } else if (line.trim() === '') {
+      inTable = false;
+    } else {
+      inTable = false;
+    }
+
+    if (
+      i > 0 &&
+      !tableLine &&
+      line.trim() &&
+      prev.trim() &&
+      isBlockStart(line)
+    ) {
+      out.push('');
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+function prepareAuditMarkdown(raw: string): string {
+  return normalizeAuditMarkdownStructure(cleanAuditAnalysis(raw));
+}
+
+function AuditMarkdown({ markdown }: { markdown: string }) {
   const { token } = theme.useToken();
-  const cleaned = cleanAuditAnalysis(content);
+  const prepared = useMemo(() => prepareAuditMarkdown(markdown), [markdown]);
 
   return (
     <div style={{ color: token.colorText }}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           h1: ({ children }) => <Title level={3} style={{ marginTop: 0 }}>{children}</Title>,
           h2: ({ children }) => <Title level={4} style={{ marginTop: 18 }}>{children}</Title>,
@@ -213,9 +265,10 @@ function AuditMarkdown({ content }: { content: string }) {
               {children}
             </td>
           ),
+          hr: () => <Divider style={{ margin: '16px 0' }} />,
         }}
       >
-        {cleaned}
+        {prepared}
       </ReactMarkdown>
     </div>
   );
@@ -665,7 +718,7 @@ export default function AudioTranscriptionPage() {
   };
 
   const copyAnalysis = async () => {
-    const cleanedAnalysis = cleanAuditAnalysis(analysis);
+    const cleanedAnalysis = prepareAuditMarkdown(analysis);
     if (!cleanedAnalysis) return;
     await navigator.clipboard.writeText(cleanedAnalysis);
     message.success('Анализ скопирован');
@@ -694,7 +747,6 @@ export default function AudioTranscriptionPage() {
     { key: 'closing', label: 'Bitimni yopish / Закрытие сделки', shortLabel: 'Next step' },
   ];
   const stageDone = stageItems.filter((s) => stageChecklist[s.key]).length;
-  const cleanedAnalysis = useMemo(() => cleanAuditAnalysis(analysis), [analysis]);
   const scoreColor = getScoreColor(analyzeScore, token);
   const saleColor = saleProbability !== null
     ? (saleProbability >= 70 ? token.colorSuccess : saleProbability >= 40 ? token.colorWarning : token.colorError)
@@ -913,8 +965,8 @@ export default function AudioTranscriptionPage() {
                         Копировать аудит
                       </Button>
                     </div>
-                    {cleanedAnalysis ? (
-                      <AuditMarkdown content={cleanedAnalysis} />
+                    {analysis.trim() ? (
+                      <AuditMarkdown markdown={analysis} />
                     ) : (
                       <Text type="secondary">Аудит появится автоматически после распознавания.</Text>
                     )}
