@@ -545,8 +545,8 @@ ${langInstruction}
 5) Не используй странные, нелитературные или ошибочные слова (например "Dushlik").
 6) Оценки ставь с дробной точностью (например 6.4), а не "на глаз".
 7) Вероятность продажи указывай только при наличии явных сигналов в разговоре.
-8) Не оставляй следы генерации: не пиши "как AI", "как языковая модель", "ниже представлен анализ", "конечно", "я не могу" и похожие служебные фразы.
-9) Таблицы оформляй только валидным Markdown/GFM: строка заголовков, строка разделителей и строки данных. Не используй псевдотаблицы из одних дефисов или палочек без заголовка.
+8) Не пиши вводных фраз про себя ("как AI", "как языковая модель", "ниже представлен анализ", "конечно"). Сразу начинай с "ШАГ 1".
+9) Таблицы оформляй только валидным Markdown/GFM: строка заголовков, строка разделителей "| --- |" и строки данных. Не используй псевдотаблицы из одних дефисов или палочек без заголовка.
 
 СТРУКТУРА ANALYSIS (строго 9 шагов):
 ШАГ 1 — Классификация звонка:
@@ -628,6 +628,21 @@ function extractJsonObject(raw: string): string {
   return body.slice(start, end + 1);
 }
 
+/** Если JSON обрезан и не парсится — попробуем вытащить поле "analysis" построчным чтением. */
+function extractAnalysisFromTruncatedJson(raw: string): string | null {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/);
+  const body = fenced ? fenced[1] : raw;
+  const match = body.match(/"analysis"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:score|saleProbability|mentorTips|stageChecklist)"|$)/);
+  if (!match || !match[1]) return null;
+  const value = match[1]
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+    .trim();
+  return value || null;
+}
+
 type SalesStageChecklist = {
   greeting: boolean;
   needsDiscovery: boolean;
@@ -670,7 +685,7 @@ export async function analyzeSalesCallTranscript(
     const completion = await claude.messages.create({
       model: config.claude.model,
       temperature: 0,
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: auditSystemPrompt,
       messages: [
         {
@@ -790,8 +805,10 @@ ${SALES_AUDIT_OUTPUT_FORMAT}
         objectionHandling: Boolean(parsed.stageChecklist?.objectionHandling),
         closing: Boolean(parsed.stageChecklist?.closing),
       };
-    } catch {
-      analysis = raw;
+    } catch (parseErr) {
+      console.warn('[Audit] JSON parse failed, falling back to raw extraction', parseErr);
+      const recovered = extractAnalysisFromTruncatedJson(raw);
+      analysis = (recovered ?? raw).trim();
       const extracted = extractScoreFromAnalysis(analysis);
       score = extracted.score;
       saleProbability = extracted.saleProbability;
@@ -825,7 +842,10 @@ ${SALES_AUDIT_OUTPUT_FORMAT}
 
     return { analysis, auditId, score, saleProbability, mentorTips, stageChecklist };
   } catch (error) {
-    throw new AppError(500, 'Не удалось выполнить анализ звонка');
+    if (error instanceof AppError) throw error;
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error('[Audit] Claude analysis failed:', reason);
+    throw new AppError(500, `Не удалось выполнить анализ звонка: ${reason}`);
   }
 }
 
