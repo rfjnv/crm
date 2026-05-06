@@ -35,7 +35,7 @@ export interface ReviewsBundle {
 
 export const reviewsApi = {
   getReviews: async () => {
-    const { data } = await client.get<ReviewsBundle>('/api/reviews');
+    const { data } = await client.get<ReviewsBundle>('/reviews');
     return data;
   },
 };
