@@ -83,12 +83,14 @@ router.get(
       }
       case 'custom': {
         if (!isAdminRole) {
-          return res.status(403).json({ error: 'Custom period is only available for admins' });
+          res.status(403).json({ error: 'Custom period is only available for admins' });
+          return;
         }
         const fromStr = req.query.from as string;
         const toStr = req.query.to as string;
         if (!fromStr || !toStr) {
-          return res.status(400).json({ error: 'Custom period requires from and to parameters (YYYY-MM-DD)' });
+          res.status(400).json({ error: 'Custom period requires from and to parameters (YYYY-MM-DD)' });
+          return;
         }
         const [fy, fm, fd] = fromStr.split('-').map(Number);
         const [ty, tm, td] = toStr.split('-').map(Number);
