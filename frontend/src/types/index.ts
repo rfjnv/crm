@@ -495,6 +495,13 @@ export interface AuditLog {
 }
 
 export interface DashboardSummary {
+  period?: {
+    key: string;
+    label: string;
+    from: string;
+    to: string;
+    chartDays: number;
+  };
   revenueToday: number;
   revenueYesterday: number;
   revenueMonth: number;

@@ -1,13 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination } from 'antd';
+import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination, DatePicker } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   CheckCircleOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
-import { dashboardApi } from '../api/warehouse.api';
+import dayjs, { type Dayjs } from 'dayjs';
+import { dashboardApi, type DashboardPeriod } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
 import { analyticsApi } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
@@ -77,11 +79,48 @@ function DeltaBadge({ value, suffix }: { value: number | null; suffix?: string }
   );
 }
 
+const PERIOD_OPTIONS: { label: string; value: DashboardPeriod }[] = [
+  { label: 'День', value: 'day' },
+  { label: 'Неделя', value: 'week' },
+  { label: 'Месяц', value: 'month' },
+  { label: 'Квартал', value: 'quarter' },
+];
+
+const PERIOD_LABELS: Record<DashboardPeriod, string> = {
+  day: 'сегодня',
+  week: 'за неделю',
+  month: 'за месяц',
+  quarter: 'за квартал',
+  custom: 'за период',
+};
+
+const PREV_PERIOD_LABELS: Record<DashboardPeriod, string> = {
+  day: 'к вчера',
+  week: 'к пр. нед.',
+  month: 'к пр. мес.',
+  quarter: 'к пр. кв.',
+  custom: 'к пр. пер.',
+};
+
 export default function DashboardPage() {
+  const [period, setPeriod] = useState<DashboardPeriod>('day');
+  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
+
+  const dashboardParams = useMemo(() => {
+    if (period === 'custom' && customRange) {
+      return {
+        period,
+        from: customRange[0].format('YYYY-MM-DD'),
+        to: customRange[1].format('YYYY-MM-DD'),
+      };
+    }
+    return { period };
+  }, [period, customRange]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: dashboardApi.summary,
-    refetchInterval: 10_000,
+    queryKey: ['dashboard-summary', dashboardParams],
+    queryFn: () => dashboardApi.summary(dashboardParams),
+    refetchInterval: period === 'custom' ? 30_000 : 10_000,
   });
 
   const { data: debtsData } = useQuery({
@@ -111,9 +150,11 @@ export default function DashboardPage() {
     || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
   const showExtras = isAdmin || role === 'MANAGER';
 
+  const analyticsPeriod = period === 'day' || period === 'custom' ? 'month' : period;
+
   const { data: monthAnalytics, isLoading: extLoading } = useQuery({
-    queryKey: ['dashboard-month-analytics'],
-    queryFn: () => analyticsApi.getData('month'),
+    queryKey: ['dashboard-analytics-extras', analyticsPeriod],
+    queryFn: () => analyticsApi.getData(analyticsPeriod),
     enabled: !!data && showExtras,
     refetchInterval: 60_000,
   });
@@ -124,17 +165,17 @@ export default function DashboardPage() {
     refetchInterval: 60_000,
   });
 
-  const { data: abcMonth } = useQuery({
-    queryKey: ['dashboard-abc-month'],
-    queryFn: () => analyticsApi.getAbcXyz('month'),
+  const { data: abcData } = useQuery({
+    queryKey: ['dashboard-abc', analyticsPeriod],
+    queryFn: () => analyticsApi.getAbcXyz(analyticsPeriod),
     enabled: !!data && showExtras,
     refetchInterval: 120_000,
   });
 
   const topProducts = useMemo(() => {
-    if (!abcMonth?.products?.length) return [];
-    return [...abcMonth.products].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [abcMonth]);
+    if (!abcData?.products?.length) return [];
+    return [...abcData.products].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  }, [abcData]);
 
   const topManagers = useMemo(() => {
     const rows = monthAnalytics?.managers?.rows ?? [];
@@ -220,8 +261,11 @@ export default function DashboardPage() {
       };
     }
     const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
-    const sliced = sorted.slice(-chartRange.maxDays);
-    const step = chartRange.tickStep;
+    const maxDays = period === 'day' ? chartRange.maxDays : sorted.length;
+    const sliced = sorted.slice(-maxDays);
+    const step = period === 'day'
+      ? chartRange.tickStep
+      : Math.max(1, Math.floor(sliced.length / 8));
     const xLabelFormatter = (v: string) => {
       const idx = sliced.findIndex((d) => d.day === v);
       if (idx < 0) return v.slice(5);
@@ -229,7 +273,7 @@ export default function DashboardPage() {
       return '';
     };
     return { rows: sliced, xLabelFormatter };
-  }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep]);
+  }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep, period]);
   const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / PRODUCT_DAY_PAGE_SIZE));
   useEffect(() => {
     if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
@@ -245,6 +289,21 @@ export default function DashboardPage() {
   const totalDebt = debtsData?.totals?.totalDebtOwed ?? data.totalDebt;
   const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
   const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
+  const deltaLabel = PREV_PERIOD_LABELS[period];
+  const revenueLabel = period === 'day' ? 'Выручка сегодня' : `Выручка ${PERIOD_LABELS[period]}`;
+  const closedDealsLabel = period === 'day' ? 'Закрыто сделок' : `Закрыто сделок ${PERIOD_LABELS[period]}`;
+
+  const handlePeriodChange = useCallback((val: string | number) => {
+    const v = val as DashboardPeriod;
+    setPeriod(v);
+    if (v !== 'custom') setCustomRange(null);
+  }, []);
+
+  const handleCustomRange = useCallback((dates: [Dayjs | null, Dayjs | null] | null) => {
+    if (dates && dates[0] && dates[1]) {
+      setCustomRange([dates[0], dates[1]]);
+    }
+  }, []);
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
   const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
@@ -304,6 +363,36 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ── Period selector ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: isMobile ? 12 : 16,
+        flexWrap: 'wrap',
+      }}>
+        <Segmented
+          size={isMobile ? 'small' : 'middle'}
+          value={period}
+          onChange={handlePeriodChange}
+          options={[
+            ...PERIOD_OPTIONS,
+            ...(isAdmin ? [{ label: 'Период', value: 'custom' as DashboardPeriod, icon: <CalendarOutlined /> }] : []),
+          ]}
+        />
+        {period === 'custom' && isAdmin && (
+          <DatePicker.RangePicker
+            size={isMobile ? 'small' : 'middle'}
+            value={customRange}
+            onChange={handleCustomRange as (dates: unknown) => void}
+            format="DD.MM.YYYY"
+            allowClear={false}
+            style={{ maxWidth: isMobile ? '100%' : 260 }}
+            disabledDate={(current) => current && current > dayjs().endOf('day')}
+          />
+        )}
+      </div>
+
       {/* ── KPI cards ── */}
       <div className={isMobile ? 'section' : undefined}>
       {isMobile ? (
@@ -316,11 +405,11 @@ export default function DashboardPage() {
               style={{ ...card, cursor: 'pointer', height: '100%', borderLeft: '3px solid #52c41a' }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label">
-                Выручка сегодня
+                {revenueLabel}
               </Typography.Text>
               <div className="dashboard-card-value">{formatUZS(data.revenueToday || 0)}</div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={revPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {isAdmin ? <DeltaBadge value={revPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
               </div>
             </Card>
           </Link>
@@ -332,10 +421,10 @@ export default function DashboardPage() {
               hoverable={canViewClosedDealsHistory}
               style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label">Закрыто сделок</Typography.Text>
+              <Typography.Text type="secondary" className="dashboard-card-label">{closedDealsLabel}</Typography.Text>
               <div className="dashboard-card-value">{data.closedDealsToday}</div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={dealPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {isAdmin ? <DeltaBadge value={dealPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
               </div>
             </Card>
           </Link>
@@ -383,7 +472,7 @@ export default function DashboardPage() {
               styles={{ body: cardBody }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>
-                Выручка сегодня
+                {revenueLabel}
               </Typography.Text>
               <div
                 className="dashboard-card-value"
@@ -392,7 +481,7 @@ export default function DashboardPage() {
                 {formatUZS(data.revenueToday || 0)}
               </div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={revPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {isAdmin ? <DeltaBadge value={revPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
               </div>
             </Card>
           </Link>
@@ -408,7 +497,7 @@ export default function DashboardPage() {
               style={{ ...card, cursor: canViewClosedDealsHistory ? 'pointer' : 'default', height: '100%' }}
               styles={{ body: cardBody }}
             >
-              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>Закрыто сделок</Typography.Text>
+              <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>{closedDealsLabel}</Typography.Text>
               <div
                 className="dashboard-card-value"
                 style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
@@ -416,7 +505,7 @@ export default function DashboardPage() {
                 {data.closedDealsToday}
               </div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={dealPct} suffix="к вчера" /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {isAdmin ? <DeltaBadge value={dealPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
               </div>
             </Card>
           </Link>
@@ -581,7 +670,10 @@ export default function DashboardPage() {
               styles={{ body: { padding: '16px 12px 8px' } }}
               title={(
                 <Typography.Text strong style={{ fontSize: 14 }}>
-                  Выручка за {chartRange.titleLabel} дн.
+                  {period === 'day'
+                    ? `Выручка за ${chartRange.titleLabel} дн.`
+                    : `Выручка ${PERIOD_LABELS[period]}`
+                  }
                 </Typography.Text>
               )}
             >
@@ -687,16 +779,20 @@ export default function DashboardPage() {
               styles={{ body: { padding: '14px 16px' } }}
               title={(
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <Typography.Text strong style={{ fontSize: 14 }}>Товар дня (по выручке)</Typography.Text>
-                  <Segmented
-                    size="small"
-                    value={productDayPeriod}
-                    onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
-                    options={[
-                      { label: 'Сегодня', value: 'today' },
-                      { label: 'Вчера', value: 'yesterday' },
-                    ]}
-                  />
+                  <Typography.Text strong style={{ fontSize: 14 }}>
+                    {period === 'day' ? 'Товар дня (по выручке)' : `Топ товаров ${PERIOD_LABELS[period]}`}
+                  </Typography.Text>
+                  {period === 'day' && (
+                    <Segmented
+                      size="small"
+                      value={productDayPeriod}
+                      onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
+                      options={[
+                        { label: 'Сегодня', value: 'today' },
+                        { label: 'Вчера', value: 'yesterday' },
+                      ]}
+                    />
+                  )}
                 </div>
               )}
             >

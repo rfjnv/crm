@@ -49,7 +49,10 @@ export const inventoryApi = {
     client.post<Deal>(`/inventory/approvals/${dealId}/reject`).then((r) => r.data),
 };
 
+export type DashboardPeriod = 'day' | 'week' | 'month' | 'quarter' | 'custom';
+
 export const dashboardApi = {
-  summary: () => client.get<DashboardSummary>('/dashboard/analytics').then((r) => r.data),
+  summary: (params?: { period?: DashboardPeriod; from?: string; to?: string }) =>
+    client.get<DashboardSummary>('/dashboard/analytics', { params }).then((r) => r.data),
   revenueToday: () => client.get<RevenueTodayResponse>('/dashboard/revenue-today').then((r) => r.data),
 };

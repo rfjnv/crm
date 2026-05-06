@@ -32,12 +32,83 @@ router.get(
     const mo = nowTashkent.getUTCMonth();
     const dy = nowTashkent.getUTCDate();
 
-    // Midnight Tashkent in UTC
     const startOfToday = new Date(Date.UTC(y, mo, dy) - TASHKENT_OFFSET);
     const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
     const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
     const startOfMonth = new Date(Date.UTC(y, mo, 1) - TASHKENT_OFFSET);
     const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
+
+    const period = (req.query.period as string) || 'day';
+    const isAdminRole = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+
+    let periodStart: Date;
+    let periodEnd: Date;
+    let prevPeriodStart: Date;
+    let prevPeriodEnd: Date;
+    let chartDays: number;
+
+    switch (period) {
+      case 'week': {
+        const dayOfWeek = nowTashkent.getUTCDay();
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        periodStart = new Date(startOfToday.getTime() - mondayOffset * 86400000);
+        periodEnd = startOfTomorrow;
+        const weekLen = periodEnd.getTime() - periodStart.getTime();
+        prevPeriodStart = new Date(periodStart.getTime() - weekLen);
+        prevPeriodEnd = periodStart;
+        chartDays = 7;
+        break;
+      }
+      case 'month': {
+        periodStart = startOfMonth;
+        periodEnd = startOfTomorrow;
+        const prevMonthEnd = startOfMonth;
+        const prevMonthStart = new Date(Date.UTC(y, mo - 1, 1) - TASHKENT_OFFSET);
+        prevPeriodStart = prevMonthStart;
+        prevPeriodEnd = prevMonthEnd;
+        chartDays = 31;
+        break;
+      }
+      case 'quarter': {
+        const qMonth = Math.floor(mo / 3) * 3;
+        periodStart = new Date(Date.UTC(y, qMonth, 1) - TASHKENT_OFFSET);
+        periodEnd = startOfTomorrow;
+        const prevQMonth = qMonth - 3;
+        const prevQYear = prevQMonth < 0 ? y - 1 : y;
+        const prevQM = prevQMonth < 0 ? prevQMonth + 12 : prevQMonth;
+        prevPeriodStart = new Date(Date.UTC(prevQYear, prevQM, 1) - TASHKENT_OFFSET);
+        prevPeriodEnd = periodStart;
+        chartDays = 92;
+        break;
+      }
+      case 'custom': {
+        if (!isAdminRole) {
+          return res.status(403).json({ error: 'Custom period is only available for admins' });
+        }
+        const fromStr = req.query.from as string;
+        const toStr = req.query.to as string;
+        if (!fromStr || !toStr) {
+          return res.status(400).json({ error: 'Custom period requires from and to parameters (YYYY-MM-DD)' });
+        }
+        const [fy, fm, fd] = fromStr.split('-').map(Number);
+        const [ty, tm, td] = toStr.split('-').map(Number);
+        periodStart = new Date(Date.UTC(fy, fm - 1, fd) - TASHKENT_OFFSET);
+        periodEnd = new Date(Date.UTC(ty, tm - 1, td + 1) - TASHKENT_OFFSET);
+        const customLen = periodEnd.getTime() - periodStart.getTime();
+        prevPeriodStart = new Date(periodStart.getTime() - customLen);
+        prevPeriodEnd = periodStart;
+        chartDays = Math.ceil(customLen / 86400000);
+        break;
+      }
+      default: {
+        periodStart = startOfToday;
+        periodEnd = startOfTomorrow;
+        prevPeriodStart = startOfYesterday;
+        prevPeriodEnd = startOfToday;
+        chartDays = 30;
+        break;
+      }
+    }
 
     const revenueDealTotalInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
       dealScope.managerId
@@ -279,34 +350,34 @@ router.get(
         }));
     };
 
+    const chartStart = period === 'day'
+      ? thirtyDaysAgo
+      : periodStart;
+
     const [
-      revenueTodayAgg,
-      revenueYesterdayAgg,
+      revenuePeriodAgg,
+      revenuePrevPeriodAgg,
       revenueMonthAgg,
       activeDealsCount,
       totalDebtSplitRaw,
       zeroStockProducts,
       lowStockProducts,
-      closedDealsToday,
-      closedDealsYesterday,
-      revenueLast30DaysDealRaw,
-      revenueLast30DaysStockRaw,
+      closedDealsPeriod,
+      closedDealsPrevPeriod,
+      revenueChartDealRaw,
+      revenueChartStockRaw,
       dealsByStatusCounts,
       productsOfDayTodayDealRaw,
       productsOfDayTodayStockRaw,
       productsOfDayYesterdayDealRaw,
       productsOfDayYesterdayStockRaw,
     ] = await Promise.all([
-      // 1. Revenue today: сделки + поступления на склад клиента
-      combinedRevenueTotalInRange(startOfToday, startOfTomorrow),
+      combinedRevenueTotalInRange(periodStart, periodEnd),
 
-      // 2. Revenue yesterday (for delta)
-      combinedRevenueTotalInRange(startOfYesterday, startOfToday),
+      combinedRevenueTotalInRange(prevPeriodStart, prevPeriodEnd),
 
-      // 3. Revenue this month
       combinedRevenueTotalInRange(startOfMonth, startOfTomorrow),
 
-      // 4. Active deals count (все не завершённые статусы, включая новый контур склада/доставки)
       prisma.deal.count({
         where: {
           ...dealScope,
@@ -315,8 +386,6 @@ router.get(
         },
       }),
 
-      // 5. Total debt (same as /finance/debts totals: gross = net debt + prepayments)
-      // IMPORTANT: Only use the latest deal per client to avoid multi-month duplication.
       dealScope.managerId
         ? prisma.$queryRaw<{ net_debt: string; pp_balance: string }[]>(
             Prisma.sql`WITH latest_deals AS (
@@ -354,14 +423,12 @@ router.get(
                        WHERE di.closing_balance IS NOT NULL`
           ),
 
-      // 6. Zero stock products
       prisma.product.findMany({
         where: { isActive: true, stock: { equals: 0 } },
         select: { id: true, name: true, sku: true, stock: true, minStock: true },
         orderBy: { name: 'asc' },
       }),
 
-      // 7. Low stock products (stock > 0 but < minStock)
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
         Prisma.sql`SELECT id, name, sku, stock, min_stock
          FROM products
@@ -369,43 +436,39 @@ router.get(
          ORDER BY stock ASC`
       ),
 
-      // 8. Closed deals today (по closedAt в календарный день Ташкент; updatedAt трогают платежи и миграции)
       prisma.deal.count({
         where: {
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          closedAt: { gte: startOfToday, lt: startOfTomorrow },
+          closedAt: { gte: periodStart, lt: periodEnd },
         },
       }),
 
-      // 9. Closed deals yesterday
       prisma.deal.count({
         where: {
           ...dealScope,
           status: 'CLOSED',
           isArchived: false,
-          closedAt: { gte: startOfYesterday, lt: startOfToday },
+          closedAt: { gte: prevPeriodStart, lt: prevPeriodEnd },
         },
       }),
 
-      // 10–11. Revenue last 30 days: сделки + склад клиента
-      revenueByDayInRange(thirtyDaysAgo, startOfTomorrow),
-      clientStockRevenueByDayInRange(thirtyDaysAgo, startOfTomorrow),
+      revenueByDayInRange(chartStart, periodEnd),
+      clientStockRevenueByDayInRange(chartStart, periodEnd),
 
-      // 12. Deals by status counts
       prisma.deal.groupBy({
         by: ['status'],
         where: { ...dealScope, isArchived: false },
         _count: true,
       }),
-      productsOfDayInRange(startOfToday, startOfTomorrow),
-      clientStockProductsOfDayInRange(startOfToday, startOfTomorrow),
-      productsOfDayInRange(startOfYesterday, startOfToday),
-      clientStockProductsOfDayInRange(startOfYesterday, startOfToday),
+      productsOfDayInRange(periodStart, periodEnd),
+      clientStockProductsOfDayInRange(periodStart, periodEnd),
+      productsOfDayInRange(prevPeriodStart, prevPeriodEnd),
+      clientStockProductsOfDayInRange(prevPeriodStart, prevPeriodEnd),
     ]);
 
-    const revenueLast30DaysRaw = mergeRevenueByDay(revenueLast30DaysDealRaw, revenueLast30DaysStockRaw);
+    const revenueChartRaw = mergeRevenueByDay(revenueChartDealRaw, revenueChartStockRaw);
     const productsOfDayTodayRaw = mergeProductOfDayRows(productsOfDayTodayDealRaw, productsOfDayTodayStockRaw);
     const productsOfDayYesterdayRaw = mergeProductOfDayRows(productsOfDayYesterdayDealRaw, productsOfDayYesterdayStockRaw);
 
@@ -439,21 +502,36 @@ router.get(
     const prepayments = Number(debtSplit?.pp_balance ?? 0);
     const grossDebt = netDebt + prepayments;
 
+    const periodLabels: Record<string, string> = {
+      day: 'Сегодня',
+      week: 'Неделя',
+      month: 'Месяц',
+      quarter: 'Квартал',
+      custom: 'Период',
+    };
+
     res.json({
-      revenueToday: revenueTodayAgg[0] ? Number(revenueTodayAgg[0].total) : 0,
-      revenueYesterday: revenueYesterdayAgg[0] ? Number(revenueYesterdayAgg[0].total) : 0,
+      period: {
+        key: period,
+        label: periodLabels[period] || period,
+        from: periodStart.toISOString(),
+        to: periodEnd.toISOString(),
+        chartDays,
+      },
+      revenueToday: revenuePeriodAgg[0] ? Number(revenuePeriodAgg[0].total) : 0,
+      revenueYesterday: revenuePrevPeriodAgg[0] ? Number(revenuePrevPeriodAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
       activeDealsCount,
       totalDebt: grossDebt,
-      closedDealsToday,
-      closedDealsYesterday,
+      closedDealsToday: closedDealsPeriod,
+      closedDealsYesterday: closedDealsPrevPeriod,
       zeroStockCount: zeroStockProducts.length,
       zeroStockProducts: zeroStockProducts.map((p) => ({
         id: p.id, name: p.name, sku: p.sku,
         stock: Number(p.stock), minStock: Number(p.minStock),
       })),
       lowStockProducts: lowStockMapped,
-      revenueLast30Days: revenueLast30DaysRaw.map((r) => ({
+      revenueLast30Days: revenueChartRaw.map((r) => ({
         day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10),
         total: Number(r.total),
       })),
