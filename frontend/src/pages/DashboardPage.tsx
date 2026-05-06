@@ -282,17 +282,6 @@ export default function DashboardPage() {
     setActiveProductId(null);
   }, [productDayPeriod]);
 
-  if (isLoading || !data) {
-    return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
-  }
-
-  const totalDebt = debtsData?.totals?.totalDebtOwed ?? data.totalDebt;
-  const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
-  const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
-  const deltaLabel = PREV_PERIOD_LABELS[period];
-  const revenueLabel = period === 'day' ? 'Выручка сегодня' : `Выручка ${PERIOD_LABELS[period]}`;
-  const closedDealsLabel = period === 'day' ? 'Закрыто сделок' : `Закрыто сделок ${PERIOD_LABELS[period]}`;
-
   const handlePeriodChange = useCallback((val: string | number) => {
     const v = val as DashboardPeriod;
     setPeriod(v);
@@ -304,6 +293,18 @@ export default function DashboardPage() {
       setCustomRange([dates[0], dates[1]]);
     }
   }, []);
+
+  const deltaLabel = PREV_PERIOD_LABELS[period];
+  const revenueLabel = period === 'day' ? 'Выручка сегодня' : `Выручка ${PERIOD_LABELS[period]}`;
+  const closedDealsLabel = period === 'day' ? 'Закрыто сделок' : `Закрыто сделок ${PERIOD_LABELS[period]}`;
+
+  if (isLoading || !data) {
+    return <Spin size="large" style={{ display: 'block', margin: '120px auto' }} />;
+  }
+
+  const totalDebt = debtsData?.totals?.totalDebtOwed ?? data.totalDebt;
+  const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
+  const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
   const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
