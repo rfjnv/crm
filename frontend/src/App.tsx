@@ -61,6 +61,7 @@ import ImportOrdersPage from './pages/ImportOrdersPage';
 import ImportOrderDetailPage from './pages/ImportOrderDetailPage';
 import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import VedProcessBoardPage from './pages/VedProcessBoardPage';
+import WorkerAuditPage from './pages/WorkerAuditPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -136,6 +137,7 @@ export default function App() {
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/worker-audit" element={<WorkerAuditPage />} />
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />

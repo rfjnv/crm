@@ -237,6 +237,8 @@ model User {
   notesBoardEditRequests NotesBoardEditRequest[] @relation("NotesBoardRequester")
   importOrdersCreated    ImportOrder[]          @relation("ImportOrderCreator")
   importOrderAttachmentsUploaded ImportOrderAttachment[] @relation("ImportOrderAttachmentUploader")
+  reviewsReceived        WorkerReview[]         @relation("WorkerReviewReceived")
+  reviewsGiven           WorkerReview[]         @relation("WorkerReviewGiven")
 
   @@map("users")
 }
@@ -1216,6 +1218,25 @@ model ImportOrderAttachment {
   @@index([importOrderId])
   @@index([documentType])
   @@map("import_order_attachments")
+}
+
+model WorkerReview {
+  id         String   @id @default(uuid())
+  managerId  String   @map("manager_id")
+  reviewerId String   @map("reviewer_id")
+  rating     Int
+  comment    String?
+  period     String   // YYYY-MM
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  manager  User @relation("WorkerReviewReceived", fields: [managerId], references: [id], onDelete: Cascade)
+  reviewer User @relation("WorkerReviewGiven", fields: [reviewerId], references: [id])
+
+  @@index([managerId])
+  @@index([reviewerId])
+  @@index([period])
+  @@map("worker_reviews")
 }
 
 /// Курсы валют ЦБ РУз (MVP-3). Источник: https://cbu.uz

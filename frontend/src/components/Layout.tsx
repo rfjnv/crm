@@ -583,6 +583,11 @@ export default function Layout() {
             icon: <UserOutlined />,
             label: <Link to="/users">Пользователи</Link>,
           },
+          {
+            key: '/worker-audit',
+            icon: <AuditOutlined />,
+            label: <Link to="/worker-audit">Аудит сотрудников</Link>,
+          },
         ]
       : []),
     ...(isAdmin && hasPermission('manage_users')

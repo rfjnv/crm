@@ -42,6 +42,7 @@ import suppliersRoutes from './modules/suppliers/suppliers.routes';
 import importOrdersRoutes from './modules/import-orders/import-orders.routes';
 import cbuRatesRoutes from './modules/foreign-trade/cbu-rates.routes';
 import exchangeRatesRoutes from './modules/foreign-trade/exchange-rates.routes';
+import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
 import './modules/notes-board/notes-board-reminders.scheduler';
@@ -132,6 +133,7 @@ app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/import-orders', importOrdersRoutes);
 app.use('/api/foreign-trade', cbuRatesRoutes);
 app.use('/api/foreign-trade', exchangeRatesRoutes);
+app.use('/api/worker-reviews', workerReviewsRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

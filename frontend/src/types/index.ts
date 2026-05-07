@@ -96,6 +96,29 @@ export interface User {
   badgeLabel?: string | null;
 }
 
+export interface WorkerReview {
+  id: string;
+  managerId: string;
+  reviewerId: string;
+  rating: number;
+  comment: string | null;
+  period: string;
+  createdAt: string;
+  updatedAt: string;
+  manager: { id: string; fullName: string; role: UserRole };
+  reviewer: { id: string; fullName: string; role: UserRole };
+}
+
+export interface WorkerSummary {
+  id: string;
+  fullName: string;
+  role: UserRole;
+  avgRating: number | null;
+  reviewCount: number;
+  latestReview: WorkerReview | null;
+  reviews: WorkerReview[];
+}
+
 export interface ProfileSession {
   id: string;
   createdAt: string;
