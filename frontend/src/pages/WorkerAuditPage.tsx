@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Row, Col, Card, Rate, Typography, Button, Modal, Form,
-  Input, Select, DatePicker, Tag, Space, Empty, Popconfirm,
+  Input, DatePicker, Tag, Space, Empty, Popconfirm,
   Divider, Tooltip, message, Spin,
 } from 'antd';
 import {

@@ -47,9 +47,10 @@ router.patch(
   '/:id',
   validate(updateWorkerReviewDto),
   asyncHandler(async (req: Request, res: Response) => {
-    const existing = await workerReviewsService.findById(req.params.id);
+    const id = req.params['id'] as string;
+    const existing = await workerReviewsService.findById(id);
     if (!existing) { res.status(404).json({ message: 'Not found' }); return; }
-    const updated = await workerReviewsService.update(req.params.id, req.body);
+    const updated = await workerReviewsService.update(id, req.body);
     res.json(updated);
   }),
 );
@@ -58,9 +59,10 @@ router.patch(
 router.delete(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const existing = await workerReviewsService.findById(req.params.id);
+    const id = req.params['id'] as string;
+    const existing = await workerReviewsService.findById(id);
     if (!existing) { res.status(404).json({ message: 'Not found' }); return; }
-    await workerReviewsService.delete(req.params.id);
+    await workerReviewsService.delete(id);
     res.status(204).send();
   }),
 );
