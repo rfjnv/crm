@@ -119,6 +119,25 @@ export interface WorkerSummary {
   reviews: WorkerReview[];
 }
 
+export type WorkerBadge = 'leader' | 'peak_today' | 'peak_yesterday' | 'rising' | 'falling' | 'stable' | null;
+export type WorkerTrend = 'rising' | 'falling' | 'stable' | 'new' | null;
+
+export interface EnrichedWorkerSummary extends WorkerSummary {
+  rank: number | null;
+  sparkline: { date: string; rating: number }[];
+  trend: WorkerTrend;
+  trendDelta: number;
+  badge: WorkerBadge;
+}
+
+export interface WorkerAnalytics {
+  workers: EnrichedWorkerSummary[];
+  teamAvg: number;
+  topWorker: { id: string; fullName: string; avgRating: number } | null;
+  totalReviews: number;
+  chartData: { date: string; worker: string; rating: number }[];
+}
+
 export interface ProfileSession {
   id: string;
   createdAt: string;

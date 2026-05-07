@@ -1,5 +1,5 @@
 import client from './client';
-import type { WorkerReview, WorkerSummary } from '../types';
+import type { WorkerReview, WorkerSummary, WorkerAnalytics } from '../types';
 
 export interface CreateWorkerReviewPayload {
   managerId: string;
@@ -14,6 +14,11 @@ export interface UpdateWorkerReviewPayload {
 }
 
 export const workerReviewsApi = {
+  getAnalytics: async (): Promise<WorkerAnalytics> => {
+    const { data } = await client.get<WorkerAnalytics>('/worker-reviews/analytics');
+    return data;
+  },
+
   getSummaries: async (): Promise<WorkerSummary[]> => {
     const { data } = await client.get<WorkerSummary[]>('/worker-reviews/summaries');
     return data;

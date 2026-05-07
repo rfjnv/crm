@@ -11,6 +11,15 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize('ADMIN', 'SUPER_ADMIN'));
 
+// GET /api/worker-reviews/analytics — full analytics with trends + chart data
+router.get(
+  '/analytics',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const data = await workerReviewsService.getAnalytics();
+    res.json(data);
+  }),
+);
+
 // GET /api/worker-reviews/summaries — cards per worker
 router.get(
   '/summaries',
