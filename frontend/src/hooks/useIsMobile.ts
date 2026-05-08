@@ -21,8 +21,13 @@ function getMobileSnapshot(): boolean {
 function subscribeMobile(callback: () => void): () => void {
   const mq = getMq();
   if (!mq) return () => {};
-  mq.addEventListener('change', callback);
-  return () => mq.removeEventListener('change', callback);
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', callback);
+    return () => mq.removeEventListener('change', callback);
+  }
+  // Safari < 14 fallback (iOS WebKit): only addListener/removeListener exist.
+  mq.addListener(callback);
+  return () => mq.removeListener(callback);
 }
 
 /**

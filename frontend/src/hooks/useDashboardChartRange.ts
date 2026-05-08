@@ -13,11 +13,20 @@ function subscribe(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   const mq480 = window.matchMedia('(max-width: 480px)');
   const mq768 = window.matchMedia('(max-width: 768px)');
-  mq480.addEventListener('change', cb);
-  mq768.addEventListener('change', cb);
+  if (typeof mq480.addEventListener === 'function') {
+    mq480.addEventListener('change', cb);
+    mq768.addEventListener('change', cb);
+    return () => {
+      mq480.removeEventListener('change', cb);
+      mq768.removeEventListener('change', cb);
+    };
+  }
+  // Safari < 14 fallback (iOS WebKit): only addListener/removeListener exist.
+  mq480.addListener(cb);
+  mq768.addListener(cb);
   return () => {
-    mq480.removeEventListener('change', cb);
-    mq768.removeEventListener('change', cb);
+    mq480.removeListener(cb);
+    mq768.removeListener(cb);
   };
 }
 
