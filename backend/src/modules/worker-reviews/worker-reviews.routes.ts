@@ -45,7 +45,7 @@ router.post(
   '/',
   validate(createWorkerReviewDto),
   asyncHandler(async (req: Request, res: Response) => {
-    const reviewerId = (req as any).user.id as string;
+    const reviewerId = req.user!.userId as string;
     const review = await workerReviewsService.create(reviewerId, req.body);
     res.status(201).json(review);
   }),
