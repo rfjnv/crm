@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
@@ -79,6 +79,60 @@ function mapRow(row: {
   };
 }
 
+function buildLastCallRange(query: ListNotesBoardQueryDto): Prisma.DateTimeFilter | undefined {
+  if (!query.lastCallFrom && !query.lastCallTo) return undefined;
+  return {
+    ...(query.lastCallFrom ? { gte: new Date(query.lastCallFrom) } : {}),
+    ...(query.lastCallTo ? { lte: new Date(query.lastCallTo) } : {}),
+  };
+}
+
+function buildReminderWhere(query: ListNotesBoardQueryDto): Prisma.NotesBoardRowWhereInput | undefined {
+  if (!query.reminderState) return undefined;
+
+  const now = new Date();
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+
+  switch (query.reminderState) {
+    case 'OVERDUE':
+      return { nextCallAt: { lt: now } };
+    case 'TODAY':
+      return { nextCallAt: { gte: startOfToday, lte: endOfToday } };
+    case 'UPCOMING':
+      return { nextCallAt: { gt: endOfToday } };
+    case 'NONE':
+      return { nextCallAt: null };
+    default:
+      return undefined;
+  }
+}
+
+function buildOrderBy(query: ListNotesBoardQueryDto): Prisma.NotesBoardRowOrderByWithRelationInput[] {
+  const sortBy = query.sortBy ?? 'LAST_CALL_AT';
+  const sortOrder = query.sortOrder ?? 'desc';
+
+  switch (sortBy) {
+    case 'NEXT_CALL_AT':
+      return [
+        { nextCallAt: { sort: sortOrder, nulls: 'last' } },
+        { lastCallAt: 'desc' },
+        { createdAt: 'desc' },
+      ];
+    case 'CREATED_AT':
+      return [{ createdAt: sortOrder }, { lastCallAt: 'desc' }];
+    case 'UPDATED_AT':
+      return [{ updatedAt: sortOrder }, { lastCallAt: 'desc' }];
+    case 'CLIENT_NAME':
+      return [{ client: { companyName: sortOrder } }, { lastCallAt: 'desc' }];
+    case 'LAST_CALL_AT':
+    default:
+      return [{ lastCallAt: sortOrder }, { createdAt: 'desc' }];
+  }
+}
+
 function buildClientNoteText(input: { comment: string; phoneNumber?: string | null }) {
   const phone = input.phoneNumber?.trim();
   const phoneLine = phone ? `\nНомер: ${phone}` : '';
@@ -92,12 +146,16 @@ export class NotesBoardService {
     const skip = (page - 1) * pageSize;
     const q = query.q?.trim();
     const variants = q ? buildSearchVariants(q) : [];
+    const lastCallAt = buildLastCallRange(query);
+    const reminderWhere = buildReminderWhere(query);
 
-    const where = {
+    const where: Prisma.NotesBoardRowWhereInput = {
       ...(query.clientId ? { clientId: query.clientId } : {}),
       ...(query.authorId ? { authorId: query.authorId } : {}),
       ...(query.callResult ? { callResult: query.callResult } : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(lastCallAt ? { lastCallAt } : {}),
+      ...(reminderWhere ?? {}),
       ...(variants.length > 0
         ? {
             OR: variants.flatMap((v) => [
@@ -116,7 +174,7 @@ export class NotesBoardService {
         where,
         skip,
         take: pageSize,
-        orderBy: [{ lastCallAt: 'desc' }, { createdAt: 'desc' }],
+        orderBy: buildOrderBy(query),
         include: {
           author: { select: { id: true, fullName: true } },
           client: { select: { id: true, companyName: true } },

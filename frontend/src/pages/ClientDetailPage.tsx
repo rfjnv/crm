@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,7 +26,12 @@ import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
-import { notesBoardApi } from '../api/notes-board.api';
+import {
+  notesBoardApi,
+  type NotesBoardReminderState,
+  type NotesBoardSortBy,
+  type NotesBoardSortOrder,
+} from '../api/notes-board.api';
 import type {
   DealStatus,
   DealShort,
@@ -43,7 +48,7 @@ import {
   appendPortraitSnippet,
   type ClientPortraitField,
 } from '../constants/clientPortraitTemplates';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 
 dayjs.extend(isoWeek);
@@ -130,6 +135,26 @@ function noteStatusColor(name?: string | null): string {
   return 'processing';
 }
 
+const REMINDER_LABELS: Record<NotesBoardReminderState, string> = {
+  OVERDUE: 'Просрочено',
+  TODAY: 'На сегодня',
+  UPCOMING: 'Будущие',
+  NONE: 'Без напоминания',
+};
+
+const NOTES_SORT_OPTION_LABELS: Record<`${NotesBoardSortBy}:${NotesBoardSortOrder}`, string> = {
+  'LAST_CALL_AT:desc': 'Последний обзвон: новые сверху',
+  'LAST_CALL_AT:asc': 'Последний обзвон: старые сверху',
+  'NEXT_CALL_AT:asc': 'Напоминание: ближе сверху',
+  'NEXT_CALL_AT:desc': 'Напоминание: дальше сверху',
+  'CREATED_AT:desc': 'Создано: новые сверху',
+  'CREATED_AT:asc': 'Создано: старые сверху',
+  'UPDATED_AT:desc': 'Обновлено: новые сверху',
+  'UPDATED_AT:asc': 'Обновлено: старые сверху',
+  'CLIENT_NAME:asc': 'Клиент: А-Я',
+  'CLIENT_NAME:desc': 'Клиент: Я-А',
+};
+
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -161,6 +186,15 @@ export default function ClientDetailPage() {
   const [stockCorrectForm] = Form.useForm();
   const watchedCorrectQty = Form.useWatch('qty', stockCorrectForm);
   const watchedCorrectPrice = Form.useWatch('unitPrice', stockCorrectForm);
+  const [clientCardPage, setClientCardPage] = useState(1);
+  const [clientCardPageSize, setClientCardPageSize] = useState(20);
+  const [clientCardSearchDraft, setClientCardSearchDraft] = useState('');
+  const [clientCardSearch, setClientCardSearch] = useState('');
+  const [clientCardCallResult, setClientCardCallResult] = useState<'ANSWERED' | 'NO_ANSWER' | undefined>(undefined);
+  const [clientCardReminderState, setClientCardReminderState] = useState<NotesBoardReminderState | undefined>(undefined);
+  const [clientCardLastCallRange, setClientCardLastCallRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [clientCardSortBy, setClientCardSortBy] = useState<NotesBoardSortBy>('LAST_CALL_AT');
+  const [clientCardSortOrder, setClientCardSortOrder] = useState<NotesBoardSortOrder>('desc');
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -209,21 +243,79 @@ export default function ClientDetailPage() {
     user?.role === 'MANAGER' ||
     user?.role === 'HR';
 
-  const { data: clientCallBoardData, isLoading: clientCallBoardLoading } = useQuery({
-    queryKey: ['notes-board', 'client', id],
-    queryFn: () => notesBoardApi.list({ clientId: id!, pageSize: 500, page: 1 }),
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (clientCardSearchDraft === clientCardSearch) return;
+      setClientCardPage(1);
+      setClientCardSearch(clientCardSearchDraft);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [clientCardSearchDraft, clientCardSearch]);
+
+  const currentWeekStart = dayjs().startOf('isoWeek').toISOString();
+  const currentWeekEnd = dayjs().endOf('isoWeek').toISOString();
+  const clientCardLastCallFrom = clientCardLastCallRange?.[0]?.startOf('day').toISOString();
+  const clientCardLastCallTo = clientCardLastCallRange?.[1]?.endOf('day').toISOString();
+  const clientCardSortValue = `${clientCardSortBy}:${clientCardSortOrder}` as const;
+  const resetClientCardFilters = () => {
+    setClientCardPage(1);
+    setClientCardPageSize(20);
+    setClientCardSearchDraft('');
+    setClientCardSearch('');
+    setClientCardCallResult(undefined);
+    setClientCardReminderState(undefined);
+    setClientCardLastCallRange(null);
+    setClientCardSortBy('LAST_CALL_AT');
+    setClientCardSortOrder('desc');
+  };
+
+  const { data: weeklyCallBoardData, isLoading: weeklyCallBoardLoading } = useQuery({
+    queryKey: ['notes-board', 'client', id, 'week', currentWeekStart, currentWeekEnd],
+    queryFn: () =>
+      notesBoardApi.list({
+        clientId: id!,
+        pageSize: 100,
+        page: 1,
+        lastCallFrom: currentWeekStart,
+        lastCallTo: currentWeekEnd,
+        sortBy: 'LAST_CALL_AT',
+        sortOrder: 'desc',
+      }),
     enabled: !!id && canSeeNotesBoardCalls,
   });
 
-  const weeklyCallRows = useMemo(() => {
-    const items = clientCallBoardData?.items ?? [];
-    const start = dayjs().startOf('isoWeek');
-    const end = dayjs().endOf('isoWeek');
-    return items.filter((r) => {
-      const t = dayjs(r.lastCallAt);
-      return !t.isBefore(start) && !t.isAfter(end);
-    });
-  }, [clientCallBoardData?.items]);
+  const weeklyCallRows = weeklyCallBoardData?.items ?? [];
+
+  const { data: clientCardBoardData, isLoading: clientCardBoardLoading } = useQuery({
+    queryKey: [
+      'notes-board',
+      'client-card',
+      id,
+      clientCardPage,
+      clientCardPageSize,
+      clientCardSearch,
+      clientCardCallResult,
+      clientCardReminderState,
+      clientCardLastCallFrom,
+      clientCardLastCallTo,
+      clientCardSortBy,
+      clientCardSortOrder,
+    ],
+    queryFn: () =>
+      notesBoardApi.list({
+        clientId: id!,
+        page: clientCardPage,
+        pageSize: clientCardPageSize,
+        q: clientCardSearch.trim() || undefined,
+        callResult: clientCardCallResult,
+        reminderState: clientCardReminderState,
+        lastCallFrom: clientCardLastCallFrom,
+        lastCallTo: clientCardLastCallTo,
+        sortBy: clientCardSortBy,
+        sortOrder: clientCardSortOrder,
+      }),
+    enabled: !!id && canSeeNotesBoardCalls,
+  });
 
   const callBoardColumns: ColumnsType<NotesBoardRow> = useMemo(
     () => [
@@ -267,6 +359,103 @@ export default function ClientDetailPage() {
         key: 'author',
         width: 160,
         render: (_: unknown, r: NotesBoardRow) => r.author.fullName,
+      },
+    ],
+    [],
+  );
+
+  const clientCardColumns: ColumnsType<NotesBoardRow> = useMemo(
+    () => [
+      {
+        title: 'Дата обзвона',
+        key: 'lastCallAt',
+        width: 160,
+        render: (_: unknown, r: NotesBoardRow) => dayjs(r.lastCallAt).format('DD.MM.YYYY HH:mm'),
+      },
+      {
+        title: 'Напоминание',
+        key: 'nextCallAt',
+        width: 160,
+        render: (_: unknown, r: NotesBoardRow) => {
+          if (!r.nextCallAt) return '—';
+          const nextAt = dayjs(r.nextCallAt);
+          return <Tag color={nextAt.isBefore(dayjs()) ? 'red' : 'blue'}>{nextAt.format('DD.MM.YYYY HH:mm')}</Tag>;
+        },
+      },
+      {
+        title: 'Дозвон',
+        key: 'callResult',
+        width: 120,
+        render: (_: unknown, r: NotesBoardRow) => (
+          <Tag color={r.callResult === 'ANSWERED' ? 'green' : 'orange'}>
+            {CALL_RESULT_LABELS[r.callResult]}
+          </Tag>
+        ),
+      },
+      {
+        title: 'Статус',
+        key: 'status',
+        width: 130,
+        render: (_: unknown, r: NotesBoardRow) =>
+          r.status ? <Tag color={noteStatusColor(r.status)}>{r.status}</Tag> : '—',
+      },
+      {
+        title: 'Номер',
+        dataIndex: 'phoneNumber',
+        width: 130,
+        render: (v: string | null) => v?.trim() || '—',
+      },
+      {
+        title: 'Комментарий',
+        dataIndex: 'comment',
+        key: 'comment',
+        width: 340,
+        render: (v: string) => (
+          <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+            {v}
+          </Typography.Paragraph>
+        ),
+      },
+      {
+        title: 'Автор',
+        key: 'author',
+        width: 160,
+        render: (_: unknown, r: NotesBoardRow) => r.author.fullName,
+      },
+      {
+        title: 'Правки',
+        key: 'editRequests',
+        width: 220,
+        render: (_: unknown, r: NotesBoardRow) => (
+          <Space direction="vertical" size={2}>
+            <Tag color={r.editRequestCount >= 3 ? 'red' : 'processing'}>{r.editRequestCount}/3 запросов</Tag>
+            {r.lastEditRequestAt ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {dayjs(r.lastEditRequestAt).format('DD.MM.YYYY HH:mm')}
+                {r.lastEditRequestByName ? ` · ${r.lastEditRequestByName}` : ''}
+              </Typography.Text>
+            ) : (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Без запросов
+              </Typography.Text>
+            )}
+          </Space>
+        ),
+      },
+      {
+        title: 'Создано / обновлено',
+        key: 'audit',
+        width: 220,
+        render: (_: unknown, r: NotesBoardRow) => (
+          <Space direction="vertical" size={2}>
+            <Typography.Text style={{ fontSize: 12 }}>
+              Создано: {dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Обновлено: {dayjs(r.updatedAt).format('DD.MM.YYYY HH:mm')}
+            </Typography.Text>
+          </Space>
+        ),
       },
     ],
     [],
@@ -856,7 +1045,7 @@ export default function ClientDetailPage() {
                   )}
                 </Card>
                 {canSeeNotesBoardCalls ? (
-                  <Card bordered={false} title="Обзвоны за текущую неделю" loading={clientCallBoardLoading}>
+                  <Card bordered={false} title="Обзвоны за текущую неделю" loading={weeklyCallBoardLoading}>
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                       Данные из «Заметки обзвонов»: дозвон, дата обзвона, статус, номер (если указан), комментарий и автор.
                       Отображаются только записи с датой обзвона в текущей календарной неделе (понедельник–воскресенье). При наступлении новой недели блок пересчитывается; если звонков не было — показывается текст ниже.
@@ -1272,31 +1461,108 @@ export default function ClientDetailPage() {
           ...(canSeeNotesBoardCalls
             ? [
                 {
-                  key: 'call-history',
+                  key: 'client-card',
                   label: (
                     <span>
-                      <PhoneOutlined /> История обзвона
+                      <PhoneOutlined /> Карточка клиента
                     </span>
                   ),
                   children: (
-                    <Card bordered={false} loading={clientCallBoardLoading}>
+                    <Card
+                      bordered={false}
+                      loading={clientCardBoardLoading}
+                      extra={
+                        <Typography.Text type="secondary">
+                          Всего записей: {clientCardBoardData?.meta.total ?? 0}
+                        </Typography.Text>
+                      }
+                    >
                       <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                        Все записи из «Заметки обзвонов» по этому клиенту. Данные не очищаются.
-                        {(clientCallBoardData?.meta?.total ?? 0) > 500 ? (
-                          <>
-                            {' '}
-                            Показано до 500 последних записей.
-                          </>
-                        ) : null}
+                        Полная история заметок обзвона по клиенту: дата обзвона, следующее напоминание, статус, номер, комментарий,
+                        автор, правки и служебные даты. Блок сделан как отдельная карточка клиента, чтобы менеджеру было проще
+                        быстро восстановить весь контекст.
                       </Typography.Paragraph>
+                      <Space wrap size={[8, 8]} style={{ marginBottom: 12 }}>
+                        <Input
+                          allowClear
+                          placeholder="Поиск по комментарию, номеру, статусу..."
+                          style={{ width: 320 }}
+                          value={clientCardSearchDraft}
+                          onChange={(e) => setClientCardSearchDraft(e.target.value)}
+                        />
+                        <Select
+                          allowClear
+                          placeholder="Дозвон"
+                          value={clientCardCallResult}
+                          style={{ width: 170 }}
+                          onChange={(value) => {
+                            setClientCardPage(1);
+                            setClientCardCallResult(value);
+                          }}
+                          options={[
+                            { value: 'ANSWERED', label: CALL_RESULT_LABELS.ANSWERED },
+                            { value: 'NO_ANSWER', label: CALL_RESULT_LABELS.NO_ANSWER },
+                          ]}
+                        />
+                        <DatePicker.RangePicker
+                          value={clientCardLastCallRange}
+                          format="DD.MM.YYYY"
+                          allowEmpty={[true, true]}
+                          placeholder={['Обзвон с', 'Обзвон по']}
+                          onChange={(range) => {
+                            setClientCardPage(1);
+                            setClientCardLastCallRange(range);
+                          }}
+                        />
+                        <Select
+                          allowClear
+                          placeholder="Напоминание"
+                          value={clientCardReminderState}
+                          style={{ width: 190 }}
+                          onChange={(value) => {
+                            setClientCardPage(1);
+                            setClientCardReminderState(value);
+                          }}
+                          options={[
+                            { value: 'OVERDUE', label: REMINDER_LABELS.OVERDUE },
+                            { value: 'TODAY', label: REMINDER_LABELS.TODAY },
+                            { value: 'UPCOMING', label: REMINDER_LABELS.UPCOMING },
+                            { value: 'NONE', label: REMINDER_LABELS.NONE },
+                          ]}
+                        />
+                        <Select
+                          value={clientCardSortValue}
+                          style={{ width: 280 }}
+                          onChange={(value) => {
+                            const [nextSortBy, nextSortOrder] = value.split(':') as [NotesBoardSortBy, NotesBoardSortOrder];
+                            setClientCardPage(1);
+                            setClientCardSortBy(nextSortBy);
+                            setClientCardSortOrder(nextSortOrder);
+                          }}
+                          options={Object.entries(NOTES_SORT_OPTION_LABELS).map(([value, label]) => ({
+                            value,
+                            label,
+                          }))}
+                        />
+                        <Button onClick={resetClientCardFilters}>Сбросить</Button>
+                      </Space>
                       <Table<NotesBoardRow>
                         rowKey="id"
                         size="small"
-                        dataSource={clientCallBoardData?.items ?? []}
-                        columns={callBoardColumns}
-                        pagination={{ pageSize: 20 }}
+                        dataSource={clientCardBoardData?.items ?? []}
+                        columns={clientCardColumns}
+                        pagination={{
+                          current: clientCardPage,
+                          pageSize: clientCardPageSize,
+                          total: clientCardBoardData?.meta.total ?? 0,
+                          showSizeChanger: true,
+                          onChange: (nextPage, nextPageSize) => {
+                            setClientCardPage(nextPage);
+                            setClientCardPageSize(nextPageSize);
+                          },
+                        }}
                         locale={{ emptyText: 'Нет записей обзвонов' }}
-                        scroll={{ x: 900 }}
+                        scroll={{ x: 1600 }}
                       />
                     </Card>
                   ),

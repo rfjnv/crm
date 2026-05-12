@@ -1,6 +1,10 @@
 import client from './client';
 import type { NotesBoardRow } from '../types';
 
+export type NotesBoardReminderState = 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'NONE';
+export type NotesBoardSortBy = 'LAST_CALL_AT' | 'NEXT_CALL_AT' | 'CREATED_AT' | 'UPDATED_AT' | 'CLIENT_NAME';
+export type NotesBoardSortOrder = 'asc' | 'desc';
+
 export type NotesBoardListResponse = {
   items: NotesBoardRow[];
   meta: { page: number; pageSize: number; total: number };
@@ -49,6 +53,11 @@ export const notesBoardApi = {
     callResult?: 'ANSWERED' | 'NO_ANSWER';
     status?: string;
     q?: string;
+    reminderState?: NotesBoardReminderState;
+    lastCallFrom?: string;
+    lastCallTo?: string;
+    sortBy?: NotesBoardSortBy;
+    sortOrder?: NotesBoardSortOrder;
   }) =>
     client.get<NotesBoardListResponse>('/notes-board', { params }).then((r) => r.data),
 

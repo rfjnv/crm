@@ -3,6 +3,14 @@ import { z } from 'zod';
 const isoDate = z.string().datetime({ offset: true });
 
 export const notesBoardCallResultValues = ['ANSWERED', 'NO_ANSWER'] as const;
+export const notesBoardReminderStateValues = ['OVERDUE', 'TODAY', 'UPCOMING', 'NONE'] as const;
+export const notesBoardSortByValues = [
+  'LAST_CALL_AT',
+  'NEXT_CALL_AT',
+  'CREATED_AT',
+  'UPDATED_AT',
+  'CLIENT_NAME',
+] as const;
 
 export const listNotesBoardQueryDto = z
   .object({
@@ -13,6 +21,11 @@ export const listNotesBoardQueryDto = z
     callResult: z.enum(notesBoardCallResultValues).optional(),
     status: z.string().trim().min(1).max(120).optional(),
     q: z.string().trim().max(200).optional(),
+    reminderState: z.enum(notesBoardReminderStateValues).optional(),
+    lastCallFrom: isoDate.optional(),
+    lastCallTo: isoDate.optional(),
+    sortBy: z.enum(notesBoardSortByValues).optional(),
+    sortOrder: z.enum(['asc', 'desc']).optional(),
   })
   .superRefine((data, ctx) => {
     const ps = data.pageSize;
@@ -21,6 +34,13 @@ export const listNotesBoardQueryDto = z
         code: z.ZodIssueCode.custom,
         message: 'pageSize больше 200 доступен только вместе с clientId',
         path: ['pageSize'],
+      });
+    }
+    if (data.lastCallFrom && data.lastCallTo && new Date(data.lastCallFrom) > new Date(data.lastCallTo)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Дата начала не может быть позже даты конца',
+        path: ['lastCallFrom'],
       });
     }
   });

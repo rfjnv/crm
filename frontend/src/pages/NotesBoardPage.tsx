@@ -23,7 +23,7 @@ import {
   Progress,
   theme as antdTheme,
 } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import {
   PlusOutlined,
   PhoneOutlined,
@@ -32,12 +32,18 @@ import {
   PieChartOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { notesBoardApi } from '../api/notes-board.api';
+import {
+  notesBoardApi,
+  type NotesBoardReminderState,
+  type NotesBoardSortBy,
+  type NotesBoardSortOrder,
+} from '../api/notes-board.api';
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
 import { smartFilterOption } from '../utils/translit';
 
 type CallResult = 'ANSWERED' | 'NO_ANSWER';
+type DateRangeValue = [Dayjs | null, Dayjs | null] | null;
 
 const CALL_RESULT_LABEL: Record<CallResult, string> = {
   ANSWERED: 'Взял трубку',
@@ -45,6 +51,24 @@ const CALL_RESULT_LABEL: Record<CallResult, string> = {
 };
 
 const BASE_STATUSES = ['Успешный', 'Н/А', 'Пока думает', 'Дал запрос'] as const;
+const REMINDER_LABELS: Record<NotesBoardReminderState, string> = {
+  OVERDUE: 'Просрочено',
+  TODAY: 'На сегодня',
+  UPCOMING: 'Будущие',
+  NONE: 'Без напоминания',
+};
+const SORT_OPTION_LABELS: Record<`${NotesBoardSortBy}:${NotesBoardSortOrder}`, string> = {
+  'LAST_CALL_AT:desc': 'Последний обзвон: новые сверху',
+  'LAST_CALL_AT:asc': 'Последний обзвон: старые сверху',
+  'NEXT_CALL_AT:asc': 'Напоминание: ближе сверху',
+  'NEXT_CALL_AT:desc': 'Напоминание: дальше сверху',
+  'CREATED_AT:desc': 'Создание: новые сверху',
+  'CREATED_AT:asc': 'Создание: старые сверху',
+  'UPDATED_AT:desc': 'Обновление: новые сверху',
+  'UPDATED_AT:asc': 'Обновление: старые сверху',
+  'CLIENT_NAME:asc': 'Клиент: А-Я',
+  'CLIENT_NAME:desc': 'Клиент: Я-А',
+};
 const STATUS_COLORS: Record<string, string> = {
   Успешный: 'green',
   'Н/А': 'default',
@@ -82,6 +106,11 @@ export default function NotesBoardPage() {
   const [callResultFilter, setCallResultFilter] = useState<CallResult | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [authorFilter, setAuthorFilter] = useState<string | undefined>(undefined);
+  const [clientFilter, setClientFilter] = useState<string | undefined>(undefined);
+  const [reminderFilter, setReminderFilter] = useState<NotesBoardReminderState | undefined>(undefined);
+  const [lastCallRange, setLastCallRange] = useState<DateRangeValue>(null);
+  const [sortBy, setSortBy] = useState<NotesBoardSortBy>('LAST_CALL_AT');
+  const [sortOrder, setSortOrder] = useState<NotesBoardSortOrder>('desc');
   const [createOpen, setCreateOpen] = useState(false);
   const [quickClientOpen, setQuickClientOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -115,8 +144,39 @@ export default function NotesBoardPage() {
     return () => window.clearTimeout(t);
   }, [searchDraft, q]);
 
+  const lastCallFrom = lastCallRange?.[0]?.startOf('day').toISOString();
+  const lastCallTo = lastCallRange?.[1]?.endOf('day').toISOString();
+  const sortValue = `${sortBy}:${sortOrder}` as const;
+  const resetFilters = () => {
+    setSearchDraft('');
+    setQ('');
+    setCallResultFilter(undefined);
+    setStatusFilter(undefined);
+    setAuthorFilter(undefined);
+    setClientFilter(undefined);
+    setReminderFilter(undefined);
+    setLastCallRange(null);
+    setSortBy('LAST_CALL_AT');
+    setSortOrder('desc');
+    setPage(1);
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['notes-board', page, pageSize, q, callResultFilter, statusFilter, authorFilter],
+    queryKey: [
+      'notes-board',
+      page,
+      pageSize,
+      q,
+      callResultFilter,
+      statusFilter,
+      authorFilter,
+      clientFilter,
+      reminderFilter,
+      lastCallFrom,
+      lastCallTo,
+      sortBy,
+      sortOrder,
+    ],
     queryFn: () =>
       notesBoardApi.list({
         page,
@@ -125,6 +185,12 @@ export default function NotesBoardPage() {
         callResult: callResultFilter,
         status: statusFilter || undefined,
         authorId: authorFilter,
+        clientId: clientFilter,
+        reminderState: reminderFilter,
+        lastCallFrom,
+        lastCallTo,
+        sortBy,
+        sortOrder,
       }),
   });
 
@@ -242,6 +308,17 @@ export default function NotesBoardPage() {
   const noStatusCount =
     (stats?.total || 0) -
     Array.from(statusCounts.values()).reduce((acc, v) => acc + v, 0);
+  const statusOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...BASE_STATUSES,
+          ...rows.map((r) => (r.status || '').trim()).filter(Boolean),
+          ...(stats?.byStatus || []).map((s) => (s.status || '').trim()).filter(Boolean),
+        ]),
+      ),
+    [rows, stats?.byStatus],
+  );
   const activeFilterChips = [
     q && { key: 'q', label: `Поиск: "${q}"`, onClose: () => { setSearchDraft(''); setQ(''); setPage(1); } },
     callResultFilter && {
@@ -258,6 +335,30 @@ export default function NotesBoardPage() {
       key: 'au',
       label: `Автор: ${stats?.byAuthor.find((a) => a.authorId === authorFilter)?.authorName || '—'}`,
       onClose: () => { setAuthorFilter(undefined); setPage(1); },
+    },
+    clientFilter && {
+      key: 'cl',
+      label: `Клиент: ${clients.find((c) => c.id === clientFilter)?.companyName || '—'}`,
+      onClose: () => { setClientFilter(undefined); setPage(1); },
+    },
+    reminderFilter && {
+      key: 'rm',
+      label: `Напоминание: ${REMINDER_LABELS[reminderFilter]}`,
+      onClose: () => { setReminderFilter(undefined); setPage(1); },
+    },
+    lastCallRange?.[0] && lastCallRange?.[1] && {
+      key: 'dt',
+      label: `Обзвон: ${lastCallRange[0].format('DD.MM.YYYY')} - ${lastCallRange[1].format('DD.MM.YYYY')}`,
+      onClose: () => { setLastCallRange(null); setPage(1); },
+    },
+    (sortBy !== 'LAST_CALL_AT' || sortOrder !== 'desc') && {
+      key: 'so',
+      label: `Сортировка: ${SORT_OPTION_LABELS[sortValue]}`,
+      onClose: () => {
+        setSortBy('LAST_CALL_AT');
+        setSortOrder('desc');
+        setPage(1);
+      },
     },
   ].filter(Boolean) as Array<{ key: string; label: string; onClose: () => void }>;
 
@@ -353,12 +454,7 @@ export default function NotesBoardPage() {
               <Card
                 size="small"
                 hoverable
-                onClick={() => {
-                  setCallResultFilter(undefined);
-                  setStatusFilter(undefined);
-                  setAuthorFilter(undefined);
-                  setPage(1);
-                }}
+                onClick={resetFilters}
                 style={{
                   borderRadius: 14,
                   borderColor: tk.colorBorderSecondary,
@@ -491,7 +587,7 @@ export default function NotesBoardPage() {
       ) : null}
 
       <Card size="small" style={{ marginBottom: 12, borderRadius: 14 }}>
-        <Space wrap>
+        <Space wrap size={[8, 8]}>
           <Input
             allowClear
             prefix={<SearchOutlined style={{ color: tk.colorTextTertiary }} />}
@@ -499,6 +595,19 @@ export default function NotesBoardPage() {
             style={{ width: 340 }}
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
+          />
+          <Select
+            allowClear
+            showSearch
+            placeholder="Клиент"
+            value={clientFilter}
+            style={{ width: 260 }}
+            filterOption={smartFilterOption}
+            onChange={(v) => {
+              setPage(1);
+              setClientFilter(v);
+            }}
+            options={clients.map((c) => ({ value: c.id, label: c.companyName }))}
           />
           <Select
             allowClear
@@ -515,6 +624,16 @@ export default function NotesBoardPage() {
             ]}
             suffixIcon={<CloseCircleOutlined style={{ display: 'none' }} />}
           />
+          <DatePicker.RangePicker
+            value={lastCallRange}
+            format="DD.MM.YYYY"
+            allowEmpty={[true, true]}
+            placeholder={['Обзвон с', 'Обзвон по']}
+            onChange={(range) => {
+              setPage(1);
+              setLastCallRange(range);
+            }}
+          />
           <Select
             allowClear
             showSearch
@@ -526,10 +645,26 @@ export default function NotesBoardPage() {
               setPage(1);
               setStatusFilter(v);
             }}
-            options={[...BASE_STATUSES, ...Array.from(new Set(rows.map((r) => (r.status || '').trim()).filter(Boolean)))].map((s) => ({
+            options={statusOptions.map((s) => ({
               label: s,
               value: s,
             }))}
+          />
+          <Select
+            allowClear
+            placeholder="Напоминание"
+            value={reminderFilter}
+            style={{ width: 190 }}
+            onChange={(v) => {
+              setPage(1);
+              setReminderFilter(v);
+            }}
+            options={[
+              { value: 'OVERDUE', label: REMINDER_LABELS.OVERDUE },
+              { value: 'TODAY', label: REMINDER_LABELS.TODAY },
+              { value: 'UPCOMING', label: REMINDER_LABELS.UPCOMING },
+              { value: 'NONE', label: REMINDER_LABELS.NONE },
+            ]}
           />
           {canSeeAnalytics && (stats?.byAuthor || []).length > 0 ? (
             <Select
@@ -549,6 +684,21 @@ export default function NotesBoardPage() {
               }))}
             />
           ) : null}
+          <Select
+            value={sortValue}
+            style={{ width: 290 }}
+            onChange={(value) => {
+              const [nextSortBy, nextSortOrder] = value.split(':') as [NotesBoardSortBy, NotesBoardSortOrder];
+              setPage(1);
+              setSortBy(nextSortBy);
+              setSortOrder(nextSortOrder);
+            }}
+            options={Object.entries(SORT_OPTION_LABELS).map(([value, label]) => ({
+              value,
+              label,
+            }))}
+          />
+          <Button onClick={resetFilters}>Сбросить всё</Button>
         </Space>
       </Card>
 
@@ -592,6 +742,21 @@ export default function NotesBoardPage() {
             key: 'lastCallAt',
             width: 180,
             render: (_v, r) => dayjs(r.lastCallAt).format('DD.MM.YYYY HH:mm'),
+          },
+          {
+            title: 'Напомнить',
+            key: 'nextCallAt',
+            width: 180,
+            render: (_v, r) => {
+              if (!r.nextCallAt) return '—';
+              const nextAt = dayjs(r.nextCallAt);
+              const isOverdue = nextAt.isBefore(dayjs());
+              return (
+                <Tag color={isOverdue ? 'red' : 'blue'}>
+                  {nextAt.format('DD.MM.YYYY HH:mm')}
+                </Tag>
+              );
+            },
           },
           {
             title: 'Статус',
