@@ -23,7 +23,7 @@ import {
   message,
   theme,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import { foreignTradeApi } from '../api/foreign-trade.api';
@@ -35,13 +35,14 @@ import type {
 } from '../types';
 import { normalizeVedCountry } from '../utils/vedBlockingCalendar';
 
-const STORAGE_KEY = 'crm-ved-manual-calendar-events-v1';
+const MANUAL_STORAGE_KEY = 'crm-ved-manual-calendar-events-v1';
+const API_OVERRIDE_STORAGE_KEY = 'crm-ved-api-event-overrides-v1';
 
 type CalendarColorKey = 'holiday' | 'rose' | 'orange' | 'blue' | 'green' | 'violet';
-type ManualColorKey = Exclude<CalendarColorKey, 'holiday'>;
 
 type CalendarEventItem = {
   id: string;
+  sourceEventId: string;
   name: string;
   countryCode: VedCountryCode | null;
   countryLabel: string | null;
@@ -53,6 +54,7 @@ type CalendarEventItem = {
   source: 'date-holidays' | 'manual';
   colorKey: CalendarColorKey;
   isBlocking: boolean;
+  hasOverride: boolean;
 };
 
 type ManualCalendarEvent = {
@@ -62,9 +64,20 @@ type ManualCalendarEvent = {
   endDate: string;
   note: string | null;
   countryCode: VedCountryCode | null;
-  colorKey: ManualColorKey;
+  colorKey: CalendarColorKey;
   isBlocking: boolean;
   createdAt: string;
+};
+
+type ApiEventOverride = {
+  sourceEventId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  note: string | null;
+  colorKey: CalendarColorKey;
+  isBlocking: boolean;
+  updatedAt: string;
 };
 
 type ManualEventFormValues = {
@@ -72,9 +85,14 @@ type ManualEventFormValues = {
   dateRange: [Dayjs, Dayjs];
   note?: string;
   countryCode?: VedCountryCode;
-  colorKey: ManualColorKey;
+  colorKey: CalendarColorKey;
   isBlocking?: boolean;
 };
+
+type EditingTarget =
+  | { source: 'manual'; sourceEventId: string }
+  | { source: 'date-holidays'; sourceEventId: string }
+  | null;
 
 type RiskOrderHit = {
   order: ImportOrderListItem;
@@ -126,7 +144,6 @@ const COLOR_META: Record<CalendarColorKey, {
   },
 };
 
-const MANUAL_COLOR_OPTIONS: ManualColorKey[] = ['rose', 'orange', 'blue', 'green', 'violet'];
 const COLOR_FILTER_ORDER: CalendarColorKey[] = ['holiday', 'rose', 'orange', 'blue', 'green', 'violet'];
 
 function monthRange(value: Dayjs) {
@@ -139,12 +156,31 @@ function monthRange(value: Dayjs) {
 function loadManualEvents(): ManualCalendarEvent[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(MANUAL_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ManualCalendarEvent[];
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item) => (
       typeof item?.id === 'string'
+      && typeof item?.title === 'string'
+      && typeof item?.startDate === 'string'
+      && typeof item?.endDate === 'string'
+      && typeof item?.colorKey === 'string'
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function loadApiOverrides(): ApiEventOverride[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(API_OVERRIDE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ApiEventOverride[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item) => (
+      typeof item?.sourceEventId === 'string'
       && typeof item?.title === 'string'
       && typeof item?.startDate === 'string'
       && typeof item?.endDate === 'string'
@@ -170,11 +206,8 @@ function groupEventsByDate(events: CalendarEventItem[]): Map<string, CalendarEve
   const byDate = new Map<string, CalendarEventItem[]>();
   for (const event of events) {
     const current = byDate.get(event.date);
-    if (current) {
-      current.push(event);
-    } else {
-      byDate.set(event.date, [event]);
-    }
+    if (current) current.push(event);
+    else byDate.set(event.date, [event]);
   }
   return byDate;
 }
@@ -190,23 +223,36 @@ function getUniqueColorKeys(events: CalendarEventItem[]): CalendarColorKey[] {
   return COLOR_FILTER_ORDER.filter((colorKey) => present.has(colorKey));
 }
 
-function expandOfficialEvents(events: BlockingHolidayEvent[]): CalendarEventItem[] {
-  return events.flatMap((event) => (
-    enumerateDates(event.startDate, event.endDate).map((date) => ({
+function expandOfficialEvents(
+  events: BlockingHolidayEvent[],
+  overridesMap: Map<string, ApiEventOverride>,
+): CalendarEventItem[] {
+  return events.flatMap((event) => {
+    const override = overridesMap.get(event.id) ?? null;
+    const title = override?.title ?? event.name;
+    const startDate = override?.startDate ?? event.startDate;
+    const endDate = override?.endDate ?? event.endDate;
+    const note = override?.note ?? event.note;
+    const colorKey = override?.colorKey ?? 'holiday';
+    const isBlocking = override?.isBlocking ?? true;
+
+    return enumerateDates(startDate, endDate).map((date) => ({
       id: `${event.id}:${date}`,
-      name: event.name,
+      sourceEventId: event.id,
+      name: title,
       countryCode: event.countryCode,
       countryLabel: event.countryLabel,
       isPrimaryCountry: event.isPrimaryCountry,
       date,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      note: event.note,
+      startDate,
+      endDate,
+      note,
       source: 'date-holidays' as const,
-      colorKey: 'holiday' as const,
-      isBlocking: true,
-    }))
-  ));
+      colorKey,
+      isBlocking,
+      hasOverride: Boolean(override),
+    }));
+  });
 }
 
 function expandManualEvents(
@@ -216,6 +262,7 @@ function expandManualEvents(
   return events.flatMap((event) => (
     enumerateDates(event.startDate, event.endDate).map((date) => ({
       id: `${event.id}:${date}`,
+      sourceEventId: event.id,
       name: event.title,
       countryCode: event.countryCode,
       countryLabel: event.countryCode ? (countryLabelMap.get(event.countryCode) ?? event.countryCode) : null,
@@ -227,6 +274,7 @@ function expandManualEvents(
       source: 'manual' as const,
       colorKey: event.colorKey,
       isBlocking: event.isBlocking,
+      hasOverride: false,
     }))
   ));
 }
@@ -250,8 +298,9 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
   const [selectedCountryCode, setSelectedCountryCode] = useState<VedCountryCode | null>(null);
   const [selectedColorKey, setSelectedColorKey] = useState<CalendarColorKey | null>(null);
   const [manualEvents, setManualEvents] = useState<ManualCalendarEvent[]>(() => loadManualEvents());
+  const [apiOverrides, setApiOverrides] = useState<ApiEventOverride[]>(() => loadApiOverrides());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingManualEventId, setEditingManualEventId] = useState<string | null>(null);
+  const [editingTarget, setEditingTarget] = useState<EditingTarget>(null);
   const [form] = Form.useForm<ManualEventFormValues>();
 
   const visibleRange = useMemo(() => monthRange(panelValue), [panelValue]);
@@ -271,17 +320,33 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(manualEvents));
+      window.localStorage.setItem(MANUAL_STORAGE_KEY, JSON.stringify(manualEvents));
     } catch {
       /* ignore localStorage quota */
     }
   }, [manualEvents]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(API_OVERRIDE_STORAGE_KEY, JSON.stringify(apiOverrides));
+    } catch {
+      /* ignore localStorage quota */
+    }
+  }, [apiOverrides]);
+
   const countryLabelMap = useMemo(() => (
     new Map((data?.countries ?? []).map((country) => [country.code, country.label]))
   ), [data?.countries]);
 
-  const officialEvents = useMemo(() => expandOfficialEvents(data?.items ?? []), [data?.items]);
+  const overridesMap = useMemo(
+    () => new Map(apiOverrides.map((override) => [override.sourceEventId, override])),
+    [apiOverrides],
+  );
+
+  const officialEvents = useMemo(
+    () => expandOfficialEvents(data?.items ?? [], overridesMap),
+    [data?.items, overridesMap],
+  );
   const expandedManualEvents = useMemo(
     () => expandManualEvents(manualEvents, countryLabelMap),
     [manualEvents, countryLabelMap],
@@ -315,8 +380,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
   const selectedDateKey = selectedDate.format('YYYY-MM-DD');
   const selectedDayEvents = eventsByDate.get(selectedDateKey) ?? [];
 
-  const riskOrders = useMemo<RiskOrderHit[]>(() => {
-    return orders
+  const riskOrders = useMemo<RiskOrderHit[]>(() => (
+    orders
       .map((order) => {
         const countryCode = normalizeVedCountry(order.supplier.country);
         if (selectedCountryCode && countryCode !== selectedCountryCode) {
@@ -327,8 +392,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
         const etaHits = getBlockingHitsForOrderDate(order.eta, blockingEventsByDate, countryCode);
         return { order, etdHits, etaHits };
       })
-      .filter((row) => row.etdHits.length > 0 || row.etaHits.length > 0);
-  }, [orders, blockingEventsByDate, selectedCountryCode]);
+      .filter((row) => row.etdHits.length > 0 || row.etaHits.length > 0)
+  ), [orders, blockingEventsByDate, selectedCountryCode]);
 
   const selectedDayRiskOrders = useMemo(() => (
     riskOrders.filter((row) => (
@@ -336,6 +401,17 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       || row.etaHits.some((hit) => hit.date === selectedDateKey)
     ))
   ), [riskOrders, selectedDateKey]);
+
+  const currentOfficialOverride = useMemo(() => (
+    editingTarget?.source === 'date-holidays'
+      ? apiOverrides.find((override) => override.sourceEventId === editingTarget.sourceEventId) ?? null
+      : null
+  ), [apiOverrides, editingTarget]);
+
+  function closeModal() {
+    setIsCreateOpen(false);
+    setEditingTarget(null);
+  }
 
   function openCreateModal() {
     form.setFieldsValue({
@@ -346,77 +422,129 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       colorKey: 'blue',
       isBlocking: false,
     });
-    setEditingManualEventId(null);
+    setEditingTarget(null);
     setIsCreateOpen(true);
   }
 
-  function openEditModal(eventId: string) {
-    const event = manualEvents.find((item) => item.id === eventId);
-    if (!event) return;
-
+  function openEditModal(item: CalendarEventItem) {
     form.setFieldsValue({
-      title: event.title,
-      dateRange: [dayjs(event.startDate), dayjs(event.endDate)],
-      note: event.note ?? '',
-      countryCode: event.countryCode ?? undefined,
-      colorKey: event.colorKey,
-      isBlocking: event.isBlocking,
+      title: item.name,
+      dateRange: [dayjs(item.startDate), dayjs(item.endDate)],
+      note: item.note ?? '',
+      countryCode: item.countryCode ?? undefined,
+      colorKey: item.colorKey,
+      isBlocking: item.isBlocking,
     });
-    setEditingManualEventId(eventId);
+    setEditingTarget({ source: item.source, sourceEventId: item.sourceEventId });
     setIsCreateOpen(true);
   }
 
   function handleSubmit() {
     form.validateFields().then((values) => {
-      const existingEvent = editingManualEventId
-        ? manualEvents.find((item) => item.id === editingManualEventId) ?? null
-        : null;
-      const nextEvent: ManualCalendarEvent = existingEvent
-        ? {
-            ...existingEvent,
-            title: values.title.trim(),
-            startDate: values.dateRange[0].format('YYYY-MM-DD'),
-            endDate: values.dateRange[1].format('YYYY-MM-DD'),
-            note: values.note?.trim() || null,
-            countryCode: values.countryCode ?? null,
-            colorKey: values.colorKey,
-            isBlocking: Boolean(values.isBlocking),
-          }
-        : {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            title: values.title.trim(),
-            startDate: values.dateRange[0].format('YYYY-MM-DD'),
-            endDate: values.dateRange[1].format('YYYY-MM-DD'),
-            note: values.note?.trim() || null,
-            countryCode: values.countryCode ?? null,
-            colorKey: values.colorKey,
-            isBlocking: Boolean(values.isBlocking),
-            createdAt: new Date().toISOString(),
-          };
+      const payload = {
+        title: values.title.trim(),
+        startDate: values.dateRange[0].format('YYYY-MM-DD'),
+        endDate: values.dateRange[1].format('YYYY-MM-DD'),
+        note: values.note?.trim() || null,
+        countryCode: values.countryCode ?? null,
+        colorKey: values.colorKey,
+        isBlocking: Boolean(values.isBlocking),
+      };
 
-      setManualEvents((prev) => {
-        const base = existingEvent
-          ? prev.map((item) => (item.id === editingManualEventId ? nextEvent : item))
-          : [...prev, nextEvent];
-        return base.sort((a, b) => (
+      if (!editingTarget) {
+        const nextEvent: ManualCalendarEvent = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          ...payload,
+          createdAt: new Date().toISOString(),
+        };
+
+        setManualEvents((prev) => [...prev, nextEvent].sort((a, b) => (
           a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title, 'ru')
-        ));
+        )));
+        setSelectedDate(values.dateRange[0].startOf('day'));
+        closeModal();
+        message.success('Событие добавлено');
+        return;
+      }
+
+      if (editingTarget.source === 'manual') {
+        const existingEvent = manualEvents.find((item) => item.id === editingTarget.sourceEventId) ?? null;
+        const nextEvent: ManualCalendarEvent = existingEvent
+          ? {
+              ...existingEvent,
+              ...payload,
+            }
+          : {
+              id: editingTarget.sourceEventId,
+              ...payload,
+              createdAt: new Date().toISOString(),
+            };
+
+        setManualEvents((prev) => {
+          const exists = prev.some((item) => item.id === editingTarget.sourceEventId);
+          const base = exists
+            ? prev.map((item) => (item.id === editingTarget.sourceEventId ? nextEvent : item))
+            : [...prev, nextEvent];
+          return base.sort((a, b) => (
+            a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title, 'ru')
+          ));
+        });
+        setSelectedDate(values.dateRange[0].startOf('day'));
+        closeModal();
+        message.success('Событие обновлено');
+        return;
+      }
+
+      const nextOverride: ApiEventOverride = {
+        sourceEventId: editingTarget.sourceEventId,
+        title: payload.title,
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        note: payload.note,
+        colorKey: payload.colorKey,
+        isBlocking: payload.isBlocking,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setApiOverrides((prev) => {
+        const exists = prev.some((item) => item.sourceEventId === editingTarget.sourceEventId);
+        return exists
+          ? prev.map((item) => (item.sourceEventId === editingTarget.sourceEventId ? nextOverride : item))
+          : [...prev, nextOverride];
       });
       setSelectedDate(values.dateRange[0].startOf('day'));
-      setIsCreateOpen(false);
-      setEditingManualEventId(null);
-      message.success(existingEvent ? 'Событие обновлено' : 'Событие добавлено');
+      closeModal();
+      message.success('Правки для API-события сохранены');
     });
   }
 
-  function removeManualEvent(eventId: string) {
-    setManualEvents((prev) => prev.filter((event) => event.id !== eventId));
-    if (editingManualEventId === eventId) {
-      setEditingManualEventId(null);
-      setIsCreateOpen(false);
+  function removeManualEvent(sourceEventId: string) {
+    setManualEvents((prev) => prev.filter((event) => event.id !== sourceEventId));
+    if (editingTarget?.source === 'manual' && editingTarget.sourceEventId === sourceEventId) {
+      closeModal();
     }
     message.success('Событие удалено');
   }
+
+  function resetOfficialOverride(sourceEventId: string) {
+    setApiOverrides((prev) => prev.filter((override) => override.sourceEventId !== sourceEventId));
+    if (editingTarget?.source === 'date-holidays' && editingTarget.sourceEventId === sourceEventId) {
+      closeModal();
+    }
+    message.success('Правки API-события сброшены');
+  }
+
+  const modalTitle = !editingTarget
+    ? 'Добавить своё событие'
+    : editingTarget.source === 'manual'
+    ? 'Редактировать событие'
+    : 'Редактировать API-событие';
+
+  const modalOkText = !editingTarget
+    ? 'Сохранить'
+    : editingTarget.source === 'manual'
+    ? 'Сохранить изменения'
+    : 'Сохранить override';
 
   return (
     <Card
@@ -435,8 +563,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
         Календарь показывает официальные праздники для Китая, Турции, Грузии, России, Казахстана,
-        Ирана, Кыргызстана и Туркменистана. Ниже можно добавлять свои события: встречи, дедлайны,
-        напоминания и собственные блокирующие окна.
+        Ирана, Кыргызстана и Туркменистана. Любое событие можно фильтровать по странам и цветам,
+        а API-праздники теперь редактируются через локальные override-настройки поверх справочника.
       </Typography.Paragraph>
 
       <Space wrap size={[6, 6]} style={{ marginBottom: 10 }}>
@@ -633,22 +761,43 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                     renderItem={(item) => (
                       <List.Item
                         style={{ paddingInline: 0 }}
-                        actions={item.source === 'manual' ? [
-                          <Button
-                            key="edit"
-                            type="text"
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => openEditModal(item.id.split(':')[0])}
-                          />,
-                          <Popconfirm
-                            key="delete"
-                            title="Удалить это событие?"
-                            onConfirm={() => removeManualEvent(item.id.split(':')[0])}
-                          >
-                            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                          </Popconfirm>,
-                        ] : undefined}
+                        actions={item.source === 'manual'
+                          ? [
+                              <Button
+                                key="edit"
+                                type="text"
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEditModal(item)}
+                              />,
+                              <Popconfirm
+                                key="delete"
+                                title="Удалить это событие?"
+                                onConfirm={() => removeManualEvent(item.sourceEventId)}
+                              >
+                                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                              </Popconfirm>,
+                            ]
+                          : [
+                              <Button
+                                key="edit"
+                                type="text"
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEditModal(item)}
+                              />,
+                              ...(item.hasOverride
+                                ? [
+                                    <Popconfirm
+                                      key="reset"
+                                      title="Сбросить правки и вернуть данные из API?"
+                                      onConfirm={() => resetOfficialOverride(item.sourceEventId)}
+                                    >
+                                      <Button type="text" size="small" icon={<UndoOutlined />} />
+                                    </Popconfirm>,
+                                  ]
+                                : []),
+                            ]}
                       >
                         <Space direction="vertical" size={2}>
                           <Space wrap size={[6, 6]}>
@@ -662,6 +811,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                             ) : (
                               <Tag>Общее</Tag>
                             )}
+                            {item.source === 'date-holidays' ? <Tag>API</Tag> : <Tag color="blue">Свое</Tag>}
+                            {item.hasOverride ? <Tag color="gold">Override</Tag> : null}
                             {item.isBlocking ? <Tag color="red">Блок</Tag> : null}
                             <Typography.Text strong>{item.name}</Typography.Text>
                           </Space>
@@ -724,16 +875,32 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       )}
 
       <Modal
-        title={editingManualEventId ? 'Редактировать событие' : 'Добавить своё событие'}
+        title={modalTitle}
         open={isCreateOpen}
-        onCancel={() => {
-          setIsCreateOpen(false);
-          setEditingManualEventId(null);
-        }}
+        onCancel={closeModal}
         onOk={handleSubmit}
-        okText={editingManualEventId ? 'Сохранить изменения' : 'Сохранить'}
+        okText={modalOkText}
         width={560}
         destroyOnClose
+        footer={[
+          <Button key="cancel" onClick={closeModal}>
+            Отмена
+          </Button>,
+          ...(editingTarget?.source === 'date-holidays' && currentOfficialOverride
+            ? [
+                <Popconfirm
+                  key="reset"
+                  title="Сбросить все локальные правки и вернуть данные из API?"
+                  onConfirm={() => resetOfficialOverride(editingTarget.sourceEventId)}
+                >
+                  <Button icon={<UndoOutlined />}>Сбросить к API</Button>
+                </Popconfirm>,
+              ]
+            : []),
+          <Button key="save" type="primary" onClick={handleSubmit}>
+            {modalOkText}
+          </Button>,
+        ]}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -755,6 +922,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
           <Form.Item name="countryCode" label="Страна (необязательно)">
             <Select
               allowClear
+              disabled={editingTarget?.source === 'date-holidays'}
               placeholder="Общее событие без привязки к стране"
               options={(data?.countries ?? []).map((country) => ({
                 value: country.code,
@@ -769,7 +937,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
             rules={[{ required: true, message: 'Выберите цвет' }]}
           >
             <Select
-              options={MANUAL_COLOR_OPTIONS.map((colorKey) => ({
+              options={COLOR_FILTER_ORDER.map((colorKey) => ({
                 value: colorKey,
                 label: COLOR_META[colorKey].label,
               }))}
