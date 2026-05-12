@@ -22,6 +22,7 @@ import { useThemeStore } from '../store/themeStore';
 import { Area, Column } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import type { Permission, UserRole, DealStatus } from '../types';
 import './DashboardPage.css';
 
@@ -148,6 +149,11 @@ export default function DashboardPage() {
     role === 'SUPER_ADMIN'
     || role === 'ADMIN'
     || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
+  const canViewVedEvents =
+    role === 'SUPER_ADMIN'
+    || role === 'ADMIN'
+    || (user?.permissions ?? []).includes('view_import_orders' as Permission)
+    || (user?.permissions ?? []).includes('manage_import_orders' as Permission);
   const showExtras = isAdmin || role === 'MANAGER';
 
   const analyticsPeriod = period === 'day' || period === 'custom' ? 'month' : period;
@@ -657,6 +663,14 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
+        </div>
+      )}
+
+      {canViewVedEvents && (
+        <div className={isMobile ? 'section' : undefined}>
+          <div style={{ marginTop: isMobile ? 0 : 16 }}>
+            <VedEventsQuickAccessCard />
+          </div>
         </div>
       )}
 
