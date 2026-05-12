@@ -173,6 +173,37 @@ function buildMonthGrid(month: Dayjs): Dayjs[] {
   return Array.from({ length: 42 }, (_, index) => gridStart.add(index, 'day'));
 }
 
+function applyAlpha(color: string, alpha: number): string {
+  const normalized = color.trim();
+  const shortHex = /^#([\da-f]{3})$/i;
+  const fullHex = /^#([\da-f]{6})$/i;
+
+  if (shortHex.test(normalized)) {
+    const [, raw] = normalized.match(shortHex)!;
+    const expanded = raw.split('').map((char) => char + char).join('');
+    const red = parseInt(expanded.slice(0, 2), 16);
+    const green = parseInt(expanded.slice(2, 4), 16);
+    const blue = parseInt(expanded.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+
+  if (fullHex.test(normalized)) {
+    const [, raw] = normalized.match(fullHex)!;
+    const red = parseInt(raw.slice(0, 2), 16);
+    const green = parseInt(raw.slice(2, 4), 16);
+    const blue = parseInt(raw.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+
+  return color;
+}
+
+function toggleValue<T>(items: T[], value: T): T[] {
+  return items.includes(value)
+    ? items.filter((item) => item !== value)
+    : [...items, value];
+}
+
 function loadManualEvents(): ManualCalendarEvent[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -315,8 +346,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
   const { token } = theme.useToken();
   const [panelValue, setPanelValue] = useState(() => dayjs().startOf('year'));
   const [selectedDate, setSelectedDate] = useState(() => dayjs().startOf('day'));
-  const [selectedCountryCode, setSelectedCountryCode] = useState<VedCountryCode | null>(null);
-  const [selectedColorKey, setSelectedColorKey] = useState<CalendarColorKey | null>(null);
+  const [selectedCountryCodes, setSelectedCountryCodes] = useState<VedCountryCode[]>([]);
+  const [selectedColorKeys, setSelectedColorKeys] = useState<CalendarColorKey[]>([]);
   const [manualEvents, setManualEvents] = useState<ManualCalendarEvent[]>(() => loadManualEvents());
   const [apiOverrides, setApiOverrides] = useState<ApiEventOverride[]>(() => loadApiOverrides());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -391,13 +422,18 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
     return (data?.countries ?? []).filter((country) => allowed.has(country.code));
   }, [data?.countries, monthCountryCodes]);
 
+  const selectedCountrySet = useMemo(() => new Set(selectedCountryCodes), [selectedCountryCodes]);
+  const selectedColorSet = useMemo(() => new Set(selectedColorKeys), [selectedColorKeys]);
+
   const events = useMemo(() => (
     allEvents.filter((event) => {
-      if (selectedCountryCode && event.countryCode !== selectedCountryCode) return false;
-      if (selectedColorKey && event.colorKey !== selectedColorKey) return false;
+      if (selectedCountrySet.size > 0 && (!event.countryCode || !selectedCountrySet.has(event.countryCode))) {
+        return false;
+      }
+      if (selectedColorSet.size > 0 && !selectedColorSet.has(event.colorKey)) return false;
       return true;
     })
-  ), [allEvents, selectedCountryCode, selectedColorKey]);
+  ), [allEvents, selectedCountrySet, selectedColorSet]);
 
   const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
   const blockingEventsByDate = useMemo(
@@ -412,7 +448,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
     orders
       .map((order) => {
         const countryCode = normalizeVedCountry(order.supplier.country);
-        if (selectedCountryCode && countryCode !== selectedCountryCode) {
+        if (selectedCountrySet.size > 0 && (!countryCode || !selectedCountrySet.has(countryCode))) {
           return { order, etdHits: [], etaHits: [] };
         }
 
@@ -421,7 +457,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
         return { order, etdHits, etaHits };
       })
       .filter((row) => row.etdHits.length > 0 || row.etaHits.length > 0)
-  ), [orders, blockingEventsByDate, selectedCountryCode]);
+  ), [orders, blockingEventsByDate, selectedCountrySet]);
 
   const selectedDayRiskOrders = useMemo(() => (
     riskOrders.filter((row) => (
@@ -446,7 +482,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       title: '',
       dateRange: [selectedDate, selectedDate],
       note: '',
-      countryCode: selectedCountryCode ?? undefined,
+      countryCode: selectedCountryCodes.length === 1 ? selectedCountryCodes[0] : undefined,
       colorKey: 'blue',
       isBlocking: false,
     });
@@ -611,28 +647,21 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
 
       <Space wrap size={[6, 6]} style={{ marginBottom: 10 }}>
         <Tag
-          color={selectedCountryCode === null ? 'blue' : 'default'}
+          color={selectedCountryCodes.length === 0 ? 'blue' : 'default'}
           style={{ cursor: 'pointer', userSelect: 'none', marginInlineEnd: 0 }}
-          onClick={() => setSelectedCountryCode(null)}
+          onClick={() => setSelectedCountryCodes([])}
         >
           Все страны
         </Tag>
         {visibleCountries.map((country) => {
-          const active = selectedCountryCode === country.code;
-          const color = active
-            ? 'blue'
-            : country.code === 'CN' || country.code === 'TR'
-            ? 'volcano'
-            : 'default';
+          const active = selectedCountrySet.has(country.code);
 
           return (
             <Tag
               key={country.code}
-              color={color}
+              color={active ? 'blue' : 'default'}
               style={{ cursor: 'pointer', userSelect: 'none', marginInlineEnd: 0 }}
-              onClick={() => setSelectedCountryCode((current) => (
-                current === country.code ? null : country.code
-              ))}
+              onClick={() => setSelectedCountryCodes((current) => toggleValue(current, country.code))}
             >
               {country.label}
             </Tag>
@@ -642,36 +671,38 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
 
       <Space wrap size={[6, 6]} style={{ marginBottom: 14 }}>
         <Tag
-          color={selectedColorKey === null ? 'blue' : 'default'}
+          color={selectedColorKeys.length === 0 ? 'blue' : 'default'}
           style={{ cursor: 'pointer', userSelect: 'none', marginInlineEnd: 0 }}
-          onClick={() => setSelectedColorKey(null)}
+          onClick={() => setSelectedColorKeys([])}
         >
           Все цвета
         </Tag>
         {availableColorKeys.map((colorKey) => (
           <Tag
             key={colorKey}
-            color={selectedColorKey === colorKey ? 'blue' : COLOR_META[colorKey].tagColor}
+            color={selectedColorSet.has(colorKey) ? 'blue' : 'default'}
             style={{ cursor: 'pointer', userSelect: 'none', marginInlineEnd: 0 }}
-            onClick={() => setSelectedColorKey((current) => (
-              current === colorKey ? null : colorKey
-            ))}
+            onClick={() => setSelectedColorKeys((current) => toggleValue(current, colorKey))}
           >
             {COLOR_META[colorKey].label}
           </Tag>
         ))}
       </Space>
 
-      {(selectedCountryCode || selectedColorKey) ? (
+      {(selectedCountryCodes.length > 0 || selectedColorKeys.length > 0) ? (
         <Typography.Paragraph style={{ marginTop: -4, marginBottom: 12 }}>
           <Typography.Text strong>
             Фильтр:
             {' '}
-            {selectedCountryCode
-              ? (countryLabelMap.get(selectedCountryCode) ?? selectedCountryCode)
+            {selectedCountryCodes.length > 0
+              ? selectedCountryCodes.map((countryCode) => (
+                  countryLabelMap.get(countryCode) ?? countryCode
+                )).join(', ')
               : 'все страны'}
             {' · '}
-            {selectedColorKey ? COLOR_META[selectedColorKey].label : 'все цвета'}
+            {selectedColorKeys.length > 0
+              ? selectedColorKeys.map((colorKey) => COLOR_META[colorKey].label).join(', ')
+              : 'все цвета'}
           </Typography.Text>
         </Typography.Paragraph>
       ) : null}
@@ -685,9 +716,9 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
               style={{
                 padding: 12,
                 borderRadius: 28,
-                background: `linear-gradient(180deg, ${token.colorFillQuaternary} 0%, ${token.colorBgContainer} 100%)`,
+                background: `linear-gradient(180deg, ${token.colorFillSecondary} 0%, ${token.colorBgContainer} 100%)`,
                 border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 24px 60px rgba(15, 23, 42, 0.08)',
+                boxShadow: token.boxShadowSecondary,
                 overflowX: 'auto',
               }}
             >
@@ -707,10 +738,9 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                       style={{
                         borderRadius: 22,
                         padding: 8,
-                        background: 'rgba(255, 255, 255, 0.9)',
-                        border: '1px solid rgba(255, 255, 255, 0.75)',
-                        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
-                        backdropFilter: 'blur(18px)',
+                        background: token.colorBgElevated,
+                        border: `1px solid ${applyAlpha(token.colorBorderSecondary, 0.8)}`,
+                        boxShadow: token.boxShadowSecondary,
                       }}
                     >
                       <div style={{ textAlign: 'center', marginBottom: 8 }}>
@@ -779,12 +809,12 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                                 borderRadius: 999,
                                 border: 'none',
                                 background: isToday
-                                  ? 'linear-gradient(180deg, #0a84ff 0%, #0066ff 100%)'
+                                  ? token.colorPrimary
                                   : isSelected
                                   ? token.colorPrimaryBg
                                   : 'transparent',
                                 boxShadow: isToday
-                                  ? '0 8px 18px rgba(10, 132, 255, 0.32)'
+                                  ? `0 8px 18px ${applyAlpha(token.colorPrimary, 0.35)}`
                                   : hasEvents && isCurrentMonth
                                   ? `inset 0 0 0 1px ${accentColor.cellBorder}`
                                   : 'none',
@@ -824,7 +854,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                                         width: 4,
                                         height: 4,
                                         borderRadius: 999,
-                                        background: isToday ? 'rgba(255,255,255,0.95)' : COLOR_META[colorKey].cellBorder,
+                                        background: isToday ? token.colorWhite : COLOR_META[colorKey].cellBorder,
                                       }}
                                     />
                                   ))}
@@ -921,7 +951,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                               {COLOR_META[item.colorKey].label}
                             </Tag>
                             {item.countryLabel ? (
-                              <Tag color={item.isPrimaryCountry ? 'volcano' : 'default'}>
+                              <Tag>
                                 {item.countryLabel}
                               </Tag>
                             ) : (
