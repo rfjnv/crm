@@ -23,7 +23,7 @@ import {
   message,
   theme,
 } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import { foreignTradeApi } from '../api/foreign-trade.api';
@@ -251,6 +251,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
   const [selectedColorKey, setSelectedColorKey] = useState<CalendarColorKey | null>(null);
   const [manualEvents, setManualEvents] = useState<ManualCalendarEvent[]>(() => loadManualEvents());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingManualEventId, setEditingManualEventId] = useState<string | null>(null);
   const [form] = Form.useForm<ManualEventFormValues>();
 
   const visibleRange = useMemo(() => monthRange(panelValue), [panelValue]);
@@ -345,34 +346,75 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       colorKey: 'blue',
       isBlocking: false,
     });
+    setEditingManualEventId(null);
     setIsCreateOpen(true);
   }
 
-  function handleCreate() {
-    form.validateFields().then((values) => {
-      const nextEvent: ManualCalendarEvent = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        title: values.title.trim(),
-        startDate: values.dateRange[0].format('YYYY-MM-DD'),
-        endDate: values.dateRange[1].format('YYYY-MM-DD'),
-        note: values.note?.trim() || null,
-        countryCode: values.countryCode ?? null,
-        colorKey: values.colorKey,
-        isBlocking: Boolean(values.isBlocking),
-        createdAt: new Date().toISOString(),
-      };
+  function openEditModal(eventId: string) {
+    const event = manualEvents.find((item) => item.id === eventId);
+    if (!event) return;
 
-      setManualEvents((prev) => [...prev, nextEvent].sort((a, b) => (
-        a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title, 'ru')
-      )));
+    form.setFieldsValue({
+      title: event.title,
+      dateRange: [dayjs(event.startDate), dayjs(event.endDate)],
+      note: event.note ?? '',
+      countryCode: event.countryCode ?? undefined,
+      colorKey: event.colorKey,
+      isBlocking: event.isBlocking,
+    });
+    setEditingManualEventId(eventId);
+    setIsCreateOpen(true);
+  }
+
+  function handleSubmit() {
+    form.validateFields().then((values) => {
+      const existingEvent = editingManualEventId
+        ? manualEvents.find((item) => item.id === editingManualEventId) ?? null
+        : null;
+      const nextEvent: ManualCalendarEvent = existingEvent
+        ? {
+            ...existingEvent,
+            title: values.title.trim(),
+            startDate: values.dateRange[0].format('YYYY-MM-DD'),
+            endDate: values.dateRange[1].format('YYYY-MM-DD'),
+            note: values.note?.trim() || null,
+            countryCode: values.countryCode ?? null,
+            colorKey: values.colorKey,
+            isBlocking: Boolean(values.isBlocking),
+          }
+        : {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            title: values.title.trim(),
+            startDate: values.dateRange[0].format('YYYY-MM-DD'),
+            endDate: values.dateRange[1].format('YYYY-MM-DD'),
+            note: values.note?.trim() || null,
+            countryCode: values.countryCode ?? null,
+            colorKey: values.colorKey,
+            isBlocking: Boolean(values.isBlocking),
+            createdAt: new Date().toISOString(),
+          };
+
+      setManualEvents((prev) => {
+        const base = existingEvent
+          ? prev.map((item) => (item.id === editingManualEventId ? nextEvent : item))
+          : [...prev, nextEvent];
+        return base.sort((a, b) => (
+          a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title, 'ru')
+        ));
+      });
       setSelectedDate(values.dateRange[0].startOf('day'));
       setIsCreateOpen(false);
-      message.success('Событие добавлено');
+      setEditingManualEventId(null);
+      message.success(existingEvent ? 'Событие обновлено' : 'Событие добавлено');
     });
   }
 
   function removeManualEvent(eventId: string) {
     setManualEvents((prev) => prev.filter((event) => event.id !== eventId));
+    if (editingManualEventId === eventId) {
+      setEditingManualEventId(null);
+      setIsCreateOpen(false);
+    }
     message.success('Событие удалено');
   }
 
@@ -592,6 +634,13 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                       <List.Item
                         style={{ paddingInline: 0 }}
                         actions={item.source === 'manual' ? [
+                          <Button
+                            key="edit"
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => openEditModal(item.id.split(':')[0])}
+                          />,
                           <Popconfirm
                             key="delete"
                             title="Удалить это событие?"
@@ -675,11 +724,14 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       )}
 
       <Modal
-        title="Добавить своё событие"
+        title={editingManualEventId ? 'Редактировать событие' : 'Добавить своё событие'}
         open={isCreateOpen}
-        onCancel={() => setIsCreateOpen(false)}
-        onOk={handleCreate}
-        okText="Сохранить"
+        onCancel={() => {
+          setIsCreateOpen(false);
+          setEditingManualEventId(null);
+        }}
+        onOk={handleSubmit}
+        okText={editingManualEventId ? 'Сохранить изменения' : 'Сохранить'}
         width={560}
         destroyOnClose
       >
