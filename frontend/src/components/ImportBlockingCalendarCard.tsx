@@ -684,8 +684,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: 12,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 8,
               }}
             >
               {yearMonths.map((month) => {
@@ -696,11 +696,11 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                     style={{
                       borderRadius: 14,
                       border: `1px solid ${token.colorBorderSecondary}`,
-                      padding: 10,
+                      padding: 8,
                       background: token.colorBgContainer,
                     }}
                   >
-                    <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    <Typography.Text strong style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
                       {MONTH_LABELS[month.month()]}
                       {' '}
                       {month.format('YYYY')}
@@ -710,15 +710,15 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                       style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 4,
-                        marginBottom: 6,
+                        gap: 3,
+                        marginBottom: 4,
                       }}
                     >
                       {WEEKDAY_LABELS.map((label) => (
                         <Typography.Text
                           key={label}
                           type="secondary"
-                          style={{ fontSize: 11, textAlign: 'center' }}
+                          style={{ fontSize: 10, textAlign: 'center' }}
                         >
                           {label}
                         </Typography.Text>
@@ -729,17 +729,16 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                       style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 4,
+                        gap: 3,
                       }}
                     >
                       {monthCells.map((value) => {
                         const dayEvents = eventsByDate.get(value.format('YYYY-MM-DD')) ?? [];
-                        const dayCountryCodes = getUniqueCountryCodes(dayEvents);
+                        const dayColorKeys = getUniqueColorKeys(dayEvents).slice(0, 3);
                         const accentColorKey = dayEvents[0]?.colorKey ?? 'holiday';
                         const accentColor = COLOR_META[accentColorKey];
                         const isSelected = value.isSame(selectedDate, 'day');
                         const isCurrentMonth = value.month() === month.month();
-                        const hasGeneralEvent = dayEvents.some((event) => event.countryCode === null);
 
                         return (
                           <button
@@ -750,9 +749,9 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                               setSelectedDate(value.startOf('day'));
                             }}
                             style={{
-                              minHeight: 52,
-                              padding: '6px 4px',
-                              borderRadius: 10,
+                              minHeight: 34,
+                              padding: '4px 3px',
+                              borderRadius: 8,
                               border: `1px solid ${
                                 isSelected ? token.colorPrimary : dayEvents.length ? accentColor.cellBorder : token.colorBorderSecondary
                               }`,
@@ -769,71 +768,28 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                               <span
                                 style={{
-                                  fontSize: 12,
+                                  fontSize: 11,
                                   fontWeight: isSelected ? 700 : 500,
                                   color: dayEvents.length ? accentColor.cellBorder : token.colorText,
                                 }}
                               >
                                 {value.date()}
                               </span>
-                              {dayEvents.length > 0 ? (
-                                <span
-                                  style={{
-                                    minWidth: 16,
-                                    height: 16,
-                                    borderRadius: 999,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: 10,
-                                    color: '#fff',
-                                    background: accentColor.cellBorder,
-                                  }}
-                                >
-                                  {dayEvents.length}
-                                </span>
-                              ) : null}
                             </div>
 
-                            {dayCountryCodes.length > 0 || hasGeneralEvent ? (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 4 }}>
-                                {dayCountryCodes.slice(0, 2).map((countryCode) => {
-                                  const tagEvent = dayEvents.find((event) => event.countryCode === countryCode);
-                                  return (
-                                    <span
-                                      key={countryCode}
-                                      style={{
-                                        fontSize: 9,
-                                        lineHeight: '12px',
-                                        padding: '1px 4px',
-                                        borderRadius: 999,
-                                        color: '#fff',
-                                        background: COLOR_META[tagEvent?.colorKey ?? 'holiday'].cellBorder,
-                                      }}
-                                    >
-                                      {countryCode}
-                                    </span>
-                                  );
-                                })}
-                                {dayCountryCodes.length === 0 && hasGeneralEvent ? (
+                            {dayColorKeys.length > 0 ? (
+                              <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
+                                {dayColorKeys.map((colorKey) => (
                                   <span
+                                    key={colorKey}
                                     style={{
-                                      fontSize: 9,
-                                      lineHeight: '12px',
-                                      padding: '1px 4px',
+                                      width: 6,
+                                      height: 6,
                                       borderRadius: 999,
-                                      color: '#fff',
-                                      background: COLOR_META[dayEvents.find((event) => event.countryCode === null)?.colorKey ?? 'holiday'].cellBorder,
+                                      background: COLOR_META[colorKey].cellBorder,
                                     }}
-                                  >
-                                    EVT
-                                  </span>
-                                ) : null}
-                                {dayCountryCodes.length > 2 ? (
-                                  <span style={{ fontSize: 9, color: token.colorTextSecondary }}>
-                                    +{dayCountryCodes.length - 2}
-                                  </span>
-                                ) : null}
+                                  />
+                                ))}
                               </div>
                             ) : null}
                           </button>
