@@ -680,176 +680,168 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
         <Skeleton active paragraph={{ rows: 8 }} />
       ) : (
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={16}>
+          <Col xs={24}>
             <div
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: 10,
+                padding: 12,
+                borderRadius: 28,
+                background: `linear-gradient(180deg, ${token.colorFillQuaternary} 0%, ${token.colorBgContainer} 100%)`,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: '0 24px 60px rgba(15, 23, 42, 0.08)',
+                overflowX: 'auto',
               }}
             >
-              {yearMonths.map((month) => {
-                const monthCells = buildMonthGrid(month);
-                return (
-                  <div
-                    key={month.format('YYYY-MM')}
-                    style={{
-                      borderRadius: 18,
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      padding: 10,
-                      background: token.colorBgContainer,
-                      boxShadow: token.boxShadowTertiary,
-                    }}
-                  >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+                  gap: 10,
+                  minWidth: 1080,
+                }}
+              >
+                {yearMonths.map((month) => {
+                  const monthCells = buildMonthGrid(month);
+                  return (
                     <div
+                      key={month.format('YYYY-MM')}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 8,
-                        paddingBottom: 6,
-                        borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                        borderRadius: 22,
+                        padding: 8,
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        border: '1px solid rgba(255, 255, 255, 0.75)',
+                        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+                        backdropFilter: 'blur(18px)',
                       }}
                     >
-                      <Typography.Text strong style={{ fontSize: 13 }}>
-                        {MONTH_LABELS[month.month()]}
-                      </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                        {month.format('YYYY')}
-                      </Typography.Text>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 4,
-                        marginBottom: 6,
-                      }}
-                    >
-                      {WEEKDAY_LABELS.map((label) => (
-                        <Typography.Text
-                          key={label}
-                          type="secondary"
-                          style={{ fontSize: 10, textAlign: 'center' }}
-                        >
-                          {label}
+                      <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                        <Typography.Text strong style={{ display: 'block', fontSize: 12 }}>
+                          {MONTH_LABELS[month.month()]}
                         </Typography.Text>
-                      ))}
-                    </div>
+                        <Typography.Text type="secondary" style={{ fontSize: 10 }}>
+                          {month.format('YYYY')}
+                        </Typography.Text>
+                      </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 4,
-                      }}
-                    >
-                      {monthCells.map((value) => {
-                        const dayEvents = eventsByDate.get(value.format('YYYY-MM-DD')) ?? [];
-                        const dayColorKeys = getUniqueColorKeys(dayEvents).slice(0, 3);
-                        const accentColorKey = dayEvents[0]?.colorKey ?? 'holiday';
-                        const accentColor = COLOR_META[accentColorKey];
-                        const isSelected = value.isSame(selectedDate, 'day');
-                        const isCurrentMonth = value.month() === month.month();
-                        const isToday = value.isSame(dayjs(), 'day');
-                        const hasEvents = dayEvents.length > 0;
-                        const background = isToday
-                          ? token.colorPrimary
-                          : isSelected
-                          ? token.colorPrimaryBg
-                          : hasEvents
-                          ? token.colorFillAlter
-                          : token.colorBgLayout;
-                        const borderColor = isToday
-                          ? token.colorPrimary
-                          : isSelected
-                          ? token.colorPrimary
-                          : hasEvents
-                          ? accentColor.cellBorder
-                          : token.colorBorderSecondary;
-                        const textColor = isToday
-                          ? '#fff'
-                          : isSelected
-                          ? token.colorPrimary
-                          : hasEvents
-                          ? token.colorText
-                          : token.colorTextSecondary;
-
-                        return (
-                          <button
-                            key={value.format('YYYY-MM-DD')}
-                            type="button"
-                            onClick={() => {
-                              if (value.year() !== panelValue.year()) return;
-                              setSelectedDate(value.startOf('day'));
-                            }}
-                            style={{
-                              minHeight: 40,
-                              padding: '6px 4px 5px',
-                              borderRadius: 12,
-                              border: `1px solid ${borderColor}`,
-                              background,
-                              boxShadow: isSelected && !isToday ? `0 0 0 1px ${token.colorPrimaryBorder}` : 'none',
-                              opacity: isCurrentMonth ? 1 : 0.35,
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                              position: 'relative',
-                              transition: 'all 120ms ease',
-                              overflow: 'hidden',
-                            }}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                          gap: 2,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {WEEKDAY_LABELS.map((label) => (
+                          <Typography.Text
+                            key={label}
+                            type="secondary"
+                            style={{ fontSize: 9, textAlign: 'center' }}
                           >
-                            {hasEvents && !isToday ? (
-                              <span
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  height: 3,
-                                  background: accentColor.cellBorder,
-                                }}
-                              />
-                            ) : null}
+                            {label}
+                          </Typography.Text>
+                        ))}
+                      </div>
 
-                            <span
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                          gap: 2,
+                        }}
+                      >
+                        {monthCells.map((value) => {
+                          const dayEvents = eventsByDate.get(value.format('YYYY-MM-DD')) ?? [];
+                          const dayColorKeys = getUniqueColorKeys(dayEvents).slice(0, 2);
+                          const accentColorKey = dayEvents[0]?.colorKey ?? 'holiday';
+                          const accentColor = COLOR_META[accentColorKey];
+                          const isSelected = value.isSame(selectedDate, 'day');
+                          const isCurrentMonth = value.month() === month.month();
+                          const isToday = value.isSame(dayjs(), 'day');
+                          const hasEvents = dayEvents.length > 0;
+                          const textColor = isToday
+                            ? '#fff'
+                            : isSelected
+                            ? token.colorPrimary
+                            : isCurrentMonth
+                            ? token.colorText
+                            : token.colorTextQuaternary;
+
+                          return (
+                            <button
+                              key={value.format('YYYY-MM-DD')}
+                              type="button"
+                              onClick={() => {
+                                if (value.year() !== panelValue.year()) return;
+                                setSelectedDate(value.startOf('day'));
+                              }}
                               style={{
-                                display: 'block',
-                                fontSize: 12,
-                                lineHeight: '14px',
-                                fontWeight: isToday || isSelected ? 700 : 500,
-                                color: textColor,
+                                height: 24,
+                                padding: 0,
+                                borderRadius: 999,
+                                border: 'none',
+                                background: isToday
+                                  ? 'linear-gradient(180deg, #0a84ff 0%, #0066ff 100%)'
+                                  : isSelected
+                                  ? token.colorPrimaryBg
+                                  : 'transparent',
+                                boxShadow: isToday
+                                  ? '0 8px 18px rgba(10, 132, 255, 0.32)'
+                                  : hasEvents && isCurrentMonth
+                                  ? `inset 0 0 0 1px ${accentColor.cellBorder}`
+                                  : 'none',
+                                opacity: isCurrentMonth ? 1 : 0.38,
+                                cursor: 'pointer',
+                                position: 'relative',
+                                transition: 'all 120ms ease',
                               }}
                             >
-                              {value.date()}
-                            </span>
+                              <span
+                                style={{
+                                  display: 'block',
+                                  fontSize: 11,
+                                  lineHeight: '24px',
+                                  fontWeight: isToday || isSelected ? 700 : 500,
+                                  color: textColor,
+                                }}
+                              >
+                                {value.date()}
+                              </span>
 
-                            {dayColorKeys.length > 0 ? (
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 6 }}>
-                                {dayColorKeys.map((colorKey) => (
-                                  <span
-                                    key={colorKey}
-                                    style={{
-                                      width: 6,
-                                      height: 6,
-                                      borderRadius: 999,
-                                      background: isToday ? 'rgba(255,255,255,0.92)' : COLOR_META[colorKey].cellBorder,
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            ) : null}
-                          </button>
-                        );
-                      })}
+                              {dayColorKeys.length > 0 && isCurrentMonth ? (
+                                <span
+                                  style={{
+                                    position: 'absolute',
+                                    left: '50%',
+                                    bottom: 2,
+                                    transform: 'translateX(-50%)',
+                                    display: 'flex',
+                                    gap: 3,
+                                  }}
+                                >
+                                  {dayColorKeys.map((colorKey) => (
+                                    <span
+                                      key={colorKey}
+                                      style={{
+                                        width: 4,
+                                        height: 4,
+                                        borderRadius: 999,
+                                        background: isToday ? 'rgba(255,255,255,0.95)' : COLOR_META[colorKey].cellBorder,
+                                      }}
+                                    />
+                                  ))}
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </Col>
 
-          <Col xs={24} xl={8}>
+          <Col xs={24}>
             <div
               style={{
                 display: 'grid',
