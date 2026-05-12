@@ -684,8 +684,8 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 8,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: 10,
               }}
             >
               {yearMonths.map((month) => {
@@ -694,24 +694,37 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                   <div
                     key={month.format('YYYY-MM')}
                     style={{
-                      borderRadius: 14,
+                      borderRadius: 18,
                       border: `1px solid ${token.colorBorderSecondary}`,
-                      padding: 8,
+                      padding: 10,
                       background: token.colorBgContainer,
+                      boxShadow: token.boxShadowTertiary,
                     }}
                   >
-                    <Typography.Text strong style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
-                      {MONTH_LABELS[month.month()]}
-                      {' '}
-                      {month.format('YYYY')}
-                    </Typography.Text>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: 8,
+                        paddingBottom: 6,
+                        borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                      }}
+                    >
+                      <Typography.Text strong style={{ fontSize: 13 }}>
+                        {MONTH_LABELS[month.month()]}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        {month.format('YYYY')}
+                      </Typography.Text>
+                    </div>
 
                     <div
                       style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 3,
-                        marginBottom: 4,
+                        gap: 4,
+                        marginBottom: 6,
                       }}
                     >
                       {WEEKDAY_LABELS.map((label) => (
@@ -729,7 +742,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                       style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-                        gap: 3,
+                        gap: 4,
                       }}
                     >
                       {monthCells.map((value) => {
@@ -739,6 +752,29 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                         const accentColor = COLOR_META[accentColorKey];
                         const isSelected = value.isSame(selectedDate, 'day');
                         const isCurrentMonth = value.month() === month.month();
+                        const isToday = value.isSame(dayjs(), 'day');
+                        const hasEvents = dayEvents.length > 0;
+                        const background = isToday
+                          ? token.colorPrimary
+                          : isSelected
+                          ? token.colorPrimaryBg
+                          : hasEvents
+                          ? token.colorFillAlter
+                          : token.colorBgLayout;
+                        const borderColor = isToday
+                          ? token.colorPrimary
+                          : isSelected
+                          ? token.colorPrimary
+                          : hasEvents
+                          ? accentColor.cellBorder
+                          : token.colorBorderSecondary;
+                        const textColor = isToday
+                          ? '#fff'
+                          : isSelected
+                          ? token.colorPrimary
+                          : hasEvents
+                          ? token.colorText
+                          : token.colorTextSecondary;
 
                         return (
                           <button
@@ -749,36 +785,47 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                               setSelectedDate(value.startOf('day'));
                             }}
                             style={{
-                              minHeight: 34,
-                              padding: '4px 3px',
-                              borderRadius: 8,
-                              border: `1px solid ${
-                                isSelected ? token.colorPrimary : dayEvents.length ? accentColor.cellBorder : token.colorBorderSecondary
-                              }`,
-                              background: dayEvents.length
-                                ? (isSelected ? token.colorPrimaryBg : accentColor.cellBg)
-                                : isSelected
-                                ? token.colorPrimaryBg
-                                : 'transparent',
-                              opacity: isCurrentMonth ? 1 : 0.45,
+                              minHeight: 40,
+                              padding: '6px 4px 5px',
+                              borderRadius: 12,
+                              border: `1px solid ${borderColor}`,
+                              background,
+                              boxShadow: isSelected && !isToday ? `0 0 0 1px ${token.colorPrimaryBorder}` : 'none',
+                              opacity: isCurrentMonth ? 1 : 0.35,
                               cursor: 'pointer',
-                              textAlign: 'left',
+                              textAlign: 'center',
+                              position: 'relative',
+                              transition: 'all 120ms ease',
+                              overflow: 'hidden',
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                            {hasEvents && !isToday ? (
                               <span
                                 style={{
-                                  fontSize: 11,
-                                  fontWeight: isSelected ? 700 : 500,
-                                  color: dayEvents.length ? accentColor.cellBorder : token.colorText,
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: 3,
+                                  background: accentColor.cellBorder,
                                 }}
-                              >
-                                {value.date()}
-                              </span>
-                            </div>
+                              />
+                            ) : null}
+
+                            <span
+                              style={{
+                                display: 'block',
+                                fontSize: 12,
+                                lineHeight: '14px',
+                                fontWeight: isToday || isSelected ? 700 : 500,
+                                color: textColor,
+                              }}
+                            >
+                              {value.date()}
+                            </span>
 
                             {dayColorKeys.length > 0 ? (
-                              <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 6 }}>
                                 {dayColorKeys.map((colorKey) => (
                                   <span
                                     key={colorKey}
@@ -786,7 +833,7 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
                                       width: 6,
                                       height: 6,
                                       borderRadius: 999,
-                                      background: COLOR_META[colorKey].cellBorder,
+                                      background: isToday ? 'rgba(255,255,255,0.92)' : COLOR_META[colorKey].cellBorder,
                                     }}
                                   />
                                 ))}
