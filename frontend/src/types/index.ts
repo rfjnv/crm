@@ -1421,6 +1421,88 @@ export interface HistoryClientMonthData {
   totalRevenue: number;
 }
 
+export type ReanimationStatus = 'ACTIVE' | 'ONE_TIME_LOST' | 'SLEEPING' | 'CHURNED';
+
+export interface ReanimationProductPreview {
+  productId: string;
+  productName: string;
+  qty: number;
+  revenue: number;
+  lastPurchasedAt?: string | null;
+}
+
+export interface ReanimationClientRow {
+  clientId: string;
+  companyName: string;
+  contactName: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  isSvip: boolean;
+  creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
+  managerId: string;
+  managerName: string;
+  managerDepartment?: string | null;
+  closedDealsCount: number;
+  totalRevenue: number;
+  avgDealAmount: number;
+  firstPurchaseAt: string;
+  lastPurchaseAt: string;
+  daysSinceLastPurchase: number | null;
+  activeMonthsCount: number;
+  currentDebt: number;
+  status: ReanimationStatus;
+  lastDeal: {
+    dealId: string;
+    title: string;
+    revenue: number;
+    effectiveAt: string;
+    createdAt: string;
+  } | null;
+  lastContactAt?: string | null;
+  lastContactByName?: string | null;
+  lastContactPreview?: string | null;
+  daysSinceLastContact?: number | null;
+  topProducts: ReanimationProductPreview[];
+  lastDealProducts: ReanimationProductPreview[];
+  productNames: string[];
+  productIds: string[];
+}
+
+export interface ReanimationClientDeal {
+  dealId: string;
+  title: string;
+  createdAt: string;
+  effectiveAt: string;
+  revenue: number;
+  amount: number;
+  paidAmount: number;
+  paymentStatus: string;
+}
+
+export interface ReanimationClientProductStat {
+  productId: string;
+  productName: string;
+  totalQty: number;
+  totalRevenue: number;
+  lastPurchasedAt: string;
+  dealsCount: number;
+}
+
+export interface ReanimationClientNote {
+  id: string;
+  createdAt: string;
+  authorName: string;
+  preview: string;
+}
+
+export interface ReanimationClientDetail {
+  client: ReanimationClientRow;
+  recentDeals: ReanimationClientDeal[];
+  productStats: ReanimationClientProductStat[];
+  notes: ReanimationClientNote[];
+}
+
 // ─── History Cohort Clients ───
 
 export interface HistoryCohortClient {

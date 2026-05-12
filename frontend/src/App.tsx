@@ -45,6 +45,7 @@ import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import CallActivityPage from './pages/CallActivityPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
+import ReanimationPage from './pages/ReanimationPage';
 import MarketAnalysisPage from './pages/MarketAnalysisPage';
 import ReviewsPage from './pages/ReviewsPage';
 import WarehouseManagerPage from './pages/WarehouseManagerPage';
@@ -131,6 +132,7 @@ export default function App() {
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
+                  <Route path="/manager/reanimation" element={<ReanimationPage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>

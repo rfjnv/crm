@@ -535,6 +535,11 @@ export default function Layout() {
           label: <Link to="/manager/client-activity">Аналитика для менеджеров</Link>,
         },
         {
+          key: '/manager/reanimation',
+          icon: <SoundOutlined />,
+          label: <Link to="/manager/reanimation">Реанимация</Link>,
+        },
+        {
           key: '/analytics/calls',
           icon: <PhoneOutlined />,
           label: <Link to="/analytics/calls">Обзвоны</Link>,

@@ -14,6 +14,8 @@ import type {
   PrepaymentData,
   HistoryCohortClientsData,
   AbcXyzResponse,
+  ReanimationClientDetail,
+  ReanimationClientRow,
 } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
@@ -128,6 +130,10 @@ export const analyticsApi = {
     client.get<ExchangeData>('/analytics/history/exchange', { params: { year } }).then((r) => r.data),
   getHistoryPrepayments: (year: number = new Date().getFullYear()) =>
     client.get<PrepaymentData>('/analytics/history/prepayments', { params: { year } }).then((r) => r.data),
+  getReanimationClients: () =>
+    client.get<ReanimationClientRow[]>('/analytics/reanimation').then((r) => r.data),
+  getReanimationClientDetail: (clientId: string) =>
+    client.get<ReanimationClientDetail>(`/analytics/reanimation/${clientId}`).then((r) => r.data),
   exportDebtBreakdown: (year: number = new Date().getFullYear()) =>
     client.get('/analytics/history/export/debt-breakdown', {
       params: { year },
