@@ -1578,6 +1578,36 @@ export type SupplierCurrency = 'USD' | 'EUR' | 'CNY' | 'RUB' | 'UZS';
 
 export type Incoterms = 'EXW' | 'FCA' | 'FOB' | 'CFR' | 'CIF' | 'DAP' | 'DDP';
 
+export type VedCountryCode = 'CN' | 'TR' | 'GE' | 'RU' | 'KZ' | 'IR' | 'KG' | 'TM';
+
+export interface SupportedVedCountry {
+  code: VedCountryCode;
+  label: string;
+  isPrimary: boolean;
+}
+
+export interface BlockingHolidayEvent {
+  id: string;
+  countryCode: VedCountryCode;
+  countryLabel: string;
+  isPrimaryCountry: boolean;
+  name: string;
+  localName: string | null;
+  date: string;
+  startDate: string;
+  endDate: string;
+  type: string;
+  source: 'date-holidays';
+  note: string | null;
+}
+
+export interface BlockingHolidayCalendarResponse {
+  from: string;
+  to: string;
+  countries: SupportedVedCountry[];
+  items: BlockingHolidayEvent[];
+}
+
 export type ImportOrderStatus =
   | 'DRAFT'
   | 'ORDERED'

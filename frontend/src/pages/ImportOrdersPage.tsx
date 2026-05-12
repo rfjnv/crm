@@ -19,6 +19,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { matchesSearch } from '../utils/translit';
 import CbuRatesWidget from '../components/CbuRatesWidget';
+import ImportBlockingCalendarCard from '../components/ImportBlockingCalendarCard';
 
 const ALL_STATUSES: ImportOrderStatus[] = [
   'DRAFT', 'ORDERED', 'IN_PRODUCTION', 'SHIPPED',
@@ -217,6 +218,8 @@ export default function ImportOrdersPage() {
           )}
         </Space>
       </div>
+
+      <ImportBlockingCalendarCard orders={filtered} />
 
       <Card bodyStyle={{ padding: 0 }}>
         <Table

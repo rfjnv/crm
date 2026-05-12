@@ -41,6 +41,7 @@ import notesBoardRoutes from './modules/notes-board/notes-board.routes';
 import suppliersRoutes from './modules/suppliers/suppliers.routes';
 import importOrdersRoutes from './modules/import-orders/import-orders.routes';
 import cbuRatesRoutes from './modules/foreign-trade/cbu-rates.routes';
+import blockingEventsRoutes from './modules/foreign-trade/blocking-events.routes';
 import exchangeRatesRoutes from './modules/foreign-trade/exchange-rates.routes';
 import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import './modules/telegram/telegram.customer-bot.service';
@@ -132,6 +133,7 @@ app.use('/api/notes-board', notesBoardRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/import-orders', importOrdersRoutes);
 app.use('/api/foreign-trade', cbuRatesRoutes);
+app.use('/api/foreign-trade', blockingEventsRoutes);
 app.use('/api/foreign-trade', exchangeRatesRoutes);
 app.use('/api/worker-reviews', workerReviewsRoutes);
 

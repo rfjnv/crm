@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Button, Card, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Table, Tag,
+  Alert, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Table, Tag,
   Typography, Upload, message, Popconfirm, Empty, Skeleton, DatePicker,
 } from 'antd';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import dayjs from 'dayjs';
+import { foreignTradeApi } from '../api/foreign-trade.api';
 import { importOrdersApi, type ImportOrderItemPayload } from '../api/import-orders.api';
 import { productsApi } from '../api/products.api';
 import { cbuApi } from '../api/cbu.api';
@@ -30,6 +31,11 @@ import {
   type SupplierCurrency,
 } from '../types';
 import { useAuthStore } from '../store/authStore';
+import {
+  getBlockingHitsForDate,
+  groupBlockingEventsByDate,
+  normalizeVedCountry,
+} from '../utils/vedBlockingCalendar';
 
 const DOCUMENT_TYPES: ImportDocumentType[] = [
   'INVOICE', 'PACKING_LIST', 'BILL_OF_LADING', 'CMR',
@@ -60,6 +66,35 @@ export default function ImportOrderDetailPage() {
     queryKey: ['products'],
     queryFn: productsApi.list,
     enabled: canManage,
+  });
+
+  const blockingRange = useMemo(() => {
+    if (!order?.supplier.country) return null;
+    const dates = [order.etd, order.eta]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => dayjs(value))
+      .sort((a, b) => a.valueOf() - b.valueOf());
+
+    if (dates.length === 0) return null;
+
+    return {
+      from: dates[0].format('YYYY-MM-DD'),
+      to: dates[dates.length - 1].format('YYYY-MM-DD'),
+      countries: [order.supplier.country],
+    };
+  }, [order]);
+
+  const { data: blockingCalendar } = useQuery({
+    queryKey: [
+      'import-order-blocking-events',
+      id,
+      blockingRange?.from,
+      blockingRange?.to,
+      blockingRange?.countries?.[0],
+    ],
+    queryFn: () => foreignTradeApi.getBlockingEvents(blockingRange!),
+    enabled: !!blockingRange,
+    staleTime: 5 * 60_000,
   });
 
   const [editOpen, setEditOpen] = useState(false);
@@ -184,6 +219,11 @@ export default function ImportOrderDetailPage() {
   if (!order) return <Empty description="Заказ не найден" />;
 
   const allowedNext = IMPORT_ORDER_STATUS_PIPELINE[order.status];
+  const blockingEventsByDate = groupBlockingEventsByDate(blockingCalendar?.items ?? []);
+  const supplierCountryCode = normalizeVedCountry(order.supplier.country);
+  const etdBlockingHits = getBlockingHitsForDate(order.etd, blockingEventsByDate, supplierCountryCode);
+  const etaBlockingHits = getBlockingHitsForDate(order.eta, blockingEventsByDate, supplierCountryCode);
+  const hasBlockingRisk = etdBlockingHits.length > 0 || etaBlockingHits.length > 0;
 
   const itemColumns = [
     {
@@ -302,8 +342,14 @@ export default function ImportOrderDetailPage() {
           <Descriptions.Item label="Создал">{order.createdBy.fullName}</Descriptions.Item>
           <Descriptions.Item label="Дата заказа">{dayjs(order.orderDate).format('DD.MM.YYYY')}</Descriptions.Item>
           <Descriptions.Item label="Создан">{dayjs(order.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
-          <Descriptions.Item label="ETD">{order.etd ? dayjs(order.etd).format('DD.MM.YYYY') : '—'}</Descriptions.Item>
-          <Descriptions.Item label="ETA">{order.eta ? dayjs(order.eta).format('DD.MM.YYYY') : '—'}</Descriptions.Item>
+          <Descriptions.Item label="ETD">
+            {order.etd ? dayjs(order.etd).format('DD.MM.YYYY') : '—'}
+            {etdBlockingHits.length > 0 ? <Tag color="volcano" style={{ marginLeft: 8 }}>Риск</Tag> : null}
+          </Descriptions.Item>
+          <Descriptions.Item label="ETA">
+            {order.eta ? dayjs(order.eta).format('DD.MM.YYYY') : '—'}
+            {etaBlockingHits.length > 0 ? <Tag color="magenta" style={{ marginLeft: 8 }}>Риск</Tag> : null}
+          </Descriptions.Item>
           <Descriptions.Item label="Инвойс">{order.invoiceNumber || '—'}</Descriptions.Item>
           <Descriptions.Item label="Контейнер">{order.containerNumber || '—'}</Descriptions.Item>
           <Descriptions.Item label="Курс инвойса">
@@ -352,6 +398,47 @@ export default function ImportOrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Заметки" span={2}>{order.notes || '—'}</Descriptions.Item>
         </Descriptions>
+
+        {hasBlockingRisk ? (
+          <Alert
+            style={{ marginTop: 16 }}
+            type="warning"
+            showIcon
+            message="ETD / ETA попадает на блокирующие праздничные дни"
+            description={(
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                {etdBlockingHits.length > 0 ? (
+                  <div>
+                    <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+                      ETD
+                    </Typography.Text>
+                    <Space wrap size={[6, 6]}>
+                      {etdBlockingHits.map((hit) => (
+                        <Tag key={hit.id} color={hit.isPrimaryCountry ? 'volcano' : 'red'}>
+                          {hit.countryLabel}: {hit.name}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                ) : null}
+                {etaBlockingHits.length > 0 ? (
+                  <div>
+                    <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+                      ETA
+                    </Typography.Text>
+                    <Space wrap size={[6, 6]}>
+                      {etaBlockingHits.map((hit) => (
+                        <Tag key={hit.id} color={hit.isPrimaryCountry ? 'volcano' : 'red'}>
+                          {hit.countryLabel}: {hit.name}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                ) : null}
+              </Space>
+            )}
+          />
+        ) : null}
 
         <LandedCostSection orderId={order.id} currency={order.currency} />
       </Card>
