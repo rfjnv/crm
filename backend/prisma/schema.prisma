@@ -886,6 +886,24 @@ enum CallResult {
   NO_ANSWER
 }
 
+enum TelephonyProvider {
+  ASTERISK
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum CallSessionStatus {
+  RINGING
+  ANSWERED
+  MISSED
+  FAILED
+  COMPLETED
+}
+
 model Task {
   id           String      @id @default(uuid())
   title        String
@@ -1113,6 +1131,49 @@ model CallAudit {
   @@index([createdBy])
   @@index([createdAt(sort: Desc)])
   @@map("call_audits")
+}
+
+model TelephonyExtension {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  extension   String   @unique
+  sipUsername String?  @map("sip_username")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, isActive])
+  @@map("telephony_extensions")
+}
+
+model CallSession {
+  id              String            @id @default(uuid())
+  provider        TelephonyProvider @default(ASTERISK)
+  externalCallId  String            @unique @map("external_call_id")
+  direction       CallDirection
+  status          CallSessionStatus @default(RINGING)
+  fromNumber      String?           @map("from_number")
+  toNumber        String?           @map("to_number")
+  managerUserId   String?           @map("manager_user_id")
+  clientId        String?           @map("client_id")
+  startedAt       DateTime          @map("started_at")
+  answeredAt      DateTime?         @map("answered_at")
+  endedAt         DateTime?         @map("ended_at")
+  durationSec     Int?              @map("duration_sec")
+  billSec         Int?              @map("bill_sec")
+  recordingUrl    String?           @map("recording_url")
+  recordingPath   String?           @map("recording_path")
+  transcript      String?           @db.Text
+  auditId         String?           @map("audit_id")
+  rawEvents       Json?             @map("raw_events")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@index([managerUserId, startedAt])
+  @@index([clientId, startedAt])
+  @@index([status, startedAt])
+  @@index([startedAt])
+  @@map("call_sessions")
 }
 
 // ==================== FOREIGN TRADE (ВЭД) ====================

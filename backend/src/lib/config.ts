@@ -100,4 +100,8 @@ export const config = {
     internalToken: trimEnv(process.env.INTERNAL_REPORTS_TOKEN),
     timezone: trimEnv(process.env.REPORTS_TIMEZONE) || 'Asia/Tashkent',
   },
+  telephony: {
+    enabled: trimEnv(process.env.TELEPHONY_ENABLED).toLowerCase() === 'true',
+    webhookSecret: trimEnv(process.env.TELEPHONY_WEBHOOK_SECRET),
+  },
 } as const;
