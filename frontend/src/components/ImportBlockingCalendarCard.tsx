@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Badge,
   Button,
-  Calendar,
   Card,
   Checkbox,
   Col,
@@ -145,12 +143,34 @@ const COLOR_META: Record<CalendarColorKey, {
 };
 
 const COLOR_FILTER_ORDER: CalendarColorKey[] = ['holiday', 'rose', 'orange', 'blue', 'green', 'violet'];
+const MONTH_LABELS = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+] as const;
+const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
 
 function monthRange(value: Dayjs) {
   return {
-    from: value.startOf('month').startOf('week'),
-    to: value.endOf('month').endOf('week'),
+    from: value.startOf('year'),
+    to: value.endOf('year'),
   };
+}
+
+function buildMonthGrid(month: Dayjs): Dayjs[] {
+  const firstDay = month.startOf('month');
+  const offset = (firstDay.day() + 6) % 7;
+  const gridStart = firstDay.subtract(offset, 'day');
+  return Array.from({ length: 42 }, (_, index) => gridStart.add(index, 'day'));
 }
 
 function loadManualEvents(): ManualCalendarEvent[] {
@@ -293,7 +313,7 @@ function getBlockingHitsForOrderDate(
 
 export default function ImportBlockingCalendarCard({ orders }: { orders: ImportOrderListItem[] }) {
   const { token } = theme.useToken();
-  const [panelValue, setPanelValue] = useState(() => dayjs().startOf('month'));
+  const [panelValue, setPanelValue] = useState(() => dayjs().startOf('year'));
   const [selectedDate, setSelectedDate] = useState(() => dayjs().startOf('day'));
   const [selectedCountryCode, setSelectedCountryCode] = useState<VedCountryCode | null>(null);
   const [selectedColorKey, setSelectedColorKey] = useState<CalendarColorKey | null>(null);
@@ -304,16 +324,22 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
   const [form] = Form.useForm<ManualEventFormValues>();
 
   const visibleRange = useMemo(() => monthRange(panelValue), [panelValue]);
+  const yearMonths = useMemo(
+    () => Array.from({ length: 12 }, (_, index) => panelValue.startOf('year').month(index)),
+    [panelValue],
+  );
+  const rangeFrom = visibleRange.from.format('YYYY-MM-DD');
+  const rangeTo = visibleRange.to.format('YYYY-MM-DD');
 
   const { data, isLoading } = useQuery({
     queryKey: [
       'foreign-trade-blocking-events',
-      visibleRange.from.format('YYYY-MM-DD'),
-      visibleRange.to.format('YYYY-MM-DD'),
+      rangeFrom,
+      rangeTo,
     ],
     queryFn: () => foreignTradeApi.getBlockingEvents({
-      from: visibleRange.from.format('YYYY-MM-DD'),
-      to: visibleRange.to.format('YYYY-MM-DD'),
+      from: rangeFrom,
+      to: rangeTo,
     }),
     staleTime: 5 * 60_000,
   });
@@ -352,8 +378,10 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
     [manualEvents, countryLabelMap],
   );
   const allEvents = useMemo(
-    () => [...officialEvents, ...expandedManualEvents],
-    [officialEvents, expandedManualEvents],
+    () => [...officialEvents, ...expandedManualEvents].filter((event) => (
+      event.date >= rangeFrom && event.date <= rangeTo
+    )),
+    [officialEvents, expandedManualEvents, rangeFrom, rangeTo],
   );
 
   const monthCountryCodes = useMemo(() => getUniqueCountryCodes(allEvents), [allEvents]);
@@ -551,20 +579,34 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       style={{ marginBottom: 16 }}
       title={(
         <Space wrap size={[8, 8]}>
-          <Typography.Text strong>Календарь блокирующих дней ВЭД</Typography.Text>
+          <Typography.Text strong>Годовой календарь ВЭД</Typography.Text>
           <Tag color="red">Красные дни: праздники / нерабочие дни</Tag>
         </Space>
       )}
       extra={(
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateModal}>
-          Добавить событие
-        </Button>
+        <Space wrap size={[8, 8]}>
+          <DatePicker
+            picker="year"
+            allowClear={false}
+            value={panelValue}
+            format="YYYY"
+            onChange={(value) => {
+              if (!value) return;
+              setPanelValue(value.startOf('year'));
+              if (selectedDate.year() !== value.year()) {
+                setSelectedDate(value.startOf('year'));
+              }
+            }}
+          />
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openCreateModal}>
+            Добавить событие
+          </Button>
+        </Space>
       )}
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
-        Календарь показывает официальные праздники для Китая, Турции, Грузии, России, Казахстана,
-        Ирана, Кыргызстана и Туркменистана. Любое событие можно фильтровать по странам и цветам,
-        а API-праздники теперь редактируются через локальные override-настройки поверх справочника.
+        На странице импортных заказов календарь теперь показывает весь выбранный год: 12 месяцев,
+        официальные праздники по странам, ручные события и локальные override-правки для API-праздников.
       </Typography.Paragraph>
 
       <Space wrap size={[6, 6]} style={{ marginBottom: 10 }}>
@@ -639,90 +681,169 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
       ) : (
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={16}>
-            <Calendar
-              fullscreen={false}
-              value={selectedDate}
-              onSelect={(value) => setSelectedDate(value.startOf('day'))}
-              onPanelChange={(value) => {
-                setPanelValue(value.startOf('month'));
-                setSelectedDate(value.startOf('month'));
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: 12,
               }}
-              dateFullCellRender={(value) => {
-                const dayEvents = eventsByDate.get(value.format('YYYY-MM-DD')) ?? [];
-                const dayCountryCodes = getUniqueCountryCodes(dayEvents);
-                const accentColorKey = dayEvents[0]?.colorKey ?? 'holiday';
-                const accentColor = COLOR_META[accentColorKey];
-                const isSelected = value.isSame(selectedDate, 'day');
-                const isCurrentMonth = value.month() === panelValue.month();
-                const hasGeneralEvent = dayEvents.some((event) => event.countryCode === null);
-
+            >
+              {yearMonths.map((month) => {
+                const monthCells = buildMonthGrid(month);
                 return (
                   <div
+                    key={month.format('YYYY-MM')}
                     style={{
-                      minHeight: 76,
-                      padding: 6,
-                      borderRadius: 12,
-                      border: `1px solid ${
-                        isSelected ? token.colorPrimary : dayEvents.length ? accentColor.cellBorder : 'transparent'
-                      }`,
-                      background: dayEvents.length
-                        ? (isSelected ? token.colorPrimaryBg : accentColor.cellBg)
-                        : isSelected
-                        ? token.colorPrimaryBg
-                        : 'transparent',
-                      opacity: isCurrentMonth ? 1 : 0.52,
-                      transition: 'all 120ms ease',
+                      borderRadius: 14,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      padding: 10,
+                      background: token.colorBgContainer,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                      <Typography.Text
-                        strong={isSelected}
-                        style={{ color: dayEvents.length ? accentColor.cellBorder : undefined }}
-                      >
-                        {value.date()}
-                      </Typography.Text>
-                      {dayEvents.length > 0 ? (
-                        <Badge
-                          count={dayEvents.length}
-                          size="small"
-                          style={{ backgroundColor: accentColor.cellBorder }}
-                        />
-                      ) : null}
+                    <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                      {MONTH_LABELS[month.month()]}
+                      {' '}
+                      {month.format('YYYY')}
+                    </Typography.Text>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                        gap: 4,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {WEEKDAY_LABELS.map((label) => (
+                        <Typography.Text
+                          key={label}
+                          type="secondary"
+                          style={{ fontSize: 11, textAlign: 'center' }}
+                        >
+                          {label}
+                        </Typography.Text>
+                      ))}
                     </div>
 
-                    {dayCountryCodes.length > 0 || hasGeneralEvent ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                        {dayCountryCodes.slice(0, 2).map((countryCode) => {
-                          const tagEvent = dayEvents.find((event) => event.countryCode === countryCode);
-                          return (
-                            <Tag
-                              key={countryCode}
-                              color={COLOR_META[tagEvent?.colorKey ?? 'holiday'].tagColor}
-                              style={{ marginInlineEnd: 0 }}
-                            >
-                              {countryCode}
-                            </Tag>
-                          );
-                        })}
-                        {dayCountryCodes.length === 0 && hasGeneralEvent ? (
-                          <Tag
-                            color={COLOR_META[dayEvents.find((event) => event.countryCode === null)?.colorKey ?? 'holiday'].tagColor}
-                            style={{ marginInlineEnd: 0 }}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                        gap: 4,
+                      }}
+                    >
+                      {monthCells.map((value) => {
+                        const dayEvents = eventsByDate.get(value.format('YYYY-MM-DD')) ?? [];
+                        const dayCountryCodes = getUniqueCountryCodes(dayEvents);
+                        const accentColorKey = dayEvents[0]?.colorKey ?? 'holiday';
+                        const accentColor = COLOR_META[accentColorKey];
+                        const isSelected = value.isSame(selectedDate, 'day');
+                        const isCurrentMonth = value.month() === month.month();
+                        const hasGeneralEvent = dayEvents.some((event) => event.countryCode === null);
+
+                        return (
+                          <button
+                            key={value.format('YYYY-MM-DD')}
+                            type="button"
+                            onClick={() => {
+                              if (value.year() !== panelValue.year()) return;
+                              setSelectedDate(value.startOf('day'));
+                            }}
+                            style={{
+                              minHeight: 52,
+                              padding: '6px 4px',
+                              borderRadius: 10,
+                              border: `1px solid ${
+                                isSelected ? token.colorPrimary : dayEvents.length ? accentColor.cellBorder : token.colorBorderSecondary
+                              }`,
+                              background: dayEvents.length
+                                ? (isSelected ? token.colorPrimaryBg : accentColor.cellBg)
+                                : isSelected
+                                ? token.colorPrimaryBg
+                                : 'transparent',
+                              opacity: isCurrentMonth ? 1 : 0.45,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            }}
                           >
-                            EVT
-                          </Tag>
-                        ) : null}
-                        {dayCountryCodes.length > 2 ? (
-                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                            +{dayCountryCodes.length - 2}
-                          </Typography.Text>
-                        ) : null}
-                      </div>
-                    ) : null}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? 700 : 500,
+                                  color: dayEvents.length ? accentColor.cellBorder : token.colorText,
+                                }}
+                              >
+                                {value.date()}
+                              </span>
+                              {dayEvents.length > 0 ? (
+                                <span
+                                  style={{
+                                    minWidth: 16,
+                                    height: 16,
+                                    borderRadius: 999,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: 10,
+                                    color: '#fff',
+                                    background: accentColor.cellBorder,
+                                  }}
+                                >
+                                  {dayEvents.length}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {dayCountryCodes.length > 0 || hasGeneralEvent ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 4 }}>
+                                {dayCountryCodes.slice(0, 2).map((countryCode) => {
+                                  const tagEvent = dayEvents.find((event) => event.countryCode === countryCode);
+                                  return (
+                                    <span
+                                      key={countryCode}
+                                      style={{
+                                        fontSize: 9,
+                                        lineHeight: '12px',
+                                        padding: '1px 4px',
+                                        borderRadius: 999,
+                                        color: '#fff',
+                                        background: COLOR_META[tagEvent?.colorKey ?? 'holiday'].cellBorder,
+                                      }}
+                                    >
+                                      {countryCode}
+                                    </span>
+                                  );
+                                })}
+                                {dayCountryCodes.length === 0 && hasGeneralEvent ? (
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      lineHeight: '12px',
+                                      padding: '1px 4px',
+                                      borderRadius: 999,
+                                      color: '#fff',
+                                      background: COLOR_META[dayEvents.find((event) => event.countryCode === null)?.colorKey ?? 'holiday'].cellBorder,
+                                    }}
+                                  >
+                                    EVT
+                                  </span>
+                                ) : null}
+                                {dayCountryCodes.length > 2 ? (
+                                  <span style={{ fontSize: 9, color: token.colorTextSecondary }}>
+                                    +{dayCountryCodes.length - 2}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
-              }}
-            />
+              })}
+            </div>
           </Col>
 
           <Col xs={24} xl={8}>
@@ -830,12 +951,12 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
 
               <div>
                 <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                  Заказы под риском в этом месяце
+                  Заказы под риском в этом году
                 </Typography.Text>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                   {riskOrders.length > 0
                     ? `Найдено ${riskOrders.length} заказ(ов), где ETD или ETA попадает на блокирующий день.`
-                    : 'В текущем месяце совпадений по ETD/ETA нет.'}
+                    : 'В текущем году совпадений по ETD/ETA нет.'}
                 </Typography.Text>
                 {selectedDayRiskOrders.length > 0 ? (
                   <List
