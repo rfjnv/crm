@@ -23,6 +23,12 @@ function assertAccess(role: Role) {
   }
 }
 
+function assertReadAccess(role: Role) {
+  if (!['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR', 'ACCOUNTANT', 'FOREIGN_TRADE'].includes(role)) {
+    throw new AppError(403, 'Недостаточно прав');
+  }
+}
+
 function assertAdmin(role: Role) {
   if (!['SUPER_ADMIN', 'ADMIN'].includes(role)) {
     throw new AppError(403, 'Доступно только администраторам');
@@ -32,7 +38,7 @@ function assertAdmin(role: Role) {
 router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
-    assertAccess(req.user!.role as Role);
+    assertReadAccess(req.user!.role as Role);
     const query = listNotesBoardQueryDto.parse(req.query);
     const data = await notesBoardService.list(query);
     res.json(data);

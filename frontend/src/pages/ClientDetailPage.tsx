@@ -241,7 +241,10 @@ export default function ClientDetailPage() {
     user?.role === 'SUPER_ADMIN' ||
     user?.role === 'ADMIN' ||
     user?.role === 'MANAGER' ||
-    user?.role === 'HR';
+    user?.role === 'HR' ||
+    user?.role === 'OPERATOR' ||
+    user?.role === 'ACCOUNTANT' ||
+    user?.role === 'FOREIGN_TRADE';
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
