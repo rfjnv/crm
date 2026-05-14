@@ -46,7 +46,6 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   const { role, isAdmin, hasPermission } = ctx;
 
   const dealsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'WAREHOUSE', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
-  const clientsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER', 'HR'];
   const productsRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
   const warehouseRoles: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
 
@@ -147,7 +146,7 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   if (hasRole(role, ...dealsRoles)) {
     out.push({ path: '/deals', label: dealsLabel, Icon: FundProjectionScreenOutlined });
   }
-  if (hasRole(role, ...clientsRoles)) {
+  if (hasPermission('view_all_clients')) {
     out.push({ path: '/clients', label: 'Клиенты', Icon: TeamOutlined });
   }
   if (hasRole(role, ...productsRoles) || hasPermission('manage_products')) {

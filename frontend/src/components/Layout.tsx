@@ -194,6 +194,7 @@ export default function Layout() {
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
+  const canViewClients = hasPermission('view_all_clients');
 
   useEffect(() => {
     if (isAdmin && location.pathname.startsWith('/notifications')) {
@@ -285,7 +286,7 @@ export default function Layout() {
       icon: <DashboardOutlined />,
       label: <Link to="/dashboard">Дашборд</Link>,
     },
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'MANAGER', 'HR')
+    ...(canViewClients
       ? [{
         key: '/clients',
         icon: <TeamOutlined />,

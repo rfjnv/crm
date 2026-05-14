@@ -110,8 +110,10 @@ export default function App() {
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/revenue/today" element={<RevenueTodayPage />} />
-                <Route path="/clients" element={<ClientsPage />} />
-                <Route path="/clients/:id" element={<ClientDetailPage />} />
+                <Route element={<PrivateRoute permission="view_all_clients" />}>
+                  <Route path="/clients" element={<ClientsPage />} />
+                  <Route path="/clients/:id" element={<ClientDetailPage />} />
+                </Route>
                 <Route path="/reviews" element={<ReviewsPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />
                 <Route path="/contracts/:id" element={<ContractDetailPage />} />

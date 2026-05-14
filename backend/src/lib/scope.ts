@@ -19,6 +19,9 @@ export function ownerScope(user: AuthUser): { managerId?: string } {
 }
 
 export function clientOwnerScope(user: AuthUser): { managerId?: string } {
+  if (user.permissions.includes('view_all_clients')) {
+    return {};
+  }
   if (CLIENT_BLOCKED_ROLES.includes(user.role)) {
     // Return impossible condition — effectively returns zero results
     return { managerId: '__NO_ACCESS__' };

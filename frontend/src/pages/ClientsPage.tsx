@@ -185,6 +185,7 @@ export default function ClientsPage() {
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canCreateClient = isAdmin || user?.role === 'OPERATOR' || user?.role === 'MANAGER' || user?.role === 'HR';
   const canAssignManager = isAdmin || user?.role === 'OPERATOR';
 
   const { data: users } = useQuery({
@@ -504,7 +505,9 @@ export default function ClientsPage() {
             options={CLIENT_SORT_OPTIONS}
             popupMatchSelectWidth={false}
           />
-          <Button type="primary" className={APP_BUTTON} icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+          {canCreateClient && (
+            <Button type="primary" className={APP_BUTTON} icon={<PlusOutlined />} onClick={() => setOpen(true)}>Добавить</Button>
+          )}
         </Space>
       </div>
 
@@ -614,19 +617,21 @@ export default function ClientsPage() {
       )}
 
       {/* Create Modal */}
-      <Modal
-        title="Новый клиент"
-        open={open}
-        onCancel={() => setOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={createMut.isPending}
-        okText="Создать"
-        cancelText="Отмена"
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
-          {clientFormFields(false)}
-        </Form>
-      </Modal>
+      {canCreateClient && (
+        <Modal
+          title="Новый клиент"
+          open={open}
+          onCancel={() => setOpen(false)}
+          onOk={() => form.submit()}
+          confirmLoading={createMut.isPending}
+          okText="Создать"
+          cancelText="Отмена"
+        >
+          <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
+            {clientFormFields(false)}
+          </Form>
+        </Modal>
+      )}
 
       {/* Edit Modal (admin only) */}
       <Modal
