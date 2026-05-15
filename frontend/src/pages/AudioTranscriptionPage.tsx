@@ -582,7 +582,10 @@ export default function AudioTranscriptionPage() {
       if (!data.text) message.warning('Распознавание завершено, но текст пустой');
     },
     onError: (error: any) => {
-      const serverMessage = error?.response?.data?.message;
+      const serverMessage =
+        error?.response?.data?.message
+        || error?.response?.data?.error
+        || error?.message;
       message.error(serverMessage || 'Не удалось распознать аудио');
     },
   });
@@ -610,7 +613,10 @@ export default function AudioTranscriptionPage() {
       if (!data.analysis) message.warning('Анализ завершён, но ответ пустой');
     },
     onError: (error: any) => {
-      const serverMessage = error?.response?.data?.message;
+      const serverMessage =
+        error?.response?.data?.message
+        || error?.response?.data?.error
+        || error?.message;
       message.error(serverMessage || 'Не удалось проанализировать звонок');
     },
   });

@@ -379,7 +379,10 @@ export interface TranscriberOptions {
 }
 
 export class PolygraphTranscriber {
-  static readonly MODEL = 'gpt-4o-transcribe';
+  static readonly MODEL_PRIMARY = 'gpt-4o-transcribe';
+  static readonly MODEL_FALLBACK = 'whisper-1';
+  /** @deprecated use MODEL_PRIMARY */
+  static readonly MODEL = PolygraphTranscriber.MODEL_PRIMARY;
 
   private client: OpenAI;
   private autoUpsample: boolean;
@@ -391,19 +394,38 @@ export class PolygraphTranscriber {
     this.upsampleWorkdir = opts.upsampleWorkdir ?? path.join(process.cwd(), 'uploads', 'asr_resampled');
   }
 
+  private async transcribeWithModel(
+    filePath: string,
+    model: string,
+    apiParams: ApiParams,
+  ): Promise<string> {
+    const response = await this.client.audio.transcriptions.create({
+      model,
+      file: fs.createReadStream(filePath),
+      response_format: 'json',
+      ...(apiParams.language && { language: apiParams.language }),
+      // whisper-1 does not support prompt parameter for gpt-4o-transcribe style prompts
+      ...(model !== PolygraphTranscriber.MODEL_FALLBACK && apiParams.prompt && { prompt: apiParams.prompt }),
+      temperature: apiParams.temperature,
+    });
+    return (response as { text?: string }).text || '';
+  }
+
   private async transcribeSingleFile(
     filePath: string,
     apiParams: ApiParams,
   ): Promise<string> {
-    const response = await this.client.audio.transcriptions.create({
-      model: PolygraphTranscriber.MODEL,
-      file: fs.createReadStream(filePath),
-      response_format: 'json',
-      ...(apiParams.language && { language: apiParams.language }),
-      ...(apiParams.prompt && { prompt: apiParams.prompt }),
-      temperature: apiParams.temperature,
-    });
-    return (response as { text?: string }).text || '';
+    try {
+      return await this.transcribeWithModel(filePath, PolygraphTranscriber.MODEL_PRIMARY, apiParams);
+    } catch (primaryErr) {
+      const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      // Fall back to whisper-1 if gpt-4o-transcribe is unavailable (model access, 404, etc.)
+      if (/404|model|not found|not available|no access/i.test(msg)) {
+        console.warn(`[OpenAI ASR] ${PolygraphTranscriber.MODEL_PRIMARY} unavailable (${msg}), falling back to ${PolygraphTranscriber.MODEL_FALLBACK}`);
+        return await this.transcribeWithModel(filePath, PolygraphTranscriber.MODEL_FALLBACK, apiParams);
+      }
+      throw primaryErr;
+    }
   }
 
   async transcribe(

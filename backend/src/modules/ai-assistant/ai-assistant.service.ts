@@ -514,7 +514,7 @@ export async function transcribeAudioFile(
     needsHumanReview: successful.length < 2,
     auditRecommended,
     auditSkipReason,
-    model: `multi-engine(${successful.map((r) => r.engine).join('+')}) → ${mergeModel}`,
+    model: `multi-engine(${successful.map((r) => r.engine).join('+')}) → ${mergeModel ?? 'fallback'}`,
     segments,
     engines,
     disputedNote,
