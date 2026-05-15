@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Button,
@@ -38,6 +38,157 @@ import type {
 const { Title, Text, Paragraph } = Typography;
 
 const CANDIDATE_STATUSES: ReanimationStatus[] = ['ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
+
+const ALL_STATUSES: ReanimationStatus[] = ['ACTIVE', 'ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
+
+type ReanimationSortBy =
+  | 'inactive_desc'
+  | 'inactive_asc'
+  | 'revenue_desc'
+  | 'deals_desc'
+  | 'debt_desc'
+  | 'contact_oldest';
+
+type DebtFilter = 'all' | 'with_debt' | 'without_debt';
+type ContactFilter = 'all' | 'no_contact' | 'stale_7' | 'stale_30';
+
+const SORT_OPTIONS: ReanimationSortBy[] = [
+  'inactive_desc',
+  'inactive_asc',
+  'revenue_desc',
+  'deals_desc',
+  'debt_desc',
+  'contact_oldest',
+];
+
+interface ReanimationListUrlState {
+  q: string;
+  statuses: ReanimationStatus[];
+  managerIds: string[];
+  departments: string[];
+  productNames: string[];
+  debtFilter: DebtFilter;
+  contactFilter: ContactFilter;
+  sortBy: ReanimationSortBy;
+  minDays: number | null;
+  maxDays: number | null;
+  clientId: string | null;
+}
+
+function normalizeStatuses(value: ReanimationStatus[]): ReanimationStatus[] {
+  const picked = value.filter((s): s is ReanimationStatus => ALL_STATUSES.includes(s));
+  if (picked.length === 0) return [...CANDIDATE_STATUSES];
+  return picked;
+}
+
+function statusSelectionIsDefault(statuses: ReanimationStatus[]): boolean {
+  if (statuses.length !== CANDIDATE_STATUSES.length) return false;
+  const set = new Set(statuses);
+  return CANDIDATE_STATUSES.every((s) => set.has(s));
+}
+
+function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlState {
+  const q = sp.get('q') ?? '';
+  const statusRaw = sp.get('status');
+  const statuses = !statusRaw?.trim()
+    ? [...CANDIDATE_STATUSES]
+    : normalizeStatuses(
+        statusRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean) as ReanimationStatus[],
+      );
+
+  const mgrRaw = sp.get('mgr');
+  const managerIds = mgrRaw ? mgrRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
+  const departments = sp.getAll('dept').filter(Boolean);
+  const productNames = sp.getAll('prod').filter(Boolean);
+
+  const debtRaw = sp.get('debt');
+  const debtFilter: DebtFilter =
+    debtRaw === 'with_debt' || debtRaw === 'without_debt' ? debtRaw : 'all';
+
+  const contactRaw = sp.get('contact');
+  const contactFilter: ContactFilter =
+    contactRaw === 'no_contact' || contactRaw === 'stale_7' || contactRaw === 'stale_30' ? contactRaw : 'all';
+
+  const sortRaw = sp.get('sort');
+  const sortBy: ReanimationSortBy =
+    sortRaw && (SORT_OPTIONS as string[]).includes(sortRaw) ? (sortRaw as ReanimationSortBy) : 'inactive_desc';
+
+  const minRaw = sp.get('min');
+  let minDays: number | null = 30;
+  if (minRaw === 'any' || minRaw === 'none') minDays = null;
+  else if (minRaw !== null && minRaw !== '') {
+    const n = parseInt(minRaw, 10);
+    minDays = Number.isFinite(n) && n >= 0 ? n : 30;
+  }
+
+  const maxRaw = sp.get('max');
+  let maxDays: number | null = null;
+  if (maxRaw !== null && maxRaw !== '') {
+    const n = parseInt(maxRaw, 10);
+    maxDays = Number.isFinite(n) && n >= 0 ? n : null;
+  }
+
+  const clientRaw = sp.get('client');
+  const clientId = clientRaw?.trim() || null;
+
+  return {
+    q,
+    statuses,
+    managerIds,
+    departments,
+    productNames,
+    debtFilter,
+    contactFilter,
+    sortBy,
+    minDays,
+    maxDays,
+    clientId,
+  };
+}
+
+function serializeReanimationListState(s: ReanimationListUrlState): URLSearchParams {
+  const n = new URLSearchParams();
+  if (s.q.trim()) n.set('q', s.q.trim());
+  if (!statusSelectionIsDefault(s.statuses)) {
+    n.set('status', [...new Set(s.statuses)].sort().join(','));
+  }
+  if (s.managerIds.length > 0) n.set('mgr', s.managerIds.join(','));
+  for (const d of s.departments) n.append('dept', d);
+  for (const p of s.productNames) n.append('prod', p);
+  if (s.debtFilter !== 'all') n.set('debt', s.debtFilter);
+  if (s.contactFilter !== 'all') n.set('contact', s.contactFilter);
+  if (s.sortBy !== 'inactive_desc') n.set('sort', s.sortBy);
+  if (s.minDays === null) n.set('min', 'any');
+  else if (s.minDays !== 30) n.set('min', String(s.minDays));
+  if (s.maxDays !== null) n.set('max', String(s.maxDays));
+  if (s.clientId) n.set('client', s.clientId);
+  return n;
+}
+
+function mergeReanimationListParams(
+  prev: URLSearchParams,
+  patch: Partial<ReanimationListUrlState>,
+): URLSearchParams {
+  const cur = parseReanimationListParams(prev);
+  const next: ReanimationListUrlState = {
+    q: patch.q !== undefined ? patch.q : cur.q,
+    statuses: patch.statuses !== undefined ? normalizeStatuses(patch.statuses) : cur.statuses,
+    managerIds: patch.managerIds !== undefined ? patch.managerIds : cur.managerIds,
+    departments: patch.departments !== undefined ? patch.departments : cur.departments,
+    productNames: patch.productNames !== undefined ? patch.productNames : cur.productNames,
+    debtFilter: patch.debtFilter !== undefined ? patch.debtFilter : cur.debtFilter,
+    contactFilter: patch.contactFilter !== undefined ? patch.contactFilter : cur.contactFilter,
+    sortBy: patch.sortBy !== undefined ? patch.sortBy : cur.sortBy,
+    minDays: patch.minDays !== undefined ? patch.minDays : cur.minDays,
+    maxDays: patch.maxDays !== undefined ? patch.maxDays : cur.maxDays,
+    clientId: patch.clientId !== undefined ? patch.clientId : cur.clientId,
+  };
+  return serializeReanimationListState(next);
+}
 
 const STATUS_META: Record<ReanimationStatus, { label: string; color: string }> = {
   ACTIVE: { label: 'Активный', color: 'default' },
@@ -108,25 +259,44 @@ function renderProductButtons(
 export default function ReanimationPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const [search, setSearch] = useState('');
-  const [statuses, setStatuses] = useState<ReanimationStatus[]>(CANDIDATE_STATUSES);
-  const [managerIds, setManagerIds] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [productNames, setProductNames] = useState<string[]>([]);
-  const [debtFilter, setDebtFilter] = useState<'all' | 'with_debt' | 'without_debt'>('all');
-  const [contactFilter, setContactFilter] = useState<'all' | 'no_contact' | 'stale_7' | 'stale_30'>('all');
-  const [sortBy, setSortBy] = useState<
-    'inactive_desc' | 'inactive_asc' | 'revenue_desc' | 'deals_desc' | 'debt_desc' | 'contact_oldest'
-  >('inactive_desc');
-  const [minDays, setMinDays] = useState<number | null>(30);
-  const [maxDays, setMaxDays] = useState<number | null>(null);
-  const [drawerClientId, setDrawerClientId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listState = useMemo(() => parseReanimationListParams(searchParams), [searchParams]);
+
+  const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
+  const patchListState = useCallback(
+    (patch: Partial<ReanimationListUrlState>, nav?: { replace?: boolean }) => {
+      setSearchParams((prev) => mergeReanimationListParams(prev, patch), nav ?? { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    setSearchDraft(listState.q);
+  }, [listState.q]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (searchDraft.trim() === listState.q.trim()) return;
+      patchListState({ q: searchDraft });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchDraft, listState.q, patchListState]);
+
+  const tableFilterKey = useMemo(
+    () =>
+      JSON.stringify(
+        Object.fromEntries(Object.entries(listState).filter(([k]) => k !== 'clientId')),
+      ),
+    [listState],
+  );
 
   const { data = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['analytics-reanimation'],
     queryFn: analyticsApi.getReanimationClients,
     staleTime: 120_000,
   });
+
+  const drawerClientId = listState.clientId;
 
   const drawerQuery = useQuery({
     queryKey: ['analytics-reanimation-detail', drawerClientId],
@@ -163,11 +333,20 @@ export default function ReanimationPage() {
 
   const filteredRows = useMemo(() => {
     let rows = [...data];
-    const query = search.trim();
+    const query = searchDraft.trim();
+    const {
+      statuses,
+      managerIds,
+      departments,
+      productNames,
+      debtFilter,
+      contactFilter,
+      sortBy,
+      minDays,
+      maxDays,
+    } = listState;
 
-    if (statuses.length > 0) {
-      rows = rows.filter((row) => statuses.includes(row.status));
-    }
+    rows = rows.filter((row) => statuses.includes(row.status));
     if (managerIds.length > 0) {
       rows = rows.filter((row) => managerIds.includes(row.managerId));
     }
@@ -212,7 +391,7 @@ export default function ReanimationPage() {
     });
 
     return rows;
-  }, [contactFilter, data, debtFilter, departments, managerIds, maxDays, minDays, productNames, search, sortBy, statuses]);
+  }, [data, listState, searchDraft]);
 
   const allCandidates = useMemo(
     () => data.filter((row) => CANDIDATE_STATUSES.includes(row.status)),
@@ -229,16 +408,8 @@ export default function ReanimationPage() {
   }, [filteredRows]);
 
   const resetFilters = () => {
-    setSearch('');
-    setStatuses(CANDIDATE_STATUSES);
-    setManagerIds([]);
-    setDepartments([]);
-    setProductNames([]);
-    setDebtFilter('all');
-    setContactFilter('all');
-    setSortBy('inactive_desc');
-    setMinDays(30);
-    setMaxDays(null);
+    setSearchDraft('');
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
   const columns = [
@@ -397,7 +568,7 @@ export default function ReanimationPage() {
             size="small"
             onClick={(e) => {
               e.stopPropagation();
-              setDrawerClientId(row.clientId);
+              patchListState({ clientId: row.clientId });
             }}
           >
             Внутри страницы
@@ -517,9 +688,12 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               allowClear
               placeholder="Клиент, контакт, телефон, товар, сделка..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onSearch={(value) => setSearch(value)}
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              onSearch={(value) => {
+                setSearchDraft(value);
+                patchListState({ q: value });
+              }}
             />
           </Col>
           <Col xs={24} md={12} xl={8}>
@@ -529,8 +703,12 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               placeholder="Статус реанимации"
-              value={statuses}
-              onChange={(value) => setStatuses(value as ReanimationStatus[])}
+              value={listState.statuses}
+              onChange={(value) =>
+                patchListState({
+                  statuses: normalizeStatuses((value ?? []) as ReanimationStatus[]),
+                })
+              }
               options={Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))}
               maxTagCount={2}
             />
@@ -544,8 +722,8 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               placeholder="Менеджеры"
-              value={managerIds}
-              onChange={(value) => setManagerIds(value)}
+              value={listState.managerIds}
+              onChange={(value) => patchListState({ managerIds: value ?? [] })}
               options={managerOptions}
               maxTagCount={2}
             />
@@ -559,8 +737,8 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               placeholder="Отдел"
-              value={departments}
-              onChange={(value) => setDepartments(value)}
+              value={listState.departments}
+              onChange={(value) => patchListState({ departments: value ?? [] })}
               options={departmentOptions}
               maxTagCount={2}
             />
@@ -574,8 +752,8 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               placeholder="Товары"
-              value={productNames}
-              onChange={(value) => setProductNames(value)}
+              value={listState.productNames}
+              onChange={(value) => patchListState({ productNames: value ?? [] })}
               options={productOptions}
               maxTagCount={2}
             />
@@ -585,8 +763,10 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               min={0}
-              value={minDays}
-              onChange={(value) => setMinDays(typeof value === 'number' ? value : null)}
+              value={listState.minDays}
+              onChange={(value) =>
+                patchListState({ minDays: typeof value === 'number' ? value : null })
+              }
               placeholder="От, дней"
             />
           </Col>
@@ -595,8 +775,10 @@ export default function ReanimationPage() {
               className={APP_INPUT}
               style={{ width: '100%' }}
               min={0}
-              value={maxDays}
-              onChange={(value) => setMaxDays(typeof value === 'number' ? value : null)}
+              value={listState.maxDays}
+              onChange={(value) =>
+                patchListState({ maxDays: typeof value === 'number' ? value : null })
+              }
               placeholder="До, дней"
             />
           </Col>
@@ -604,8 +786,8 @@ export default function ReanimationPage() {
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
-              value={debtFilter}
-              onChange={(value) => setDebtFilter(value)}
+              value={listState.debtFilter}
+              onChange={(value) => patchListState({ debtFilter: value as DebtFilter })}
               options={[
                 { value: 'all', label: 'Долг: все' },
                 { value: 'with_debt', label: 'Только с долгом' },
@@ -617,8 +799,8 @@ export default function ReanimationPage() {
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
-              value={contactFilter}
-              onChange={(value) => setContactFilter(value)}
+              value={listState.contactFilter}
+              onChange={(value) => patchListState({ contactFilter: value as ContactFilter })}
               options={[
                 { value: 'all', label: 'Контакты: все' },
                 { value: 'no_contact', label: 'Без заметок' },
@@ -631,8 +813,8 @@ export default function ReanimationPage() {
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
-              value={sortBy}
-              onChange={(value) => setSortBy(value)}
+              value={listState.sortBy}
+              onChange={(value) => patchListState({ sortBy: value as ReanimationSortBy })}
               options={[
                 { value: 'inactive_desc', label: 'Сорт: дольше всего без покупки' },
                 { value: 'inactive_asc', label: 'Сорт: ближе к активности' },
@@ -664,6 +846,7 @@ export default function ReanimationPage() {
           <Empty description="По текущим фильтрам клиентов не найдено" />
         ) : (
           <Table
+            key={tableFilterKey}
             rowKey="clientId"
             dataSource={filteredRows}
             columns={columns}
@@ -676,7 +859,7 @@ export default function ReanimationPage() {
               showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
             }}
             onRow={(row) => ({
-              onClick: () => setDrawerClientId(row.clientId),
+              onClick: () => patchListState({ clientId: row.clientId }),
               style: { cursor: 'pointer' },
             })}
           />
@@ -686,7 +869,7 @@ export default function ReanimationPage() {
       <Drawer
         width={isMobile ? '100%' : 1120}
         open={Boolean(drawerClientId)}
-        onClose={() => setDrawerClientId(null)}
+        onClose={() => patchListState({ clientId: null })}
         title={drawerData?.client.companyName || 'Карточка клиента'}
       >
         {!drawerClientId || drawerQuery.isLoading || !drawerData ? (
