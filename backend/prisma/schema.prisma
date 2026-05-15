@@ -951,7 +951,7 @@ model NotesBoardRow {
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  author User   @relation("NotesBoardAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  author User   @relation("NotesBoardAuthor", fields: [authorId], references: [id], onDelete: Restrict)
   editRequests NotesBoardEditRequest[]
 
   @@index([clientId, lastCallAt])

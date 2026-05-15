@@ -307,14 +307,21 @@ export class UsersService {
     }
 
     // Check for related data
-    const [dealsCount, clientsCount] = await Promise.all([
+    const [dealsCount, clientsCount, notesBoardCount] = await Promise.all([
       prisma.deal.count({ where: { managerId: id } }),
       prisma.client.count({ where: { managerId: id } }),
+      prisma.notesBoardRow.count({ where: { authorId: id } }),
     ]);
 
     if (dealsCount > 0 || clientsCount > 0) {
       throw new AppError(400,
         `Невозможно удалить: у пользователя есть ${dealsCount} сделок и ${clientsCount} клиентов. Используйте деактивацию.`,
+      );
+    }
+
+    if (notesBoardCount > 0) {
+      throw new AppError(400,
+        `Невозможно удалить: у пользователя есть ${notesBoardCount} записей в «Заметках обзвонов». Удалите или переназначьте их перед удалением пользователя, либо используйте деактивацию.`,
       );
     }
 
