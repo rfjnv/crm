@@ -93,6 +93,22 @@ export const clientsApi = {
   sendStockAll: (id: string, data: SendClientStockAllPayload) =>
     client.post<Deal>(`/clients/${id}/stock/send-all`, data).then((r) => r.data),
 
+  findDuplicates: () =>
+    client
+      .get<{
+        totalClients: number;
+        pairs: Array<{
+          client1: { id: string; companyName: string; contactName: string; phone: string | null; inn: string | null; manager: { id: string; fullName: string } | null };
+          client2: { id: string; companyName: string; contactName: string; phone: string | null; inn: string | null; manager: { id: string; fullName: string } | null };
+          similarity: number;
+          reason: string;
+        }>;
+      }>('/clients/duplicates')
+      .then((r) => r.data),
+
+  merge: (keepId: string, mergeId: string) =>
+    client.post<Client>('/clients/merge', { keepId, mergeId }).then((r) => r.data),
+
   notes: {
     list: (clientId: string, opts?: { includeDeleted?: boolean }) =>
       client

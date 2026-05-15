@@ -13,6 +13,7 @@ import {
   addClientStockDto,
   sendClientStockAllDto,
   sendClientStockPartialDto,
+  mergeClientsDto,
 } from './clients.dto';
 import { authorize } from '../../middleware/authorize';
 
@@ -21,8 +22,10 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', asyncHandler(clientsController.findAll.bind(clientsController)));
+router.get('/duplicates', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.findDuplicates.bind(clientsController)));
 router.get('/:id', asyncHandler(clientsController.findById.bind(clientsController)));
 router.post('/', validate(createClientDto), asyncHandler(clientsController.create.bind(clientsController)));
+router.post('/merge', authorize('SUPER_ADMIN', 'ADMIN'), validate(mergeClientsDto), asyncHandler(clientsController.mergeClients.bind(clientsController)));
 router.patch('/:id', requirePermission('edit_client'), validate(updateClientDto), asyncHandler(clientsController.update.bind(clientsController)));
 router.post('/normalize-phones', authorize('SUPER_ADMIN'), asyncHandler(clientsController.normalizePhones.bind(clientsController)));
 router.patch('/:id/svip', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.toggleSvip.bind(clientsController)));

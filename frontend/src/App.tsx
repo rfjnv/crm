@@ -10,6 +10,7 @@ import RatePage from './pages/RatePage';
 import DashboardPage from './pages/DashboardPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
+import DuplicateClientsPage from './pages/DuplicateClientsPage';
 import DealsPage from './pages/DealsPage';
 import DealCreatePage from './pages/DealCreatePage';
 import DealDetailPage from './pages/DealDetailPage';
@@ -113,6 +114,9 @@ export default function App() {
                 <Route element={<PrivateRoute permission="view_all_clients" />}>
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
+                </Route>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/clients/duplicates" element={<DuplicateClientsPage />} />
                 </Route>
                 <Route path="/reviews" element={<ReviewsPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />

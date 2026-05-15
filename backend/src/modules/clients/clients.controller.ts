@@ -139,6 +139,17 @@ export class ClientsController {
     const note = await clientNotesService.restore(req.params.id as string, req.params.noteId as string, getUser(req));
     res.json(note);
   }
+
+  async findDuplicates(req: Request, res: Response): Promise<void> {
+    const result = await clientsService.findDuplicates(getUser(req));
+    res.json(result);
+  }
+
+  async mergeClients(req: Request, res: Response): Promise<void> {
+    const { keepId, mergeId } = req.body as { keepId: string; mergeId: string };
+    const client = await clientsService.mergeClients(keepId, mergeId, getUser(req));
+    res.json(client);
+  }
 }
 
 export const clientsController = new ClientsController();

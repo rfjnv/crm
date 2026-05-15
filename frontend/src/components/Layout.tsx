@@ -62,6 +62,7 @@ import {
   GlobalOutlined,
   FileTextOutlined,
   ImportOutlined,
+  MergeCellsOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -291,6 +292,13 @@ export default function Layout() {
         key: '/clients',
         icon: <TeamOutlined />,
         label: <Link to="/clients">Клиенты</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/clients/duplicates',
+        icon: <MergeCellsOutlined />,
+        label: <Link to="/clients/duplicates">Дубликаты</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR')

@@ -145,3 +145,10 @@ export const updateClientNoteDto = z.object({
 
 export type CreateClientNoteDto = z.infer<typeof createClientNoteDto>;
 export type UpdateClientNoteDto = z.infer<typeof updateClientNoteDto>;
+
+export const mergeClientsDto = z.object({
+  keepId: z.string().uuid('Некорректный ID клиента (keepId)'),
+  mergeId: z.string().uuid('Некорректный ID клиента (mergeId)'),
+});
+
+export type MergeClientsDto = z.infer<typeof mergeClientsDto>;

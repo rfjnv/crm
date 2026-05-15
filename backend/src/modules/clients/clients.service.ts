@@ -1241,6 +1241,203 @@ export class ClientsService {
       recentPayments,
     };
   }
+
+  // ── Duplicate detection ──────────────────────────────────────────────────
+
+  private _simRatio(a: string, b: string): number {
+    const s = a.toLowerCase().trim();
+    const t = b.toLowerCase().trim();
+    if (!s || !t) return 0;
+    if (s === t) return 1;
+    if (s.includes(t) || t.includes(s)) return 1;
+
+    // Levenshtein distance
+    const m = s.length;
+    const n = t.length;
+    const dp: number[] = Array(n + 1)
+      .fill(0)
+      .map((_, i) => i);
+    for (let i = 1; i <= m; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const temp = dp[j];
+        dp[j] =
+          s[i - 1] === t[j - 1]
+            ? prev
+            : 1 + Math.min(prev, dp[j], dp[j - 1]);
+        prev = temp;
+      }
+    }
+    const dist = dp[n];
+    return 1 - dist / Math.max(m, n);
+  }
+
+  async findDuplicates(user: AuthUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Нет доступа');
+    }
+
+    const clients = await prisma.client.findMany({
+      where: { isArchived: false },
+      select: {
+        id: true,
+        companyName: true,
+        contactName: true,
+        phone: true,
+        inn: true,
+        manager: { select: { id: true, fullName: true } },
+      },
+      orderBy: { companyName: 'asc' },
+    });
+
+    const THRESHOLD = 0.82;
+    const pairs: {
+      client1: (typeof clients)[0];
+      client2: (typeof clients)[0];
+      similarity: number;
+      reason: string;
+    }[] = [];
+
+    for (let i = 0; i < clients.length; i++) {
+      for (let j = i + 1; j < clients.length; j++) {
+        const a = clients[i];
+        const b = clients[j];
+        if (!a.companyName || !b.companyName) continue;
+
+        const innMatch =
+          a.inn && b.inn && a.inn.trim() === b.inn.trim();
+        const phoneMatch =
+          a.phone && b.phone && a.phone.replace(/\D/g, '') === b.phone.replace(/\D/g, '');
+        const sim = this._simRatio(a.companyName, b.companyName);
+        const isSub =
+          a.companyName.toLowerCase().trim().includes(b.companyName.toLowerCase().trim()) ||
+          b.companyName.toLowerCase().trim().includes(a.companyName.toLowerCase().trim());
+
+        if (!innMatch && !phoneMatch && sim < THRESHOLD) continue;
+
+        const reasons: string[] = [];
+        if (innMatch) reasons.push(`ИНН совпадает: ${a.inn}`);
+        if (phoneMatch) reasons.push(`Телефон совпадает: ${a.phone}`);
+        if (isSub) reasons.push('Одно название содержит другое');
+        else if (sim >= THRESHOLD) reasons.push(`Сходство: ${Math.round(sim * 100)}%`);
+
+        pairs.push({
+          client1: a,
+          client2: b,
+          similarity: Math.round(sim * 100),
+          reason: reasons.join(' | '),
+        });
+      }
+    }
+
+    pairs.sort((a, b) => {
+      const aInn = a.reason.includes('ИНН') ? 0 : a.reason.includes('Телефон') ? 1 : 2;
+      const bInn = b.reason.includes('ИНН') ? 0 : b.reason.includes('Телефон') ? 1 : 2;
+      return aInn - bInn || b.similarity - a.similarity;
+    });
+
+    return {
+      totalClients: clients.length,
+      pairs: pairs.map((p) => ({
+        client1: {
+          id: p.client1.id,
+          companyName: p.client1.companyName,
+          contactName: p.client1.contactName,
+          phone: p.client1.phone,
+          inn: p.client1.inn,
+          manager: p.client1.manager,
+        },
+        client2: {
+          id: p.client2.id,
+          companyName: p.client2.companyName,
+          contactName: p.client2.contactName,
+          phone: p.client2.phone,
+          inn: p.client2.inn,
+          manager: p.client2.manager,
+        },
+        similarity: p.similarity,
+        reason: p.reason,
+      })),
+    };
+  }
+
+  // ── Merge two clients ────────────────────────────────────────────────────
+
+  async mergeClients(keepId: string, mergeId: string, user: AuthUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Только администратор может объединять клиентов');
+    }
+    if (keepId === mergeId) {
+      throw new AppError(400, 'Нельзя объединить клиента с самим собой');
+    }
+
+    const [keep, merge] = await Promise.all([
+      prisma.client.findUnique({ where: { id: keepId } }),
+      prisma.client.findUnique({ where: { id: mergeId } }),
+    ]);
+
+    if (!keep) throw new AppError(404, `Клиент ${keepId} не найден`);
+    if (!merge) throw new AppError(404, `Клиент ${mergeId} не найден`);
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Reassign all deals
+      await tx.deal.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
+
+      // 2. Reassign all payments
+      await tx.payment.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
+
+      // 3. Reassign all contracts
+      await tx.contract.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
+
+      // 4. Reassign all client notes
+      await tx.clientNote.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
+
+      // 5. Reassign stock events
+      await tx.clientStockEvent.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
+
+      // 6. Merge stock positions: add mergeId qty to keepId, then delete mergeId positions
+      const mergePositions = await tx.clientStockPosition.findMany({ where: { clientId: mergeId } });
+      for (const pos of mergePositions) {
+        const existing = await tx.clientStockPosition.findUnique({
+          where: { clientId_productId: { clientId: keepId, productId: pos.productId } },
+        });
+        if (existing) {
+          await tx.clientStockPosition.update({
+            where: { clientId_productId: { clientId: keepId, productId: pos.productId } },
+            data: { qtyTotal: { increment: pos.qtyTotal } },
+          });
+        } else {
+          await tx.clientStockPosition.update({
+            where: { clientId_productId: { clientId: mergeId, productId: pos.productId } },
+            data: { clientId: keepId },
+          });
+        }
+      }
+      // Delete leftover mergeId positions (the ones we incremented instead of moved)
+      await tx.clientStockPosition.deleteMany({ where: { clientId: mergeId } });
+
+      // 7. Reassign call sessions if present
+      await tx.callSession.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } }).catch(() => {});
+
+      // 8. Archive the merged client
+      await tx.client.update({ where: { id: mergeId }, data: { isArchived: true } });
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: keepId,
+      before: { mergedFrom: mergeId, mergedFromName: merge.companyName },
+      after: { companyName: keep.companyName, note: 'Объединение дубликата' },
+    });
+
+    return prisma.client.findUnique({
+      where: { id: keepId },
+      include: { manager: { select: { id: true, fullName: true } } },
+    });
+  }
 }
 
 export const clientsService = new ClientsService();
