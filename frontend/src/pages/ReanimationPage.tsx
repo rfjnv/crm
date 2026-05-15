@@ -11,6 +11,7 @@ import {
   Input,
   InputNumber,
   List,
+  Pagination,
   Row,
   Select,
   Space,
@@ -27,6 +28,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { APP_INPUT } from '../components/ui/AppClassNames';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { matchesSearch, smartFilterOption } from '../utils/translit';
+import './ReanimationPage.css';
 import type {
   ReanimationClientDetail,
   ReanimationClientProductStat,
@@ -38,6 +40,9 @@ import type {
 const { Title, Text, Paragraph } = Typography;
 
 const CANDIDATE_STATUSES: ReanimationStatus[] = ['ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+const DEFAULT_PAGE_SIZE = 20;
 
 const ALL_STATUSES: ReanimationStatus[] = ['ACTIVE', 'ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
 
@@ -290,6 +295,9 @@ export default function ReanimationPage() {
     [listState],
   );
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   const { data = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['analytics-reanimation'],
     queryFn: analyticsApi.getReanimationClients,
@@ -393,6 +401,20 @@ export default function ReanimationPage() {
     return rows;
   }, [data, listState, searchDraft]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [tableFilterKey]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredRows.length / pageSize) || 1);
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredRows.length, page, pageSize]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
+
   const allCandidates = useMemo(
     () => data.filter((row) => CANDIDATE_STATUSES.includes(row.status)),
     [data],
@@ -409,6 +431,7 @@ export default function ReanimationPage() {
 
   const resetFilters = () => {
     setSearchDraft('');
+    setPage(1);
     setSearchParams(new URLSearchParams(), { replace: true });
   };
 
@@ -417,9 +440,9 @@ export default function ReanimationPage() {
       title: 'Клиент',
       key: 'client',
       fixed: 'left' as const,
-      width: 270,
+      width: 320,
       render: (_: unknown, row: ReanimationClientRow) => (
-        <div>
+        <div className="reanimation-client-cell">
           <ClientCompanyDisplay
             client={{
               id: row.clientId,
@@ -429,13 +452,14 @@ export default function ReanimationPage() {
             }}
             variant="full"
           />
-          <div style={{ marginTop: 4 }}>
-            <Text type="secondary">{row.contactName}</Text>
+          <div className="reanimation-client-cell__meta">
+            <Text type="secondary">{row.contactName || 'Контакт не указан'}</Text>
           </div>
-          <div style={{ marginTop: 2 }}>
+          <div className="reanimation-client-cell__meta">
             <Space size={8} wrap>
               {row.phone ? <Text type="secondary">{row.phone}</Text> : null}
-              {row.email ? <Text type="secondary">{row.email}</Text> : null}
+              {row.currentDebt > 0 ? <Tag color="red">Долг</Tag> : null}
+              {!row.lastContactAt ? <Tag>Без контакта</Tag> : null}
             </Space>
           </div>
         </div>
@@ -450,128 +474,84 @@ export default function ReanimationPage() {
       ),
     },
     {
-      title: 'Менеджер',
+      title: 'Ответственный',
       key: 'manager',
-      width: 180,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div>
-          <div>{row.managerName}</div>
-          <Text type="secondary">{row.managerDepartment || '—'}</Text>
-        </div>
-      ),
-    },
-    {
-      title: 'Последняя покупка',
-      key: 'lastPurchase',
-      width: 150,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div>
-          <div>{formatDate(row.lastPurchaseAt)}</div>
-          <Text type="secondary">{formatDays(row.daysSinceLastPurchase)}</Text>
-        </div>
-      ),
-    },
-    {
-      title: 'Последний контакт',
-      key: 'lastContact',
       width: 190,
       render: (_: unknown, row: ReanimationClientRow) => (
-        <div>
-          <div>{formatDateTime(row.lastContactAt)}</div>
-          <Text type="secondary">
-            {row.lastContactByName || 'Без заметок'}
-            {row.daysSinceLastContact !== null && row.daysSinceLastContact !== undefined
-              ? ` • ${formatDays(row.daysSinceLastContact)}`
-              : ''}
-          </Text>
+        <div className="reanimation-manager-cell">
+          <div>{row.managerName}</div>
+          <Text type="secondary">{row.managerDepartment || 'Без отдела'}</Text>
         </div>
       ),
     },
     {
-      title: 'Сделок',
-      dataIndex: 'closedDealsCount',
-      width: 90,
-      align: 'right' as const,
-    },
-    {
-      title: 'Выручка',
-      dataIndex: 'totalRevenue',
-      width: 130,
-      align: 'right' as const,
-      render: (value: number) => formatMoney(value),
-    },
-    {
-      title: 'Долг',
-      dataIndex: 'currentDebt',
-      width: 130,
-      align: 'right' as const,
-      render: (value: number) => (
-        <Text type={value > 0 ? 'danger' : 'secondary'}>{formatMoney(value)}</Text>
+      title: 'Активность',
+      key: 'activity',
+      width: 260,
+      render: (_: unknown, row: ReanimationClientRow) => (
+        <div className="reanimation-activity-cell">
+          <div>
+            <Text type="secondary">Покупка</Text>
+            <div>{formatDate(row.lastPurchaseAt)}</div>
+            <Text strong>{formatDays(row.daysSinceLastPurchase)}</Text>
+          </div>
+          <div>
+            <Text type="secondary">Контакт</Text>
+            <div>{row.lastContactAt ? formatDateTime(row.lastContactAt) : 'Не было'}</div>
+            <Text type="secondary">
+              {row.lastContactAt
+                ? `${row.lastContactByName || 'Без автора'}${
+                    row.daysSinceLastContact !== null && row.daysSinceLastContact !== undefined
+                      ? ` • ${formatDays(row.daysSinceLastContact)}`
+                      : ''
+                  }`
+                : 'Нужен первый контакт'}
+            </Text>
+          </div>
+        </div>
       ),
     },
     {
-      title: 'Последняя сделка',
-      key: 'lastDeal',
-      width: 220,
-      render: (_: unknown, row: ReanimationClientRow) =>
-        row.lastDeal ? (
+      title: 'Ключевые цифры',
+      key: 'numbers',
+      width: 250,
+      render: (_: unknown, row: ReanimationClientRow) => (
+        <div className="reanimation-metrics-cell">
           <div>
-            <Button
-              type="link"
-              style={{ padding: 0, height: 'auto' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/deals/${row.lastDeal!.dealId}`);
-              }}
-            >
-              {row.lastDeal.title}
-            </Button>
+            <Text type="secondary">Сделок</Text>
+            <div>{row.closedDealsCount}</div>
+          </div>
+          <div>
+            <Text type="secondary">Выручка</Text>
+            <div>{formatMoney(row.totalRevenue)}</div>
+          </div>
+          <div>
+            <Text type="secondary">Долг</Text>
             <div>
-              <Text type="secondary">
-                {formatDate(row.lastDeal.effectiveAt)} • {formatMoney(row.lastDeal.revenue)}
+              <Text type={row.currentDebt > 0 ? 'danger' : 'secondary'}>
+                {formatMoney(row.currentDebt)}
               </Text>
             </div>
           </div>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-    },
-    {
-      title: 'Товары',
-      key: 'products',
-      width: 340,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Последний заказ</Text>
-            <div style={{ marginTop: 4 }}>
-              {renderProductButtons(row.lastDealProducts, navigate, 'Нет данных')}
-            </div>
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>Хит-товары</Text>
-            <div style={{ marginTop: 4 }}>
-              {renderProductButtons(row.topProducts, navigate, 'Нет данных')}
-            </div>
-          </div>
-        </Space>
+        </div>
       ),
     },
     {
       title: '',
       key: 'actions',
       fixed: 'right' as const,
-      width: 150,
+      width: 170,
       render: (_: unknown, row: ReanimationClientRow) => (
-        <Space>
+        <Space direction="vertical" size={4}>
           <Button
             size="small"
+            type="primary"
             onClick={(e) => {
               e.stopPropagation();
               patchListState({ clientId: row.clientId });
             }}
           >
-            Внутри страницы
+            Открыть
           </Button>
           <Button
             size="small"
@@ -640,7 +620,7 @@ export default function ReanimationPage() {
   ];
 
   return (
-    <div>
+    <div className="reanimation-page">
       <Row justify="space-between" align="middle" gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col flex="auto">
           <Title level={4} style={{ margin: 0 }}>
@@ -848,16 +828,11 @@ export default function ReanimationPage() {
           <Table
             key={tableFilterKey}
             rowKey="clientId"
-            dataSource={filteredRows}
+            dataSource={paginatedRows}
             columns={columns}
             size="small"
             scroll={{ x: 1850 }}
-            pagination={{
-              defaultPageSize: 25,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 25, 50, 100],
-              showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-            }}
+            pagination={false}
             onRow={(row) => ({
               onClick: () => patchListState({ clientId: row.clientId }),
               style: { cursor: 'pointer' },
@@ -865,6 +840,24 @@ export default function ReanimationPage() {
           />
         )}
       </Card>
+
+      {!isLoading && filteredRows.length > 0 ? (
+        <div className="reanimation-pagination-bar" role="navigation" aria-label="Пагинация списка клиентов">
+          <Pagination
+            current={page}
+            pageSize={pageSize}
+            total={filteredRows.length}
+            showSizeChanger
+            pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+            showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              if (nextPageSize !== pageSize) setPageSize(nextPageSize);
+            }}
+            size={isMobile ? 'small' : 'middle'}
+          />
+        </div>
+      ) : null}
 
       <Drawer
         width={isMobile ? '100%' : 1120}
@@ -929,29 +922,58 @@ export default function ReanimationPage() {
               </Col>
             </Row>
 
-            <Card size="small" title="Последний заказ" style={{ marginBottom: 16 }}>
-              {drawerData.client.lastDeal ? (
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <Space wrap>
-                    <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => navigate(`/deals/${drawerData.client.lastDeal!.dealId}`)}>
-                      {drawerData.client.lastDeal.title}
-                    </Button>
-                    <Text type="secondary">
-                      {formatDate(drawerData.client.lastDeal.effectiveAt)} • {formatMoney(drawerData.client.lastDeal.revenue)}
-                    </Text>
+            <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+              <Col xs={24} lg={12}>
+                <Card size="small" title="Последний заказ" className="reanimation-drawer-card">
+                  {drawerData.client.lastDeal ? (
+                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                      <Space wrap>
+                        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => navigate(`/deals/${drawerData.client.lastDeal!.dealId}`)}>
+                          {drawerData.client.lastDeal.title}
+                        </Button>
+                        <Text type="secondary">
+                          {formatDate(drawerData.client.lastDeal.effectiveAt)} • {formatMoney(drawerData.client.lastDeal.revenue)}
+                        </Text>
+                      </Space>
+                      {renderProductButtons(drawerData.client.lastDealProducts, navigate, 'Товары последней сделки не найдены')}
+                    </Space>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Последняя сделка не найдена" />
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} lg={12}>
+                <Card size="small" title="Что важно сейчас" className="reanimation-drawer-card">
+                  <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                    <div>
+                      <Text type="secondary">Последний контакт</Text>
+                      <div>{drawerData.client.lastContactAt ? formatDateTime(drawerData.client.lastContactAt) : 'Контакта ещё не было'}</div>
+                      <Text type="secondary">
+                        {drawerData.client.lastContactByName || 'Без ответственного'}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text type="secondary">Последняя заметка</Text>
+                      <Paragraph style={{ margin: '4px 0 0' }}>
+                        {drawerData.client.lastContactPreview || 'Краткой заметки пока нет'}
+                      </Paragraph>
+                    </div>
+                    <div>
+                      <Text type="secondary">Хит-товары клиента</Text>
+                      <div style={{ marginTop: 4 }}>
+                        {renderProductButtons(drawerData.client.topProducts, navigate, 'Нет часто покупаемых товаров')}
+                      </div>
+                    </div>
                   </Space>
-                  {renderProductButtons(drawerData.client.lastDealProducts, navigate, 'Товары последней сделки не найдены')}
-                </Space>
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Последняя сделка не найдена" />
-              )}
-            </Card>
+                </Card>
+              </Col>
+            </Row>
 
             <Tabs
               items={[
                 {
                   key: 'products',
-                  label: 'Товары',
+                  label: 'Все товары',
                   children: (
                     <Table<ReanimationClientProductStat>
                       rowKey="productId"
@@ -968,7 +990,7 @@ export default function ReanimationPage() {
                 },
                 {
                   key: 'deals',
-                  label: 'Последние сделки',
+                  label: 'История сделок',
                   children: (
                     <Table
                       rowKey="dealId"
@@ -985,7 +1007,7 @@ export default function ReanimationPage() {
                 },
                 {
                   key: 'notes',
-                  label: 'Контакты',
+                  label: 'Контакты и заметки',
                   children: drawerData.notes.length === 0 ? (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Заметок по клиенту пока нет" />
                   ) : (

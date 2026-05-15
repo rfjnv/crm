@@ -1,0 +1,69 @@
+.reanimation-page {
+  padding-bottom: 64px;
+}
+
+.reanimation-client-cell,
+.reanimation-manager-cell,
+.reanimation-activity-cell,
+.reanimation-metrics-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reanimation-client-cell__meta {
+  margin-top: 2px;
+}
+
+.reanimation-activity-cell,
+.reanimation-metrics-cell {
+  gap: 10px;
+}
+
+.reanimation-activity-cell > div,
+.reanimation-metrics-cell > div {
+  min-width: 0;
+}
+
+.reanimation-drawer-card {
+  height: 100%;
+}
+
+.reanimation-pagination-bar {
+  position: fixed;
+  left: var(--app-sider-width, 0px);
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--ant-color-bg-container);
+  border-top: 1px solid var(--ant-color-border-secondary);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.reanimation-pagination-bar .ant-pagination {
+  margin: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .reanimation-page {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .reanimation-activity-cell,
+  .reanimation-metrics-cell {
+    gap: 8px;
+  }
+
+  .reanimation-pagination-bar {
+    left: 0;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 12px;
+  }
+}
