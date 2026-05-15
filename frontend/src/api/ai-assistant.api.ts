@@ -173,7 +173,7 @@ export const aiAssistantApi = {
     formData.append('languageMode', languageMode);
     return client.post<AudioTranscriptionResponse>('/ai-assistant/transcribe', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 240000,
+      timeout: 300000, // 5 min: AISHA max poll 3 min + ElevenLabs + buffer
     }).then((r) => r.data);
   },
 

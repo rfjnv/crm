@@ -15,7 +15,7 @@ import * as path from 'node:path';
 
 const DEFAULT_BASE_URL = 'https://back.aisha.group';
 const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_MS = 8 * 60 * 1000;
+const MAX_POLL_MS = 3 * 60 * 1000; // 3 min — fits within the 4-min frontend timeout
 
 export type AishaLanguage = 'uz' | 'ru' | 'en';
 

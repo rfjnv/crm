@@ -4,7 +4,7 @@ import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AiAssistantResponse } from './ai-assistant.dto';
-import { PolygraphTranscriber, type LanguageMode, type TranscriptionResult } from '../asr/polygraph-transcriber';
+import type { LanguageMode, TranscriptionResult } from '../asr/polygraph-transcriber';
 import { transcribeWithElevenLabs } from '../asr/elevenlabs-transcriber';
 import { transcribeWithAisha } from '../asr/aisha-transcriber';
 import { mergeTranscriptsWithClaude, type CandidateTranscript } from '../asr/claude-merger';
@@ -375,31 +375,6 @@ async function runElevenLabs(filePath: string, languageMode: LanguageMode): Prom
   }
 }
 
-async function runOpenAI(filePath: string, languageMode: LanguageMode): Promise<EngineRunResult> {
-  const start = Date.now();
-  const apiKey = config.openai.apiKey;
-  if (!apiKey) {
-    return { engine: 'openai', text: '', status: 'skipped', durationMs: 0, error: 'OPENAI_API_KEY не настроен' };
-  }
-  try {
-    const transcriber = new PolygraphTranscriber({ apiKey });
-    const asr = await transcriber.transcribeWithQualityGate(filePath, { languageMode }, 5.0);
-    return {
-      engine: 'openai',
-      text: (asr.text || '').trim(),
-      durationMs: Date.now() - start,
-      status: 'success',
-      audioQuality: asr.audioQuality,
-      qualityScore: asr.qualityScore,
-      needsHumanReview: asr.needsHumanReview,
-      segments: asr.segments,
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[ASR] OpenAI failed:', msg);
-    return { engine: 'openai', text: '', status: 'error', durationMs: Date.now() - start, error: msg };
-  }
-}
 
 export async function transcribeAudioFile(
   file: Express.Multer.File,
@@ -411,14 +386,13 @@ export async function transcribeAudioFile(
 
   const languageMode: LanguageMode = opts.languageMode ?? 'auto';
 
-  // ── Run all 3 engines in parallel ──
-  const [aishaRes, elevenRes, openaiRes] = await Promise.all([
+  // ── Run AISHA + ElevenLabs in parallel ──
+  const [aishaRes, elevenRes] = await Promise.all([
     runAisha(file.path, languageMode),
     runElevenLabs(file.path, languageMode),
-    runOpenAI(file.path, languageMode),
   ]);
 
-  const allRuns = [aishaRes, elevenRes, openaiRes];
+  const allRuns = [aishaRes, elevenRes];
   const successful = allRuns.filter((r) => r.status === 'success' && r.text.trim().length > 0);
 
   if (successful.length === 0) {
@@ -428,7 +402,7 @@ export async function transcribeAudioFile(
       .join('; ');
     throw new AppError(
       500,
-      `Ни один из STT движков не справился. ${errors || 'Проверьте ключи AISHA_AI_API_KEY / ELEVENLABS_API_KEY / OPENAI_API_KEY.'}`,
+      `Ни один из STT движков не справился. ${errors || 'Проверьте ключи AISHA_AI_API_KEY / ELEVENLABS_API_KEY.'}`,
     );
   }
 
@@ -476,9 +450,7 @@ export async function transcribeAudioFile(
     error: r.error,
   }));
 
-  // Prefer OpenAI's audio quality data if available, else fall back to ElevenLabs/zeros
-  const openaiSuccess = allRuns.find((r) => r.engine === 'openai' && r.status === 'success');
-  const audioQuality = openaiSuccess?.audioQuality ?? {
+  const audioQuality = {
     sampleRate: 0,
     channels: 0,
     durationSec: 0,
@@ -487,9 +459,7 @@ export async function transcribeAudioFile(
   };
 
   const segments =
-    openaiSuccess?.segments ??
-    allRuns.find((r) => r.engine === 'elevenlabs' && r.status === 'success')?.segments ??
-    [];
+    allRuns.find((r) => r.engine === 'elevenlabs' && r.status === 'success')?.segments ?? [];
 
   // Quality score: high if ≥2 engines succeeded and merged text is substantial
   const qualityScore =
@@ -514,7 +484,7 @@ export async function transcribeAudioFile(
     needsHumanReview: successful.length < 2,
     auditRecommended,
     auditSkipReason,
-    model: `multi-engine(${successful.map((r) => r.engine).join('+')}) → ${mergeModel ?? 'fallback'}`,
+    model: `aisha+elevenlabs → ${mergeModel ?? 'fallback'}`,
     segments,
     engines,
     disputedNote,
