@@ -2,6 +2,84 @@
   padding-bottom: 64px;
 }
 
+.reanimation-filters-card .ant-card-body {
+  padding-top: 12px;
+}
+
+.reanimation-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reanimation-filter-item {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+.reanimation-filter-item--wide {
+  grid-column: span 6;
+}
+
+.reanimation-filter-item--compact {
+  grid-column: span 2;
+}
+
+.reanimation-filter-item--action {
+  display: flex;
+  align-items: stretch;
+}
+
+.reanimation-row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reanimation-row-card {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.reanimation-row-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reanimation-row-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reanimation-row-card__client {
+  min-width: 0;
+  flex: 1;
+}
+
+.reanimation-row-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.reanimation-row-card__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reanimation-row-card__item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .reanimation-client-cell,
 .reanimation-manager-cell,
 .reanimation-activity-cell,
@@ -54,6 +132,34 @@
 @media (max-width: 768px) {
   .reanimation-page {
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .reanimation-filters-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reanimation-filter-item,
+  .reanimation-filter-item--wide,
+  .reanimation-filter-item--compact,
+  .reanimation-filter-item--action {
+    grid-column: span 1;
+  }
+
+  .reanimation-row-card__top {
+    flex-direction: column;
+  }
+
+  .reanimation-row-card__actions {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .reanimation-row-card__grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .reanimation-activity-cell,

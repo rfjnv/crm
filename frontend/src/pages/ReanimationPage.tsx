@@ -435,14 +435,16 @@ export default function ReanimationPage() {
     setSearchParams(new URLSearchParams(), { replace: true });
   };
 
-  const columns = [
-    {
-      title: 'Клиент',
-      key: 'client',
-      fixed: 'left' as const,
-      width: 320,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div className="reanimation-client-cell">
+  const renderClientRowCard = (row: ReanimationClientRow) => (
+    <Card
+      key={row.clientId}
+      size="small"
+      hoverable
+      className="reanimation-row-card"
+      onClick={() => patchListState({ clientId: row.clientId })}
+    >
+      <div className="reanimation-row-card__top">
+        <div className="reanimation-row-card__client">
           <ClientCompanyDisplay
             client={{
               id: row.clientId,
@@ -456,117 +458,63 @@ export default function ReanimationPage() {
             <Text type="secondary">{row.contactName || 'Контакт не указан'}</Text>
           </div>
           <div className="reanimation-client-cell__meta">
-            <Space size={8} wrap>
+            <Space size={[8, 6]} wrap>
+              <Tag color={STATUS_META[row.status].color}>{STATUS_META[row.status].label}</Tag>
               {row.phone ? <Text type="secondary">{row.phone}</Text> : null}
               {row.currentDebt > 0 ? <Tag color="red">Долг</Tag> : null}
               {!row.lastContactAt ? <Tag>Без контакта</Tag> : null}
             </Space>
           </div>
         </div>
-      ),
-    },
-    {
-      title: 'Статус',
-      dataIndex: 'status',
-      width: 170,
-      render: (value: ReanimationStatus) => (
-        <Tag color={STATUS_META[value].color}>{STATUS_META[value].label}</Tag>
-      ),
-    },
-    {
-      title: 'Ответственный',
-      key: 'manager',
-      width: 190,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div className="reanimation-manager-cell">
+
+        <div className="reanimation-row-card__actions" onClick={(e) => e.stopPropagation()}>
+          <Button size="small" type="primary" onClick={() => patchListState({ clientId: row.clientId })}>
+            Открыть
+          </Button>
+          <Button size="small" type="link" onClick={() => navigate(`/clients/${row.clientId}`)}>
+            Карточка
+          </Button>
+        </div>
+      </div>
+
+      <div className="reanimation-row-card__grid">
+        <div className="reanimation-row-card__item">
+          <Text type="secondary">Ответственный</Text>
           <div>{row.managerName}</div>
           <Text type="secondary">{row.managerDepartment || 'Без отдела'}</Text>
         </div>
-      ),
-    },
-    {
-      title: 'Активность',
-      key: 'activity',
-      width: 260,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div className="reanimation-activity-cell">
-          <div>
-            <Text type="secondary">Покупка</Text>
-            <div>{formatDate(row.lastPurchaseAt)}</div>
-            <Text strong>{formatDays(row.daysSinceLastPurchase)}</Text>
-          </div>
-          <div>
-            <Text type="secondary">Контакт</Text>
-            <div>{row.lastContactAt ? formatDateTime(row.lastContactAt) : 'Не было'}</div>
-            <Text type="secondary">
-              {row.lastContactAt
-                ? `${row.lastContactByName || 'Без автора'}${
-                    row.daysSinceLastContact !== null && row.daysSinceLastContact !== undefined
-                      ? ` • ${formatDays(row.daysSinceLastContact)}`
-                      : ''
-                  }`
-                : 'Нужен первый контакт'}
-            </Text>
-          </div>
+
+        <div className="reanimation-row-card__item">
+          <Text type="secondary">Последняя покупка</Text>
+          <div>{formatDate(row.lastPurchaseAt)}</div>
+          <Text strong>{formatDays(row.daysSinceLastPurchase)}</Text>
         </div>
-      ),
-    },
-    {
-      title: 'Ключевые цифры',
-      key: 'numbers',
-      width: 250,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <div className="reanimation-metrics-cell">
-          <div>
-            <Text type="secondary">Сделок</Text>
-            <div>{row.closedDealsCount}</div>
-          </div>
-          <div>
-            <Text type="secondary">Выручка</Text>
-            <div>{formatMoney(row.totalRevenue)}</div>
-          </div>
-          <div>
-            <Text type="secondary">Долг</Text>
-            <div>
-              <Text type={row.currentDebt > 0 ? 'danger' : 'secondary'}>
-                {formatMoney(row.currentDebt)}
-              </Text>
-            </div>
-          </div>
+
+        <div className="reanimation-row-card__item">
+          <Text type="secondary">Последний контакт</Text>
+          <div>{row.lastContactAt ? formatDateTime(row.lastContactAt) : 'Не было'}</div>
+          <Text type="secondary">
+            {row.lastContactAt
+              ? `${row.lastContactByName || 'Без автора'}${
+                  row.daysSinceLastContact !== null && row.daysSinceLastContact !== undefined
+                    ? ` • ${formatDays(row.daysSinceLastContact)}`
+                    : ''
+                }`
+              : 'Нужен первый контакт'}
+          </Text>
         </div>
-      ),
-    },
-    {
-      title: '',
-      key: 'actions',
-      fixed: 'right' as const,
-      width: 170,
-      render: (_: unknown, row: ReanimationClientRow) => (
-        <Space direction="vertical" size={4}>
-          <Button
-            size="small"
-            type="primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              patchListState({ clientId: row.clientId });
-            }}
-          >
-            Открыть
-          </Button>
-          <Button
-            size="small"
-            type="link"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/clients/${row.clientId}`);
-            }}
-          >
-            Карточка
-          </Button>
-        </Space>
-      ),
-    },
-  ];
+
+        <div className="reanimation-row-card__item">
+          <Text type="secondary">Ключевые цифры</Text>
+          <div>Сделок: {row.closedDealsCount}</div>
+          <div>Выручка: {formatMoney(row.totalRevenue)}</div>
+          <Text type={row.currentDebt > 0 ? 'danger' : 'secondary'}>
+            Долг: {formatMoney(row.currentDebt)}
+          </Text>
+        </div>
+      </div>
+    </Card>
+  );
 
   const drawerData = drawerQuery.data as ReanimationClientDetail | undefined;
 
@@ -661,9 +609,14 @@ export default function ReanimationPage() {
         </Col>
       </Row>
 
-      <Card size="small" title="Фильтры" style={{ marginBottom: 12 }}>
-        <Row gutter={[10, 10]}>
-          <Col xs={24} md={12} xl={8}>
+      <Card
+        size="small"
+        title="Фильтры"
+        className="reanimation-filters-card"
+        style={{ marginBottom: 12 }}
+      >
+        <div className="reanimation-filters-grid">
+          <div className="reanimation-filter-item reanimation-filter-item--wide">
             <Input.Search
               className={APP_INPUT}
               allowClear
@@ -675,8 +628,8 @@ export default function ReanimationPage() {
                 patchListState({ q: value });
               }}
             />
-          </Col>
-          <Col xs={24} md={12} xl={8}>
+          </div>
+          <div className="reanimation-filter-item reanimation-filter-item--wide">
             <Select
               mode="multiple"
               allowClear
@@ -692,8 +645,8 @@ export default function ReanimationPage() {
               options={Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))}
               maxTagCount={2}
             />
-          </Col>
-          <Col xs={24} md={12} xl={8}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               mode="multiple"
               allowClear
@@ -707,8 +660,8 @@ export default function ReanimationPage() {
               options={managerOptions}
               maxTagCount={2}
             />
-          </Col>
-          <Col xs={24} md={12} xl={8}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               mode="multiple"
               allowClear
@@ -722,8 +675,8 @@ export default function ReanimationPage() {
               options={departmentOptions}
               maxTagCount={2}
             />
-          </Col>
-          <Col xs={24} md={12} xl={8}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               mode="multiple"
               allowClear
@@ -737,8 +690,8 @@ export default function ReanimationPage() {
               options={productOptions}
               maxTagCount={2}
             />
-          </Col>
-          <Col xs={12} md={6} xl={4}>
+          </div>
+          <div className="reanimation-filter-item reanimation-filter-item--compact">
             <InputNumber
               className={APP_INPUT}
               style={{ width: '100%' }}
@@ -749,8 +702,8 @@ export default function ReanimationPage() {
               }
               placeholder="От, дней"
             />
-          </Col>
-          <Col xs={12} md={6} xl={4}>
+          </div>
+          <div className="reanimation-filter-item reanimation-filter-item--compact">
             <InputNumber
               className={APP_INPUT}
               style={{ width: '100%' }}
@@ -761,8 +714,8 @@ export default function ReanimationPage() {
               }
               placeholder="До, дней"
             />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
@@ -774,8 +727,8 @@ export default function ReanimationPage() {
                 { value: 'without_debt', label: 'Без долга / переплата' },
               ]}
             />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
@@ -788,8 +741,8 @@ export default function ReanimationPage() {
                 { value: 'stale_30', label: 'Контакт не был 30+ дней' },
               ]}
             />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
+          </div>
+          <div className="reanimation-filter-item">
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
@@ -804,13 +757,13 @@ export default function ReanimationPage() {
                 { value: 'contact_oldest', label: 'Сорт: самый старый контакт' },
               ]}
             />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
+          </div>
+          <div className="reanimation-filter-item reanimation-filter-item--action">
             <Button block onClick={resetFilters}>
               Сбросить фильтры
             </Button>
-          </Col>
-        </Row>
+          </div>
+        </div>
       </Card>
 
       <Card
@@ -825,19 +778,9 @@ export default function ReanimationPage() {
         ) : filteredRows.length === 0 ? (
           <Empty description="По текущим фильтрам клиентов не найдено" />
         ) : (
-          <Table
-            key={tableFilterKey}
-            rowKey="clientId"
-            dataSource={paginatedRows}
-            columns={columns}
-            size="small"
-            scroll={{ x: 1850 }}
-            pagination={false}
-            onRow={(row) => ({
-              onClick: () => patchListState({ clientId: row.clientId }),
-              style: { cursor: 'pointer' },
-            })}
-          />
+          <div key={tableFilterKey} className="reanimation-row-list">
+            {paginatedRows.map((row) => renderClientRowCard(row))}
+          </div>
         )}
       </Card>
 
