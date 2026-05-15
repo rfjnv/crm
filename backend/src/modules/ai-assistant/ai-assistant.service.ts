@@ -386,10 +386,20 @@ export async function transcribeAudioFile(
 
   const languageMode: LanguageMode = opts.languageMode ?? 'auto';
 
-  // ── Run AISHA + ElevenLabs in parallel ──
+  // ── Smart engine routing ──
+  // uz  → AISHA only  (strongest for Uzbek)
+  // ru  → ElevenLabs only (strongest for Russian)
+  // auto/mixed → both in parallel
+  const useAisha = languageMode !== 'ru';
+  const useElevenLabs = languageMode !== 'uz';
+
   const [aishaRes, elevenRes] = await Promise.all([
-    runAisha(file.path, languageMode),
-    runElevenLabs(file.path, languageMode),
+    useAisha
+      ? runAisha(file.path, languageMode)
+      : Promise.resolve<EngineRunResult>({ engine: 'aisha', text: '', status: 'skipped', durationMs: 0, error: 'Пропущен: язык ru' }),
+    useElevenLabs
+      ? runElevenLabs(file.path, languageMode)
+      : Promise.resolve<EngineRunResult>({ engine: 'elevenlabs', text: '', status: 'skipped', durationMs: 0, error: 'Пропущен: язык uz' }),
   ]);
 
   const allRuns = [aishaRes, elevenRes];
@@ -402,7 +412,7 @@ export async function transcribeAudioFile(
       .join('; ');
     throw new AppError(
       500,
-      `Ни один из STT движков не справился. ${errors || 'Проверьте ключи AISHA_AI_API_KEY / ELEVENLABS_API_KEY.'}`,
+      `Ни один из STT движков не справился. ${errors || 'Проверьте ключи AISHA_AI_API_KEY / ELEVENLABS_API_KEY'}`,
     );
   }
 
@@ -484,7 +494,7 @@ export async function transcribeAudioFile(
     needsHumanReview: successful.length < 2,
     auditRecommended,
     auditSkipReason,
-    model: `aisha+elevenlabs → ${mergeModel ?? 'fallback'}`,
+    model: `${successful.map((r) => r.engine).join('+')} → ${mergeModel ?? 'fallback'}`,
     segments,
     engines,
     disputedNote,
