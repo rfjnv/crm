@@ -6,6 +6,7 @@ import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
+  resolveAnalyticsPeriodRange,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -14,34 +15,6 @@ import { recommendationFor } from './abcXyzRecommendations';
 
 const router = Router();
 router.use(authenticate);
-
-const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
-
-function getPeriodRange(period: string): { start: Date; end: Date } {
-  const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
-  const y = nowTashkent.getUTCFullYear();
-  const m = nowTashkent.getUTCMonth();
-  const d = nowTashkent.getUTCDate();
-  const startOfTodayUtc = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
-  const end = new Date(startOfTodayUtc.getTime() + 86400000);
-  let start: Date;
-  switch (period) {
-    case 'week':
-      start = new Date(end.getTime() - 7 * 86400000);
-      break;
-    case 'quarter':
-      start = new Date(Date.UTC(y, m - 3, d) - TASHKENT_OFFSET);
-      break;
-    case 'year':
-      start = new Date(Date.UTC(y - 1, m, d) - TASHKENT_OFFSET);
-      break;
-    case 'month':
-    default:
-      start = new Date(Date.UTC(y, m, 1) - TASHKENT_OFFSET);
-      break;
-  }
-  return { start, end };
-}
 
 type Abc = 'A' | 'B' | 'C';
 type Xyz = 'X' | 'Y' | 'Z' | 'NEW';
@@ -146,8 +119,14 @@ router.get(
       permissions: req.user!.permissions || [],
     };
     const dealScope = ownerScope(user);
-    const period = (req.query.period as string) || 'month';
-    const { start, end } = getPeriodRange(period);
+    const fromQ = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    const toQ = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+    const { start, end } = resolveAnalyticsPeriodRange({
+      period: typeof req.query.period === 'string' ? req.query.period : undefined,
+      from: fromQ || undefined,
+      to: toQ || undefined,
+    });
+    const periodLabel = fromQ && toQ ? 'custom' : (req.query.period as string) || 'month';
 
     const mgrFilter = dealScope.managerId
       ? Prisma.sql`AND d.manager_id = ${dealScope.managerId}`
@@ -224,7 +203,7 @@ router.get(
     }));
 
     res.json({
-      period,
+      period: periodLabel,
       products: buildRows(productsSorted, productVolMap, 'product'),
       clients: buildRows(clientsSorted, clientVolMap, 'client'),
     });

@@ -19,6 +19,24 @@ import type {
 } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
+export type AnalyticsPeriodPreset = AnalyticsPeriod | 'custom';
+
+export type AnalyticsPeriodQuery =
+  | { period: AnalyticsPeriod }
+  | { from: string; to: string };
+
+function normalizeAnalyticsPeriodQuery(
+  query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month',
+): AnalyticsPeriodQuery {
+  if (typeof query === 'string') return { period: query };
+  return query;
+}
+
+function analyticsPeriodParams(query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month'): Record<string, string> {
+  const q = normalizeAnalyticsPeriodQuery(query);
+  if ('from' in q) return { from: q.from, to: q.to };
+  return { period: q.period };
+}
 
 /** Агрегаты по товару / категории для вкладки «Иерархия товаров» (без списка всех позиций). */
 export type HierarchyMerchandiseStatsRow = {
@@ -77,8 +95,8 @@ export type CallActivityResponse = {
 };
 
 export const analyticsApi = {
-  getData: (period: AnalyticsPeriod = 'month') =>
-    client.get<AnalyticsData>('/analytics', { params: { period } }).then((r) => r.data),
+  getData: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
+    client.get<AnalyticsData>('/analytics', { params: analyticsPeriodParams(query) }).then((r) => r.data),
 
   getHierarchyClosedItems: (fromIso: string) =>
     client
@@ -104,10 +122,10 @@ export const analyticsApi = {
   }) =>
     client.get<CallActivityResponse>('/analytics/call-activity', { params }).then((r) => r.data),
 
-  getAbcXyz: (period: AnalyticsPeriod = 'month') =>
-    client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: { period } }).then((r) => r.data),
-  getIntelligence: (period: AnalyticsPeriod = 'month') =>
-    client.get<IntelligenceData>('/analytics/intelligence', { params: { period } }).then((r) => r.data),
+  getAbcXyz: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
+    client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: analyticsPeriodParams(query) }).then((r) => r.data),
+  getIntelligence: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
+    client.get<IntelligenceData>('/analytics/intelligence', { params: analyticsPeriodParams(query) }).then((r) => r.data),
   getHistory: (year: number = new Date().getFullYear()) =>
     client.get<HistoryData>('/analytics/history', { params: { year } }).then((r) => r.data),
   getHistoryExtended: (year: number = new Date().getFullYear()) =>

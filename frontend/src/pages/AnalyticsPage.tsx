@@ -28,7 +28,11 @@ import {
   type ProductSalesAggregate,
 } from '../lib/analyticsHierarchySales';
 import type { HierarchyMerchandiseStatsRow } from '../api/analytics.api';
-import { analyticsApi, type AnalyticsPeriod } from '../api/analytics.api';
+import {
+  analyticsApi,
+  type AnalyticsPeriodPreset,
+  type AnalyticsPeriodQuery,
+} from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
@@ -125,6 +129,7 @@ const periodOptions = [
   { label: 'Месяц', value: 'month' },
   { label: 'Квартал', value: 'quarter' },
   { label: 'Год', value: 'year' },
+  { label: 'Свой', value: 'custom' },
 ];
 
 type CompareLevel = 'category' | 'type' | 'product';
@@ -271,11 +276,30 @@ function FormulaHint({ text }: { text: string }) {
 export default function AnalyticsPage() {
   const { RangePicker } = DatePicker;
   const [analyticsTab, setAnalyticsTab] = useState('sales');
-  const [period, setPeriod] = useState<AnalyticsPeriod>('month');
+  const [periodPreset, setPeriodPreset] = useState<AnalyticsPeriodPreset>('month');
+  const [analyticsRange, setAnalyticsRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().startOf('month'),
+    dayjs().endOf('day'),
+  ]);
   const [exportRange, setExportRange] = useState<[Dayjs, Dayjs]>([
     dayjs().startOf('month'),
     dayjs().endOf('day'),
   ]);
+
+  const periodQuery = useMemo((): AnalyticsPeriodQuery => {
+    if (periodPreset === 'custom') {
+      return {
+        from: analyticsRange[0].format('YYYY-MM-DD'),
+        to: analyticsRange[1].format('YYYY-MM-DD'),
+      };
+    }
+    return { period: periodPreset };
+  }, [periodPreset, analyticsRange]);
+
+  const periodQueryKey =
+    periodPreset === 'custom'
+      ? `custom:${analyticsRange[0].format('YYYY-MM-DD')}:${analyticsRange[1].format('YYYY-MM-DD')}`
+      : periodPreset;
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
@@ -316,14 +340,14 @@ export default function AnalyticsPage() {
   const heavyAnalyticsStale = 120_000;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['analytics', period],
-    queryFn: () => analyticsApi.getData(period),
+    queryKey: ['analytics', periodQueryKey],
+    queryFn: () => analyticsApi.getData(periodQuery),
     staleTime: heavyAnalyticsStale,
   });
 
   const { data: abcXyz, isLoading: abcXyzLoading } = useQuery({
-    queryKey: ['analytics-abc-xyz', period],
-    queryFn: () => analyticsApi.getAbcXyz(period),
+    queryKey: ['analytics-abc-xyz', periodQueryKey],
+    queryFn: () => analyticsApi.getAbcXyz(periodQuery),
     staleTime: heavyAnalyticsStale,
   });
 
@@ -331,7 +355,7 @@ export default function AnalyticsPage() {
     setAbcXyzFilterAbc(undefined);
     setAbcXyzFilterXyz(undefined);
     setAbcXyzFilterCombined(undefined);
-  }, [period]);
+  }, [periodQueryKey]);
 
   const abcXyzCombinedSelectOptions = useMemo(() => {
     if (!abcXyz) return [];
@@ -361,8 +385,8 @@ export default function AnalyticsPage() {
   }, [abcXyz, abcXyzFilterAbc, abcXyzFilterXyz, abcXyzFilterCombined]);
 
   const { data: intel } = useQuery({
-    queryKey: ['analytics-intelligence', period],
-    queryFn: () => analyticsApi.getIntelligence(period),
+    queryKey: ['analytics-intelligence', periodQueryKey],
+    queryFn: () => analyticsApi.getIntelligence(periodQuery),
     staleTime: heavyAnalyticsStale,
   });
 
@@ -384,9 +408,14 @@ export default function AnalyticsPage() {
 
   const productHierarchyActive = analyticsTab === 'product-hierarchy';
 
+  const hierarchyPeriodStart = useMemo(() => {
+    if (periodPreset === 'custom') return analyticsRange[0].startOf('day').toDate();
+    return getPeriodStartDate(periodPreset);
+  }, [periodPreset, analyticsRange]);
+
   const { data: merchandiseStats, isLoading: merchandiseLoading } = useQuery({
-    queryKey: ['analytics-hierarchy-merchandise', period],
-    queryFn: () => loadHierarchyMerchandiseStats(getPeriodStartDate(period)),
+    queryKey: ['analytics-hierarchy-merchandise', periodQueryKey],
+    queryFn: () => loadHierarchyMerchandiseStats(hierarchyPeriodStart),
     enabled: productHierarchyActive,
     staleTime: heavyAnalyticsStale,
   });
@@ -2243,9 +2272,19 @@ export default function AnalyticsPage() {
           </Button>
           <Segmented
             options={periodOptions}
-            value={period}
-            onChange={(v) => setPeriod(v as AnalyticsPeriod)}
+            value={periodPreset}
+            onChange={(v) => setPeriodPreset(v as AnalyticsPeriodPreset)}
           />
+          {periodPreset === 'custom' && (
+            <RangePicker
+              value={analyticsRange}
+              onChange={(v) => {
+                if (v?.[0] && v?.[1]) setAnalyticsRange([v[0], v[1]]);
+              }}
+              format="DD.MM.YYYY"
+              allowClear={false}
+            />
+          )}
         </Space>
       </div>
 

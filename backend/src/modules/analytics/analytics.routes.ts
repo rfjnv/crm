@@ -7,6 +7,7 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_CLIENT_STOCK_ADD_LINE,
+  resolveAnalyticsPeriodRange,
 } from '../../lib/analytics';
 import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -460,37 +461,6 @@ router.get(
   }),
 );
 
-function getPeriodRange(period: string): { start: Date; end: Date } {
-  // Compute "now" in Tashkent timezone
-  const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
-  const y = nowTashkent.getUTCFullYear();
-  const m = nowTashkent.getUTCMonth();
-  const d = nowTashkent.getUTCDate();
-
-  // Midnight Tashkent in UTC = Date.UTC(y,m,d) - offset
-  const startOfTodayUtc = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
-  const end = new Date(startOfTodayUtc.getTime() + 86400000); // tomorrow midnight Tashkent
-  let start: Date;
-
-  switch (period) {
-    case 'week':
-      start = new Date(end.getTime() - 7 * 86400000);
-      break;
-    case 'quarter':
-      start = new Date(Date.UTC(y, m - 3, d) - TASHKENT_OFFSET);
-      break;
-    case 'year':
-      start = new Date(Date.UTC(y - 1, m, d) - TASHKENT_OFFSET);
-      break;
-    case 'month':
-    default:
-      start = new Date(Date.UTC(y, m, 1) - TASHKENT_OFFSET);
-      break;
-  }
-
-  return { start, end };
-}
-
 router.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
@@ -500,8 +470,11 @@ router.get(
       permissions: req.user!.permissions || [],
     };
     const dealScope = ownerScope(user);
-    const period = (req.query.period as string) || 'month';
-    const { start, end } = getPeriodRange(period);
+    const { start, end } = resolveAnalyticsPeriodRange({
+      period: typeof req.query.period === 'string' ? req.query.period : undefined,
+      from: typeof req.query.from === 'string' ? req.query.from : undefined,
+      to: typeof req.query.to === 'string' ? req.query.to : undefined,
+    });
 
     const revenueTotalOperational = () =>
       dealScope.managerId
