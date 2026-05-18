@@ -64,6 +64,7 @@ import ImportOrderDetailPage from './pages/ImportOrderDetailPage';
 import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
+import DepartmentReportPage from './pages/DepartmentReportPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -150,6 +151,7 @@ export default function App() {
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/analytics/market" element={<MarketAnalysisPage />} />
+                  <Route path="/analytics/department-report" element={<DepartmentReportPage />} />
                   <Route path="/analytics/price-comparison" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />

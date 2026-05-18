@@ -993,4 +993,189 @@ router.get(
   }),
 );
 
+// ──── DEPARTMENT REPORT ────
+router.get(
+  '/department-report',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const managerId = String(req.query.managerId || '').trim() || undefined;
+
+    if (!from || !to) {
+      throw new AppError(400, 'Параметры from и to обязательны (формат YYYY-MM-DD)');
+    }
+
+    const start = new Date(`${from}T00:00:00+05:00`);
+    const end = new Date(`${to}T23:59:59+05:00`);
+
+    // All closed deals in period grouped by client
+    const dealsRaw = await prisma.deal.findMany({
+      where: {
+        isArchived: false,
+        status: 'CLOSED',
+        closedAt: { gte: start, lte: end },
+        ...(managerId ? { managerId } : {}),
+      },
+      select: {
+        id: true,
+        title: true,
+        amount: true,
+        paidAmount: true,
+        paymentStatus: true,
+        paymentType: true,
+        createdAt: true,
+        closedAt: true,
+        clientId: true,
+        managerId: true,
+        client: { select: { id: true, companyName: true, contactName: true, isSvip: true, creditStatus: true } },
+        manager: { select: { id: true, fullName: true } },
+        payments: {
+          select: { id: true, amount: true, paidAt: true, method: true, note: true },
+          orderBy: { paidAt: 'asc' },
+        },
+      },
+      orderBy: { closedAt: 'desc' },
+    });
+
+    // Compute per-deal stats
+    const dealRows = dealsRaw.map((d) => {
+      const amount = Number(d.amount) || 0;
+      const paid = Number(d.paidAmount) || 0;
+      const remaining = Math.max(0, amount - paid);
+      const lastPayment = d.payments.length > 0 ? d.payments[d.payments.length - 1] : null;
+      // Find first payment that covers full remaining (debt settled date)
+      let debtSettledAt: string | null = null;
+      if (d.paymentStatus === 'PAID' && d.payments.length > 0) {
+        let cumPaid = 0;
+        for (const p of d.payments) {
+          cumPaid += Number(p.amount);
+          if (cumPaid >= amount) {
+            debtSettledAt = p.paidAt instanceof Date ? p.paidAt.toISOString() : String(p.paidAt);
+            break;
+          }
+        }
+        if (!debtSettledAt) {
+          debtSettledAt = lastPayment?.paidAt instanceof Date
+            ? lastPayment.paidAt.toISOString()
+            : lastPayment?.paidAt ? String(lastPayment.paidAt) : null;
+        }
+      }
+      const daysToSettle = debtSettledAt && d.closedAt
+        ? Math.round((new Date(debtSettledAt).getTime() - new Date(d.closedAt).getTime()) / 86400000)
+        : null;
+
+      return {
+        dealId: d.id,
+        title: d.title,
+        amount,
+        paid,
+        remaining,
+        paymentStatus: d.paymentStatus,
+        paymentType: d.paymentType,
+        closedAt: d.closedAt,
+        clientId: d.clientId,
+        clientName: d.client?.companyName ?? '',
+        clientContact: d.client?.contactName ?? null,
+        isSvip: d.client?.isSvip ?? false,
+        creditStatus: d.client?.creditStatus ?? 'NORMAL',
+        managerId: d.managerId,
+        managerName: d.manager?.fullName ?? '',
+        lastPaymentDate: lastPayment?.paidAt instanceof Date
+          ? lastPayment.paidAt.toISOString()
+          : lastPayment?.paidAt ? String(lastPayment.paidAt) : null,
+        debtSettledAt,
+        daysToSettle,
+        payments: d.payments.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : String(p.paidAt),
+          method: p.method,
+          note: p.note,
+        })),
+      };
+    });
+
+    // Group by client
+    const clientMap = new Map<string, {
+      clientId: string;
+      clientName: string;
+      clientContact: string | null;
+      isSvip: boolean;
+      creditStatus: string;
+      managerId: string | null;
+      managerName: string;
+      deals: typeof dealRows;
+    }>();
+
+    for (const deal of dealRows) {
+      if (!clientMap.has(deal.clientId)) {
+        clientMap.set(deal.clientId, {
+          clientId: deal.clientId,
+          clientName: deal.clientName,
+          clientContact: deal.clientContact,
+          isSvip: deal.isSvip,
+          creditStatus: deal.creditStatus,
+          managerId: deal.managerId,
+          managerName: deal.managerName,
+          deals: [],
+        });
+      }
+      clientMap.get(deal.clientId)!.deals.push(deal);
+    }
+
+    const clients = Array.from(clientMap.values()).map((c) => {
+      const totalRevenue = c.deals.reduce((s, d) => s + d.amount, 0);
+      const totalPaid = c.deals.reduce((s, d) => s + d.paid, 0);
+      const totalDebt = c.deals.reduce((s, d) => s + d.remaining, 0);
+      const dealsWithDebt = c.deals.filter((d) => d.remaining > 0).length;
+      const dealsFullyPaid = c.deals.filter((d) => d.paymentStatus === 'PAID').length;
+      const lastPaymentDate = c.deals
+        .flatMap((d) => d.payments.map((p) => p.paidAt))
+        .sort()
+        .reverse()[0] ?? null;
+      const avgDaysToSettle = c.deals
+        .filter((d) => d.daysToSettle !== null && d.daysToSettle >= 0)
+        .reduce((acc, d, _, arr) => acc + (d.daysToSettle! / arr.length), 0);
+
+      return {
+        ...c,
+        totalRevenue,
+        totalPaid,
+        totalDebt,
+        dealsCount: c.deals.length,
+        dealsWithDebt,
+        dealsFullyPaid,
+        lastPaymentDate,
+        avgDaysToSettle: dealsFullyPaid > 0 ? Math.round(avgDaysToSettle) : null,
+      };
+    });
+
+    // Totals
+    const totalRevenue = dealRows.reduce((s, d) => s + d.amount, 0);
+    const totalPaid = dealRows.reduce((s, d) => s + d.paid, 0);
+    const totalDebtIssued = dealRows.filter((d) => d.remaining > 0 || d.paymentType !== 'FULL').reduce((s, d) => s + d.amount, 0);
+    const totalDebtRemaining = dealRows.reduce((s, d) => s + d.remaining, 0);
+    const totalDebtRepaid = totalDebtIssued - totalDebtRemaining;
+    const dealsCount = dealRows.length;
+    const clientCount = clients.length;
+    const dealsWithDebt = dealRows.filter((d) => d.remaining > 0).length;
+
+    res.json({
+      period: { from, to },
+      totals: {
+        totalRevenue,
+        totalPaid,
+        totalDebtIssued,
+        totalDebtRemaining,
+        totalDebtRepaid: Math.max(0, totalDebtRepaid),
+        dealsCount,
+        clientCount,
+        dealsWithDebt,
+      },
+      clients,
+    });
+  }),
+);
+
 export { router as analyticsRoutes };

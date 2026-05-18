@@ -194,4 +194,56 @@ export const analyticsApi = {
       sentAt: string;
       errors?: string[];
     }),
+
+  getDepartmentReport: (params: { from: string; to: string; managerId?: string }) =>
+    client.get<DepartmentReportResponse>('/analytics/department-report', { params }).then((r) => r.data),
 };
+
+export interface DepartmentReportDeal {
+  dealId: string;
+  title: string;
+  amount: number;
+  paid: number;
+  remaining: number;
+  paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
+  paymentType: 'FULL' | 'PARTIAL' | 'INSTALLMENT' | null;
+  closedAt: string | null;
+  lastPaymentDate: string | null;
+  debtSettledAt: string | null;
+  daysToSettle: number | null;
+  payments: { id: string; amount: number; paidAt: string; method: string | null; note: string | null }[];
+}
+
+export interface DepartmentReportClient {
+  clientId: string;
+  clientName: string;
+  clientContact: string | null;
+  isSvip: boolean;
+  creditStatus: string;
+  managerId: string | null;
+  managerName: string;
+  totalRevenue: number;
+  totalPaid: number;
+  totalDebt: number;
+  dealsCount: number;
+  dealsWithDebt: number;
+  dealsFullyPaid: number;
+  lastPaymentDate: string | null;
+  avgDaysToSettle: number | null;
+  deals: DepartmentReportDeal[];
+}
+
+export interface DepartmentReportResponse {
+  period: { from: string; to: string };
+  totals: {
+    totalRevenue: number;
+    totalPaid: number;
+    totalDebtIssued: number;
+    totalDebtRemaining: number;
+    totalDebtRepaid: number;
+    dealsCount: number;
+    clientCount: number;
+    dealsWithDebt: number;
+  };
+  clients: DepartmentReportClient[];
+}

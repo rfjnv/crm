@@ -570,6 +570,11 @@ export default function Layout() {
               icon: <GlobalOutlined />,
               label: <Link to="/analytics/market">Анализ рынка</Link>,
             },
+            {
+              key: '/analytics/department-report',
+              icon: <FileTextOutlined />,
+              label: <Link to="/analytics/department-report">Отчёт отдела</Link>,
+            },
           ]
           : []),
       ]
