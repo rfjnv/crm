@@ -72,16 +72,6 @@ type LatestDealManagerRow = {
   managerName: string;
 };
 
-type ClientStockRevenueRow = {
-  day: Date;
-  amount: string;
-};
-
-type ClientStockTopProductRow = {
-  product_id: string;
-  total_qty: string;
-};
-
 export class ClientsService {
   /**
    * Client list: 1 query for clients + manager, then 3 batched queries (latest note per client,
@@ -1093,7 +1083,9 @@ export class ClientsService {
     const canceledDeals = allDeals.filter((d) => d.status === 'CANCELED').length;
     const dealsDebt = nonCanceled.reduce((s, d) => s + Math.max(0, Number(d.amount) - Number(d.paidAmount)), 0);
 
-    const [revAgg, revByDayRaw, topProductsRaw, stockRevAgg, stockRevByDayRaw, stockTopProductsRaw, stockDebtAllRaw] = await Promise.all([
+    // Выручка по клиенту = строки сделок (включая CLIENT_STOCK), как и общая аналитика.
+    // ADD-события склада клиента в выручку не входят, но всё ещё участвуют в долге, пока товар не отгружен.
+    const [revAgg, revByDayRaw, topProductsRaw, stockDebtAllRaw] = await Promise.all([
       prisma.$queryRaw<{ total: string }[]>(
         Prisma.sql`
         SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
@@ -1133,41 +1125,11 @@ export class ClientsService {
         SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
         FROM client_stock_events cse
         WHERE cse.client_id = ${id}
-          AND cse.type = 'ADD'
-          AND cse.created_at >= ${periodStart}`,
-      ),
-      prisma.$queryRaw<ClientStockRevenueRow[]>(
-        Prisma.sql`
-        SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as amount
-        FROM client_stock_events cse
-        WHERE cse.client_id = ${id}
-          AND cse.type = 'ADD'
-          AND cse.created_at >= ${periodStart}
-        GROUP BY day
-        ORDER BY day ASC`,
-      ),
-      prisma.$queryRaw<ClientStockTopProductRow[]>(
-        Prisma.sql`
-        SELECT cse.product_id, COALESCE(SUM(cse.qty_delta), 0)::text as total_qty
-        FROM client_stock_events cse
-        WHERE cse.client_id = ${id}
-          AND cse.type = 'ADD'
-          AND cse.created_at >= ${periodStart}
-        GROUP BY cse.product_id
-        ORDER BY SUM(cse.qty_delta) DESC
-        LIMIT 5`,
-      ),
-      prisma.$queryRaw<{ total: string }[]>(
-        Prisma.sql`
-        SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-        FROM client_stock_events cse
-        WHERE cse.client_id = ${id}
           AND cse.type = 'ADD'`,
       ),
     ]);
 
-    const totalSpent = (revAgg[0] ? Number(revAgg[0].total) : 0) + (stockRevAgg[0] ? Number(stockRevAgg[0].total) : 0);
+    const totalSpent = revAgg[0] ? Number(revAgg[0].total) : 0;
     const stockDebtAll = stockDebtAllRaw[0] ? Number(stockDebtAllRaw[0].total) : 0;
     const currentDebt = dealsDebt + stockDebtAll;
 
@@ -1183,19 +1145,12 @@ export class ClientsService {
       const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
       revenueByDayMap.set(day, (revenueByDayMap.get(day) ?? 0) + Number(r.amount));
     }
-    for (const r of stockRevByDayRaw) {
-      const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
-      revenueByDayMap.set(day, (revenueByDayMap.get(day) ?? 0) + Number(r.amount));
-    }
     const revenueByDayArr = [...revenueByDayMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, amount]) => ({ date, amount }));
 
     const topQtyByProduct = new Map<string, number>();
     for (const tp of topProductsRaw) {
-      topQtyByProduct.set(tp.product_id, (topQtyByProduct.get(tp.product_id) ?? 0) + Number(tp.total_qty));
-    }
-    for (const tp of stockTopProductsRaw) {
       topQtyByProduct.set(tp.product_id, (topQtyByProduct.get(tp.product_id) ?? 0) + Number(tp.total_qty));
     }
     const productIds = [...topQtyByProduct.keys()];

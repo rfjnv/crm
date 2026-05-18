@@ -6,7 +6,6 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
-  SQL_CLIENT_STOCK_ADD_LINE,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -132,25 +131,6 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}`,
           );
 
-    const clientStockRevenueTotalInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             JOIN clients cl ON cl.id = cse.client_id
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}
-               AND cl.manager_id = ${dealScope.managerId}`,
-          )
-        : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}`,
-          );
-
     const revenueByDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
       dealScope.managerId
         ? prisma.$queryRaw<{ day: Date; total: string }[]>(
@@ -174,31 +154,6 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
              GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          );
-
-    const clientStockRevenueByDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(${SQL_CLIENT_STOCK_ADD_LINE})::text as total
-             FROM client_stock_events cse
-             JOIN clients cl ON cl.id = cse.client_id
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}
-               AND cl.manager_id = ${dealScope.managerId}
-             GROUP BY day
-             ORDER BY day ASC`,
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-                              SUM(${SQL_CLIENT_STOCK_ADD_LINE})::text as total
-             FROM client_stock_events cse
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}
-             GROUP BY day
              ORDER BY day ASC`,
           );
 
@@ -238,120 +193,6 @@ router.get(
              ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, SUM(COALESCE(di.requested_qty, 0)) DESC`,
           );
 
-    const clientStockProductsOfDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
-            Prisma.sql`SELECT cse.product_id,
-                              p.name AS product_name,
-                              p.sku AS product_sku,
-                              p.unit AS product_unit,
-                              COALESCE(SUM(cse.qty_delta), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text AS revenue
-             FROM client_stock_events cse
-             JOIN products p ON p.id = cse.product_id
-             JOIN clients cl ON cl.id = cse.client_id
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}
-               AND cl.manager_id = ${dealScope.managerId}
-             GROUP BY cse.product_id, p.name, p.sku, p.unit`,
-          )
-        : prisma.$queryRaw<{ product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[]>(
-            Prisma.sql`SELECT cse.product_id,
-                              p.name AS product_name,
-                              p.sku AS product_sku,
-                              p.unit AS product_unit,
-                              COALESCE(SUM(cse.qty_delta), 0)::text AS qty,
-                              COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text AS revenue
-             FROM client_stock_events cse
-             JOIN products p ON p.id = cse.product_id
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${rangeStart}
-               AND cse.created_at < ${rangeEndExclusive}
-             GROUP BY cse.product_id, p.name, p.sku, p.unit`,
-          );
-
-    function mergeProductOfDayRows(
-      dealRows: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
-      stockRows: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
-    ): { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[] {
-      const byId = new Map<
-        string,
-        { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: number; revenue: number }
-      >();
-      for (const r of dealRows) {
-        byId.set(r.product_id, {
-          product_id: r.product_id,
-          product_name: r.product_name,
-          product_sku: r.product_sku,
-          product_unit: r.product_unit,
-          qty: Number(r.qty),
-          revenue: Number(r.revenue),
-        });
-      }
-      for (const r of stockRows) {
-        const cur = byId.get(r.product_id);
-        const q = Number(r.qty);
-        const rev = Number(r.revenue);
-        if (cur) {
-          cur.qty += q;
-          cur.revenue += rev;
-        } else {
-          byId.set(r.product_id, {
-            product_id: r.product_id,
-            product_name: r.product_name,
-            product_sku: r.product_sku,
-            product_unit: r.product_unit,
-            qty: q,
-            revenue: rev,
-          });
-        }
-      }
-      return [...byId.values()]
-        .sort((a, b) => b.revenue - a.revenue || b.qty - a.qty)
-        .map((v) => ({
-          product_id: v.product_id,
-          product_name: v.product_name,
-          product_sku: v.product_sku,
-          product_unit: v.product_unit,
-          qty: String(v.qty),
-          revenue: String(v.revenue),
-        }));
-    }
-
-    const combinedRevenueTotalInRange = async (rangeStart: Date, rangeEndExclusive: Date) => {
-      const [d, s] = await Promise.all([
-        revenueDealTotalInRange(rangeStart, rangeEndExclusive),
-        clientStockRevenueTotalInRange(rangeStart, rangeEndExclusive),
-      ]);
-      const t = Number(d[0]?.total ?? 0) + Number(s[0]?.total ?? 0);
-      return [{ total: String(t) }] as { total: string }[];
-    };
-
-    const dayKeyStr = (r: { day: Date }) =>
-      r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
-
-    const mergeRevenueByDay = (
-      dealRows: { day: Date; total: string }[],
-      stockRows: { day: Date; total: string }[],
-    ): { day: Date; total: string }[] => {
-      const m = new Map<string, number>();
-      for (const r of dealRows) {
-        const k = dayKeyStr(r);
-        m.set(k, (m.get(k) ?? 0) + Number(r.total));
-      }
-      for (const r of stockRows) {
-        const k = dayKeyStr(r);
-        m.set(k, (m.get(k) ?? 0) + Number(r.total));
-      }
-      return [...m.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([dayStr, total]) => ({
-          day: new Date(`${dayStr}T00:00:00.000Z`),
-          total: String(total),
-        }));
-    };
-
     const chartStart = period === 'day'
       ? thirtyDaysAgo
       : periodStart;
@@ -366,19 +207,16 @@ router.get(
       lowStockProducts,
       closedDealsPeriod,
       closedDealsPrevPeriod,
-      revenueChartDealRaw,
-      revenueChartStockRaw,
+      revenueChartRaw,
       dealsByStatusCounts,
-      productsOfDayTodayDealRaw,
-      productsOfDayTodayStockRaw,
-      productsOfDayYesterdayDealRaw,
-      productsOfDayYesterdayStockRaw,
+      productsOfDayTodayRaw,
+      productsOfDayYesterdayRaw,
     ] = await Promise.all([
-      combinedRevenueTotalInRange(periodStart, periodEnd),
+      revenueDealTotalInRange(periodStart, periodEnd),
 
-      combinedRevenueTotalInRange(prevPeriodStart, prevPeriodEnd),
+      revenueDealTotalInRange(prevPeriodStart, prevPeriodEnd),
 
-      combinedRevenueTotalInRange(startOfMonth, startOfTomorrow),
+      revenueDealTotalInRange(startOfMonth, startOfTomorrow),
 
       prisma.deal.count({
         where: {
@@ -457,7 +295,6 @@ router.get(
       }),
 
       revenueByDayInRange(chartStart, periodEnd),
-      clientStockRevenueByDayInRange(chartStart, periodEnd),
 
       prisma.deal.groupBy({
         by: ['status'],
@@ -465,14 +302,8 @@ router.get(
         _count: true,
       }),
       productsOfDayInRange(periodStart, periodEnd),
-      clientStockProductsOfDayInRange(periodStart, periodEnd),
       productsOfDayInRange(prevPeriodStart, prevPeriodEnd),
-      clientStockProductsOfDayInRange(prevPeriodStart, prevPeriodEnd),
     ]);
-
-    const revenueChartRaw = mergeRevenueByDay(revenueChartDealRaw, revenueChartStockRaw);
-    const productsOfDayTodayRaw = mergeProductOfDayRows(productsOfDayTodayDealRaw, productsOfDayTodayStockRaw);
-    const productsOfDayYesterdayRaw = mergeProductOfDayRows(productsOfDayYesterdayDealRaw, productsOfDayYesterdayStockRaw);
 
     const mapProductsOfDay = (
       rows: { product_id: string; product_name: string; product_sku: string | null; product_unit: string | null; qty: string; revenue: string }[],
@@ -575,11 +406,8 @@ router.get(
     const dealManagerClause = dealScope.managerId
       ? Prisma.sql`AND d.manager_id = ${dealScope.managerId}`
       : Prisma.sql`AND TRUE`;
-    const clientManagerClause = dealScope.managerId
-      ? Prisma.sql`AND c.manager_id = ${dealScope.managerId}`
-      : Prisma.sql`AND TRUE`;
 
-    // Сделки + поступления на склад клиента (как на карточке дашборда)
+    // Только строки сделок: выручка признаётся при закрытии сделки.
     const rows = await prisma.$queryRaw<{
       id: string;
       line_total: string;
@@ -594,7 +422,6 @@ router.get(
       product_name: string;
     }[]>(
       Prisma.sql`
-      SELECT * FROM (
         SELECT di.id,
                ${SQL_ANALYTICS_LINE_REVENUE_DI}::text as line_total,
                ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as deal_date,
@@ -615,31 +442,7 @@ router.get(
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${startOfToday}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
           ${dealManagerClause}
-
-        UNION ALL
-
-        SELECT cse.id,
-               ${SQL_CLIENT_STOCK_ADD_LINE}::text as line_total,
-               cse.created_at as deal_date,
-               CAST(NULL AS uuid) as deal_id,
-               'Поступление на склад клиента' as deal_title,
-               c.id as client_id,
-               c.company_name,
-               c.is_svip as is_svip,
-               um.id as manager_id,
-               um.full_name as manager_name,
-               p.name as product_name
-        FROM client_stock_events cse
-        JOIN clients c ON c.id = cse.client_id
-        JOIN users um ON um.id = c.manager_id
-        JOIN products p ON p.id = cse.product_id
-        WHERE cse.type = 'ADD'
-          AND cse.created_at >= ${startOfToday}
-          AND cse.created_at < ${startOfTomorrow}
-          AND (${SQL_CLIENT_STOCK_ADD_LINE}) > 0
-          ${clientManagerClause}
-      ) u
-      ORDER BY deal_date DESC`,
+        ORDER BY deal_date DESC`,
     );
 
     const items = rows.map((r) => ({

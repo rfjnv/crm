@@ -6,7 +6,6 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
-  SQL_CLIENT_STOCK_ADD_LINE,
   resolveAnalyticsPeriodRange,
 } from '../../lib/analytics';
 import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
@@ -642,6 +641,8 @@ router.get(
           );
 
     // ──── SALES ────
+    // Выручка считается ОДИН РАЗ — по строкам сделок (включая CLIENT_STOCK-отгрузку),
+    // в момент закрытия сделки. ADD-события на склад клиента не дублируются как выручка.
     const [
       salesRevenueOperationalRaw,
       salesRevenueShippedRaw,
@@ -651,8 +652,6 @@ router.get(
       canceledCount,
       revenueByDayOperationalRaw,
       revenueByDayShippedRaw,
-      stockRevenueOperationalRaw,
-      stockRevenueByDayRaw,
       dealsByStatus,
       topClientsRaw,
       topProductsRaw,
@@ -670,50 +669,10 @@ router.get(
       }),
       // CANCELED count
       prisma.deal.count({
-        where: { ...dealScope, status: 'CANCELED', isArchived: false, createdAt: { gte: start, lt: end } },
+        where: { ...dealScope, isArchived: false, status: 'CANCELED', createdAt: { gte: start, lt: end } },
       }),
       revenueByDayOperational(),
       revenueByDayShipped(),
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             JOIN clients c ON c.id = cse.client_id
-             WHERE cse.type = 'ADD'
-               AND c.manager_id = ${dealScope.managerId}
-               AND cse.created_at >= ${start}
-               AND cse.created_at < ${end}`
-          )
-        : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${start}
-               AND cse.created_at < ${end}`
-          ),
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             JOIN clients c ON c.id = cse.client_id
-             WHERE cse.type = 'ADD'
-               AND c.manager_id = ${dealScope.managerId}
-               AND cse.created_at >= ${start}
-               AND cse.created_at < ${end}
-             GROUP BY day
-             ORDER BY day ASC`
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT DATE((cse.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent') as day,
-               COALESCE(SUM(${SQL_CLIENT_STOCK_ADD_LINE}), 0)::text as total
-             FROM client_stock_events cse
-             WHERE cse.type = 'ADD'
-               AND cse.created_at >= ${start}
-               AND cse.created_at < ${end}
-             GROUP BY day
-             ORDER BY day ASC`
-          ),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -741,10 +700,6 @@ router.get(
       r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
 
     const opByDay = new Map(revenueByDayOperationalRaw.map((r) => [dayKey(r), Number(r.total)]));
-    for (const r of stockRevenueByDayRaw) {
-      const k = dayKey(r);
-      opByDay.set(k, (opByDay.get(k) ?? 0) + Number(r.total));
-    }
     const shByDay = new Map(revenueByDayShippedRaw.map((r) => [dayKey(r), Number(r.total)]));
     const allDayKeys = new Set([...opByDay.keys(), ...shByDay.keys()]);
     const revenueByDay = [...allDayKeys]
@@ -757,9 +712,7 @@ router.get(
         shippedTotal: shByDay.get(day) ?? 0,
       }));
 
-    const operationalTotal =
-      (salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0)
-      + (stockRevenueOperationalRaw[0] ? Number(stockRevenueOperationalRaw[0].total) : 0);
+    const operationalTotal = salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0;
     const shippedTotal = salesRevenueShippedRaw[0] ? Number(salesRevenueShippedRaw[0].total) : 0;
 
     const sales = {

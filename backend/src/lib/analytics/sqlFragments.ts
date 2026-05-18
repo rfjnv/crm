@@ -17,13 +17,27 @@ export const SQL_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.request
 export const DEAL_ITEM_SOURCE_CLIENT_STOCK = 'CLIENT_STOCK';
 
 /**
- * Выручка по строке сделки для аналитики: не учитываем повторно отгрузку со склада клиента
- * (выручка уже признана при ADD на склад клиента).
+ * Выручка по строке сделки для аналитики.
+ *
+ * Семантика: выручка признаётся ОДИН РАЗ — в момент закрытия сделки, по фактическим строкам.
+ * Все строки `deal_items` учитываются равноправно (включая `source_op_type='CLIENT_STOCK'` —
+ * отгрузку со склада клиента), без отдельного признания при ADD на склад клиента.
+ *
+ * Это даёт:
+ * – «Выручка по сделкам» = Σ `deals.amount` для CLOSED сделок;
+ * – «Выручка по дням» совпадает с суммой реальных закрытых сделок.
+ *
+ * Раньше CLIENT_STOCK-строки игнорировались, а ADD-события `client_stock_events` суммировались
+ * как выручка отдельно. Это приводило к расхождениям, если цена при ADD ≠ цене в строке отгрузки,
+ * либо если ADD был, а CLIENT_STOCK сделка ещё не создана/не закрыта.
  */
-export const SQL_ANALYTICS_LINE_REVENUE_DI = Prisma.sql`CASE WHEN COALESCE(di.source_op_type, '') = ${DEAL_ITEM_SOURCE_CLIENT_STOCK} THEN 0 ELSE COALESCE(di.line_total, di.requested_qty * di.price, 0) END`;
+export const SQL_ANALYTICS_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.requested_qty * di.price, 0)`;
 
 /**
  * Сумма по событию «поступление на склад клиента» (ADD): line_total или qty × unit_price.
+ *
+ * Используется для отчётов «у клиента на складе» / истории, но НЕ для агрегата выручки —
+ * выручка считается только по строкам сделок (см. {@link SQL_ANALYTICS_LINE_REVENUE_DI}).
  */
 export const SQL_CLIENT_STOCK_ADD_LINE = Prisma.sql`COALESCE(cse.line_total, ABS(cse.qty_delta) * COALESCE(cse.unit_price, 0), 0)`;
 
