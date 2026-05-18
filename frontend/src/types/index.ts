@@ -277,7 +277,14 @@ export interface ClientStockEvent {
   unitPrice: number | null;
   lineTotal: number | null;
   comment: string | null;
+  /** Когда событие создано в БД (audit-trail). */
   createdAt: string;
+  /**
+   * Бизнес-дата события: если событие связано со сделкой —
+   * дата закрытия сделки (или её создания, если ещё не закрыта),
+   * иначе — равна `createdAt`.
+   */
+  eventDate: string;
   product?: { id: string; name: string; sku: string; unit: string };
   author?: { id: string; fullName: string };
   sourceDeal?: { id: string; title: string } | null;
@@ -518,9 +525,21 @@ export interface InventoryMovement {
   dealId?: string | null;
   note?: string | null;
   createdBy: string;
+  /** Когда строка движения создана в БД (audit-trail; не показывается основной датой). */
   createdAt: string;
+  /**
+   * Бизнес-дата движения товара: дата закрытия сделки (или создания, если не закрыта).
+   * Для движений без сделки — равна `createdAt`. Используется как основная дата в UI.
+   */
+  eventDate: string;
   product?: { id: string; name: string; sku: string; stock?: number };
-  deal?: { id: string; title: string; client?: { id?: string; companyName: string; isSvip?: boolean } } | null;
+  deal?: {
+    id: string;
+    title: string;
+    closedAt?: string | null;
+    createdAt?: string;
+    client?: { id?: string; companyName: string; isSvip?: boolean };
+  } | null;
 }
 
 export interface AuditLog {

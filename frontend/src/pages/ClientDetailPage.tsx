@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
   Modal, Form, Input, DatePicker, Tabs, Row, Col, Statistic, Segmented,
-  message, theme, Collapse, Dropdown, Select, InputNumber, Popconfirm, Checkbox,
+  message, theme, Collapse, Dropdown, Select, InputNumber, Popconfirm, Checkbox, Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -617,7 +617,25 @@ export default function ClientDetailPage() {
 
   const stockEventColumns: ColumnsType<StockEventTableRow> = useMemo(() => {
     const base: ColumnsType<StockEventTableRow> = [
-      { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+      {
+        title: 'Дата',
+        dataIndex: 'eventDate',
+        render: (_v: string, r: StockEventTableRow) => {
+          const event = r.eventDate ?? r.createdAt;
+          const sameDay = dayjs(event).isSame(r.createdAt, 'day');
+          return (
+            <Tooltip
+              title={
+                sameDay
+                  ? `Запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+                  : `Бизнес-дата: ${dayjs(event).format('DD.MM.YYYY')} • запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+              }
+            >
+              <span>{dayjs(event).format('DD.MM.YYYY')}</span>
+            </Tooltip>
+          );
+        },
+      },
       {
         title: 'Тип',
         dataIndex: 'type',

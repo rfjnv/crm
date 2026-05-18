@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Select, Typography, Tag, Card } from 'antd';
+import { Table, Select, Typography, Tag, Card, Tooltip } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -52,7 +52,26 @@ export default function MovementsPage() {
       },
     },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
-    { title: 'Дата', dataIndex: 'createdAt', width: 140, render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+    {
+      title: 'Дата',
+      dataIndex: 'eventDate',
+      width: 140,
+      render: (_v: string, r: { eventDate?: string; createdAt: string }) => {
+        const event = r.eventDate ?? r.createdAt;
+        const sameDay = dayjs(event).isSame(r.createdAt, 'day');
+        return (
+          <Tooltip
+            title={
+              sameDay
+                ? `Запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+                : `Бизнес-дата: ${dayjs(event).format('DD.MM.YYYY')} • запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+            }
+          >
+            <span>{dayjs(event).format('DD.MM.YYYY')}</span>
+          </Tooltip>
+        );
+      },
+    },
   ];
 
   // Mobile: show detail view instead of list when an item is selected
@@ -72,7 +91,11 @@ export default function MovementsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Tag color={cfg.color} icon={cfg.icon}>{cfg.label}</Tag>
-              <Typography.Text type="secondary">{dayjs(m.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+              <Tooltip title={`Запись создана: ${dayjs(m.createdAt).format('DD.MM.YYYY HH:mm')}`}>
+                <Typography.Text type="secondary">
+                  {dayjs(m.eventDate ?? m.createdAt).format('DD.MM.YYYY')}
+                </Typography.Text>
+              </Tooltip>
             </div>
             <div>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>Товар</Typography.Text>
@@ -149,7 +172,7 @@ export default function MovementsPage() {
                     <Typography.Text ellipsis style={{ flex: 1, minWidth: 0 }}>{m.product?.name}</Typography.Text>
                   </div>
                   <Typography.Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8, flexShrink: 0 }}>
-                    {dayjs(m.createdAt).format('DD.MM HH:mm')}
+                    {dayjs(m.eventDate ?? m.createdAt).format('DD.MM.YYYY')}
                   </Typography.Text>
                 </div>
               </Card>

@@ -228,15 +228,24 @@ export class WarehouseService {
   }
 
   async getMovements(productId?: string) {
-    return prisma.inventoryMovement.findMany({
+    const rows = await prisma.inventoryMovement.findMany({
       where: productId ? { productId } : {},
       include: {
         product: { select: { id: true, name: true, sku: true } },
-        deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } } } },
+        deal: {
+          select: {
+            id: true,
+            title: true,
+            closedAt: true,
+            createdAt: true,
+            client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
+    return rows.map((r) => this.attachEventDate(r));
   }
 
   async getProductMovements(productId: string) {
@@ -245,13 +254,39 @@ export class WarehouseService {
       throw new AppError(404, 'Товар не найден');
     }
 
-    return prisma.inventoryMovement.findMany({
+    const rows = await prisma.inventoryMovement.findMany({
       where: { productId },
       include: {
-        deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } } } },
+        deal: {
+          select: {
+            id: true,
+            title: true,
+            closedAt: true,
+            createdAt: true,
+            client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map((r) => this.attachEventDate(r));
+  }
+
+  /**
+   * `eventDate` — бизнес-дата движения товара:
+   *  – для связанного со сделкой движения: `closed_at` сделки (а если не закрыта — `created_at`);
+   *  – иначе fallback на `created_at` самой записи движения.
+   * Реальное `created_at` остаётся в БД и возвращается клиенту нетронутым (audit-trail).
+   */
+  private attachEventDate<
+    T extends {
+      createdAt: Date;
+      deal?: { closedAt: Date | null; createdAt: Date } | null;
+    },
+  >(row: T): T & { eventDate: Date } {
+    const deal = row.deal;
+    const eventDate = deal ? (deal.closedAt ?? deal.createdAt) : row.createdAt;
+    return { ...row, eventDate };
   }
 
   async getProductAuditHistory(productId?: string) {

@@ -750,7 +750,7 @@ export class ClientsService {
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true } },
           author: { select: { id: true, fullName: true } },
-          sourceDeal: { select: { id: true, title: true } },
+          sourceDeal: { select: { id: true, title: true, closedAt: true, createdAt: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: historyLimit,
@@ -783,9 +783,16 @@ export class ClientsService {
         lineTotal: e.lineTotal != null ? Number(e.lineTotal) : null,
         comment: e.comment,
         createdAt: e.createdAt,
+        /**
+         * Бизнес-дата события склада клиента: дата закрытия связанной сделки (или её создания),
+         * fallback — `createdAt` самого события (если сделка не привязана).
+         */
+        eventDate: e.sourceDeal ? (e.sourceDeal.closedAt ?? e.sourceDeal.createdAt) : e.createdAt,
         product: e.product,
         author: e.author,
-        sourceDeal: e.sourceDeal,
+        sourceDeal: e.sourceDeal
+          ? { id: e.sourceDeal.id, title: e.sourceDeal.title }
+          : null,
       })),
       totals: {
         distinctProducts: positions.length,

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space, theme, Card } from 'antd';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, Typography, message, Tag, Space, Tooltip, theme, Card } from 'antd';
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
@@ -207,7 +207,26 @@ export default function WarehousePage() {
     { title: 'Кол-во', dataIndex: 'quantity', align: 'right' as const, width: 80 },
     { title: 'Сделка', dataIndex: ['deal', 'title'], render: (v: string | undefined) => v || '—' },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
-    { title: 'Дата', dataIndex: 'createdAt', width: 140, render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
+    {
+      title: 'Дата',
+      dataIndex: 'eventDate',
+      width: 140,
+      render: (_v: string, r: { eventDate?: string; createdAt: string }) => {
+        const event = r.eventDate ?? r.createdAt;
+        const sameDay = dayjs(event).isSame(r.createdAt, 'day');
+        return (
+          <Tooltip
+            title={
+              sameDay
+                ? `Запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+                : `Бизнес-дата: ${dayjs(event).format('DD.MM.YYYY')} • запись создана: ${dayjs(r.createdAt).format('DD.MM.YYYY HH:mm')}`
+            }
+          >
+            <span>{dayjs(event).format('DD.MM.YYYY')}</span>
+          </Tooltip>
+        );
+      },
+    },
   ];
 
   return (

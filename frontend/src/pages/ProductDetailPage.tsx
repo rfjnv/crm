@@ -4,7 +4,7 @@ import BackButton from '../components/BackButton';
 import { useQuery } from '@tanstack/react-query';
 import {
   Typography, Card, Descriptions, Tag, Segmented, Spin, Row, Col,
-  Statistic, Table, Space, theme,
+  Statistic, Table, Space, Tooltip, theme,
 } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { Column } from '@ant-design/charts';
@@ -355,9 +355,24 @@ export default function ProductDetailPage() {
             columns={[
               {
                 title: 'Дата',
-                dataIndex: 'createdAt',
+                dataIndex: 'eventDate',
                 width: 140,
-                render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm'),
+                render: (_v: string, r: { eventDate?: string; createdAt: string }) => {
+                  const event = r.eventDate ?? r.createdAt;
+                  const recorded = r.createdAt;
+                  const sameDay = dayjs(event).isSame(recorded, 'day');
+                  return (
+                    <Tooltip
+                      title={
+                        sameDay
+                          ? `Запись создана: ${dayjs(recorded).format('DD.MM.YYYY HH:mm')}`
+                          : `Бизнес-дата: ${dayjs(event).format('DD.MM.YYYY')} • запись создана: ${dayjs(recorded).format('DD.MM.YYYY HH:mm')}`
+                      }
+                    >
+                      <span>{dayjs(event).format('DD.MM.YYYY')}</span>
+                    </Tooltip>
+                  );
+                },
               },
               {
                 title: 'Тип',
