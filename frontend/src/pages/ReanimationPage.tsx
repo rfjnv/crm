@@ -77,8 +77,23 @@ interface ReanimationListUrlState {
   sortBy: ReanimationSortBy;
   minDays: number | null;
   maxDays: number | null;
+  page: number;
+  pageSize: number;
   clientId: string | null;
 }
+
+const FILTER_PATCH_KEYS: (keyof ReanimationListUrlState)[] = [
+  'q',
+  'statuses',
+  'managerIds',
+  'departments',
+  'productNames',
+  'debtFilter',
+  'contactFilter',
+  'sortBy',
+  'minDays',
+  'maxDays',
+];
 
 function normalizeStatuses(value: ReanimationStatus[]): ReanimationStatus[] {
   const picked = value.filter((s): s is ReanimationStatus => ALL_STATUSES.includes(s));
@@ -140,6 +155,11 @@ function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlStat
   const clientRaw = sp.get('client');
   const clientId = clientRaw?.trim() || null;
 
+  const rawPage = parseInt(sp.get('page') || '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
+
   return {
     q,
     statuses,
@@ -151,6 +171,8 @@ function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlStat
     sortBy,
     minDays,
     maxDays,
+    page,
+    pageSize,
     clientId,
   };
 }
@@ -170,6 +192,8 @@ function serializeReanimationListState(s: ReanimationListUrlState): URLSearchPar
   if (s.minDays === null) n.set('min', 'any');
   else if (s.minDays !== 30) n.set('min', String(s.minDays));
   if (s.maxDays !== null) n.set('max', String(s.maxDays));
+  if (s.page !== 1) n.set('page', String(s.page));
+  if (s.pageSize !== DEFAULT_PAGE_SIZE) n.set('pageSize', String(s.pageSize));
   if (s.clientId) n.set('client', s.clientId);
   return n;
 }
@@ -179,6 +203,7 @@ function mergeReanimationListParams(
   patch: Partial<ReanimationListUrlState>,
 ): URLSearchParams {
   const cur = parseReanimationListParams(prev);
+  const filterTouched = FILTER_PATCH_KEYS.some((k) => patch[k] !== undefined);
   const next: ReanimationListUrlState = {
     q: patch.q !== undefined ? patch.q : cur.q,
     statuses: patch.statuses !== undefined ? normalizeStatuses(patch.statuses) : cur.statuses,
@@ -190,6 +215,8 @@ function mergeReanimationListParams(
     sortBy: patch.sortBy !== undefined ? patch.sortBy : cur.sortBy,
     minDays: patch.minDays !== undefined ? patch.minDays : cur.minDays,
     maxDays: patch.maxDays !== undefined ? patch.maxDays : cur.maxDays,
+    page: patch.page !== undefined ? patch.page : filterTouched ? 1 : cur.page,
+    pageSize: patch.pageSize !== undefined ? patch.pageSize : cur.pageSize,
     clientId: patch.clientId !== undefined ? patch.clientId : cur.clientId,
   };
   return serializeReanimationListState(next);
@@ -290,13 +317,28 @@ export default function ReanimationPage() {
   const tableFilterKey = useMemo(
     () =>
       JSON.stringify(
-        Object.fromEntries(Object.entries(listState).filter(([k]) => k !== 'clientId')),
+        Object.fromEntries(
+          Object.entries(listState).filter(([k]) => k !== 'clientId' && k !== 'page' && k !== 'pageSize'),
+        ),
       ),
     [listState],
   );
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const { page, pageSize } = listState;
+
+  const flushSearchToUrl = useCallback(() => {
+    const trimmed = searchDraft.trim();
+    if (trimmed === listState.q.trim()) return;
+    patchListState({ q: trimmed });
+  }, [searchDraft, listState.q, patchListState]);
+
+  const goToClientCard = useCallback(
+    (clientId: string) => {
+      flushSearchToUrl();
+      navigate(`/clients/${clientId}`);
+    },
+    [flushSearchToUrl, navigate],
+  );
 
   const { data = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['analytics-reanimation'],
@@ -402,13 +444,9 @@ export default function ReanimationPage() {
   }, [data, listState, searchDraft]);
 
   useEffect(() => {
-    setPage(1);
-  }, [tableFilterKey]);
-
-  useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(filteredRows.length / pageSize) || 1);
-    if (page > maxPage) setPage(maxPage);
-  }, [filteredRows.length, page, pageSize]);
+    if (page > maxPage) patchListState({ page: maxPage }, { replace: true });
+  }, [filteredRows.length, page, pageSize, patchListState]);
 
   const paginatedRows = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -431,7 +469,6 @@ export default function ReanimationPage() {
 
   const resetFilters = () => {
     setSearchDraft('');
-    setPage(1);
     setSearchParams(new URLSearchParams(), { replace: true });
   };
 
@@ -471,7 +508,7 @@ export default function ReanimationPage() {
           <Button size="small" type="primary" onClick={() => patchListState({ clientId: row.clientId })}>
             Открыть
           </Button>
-          <Button size="small" type="link" onClick={() => navigate(`/clients/${row.clientId}`)}>
+          <Button size="small" type="link" onClick={() => goToClientCard(row.clientId)}>
             Карточка
           </Button>
         </div>
@@ -794,8 +831,10 @@ export default function ReanimationPage() {
             pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
             showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
             onChange={(nextPage, nextPageSize) => {
-              setPage(nextPage);
-              if (nextPageSize !== pageSize) setPageSize(nextPageSize);
+              patchListState({
+                page: nextPage,
+                ...(nextPageSize !== pageSize ? { pageSize: nextPageSize } : {}),
+              });
             }}
             size={isMobile ? 'small' : 'middle'}
           />
