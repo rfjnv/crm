@@ -66,18 +66,44 @@ export function resolveProductChartGranularity(
   return { granularity: 'month', allowed };
 }
 
-/** SQL time bucket for inventory_movements alias `m` (PostgreSQL). */
+/**
+ * Бизнес-дата движения товара для аналитики и графиков.
+ *
+ * Если движение привязано к сделке (`m.deal_id IS NOT NULL`) — берём дату закрытия сделки
+ * (`d.closed_at`) с fallback на дату создания сделки (`d.created_at`).
+ * Иначе — `m.created_at` самой строки движения.
+ *
+ * Требует, чтобы запрос делал `LEFT JOIN deals d ON d.id = m.deal_id`
+ * (или другие алиасы, переданные в аргументах).
+ */
+export function sqlInventoryMovementBusinessDate(
+  movementAlias = 'm',
+  dealAlias = 'd',
+): Prisma.Sql {
+  return Prisma.raw(
+    `COALESCE(${dealAlias}.closed_at, ${dealAlias}.created_at, ${movementAlias}.created_at)`,
+  );
+}
+
+/**
+ * SQL time bucket для аналитики движений товара.
+ * Группирует по БИЗНЕС-дате (closed_at сделки), а не по created_at записи —
+ * чтобы ретроактивные правки/автосписания не «съезжали» на сегодня.
+ *
+ * Требует, чтобы запрос содержал `LEFT JOIN deals d ON d.id = m.deal_id`.
+ */
 export function sqlInventoryMovementBucket(granularity: ChartGranularity): Prisma.Sql {
+  const businessDate = sqlInventoryMovementBusinessDate('m', 'd');
   switch (granularity) {
     case 'day':
-      return Prisma.sql`(m.created_at::date)`;
+      return Prisma.sql`(${businessDate}::date)`;
     case 'month':
-      return Prisma.sql`date_trunc('month', m.created_at)`;
+      return Prisma.sql`date_trunc('month', ${businessDate})`;
     case 'quarter':
-      return Prisma.sql`date_trunc('quarter', m.created_at)`;
+      return Prisma.sql`date_trunc('quarter', ${businessDate})`;
     case 'year':
-      return Prisma.sql`date_trunc('year', m.created_at)`;
+      return Prisma.sql`date_trunc('year', ${businessDate})`;
     default:
-      return Prisma.sql`(m.created_at::date)`;
+      return Prisma.sql`(${businessDate}::date)`;
   }
 }

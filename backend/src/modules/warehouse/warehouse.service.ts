@@ -4,6 +4,7 @@ import { AppError } from '../../lib/errors';
 import {
   resolveProductChartGranularity,
   sqlInventoryMovementBucket,
+  sqlInventoryMovementBusinessDate,
   sqlMovementIncludedInProductAnalytics,
   sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
@@ -351,7 +352,14 @@ export class WarehouseService {
             return d;
           })();
 
-    const movementDateFilter = from ? Prisma.sql`AND m.created_at >= ${from}` : Prisma.empty;
+    // Бизнес-дата движения: для движений, привязанных к сделке —
+    // COALESCE(d.closed_at, d.created_at), иначе m.created_at.
+    // Фильтр периода и группировка графика идут именно по этой дате,
+    // чтобы ретроактивные правки складов не «съезжали» на сегодня.
+    const businessDate = sqlInventoryMovementBusinessDate('m', 'd');
+    const movementDateFilter = from
+      ? Prisma.sql`AND ${businessDate} >= ${from}`
+      : Prisma.empty;
     const dealDateFilter = from ? Prisma.sql`AND d.created_at >= ${from}` : Prisma.empty;
 
     const { granularity, allowed } = resolveProductChartGranularity(period, granularityParam);
@@ -364,6 +372,7 @@ export class WarehouseService {
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
           COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale
         FROM inventory_movements m
+        LEFT JOIN deals d ON d.id = m.deal_id
         WHERE m.product_id = ${productId}
           ${movementDateFilter}
           AND ${sqlMovementIncludedInProductAnalytics('m')}`,
@@ -375,6 +384,7 @@ export class WarehouseService {
           COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
           COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty
         FROM inventory_movements m
+        LEFT JOIN deals d ON d.id = m.deal_id
         WHERE m.product_id = ${productId}
           ${movementDateFilter}
           AND ${sqlMovementIncludedInProductAnalytics('m')}
@@ -385,6 +395,7 @@ export class WarehouseService {
         Prisma.sql`
         SELECT COALESCE(SUM(m.quantity::numeric), 0)::text AS qty
         FROM inventory_movements m
+        LEFT JOIN deals d ON d.id = m.deal_id
         WHERE m.product_id = ${productId}
           ${movementDateFilter}
           AND ${sqlMovementIsAnalyticsCorrection('m')}`,

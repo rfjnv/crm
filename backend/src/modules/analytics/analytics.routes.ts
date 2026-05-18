@@ -8,7 +8,7 @@ import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
   resolveAnalyticsPeriodRange,
 } from '../../lib/analytics';
-import { sqlMovementIsSale } from '../../lib/inventoryAnalytics';
+import { sqlInventoryMovementBusinessDate, sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
@@ -851,13 +851,17 @@ router.get(
          ORDER BY stock ASC`
       ),
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
+        // last_out_date = последняя продажа товара по БИЗНЕС-дате
+        // (закрытие сделки), а не по created_at записи движения.
         Prisma.sql`SELECT p.id, p.name, p.sku, p.stock,
-                MAX(m.created_at) as last_out_date
+                MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) as last_out_date
          FROM products p
          LEFT JOIN inventory_movements m ON m.product_id = p.id AND ${sqlMovementIsSale('m')}
+         LEFT JOIN deals d ON d.id = m.deal_id
          WHERE p.is_active = true AND p.stock > 0
          GROUP BY p.id, p.name, p.sku, p.stock
-         HAVING MAX(m.created_at) IS NULL OR MAX(m.created_at) < NOW() - INTERVAL '30 days'
+         HAVING MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) IS NULL
+             OR MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) < NOW() - INTERVAL '30 days'
          ORDER BY p.stock DESC`
       ),
       prisma.$queryRaw<{ product_id: string; name: string; total_sold: string }[]>(
