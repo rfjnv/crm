@@ -28,6 +28,9 @@ const PERIODS: { label: string; value: PeriodChoice }[] = [
 
 type ChartGranularity = 'day' | 'month' | 'quarter' | 'year';
 
+const MOVEMENT_CHART_IN = 'Приход';
+const MOVEMENT_CHART_OUT = 'Отгрузка (сделки)';
+
 function formatMovementChartBucket(isoDay: string, g: ChartGranularity): string {
   const d = isoDay.slice(0, 10);
   const [Y, M, D] = d.split('-').map((x) => parseInt(x, 10));
@@ -129,8 +132,8 @@ export default function ProductDetailPage() {
 
   const chartData = (data.movements.movementsByDay || []).flatMap(
     (d: { day: string; inQty: number; outQty: number }) => [
-      { period: d.day, type: 'Приход', qty: d.inQty },
-      { period: d.day, type: 'Отгрузка (сделки)', qty: d.outQty },
+      { period: d.day, type: MOVEMENT_CHART_IN, qty: d.inQty },
+      { period: d.day, type: MOVEMENT_CHART_OUT, qty: d.outQty },
     ],
   );
 
@@ -265,19 +268,24 @@ export default function ProductDetailPage() {
                 data={chartData}
                 xField="period"
                 yField="qty"
-                seriesField="type"
-                isGroup
+                colorField="type"
+                group
                 height={250}
-                color={['#52c41a', '#ff4d4f']}
-                legend={{ position: 'top' }}
-                xAxis={{
-                  label: {
-                    formatter: (v: string) => formatMovementChartBucket(String(v), chartGranularity),
+                scale={{
+                  color: {
+                    domain: [MOVEMENT_CHART_IN, MOVEMENT_CHART_OUT],
+                    range: [tk.colorSuccess, tk.colorError],
                   },
+                }}
+                legend={{
+                  color: { position: 'top', itemLabelFill: tk.colorText },
                 }}
                 theme={chartTheme}
                 axis={{
-                  x: { labelFill: tk.colorText },
+                  x: {
+                    labelFill: tk.colorText,
+                    labelFormatter: (v: string) => formatMovementChartBucket(String(v), chartGranularity),
+                  },
                   y: { labelFill: tk.colorText },
                 }}
               />
@@ -293,7 +301,7 @@ export default function ProductDetailPage() {
                   value={data.movements.totalIn}
                   suffix={p.unit}
                   prefix={<ArrowUpOutlined />}
-                  valueStyle={{ color: '#52c41a' }}
+                  valueStyle={{ color: tk.colorSuccess }}
                 />
               </Col>
               <Col xs={24} sm={12}>
@@ -302,7 +310,7 @@ export default function ProductDetailPage() {
                   value={data.movements.totalOut}
                   suffix={p.unit}
                   prefix={<ArrowDownOutlined />}
-                  valueStyle={{ color: '#ff4d4f' }}
+                  valueStyle={{ color: tk.colorError }}
                 />
               </Col>
             </Row>
