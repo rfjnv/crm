@@ -54,6 +54,7 @@ import {
   StarOutlined,
   PhoneOutlined,
   IdcardOutlined,
+  HistoryOutlined,
   UserOutlined,
   DownOutlined,
   EditOutlined,
@@ -589,6 +590,11 @@ export default function Layout() {
       key: '/profile',
       icon: <IdcardOutlined />,
       label: <Link to="/profile">Профиль</Link>,
+    },
+    {
+      key: '/changelog',
+      icon: <HistoryOutlined />,
+      label: <Link to="/changelog">Обновления</Link>,
     },
     {
       key: '/team',

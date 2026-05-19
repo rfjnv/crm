@@ -65,6 +65,7 @@ import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
 import DepartmentReportPage from './pages/DepartmentReportPage';
+import ChangelogPage from './pages/ChangelogPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antDesignTokens } from './theme/tokens';
@@ -137,6 +138,7 @@ export default function App() {
                   <Route path="/users" element={<UsersPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/changelog" element={<ChangelogPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />
                   <Route path="/manager/reanimation" element={<ReanimationPage />} />

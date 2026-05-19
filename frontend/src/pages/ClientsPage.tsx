@@ -12,7 +12,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
-import { matchesSearch, smartFilterOption } from '../utils/translit';
+import { buildClientSearchHaystack, matchesSearch, smartFilterOption } from '../utils/translit';
 
 type ClientSortMode = 'name_asc' | 'name_desc' | 'created_desc' | 'contact_desc';
 
@@ -182,6 +182,11 @@ export default function ClientsPage() {
     return () => window.clearTimeout(t);
   }, [searchDraft, qUrl, patchListParams]);
 
+  useEffect(() => {
+    if (searchDraft.trim() === qUrl.trim()) return;
+    if (page !== 1) patchListParams({ page: 1 }, { replace: true });
+  }, [searchDraft, qUrl, page, patchListParams]);
+
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
@@ -200,7 +205,14 @@ export default function ClientsPage() {
     if (q) {
       list = list.filter((c) =>
         matchesSearch(
-          [c.companyName, c.contactName, c.phone || '', c.email || ''].join(' '),
+          buildClientSearchHaystack({
+            companyName: c.companyName,
+            contactName: c.contactName,
+            phone: c.phone,
+            email: c.email,
+            inn: c.inn,
+            managerName: c.manager?.fullName,
+          }),
           q,
         ),
       );
@@ -214,12 +226,16 @@ export default function ClientsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize) || 1);
   const safePage = Math.min(page, totalPages);
 
+  const paginatedClients = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredClients.slice(start, start + pageSize);
+  }, [filteredClients, safePage, pageSize]);
+
   useEffect(() => {
-    if (filteredClients.length === 0) return;
     if (page !== safePage) {
       patchListParams({ page: safePage }, { replace: true });
     }
-  }, [filteredClients.length, page, safePage, patchListParams]);
+  }, [page, safePage, patchListParams]);
 
   const createMut = useMutation({
     mutationFn: (data: CreateClientData) => clientsApi.create(data),
@@ -477,7 +493,10 @@ export default function ClientsPage() {
             style={{ width: isMobile ? '100%' : 300 }}
             allowClear
             value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
+            onChange={(e) => {
+              setSearchDraft(e.target.value);
+              if (page !== 1) patchListParams({ page: 1 }, { replace: true });
+            }}
             onSearch={(v) => {
               const t = v.trim();
               setSearchDraft(t);
@@ -597,7 +616,7 @@ export default function ClientsPage() {
         />
       ) : (
         <Table
-          dataSource={filteredClients}
+          dataSource={paginatedClients}
           columns={columns}
           rowKey="id"
           loading={isLoading}

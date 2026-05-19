@@ -20,8 +20,19 @@ export function toLatin(input: string): string {
   return out;
 }
 
+/** Strip punctuation so «М-Принт» and запрос «мпринт» match the same haystack. */
+const SEARCH_PUNCT_RE = /["""«»''.,;:!?()\-–—/\\#№@&+*_=~`^|<>[\]{}]/g;
+
 export function normalizeSearch(input: string): string {
-  return toLatin(input || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return toLatin(input || '')
+    .toLowerCase()
+    .replace(SEARCH_PUNCT_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function digitsOnly(input: string): string {
+  return input.replace(/\D/g, '');
 }
 
 /**
@@ -35,10 +46,18 @@ export function normalizeSearch(input: string): string {
  */
 export function matchesSearch(haystack: string | null | undefined, query: string): boolean {
   if (!query || !query.trim()) return true;
-  const haystackNorm = normalizeSearch(haystack || '');
+  const raw = haystack || '';
+  const haystackNorm = normalizeSearch(raw);
+  const haystackDigits = digitsOnly(raw);
   const tokens = normalizeSearch(query).split(' ').filter(Boolean);
   if (tokens.length === 0) return true;
-  return tokens.every((token) => haystackNorm.includes(token));
+  return tokens.every((token) => {
+    if (haystackNorm.includes(token)) return true;
+    const tokenDigits = digitsOnly(token);
+    // Formatted phones (+998 90 …) vs continuous digits (901234567)
+    if (tokenDigits.length >= 5 && haystackDigits.includes(tokenDigits)) return true;
+    return false;
+  });
 }
 
 /**
@@ -76,6 +95,29 @@ export function smartFilterOption(
  * Same as `smartFilterOption` but lets caller provide a custom
  * haystack builder (e.g. to include phone / inn / city / etc.).
  */
+/** Haystack for client list / Select filters (company, contact, phone, inn, manager). */
+export function buildClientSearchHaystack(parts: {
+  companyName?: string | null;
+  contactName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  managerName?: string | null;
+}): string {
+  const phoneDigits = digitsOnly(parts.phone || '');
+  return [
+    parts.companyName,
+    parts.contactName,
+    parts.phone,
+    phoneDigits,
+    parts.email,
+    parts.inn,
+    parts.managerName,
+  ]
+    .filter((p): p is string => !!p)
+    .join(' ');
+}
+
 export function makeSmartFilterOption<TOption>(
   haystackFor: (option: TOption) => string | Array<string | null | undefined>,
 ) {
