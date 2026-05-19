@@ -41,6 +41,15 @@ const { Title, Text, Paragraph } = Typography;
 
 const CANDIDATE_STATUSES: ReanimationStatus[] = ['ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
 
+/** Фильтр списка: «Все» = все кандидаты реанимации; иначе один из двух основных статусов. */
+type ReanimationStatusFilter = 'all' | 'CHURNED' | 'ONE_TIME_LOST';
+
+const STATUS_FILTER_OPTIONS: { value: ReanimationStatusFilter; label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
+  { value: 'CHURNED', label: 'Перестал покупать' },
+  { value: 'ONE_TIME_LOST', label: 'Раз купил и пропал' },
+];
+
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -105,6 +114,19 @@ function statusSelectionIsDefault(statuses: ReanimationStatus[]): boolean {
   if (statuses.length !== CANDIDATE_STATUSES.length) return false;
   const set = new Set(statuses);
   return CANDIDATE_STATUSES.every((s) => set.has(s));
+}
+
+function statusesFromFilter(filter: ReanimationStatusFilter): ReanimationStatus[] {
+  if (filter === 'CHURNED') return ['CHURNED'];
+  if (filter === 'ONE_TIME_LOST') return ['ONE_TIME_LOST'];
+  return [...CANDIDATE_STATUSES];
+}
+
+function statusFilterFromStatuses(statuses: ReanimationStatus[]): ReanimationStatusFilter {
+  const set = new Set(statuses);
+  if (set.size === 1 && set.has('CHURNED')) return 'CHURNED';
+  if (set.size === 1 && set.has('ONE_TIME_LOST')) return 'ONE_TIME_LOST';
+  return 'all';
 }
 
 function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlState {
@@ -668,19 +690,16 @@ export default function ReanimationPage() {
           </div>
           <div className="reanimation-filter-item reanimation-filter-item--wide">
             <Select
-              mode="multiple"
-              allowClear
               className={APP_INPUT}
               style={{ width: '100%' }}
-              placeholder="Статус реанимации"
-              value={listState.statuses}
+              placeholder="Статус"
+              value={statusFilterFromStatuses(listState.statuses)}
               onChange={(value) =>
                 patchListState({
-                  statuses: normalizeStatuses((value ?? []) as ReanimationStatus[]),
+                  statuses: statusesFromFilter((value ?? 'all') as ReanimationStatusFilter),
                 })
               }
-              options={Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))}
-              maxTagCount={2}
+              options={STATUS_FILTER_OPTIONS}
             />
           </div>
           <div className="reanimation-filter-item">
