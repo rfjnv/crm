@@ -257,12 +257,20 @@ export default function DealCreatePage() {
     if (validItems.length === 0) return 'WAITING_STOCK_CONFIRMATION';
     const allHaveQty = validItems.every((i) => i.requestedQty && i.requestedQty > 0);
     if (!allHaveQty) return 'WAITING_STOCK_CONFIRMATION';
-    // Non-Dilnoza with simple payment method → auto-route to zav.sklada
-    if (!isDilnoza && paymentMethod && paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT') {
-      return 'WAITING_WAREHOUSE_MANAGER';
+    // Non-Dilnoza auto-route:
+    // - simple methods → always to zav.sklada
+    // - TRANSFER + INN filled → to zav.sklada
+    // - TRANSFER without INN → IN_PROGRESS (INN needed)
+    if (!isDilnoza && paymentMethod) {
+      if (paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT') {
+        return 'WAITING_WAREHOUSE_MANAGER';
+      }
+      if (paymentMethod === 'TRANSFER' && transferInn.trim()) {
+        return 'WAITING_WAREHOUSE_MANAGER';
+      }
     }
     return 'IN_PROGRESS';
-  }, [draftItems, isDilnoza, dilnozaCreateRoute, paymentMethod]);
+  }, [draftItems, isDilnoza, dilnozaCreateRoute, paymentMethod, transferInn]);
 
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
@@ -354,7 +362,9 @@ export default function DealCreatePage() {
                 }
               : { paymentNote: paymentNote.trim() || undefined }),
           }
-        : {}),
+        : (paymentMethod === 'TRANSFER' && transferInn.trim())
+          ? { transferInn: transferInn.trim() }
+          : {}),
     });
   }
 
@@ -642,8 +652,22 @@ export default function DealCreatePage() {
             </Radio.Group>
             {!isDilnoza && (
               <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление/рассрочка — через шаг «Отправить в финансы».
+                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — тоже сразу. Без ИНН — сначала «В работе».
               </Typography.Text>
+            )}
+            {!isDilnoza && paymentMethod === 'TRANSFER' && (
+              <div style={{ marginTop: 10 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                  ИНН компании <Typography.Text type="secondary" style={{ fontSize: 12 }}>(необязательно — можно заполнить позже)</Typography.Text>
+                </Typography.Text>
+                <Input
+                  placeholder="Введите ИНН клиента"
+                  value={transferInn}
+                  onChange={(e) => setTransferInn(e.target.value)}
+                  maxLength={50}
+                  allowClear
+                />
+              </div>
             )}
             {isDilnoza && !needsDilnozaTransferFields(paymentMethod) && (
               <div style={{ marginTop: 12 }}>

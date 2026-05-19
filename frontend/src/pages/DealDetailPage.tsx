@@ -574,6 +574,16 @@ export default function DealDetailPage() {
             </Button>
           </Popconfirm>,
         );
+      } else if (preMethod === 'TRANSFER') {
+        // TRANSFER selected at creation — skip payment method modal, open INN modal directly
+        actions.push(
+          <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
+            setSelectedPaymentMethod('TRANSFER');
+            openTransferPaymentModal();
+          }}>
+            Отправить в финансы
+          </Button>,
+        );
       } else {
         actions.push(
           <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {

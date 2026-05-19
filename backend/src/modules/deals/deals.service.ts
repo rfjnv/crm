@@ -461,16 +461,17 @@ export class DealsService {
 
     // Non-Dilnoza auto-route: if payment method is set + all items have qty+price,
     // skip IN_PROGRESS and route directly (same as sendToFinance would do).
-    // TRANSFER/INSTALLMENT still go through sendToFinance (require INN/docs).
-    if (
-      !canUseDilnozaCreatePayment &&
-      paymentMethodAtCreate &&
-      allHaveQty &&
-      paymentMethodAtCreate !== 'TRANSFER' &&
-      paymentMethodAtCreate !== 'INSTALLMENT'
-    ) {
-      initialStatus = 'WAITING_WAREHOUSE_MANAGER';
-      allHaveQtyForTelegram = true;
+    // TRANSFER with INN provided → also auto-route (save INN, go to WAITING_WAREHOUSE_MANAGER).
+    // TRANSFER without INN → stay IN_PROGRESS (INN must be entered via "send to finance").
+    // INSTALLMENT still requires manual sendToFinance.
+    if (!canUseDilnozaCreatePayment && paymentMethodAtCreate && allHaveQty) {
+      if (paymentMethodAtCreate !== 'TRANSFER' && paymentMethodAtCreate !== 'INSTALLMENT') {
+        initialStatus = 'WAITING_WAREHOUSE_MANAGER';
+        allHaveQtyForTelegram = true;
+      } else if (paymentMethodAtCreate === 'TRANSFER' && dto.transferInn?.trim()) {
+        initialStatus = 'WAITING_WAREHOUSE_MANAGER';
+        allHaveQtyForTelegram = true;
+      }
     }
 
     const isSessionDeal = dto.isSessionDeal === true;
@@ -508,7 +509,9 @@ export class DealsService {
                 transferDocuments: dilnozaTransferDocuments,
                 transferType: dilnozaTransferType,
               }
-            : {}),
+            : (!canUseDilnozaCreatePayment && dto.paymentMethod === 'TRANSFER' && dto.transferInn?.trim())
+              ? { transferInn: dto.transferInn.trim() }
+              : {}),
         },
       });
 
