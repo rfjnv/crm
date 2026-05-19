@@ -20,7 +20,7 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
 import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
-import { DILNOZA_PAYMENT_METHOD_OPTIONS, needsDilnozaTransferFields } from '../constants/dilnozaPayments';
+import { needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
 import './DealCreatePage.css';
 

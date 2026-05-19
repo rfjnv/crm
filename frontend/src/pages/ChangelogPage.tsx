@@ -84,7 +84,7 @@ export default function ChangelogPage() {
   const isMobile = useIsMobile();
 
   const timelineItems = CHANGELOG.map((release) => ({
-    color: tk.colorPrimary as const,
+    color: tk.colorPrimary,
     children: (
       <div style={{ paddingBottom: 8 }}>
         <div

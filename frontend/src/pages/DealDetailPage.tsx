@@ -340,15 +340,6 @@ export default function DealDetailPage() {
     },
   });
 
-  const adminApproveMut = useMutation({
-    mutationFn: () => dealsApi.approveAdmin(id!),
-    onSuccess: () => { invalidate(); message.success('Админ одобрил'); },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
-      message.error(msg);
-    },
-  });
-
   const shipmentMut = useMutation({
     mutationFn: (data: { vehicleType: string; vehicleNumber: string; driverName: string; departureTime: string; deliveryNoteNumber: string; shipmentComment?: string }) =>
       dealsApi.submitShipment(id!, data),
@@ -359,14 +350,6 @@ export default function DealDetailPage() {
     },
   });
 
-  const releaseHoldMut = useMutation({
-    mutationFn: () => dealsApi.releaseShipmentHold(id!),
-    onSuccess: () => { invalidate(); message.success('Сделка возвращена в очередь на отгрузку'); },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
-      message.error(msg);
-    },
-  });
 
   const managerMut = useMutation({
     mutationFn: (managerId: string) => dealsApi.update(id!, { managerId }),
