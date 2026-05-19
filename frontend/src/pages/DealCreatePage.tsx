@@ -536,8 +536,10 @@ export default function DealCreatePage() {
                 gap: 12,
                 padding: '12px 16px',
                 borderRadius: 8,
-                background: isDebt ? '#fff1f0' : undefined,
-                border: isDebt ? '1px solid #ffa39e' : '1px dashed #d9d9d9',
+                background: isDebt ? tk.colorErrorBg : 'transparent',
+                border: isDebt
+                  ? `1px solid ${tk.colorErrorBorder}`
+                  : `1px dashed ${tk.colorBorder}`,
                 transition: 'all 0.2s',
               }}>
                 <Switch
@@ -547,7 +549,7 @@ export default function DealCreatePage() {
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isDebt ? 12 : 0 }}>
-                    <Typography.Text strong style={{ color: isDebt ? '#cf1322' : undefined }}>
+                    <Typography.Text strong style={{ color: isDebt ? tk.colorError : undefined }}>
                       В долг
                     </Typography.Text>
                     {isDebt && <Tag color="red" style={{ margin: 0 }}>Клиент платит позже</Tag>}
