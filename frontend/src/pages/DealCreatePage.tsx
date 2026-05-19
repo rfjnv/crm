@@ -637,12 +637,12 @@ export default function DealCreatePage() {
               <Radio.Button value="QR">QR</Radio.Button>
               <Radio.Button value="CLICK">Click</Radio.Button>
               <Radio.Button value="TERMINAL">Терминал</Radio.Button>
-              {isDilnoza && <Radio.Button value="TRANSFER">Перечисление</Radio.Button>}
-              {isDilnoza && <Radio.Button value="INSTALLMENT">Рассрочка</Radio.Button>}
+              <Radio.Button value="TRANSFER">Перечисление</Radio.Button>
+              <Radio.Button value="INSTALLMENT">Рассрочка (безнал)</Radio.Button>
             </Radio.Group>
             {!isDilnoza && (
               <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-                Если все товары с количеством и ценой — сделка сразу перейдёт к зав. склада, без шага «Отправить в финансы»
+                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление/рассрочка — через шаг «Отправить в финансы».
               </Typography.Text>
             )}
             {isDilnoza && !needsDilnozaTransferFields(paymentMethod) && (
