@@ -134,6 +134,39 @@ function itemsHavePositiveQty(items: { requestedQty: unknown }[]): boolean {
   });
 }
 
+export type SyncDealTelegramOpts = {
+  /** Строка внизу поста (super override) — меняет текст и гарантирует доставку в группу. */
+  footnote?: string;
+};
+
+function appendSyncFootnote(html: string, footnote?: string): string {
+  const line = footnote?.trim();
+  if (!line) return html;
+  return `${html}\n\n✏️ <b>Изменение в CRM:</b> ${esc(truncateTelegramText(line, 400))}`;
+}
+
+/** Правка поста в группе; при ошибке — удаление в известных чатах и новая отправка. */
+async function editOrResendGroupHtml(
+  primaryChatId: string,
+  messageId: number,
+  html: string,
+  path: string,
+  alternateChatIds: string[] = [],
+): Promise<{ chatId: string; messageId: number } | null> {
+  const chats = [...new Set([primaryChatId, ...alternateChatIds].filter((c) => c?.trim()))];
+  for (const chatId of chats) {
+    if (await telegramService.editGroupHtmlMessage(chatId, messageId, html, path)) {
+      return { chatId, messageId };
+    }
+  }
+  for (const chatId of chats) {
+    await telegramService.deleteGroupMessage(chatId, messageId);
+  }
+  const newId = await telegramService.sendGroupHtmlMessage(primaryChatId, html, path);
+  if (newId == null) return null;
+  return { chatId: primaryChatId, messageId: newId };
+}
+
 function parseStoredTelegramMessageId(raw: string | null | undefined): number | null {
   if (!raw) return null;
   const t = raw.trim();
@@ -1014,14 +1047,10 @@ export async function cleanupStockWaitTelegramMessages(
     .catch(() => {});
 }
 
-/**
- * Пересобрать и отредактировать сообщения в группах по актуальным данным сделки
- * (склад, intake, производство, финансы).
- */
-export async function syncDealTelegramGroupMessages(dealId: string): Promise<void> {
-  await migrateProductionMessageToRfsIfNeeded(dealId);
+type DealForTelegramSync = NonNullable<Awaited<ReturnType<typeof loadDealForTelegramSync>>>;
 
-  const deal = await prisma.deal.findUnique({
+async function loadDealForTelegramSync(dealId: string) {
+  return prisma.deal.findUnique({
     where: { id: dealId },
     include: {
       client: { select: { companyName: true, contactName: true, inn: true } },
@@ -1041,6 +1070,111 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
       },
     },
   });
+}
+
+function buildProductionBoardHtmlFromDeal(deal: DealForTelegramSync, footnote?: string): string {
+  const hdr = productionSyncHeaderForEdit(deal.status, deal.items);
+  const fullProd: DealRowForProductionTg = {
+    title: deal.title,
+    deliveryType: deal.deliveryType,
+    vehicleNumber: deal.shipment?.vehicleNumber ?? deal.vehicleNumber,
+    vehicleType: deal.shipment?.vehicleType ?? deal.vehicleType,
+    deliveryComment: deal.shipment?.shipmentComment ?? deal.deliveryComment,
+    paymentMethod: deal.paymentMethod,
+    paymentType: deal.paymentType,
+    amount: deal.amount,
+    paidAmount: deal.paidAmount,
+    paymentStatus: deal.paymentStatus,
+    dueDate: deal.dueDate,
+    terms: deal.terms,
+    client: deal.client,
+    manager: deal.manager,
+    items: deal.items.map((it) => ({
+      requestedQty: it.requestedQty,
+      product: { name: it.product.name, unit: it.product.unit },
+    })),
+    comments: deal.comments,
+    status: deal.status,
+    sentToFinance: deal.sentToFinance,
+    contract: deal.contract
+      ? { contractNumber: deal.contract.contractNumber, contractType: deal.contract.contractType }
+      : null,
+  };
+  return appendSyncFootnote(
+    buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending),
+    footnote,
+  );
+}
+
+async function syncProductionBoardMessage(
+  dealId: string,
+  deal: DealForTelegramSync,
+  footnote?: string,
+): Promise<void> {
+  const prodChat = config.telegram.groupProductionChatId?.trim();
+  const rfsChat = config.telegram.groupReadyForShipmentChatId?.trim();
+  const chatProd = resolveProductionBoardChatId(deal) || prodChat;
+  if (!chatProd) return;
+
+  const path = dealLinkPath(dealId);
+  const body = buildProductionBoardHtmlFromDeal(deal, footnote);
+  const alternates = [prodChat, rfsChat].filter((c): c is string => !!c && c !== chatProd);
+
+  const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
+  if (mid == null) {
+    const newId = await telegramService.sendGroupHtmlMessage(chatProd, body, path);
+    if (newId == null) {
+      console.warn('[Telegram deal groups] sync: production send failed dealId=', dealId);
+      return;
+    }
+    await prisma.deal
+      .update({
+        where: { id: dealId },
+        data: {
+          productionTelegramMessageId: String(newId),
+          productionTelegramMessageInRfsChat: !!(rfsChat && chatProd === rfsChat),
+          sentToProduction: true,
+        },
+      })
+      .catch((err) => console.error('[Telegram deal groups] sync: save productionTelegramMessageId:', err));
+    return;
+  }
+
+  const result = await editOrResendGroupHtml(chatProd, mid, body, path, alternates);
+  if (!result) {
+    console.warn('[Telegram deal groups] sync: production edit/resend failed dealId=', dealId);
+    return;
+  }
+
+  const data: {
+    productionTelegramMessageId?: string;
+    productionTelegramMessageInRfsChat?: boolean;
+  } = {};
+  if (String(result.messageId) !== deal.productionTelegramMessageId) {
+    data.productionTelegramMessageId = String(result.messageId);
+  }
+  const inRfs = !!(rfsChat && result.chatId === rfsChat);
+  if (inRfs !== deal.productionTelegramMessageInRfsChat) {
+    data.productionTelegramMessageInRfsChat = inRfs;
+  }
+  if (Object.keys(data).length > 0) {
+    await prisma.deal
+      .update({ where: { id: dealId }, data })
+      .catch((err) => console.error('[Telegram deal groups] sync: update production message meta:', err));
+  }
+}
+
+/**
+ * Пересобрать и отредактировать сообщения в группах по актуальным данным сделки
+ * (склад, intake, производство, финансы).
+ */
+export async function syncDealTelegramGroupMessages(
+  dealId: string,
+  opts?: SyncDealTelegramOpts,
+): Promise<void> {
+  await migrateProductionMessageToRfsIfNeeded(dealId);
+
+  const deal = await loadDealForTelegramSync(dealId);
 
   if (!deal) return;
 
@@ -1082,7 +1216,9 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
     }
   }
 
-  const chatProd = resolveProductionBoardChatId(deal);
+  const chatProd = resolveProductionBoardChatId(deal) || config.telegram.groupProductionChatId?.trim();
+  let dealForProduction = deal;
+
   if (chatProd && !deal.productionTelegramMessageId?.trim()) {
     // Если сообщение не было создано на ранних этапах (например, дилно-зависимый маршрут),
     // создаем его здесь, чтобы последующие платежи/комментарии могли делать edit.
@@ -1096,44 +1232,15 @@ export async function syncDealTelegramGroupMessages(dealId: string): Promise<voi
     ) {
       await sendProductionPaymentSubmitTelegram(dealId);
     }
+    const refreshed = await loadDealForTelegramSync(dealId);
+    if (refreshed) dealForProduction = refreshed;
   }
 
-  if (chatProd && deal.productionTelegramMessageId?.trim()) {
-    const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
-    if (mid != null) {
-      const hdr = productionSyncHeaderForEdit(deal.status, deal.items);
-      const fullProd: DealRowForProductionTg = {
-        title: deal.title,
-        deliveryType: deal.deliveryType,
-        vehicleNumber: deal.shipment?.vehicleNumber ?? deal.vehicleNumber,
-        vehicleType: deal.shipment?.vehicleType ?? deal.vehicleType,
-        deliveryComment: deal.shipment?.shipmentComment ?? deal.deliveryComment,
-        paymentMethod: deal.paymentMethod,
-        paymentType: deal.paymentType,
-        amount: deal.amount,
-        paidAmount: deal.paidAmount,
-        paymentStatus: deal.paymentStatus,
-        dueDate: deal.dueDate,
-        terms: deal.terms,
-        client: deal.client,
-        manager: deal.manager,
-        items: deal.items.map((it) => ({
-          requestedQty: it.requestedQty,
-          product: { name: it.product.name, unit: it.product.unit },
-        })),
-        comments: deal.comments,
-        status: deal.status,
-        sentToFinance: deal.sentToFinance,
-        contract: deal.contract
-          ? { contractNumber: deal.contract.contractNumber, contractType: deal.contract.contractType }
-          : null,
-      };
-      const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
-      const ok = await telegramService.editGroupHtmlMessage(chatProd, mid, body, path);
-      if (!ok) {
-        console.warn('[Telegram deal groups] sync: production edit failed dealId=', dealId);
-      }
-    }
+  if (
+    chatProd &&
+    (dealForProduction.productionTelegramMessageId?.trim() || opts?.footnote?.trim())
+  ) {
+    await syncProductionBoardMessage(dealId, dealForProduction, opts?.footnote);
   }
 }
 

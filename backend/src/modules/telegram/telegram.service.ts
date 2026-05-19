@@ -336,12 +336,16 @@ class TelegramService {
         }
       }
       const e = err as { message?: string; response?: { body?: { description?: string } } };
+      const desc = e.response?.body?.description || e.message || '';
+      if (/message is not modified/i.test(desc)) {
+        return true;
+      }
       console.warn(
         '[Telegram] editGroupHtmlMessage failed chat_id=',
         chatId,
         'msg=',
         messageId,
-        e.response?.body?.description || e.message,
+        desc,
       );
       return false;
     }

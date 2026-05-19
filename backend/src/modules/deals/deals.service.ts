@@ -3173,8 +3173,10 @@ export class DealsService {
       });
     }
 
-    void syncDealTelegramGroupMessages(id).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    await syncDealTelegramGroupMessages(id, {
+      footnote: `Супер-оверрайд: ${dto.reason}`,
+    }).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (override):', err);
     });
 
     return this.findById(id, user);
