@@ -239,6 +239,7 @@ model User {
   importOrderAttachmentsUploaded ImportOrderAttachment[] @relation("ImportOrderAttachmentUploader")
   reviewsReceived        WorkerReview[]         @relation("WorkerReviewReceived")
   reviewsGiven           WorkerReview[]         @relation("WorkerReviewGiven")
+  vedMapRoutesCreated    VedMapRoute[]          @relation("VedMapRouteCreator")
 
   @@map("users")
 }
@@ -1178,6 +1179,14 @@ model CallSession {
 
 // ==================== FOREIGN TRADE (ВЭД) ====================
 
+enum SupplierSiteType {
+  FACTORY
+  WAREHOUSE
+  PORT
+  OFFICE
+  OTHER
+}
+
 /** Поставщик (зеркало Client, но для закупок). */
 model Supplier {
   id            String            @id @default(uuid())
@@ -1192,16 +1201,77 @@ model Supplier {
   bankSwift     String?           @map("bank_swift")
   iban          String?
   notes         String?           @db.Text
+  logoPath      String?           @map("logo_path")
   isArchived    Boolean           @default(false) @map("is_archived")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
   products     Product[]
   importOrders ImportOrder[]
+  sites        SupplierSite[]
+  mapRoutes    VedMapRoute[]
 
   @@index([isArchived])
   @@index([country])
   @@map("suppliers")
+}
+
+/** Точка на карте ВЭД: завод, склад, порт и т.д. */
+model SupplierSite {
+  id         String           @id @default(uuid())
+  supplierId String           @map("supplier_id")
+  name       String
+  siteType   SupplierSiteType @default(FACTORY) @map("site_type")
+  address    String?
+  country    String?
+  latitude   Float
+  longitude  Float
+  notes      String?          @db.Text
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  supplier    Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  routePoints VedMapRoutePoint[]
+
+  @@index([supplierId])
+  @@index([siteType])
+  @@map("supplier_sites")
+}
+
+/** Сохранённый маршрут между точками на карте ВЭД. */
+model VedMapRoute {
+  id          String   @id @default(uuid())
+  name        String
+  supplierId  String?  @map("supplier_id")
+  color       String?  @default("#22609A")
+  notes       String?  @db.Text
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  supplier  Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy User               @relation("VedMapRouteCreator", fields: [createdById], references: [id])
+  points    VedMapRoutePoint[]
+
+  @@index([supplierId])
+  @@index([createdById])
+  @@map("ved_map_routes")
+}
+
+model VedMapRoutePoint {
+  id        String  @id @default(uuid())
+  routeId   String  @map("route_id")
+  siteId    String? @map("site_id")
+  label     String?
+  latitude  Float
+  longitude Float
+  sortOrder Int     @map("sort_order")
+
+  route VedMapRoute   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  site  SupplierSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  @@index([routeId, sortOrder])
+  @@map("ved_map_route_points")
 }
 
 /** Импортный (закупочный) заказ у поставщика. */

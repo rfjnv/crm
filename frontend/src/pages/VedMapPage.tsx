@@ -1,0 +1,658 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Button,
+  Card,
+  Checkbox,
+  ColorPicker,
+  Form,
+  Input,
+  List,
+  Modal,
+  Select,
+  Space,
+  Tabs,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EnvironmentOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { vedMapApi } from '../api/ved-map.api';
+import { suppliersApi } from '../api/suppliers.api';
+import { uploadsUrl } from '../lib/uploadsUrl';
+import { useAuthStore } from '../store/authStore';
+import type {
+  SupplierSite,
+  SupplierSitePayload,
+  SupplierSiteType,
+  VedMapRoute,
+  VedMapRoutePointPayload,
+} from '../types';
+import {
+  SUPPLIER_SITE_TYPE_LABELS,
+  SUPPLIER_SITE_TYPES,
+} from '../types';
+
+const SITE_TYPE_COLORS: Record<SupplierSiteType, string> = {
+  FACTORY: '#22609A',
+  WAREHOUSE: '#52c41a',
+  PORT: '#1677ff',
+  OFFICE: '#722ed1',
+  OTHER: '#8c8c8c',
+};
+
+function makeSiteIcon(site: SupplierSite, selected: boolean): L.DivIcon {
+  const logo = uploadsUrl(site.supplier.logoPath);
+  const color = SITE_TYPE_COLORS[site.siteType];
+  const size = selected ? 40 : 32;
+  const inner = logo
+    ? `<img src="${logo}" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:4px;" />`
+    : `<span style="font-size:11px;font-weight:700;color:${color};">${site.name.slice(0, 2).toUpperCase()}</span>`;
+
+  return L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<div style="
+      width:${size}px;height:${size}px;
+      border:3px solid ${selected ? '#faad14' : color};
+      border-radius:8px;
+      background:#fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.25);
+      display:flex;align-items:center;justify-content:center;
+      overflow:hidden;
+    ">${inner}</div>`,
+  });
+}
+
+export default function VedMapPage() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const filterSupplierId = searchParams.get('supplierId') ?? undefined;
+
+  const user = useAuthStore((s) => s.user);
+  const canManage =
+    user?.role === 'SUPER_ADMIN'
+    || user?.role === 'ADMIN'
+    || (user?.permissions ?? []).includes('manage_suppliers');
+
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<L.Map | null>(null);
+  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const routesLayer = useRef<L.LayerGroup | null>(null);
+
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [visibleRouteIds, setVisibleRouteIds] = useState<string[]>([]);
+  const [pickOnMap, setPickOnMap] = useState(false);
+  const [siteModalOpen, setSiteModalOpen] = useState(false);
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [editingSite, setEditingSite] = useState<SupplierSite | null>(null);
+  const [editingRoute, setEditingRoute] = useState<VedMapRoute | null>(null);
+  const [routePointIds, setRoutePointIds] = useState<string[]>([]);
+  const [siteForm] = Form.useForm<SupplierSitePayload>();
+  const [routeForm] = Form.useForm<{ name: string; supplierId?: string; color?: string; notes?: string }>();
+
+  const { data: sites = [], isLoading: sitesLoading } = useQuery({
+    queryKey: ['ved-map-sites', filterSupplierId],
+    queryFn: () => vedMapApi.listSites({ supplierId: filterSupplierId }),
+  });
+
+  const { data: routes = [] } = useQuery({
+    queryKey: ['ved-map-routes', filterSupplierId],
+    queryFn: () => vedMapApi.listRoutes({ supplierId: filterSupplierId }),
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers-for-map'],
+    queryFn: () => suppliersApi.list(),
+  });
+
+  const supplierOptions = useMemo(
+    () => suppliers.filter((s) => !s.isArchived).map((s) => ({ value: s.id, label: s.companyName })),
+    [suppliers],
+  );
+
+  const selectedSite = sites.find((s) => s.id === selectedSiteId) ?? null;
+
+  const createSiteMut = useMutation({
+    mutationFn: (payload: SupplierSitePayload) => vedMapApi.createSite(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-sites'] });
+      message.success('Точка добавлена');
+      setSiteModalOpen(false);
+      setPickOnMap(false);
+      siteForm.resetFields();
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    },
+  });
+
+  const updateSiteMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SupplierSitePayload> }) =>
+      vedMapApi.updateSite(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-sites'] });
+      message.success('Точка обновлена');
+      setSiteModalOpen(false);
+      setEditingSite(null);
+      setPickOnMap(false);
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    },
+  });
+
+  const deleteSiteMut = useMutation({
+    mutationFn: (id: string) => vedMapApi.deleteSite(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-sites'] });
+      setSelectedSiteId(null);
+      message.success('Точка удалена');
+    },
+  });
+
+  const createRouteMut = useMutation({
+    mutationFn: vedMapApi.createRoute,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-routes'] });
+      message.success('Маршрут сохранён');
+      setRouteModalOpen(false);
+      routeForm.resetFields();
+      setRoutePointIds([]);
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    },
+  });
+
+  const updateRouteMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof vedMapApi.updateRoute>[1] }) =>
+      vedMapApi.updateRoute(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-routes'] });
+      message.success('Маршрут обновлён');
+      setRouteModalOpen(false);
+      setEditingRoute(null);
+      setRoutePointIds([]);
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    },
+  });
+
+  const deleteRouteMut = useMutation({
+    mutationFn: (id: string) => vedMapApi.deleteRoute(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ved-map-routes'] });
+      message.success('Маршрут удалён');
+    },
+  });
+
+  const openCreateSite = () => {
+    setEditingSite(null);
+    siteForm.resetFields();
+    siteForm.setFieldsValue({
+      supplierId: filterSupplierId,
+      siteType: 'FACTORY',
+      latitude: 31.23,
+      longitude: 121.47,
+    });
+    setSiteModalOpen(true);
+  };
+
+  const openEditSite = (site: SupplierSite) => {
+    setEditingSite(site);
+    siteForm.setFieldsValue({
+      supplierId: site.supplierId,
+      name: site.name,
+      siteType: site.siteType,
+      address: site.address,
+      country: site.country,
+      latitude: site.latitude,
+      longitude: site.longitude,
+      notes: site.notes,
+    });
+    setSiteModalOpen(true);
+  };
+
+  const openCreateRoute = () => {
+    setEditingRoute(null);
+    setRoutePointIds([]);
+    routeForm.resetFields();
+    routeForm.setFieldsValue({
+      supplierId: filterSupplierId,
+      color: '#22609A',
+    });
+    setRouteModalOpen(true);
+  };
+
+  const openEditRoute = (route: VedMapRoute) => {
+    setEditingRoute(route);
+    setRoutePointIds(route.points.map((p) => p.siteId).filter((id): id is string => !!id));
+    routeForm.setFieldsValue({
+      name: route.name,
+      supplierId: route.supplierId ?? undefined,
+      color: route.color ?? '#22609A',
+      notes: route.notes ?? undefined,
+    });
+    setRouteModalOpen(true);
+  };
+
+  const buildRoutePoints = useCallback((): VedMapRoutePointPayload[] => {
+    return routePointIds
+      .map((siteId) => sites.find((s) => s.id === siteId))
+      .filter((s): s is SupplierSite => !!s)
+      .map((s) => ({
+        siteId: s.id,
+        label: s.name,
+        latitude: s.latitude,
+        longitude: s.longitude,
+      }));
+  }, [routePointIds, sites]);
+
+  const saveRoute = async () => {
+    const values = await routeForm.validateFields();
+    const points = buildRoutePoints();
+    if (points.length < 2) {
+      message.warning('Выберите минимум 2 точки для маршрута');
+      return;
+    }
+    let color = '#22609A';
+    const rawColor = values.color;
+    if (typeof rawColor === 'string') {
+      color = rawColor;
+    } else if (rawColor && typeof rawColor === 'object' && 'toHexString' in rawColor) {
+      color = (rawColor as { toHexString: () => string }).toHexString();
+    }
+
+    const payload = {
+      name: values.name,
+      supplierId: values.supplierId ?? null,
+      color,
+      notes: values.notes ?? null,
+      points,
+    };
+    if (editingRoute) {
+      updateRouteMut.mutate({ id: editingRoute.id, data: payload });
+    } else {
+      createRouteMut.mutate(payload);
+    }
+  };
+
+  const saveSite = async () => {
+    const values = await siteForm.validateFields();
+    if (editingSite) {
+      updateSiteMut.mutate({ id: editingSite.id, data: values });
+    } else {
+      createSiteMut.mutate(values);
+    }
+  };
+
+  // Init map
+  useEffect(() => {
+    if (!mapRef.current || mapInstance.current) return;
+
+    const map = L.map(mapRef.current, { zoomControl: true }).setView([30, 50], 3);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    markersLayer.current = L.layerGroup().addTo(map);
+    routesLayer.current = L.layerGroup().addTo(map);
+    mapInstance.current = map;
+
+    return () => {
+      map.remove();
+      mapInstance.current = null;
+      markersLayer.current = null;
+      routesLayer.current = null;
+    };
+  }, []);
+
+  // Map click for coordinate pick
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    const onClick = (e: L.LeafletMouseEvent) => {
+      if (!pickOnMap) return;
+      siteForm.setFieldsValue({
+        latitude: Math.round(e.latlng.lat * 1e6) / 1e6,
+        longitude: Math.round(e.latlng.lng * 1e6) / 1e6,
+      });
+      message.info(`Координаты: ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+    };
+
+    map.on('click', onClick);
+    return () => {
+      map.off('click', onClick);
+    };
+  }, [pickOnMap, siteForm]);
+
+  // Draw markers
+  useEffect(() => {
+    const layer = markersLayer.current;
+    const map = mapInstance.current;
+    if (!layer || !map) return;
+
+    layer.clearLayers();
+    for (const site of sites) {
+      const marker = L.marker([site.latitude, site.longitude], {
+        icon: makeSiteIcon(site, site.id === selectedSiteId),
+      });
+      marker.on('click', () => setSelectedSiteId(site.id));
+      marker.bindPopup(
+        `<strong>${site.name}</strong><br/>
+        ${SUPPLIER_SITE_TYPE_LABELS[site.siteType]}<br/>
+        ${site.supplier.companyName}${site.country ? ` · ${site.country}` : ''}`,
+      );
+      layer.addLayer(marker);
+    }
+
+    if (selectedSite) {
+      map.flyTo([selectedSite.latitude, selectedSite.longitude], 8, { duration: 0.6 });
+    }
+  }, [sites, selectedSiteId, selectedSite]);
+
+  // Draw routes
+  useEffect(() => {
+    const layer = routesLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    for (const route of routes) {
+      if (!visibleRouteIds.includes(route.id)) continue;
+      const latlngs = route.points.map((p) => [p.latitude, p.longitude] as [number, number]);
+      if (latlngs.length < 2) continue;
+      const polyline = L.polyline(latlngs, {
+        color: route.color ?? '#22609A',
+        weight: 3,
+        opacity: 0.85,
+        dashArray: '8 6',
+      });
+      polyline.bindPopup(`<strong>${route.name}</strong><br/>${latlngs.length} точек`);
+      layer.addLayer(polyline);
+    }
+  }, [routes, visibleRouteIds]);
+
+  // Auto-show all routes when loaded first time
+  useEffect(() => {
+    if (routes.length > 0 && visibleRouteIds.length === 0) {
+      setVisibleRouteIds(routes.map((r) => r.id));
+    }
+  }, [routes, visibleRouteIds.length]);
+
+  const openYandexRoute = (route: VedMapRoute) => {
+    const pts = route.points;
+    if (pts.length < 2) return;
+    const rtext = pts.map((p) => `${p.latitude},${p.longitude}`).join('~');
+    window.open(`https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`, '_blank');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 480 }}>
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          Карта ВЭД
+        </Typography.Title>
+        {filterSupplierId && (
+          <Tag closable onClose={() => navigate('/foreign-trade/map')}>
+            Фильтр по поставщику
+          </Tag>
+        )}
+        {canManage && (
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateSite}>
+              Точка
+            </Button>
+            <Button icon={<SaveOutlined />} onClick={openCreateRoute}>
+              Маршрут
+            </Button>
+          </>
+        )}
+      </Space>
+
+      <div style={{ display: 'flex', flex: 1, gap: 12, minHeight: 0 }}>
+        <Card
+          size="small"
+          style={{ width: 340, flexShrink: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}
+          bodyStyle={{ padding: 0, flex: 1, overflow: 'auto' }}
+        >
+          <Tabs
+            size="small"
+            style={{ padding: '0 8px' }}
+            items={[
+              {
+                key: 'sites',
+                label: `Точки (${sites.length})`,
+                children: (
+                  <List
+                    size="small"
+                    loading={sitesLoading}
+                    dataSource={sites}
+                    locale={{ emptyText: 'Нет точек на карте' }}
+                    renderItem={(site) => (
+                      <List.Item
+                        style={{
+                          cursor: 'pointer',
+                          background: site.id === selectedSiteId ? 'rgba(34,96,154,0.08)' : undefined,
+                          padding: '8px 12px',
+                        }}
+                        onClick={() => setSelectedSiteId(site.id)}
+                        actions={canManage ? [
+                          <Button key="e" type="text" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEditSite(site); }} />,
+                          <Button key="d" type="text" size="small" danger icon={<DeleteOutlined />} onClick={(e) => {
+                            e.stopPropagation();
+                            Modal.confirm({
+                              title: 'Удалить точку?',
+                              onOk: () => deleteSiteMut.mutate(site.id),
+                            });
+                          }} />,
+                        ] : undefined}
+                      >
+                        <List.Item.Meta
+                          title={(
+                            <Space size={4}>
+                              <Tag color={SITE_TYPE_COLORS[site.siteType]} style={{ margin: 0 }}>
+                                {SUPPLIER_SITE_TYPE_LABELS[site.siteType]}
+                              </Tag>
+                              <span>{site.name}</span>
+                            </Space>
+                          )}
+                          description={(
+                            <Link to={`/foreign-trade/suppliers/${site.supplierId}`} onClick={(e) => e.stopPropagation()}>
+                              {site.supplier.companyName}
+                            </Link>
+                          )}
+                        />
+                      </List.Item>
+                    )}
+                  />
+                ),
+              },
+              {
+                key: 'routes',
+                label: `Маршруты (${routes.length})`,
+                children: (
+                  <List
+                    size="small"
+                    dataSource={routes}
+                    locale={{ emptyText: 'Нет маршрутов' }}
+                    renderItem={(route) => (
+                      <List.Item
+                        style={{ padding: '8px 12px' }}
+                        actions={[
+                          <Checkbox
+                            key="v"
+                            checked={visibleRouteIds.includes(route.id)}
+                            onChange={(e) => {
+                              setVisibleRouteIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, route.id]
+                                  : prev.filter((id) => id !== route.id),
+                              );
+                            }}
+                          />,
+                          ...(canManage ? [
+                            <Button key="e" type="text" size="small" icon={<EditOutlined />} onClick={() => openEditRoute(route)} />,
+                            <Button key="d" type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
+                              Modal.confirm({
+                                title: 'Удалить маршрут?',
+                                onOk: () => deleteRouteMut.mutate(route.id),
+                              });
+                            }} />,
+                          ] : []),
+                        ]}
+                      >
+                        <List.Item.Meta
+                          title={(
+                            <Space>
+                              <span style={{
+                                display: 'inline-block', width: 10, height: 10,
+                                borderRadius: 2, background: route.color ?? '#22609A',
+                              }} />
+                              {route.name}
+                            </Space>
+                          )}
+                          description={`${route.points.length} точек`}
+                        />
+                        <Button type="link" size="small" icon={<EnvironmentOutlined />} onClick={() => openYandexRoute(route)}>
+                          Яндекс
+                        </Button>
+                      </List.Item>
+                    )}
+                  />
+                ),
+              },
+            ]}
+          />
+        </Card>
+
+        <Card
+          size="small"
+          style={{ flex: 1, minWidth: 0, position: 'relative' }}
+          bodyStyle={{ padding: 0, height: '100%' }}
+        >
+          <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: 400, borderRadius: 8 }} />
+          {selectedSite && (
+            <Card
+              size="small"
+              style={{
+                position: 'absolute', bottom: 12, left: 12, right: 12, maxWidth: 420, zIndex: 1000,
+              }}
+            >
+              <Space direction="vertical" size={4}>
+                <Typography.Text strong>{selectedSite.name}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {SUPPLIER_SITE_TYPE_LABELS[selectedSite.siteType]} · {selectedSite.supplier.companyName}
+                </Typography.Text>
+                {selectedSite.address && <Typography.Text>{selectedSite.address}</Typography.Text>}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {selectedSite.latitude.toFixed(5)}, {selectedSite.longitude.toFixed(5)}
+                </Typography.Text>
+              </Space>
+            </Card>
+          )}
+        </Card>
+      </div>
+
+      <Modal
+        title={editingSite ? 'Редактировать точку' : 'Новая точка на карте'}
+        open={siteModalOpen}
+        onCancel={() => { setSiteModalOpen(false); setPickOnMap(false); setEditingSite(null); }}
+        onOk={saveSite}
+        confirmLoading={createSiteMut.isPending || updateSiteMut.isPending}
+        okText="Сохранить"
+        width={520}
+      >
+        <Form form={siteForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item name="supplierId" label="Поставщик" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={supplierOptions} placeholder="Выберите поставщика" />
+          </Form.Item>
+          <Form.Item name="name" label="Название" rules={[{ required: true }]}>
+            <Input placeholder="Завод Шанхай №1" />
+          </Form.Item>
+          <Form.Item name="siteType" label="Тип">
+            <Select options={SUPPLIER_SITE_TYPES.map((t) => ({ value: t, label: SUPPLIER_SITE_TYPE_LABELS[t] }))} />
+          </Form.Item>
+          <Form.Item name="address" label="Адрес">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="country" label="Страна">
+            <Input />
+          </Form.Item>
+          <Space align="start" style={{ width: '100%' }} wrap>
+            <Form.Item name="latitude" label="Широта" rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
+              <Input type="number" step="any" />
+            </Form.Item>
+            <Form.Item name="longitude" label="Долгота" rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
+              <Input type="number" step="any" />
+            </Form.Item>
+          </Space>
+          {canManage && (
+            <Button
+              type={pickOnMap ? 'primary' : 'default'}
+              icon={<EnvironmentOutlined />}
+              onClick={() => setPickOnMap((v) => !v)}
+              block
+            >
+              {pickOnMap ? 'Кликните на карте…' : 'Указать на карте кликом'}
+            </Button>
+          )}
+          <Form.Item name="notes" label="Заметки" style={{ marginTop: 12 }}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingRoute ? 'Редактировать маршрут' : 'Новый маршрут'}
+        open={routeModalOpen}
+        onCancel={() => { setRouteModalOpen(false); setEditingRoute(null); setRoutePointIds([]); }}
+        onOk={saveRoute}
+        confirmLoading={createRouteMut.isPending || updateRouteMut.isPending}
+        okText="Сохранить"
+        width={520}
+      >
+        <Form form={routeForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item name="name" label="Название маршрута" rules={[{ required: true }]}>
+            <Input placeholder="Шанхай → порт Нинбо → Ташкент" />
+          </Form.Item>
+          <Form.Item name="supplierId" label="Поставщик (опционально)">
+            <Select allowClear showSearch optionFilterProp="label" options={supplierOptions} />
+          </Form.Item>
+          <Form.Item name="color" label="Цвет линии">
+            <ColorPicker showText format="hex" />
+          </Form.Item>
+          <Form.Item label={`Точки маршрута (${routePointIds.length}) — порядок сверху вниз`}>
+            <Select
+              mode="multiple"
+              placeholder="Выберите точки по порядку"
+              value={routePointIds}
+              onChange={setRoutePointIds}
+              options={sites.map((s) => ({
+                value: s.id,
+                label: `${s.name} (${s.supplier.companyName})`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="notes" label="Заметки">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}

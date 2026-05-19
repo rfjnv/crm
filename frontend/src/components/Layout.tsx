@@ -484,6 +484,11 @@ export default function Layout() {
           label: <Link to="/foreign-trade/suppliers">Поставщики</Link>,
         },
         {
+          key: '/foreign-trade/map',
+          icon: <GlobalOutlined />,
+          label: <Link to="/foreign-trade/map">Карта ВЭД</Link>,
+        },
+        {
           key: '/foreign-trade/import-orders',
           icon: <InboxOutlined />,
           label: <Link to="/foreign-trade/import-orders">Импорт-заказы</Link>,

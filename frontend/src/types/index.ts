@@ -1730,6 +1730,20 @@ export type ImportDocumentType =
   | 'SWIFT'
   | 'OTHER';
 
+export type SupplierSiteType = 'FACTORY' | 'WAREHOUSE' | 'PORT' | 'OFFICE' | 'OTHER';
+
+export const SUPPLIER_SITE_TYPE_LABELS: Record<SupplierSiteType, string> = {
+  FACTORY: 'Завод',
+  WAREHOUSE: 'Склад',
+  PORT: 'Порт',
+  OFFICE: 'Офис',
+  OTHER: 'Другое',
+};
+
+export const SUPPLIER_SITE_TYPES: SupplierSiteType[] = [
+  'FACTORY', 'WAREHOUSE', 'PORT', 'OFFICE', 'OTHER',
+];
+
 export interface Supplier {
   id: string;
   companyName: string;
@@ -1743,9 +1757,89 @@ export interface Supplier {
   bankSwift: string | null;
   iban: string | null;
   notes: string | null;
+  logoPath: string | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SupplierSiteSupplierSummary {
+  id: string;
+  companyName: string;
+  country: string | null;
+  logoPath: string | null;
+  isArchived: boolean;
+}
+
+export interface SupplierSite {
+  id: string;
+  supplierId: string;
+  name: string;
+  siteType: SupplierSiteType;
+  address: string | null;
+  country: string | null;
+  latitude: number;
+  longitude: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  supplier: SupplierSiteSupplierSummary;
+}
+
+export interface SupplierSitePayload {
+  supplierId: string;
+  name: string;
+  siteType?: SupplierSiteType;
+  address?: string | null;
+  country?: string | null;
+  latitude: number;
+  longitude: number;
+  notes?: string | null;
+}
+
+export interface VedMapRoutePoint {
+  id: string;
+  routeId: string;
+  siteId: string | null;
+  label: string | null;
+  latitude: number;
+  longitude: number;
+  sortOrder: number;
+  site?: {
+    id: string;
+    name: string;
+    siteType: SupplierSiteType;
+    supplierId: string;
+  } | null;
+}
+
+export interface VedMapRoute {
+  id: string;
+  name: string;
+  supplierId: string | null;
+  color: string | null;
+  notes: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  supplier: { id: string; companyName: string; logoPath: string | null } | null;
+  createdBy: { id: string; fullName: string };
+  points: VedMapRoutePoint[];
+}
+
+export interface VedMapRoutePointPayload {
+  siteId?: string | null;
+  label?: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+export interface VedMapRoutePayload {
+  name: string;
+  supplierId?: string | null;
+  color?: string | null;
+  notes?: string | null;
+  points: VedMapRoutePointPayload[];
 }
 
 export interface SupplierListItem extends Supplier {

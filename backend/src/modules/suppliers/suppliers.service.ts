@@ -1,8 +1,16 @@
+import path from 'path';
+import fs from 'fs';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
 import { CreateSupplierDto, UpdateSupplierDto } from './suppliers.dto';
+
+function toPublicLogoPath(absolutePath: string): string {
+  const normalized = absolutePath.replace(/\\/g, '/');
+  const idx = normalized.indexOf('uploads/');
+  return idx >= 0 ? normalized.slice(idx) : normalized;
+}
 
 export class SuppliersService {
   async findAll(params: { includeArchived?: boolean; search?: string }) {
@@ -146,6 +154,41 @@ export class SuppliersService {
       after: { isArchived: updated.isArchived },
       reason: updated.isArchived ? 'archive' : 'restore',
     });
+    return updated;
+  }
+
+  async updateLogo(id: string, filePath: string, user: AuthUser) {
+    const existing = await prisma.supplier.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'Поставщик не найден');
+
+    const logoPath = toPublicLogoPath(filePath);
+    const updated = await prisma.supplier.update({
+      where: { id },
+      data: { logoPath },
+    });
+
+    if (existing.logoPath && existing.logoPath !== logoPath) {
+      const oldFull = path.isAbsolute(existing.logoPath)
+        ? existing.logoPath
+        : path.join(process.cwd(), existing.logoPath);
+      if (fs.existsSync(oldFull)) {
+        try {
+          fs.unlinkSync(oldFull);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE',
+      entityType: 'supplier',
+      entityId: id,
+      after: { logoPath },
+      reason: 'logo_upload',
+    });
+
     return updated;
   }
 }

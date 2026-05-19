@@ -63,6 +63,7 @@ import ImportOrdersPage from './pages/ImportOrdersPage';
 import ImportOrderDetailPage from './pages/ImportOrderDetailPage';
 import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import VedProcessBoardPage from './pages/VedProcessBoardPage';
+import VedMapPage from './pages/VedMapPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
 import DepartmentReportPage from './pages/DepartmentReportPage';
 import ChangelogPage from './pages/ChangelogPage';
@@ -191,6 +192,7 @@ export default function App() {
                   <Route path="/foreign-trade/import-orders/:id" element={<ImportOrderDetailPage />} />
                   <Route path="/foreign-trade/exchange-rates" element={<ExchangeRatesHistoryPage />} />
                   <Route path="/foreign-trade/process-board" element={<VedProcessBoardPage />} />
+                  <Route path="/foreign-trade/map" element={<VedMapPage />} />
                 </Route>
               </Route>
             </Route>

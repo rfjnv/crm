@@ -1,8 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { Card, Descriptions, Table, Tag, Typography, Space, Empty, Skeleton } from 'antd';
+import {
+  Button, Card, Descriptions, Image, Table, Tag, Typography, Space, Empty, Skeleton, Upload, message,
+} from 'antd';
+import { EnvironmentOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { suppliersApi } from '../api/suppliers.api';
+import { uploadsUrl } from '../lib/uploadsUrl';
+import { useAuthStore } from '../store/authStore';
 import {
   IMPORT_ORDER_STATUS_COLORS,
   IMPORT_ORDER_STATUS_LABELS,
@@ -14,14 +19,33 @@ import {
 
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const canManage =
+    user?.role === 'SUPER_ADMIN'
+    || user?.role === 'ADMIN'
+    || (user?.permissions ?? []).includes('manage_suppliers');
+
   const { data: s, isLoading } = useQuery({
     queryKey: ['supplier-detail', id],
     queryFn: () => suppliersApi.getById(id!),
     enabled: !!id,
   });
 
+  const logoMut = useMutation({
+    mutationFn: (file: File) => suppliersApi.uploadLogo(id!, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['supplier-detail', id] });
+      qc.invalidateQueries({ queryKey: ['suppliers'] });
+      message.success('Логотип загружен');
+    },
+    onError: () => message.error('Не удалось загрузить логотип'),
+  });
+
   if (isLoading) return <Skeleton active />;
   if (!s) return <Empty description="Поставщик не найден" />;
+
+  const logoSrc = uploadsUrl(s.logoPath);
 
   const productColumns = [
     {
@@ -86,11 +110,38 @@ export default function SupplierDetailPage() {
   return (
     <div>
       <Typography.Title level={4} style={{ marginTop: 0 }}>
-        <Space size={8}>
+        <Space size={8} wrap>
+          {logoSrc && (
+            <Image
+              src={logoSrc}
+              alt=""
+              width={40}
+              height={40}
+              style={{ objectFit: 'contain', borderRadius: 6, border: '1px solid #f0f0f0' }}
+              preview={false}
+            />
+          )}
           {s.companyName}
           {s.isArchived && <Tag color="default">Архив</Tag>}
           <Tag color="blue">{s.currency as SupplierCurrency}</Tag>
           {s.incoterms && <Tag>{s.incoterms}</Tag>}
+          <Link to={`/foreign-trade/map?supplierId=${s.id}`}>
+            <Button size="small" icon={<EnvironmentOutlined />}>На карте</Button>
+          </Link>
+          {canManage && (
+            <Upload
+              showUploadList={false}
+              accept="image/*"
+              beforeUpload={(file) => {
+                logoMut.mutate(file);
+                return false;
+              }}
+            >
+              <Button size="small" icon={<UploadOutlined />} loading={logoMut.isPending}>
+                {logoSrc ? 'Сменить логотип' : 'Логотип'}
+              </Button>
+            </Upload>
+          )}
         </Space>
       </Typography.Title>
 

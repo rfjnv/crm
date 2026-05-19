@@ -42,4 +42,14 @@ export const suppliersApi = {
 
   toggleArchive: (id: string) =>
     client.post<Supplier>(`/suppliers/${id}/archive`).then((r) => r.data),
+
+  uploadLogo: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('logo', file);
+    return client
+      .post<Supplier>(`/suppliers/${id}/logo`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
 };

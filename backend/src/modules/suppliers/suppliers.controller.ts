@@ -34,6 +34,19 @@ export class SuppliersController {
     const result = await suppliersService.archive(req.params.id as string, getUser(req));
     res.json(result);
   }
+
+  async uploadLogo(req: Request, res: Response): Promise<void> {
+    if (!req.file) {
+      res.status(400).json({ error: 'Файл не предоставлен' });
+      return;
+    }
+    const supplier = await suppliersService.updateLogo(
+      req.params.id as string,
+      req.file.path,
+      getUser(req),
+    );
+    res.json(supplier);
+  }
 }
 
 export const suppliersController = new SuppliersController();
