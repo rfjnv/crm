@@ -4,12 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
   List, Table, message, InputNumber, Form, Modal, Popconfirm, DatePicker, Tabs,
-  Select, Alert, Radio, Tooltip, Collapse, Checkbox,
+  Select, Alert, Radio, Tooltip, Collapse, Checkbox, Popover,
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
   FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, FilePdfOutlined,
+  CalendarOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { adminApi } from '../api/admin.api';
@@ -85,6 +86,8 @@ export default function DealDetailPage() {
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
+  const [dueDatePopover, setDueDatePopover] = useState(false);
+  const [dueDateEdit, setDueDateEdit] = useState<import('dayjs').Dayjs | null>(null);
   const [itemForm] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [paymentRecordForm] = Form.useForm();
@@ -251,6 +254,17 @@ export default function DealDetailPage() {
     mutationFn: (data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT'; dueDate?: string | null; terms?: string | null }) => dealsApi.updatePayment(id!, data),
     onSuccess: () => { invalidate(); setPaymentModal(false); message.success('Оплата обновлена'); },
     onError: () => message.error('Ошибка обновления оплаты'),
+  });
+
+  const dueDateMut = useMutation({
+    mutationFn: (vars: { dueDate: string | null; paidAmount: number; paymentType: string }) =>
+      dealsApi.updatePayment(id!, {
+        paidAmount: vars.paidAmount,
+        paymentType: vars.paymentType as any,
+        dueDate: vars.dueDate,
+      }),
+    onSuccess: () => { invalidate(); setDueDatePopover(false); message.success('Срок оплаты обновлён'); },
+    onError: () => message.error('Ошибка обновления срока'),
   });
 
   const warehouseResponseMut = useMutation({
@@ -1006,6 +1020,82 @@ export default function DealDetailPage() {
               }
               bordered={false}
             >
+              {/* Срок оплаты — выделенный блок */}
+              {(() => {
+                const isOverdue = deal.dueDate && deal.paymentStatus !== 'PAID' && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
+                const isDueSoon = deal.dueDate && deal.paymentStatus !== 'PAID' && !isOverdue && dayjs(deal.dueDate).diff(dayjs(), 'day') <= 3;
+                const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
+                return (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 12px',
+                    marginBottom: 12,
+                    borderRadius: 8,
+                    background: isOverdue ? '#fff1f0' : isDueSoon ? '#fffbe6' : '#f6ffed',
+                    border: `1px solid ${isOverdue ? '#ffa39e' : isDueSoon ? '#ffe58f' : '#b7eb8f'}`,
+                  }}>
+                    <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? '#ff4d4f' : isDueSoon ? '#faad14' : '#52c41a' }} />
+                    <div style={{ flex: 1 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Срок оплаты</Typography.Text>
+                      {deal.dueDate ? (
+                        <Space size={6}>
+                          <Typography.Text strong style={{ color: isOverdue ? '#ff4d4f' : isDueSoon ? '#d48806' : undefined }}>
+                            {dayjs(deal.dueDate).format('DD.MM.YYYY')}
+                          </Typography.Text>
+                          {isOverdue && <Tag color="red" icon={<WarningOutlined />}>Просрочен</Tag>}
+                          {isDueSoon && <Tag color="orange">Скоро</Tag>}
+                          {deal.paymentStatus === 'PAID' && <Tag color="green">Оплачено</Tag>}
+                        </Space>
+                      ) : (
+                        <Typography.Text type="secondary" style={{ fontSize: 13 }}>Не указан</Typography.Text>
+                      )}
+                    </div>
+                    {canEditDueDate && (
+                      <Popover
+                        open={dueDatePopover}
+                        onOpenChange={(v) => {
+                          setDueDatePopover(v);
+                          if (v) setDueDateEdit(deal.dueDate ? dayjs(deal.dueDate) : null);
+                        }}
+                        trigger="click"
+                        title="Срок оплаты"
+                        content={
+                          <Space direction="vertical" size={8} style={{ width: 220 }}>
+                            <DatePicker
+                              style={{ width: '100%' }}
+                              value={dueDateEdit}
+                              onChange={setDueDateEdit}
+                              format="DD.MM.YYYY"
+                              allowClear
+                            />
+                            <Space>
+                              <Button
+                                size="small"
+                                type="primary"
+                                loading={dueDateMut.isPending}
+                                onClick={() => dueDateMut.mutate({
+                                  dueDate: dueDateEdit ? dueDateEdit.format('YYYY-MM-DD') : null,
+                                  paidAmount: Number(deal.paidAmount),
+                                  paymentType: deal.paymentType ?? 'FULL',
+                                })}
+                              >
+                                Сохранить
+                              </Button>
+                              <Button size="small" onClick={() => setDueDatePopover(false)}>Отмена</Button>
+                            </Space>
+                          </Space>
+                        }
+                      >
+                        <Button size="small" icon={<EditOutlined />} type="text">
+                          {deal.dueDate ? 'Изменить' : 'Указать'}
+                        </Button>
+                      </Popover>
+                    )}
+                  </div>
+                );
+              })()}
               <Descriptions column={1} size="small">
                 <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
                 <Descriptions.Item label="Статус">
@@ -1016,9 +1106,6 @@ export default function DealDetailPage() {
                   <Descriptions.Item label="Долг">
                     <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
                   </Descriptions.Item>
-                )}
-                {deal.dueDate && (
-                  <Descriptions.Item label="Срок">{dayjs(deal.dueDate).format('DD.MM.YYYY')}</Descriptions.Item>
                 )}
               </Descriptions>
 
@@ -1333,6 +1420,82 @@ export default function DealDetailPage() {
                       }
                       bordered={false}
                     >
+                      {/* Срок оплаты — выделенный блок (desktop tabs) */}
+                      {(() => {
+                        const isOverdue = deal.dueDate && deal.paymentStatus !== 'PAID' && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
+                        const isDueSoon = deal.dueDate && deal.paymentStatus !== 'PAID' && !isOverdue && dayjs(deal.dueDate).diff(dayjs(), 'day') <= 3;
+                        const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '10px 12px',
+                            marginBottom: 12,
+                            borderRadius: 8,
+                            background: isOverdue ? '#fff1f0' : isDueSoon ? '#fffbe6' : '#f6ffed',
+                            border: `1px solid ${isOverdue ? '#ffa39e' : isDueSoon ? '#ffe58f' : '#b7eb8f'}`,
+                          }}>
+                            <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? '#ff4d4f' : isDueSoon ? '#faad14' : '#52c41a' }} />
+                            <div style={{ flex: 1 }}>
+                              <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Срок оплаты</Typography.Text>
+                              {deal.dueDate ? (
+                                <Space size={6}>
+                                  <Typography.Text strong style={{ color: isOverdue ? '#ff4d4f' : isDueSoon ? '#d48806' : undefined }}>
+                                    {dayjs(deal.dueDate).format('DD.MM.YYYY')}
+                                  </Typography.Text>
+                                  {isOverdue && <Tag color="red" icon={<WarningOutlined />}>Просрочен</Tag>}
+                                  {isDueSoon && <Tag color="orange">Скоро</Tag>}
+                                  {deal.paymentStatus === 'PAID' && <Tag color="green">Оплачено</Tag>}
+                                </Space>
+                              ) : (
+                                <Typography.Text type="secondary" style={{ fontSize: 13 }}>Не указан</Typography.Text>
+                              )}
+                            </div>
+                            {canEditDueDate && (
+                              <Popover
+                                open={dueDatePopover}
+                                onOpenChange={(v) => {
+                                  setDueDatePopover(v);
+                                  if (v) setDueDateEdit(deal.dueDate ? dayjs(deal.dueDate) : null);
+                                }}
+                                trigger="click"
+                                title="Срок оплаты"
+                                content={
+                                  <Space direction="vertical" size={8} style={{ width: 220 }}>
+                                    <DatePicker
+                                      style={{ width: '100%' }}
+                                      value={dueDateEdit}
+                                      onChange={setDueDateEdit}
+                                      format="DD.MM.YYYY"
+                                      allowClear
+                                    />
+                                    <Space>
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        loading={dueDateMut.isPending}
+                                        onClick={() => dueDateMut.mutate({
+                                          dueDate: dueDateEdit ? dueDateEdit.format('YYYY-MM-DD') : null,
+                                          paidAmount: Number(deal.paidAmount),
+                                          paymentType: deal.paymentType ?? 'FULL',
+                                        })}
+                                      >
+                                        Сохранить
+                                      </Button>
+                                      <Button size="small" onClick={() => setDueDatePopover(false)}>Отмена</Button>
+                                    </Space>
+                                  </Space>
+                                }
+                              >
+                                <Button size="small" icon={<EditOutlined />} type="text">
+                                  {deal.dueDate ? 'Изменить' : 'Указать'}
+                                </Button>
+                              </Popover>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <Descriptions column={{ xs: 1, sm: 2 }} size="small">
                         <Descriptions.Item label="Тип">{deal.paymentType === 'FULL' ? 'Полная' : deal.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}</Descriptions.Item>
                         <Descriptions.Item label="Статус оплаты">
@@ -1343,9 +1506,6 @@ export default function DealDetailPage() {
                           <Descriptions.Item label="Долг">
                             <Typography.Text type="danger" strong>{formatUZS(Number(deal.amount) - Number(deal.paidAmount))}</Typography.Text>
                           </Descriptions.Item>
-                        )}
-                        {deal.dueDate && (
-                          <Descriptions.Item label="Срок оплаты">{dayjs(deal.dueDate).format('DD.MM.YYYY')}</Descriptions.Item>
                         )}
                         {deal.terms && (
                           <Descriptions.Item label="Условия" span={2}>{deal.terms}</Descriptions.Item>

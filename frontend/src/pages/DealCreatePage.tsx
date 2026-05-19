@@ -4,8 +4,9 @@ import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
-  message, Alert, Checkbox, Radio,
+  message, Alert, Checkbox, Radio, DatePicker,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
@@ -17,7 +18,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
-import { smartFilterOption, matchesSearch } from '../utils/translit';
+import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import { DILNOZA_PAYMENT_METHOD_OPTIONS, needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
@@ -135,6 +136,7 @@ export default function DealCreatePage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [dilnozaCreateRoute, setDilnozaCreateRoute] = useState<'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE'>('AUTO');
   const [isSessionDeal, setIsSessionDeal] = useState(false);
+  const [dueDate, setDueDate] = useState<Dayjs | null>(null);
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
@@ -320,6 +322,7 @@ export default function DealCreatePage() {
       clientId,
       comment: commentText || undefined,
       ...(isSessionDeal ? { isSessionDeal: true } : {}),
+      ...(dueDate ? { dueDate: dueDate.format('YYYY-MM-DD') } : {}),
       deliveryType,
       ...(deliveryType !== 'DELIVERY' ? {
         vehicleNumber: vehicleNumber.trim() || undefined,
@@ -494,7 +497,14 @@ export default function DealCreatePage() {
                   const c = clients?.find((x) => x.id === option?.value);
                   if (!c) return false;
                   return matchesSearch(
-                    [c.companyName, c.contactName || '', c.phone || '', c.manager?.fullName || ''].join(' '),
+                    buildClientSearchHaystack({
+                      companyName: c.companyName,
+                      contactName: c.contactName,
+                      phone: c.phone,
+                      email: c.email,
+                      inn: c.inn,
+                      managerName: c.manager?.fullName,
+                    }),
                     input,
                   );
                 }}
@@ -511,6 +521,19 @@ export default function DealCreatePage() {
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
               <DealStatusTag status={previewStatus} />
+            </div>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                Срок оплаты
+              </Typography.Text>
+              <DatePicker
+                style={{ width: '100%' }}
+                value={dueDate}
+                onChange={setDueDate}
+                format="DD.MM.YYYY"
+                placeholder="Выберите дату"
+                allowClear
+              />
             </div>
             <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }} className={isMobile ? 'deal-create-checkbox-row' : undefined}>
               <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>

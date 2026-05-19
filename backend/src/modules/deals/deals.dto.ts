@@ -34,6 +34,8 @@ export const createDealDto = z.object({
   createRoute: z.enum(['AUTO', 'STOCK_CONFIRMATION', 'WAREHOUSE_MANAGER', 'FINANCE']).optional(),
   /** Сессионная сделка: выручка в аналитике по дате позиций до закрытия */
   isSessionDeal: z.boolean().optional(),
+  /** Срок оплаты (YYYY-MM-DD) — сразу при создании сделки */
+  dueDate: z.string().nullable().optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),

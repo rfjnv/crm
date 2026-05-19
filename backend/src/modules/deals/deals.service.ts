@@ -482,6 +482,7 @@ export class DealsService {
           ...(dto.vehicleNumber ? { vehicleNumber: dto.vehicleNumber } : {}),
           ...(dto.vehicleType ? { vehicleType: dto.vehicleType } : {}),
           ...(dto.deliveryComment ? { deliveryComment: dto.deliveryComment } : {}),
+          ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}),
           ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
           ...(canUseDilnozaCreatePayment &&
             dto.paymentMethod &&

@@ -57,6 +57,8 @@ export const dealsApi = {
     /** Только Dilnoza: AUTO | STOCK_CONFIRMATION | WAREHOUSE_MANAGER | FINANCE */
     createRoute?: 'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE';
     isSessionDeal?: boolean;
+    /** Срок оплаты (YYYY-MM-DD) */
+    dueDate?: string;
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
