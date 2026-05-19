@@ -123,8 +123,10 @@ export default function ChangelogPage() {
       </div>
 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-        Здесь собраны последние изменения в CRM: новые функции, улучшения и исправления.
-        Список обновляется при выкладке новой версии.
+        Здесь собраны изменения в CRM: новые функции, улучшения и исправления.
+        После каждого деплоя сюда попадает то, что добавлено в{' '}
+        <Typography.Text code>frontend/src/data/changelog.ts</Typography.Text> перед пушем —
+        новая версия всегда сверху.
       </Typography.Paragraph>
 
       <Timeline items={timelineItems} />
