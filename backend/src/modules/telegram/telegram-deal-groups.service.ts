@@ -145,26 +145,21 @@ function appendSyncFootnote(html: string, footnote?: string): string {
   return `${html}\n\n✏️ <b>Изменение в CRM:</b> ${esc(truncateTelegramText(line, 400))}`;
 }
 
-/** Правка поста в группе; при ошибке — удаление в известных чатах и новая отправка. */
-async function editOrResendGroupHtml(
+/** Правка существующего поста (без удаления). Перебирает чаты, если пост мог оказаться в другой группе. */
+async function tryEditGroupHtmlInChats(
   primaryChatId: string,
   messageId: number,
   html: string,
   path: string,
   alternateChatIds: string[] = [],
-): Promise<{ chatId: string; messageId: number } | null> {
+): Promise<string | null> {
   const chats = [...new Set([primaryChatId, ...alternateChatIds].filter((c) => c?.trim()))];
   for (const chatId of chats) {
     if (await telegramService.editGroupHtmlMessage(chatId, messageId, html, path)) {
-      return { chatId, messageId };
+      return chatId;
     }
   }
-  for (const chatId of chats) {
-    await telegramService.deleteGroupMessage(chatId, messageId);
-  }
-  const newId = await telegramService.sendGroupHtmlMessage(primaryChatId, html, path);
-  if (newId == null) return null;
-  return { chatId: primaryChatId, messageId: newId };
+  return null;
 }
 
 function parseStoredTelegramMessageId(raw: string | null | undefined): number | null {
@@ -1140,26 +1135,16 @@ async function syncProductionBoardMessage(
     return;
   }
 
-  const result = await editOrResendGroupHtml(chatProd, mid, body, path, alternates);
-  if (!result) {
-    console.warn('[Telegram deal groups] sync: production edit/resend failed dealId=', dealId);
+  const editedChatId = await tryEditGroupHtmlInChats(chatProd, mid, body, path, alternates);
+  if (!editedChatId) {
+    console.warn('[Telegram deal groups] sync: production edit failed dealId=', dealId);
     return;
   }
 
-  const data: {
-    productionTelegramMessageId?: string;
-    productionTelegramMessageInRfsChat?: boolean;
-  } = {};
-  if (String(result.messageId) !== deal.productionTelegramMessageId) {
-    data.productionTelegramMessageId = String(result.messageId);
-  }
-  const inRfs = !!(rfsChat && result.chatId === rfsChat);
+  const inRfs = !!(rfsChat && editedChatId === rfsChat);
   if (inRfs !== deal.productionTelegramMessageInRfsChat) {
-    data.productionTelegramMessageInRfsChat = inRfs;
-  }
-  if (Object.keys(data).length > 0) {
     await prisma.deal
-      .update({ where: { id: dealId }, data })
+      .update({ where: { id: dealId }, data: { productionTelegramMessageInRfsChat: inRfs } })
       .catch((err) => console.error('[Telegram deal groups] sync: update production message meta:', err));
   }
 }
@@ -1319,11 +1304,22 @@ export async function sendProductionPaymentSubmitTelegram(dealId: string): Promi
   if (!chatId) return;
 
   const rfsId = config.telegram.groupReadyForShipmentChatId?.trim();
+  const prodId = config.telegram.groupProductionChatId?.trim();
+  const alternates = [prodId, rfsId].filter((c): c is string => !!c && c !== chatId);
 
   if (msgId != null) {
-    const ok = await telegramService.editGroupHtmlMessage(chatId, msgId, body, path);
-    if (ok) return;
-    await telegramService.deleteGroupMessage(chatId, msgId);
+    const editedChatId = await tryEditGroupHtmlInChats(chatId, msgId, body, path, alternates);
+    if (editedChatId) {
+      const inRfs = !!(rfsId && editedChatId === rfsId);
+      if (inRfs !== snap.productionTelegramMessageInRfsChat) {
+        await prisma.deal
+          .update({ where: { id: dealId }, data: { productionTelegramMessageInRfsChat: inRfs } })
+          .catch((err) => console.error('[Telegram deal groups] sendProductionPaymentSubmit RFS flag:', err));
+      }
+      return;
+    }
+    console.warn('[Telegram deal groups] sendProductionPaymentSubmit: edit failed dealId=', dealId);
+    return;
   }
 
   const newId = await telegramService.sendGroupHtmlMessage(chatId, body, path);
