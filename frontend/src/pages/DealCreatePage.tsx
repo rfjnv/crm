@@ -266,7 +266,7 @@ export default function DealCreatePage() {
         return 'WAITING_WAREHOUSE_MANAGER';
       }
       if (paymentMethod === 'TRANSFER' && transferInn.trim()) {
-        return 'WAITING_WAREHOUSE_MANAGER';
+        return 'WAITING_FINANCE';
       }
     }
     return 'IN_PROGRESS';
@@ -652,7 +652,7 @@ export default function DealCreatePage() {
             </Radio.Group>
             {!isDilnoza && (
               <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — тоже сразу. Без ИНН — сначала «В работе».
+                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — сразу к бухгалтеру. Без ИНН — сначала «В работе».
               </Typography.Text>
             )}
             {!isDilnoza && paymentMethod === 'TRANSFER' && (

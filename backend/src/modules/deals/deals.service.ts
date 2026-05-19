@@ -469,7 +469,7 @@ export class DealsService {
         initialStatus = 'WAITING_WAREHOUSE_MANAGER';
         allHaveQtyForTelegram = true;
       } else if (paymentMethodAtCreate === 'TRANSFER' && dto.transferInn?.trim()) {
-        initialStatus = 'WAITING_WAREHOUSE_MANAGER';
+        initialStatus = 'WAITING_FINANCE';
         allHaveQtyForTelegram = true;
       }
     }
