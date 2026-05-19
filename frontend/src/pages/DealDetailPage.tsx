@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
   List, Table, message, InputNumber, Form, Modal, Popconfirm, DatePicker, Tabs,
-  Select, Alert, Radio, Tooltip, Collapse, Checkbox, Popover,
+  Select, Alert, Radio, Tooltip, Collapse, Checkbox, Popover, theme,
 } from 'antd';
 import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
@@ -62,6 +62,7 @@ function formatQty(value: number | string | null | undefined): string {
 }
 
 export default function DealDetailPage() {
+  const { token: tk } = theme.useToken();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [comment, setComment] = useState('');
@@ -1000,15 +1001,15 @@ export default function DealDetailPage() {
                     padding: '10px 12px',
                     marginBottom: 12,
                     borderRadius: 8,
-                    background: isOverdue ? '#fff1f0' : isDueSoon ? '#fffbe6' : '#f6ffed',
-                    border: `1px solid ${isOverdue ? '#ffa39e' : isDueSoon ? '#ffe58f' : '#b7eb8f'}`,
+                    background: isOverdue ? tk.colorErrorBg : isDueSoon ? tk.colorWarningBg : tk.colorSuccessBg,
+                    border: `1px solid ${isOverdue ? tk.colorErrorBorder : isDueSoon ? tk.colorWarningBorder : tk.colorSuccessBorder}`,
                   }}>
-                    <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? '#ff4d4f' : isDueSoon ? '#faad14' : '#52c41a' }} />
+                    <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? tk.colorError : isDueSoon ? tk.colorWarning : tk.colorSuccess }} />
                     <div style={{ flex: 1 }}>
                       <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Срок оплаты</Typography.Text>
                       {deal.dueDate ? (
                         <Space size={6}>
-                          <Typography.Text strong style={{ color: isOverdue ? '#ff4d4f' : isDueSoon ? '#d48806' : undefined }}>
+                          <Typography.Text strong style={{ color: isOverdue ? tk.colorError : isDueSoon ? tk.colorWarning : undefined }}>
                             {dayjs(deal.dueDate).format('DD.MM.YYYY')}
                           </Typography.Text>
                           {isOverdue && <Tag color="red" icon={<WarningOutlined />}>Просрочен</Tag>}
@@ -1400,15 +1401,15 @@ export default function DealDetailPage() {
                             padding: '10px 12px',
                             marginBottom: 12,
                             borderRadius: 8,
-                            background: isOverdue ? '#fff1f0' : isDueSoon ? '#fffbe6' : '#f6ffed',
-                            border: `1px solid ${isOverdue ? '#ffa39e' : isDueSoon ? '#ffe58f' : '#b7eb8f'}`,
+                            background: isOverdue ? tk.colorErrorBg : isDueSoon ? tk.colorWarningBg : tk.colorSuccessBg,
+                            border: `1px solid ${isOverdue ? tk.colorErrorBorder : isDueSoon ? tk.colorWarningBorder : tk.colorSuccessBorder}`,
                           }}>
-                            <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? '#ff4d4f' : isDueSoon ? '#faad14' : '#52c41a' }} />
+                            <CalendarOutlined style={{ fontSize: 18, color: isOverdue ? tk.colorError : isDueSoon ? tk.colorWarning : tk.colorSuccess }} />
                             <div style={{ flex: 1 }}>
                               <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>Срок оплаты</Typography.Text>
                               {deal.dueDate ? (
                                 <Space size={6}>
-                                  <Typography.Text strong style={{ color: isOverdue ? '#ff4d4f' : isDueSoon ? '#d48806' : undefined }}>
+                                  <Typography.Text strong style={{ color: isOverdue ? tk.colorError : isDueSoon ? tk.colorWarning : undefined }}>
                                     {dayjs(deal.dueDate).format('DD.MM.YYYY')}
                                   </Typography.Text>
                                   {isOverdue && <Tag color="red" icon={<WarningOutlined />}>Просрочен</Tag>}
