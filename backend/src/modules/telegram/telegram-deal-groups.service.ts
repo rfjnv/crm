@@ -149,6 +149,10 @@ type DealRowWarehouseIntakeTg = {
   vehicleNumber?: string | null;
   vehicleType?: string | null;
   deliveryComment?: string | null;
+  paymentMethod?: PaymentMethod | null;
+  paymentType?: PaymentType | null;
+  paymentStatus?: PaymentStatus | null;
+  dueDate?: Date | null;
   client: { companyName: string; contactName: string | null };
   manager: { fullName: string };
   items: Array<{
@@ -157,6 +161,15 @@ type DealRowWarehouseIntakeTg = {
   }>;
   comments?: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
 };
+
+function buildPaymentShortLine(deal: DealRowWarehouseIntakeTg): string | null {
+  if (!deal.paymentMethod && deal.paymentType === 'FULL') return null;
+  const parts: string[] = [];
+  if (deal.paymentMethod) parts.push(paymentMethodLabel(deal.paymentMethod));
+  const debt = debtIndicatorLine(deal.paymentType ?? null, deal.paymentStatus ?? null, deal.dueDate ?? null);
+  if (debt) parts.push(debt);
+  return parts.length ? parts.join(' · ') : null;
+}
 
 function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string {
   const lines = deal.items.map((it) => {
@@ -170,6 +183,7 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
   });
 
   const commentsBlock = buildDealCommentsBlock(deal.comments ?? []);
+  const paymentLine = buildPaymentShortLine(deal);
 
   return [
     '📦 <b>Склад — новая сделка на проверку</b>',
@@ -177,6 +191,7 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
+    ...(paymentLine ? [`Оплата: <b>${paymentLine}</b>`] : []),
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
     `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
     `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
@@ -200,6 +215,7 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
   });
 
   const commentsBlock = buildDealCommentsBlock(deal.comments ?? []);
+  const paymentLine = buildPaymentShortLine(deal);
 
   return [
     '📥 <b>Сделка принята в CRM</b> <i>(ожидает склад — не финансы)</i>',
@@ -207,6 +223,7 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
+    ...(paymentLine ? [`Оплата: <b>${paymentLine}</b>`] : []),
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
     `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
     `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
@@ -255,6 +272,9 @@ function productionSyncHeaderForEdit(
     STOCK_CONFIRMED: '📋 <b>Производство — склад подтвердил</b>',
     WAITING_STOCK_CONFIRMATION: '📥 <b>Производство — ожидает склад</b>',
     WAITING_WAREHOUSE_MANAGER: '📋 <b>Производство — на обработке у завсклада</b>',
+    PENDING_ADMIN: '⏳ <b>Производство — ожидает подтверждения администратора</b>',
+    READY_FOR_LOADING: '🚚 <b>Производство — готово к погрузке</b>',
+    LOADING_ASSIGNED: '🚚 <b>Производство — погрузка назначена</b>',
     SHIPMENT_ON_HOLD: '⏸ <b>Отгрузка на паузе</b>',
     NEW: '📋 <b>Производство — новая заявка</b>',
     REOPENED: '📋 <b>Производство — сделка</b>',
@@ -269,6 +289,21 @@ function productionSyncHeaderForEdit(
     return { header: line, paymentMethodPending: status === 'WAITING_STOCK_CONFIRMATION' };
   }
   return { header: '📋 <b>Производство — сделка</b>', paymentMethodPending: false };
+}
+
+function debtIndicatorLine(
+  paymentType: PaymentType | string | null | undefined,
+  paymentStatus: PaymentStatus | string | null | undefined,
+  dueDate: Date | null | undefined,
+): string | null {
+  if (paymentType !== 'PARTIAL' && paymentType !== 'INSTALLMENT') return null;
+  if (paymentStatus === 'PAID') return null;
+  const dueLine = formatDueDateRu(dueDate ?? null);
+  const overdue = dueDate ? new Date() > dueDate : false;
+  if (overdue) {
+    return `🔴 <b>ДОЛГ ПРОСРОЧЕН</b>${dueLine ? ` (срок был ${esc(dueLine)})` : ''}`;
+  }
+  return `🟡 <b>В ДОЛГ</b>${dueLine ? ` — срок до ${esc(dueLine)}` : ''}`;
 }
 
 /** Данные сделки для одного сообщения в группу производства (позиции + оплата + комменты). */
@@ -357,9 +392,11 @@ export function buildProductionGroupHtml(
         : '— (не указан)';
 
   const rfsExtra = buildReadyForShipmentExtraLines(deal);
+  const debtLine = debtIndicatorLine(deal.paymentType, deal.paymentStatus, deal.dueDate);
 
   return [
     headerLine,
+    ...(debtLine ? ['', debtLine] : []),
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
