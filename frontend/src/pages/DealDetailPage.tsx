@@ -523,15 +523,6 @@ export default function DealDetailPage() {
   function renderWorkflowActions() {
     const actions: React.ReactNode[] = [];
 
-    // NEW → Send to warehouse (WAITING_STOCK_CONFIRMATION)
-    if (deal.status === 'NEW' && (isAdmin || role === 'MANAGER')) {
-      actions.push(
-        <Button key="to-warehouse" type="primary" icon={<ArrowRightOutlined />} loading={statusMut.isPending} onClick={() => statusMut.mutate('WAITING_STOCK_CONFIRMATION')}>
-          Отправить на склад
-        </Button>,
-      );
-    }
-
     // STOCK_CONFIRMED → Set quantities (opens modal, moves to IN_PROGRESS)
     if (deal.status === 'STOCK_CONFIRMED' && (isAdmin || role === 'MANAGER')) {
       actions.push(
@@ -582,16 +573,33 @@ export default function DealDetailPage() {
       );
     }
 
-    // IN_PROGRESS with quantities → Send to finance (payment method selection)
+    // IN_PROGRESS with quantities → Send to finance
     if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
-      actions.push(
-        <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
-          setSelectedPaymentMethod(null);
-          setSendToFinanceModal(true);
-        }}>
-          Отправить в финансы
-        </Button>,
-      );
+      const preMethod = deal.paymentMethod as string | null;
+      const isSimpleMethod = preMethod && preMethod !== 'TRANSFER' && preMethod !== 'INSTALLMENT';
+      if (isSimpleMethod) {
+        // Payment method already selected at creation — skip modal, just confirm
+        actions.push(
+          <Popconfirm
+            key="send-finance"
+            title={`Отправить к зав. склада? (${paymentMethodLabels[preMethod!] || preMethod})`}
+            onConfirm={() => sendToFinanceMut.mutate({ paymentMethod: preMethod as any })}
+          >
+            <Button type="primary" icon={<DollarOutlined />} loading={sendToFinanceMut.isPending}>
+              Отправить в финансы
+            </Button>
+          </Popconfirm>,
+        );
+      } else {
+        actions.push(
+          <Button key="send-finance" type="primary" icon={<DollarOutlined />} onClick={() => {
+            setSelectedPaymentMethod(preMethod as any || null);
+            setSendToFinanceModal(true);
+          }}>
+            Отправить в финансы
+          </Button>,
+        );
+      }
     }
 
     // IN_PROGRESS → Go back to warehouse
@@ -635,42 +643,6 @@ export default function DealDetailPage() {
         <Popconfirm key="back-to-ip-wf" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
           <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
             Назад в работу
-          </Button>
-        </Popconfirm>,
-      );
-    }
-
-    // ADMIN_APPROVED → Admin approves → READY_FOR_SHIPMENT
-    if (deal.status === 'ADMIN_APPROVED' && isAdmin) {
-      actions.push(
-        <Popconfirm key="admin-approve" title="Одобрить и отправить на отгрузку?" onConfirm={() => adminApproveMut.mutate()}>
-          <Button type="primary" icon={<CheckCircleOutlined />} loading={adminApproveMut.isPending}>
-            Одобрить (Админ)
-          </Button>
-        </Popconfirm>,
-        <Popconfirm key="back-to-ip-aa" title="Вернуть в работу?" onConfirm={() => statusMut.mutate('IN_PROGRESS')}>
-          <Button icon={<ArrowLeftOutlined />} loading={statusMut.isPending}>
-            Назад в работу
-          </Button>
-        </Popconfirm>,
-      );
-    }
-
-    // READY_FOR_SHIPMENT → Shipment (closes deal)
-    if (deal.status === 'READY_FOR_SHIPMENT' && (isAdmin || role === 'WAREHOUSE_MANAGER')) {
-      actions.push(
-        <Button key="ship" type="primary" icon={<CheckCircleOutlined />} onClick={() => setShipmentModal(true)}>
-          Оформить отгрузку
-        </Button>,
-      );
-    }
-
-    // SHIPMENT_ON_HOLD → Release hold
-    if (deal.status === 'SHIPMENT_ON_HOLD' && (isAdmin || role === 'WAREHOUSE_MANAGER')) {
-      actions.push(
-        <Popconfirm key="release-hold" title="Вернуть сделку в очередь на отгрузку?" onConfirm={() => releaseHoldMut.mutate()}>
-          <Button type="primary" icon={<ArrowRightOutlined />} loading={releaseHoldMut.isPending}>
-            Вернуть в очередь
           </Button>
         </Popconfirm>,
       );

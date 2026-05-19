@@ -396,8 +396,9 @@ export class DealsService {
       select: { login: true, fullName: true },
     });
     const canUseDilnozaCreatePayment = isDilnozaIdentity(creator?.login, creator?.fullName);
-    const paymentMethodAtCreate: PaymentMethod | null =
-      canUseDilnozaCreatePayment && dto.paymentMethod ? (dto.paymentMethod as PaymentMethod) : null;
+
+    // All users can set paymentMethod at creation; Dilnoza also gets transfer docs + createRoute
+    const paymentMethodAtCreate: PaymentMethod | null = dto.paymentMethod ? (dto.paymentMethod as PaymentMethod) : null;
 
     let dilnozaTerms: string | null = null;
     let dilnozaTransferInn: string | null = null;
@@ -456,6 +457,20 @@ export class DealsService {
           allHaveQtyForTelegram = true;
         }
       }
+    }
+
+    // Non-Dilnoza auto-route: if payment method is set + all items have qty+price,
+    // skip IN_PROGRESS and route directly (same as sendToFinance would do).
+    // TRANSFER/INSTALLMENT still go through sendToFinance (require INN/docs).
+    if (
+      !canUseDilnozaCreatePayment &&
+      paymentMethodAtCreate &&
+      allHaveQty &&
+      paymentMethodAtCreate !== 'TRANSFER' &&
+      paymentMethodAtCreate !== 'INSTALLMENT'
+    ) {
+      initialStatus = 'WAITING_WAREHOUSE_MANAGER';
+      allHaveQtyForTelegram = true;
     }
 
     const isSessionDeal = dto.isSessionDeal === true;

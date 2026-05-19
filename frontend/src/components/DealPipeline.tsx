@@ -3,7 +3,6 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { DealStatus } from '../types';
 
 const pipelineSteps: { status: DealStatus; label: string }[] = [
-  { status: 'NEW', label: 'Новая' },
   { status: 'WAITING_STOCK_CONFIRMATION', label: 'Склад' },
   { status: 'IN_PROGRESS', label: 'В работе' },
   { status: 'WAITING_FINANCE', label: 'Финансы' },
@@ -15,13 +14,15 @@ const pipelineSteps: { status: DealStatus; label: string }[] = [
   { status: 'CLOSED', label: 'Закрыта' },
 ];
 
-// Map intermediate statuses to their pipeline step position
+// Map intermediate/legacy statuses to their pipeline step position
 const statusToStep: Partial<Record<DealStatus, DealStatus>> = {
+  NEW: 'WAITING_STOCK_CONFIRMATION',
   STOCK_CONFIRMED: 'WAITING_STOCK_CONFIRMATION',
   FINANCE_APPROVED: 'WAITING_FINANCE',
   READY_FOR_DELIVERY: 'IN_DELIVERY',
   ADMIN_APPROVED: 'PENDING_ADMIN',
   READY_FOR_SHIPMENT: 'LOADING_ASSIGNED',
+  SHIPMENT_ON_HOLD: 'LOADING_ASSIGNED',
 };
 
 function MobilePipeline({ status }: { status: DealStatus }) {

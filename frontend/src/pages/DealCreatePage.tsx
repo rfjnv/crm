@@ -256,8 +256,13 @@ export default function DealCreatePage() {
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) return 'WAITING_STOCK_CONFIRMATION';
     const allHaveQty = validItems.every((i) => i.requestedQty && i.requestedQty > 0);
-    return allHaveQty ? 'IN_PROGRESS' : 'WAITING_STOCK_CONFIRMATION';
-  }, [draftItems, isDilnoza, dilnozaCreateRoute]);
+    if (!allHaveQty) return 'WAITING_STOCK_CONFIRMATION';
+    // Non-Dilnoza with simple payment method → auto-route to zav.sklada
+    if (!isDilnoza && paymentMethod && paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT') {
+      return 'WAITING_WAREHOUSE_MANAGER';
+    }
+    return 'IN_PROGRESS';
+  }, [draftItems, isDilnoza, dilnozaCreateRoute, paymentMethod]);
 
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
@@ -337,9 +342,9 @@ export default function DealCreatePage() {
         price: i.price || undefined,
         requestComment: i.requestComment || undefined,
       })),
+      paymentMethod,
       ...(isDilnoza
         ? {
-            paymentMethod,
             createRoute: dilnozaCreateRoute,
             ...(needsDilnozaTransferFields(paymentMethod)
               ? {
@@ -614,74 +619,84 @@ export default function DealCreatePage() {
             )}
           </div>
 
-          {isDilnoza && (
-            <div style={{ marginTop: 16 }} className="deal-create-payment-block">
-              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                Способ оплаты
+          <div style={{ marginTop: 16 }} className="deal-create-payment-block">
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              Способ оплаты
+            </Typography.Text>
+            <Radio.Group
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+              optionType="button"
+              buttonStyle="solid"
+              style={{ flexWrap: 'wrap' }}
+            >
+              <Radio.Button value="CASH">Наличные</Radio.Button>
+              <Radio.Button value="PAYME">Payme</Radio.Button>
+              <Radio.Button value="QR">QR</Radio.Button>
+              <Radio.Button value="CLICK">Click</Radio.Button>
+              <Radio.Button value="TERMINAL">Терминал</Radio.Button>
+              {isDilnoza && <Radio.Button value="TRANSFER">Перечисление</Radio.Button>}
+              {isDilnoza && <Radio.Button value="INSTALLMENT">Рассрочка</Radio.Button>}
+            </Radio.Group>
+            {!isDilnoza && (
+              <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+                Если все товары с количеством и ценой — сделка сразу перейдёт к зав. склада, без шага «Отправить в финансы»
               </Typography.Text>
-              <Select
-                style={{ width: '100%', maxWidth: 420 }}
-                value={paymentMethod}
-                onChange={(v) => setPaymentMethod(v as PaymentMethod)}
-                options={DILNOZA_PAYMENT_METHOD_OPTIONS}
-              />
-              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
-                Наличные, Payme, QR, Click, терминал — при необходимости укажите комментарий или номер операции.
-                Перечисление и рассрочка — ИНН и комплект документов для бухгалтерии.
-              </Typography.Paragraph>
-              {!needsDilnozaTransferFields(paymentMethod) && (
-                <div style={{ marginTop: 12 }}>
+            )}
+            {isDilnoza && !needsDilnozaTransferFields(paymentMethod) && (
+              <div style={{ marginTop: 12 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                  Комментарий / номер операции (необязательно)
+                </Typography.Text>
+                <Input.TextArea
+                  rows={2}
+                  placeholder="Например: ID транзакции, касса, уточнение по оплате…"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                />
+              </div>
+            )}
+            {isDilnoza && needsDilnozaTransferFields(paymentMethod) && (
+              <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    Комментарий / номер операции (необязательно)
+                    ИНН компании *
                   </Typography.Text>
-                  <Input.TextArea
-                    rows={2}
-                    placeholder="Например: ID транзакции, касса, уточнение по оплате…"
-                    value={paymentNote}
-                    onChange={(e) => setPaymentNote(e.target.value)}
+                  <Input
+                    placeholder="ИНН клиента"
+                    value={transferInn}
+                    onChange={(e) => setTransferInn(e.target.value)}
+                    maxLength={50}
                   />
                 </div>
-              )}
-              {needsDilnozaTransferFields(paymentMethod) && (
-                <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
-                  <div>
-                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                      ИНН компании *
-                    </Typography.Text>
-                    <Input
-                      placeholder="ИНН клиента"
-                      value={transferInn}
-                      onChange={(e) => setTransferInn(e.target.value)}
-                      maxLength={50}
-                    />
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                      Документы *
-                    </Typography.Text>
-                    <Checkbox.Group
-                      value={transferDocuments}
-                      onChange={(vals) => setTransferDocuments(vals as string[])}
-                      options={[
-                        { label: 'Договор', value: 'Договор' },
-                        { label: 'Спецификация', value: 'Спецификация' },
-                        { label: 'Счет', value: 'Счет' },
-                        { label: 'Счет-фактура', value: 'Счет-фактура' },
-                        { label: 'Накладная', value: 'Накладная' },
-                      ]}
-                    />
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                      Тип документа
-                    </Typography.Text>
-                    <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
-                      <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
-                      <Radio.Button value="ANNUAL">Годовой</Radio.Button>
-                    </Radio.Group>
-                  </div>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                    Документы *
+                  </Typography.Text>
+                  <Checkbox.Group
+                    value={transferDocuments}
+                    onChange={(vals) => setTransferDocuments(vals as string[])}
+                    options={[
+                      { label: 'Договор', value: 'Договор' },
+                      { label: 'Спецификация', value: 'Спецификация' },
+                      { label: 'Счет', value: 'Счет' },
+                      { label: 'Счет-фактура', value: 'Счет-фактура' },
+                      { label: 'Накладная', value: 'Накладная' },
+                    ]}
+                  />
                 </div>
-              )}
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                    Тип документа
+                  </Typography.Text>
+                  <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
+                    <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+                    <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+                  </Radio.Group>
+                </div>
+              </div>
+            )}
+            {isDilnoza && (
               <div style={{ marginTop: 16 }}>
                 <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                   Куда отправить сделку при сохранении
@@ -692,14 +707,14 @@ export default function DealCreatePage() {
                   style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
                   className={isMobile ? 'deal-create-route-group' : undefined}
                 >
-                  <Radio value="AUTO">Авто (как раньше: все позиции с кол-вом и ценой → в работу, иначе → подтверждение склада)</Radio>
+                  <Radio value="AUTO">Авто (все позиции с кол-вом и ценой → к зав. склада, иначе → склад)</Radio>
                   <Radio value="STOCK_CONFIRMATION">Сразу на подтверждение склада</Radio>
                   <Radio value="WAREHOUSE_MANAGER">Сразу к зав. склада (нужны количество и цена по всем позициям)</Radio>
                   <Radio value="FINANCE">Сразу к бухгалтеру (нужны количество и цена по всем позициям)</Radio>
                 </Radio.Group>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </Card>
 
         <Card
