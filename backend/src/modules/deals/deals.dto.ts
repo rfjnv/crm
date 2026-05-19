@@ -36,6 +36,8 @@ export const createDealDto = z.object({
   isSessionDeal: z.boolean().optional(),
   /** Срок оплаты (YYYY-MM-DD) — сразу при создании сделки */
   dueDate: z.string().nullable().optional(),
+  /** Тип оплаты — сразу при создании (для признака «в долг») */
+  paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   items: z.array(z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),

@@ -483,6 +483,7 @@ export class DealsService {
           ...(dto.vehicleType ? { vehicleType: dto.vehicleType } : {}),
           ...(dto.deliveryComment ? { deliveryComment: dto.deliveryComment } : {}),
           ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}),
+          ...(dto.paymentType ? { paymentType: dto.paymentType as any } : {}),
           ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
           ...(canUseDilnozaCreatePayment &&
             dto.paymentMethod &&

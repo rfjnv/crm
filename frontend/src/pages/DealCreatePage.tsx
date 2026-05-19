@@ -4,7 +4,7 @@ import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Typography, Space, Button, Select, Input, InputNumber,
-  message, Alert, Checkbox, Radio, DatePicker,
+  message, Alert, Checkbox, Radio, DatePicker, Switch, Tag,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
@@ -136,6 +136,8 @@ export default function DealCreatePage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [dilnozaCreateRoute, setDilnozaCreateRoute] = useState<'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE'>('AUTO');
   const [isSessionDeal, setIsSessionDeal] = useState(false);
+  const [isDebt, setIsDebt] = useState(false);
+  const [debtPaymentType, setDebtPaymentType] = useState<'PARTIAL' | 'INSTALLMENT'>('PARTIAL');
   const [dueDate, setDueDate] = useState<Dayjs | null>(null);
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
@@ -322,7 +324,7 @@ export default function DealCreatePage() {
       clientId,
       comment: commentText || undefined,
       ...(isSessionDeal ? { isSessionDeal: true } : {}),
-      ...(dueDate ? { dueDate: dueDate.format('YYYY-MM-DD') } : {}),
+      ...(isDebt ? { paymentType: debtPaymentType, ...(dueDate ? { dueDate: dueDate.format('YYYY-MM-DD') } : {}) } : {}),
       deliveryType,
       ...(deliveryType !== 'DELIVERY' ? {
         vehicleNumber: vehicleNumber.trim() || undefined,
@@ -522,18 +524,62 @@ export default function DealCreatePage() {
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
               <DealStatusTag status={previewStatus} />
             </div>
-            <div>
-              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                Срок оплаты
-              </Typography.Text>
-              <DatePicker
-                style={{ width: '100%' }}
-                value={dueDate}
-                onChange={setDueDate}
-                format="DD.MM.YYYY"
-                placeholder="Выберите дату"
-                allowClear
-              />
+            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                padding: '12px 16px',
+                borderRadius: 8,
+                background: isDebt ? '#fff1f0' : undefined,
+                border: isDebt ? '1px solid #ffa39e' : '1px dashed #d9d9d9',
+                transition: 'all 0.2s',
+              }}>
+                <Switch
+                  checked={isDebt}
+                  onChange={(v) => { setIsDebt(v); if (!v) { setDueDate(null); } }}
+                  style={{ marginTop: 2, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isDebt ? 12 : 0 }}>
+                    <Typography.Text strong style={{ color: isDebt ? '#cf1322' : undefined }}>
+                      В долг
+                    </Typography.Text>
+                    {isDebt && <Tag color="red" style={{ margin: 0 }}>Клиент платит позже</Tag>}
+                  </div>
+                  {isDebt && (
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
+                          Тип оплаты *
+                        </Typography.Text>
+                        <Select
+                          style={{ width: '100%' }}
+                          value={debtPaymentType}
+                          onChange={setDebtPaymentType}
+                          options={[
+                            { value: 'PARTIAL', label: 'Частичная оплата (есть аванс)' },
+                            { value: 'INSTALLMENT', label: 'Рассрочка (полностью в долг)' },
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
+                          Срок оплаты
+                        </Typography.Text>
+                        <DatePicker
+                          style={{ width: '100%' }}
+                          value={dueDate}
+                          onChange={setDueDate}
+                          format="DD.MM.YYYY"
+                          placeholder="Дата погашения долга"
+                          allowClear
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }} className={isMobile ? 'deal-create-checkbox-row' : undefined}>
               <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>

@@ -25,27 +25,47 @@ const kanbanStatuses: DealStatus[] = [
   'REJECTED', 'REOPENED',
 ];
 
+function DebtTag({ deal }: { deal: Deal }) {
+  const isDebt = deal.paymentType === 'PARTIAL' || deal.paymentType === 'INSTALLMENT';
+  if (!isDebt || deal.paymentStatus === 'PAID') return null;
+  const overdue = deal.dueDate && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
+  return (
+    <Tag
+      color={overdue ? 'red' : 'orange'}
+      style={{ fontSize: 11, padding: '0 6px', fontWeight: 700, marginRight: 0 }}
+    >
+      {overdue ? '🔴 ПРОСРОЧЕН' : '🟡 В ДОЛГ'}
+      {deal.dueDate && ` · ${dayjs(deal.dueDate).format('DD.MM')}`}
+    </Tag>
+  );
+}
+
 function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
   const cfg = statusConfig[deal.status];
   const { token } = theme.useToken();
+  const isDebt = deal.paymentType === 'PARTIAL' || deal.paymentType === 'INSTALLMENT';
+  const overdue = isDebt && deal.paymentStatus !== 'PAID' && deal.dueDate && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
   return (
     <Card
       size="small"
       hoverable
       bordered={false}
       style={{
-        borderLeft: `3px solid ${cfg.color === 'processing' ? token.colorPrimary : cfg.color}`,
+        borderLeft: `3px solid ${overdue ? '#ff4d4f' : isDebt && deal.paymentStatus !== 'PAID' ? '#faad14' : cfg.color === 'processing' ? token.colorPrimary : cfg.color}`,
         marginBottom: 8,
       }}
     >
       <Link to={`/deals/${deal.id}`} style={{ textDecoration: 'none' }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>{deal.title}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text>
-        <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
-          <Tag color={paymentStatusLabels[deal.paymentStatus]?.color} style={{ fontSize: 11, marginRight: 0 }}>
-            {paymentStatusLabels[deal.paymentStatus]?.label}
-          </Tag>
+          <Space size={4} wrap>
+            <DebtTag deal={deal} />
+            <Tag color={paymentStatusLabels[deal.paymentStatus]?.color} style={{ fontSize: 11, marginRight: 0 }}>
+              {paymentStatusLabels[deal.paymentStatus]?.label}
+            </Tag>
+          </Space>
         </div>
         <div style={{ marginTop: 6 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -140,10 +160,16 @@ export default function DealsPage() {
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
-      title: 'Оплата', dataIndex: 'paymentStatus', render: (s: PaymentStatus) => {
-        const cfg = paymentStatusLabels[s] || { color: 'default', label: s };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      }
+      title: 'Оплата',
+      key: 'payment',
+      render: (_: unknown, r: Deal) => (
+        <Space size={4} wrap>
+          <DebtTag deal={r} />
+          <Tag color={paymentStatusLabels[r.paymentStatus]?.color || 'default'}>
+            {paymentStatusLabels[r.paymentStatus]?.label || r.paymentStatus}
+          </Tag>
+        </Space>
+      ),
     },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },

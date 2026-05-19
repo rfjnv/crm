@@ -870,11 +870,23 @@ export default function DealDetailPage() {
     );
   }
 
+  const isDebtDeal = deal.paymentType === 'PARTIAL' || deal.paymentType === 'INSTALLMENT';
+  const debtOverdue = isDebtDeal && deal.paymentStatus !== 'PAID' && deal.dueDate && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
+
   return (
     <div>
       <Space align="center" wrap style={{ marginBottom: 16 }}>
         <BackButton fallback="/deals" />
         <Typography.Title level={4} style={{ margin: 0 }}>{deal.title}</Typography.Title>
+        {isDebtDeal && deal.paymentStatus !== 'PAID' && (
+          <Tag
+            color={debtOverdue ? 'red' : 'orange'}
+            style={{ fontSize: 13, padding: '2px 10px', fontWeight: 700, letterSpacing: 0.5 }}
+          >
+            {debtOverdue ? '🔴 ДОЛГ ПРОСРОЧЕН' : '🟡 В ДОЛГ'}
+            {deal.dueDate && ` · до ${dayjs(deal.dueDate).format('DD.MM')}`}
+          </Tag>
+        )}
       </Space>
 
       <Card bordered={false} style={{ marginBottom: 16 }}>

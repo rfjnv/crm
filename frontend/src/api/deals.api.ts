@@ -59,6 +59,8 @@ export const dealsApi = {
     isSessionDeal?: boolean;
     /** Срок оплаты (YYYY-MM-DD) */
     dueDate?: string;
+    /** Тип оплаты (для признака «в долг» при создании) */
+    paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
     items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
