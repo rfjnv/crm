@@ -27,6 +27,10 @@ import UsersPage from './pages/UsersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminInquiriesPage from './pages/AdminInquiriesPage';
+import AdminSiteContentPage from './pages/site-admin/AdminSiteContentPage';
+import AdminSiteProductsPage from './pages/site-admin/AdminSiteProductsPage';
+import AdminSiteServicesPage from './pages/site-admin/AdminSiteServicesPage';
+import AdminSiteBlogPage from './pages/site-admin/AdminSiteBlogPage';
 import TeamPage from './pages/TeamPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -119,8 +123,12 @@ export default function App() {
               <Route element={<PrivateRoute supabaseAuthOnly />}>
                 <Route element={<AdminLayout />}>
                   <Route path="/admin" element={<AdminDashboardPage />} />
-                  <Route path="/admin/users" element={<AdminUsersPage />} />
+                  <Route path="/admin/content" element={<AdminSiteContentPage />} />
+                  <Route path="/admin/products" element={<AdminSiteProductsPage />} />
+                  <Route path="/admin/services" element={<AdminSiteServicesPage />} />
+                  <Route path="/admin/blog" element={<AdminSiteBlogPage />} />
                   <Route path="/admin/inquiries" element={<AdminInquiriesPage />} />
+                  <Route path="/admin/users" element={<AdminUsersPage />} />
                 </Route>
               </Route>
               <Route element={<PrivateRoute crmStaffOnly />}>

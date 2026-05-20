@@ -5,16 +5,41 @@ import {
   DashboardOutlined,
   UserOutlined,
   LogoutOutlined,
+  GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
+  FileTextOutlined,
+  AppstoreOutlined,
+  ShoppingOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
+import { MARKETING_SITE_URL } from '../lib/marketingSite';
 import logo from '../assets/logo.png';
 
 const { Header, Sider, Content } = AntLayout;
+
+const menuItems: MenuProps['items'] = [
+  { key: '/admin', icon: <DashboardOutlined />, label: <Link to="/admin">Обзор</Link> },
+  { type: 'divider' },
+  { type: 'group', label: 'Сайт polygraph-business' },
+  { key: '/admin/content', icon: <FileTextOutlined />, label: <Link to="/admin/content">Тексты</Link> },
+  { key: '/admin/products', icon: <ShoppingOutlined />, label: <Link to="/admin/products">Продукция</Link> },
+  { key: '/admin/services', icon: <AppstoreOutlined />, label: <Link to="/admin/services">Услуги</Link> },
+  { key: '/admin/blog', icon: <ReadOutlined />, label: <Link to="/admin/blog">Блог</Link> },
+  { key: '/admin/inquiries', icon: <MessageOutlined />, label: <Link to="/admin/inquiries">Заявки</Link> },
+  { type: 'divider' },
+  { key: '/admin/users', icon: <UserOutlined />, label: <Link to="/admin/users">Пользователи</Link> },
+];
+
+function resolveSelectedKey(pathname: string): string {
+  const keys = ['/admin/users', '/admin/inquiries', '/admin/content', '/admin/products', '/admin/services', '/admin/blog'];
+  const hit = keys.find((k) => pathname.startsWith(k));
+  return hit ?? '/admin';
+}
 
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -36,37 +61,13 @@ export default function AdminLayout() {
     navigate('/login');
   };
 
-  const menuItems: MenuProps['items'] = [
-    {
-      key: '/admin',
-      icon: <DashboardOutlined />,
-      label: <Link to="/admin">Обзор</Link>,
-    },
-    {
-      key: '/admin/users',
-      icon: <UserOutlined />,
-      label: <Link to="/admin/users">Пользователи</Link>,
-    },
-    {
-      key: '/admin/inquiries',
-      icon: <MessageOutlined />,
-      label: <Link to="/admin/inquiries">Заявки</Link>,
-    },
-  ];
-
-  const selectedKey = (() => {
-    if (location.pathname.startsWith('/admin/users')) return '/admin/users';
-    if (location.pathname.startsWith('/admin/inquiries')) return '/admin/inquiries';
-    return '/admin';
-  })();
-
   return (
     <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)' }}>
       <Sider
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        width={220}
+        width={240}
         theme="dark"
         style={{ background: '#0f2744' }}
       >
@@ -78,11 +79,17 @@ export default function AdminLayout() {
           />
           {!collapsed && (
             <Typography.Text style={{ display: 'block', color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 8 }}>
-              Панель администратора
+              Админка сайта
             </Typography.Text>
           )}
         </div>
-        <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]} items={menuItems} style={{ background: 'transparent', border: 0 }} />
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[resolveSelectedKey(location.pathname)]}
+          items={menuItems}
+          style={{ background: 'transparent', border: 0 }}
+        />
       </Sider>
 
       <AntLayout>
@@ -104,9 +111,14 @@ export default function AdminLayout() {
             />
             <Typography.Text type="secondary">{user?.login || user?.fullName}</Typography.Text>
           </div>
-          <Button type="text" danger icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
-            Выйти
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button type="link" href={MARKETING_SITE_URL} target="_blank" rel="noreferrer" icon={<GlobalOutlined />}>
+              Открыть сайт
+            </Button>
+            <Button type="text" danger icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
+              Выйти
+            </Button>
+          </div>
         </Header>
 
         <Content style={{ margin: 20, minHeight: 280 }}>

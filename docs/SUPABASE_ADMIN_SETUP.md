@@ -1,27 +1,45 @@
-# Supabase — вход по email в CRM
+# Админка сайта Polygraph Business
 
-Любой пользователь из **Supabase Authentication** может войти в CRM через вкладку **Email** на странице логина. Настраивать роли в Supabase Dashboard **не нужно**.
+Сайт: **https://polygraph-business.onrender.com**
 
-## Переменные окружения
+Админ-панель в CRM: **https://www.polygraphbusinesscrm.app/admin** (вход → вкладка **Админ**)
 
-### Backend (`backend/.env` / Render → crm-backend)
+Оба используют один Supabase — изменения в CRM сразу на сайте.
+
+## Переменные backend
 
 ```env
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-### Frontend
+## Переменные frontend (опционально)
 
-Ключи подтягиваются с backend автоматически (`/api/supabase-auth/config`). Опционально можно задать `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` при сборке.
+```env
+VITE_MARKETING_SITE_URL=https://polygraph-business.onrender.com
+```
+
+Ключи Supabase можно не задавать на фронте — подтягиваются с backend.
+
+## Разделы в CRM `/admin`
+
+| Раздел | Что редактирует |
+|--------|-----------------|
+| Тексты | content (RU/UZ/EN) |
+| Продукция | products + фото |
+| Услуги | services |
+| Блог | blog_posts |
+| Заявки | inquiries |
+| Пользователи | Supabase Auth (email) |
 
 ## Вход
 
-1. CRM → `/login` → вкладка **Админ**
-2. Email и пароль из Supabase
-3. Откроется **панель администратора** (`/admin`) — не полный CRM
+1. `/login` → **Админ** → email + пароль Supabase
+2. Откроется `/admin` (не полный CRM)
 
-В панели: **Обзор**, **Пользователи**, ссылка на админку сайта (контент, блог, заявки).
+Сотрудники CRM: вкладка **Сотрудники**.
 
-Операционный CRM (сделки, склад…) — вкладка **Сотрудники**, отдельные логины Prisma.
+## SPA на Render (сайт)
+
+В репозитории Polygraph-Business добавлен `public/_redirects` — после деплоя сайта работают прямые ссылки вида `/admin` на домене сайта.
