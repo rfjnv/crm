@@ -1,14 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate';
-import { requireSupabaseSuperadmin } from '../../middleware/requireSupabaseSuperadmin';
+import { requireSupabaseAuth } from '../../middleware/requireSupabaseAuth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { supabaseAuthController } from './supabase-auth.controller';
-import {
-  createSupabaseUserDto,
-  supabaseExchangeDto,
-  updateSupabaseUserRoleDto,
-} from './supabase-auth.dto';
+import { createSupabaseUserDto, supabaseExchangeDto } from './supabase-auth.dto';
 
 const router = Router();
 
@@ -21,7 +17,7 @@ router.post(
 );
 
 router.use(authenticate);
-router.use(requireSupabaseSuperadmin);
+router.use(requireSupabaseAuth);
 
 router.get('/users', asyncHandler(supabaseAuthController.listUsers.bind(supabaseAuthController)));
 
@@ -29,12 +25,6 @@ router.post(
   '/users',
   validate(createSupabaseUserDto),
   asyncHandler(supabaseAuthController.createUser.bind(supabaseAuthController)),
-);
-
-router.patch(
-  '/users/:id',
-  validate(updateSupabaseUserRoleDto),
-  asyncHandler(supabaseAuthController.updateRole.bind(supabaseAuthController)),
 );
 
 router.delete(

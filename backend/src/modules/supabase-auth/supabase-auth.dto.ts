@@ -7,9 +7,4 @@ export const supabaseExchangeDto = z.object({
 export const createSupabaseUserDto = z.object({
   email: z.string().email('Некорректный email'),
   password: z.string().min(8, 'Пароль не менее 8 символов'),
-  role: z.enum(['admin', 'superadmin']),
-});
-
-export const updateSupabaseUserRoleDto = z.object({
-  role: z.enum(['admin', 'superadmin']),
 });

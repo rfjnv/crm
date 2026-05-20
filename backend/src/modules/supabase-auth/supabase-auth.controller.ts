@@ -45,13 +45,8 @@ export class SupabaseAuthController {
   }
 
   async createUser(req: Request, res: Response): Promise<void> {
-    const user = await supabaseAuthService.createUser(req.body.email, req.body.password, req.body.role);
+    const user = await supabaseAuthService.createUser(req.body.email, req.body.password);
     res.status(201).json(user);
-  }
-
-  async updateRole(req: Request, res: Response): Promise<void> {
-    const user = await supabaseAuthService.updateRole(req.params.id as string, req.body.role);
-    res.json(user);
   }
 
   async deleteUser(req: Request, res: Response): Promise<void> {

@@ -61,8 +61,7 @@ export class AuthController {
     const user = await authService.getMe(req.user!.userId);
     res.json({
       ...user,
-      ...(req.user?.supabaseRole && {
-        supabaseRole: req.user.supabaseRole,
+      ...(req.user?.supabaseUserId && {
         supabaseUserId: req.user.supabaseUserId,
         authSource: 'supabase' as const,
       }),

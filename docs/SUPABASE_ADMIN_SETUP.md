@@ -1,59 +1,27 @@
-# Supabase Admin — настройка CRM
+# Supabase — вход по email в CRM
 
-Роли **superadmin** и **admin** хранятся в Supabase Auth `user_metadata.role` и используются для входа во вкладке «Admin (email)» на странице логина CRM.
+Любой пользователь из **Supabase Authentication** может войти в CRM через вкладку **Email** на странице логина. Настраивать роли в Supabase Dashboard **не нужно**.
 
 ## Переменные окружения
 
-### Backend (`backend/.env`)
+### Backend (`backend/.env` / Render → crm-backend)
 
 ```env
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # только на сервере, не во фронтенд!
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
 
-### Frontend (`frontend/.env`)
+### Frontend
 
-```env
-VITE_SUPABASE_URL=https://xxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-```
+Ключи подтягиваются с backend автоматически (`/api/supabase-auth/config`). Опционально можно задать `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` при сборке.
 
-Ключи возьмите из того же проекта Supabase, что и у `Polygraph-Business` (Dashboard → Project Settings → API).
+## Вход
 
-## Первый Superadmin
+1. CRM → `/login` → вкладка **Email**
+2. Email и пароль из Supabase (те же, что для админки сайта Polygraph Business)
+3. После входа в меню **СИСТЕМА** → **Пользователи** (`/admin/users`) — список, создание и удаление аккаунтов
 
-1. Supabase → **Authentication** → **Users** → выберите пользователя (или **Add user**).
-2. **Edit user** → блок **User Metadata** (не App Metadata!) → Raw JSON:
+## Сотрудники CRM
 
-```json
-{
-  "role": "superadmin"
-}
-```
-
-3. **Save** → выйдите из CRM и войдите снова через **Admin (email)**.
-
-Допустимые значения `role`: `superadmin`, `admin` (регистр не важен: `SUPER_ADMIN` тоже сработает).
-
-**Частые ошибки:**
-- роль прописана в **App Metadata** вместо **User Metadata**;
-- опечатка в JSON или лишние кавычки;
-- вход до сохранения metadata — перелогиньтесь после Save.
-
-## Права
-
-| Роль (metadata) | CRM |
-|-----------------|-----|
-| `superadmin` | Полный доступ + раздел **Пользователи** (`/admin/users`) |
-| `admin` | Все рабочие разделы, без управления пользователями |
-
-## API (только superadmin, Bearer CRM JWT после exchange)
-
-- `POST /api/supabase-auth/exchange` — обмен Supabase access token на CRM JWT (публичный)
-- `GET /api/supabase-auth/users` — список
-- `POST /api/supabase-auth/users` — создать
-- `PATCH /api/supabase-auth/users/:id` — сменить роль
-- `DELETE /api/supabase-auth/users/:id` — удалить (нельзя удалить себя)
-
-Сотрудники с логином/паролем Prisma по-прежнему входят на вкладке **Сотрудники**.
+Вход по логину/паролю (вкладка **Сотрудники**) — как раньше, через Prisma. Это отдельные учётки для менеджеров, склада и т.д.

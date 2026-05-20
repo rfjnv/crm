@@ -23,7 +23,6 @@ import WarehousePage from './pages/WarehousePage';
 import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
-import SupabaseSuperadminRoute from './components/SupabaseSuperadminRoute';
 import TeamPage from './pages/TeamPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -137,10 +136,10 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/team" element={<TeamPage />} />
-                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} hideForSupabaseAdmin />}>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/users" element={<UsersPage />} />
                 </Route>
-                <Route element={<SupabaseSuperadminRoute />}>
+                <Route element={<PrivateRoute supabaseAuthOnly />}>
                   <Route path="/admin/users" element={<AdminUsersPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />

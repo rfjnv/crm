@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
-import { signAccessToken, signRefreshToken, verifyRefreshToken, type SupabaseAuthRole } from '../../lib/jwt';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib/jwt';
 import { comparePassword, hashToken } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -158,7 +158,7 @@ export class AuthService {
     role: string,
     permissions: string[],
     meta: SessionMeta,
-    supabase?: { supabaseRole: SupabaseAuthRole; supabaseUserId: string },
+    supabase?: { supabaseUserId: string },
     replacedBySessionId?: string,
   ): Promise<TokenPair> {
     const sessionId = randomUUID();
@@ -169,7 +169,6 @@ export class AuthService {
       permissions,
       sessionId,
       ...(supabase && {
-        supabaseRole: supabase.supabaseRole,
         supabaseUserId: supabase.supabaseUserId,
       }),
     });

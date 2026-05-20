@@ -7,35 +7,21 @@ import {
   Modal,
   Form,
   Input,
-  Select,
   Typography,
   message,
   Tag,
   Popconfirm,
-  Space,
   Card,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import { supabaseAuthApi, type SupabaseAuthRole, type SupabaseAuthUser } from '../api/supabaseAuth.api';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { supabaseAuthApi, type SupabaseAuthUser } from '../api/supabaseAuth.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
-
-const roleLabels: Record<SupabaseAuthRole, string> = {
-  superadmin: 'Superadmin',
-  admin: 'Admin',
-};
-
-const roleColors: Record<SupabaseAuthRole, string> = {
-  superadmin: 'red',
-  admin: 'gold',
-};
 
 export default function AdminUsersPage() {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
-  const [roleModal, setRoleModal] = useState<SupabaseAuthUser | null>(null);
   const [form] = Form.useForm();
-  const [roleForm] = Form.useForm();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
 
@@ -57,19 +43,6 @@ export default function AdminUsersPage() {
     },
   });
 
-  const updateRoleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: SupabaseAuthRole }) => supabaseAuthApi.updateRole(id, role),
-    onSuccess: () => {
-      message.success('Роль обновлена');
-      queryClient.invalidateQueries({ queryKey: ['supabase-auth-users'] });
-      setRoleModal(null);
-      roleForm.resetFields();
-    },
-    onError: (err: { response?: { data?: { error?: string } } }) => {
-      message.error(err.response?.data?.error || 'Ошибка обновления');
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: supabaseAuthApi.deleteUser,
     onSuccess: () => {
@@ -82,18 +55,7 @@ export default function AdminUsersPage() {
   });
 
   const columns = [
-    {
-      title: 'Email',
-      dataIndex: 'email',
-      key: 'email',
-    },
-    {
-      title: 'Роль',
-      dataIndex: 'role',
-      key: 'role',
-      render: (role: SupabaseAuthRole | null) =>
-        role ? <Tag color={roleColors[role]}>{roleLabels[role]}</Tag> : <Tag>—</Tag>,
-    },
+    { title: 'Email', dataIndex: 'email', key: 'email' },
     {
       title: 'Создан',
       dataIndex: 'createdAt',
@@ -112,28 +74,16 @@ export default function AdminUsersPage() {
       render: (_: unknown, row: SupabaseAuthUser) => {
         const isSelf = row.id === currentUser?.supabaseUserId;
         return (
-          <Space>
-            <Button
-              type="link"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setRoleModal(row);
-                roleForm.setFieldsValue({ role: row.role ?? 'admin' });
-              }}
-            >
-              Роль
+          <Popconfirm
+            title="Удалить пользователя?"
+            description={row.email}
+            onConfirm={() => deleteMutation.mutate(row.id)}
+            disabled={isSelf}
+          >
+            <Button type="link" danger icon={<DeleteOutlined />} disabled={isSelf}>
+              Удалить
             </Button>
-            <Popconfirm
-              title="Удалить пользователя?"
-              description={row.email}
-              onConfirm={() => deleteMutation.mutate(row.id)}
-              disabled={isSelf}
-            >
-              <Button type="link" danger icon={<DeleteOutlined />} disabled={isSelf}>
-                Удалить
-              </Button>
-            </Popconfirm>
-          </Space>
+          </Popconfirm>
         );
       },
     },
@@ -142,10 +92,10 @@ export default function AdminUsersPage() {
   return (
     <div>
       <Typography.Title level={3} style={{ marginTop: 0 }}>
-        Пользователи (Supabase Auth)
+        Пользователи
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        Учётные записи входа в CRM и админ-панель сайта. Роли задаются в user_metadata Supabase.
+        Учётные записи для входа по email (те же, что на сайте Polygraph Business). Создание и удаление — здесь, в CRM.
       </Typography.Paragraph>
 
       <Card>
@@ -160,7 +110,7 @@ export default function AdminUsersPage() {
           loading={isLoading}
           dataSource={users}
           columns={columns}
-          scroll={isMobile ? { x: 600 } : undefined}
+          scroll={isMobile ? { x: 480 } : undefined}
           pagination={{ pageSize: 20 }}
         />
       </Card>
@@ -176,55 +126,12 @@ export default function AdminUsersPage() {
         confirmLoading={createMutation.isPending}
         destroyOnHidden
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => createMutation.mutate(values)}
-          initialValues={{ role: 'admin' }}
-        >
+        <Form form={form} layout="vertical" onFinish={(values) => createMutation.mutate(values)}>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
             <Input autoComplete="off" />
           </Form.Item>
           <Form.Item name="password" label="Пароль" rules={[{ required: true, min: 8 }]}>
             <Input.Password autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item name="role" label="Роль" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'admin', label: 'Admin' },
-                { value: 'superadmin', label: 'Superadmin' },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        title={`Роль: ${roleModal?.email ?? ''}`}
-        open={!!roleModal}
-        onCancel={() => {
-          setRoleModal(null);
-          roleForm.resetFields();
-        }}
-        onOk={() => roleForm.submit()}
-        confirmLoading={updateRoleMutation.isPending}
-        destroyOnHidden
-      >
-        <Form
-          form={roleForm}
-          layout="vertical"
-          onFinish={(values) => {
-            if (!roleModal) return;
-            updateRoleMutation.mutate({ id: roleModal.id, role: values.role });
-          }}
-        >
-          <Form.Item name="role" label="Роль" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'admin', label: 'Admin' },
-                { value: 'superadmin', label: 'Superadmin' },
-              ]}
-            />
           </Form.Item>
         </Form>
       </Modal>

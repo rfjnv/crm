@@ -60,5 +60,3 @@ export function getSupabase(): SupabaseClient | null {
   }
   return client;
 }
-
-export type SupabaseAuthRole = 'superadmin' | 'admin';

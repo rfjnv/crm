@@ -49,7 +49,6 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
         role: row.role,
         permissions,
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
-        ...(payload.supabaseRole ? { supabaseRole: payload.supabaseRole } : {}),
         ...(payload.supabaseUserId ? { supabaseUserId: payload.supabaseUserId } : {}),
       };
       next();

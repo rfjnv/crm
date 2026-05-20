@@ -27,15 +27,3 @@ export function getSupabasePublic(): SupabaseClient {
   }
   return publicClient;
 }
-
-export type SupabaseAuthRole = 'superadmin' | 'admin';
-
-/** Нормализует role из user_metadata (допускает SUPER_ADMIN, Superadmin и т.п.). */
-export function parseSupabaseRole(metadata: Record<string, unknown> | undefined): SupabaseAuthRole | null {
-  const raw = metadata?.role;
-  if (typeof raw !== 'string') return null;
-  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (normalized === 'superadmin' || normalized === 'super_admin') return 'superadmin';
-  if (normalized === 'admin') return 'admin';
-  return null;
-}

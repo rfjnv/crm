@@ -117,7 +117,7 @@ export default function LoginPage() {
     },
     {
       key: 'admin',
-      label: 'Admin (email)',
+      label: 'Email',
       children: adminTabContent,
     },
   ];
