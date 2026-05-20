@@ -5,9 +5,9 @@ import {
   DashboardOutlined,
   UserOutlined,
   LogoutOutlined,
-  GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '../store/authStore';
@@ -15,8 +15,6 @@ import { authApi } from '../api/auth.api';
 import logo from '../assets/logo.png';
 
 const { Header, Sider, Content } = AntLayout;
-
-const SITE_ADMIN_URL = import.meta.env.VITE_MARKETING_SITE_ADMIN_URL || 'https://polygraph.uz/admin';
 
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -49,9 +47,18 @@ export default function AdminLayout() {
       icon: <UserOutlined />,
       label: <Link to="/admin/users">Пользователи</Link>,
     },
+    {
+      key: '/admin/inquiries',
+      icon: <MessageOutlined />,
+      label: <Link to="/admin/inquiries">Заявки</Link>,
+    },
   ];
 
-  const selectedKey = location.pathname.startsWith('/admin/users') ? '/admin/users' : '/admin';
+  const selectedKey = (() => {
+    if (location.pathname.startsWith('/admin/users')) return '/admin/users';
+    if (location.pathname.startsWith('/admin/inquiries')) return '/admin/inquiries';
+    return '/admin';
+  })();
 
   return (
     <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)' }}>
@@ -97,14 +104,9 @@ export default function AdminLayout() {
             />
             <Typography.Text type="secondary">{user?.login || user?.fullName}</Typography.Text>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button type="link" href={SITE_ADMIN_URL} target="_blank" rel="noreferrer" icon={<GlobalOutlined />}>
-              Админка сайта
-            </Button>
-            <Button type="text" danger icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
-              Выйти
-            </Button>
-          </div>
+          <Button type="text" danger icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
+            Выйти
+          </Button>
         </Header>
 
         <Content style={{ margin: 20, minHeight: 280 }}>

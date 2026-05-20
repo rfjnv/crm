@@ -26,6 +26,7 @@ import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminInquiriesPage from './pages/AdminInquiriesPage';
 import TeamPage from './pages/TeamPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -119,6 +120,7 @@ export default function App() {
                 <Route element={<AdminLayout />}>
                   <Route path="/admin" element={<AdminDashboardPage />} />
                   <Route path="/admin/users" element={<AdminUsersPage />} />
+                  <Route path="/admin/inquiries" element={<AdminInquiriesPage />} />
                 </Route>
               </Route>
               <Route element={<PrivateRoute crmStaffOnly />}>

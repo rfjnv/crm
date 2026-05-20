@@ -1,9 +1,7 @@
 import { Card, Col, Row, Typography, Button, Space } from 'antd';
-import { UserOutlined, GlobalOutlined, TeamOutlined } from '@ant-design/icons';
+import { UserOutlined, MessageOutlined, TeamOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-
-const SITE_ADMIN_URL = import.meta.env.VITE_MARKETING_SITE_ADMIN_URL || 'https://polygraph.uz/admin';
 
 export default function AdminDashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -14,7 +12,7 @@ export default function AdminDashboardPage() {
         Панель администратора
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        Здесь управление учётными записями входа по email. Операционный CRM (сделки, склад, клиенты) — для сотрудников через вкладку «Сотрудники» на странице входа.
+        Управление сайтом и учётными записями. Операционный CRM (сделки, склад) — вкладка «Сотрудники» на странице входа.
       </Typography.Paragraph>
 
       <Row gutter={[16, 16]}>
@@ -24,7 +22,7 @@ export default function AdminDashboardPage() {
               <UserOutlined style={{ fontSize: 28, color: '#22609A' }} />
               <Typography.Title level={5} style={{ margin: 0 }}>Пользователи</Typography.Title>
               <Typography.Text type="secondary">
-                Создание и удаление аккаунтов для входа по email (Supabase Auth).
+                Создание и удаление аккаунтов для входа по email.
               </Typography.Text>
               <Link to="/admin/users">
                 <Button type="primary">Открыть</Button>
@@ -36,14 +34,14 @@ export default function AdminDashboardPage() {
         <Col xs={24} md={12} lg={8}>
           <Card>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <GlobalOutlined style={{ fontSize: 28, color: '#22609A' }} />
-              <Typography.Title level={5} style={{ margin: 0 }}>Контент сайта</Typography.Title>
+              <MessageOutlined style={{ fontSize: 28, color: '#22609A' }} />
+              <Typography.Title level={5} style={{ margin: 0 }}>Заявки</Typography.Title>
               <Typography.Text type="secondary">
-                Тексты, продукция, услуги, блог и заявки — в админке маркетингового сайта.
+                Входящие обращения с формы на сайте.
               </Typography.Text>
-              <Button type="default" href={SITE_ADMIN_URL} target="_blank" rel="noreferrer">
-                Открыть админку сайта
-              </Button>
+              <Link to="/admin/inquiries">
+                <Button type="primary">Открыть</Button>
+              </Link>
             </Space>
           </Card>
         </Col>
@@ -54,10 +52,10 @@ export default function AdminDashboardPage() {
               <TeamOutlined style={{ fontSize: 28, color: '#22609A' }} />
               <Typography.Title level={5} style={{ margin: 0 }}>CRM для сотрудников</Typography.Title>
               <Typography.Text type="secondary">
-                Менеджеры и склад работают в полном CRM под своими логинами, не через эту панель.
+                Менеджеры и склад — отдельный вход «Сотрудники» на polygraphbusinesscrm.app
               </Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Вы вошли как: {user?.login}
+                Вы: {user?.login}
               </Typography.Text>
             </Space>
           </Card>
