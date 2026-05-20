@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Space, Typography, message } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import { getSupabase } from '../../lib/supabase';
+import CmsSchemaAlert from '../../components/site-admin/CmsSchemaAlert';
 import LocaleTabs from '../../components/site-admin/LocaleTabs';
+import { isMissingCmsTableError } from '../../site-admin/supabaseErrors';
 import { CONTENT_SECTIONS, SECTION_LABELS, type ContentSection } from '../../site-admin/contentSections';
 import type { ContentRow, SiteLocale } from '../../site-admin/types';
 
@@ -12,6 +14,7 @@ export default function AdminSiteContentPage() {
   const [rows, setRows] = useState<ContentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [schemaMissing, setSchemaMissing] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
@@ -24,8 +27,13 @@ export default function AdminSiteContentPage() {
       .eq('section', section)
       .order('key');
     setLoading(false);
-    if (error) message.error(error.message);
-    else setRows((data ?? []) as ContentRow[]);
+    if (error) {
+      if (isMissingCmsTableError(error)) setSchemaMissing(true);
+      else message.error(error.message);
+    } else {
+      setSchemaMissing(false);
+      setRows((data ?? []) as ContentRow[]);
+    }
   }, [locale, section]);
 
   useEffect(() => {
@@ -68,6 +76,7 @@ export default function AdminSiteContentPage() {
 
   return (
     <div>
+      {schemaMissing ? <CmsSchemaAlert /> : null}
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>Тексты сайта</Typography.Title>
         <LocaleTabs locale={locale} onChange={setLocale} />

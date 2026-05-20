@@ -1,4 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Typography, Button, Space } from 'antd';
+import { getSupabase } from '../lib/supabase';
+import CmsSchemaAlert from '../components/site-admin/CmsSchemaAlert';
+import { isMissingCmsTableError } from '../site-admin/supabaseErrors';
 import {
   UserOutlined,
   MessageOutlined,
@@ -24,8 +28,21 @@ const sections = [
 export default function AdminDashboardPage() {
   const user = useAuthStore((s) => s.user);
 
+  const { data: schemaOk } = useQuery({
+    queryKey: ['cms-schema-check'],
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return false;
+      const { error } = await sb.from('content').select('id').limit(1);
+      if (error && isMissingCmsTableError(error)) return false;
+      return true;
+    },
+    staleTime: 60_000,
+  });
+
   return (
     <div>
+      {schemaOk === false ? <CmsSchemaAlert /> : null}
       <Typography.Title level={3} style={{ marginTop: 0 }}>
         Панель администратора
       </Typography.Title>

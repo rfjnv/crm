@@ -6,6 +6,16 @@
 
 Оба используют один Supabase — изменения в CRM сразу на сайте.
 
+## Один раз: создать таблицы в Supabase
+
+Если видите ошибку **Could not find the table 'public.content'**:
+
+1. [Supabase Dashboard](https://supabase.com/dashboard) → ваш проект → **SQL** → **New query**
+2. Скопируйте и выполните весь файл **`docs/supabase-cms-schema.sql`** из репозитория CRM (Run)
+3. Подождите ~10 секунд и обновите админку в CRM
+
+Таблицы: `content`, `products`, `services`, `blog_posts`, `inquiries`, bucket `images`.
+
 ## Переменные backend
 
 ```env
