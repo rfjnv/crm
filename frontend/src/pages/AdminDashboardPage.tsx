@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Typography, Button, Space } from 'antd';
-import { getSupabase } from '../lib/supabase';
+import { siteCmsApi } from '../api/siteCms.api';
 import CmsSchemaAlert from '../components/site-admin/CmsSchemaAlert';
-import { isMissingCmsTableError } from '../site-admin/supabaseErrors';
 import {
   UserOutlined,
   MessageOutlined,
@@ -31,11 +30,12 @@ export default function AdminDashboardPage() {
   const { data: schemaOk } = useQuery({
     queryKey: ['cms-schema-check'],
     queryFn: async () => {
-      const sb = getSupabase();
-      if (!sb) return false;
-      const { error } = await sb.from('content').select('id').limit(1);
-      if (error && isMissingCmsTableError(error)) return false;
-      return true;
+      try {
+        await siteCmsApi.status();
+        return true;
+      } catch {
+        return false;
+      }
     },
     staleTime: 60_000,
   });

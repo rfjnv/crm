@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Space, Typography, message } from 'antd';
-import { SaveOutlined } from '@ant-design/icons';
-import { getSupabase } from '../../lib/supabase';
+import { Button, Card, Form, Input, Space, Typography, message, Modal } from 'antd';
+import { SaveOutlined, PlusOutlined } from '@ant-design/icons';
+import { siteCmsApi } from '../../api/siteCms.api';
 import CmsSchemaAlert from '../../components/site-admin/CmsSchemaAlert';
 import LocaleTabs from '../../components/site-admin/LocaleTabs';
-import { isMissingCmsTableError } from '../../site-admin/supabaseErrors';
 import { CONTENT_SECTIONS, SECTION_LABELS, type ContentSection } from '../../site-admin/contentSections';
 import type { ContentRow, SiteLocale } from '../../site-admin/types';
 
@@ -15,24 +14,21 @@ export default function AdminSiteContentPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [schemaMissing, setSchemaMissing] = useState(false);
+  const [addFieldOpen, setAddFieldOpen] = useState(false);
+  const [newKey, setNewKey] = useState('');
 
   const load = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('content')
-      .select('*')
-      .eq('locale', locale)
-      .eq('section', section)
-      .order('key');
-    setLoading(false);
-    if (error) {
-      if (isMissingCmsTableError(error)) setSchemaMissing(true);
-      else message.error(error.message);
-    } else {
+    try {
+      const data = await siteCmsApi.listContent(locale, section);
       setSchemaMissing(false);
-      setRows((data ?? []) as ContentRow[]);
+      setRows(data);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '';
+      if (msg.includes('Таблицы CMS') || msg.includes('schema cache')) setSchemaMissing(true);
+      else message.error(msg || 'Ошибка загрузки');
+    } finally {
+      setLoading(false);
     }
   }, [locale, section]);
 
@@ -53,25 +49,32 @@ export default function AdminSiteContentPage() {
   };
 
   const handleSave = async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setSaving(true);
-    const { error } = await supabase.from('content').upsert(
-      rows.map((r) => ({
+    try {
+      const data = await siteCmsApi.saveContent(
         locale,
         section,
-        key: r.key,
-        value: r.value,
-        updated_at: new Date().toISOString(),
-      })),
-      { onConflict: 'locale,section,key' },
-    );
-    setSaving(false);
-    if (error) message.error(error.message);
-    else {
+        rows.map((r) => ({ key: r.key, value: r.value })),
+      );
+      setRows(data);
       message.success('Сохранено');
-      void load();
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const addField = () => {
+    const key = newKey.trim();
+    if (!key) return;
+    if (rows.some((r) => r.key === key)) {
+      message.warning('Такой ключ уже есть');
+      return;
+    }
+    setRows((prev) => [...prev, { locale, section, key, value: '' }]);
+    setNewKey('');
+    setAddFieldOpen(false);
   };
 
   return (
@@ -95,10 +98,15 @@ export default function AdminSiteContentPage() {
           <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void handleSave()}>
             Сохранить секцию
           </Button>
+          <Button icon={<PlusOutlined />} onClick={() => setAddFieldOpen(true)}>
+            Добавить поле
+          </Button>
         </Space>
 
         {rows.length === 0 && !loading ? (
-          <Typography.Text type="secondary">Нет полей для этой секции. Добавьте записи в Supabase или заполните через старую админку сайта.</Typography.Text>
+          <Typography.Paragraph type="secondary">
+            В этой секции пока нет текстов. Нажмите «Добавить поле» (например ключ <code>title</code> или <code>subtitle</code>), введите значение и сохраните.
+          </Typography.Paragraph>
         ) : (
           <Form layout="vertical">
             {rows.map((row) => {
@@ -116,6 +124,23 @@ export default function AdminSiteContentPage() {
           </Form>
         )}
       </Card>
+
+      <Modal
+        title="Новое поле"
+        open={addFieldOpen}
+        onOk={addField}
+        onCancel={() => {
+          setAddFieldOpen(false);
+          setNewKey('');
+        }}
+        okText="Добавить"
+      >
+        <Form layout="vertical">
+          <Form.Item label="Ключ (латиница, например title или menu.about)">
+            <Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="title" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -1,46 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Table, Typography } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getSupabase } from '../lib/supabase';
+import { Table, Button, Typography, Card } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { siteCmsApi } from '../api/siteCms.api';
 import { useIsMobile } from '../hooks/useIsMobile';
-
-type InquiryRow = {
-  id: string;
-  name: string;
-  company: string | null;
-  phone: string | null;
-  email: string | null;
-  request_type: string;
-  quantity: string | null;
-  details: string;
-  created_at: string;
-};
 
 export default function AdminInquiriesPage() {
   const isMobile = useIsMobile();
-  const [rows, setRows] = useState<InquiryRow[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('inquiries')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (error) {
-      console.error(error);
-    }
-    setRows((data ?? []) as InquiryRow[]);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: users = [], isLoading, refetch } = useQuery({
+    queryKey: ['site-cms-inquiries'],
+    queryFn: siteCmsApi.listInquiries,
+  });
 
   const columns = [
     {
@@ -53,7 +24,7 @@ export default function AdminInquiriesPage() {
     {
       title: 'Имя',
       key: 'name',
-      render: (_: unknown, row: InquiryRow) => (
+      render: (_: unknown, row: { name: string; company: string | null }) => (
         <>
           <div>{row.name}</div>
           {row.company ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.company}</Typography.Text> : null}
@@ -63,7 +34,7 @@ export default function AdminInquiriesPage() {
     {
       title: 'Контакт',
       key: 'contact',
-      render: (_: unknown, row: InquiryRow) => (
+      render: (_: unknown, row: { phone: string | null; email: string | null }) => (
         <>
           {row.phone && <div>{row.phone}</div>}
           {row.email && <div>{row.email}</div>}
@@ -73,7 +44,7 @@ export default function AdminInquiriesPage() {
     {
       title: 'Категория',
       key: 'request_type',
-      render: (_: unknown, row: InquiryRow) => (
+      render: (_: unknown, row: { request_type: string; quantity: string | null }) => (
         <>
           <div>{row.request_type}</div>
           {row.quantity ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.quantity}</Typography.Text> : null}
@@ -93,17 +64,17 @@ export default function AdminInquiriesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <Typography.Title level={3} style={{ marginTop: 0 }}>Заявки с сайта</Typography.Title>
-          <Typography.Text type="secondary">Обращения с формы контактов на маркетинговом сайте</Typography.Text>
+          <Typography.Text type="secondary">Обращения с формы контактов</Typography.Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>
+        <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isLoading}>
           Обновить
         </Button>
       </div>
       <Card>
         <Table
           rowKey="id"
-          loading={loading}
-          dataSource={rows}
+          loading={isLoading}
+          dataSource={users}
           columns={columns}
           scroll={isMobile ? { x: 800 } : undefined}
           pagination={{ pageSize: 20 }}

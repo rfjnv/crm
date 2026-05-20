@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Space, Typography, message, Popconfirm } from 'antd';
 import { PlusOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
-import { getSupabase } from '../../lib/supabase';
+import { siteCmsApi } from '../../api/siteCms.api';
 import LocaleTabs from '../../components/site-admin/LocaleTabs';
 import type { ServiceRow, SiteLocale } from '../../site-admin/types';
 
@@ -14,12 +14,14 @@ export default function AdminSiteServicesPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setLoading(true);
-    const { data } = await supabase.from('services').select('*').eq('locale', locale).order('sort_order');
-    setItems((data ?? []) as ServiceRow[]);
-    setLoading(false);
+    try {
+      setItems(await siteCmsApi.listServices(locale));
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка загрузки');
+    } finally {
+      setLoading(false);
+    }
   }, [locale]);
 
   useEffect(() => {
@@ -38,46 +40,25 @@ export default function AdminSiteServicesPage() {
   };
 
   const removeItem = async (item: EditableService) => {
-    const supabase = getSupabase();
-    if (supabase && !item._isNew) await supabase.from('services').delete().eq('id', item.id);
-    setItems((prev) => prev.filter((p) => p.id !== item.id));
-    message.success('Удалено');
+    try {
+      if (!item._isNew) await siteCmsApi.deleteService(item.id);
+      setItems((prev) => prev.filter((p) => p.id !== item.id));
+      message.success('Удалено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    }
   };
 
   const saveAll = async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setSaving(true);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      const payload = {
-        locale,
-        name: item.name,
-        description: item.description,
-        sort_order: i,
-        updated_at: new Date().toISOString(),
-      };
-      if (item._isNew) {
-        const { data, error } = await supabase.from('services').insert(payload).select().single();
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-        item.id = (data as ServiceRow).id;
-        delete item._isNew;
-      } else {
-        const { error } = await supabase.from('services').update(payload).eq('id', item.id);
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-      }
+    try {
+      setItems(await siteCmsApi.saveServices(locale, items));
+      message.success('Сохранено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    message.success('Сохранено');
-    void load();
   };
 
   return (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Upload, Image, Typography, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
-import { uploadSiteImage } from '../../site-admin/storage';
+import { siteCmsApi } from '../../api/siteCms.api';
 
 type Props = {
   currentUrl: string | null;
@@ -26,12 +26,15 @@ export default function SiteImageUpload({ currentUrl, folder, onUploaded }: Prop
         accept="image/*"
         beforeUpload={(file) => {
           setLoading(true);
-          uploadSiteImage(file, folder)
+          siteCmsApi
+            .uploadImage(file, folder)
             .then((url) => {
               onUploaded(url);
               message.success('Загружено');
             })
-            .catch((e: Error) => message.error(e.message))
+            .catch((err: { response?: { data?: { error?: string } } }) =>
+              message.error(err.response?.data?.error || 'Ошибка загрузки'),
+            )
             .finally(() => setLoading(false));
           return false;
         }}

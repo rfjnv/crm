@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Space, Typography, message, Popconfirm } from 'antd';
 import { PlusOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
-import { getSupabase } from '../../lib/supabase';
+import { siteCmsApi } from '../../api/siteCms.api';
 import LocaleTabs from '../../components/site-admin/LocaleTabs';
 import SiteImageUpload from '../../components/site-admin/SiteImageUpload';
 import type { ProductRow, SiteLocale } from '../../site-admin/types';
@@ -15,12 +15,14 @@ export default function AdminSiteProductsPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setLoading(true);
-    const { data } = await supabase.from('products').select('*').eq('locale', locale).order('sort_order');
-    setItems((data ?? []) as ProductRow[]);
-    setLoading(false);
+    try {
+      setItems(await siteCmsApi.listProducts(locale));
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка загрузки');
+    } finally {
+      setLoading(false);
+    }
   }, [locale]);
 
   useEffect(() => {
@@ -30,15 +32,7 @@ export default function AdminSiteProductsPage() {
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      {
-        id: `new-${Date.now()}`,
-        locale,
-        name: '',
-        category: '',
-        image_url: null,
-        sort_order: prev.length,
-        _isNew: true,
-      },
+      { id: `new-${Date.now()}`, locale, name: '', category: '', image_url: null, sort_order: prev.length, _isNew: true },
     ]);
   };
 
@@ -47,47 +41,25 @@ export default function AdminSiteProductsPage() {
   };
 
   const removeItem = async (item: EditableProduct) => {
-    const supabase = getSupabase();
-    if (supabase && !item._isNew) await supabase.from('products').delete().eq('id', item.id);
-    setItems((prev) => prev.filter((p) => p.id !== item.id));
-    message.success('Удалено');
+    try {
+      if (!item._isNew) await siteCmsApi.deleteProduct(item.id);
+      setItems((prev) => prev.filter((p) => p.id !== item.id));
+      message.success('Удалено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    }
   };
 
   const saveAll = async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setSaving(true);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      const payload = {
-        locale,
-        name: item.name,
-        category: item.category,
-        image_url: item.image_url,
-        sort_order: i,
-        updated_at: new Date().toISOString(),
-      };
-      if (item._isNew) {
-        const { data, error } = await supabase.from('products').insert(payload).select().single();
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-        item.id = (data as ProductRow).id;
-        delete item._isNew;
-      } else {
-        const { error } = await supabase.from('products').update(payload).eq('id', item.id);
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-      }
+    try {
+      setItems(await siteCmsApi.saveProducts(locale, items));
+      message.success('Сохранено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    message.success('Сохранено');
-    void load();
   };
 
   return (

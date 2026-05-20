@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Space, Typography, message, Popconfirm } from 'antd';
 import { PlusOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
-import { getSupabase } from '../../lib/supabase';
+import { siteCmsApi } from '../../api/siteCms.api';
 import LocaleTabs from '../../components/site-admin/LocaleTabs';
 import SiteImageUpload from '../../components/site-admin/SiteImageUpload';
 import { slugify } from '../../site-admin/contentSections';
@@ -16,12 +16,14 @@ export default function AdminSiteBlogPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setLoading(true);
-    const { data } = await supabase.from('blog_posts').select('*').eq('locale', locale).order('sort_order');
-    setPosts((data ?? []) as BlogPostRow[]);
-    setLoading(false);
+    try {
+      setPosts(await siteCmsApi.listBlog(locale));
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка загрузки');
+    } finally {
+      setLoading(false);
+    }
   }, [locale]);
 
   useEffect(() => {
@@ -60,53 +62,25 @@ export default function AdminSiteBlogPage() {
   };
 
   const removePost = async (post: EditablePost) => {
-    const supabase = getSupabase();
-    if (supabase && !post._isNew) await supabase.from('blog_posts').delete().eq('id', post.id);
-    setPosts((prev) => prev.filter((p) => p.id !== post.id));
-    message.success('Удалено');
+    try {
+      if (!post._isNew) await siteCmsApi.deleteBlogPost(post.id);
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
+      message.success('Удалено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
+    }
   };
 
   const saveAll = async () => {
-    const supabase = getSupabase();
-    if (!supabase) return;
     setSaving(true);
-    for (let i = 0; i < posts.length; i++) {
-      const post = posts[i]!;
-      const slug = post.slug.trim() || slugify(post.title);
-      const payload = {
-        locale,
-        title: post.title,
-        slug,
-        body: post.body,
-        excerpt: post.excerpt,
-        category: post.category,
-        post_date: post.post_date,
-        cover_url: post.cover_url,
-        published_at: post.published_at ?? new Date().toISOString(),
-        sort_order: i,
-        updated_at: new Date().toISOString(),
-      };
-      if (post._isNew) {
-        const { data, error } = await supabase.from('blog_posts').insert(payload).select().single();
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-        post.id = (data as BlogPostRow).id;
-        delete post._isNew;
-      } else {
-        const { error } = await supabase.from('blog_posts').update(payload).eq('id', post.id);
-        if (error) {
-          message.error(error.message);
-          setSaving(false);
-          return;
-        }
-      }
+    try {
+      setPosts(await siteCmsApi.saveBlog(locale, posts));
+      message.success('Сохранено');
+    } catch (err: unknown) {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    message.success('Сохранено');
-    void load();
   };
 
   return (
