@@ -58,7 +58,7 @@ export default function LoginPage() {
 
       const exchanged = await supabaseAuthApi.exchange(data.session.access_token);
       setAuth(exchanged.user, exchanged.accessToken, exchanged.refreshToken);
-      navigate('/dashboard');
+      navigate('/admin');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка входа';
       message.error(msg);
@@ -117,7 +117,7 @@ export default function LoginPage() {
     },
     {
       key: 'admin',
-      label: 'Email',
+      label: 'Админ',
       children: adminTabContent,
     },
   ];
@@ -133,7 +133,7 @@ export default function LoginPage() {
             CRM System
           </Typography.Title>
           <Typography.Text type="secondary" style={{ display: 'block', textAlign: 'center' }}>
-            Вход в систему
+            Сотрудники — логин CRM · Админ — email (панель управления)
           </Typography.Text>
           <Tabs items={tabItems} centered />
         </Space>

@@ -199,7 +199,6 @@ export default function Layout() {
   const role = user?.role as UserRole | undefined;
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
-  const canManageEmailUsers = user?.authSource === 'supabase';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
   const canViewClients = hasPermission('view_all_clients');
 
@@ -617,15 +616,6 @@ export default function Layout() {
             key: '/users',
             icon: <UserOutlined />,
             label: <Link to="/users">Сотрудники CRM</Link>,
-          },
-        ]
-      : []),
-    ...(canManageEmailUsers
-      ? [
-          {
-            key: '/admin/users',
-            icon: <UserOutlined />,
-            label: <Link to="/admin/users">Пользователи</Link>,
           },
         ]
       : []),

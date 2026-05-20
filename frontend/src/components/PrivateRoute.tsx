@@ -4,26 +4,36 @@ import type { Permission, UserRole } from '../types';
 
 interface Props {
   roles?: UserRole[];
-  /** SUPER_ADMIN всегда проходит; остальные — только если право есть в массиве permissions. */
   permission?: Permission;
-  /** Только для входа по email (Supabase) */
+  /** Только вход по email — админ-панель */
   supabaseAuthOnly?: boolean;
+  /** Сотрудники CRM — без доступа к полному CRM для email-аккаунтов */
+  crmStaffOnly?: boolean;
 }
 
-export default function PrivateRoute({ roles, permission, supabaseAuthOnly }: Props) {
+function homePath(authSource?: string) {
+  return authSource === 'supabase' ? '/admin' : '/dashboard';
+}
+
+export default function PrivateRoute({ roles, permission, supabaseAuthOnly, crmStaffOnly }: Props) {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
+  const home = homePath(user?.authSource);
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (supabaseAuthOnly && user.authSource !== 'supabase') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={home} replace />;
+  }
+
+  if (crmStaffOnly && user.authSource === 'supabase') {
+    return <Navigate to="/admin" replace />;
   }
 
   if (roles && roles.length > 0 && !roles.includes(user.role as UserRole)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={home} replace />;
   }
 
   if (permission) {
@@ -33,7 +43,7 @@ export default function PrivateRoute({ roles, permission, supabaseAuthOnly }: Pr
       || role === 'ADMIN'
       || (user.permissions ?? []).includes(permission);
     if (!has) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to={home} replace />;
     }
   }
 

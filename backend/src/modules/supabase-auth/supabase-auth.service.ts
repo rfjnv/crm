@@ -64,7 +64,7 @@ export class SupabaseAuthService {
           login,
           password: passwordHash,
           fullName: email.split('@')[0] || 'Admin',
-          role: Role.SUPER_ADMIN,
+          role: Role.ADMIN,
           permissions: [],
           isActive: true,
         },

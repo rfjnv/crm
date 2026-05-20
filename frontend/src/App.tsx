@@ -5,6 +5,8 @@ import { ConfigProvider, theme as antTheme } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
+import AdminLayout from './components/AdminLayout';
+import DefaultHomeRedirect from './components/DefaultHomeRedirect';
 import LoginPage from './pages/LoginPage';
 import RatePage from './pages/RatePage';
 import DashboardPage from './pages/DashboardPage';
@@ -23,6 +25,7 @@ import WarehousePage from './pages/WarehousePage';
 import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 import TeamPage from './pages/TeamPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -112,6 +115,13 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/rate/:token" element={<RatePage />} />
             <Route element={<PrivateRoute />}>
+              <Route element={<PrivateRoute supabaseAuthOnly />}>
+                <Route element={<AdminLayout />}>
+                  <Route path="/admin" element={<AdminDashboardPage />} />
+                  <Route path="/admin/users" element={<AdminUsersPage />} />
+                </Route>
+              </Route>
+              <Route element={<PrivateRoute crmStaffOnly />}>
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/revenue/today" element={<RevenueTodayPage />} />
@@ -138,9 +148,6 @@ export default function App() {
                 <Route path="/team" element={<TeamPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/users" element={<UsersPage />} />
-                </Route>
-                <Route element={<PrivateRoute supabaseAuthOnly />}>
-                  <Route path="/admin/users" element={<AdminUsersPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/changelog" element={<ChangelogPage />} />
@@ -199,8 +206,9 @@ export default function App() {
                   <Route path="/foreign-trade/map" element={<VedMapPage />} />
                 </Route>
               </Route>
+              </Route>
             </Route>
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<DefaultHomeRedirect />} />
           </Routes>
         </BrowserRouter>
       </QueryClientProvider>
