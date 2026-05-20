@@ -59,7 +59,14 @@ export class AuthController {
 
   async me(req: Request, res: Response): Promise<void> {
     const user = await authService.getMe(req.user!.userId);
-    res.json(user);
+    res.json({
+      ...user,
+      ...(req.user?.supabaseRole && {
+        supabaseRole: req.user.supabaseRole,
+        supabaseUserId: req.user.supabaseUserId,
+        authSource: 'supabase' as const,
+      }),
+    });
   }
 }
 

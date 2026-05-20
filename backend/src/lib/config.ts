@@ -104,4 +104,14 @@ export const config = {
     enabled: trimEnv(process.env.TELEPHONY_ENABLED).toLowerCase() === 'true',
     webhookSecret: trimEnv(process.env.TELEPHONY_WEBHOOK_SECRET),
   },
+
+  supabase: {
+    url: trimEnv(process.env.SUPABASE_URL),
+    anonKey: trimEnv(process.env.SUPABASE_ANON_KEY),
+    serviceRoleKey: trimEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  },
 } as const;
+
+export const isSupabaseConfigured = Boolean(
+  config.supabase.url && config.supabase.anonKey && config.supabase.serviceRoleKey,
+);

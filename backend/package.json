@@ -28,6 +28,7 @@
     "@anthropic-ai/sdk": "^0.93.0",
     "@prisma/client": "^6.3.0",
     "@sparticuz/chromium": "^143.0.4",
+    "@supabase/supabase-js": "^2.106.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/multer": "^2.0.0",
     "@types/pg": "^8.20.0",

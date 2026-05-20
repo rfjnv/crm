@@ -177,6 +177,10 @@ export default function Layout() {
     try {
       await authApi.logout();
     } catch { /* ignore */ }
+    try {
+      const { getSupabase } = await import('../lib/supabase');
+      await getSupabase()?.auth.signOut();
+    } catch { /* ignore */ }
     logout();
     navigate('/login');
   };
@@ -195,6 +199,9 @@ export default function Layout() {
   const role = user?.role as UserRole | undefined;
   const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const isSupabaseAdminOnly = user?.authSource === 'supabase' && user?.supabaseRole === 'admin';
+  const canManageSupabaseUsers = user?.supabaseRole === 'superadmin';
+  const canManageCrmStaff = isAdmin && !isSupabaseAdminOnly;
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
   const canViewClients = hasPermission('view_all_clients');
 
@@ -606,13 +613,26 @@ export default function Layout() {
       icon: <TeamOutlined />,
       label: <Link to="/team">Команда</Link>,
     },
-    ...(isAdmin
+    ...(canManageCrmStaff
       ? [
           {
             key: '/users',
             icon: <UserOutlined />,
-            label: <Link to="/users">Пользователи</Link>,
+            label: <Link to="/users">Сотрудники CRM</Link>,
           },
+        ]
+      : []),
+    ...(canManageSupabaseUsers
+      ? [
+          {
+            key: '/admin/users',
+            icon: <UserOutlined />,
+            label: <Link to="/admin/users">Пользователи</Link>,
+          },
+        ]
+      : []),
+    ...(isAdmin
+      ? [
           {
             key: '/worker-audit',
             icon: <AuditOutlined />,

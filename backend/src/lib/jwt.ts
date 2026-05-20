@@ -1,12 +1,17 @@
 import jwt from 'jsonwebtoken';
 import { config } from './config';
 
+export type SupabaseAuthRole = 'superadmin' | 'admin';
+
 export interface AccessTokenPayload {
   userId: string;
   role: string;
   permissions: string[];
   /** ID refresh-сессии (для «текущее устройство» в списке сеансов) */
   sessionId?: string;
+  /** Роль из Supabase user_metadata (только при входе через Supabase Auth) */
+  supabaseRole?: SupabaseAuthRole;
+  supabaseUserId?: string;
 }
 
 export interface RefreshTokenPayload {

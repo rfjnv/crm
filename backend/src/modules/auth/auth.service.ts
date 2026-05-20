@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib/jwt';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, type SupabaseAuthRole } from '../../lib/jwt';
 import { comparePassword, hashToken } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -32,7 +32,7 @@ export class AuthService {
       throw new AppError(401, 'Неверный логин или пароль');
     }
 
-    const tokens = await this.createSession(user.id, user.role, user.permissions, meta);
+    const tokens = await this.createSessionForUser(user.id, user.role, user.permissions, meta);
 
     await auditLog({
       userId: user.id,
@@ -108,11 +108,12 @@ export class AuthService {
     }
 
     // Create new session (rotation)
-    const tokens = await this.createSession(
+    const tokens = await this.createSessionForUser(
       session.userId,
       session.user.role,
       session.user.permissions,
       meta,
+      undefined,
       session.id,
     );
 
@@ -152,16 +153,26 @@ export class AuthService {
     return user;
   }
 
-  private async createSession(
+  async createSessionForUser(
     userId: string,
     role: string,
     permissions: string[],
     meta: SessionMeta,
+    supabase?: { supabaseRole: SupabaseAuthRole; supabaseUserId: string },
     replacedBySessionId?: string,
   ): Promise<TokenPair> {
     const sessionId = randomUUID();
 
-    const accessToken = signAccessToken({ userId, role, permissions, sessionId });
+    const accessToken = signAccessToken({
+      userId,
+      role,
+      permissions,
+      sessionId,
+      ...(supabase && {
+        supabaseRole: supabase.supabaseRole,
+        supabaseUserId: supabase.supabaseUserId,
+      }),
+    });
     const refreshToken = signRefreshToken({ sessionId, userId });
     const refreshTokenHash = hashToken(refreshToken);
 

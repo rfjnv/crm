@@ -78,10 +78,16 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   LOADER: ['view_all_deals', 'loading_execute'],
 };
 
+export type SupabaseAuthRole = 'superadmin' | 'admin';
+
 export interface User {
   id: string;
   login: string;
   fullName: string;
+  /** Роль Supabase Auth (user_metadata.role) */
+  supabaseRole?: SupabaseAuthRole;
+  supabaseUserId?: string;
+  authSource?: 'supabase' | 'crm';
   /** Отдел менеджера (для матрицы клиентов и отчётов) */
   department?: string | null;
   role: UserRole;
