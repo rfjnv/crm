@@ -49,7 +49,11 @@ export class SupabaseAuthService {
     }
     const role = parseSupabaseRole(data.user.user_metadata as Record<string, unknown>);
     if (!role) {
-      throw new AppError(403, 'У пользователя нет роли admin или superadmin');
+      const meta = data.user.user_metadata as Record<string, unknown> | undefined;
+      const hint = meta?.role != null
+        ? ` Сейчас в metadata: role="${String(meta.role)}". Нужно: "superadmin" или "admin".`
+        : ' В Supabase → Authentication → Users → Edit → User Metadata добавьте: {"role":"superadmin"}';
+      throw new AppError(403, `У пользователя нет роли admin или superadmin.${hint}`);
     }
     return { user: data.user, role };
   }

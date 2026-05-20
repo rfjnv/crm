@@ -23,14 +23,23 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 
 ## Первый Superadmin
 
-1. Создайте пользователя в Supabase → **Authentication** → **Users** → Add user (или войдите после создания через CRM).
-2. Откройте пользователя → **Edit** → **User Metadata**:
+1. Supabase → **Authentication** → **Users** → выберите пользователя (или **Add user**).
+2. **Edit user** → блок **User Metadata** (не App Metadata!) → Raw JSON:
 
 ```json
-{ "role": "superadmin" }
+{
+  "role": "superadmin"
+}
 ```
 
-3. Войдите в CRM: вкладка **Admin (email)** → email и пароль.
+3. **Save** → выйдите из CRM и войдите снова через **Admin (email)**.
+
+Допустимые значения `role`: `superadmin`, `admin` (регистр не важен: `SUPER_ADMIN` тоже сработает).
+
+**Частые ошибки:**
+- роль прописана в **App Metadata** вместо **User Metadata**;
+- опечатка в JSON или лишние кавычки;
+- вход до сохранения metadata — перелогиньтесь после Save.
 
 ## Права
 
