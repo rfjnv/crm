@@ -12,6 +12,8 @@ import {
 
 const router = Router();
 
+router.get('/config', asyncHandler(supabaseAuthController.config.bind(supabaseAuthController)));
+
 router.post(
   '/exchange',
   validate(supabaseExchangeDto),

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { config } from '../../lib/config';
+import { config, isSupabaseConfigured } from '../../lib/config';
 import { supabaseAuthService } from './supabase-auth.service';
 
 const REFRESH_COOKIE = 'crm_rt';
@@ -17,6 +17,18 @@ function sessionMeta(req: Request) {
 }
 
 export class SupabaseAuthController {
+  async config(_req: Request, res: Response): Promise<void> {
+    if (!isSupabaseConfigured) {
+      res.json({ configured: false });
+      return;
+    }
+    res.json({
+      configured: true,
+      url: config.supabase.url,
+      anonKey: config.supabase.anonKey,
+    });
+  }
+
   async exchange(req: Request, res: Response): Promise<void> {
     const result = await supabaseAuthService.exchangeSession(req.body.accessToken, sessionMeta(req));
     res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOpts);

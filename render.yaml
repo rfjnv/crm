@@ -37,6 +37,13 @@ services:
         sync: false
       - key: CLAUDE_API_KEY
         sync: false
+      # Supabase Auth (admin / superadmin)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
 
   # ──── Frontend: Vite Static Site ────
   - type: web
@@ -55,6 +62,11 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
+        sync: false
+      # Опционально — если не заданы, фронт подтянет url/anonKey с backend /api/supabase-auth/config
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
         sync: false
 
 databases:
