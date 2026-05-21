@@ -41,6 +41,7 @@ import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Суперадмин',
   ADMIN: 'Администратор',
+  SITE_ADMIN: 'Админ сайта',
   OPERATOR: 'Оператор',
   MANAGER: 'Менеджер',
   HR: 'HR',

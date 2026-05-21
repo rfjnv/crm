@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER' | 'FOREIGN_TRADE';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'SITE_ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER' | 'FOREIGN_TRADE';
 
 export type Permission =
   | 'manage_users'

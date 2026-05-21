@@ -30,22 +30,44 @@ export default function AdminDashboardPage() {
   const user = useAuthStore((s) => s.user);
   const [seeding, setSeeding] = useState(false);
 
-  const { data: schemaOk } = useQuery({
+  const { data: cmsStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['cms-schema-check'],
-    queryFn: async () => {
-      try {
-        await siteCmsApi.status();
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    staleTime: 60_000,
+    queryFn: siteCmsApi.status,
+    staleTime: 30_000,
   });
+
+  const schemaOk = cmsStatus?.ok === true;
 
   return (
     <div>
       {schemaOk === false ? <CmsSchemaAlert /> : null}
+
+      {cmsStatus?.siteUsesFallback ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Сайт на проде ещё показывает встроенные тексты (dictionaries.ts)"
+          description="В Supabase почти нет данных — публичный сайт их не подхватывает. Нажмите «Импорт с сайта» ниже, затем правьте тексты и сохраняйте секцию."
+        />
+      ) : cmsStatus ? (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Supabase подключён, сайт может читать CMS"
+          description={
+            <>
+              Записей: тексты {cmsStatus.counts.content}, продукция {cmsStatus.counts.products}, услуги{' '}
+              {cmsStatus.counts.services}, блог {cmsStatus.counts.blog_posts}.
+              {cmsStatus.lastContentUpdate
+                ? ` Последнее изменение текстов: ${new Date(cmsStatus.lastContentUpdate).toLocaleString('ru-RU')}.`
+                : null}{' '}
+              После правок откройте сайт с полным обновлением (Ctrl+F5).
+            </>
+          }
+        />
+      ) : null}
       <Typography.Title level={3} style={{ marginTop: 0 }}>
         Панель администратора
       </Typography.Title>
@@ -85,6 +107,7 @@ export default function AdminDashboardPage() {
                   try {
                     const result = await siteCmsApi.seedFromDictionaries();
                     message.success(result.message);
+                    void refetchStatus();
                   } catch (err: unknown) {
                     message.error(
                       (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||

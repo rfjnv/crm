@@ -11,14 +11,18 @@ interface Props {
   crmStaffOnly?: boolean;
 }
 
-function homePath(authSource?: string) {
-  return authSource === 'supabase' ? '/admin' : '/dashboard';
+function isSiteAdminUser(user: { authSource?: string; role?: string }) {
+  return user.authSource === 'supabase' || user.role === 'SITE_ADMIN';
+}
+
+function homePath(user?: { authSource?: string; role?: string }) {
+  return user && isSiteAdminUser(user) ? '/admin' : '/dashboard';
 }
 
 export default function PrivateRoute({ roles, permission, supabaseAuthOnly, crmStaffOnly }: Props) {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
-  const home = homePath(user?.authSource);
+  const home = homePath(user ?? undefined);
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
@@ -28,7 +32,7 @@ export default function PrivateRoute({ roles, permission, supabaseAuthOnly, crmS
     return <Navigate to={home} replace />;
   }
 
-  if (crmStaffOnly && user.authSource === 'supabase') {
+  if (crmStaffOnly && isSiteAdminUser(user)) {
     return <Navigate to="/admin" replace />;
   }
 

@@ -24,7 +24,29 @@ SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-## Переменные frontend (опционально)
+## Static Site на Render (polygraph-business.onrender.com)
+
+Обязательно при **сборке** (иначе сайт всегда показывает `dictionaries.ts`):
+
+```env
+VITE_SUPABASE_URL=https://ваш-проект.supabase.co
+VITE_SUPABASE_ANON_KEY=anon или publishable ключ
+```
+
+После добавления переменных — **пересоберите** Static Site (Manual Deploy).
+
+`SUPABASE_SERVICE_ROLE_KEY` на статик-сайт **не** ставить.
+
+## Если в админке CRM сохраняете, а на проде не меняется
+
+1. **CRM → /admin → Обзор** — если предупреждение «сайт на fallback» → **Импорт с сайта**.
+2. Убедитесь, что после «Сохранить» в **Обзор** растёт число записей и дата «последнее изменение».
+3. На Static Site заданы `VITE_SUPABASE_*` и был **deploy после** их добавления.
+4. Откройте сайт с **Ctrl+F5** (не только переход по меню внутри SPA).
+5. Редактируйте нужную **секцию** и **локаль** (RU/UZ/EN) — главная берёт поля из `hero`, `products` и т.д.
+6. В браузере на сайте F12 → Console: ошибка `[useContent] Supabase load failed` = неверный ключ или пустая БД.
+
+## Переменные frontend CRM (опционально)
 
 ```env
 VITE_MARKETING_SITE_URL=https://polygraph-business.onrender.com

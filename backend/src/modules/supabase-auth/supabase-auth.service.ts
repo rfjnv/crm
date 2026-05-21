@@ -64,13 +64,27 @@ export class SupabaseAuthService {
           login,
           password: passwordHash,
           fullName: email.split('@')[0] || 'Admin',
-          role: Role.ADMIN,
+          role: Role.SITE_ADMIN,
           permissions: [],
           isActive: true,
         },
       });
     } else if (!dbUser.isActive) {
       throw new AppError(403, 'Учётная запись CRM деактивирована');
+    } else if (
+      dbUser.role === Role.ADMIN
+      && dbUser.permissions.length === 0
+      && login.includes('@')
+    ) {
+      dbUser = await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { role: Role.SITE_ADMIN, permissions: [] },
+      });
+    } else if (dbUser.role === Role.SITE_ADMIN && dbUser.permissions.length > 0) {
+      dbUser = await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { permissions: [] },
+      });
     }
 
     const tokens = await authService.createSessionForUser(

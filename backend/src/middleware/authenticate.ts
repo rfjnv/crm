@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
+import { Role } from '@prisma/client';
 import { verifyAccessToken } from '../lib/jwt';
 import type { AccessTokenPayload } from '../lib/jwt';
 import { AppError } from '../lib/errors';
+import { canAccessCrmApi } from '../lib/crmAccess';
 import prisma from '../lib/prisma';
 
 declare global {
@@ -51,6 +53,12 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
         ...(payload.supabaseUserId ? { supabaseUserId: payload.supabaseUserId } : {}),
       };
+
+      if (!canAccessCrmApi(req.originalUrl, row.role as Role, payload.supabaseUserId)) {
+        next(new AppError(403, 'Доступ к CRM только для сотрудников (вход по логину)'));
+        return;
+      }
+
       next();
     } catch {
       next(new AppError(401, 'Недействительный или истёкший токен'));

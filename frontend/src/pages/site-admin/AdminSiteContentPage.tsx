@@ -57,7 +57,7 @@ export default function AdminSiteContentPage() {
         rows.map((r) => ({ key: r.key, value: r.value })),
       );
       setRows(data);
-      message.success('Сохранено');
+      message.success('Сохранено в Supabase. Обновите сайт polygraph-business.onrender.com (Ctrl+F5).');
     } catch (err: unknown) {
       message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения');
     } finally {

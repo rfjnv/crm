@@ -23,9 +23,39 @@ function mapDbError(error: { message: string; code?: string }): never {
 export class SiteCmsService {
   async getStatus() {
     const sb = admin();
-    const { error } = await sb.from('content').select('id').limit(1);
-    if (error) mapDbError(error);
-    return { ok: true };
+    const tables = ['content', 'products', 'services', 'blog_posts', 'inquiries'] as const;
+    const counts: Record<(typeof tables)[number], number> = {
+      content: 0,
+      products: 0,
+      services: 0,
+      blog_posts: 0,
+      inquiries: 0,
+    };
+
+    for (const table of tables) {
+      const { count, error } = await sb.from(table).select('*', { count: 'exact', head: true });
+      if (error) mapDbError(error);
+      counts[table] = count ?? 0;
+    }
+
+    const { data: lastRow, error: lastError } = await sb
+      .from('content')
+      .select('updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastError) mapDbError(lastError);
+
+    const hasCmsData =
+      counts.content > 0 || counts.products > 0 || counts.services > 0 || counts.blog_posts > 0;
+
+    return {
+      ok: true,
+      counts,
+      lastContentUpdate: lastRow?.updated_at ?? null,
+      hasCmsData,
+      siteUsesFallback: !hasCmsData,
+    };
   }
 
   async listContent(locale: string, section: string) {

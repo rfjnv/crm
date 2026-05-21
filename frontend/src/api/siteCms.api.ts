@@ -14,7 +14,16 @@ export type InquiryRow = {
 };
 
 export const siteCmsApi = {
-  status: () => client.get<{ ok: boolean }>('/site-cms/status').then((r) => r.data),
+  status: () =>
+    client
+      .get<{
+        ok: boolean;
+        counts: { content: number; products: number; services: number; blog_posts: number; inquiries: number };
+        lastContentUpdate: string | null;
+        hasCmsData: boolean;
+        siteUsesFallback: boolean;
+      }>('/site-cms/status')
+      .then((r) => r.data),
 
   listContent: (locale: string, section: string) =>
     client.get<ContentRow[]>('/site-cms/content', { params: { locale, section } }).then((r) => r.data),

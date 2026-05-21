@@ -13,6 +13,8 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   ADMIN
+  /** Админ маркетингового сайта (вход по email / Supabase), без доступа к CRM */
+  SITE_ADMIN
   OPERATOR
   MANAGER
   HR
