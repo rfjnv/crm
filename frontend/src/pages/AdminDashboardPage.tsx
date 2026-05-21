@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Button, Space } from 'antd';
+import { Card, Col, Row, Typography, Button, Space, Alert, Modal, message } from 'antd';
+import { DatabaseOutlined } from '@ant-design/icons';
 import { siteCmsApi } from '../api/siteCms.api';
 import CmsSchemaAlert from '../components/site-admin/CmsSchemaAlert';
 import {
@@ -26,6 +28,7 @@ const sections = [
 
 export default function AdminDashboardPage() {
   const user = useAuthStore((s) => s.user);
+  const [seeding, setSeeding] = useState(false);
 
   const { data: schemaOk } = useQuery({
     queryKey: ['cms-schema-check'],
@@ -53,6 +56,51 @@ export default function AdminDashboardPage() {
         </a>
         . Операционный CRM — отдельный вход «Сотрудники».
       </Typography.Paragraph>
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Почему админка пустая, а сайт с текстами?"
+        description={
+          <>
+            Публичный сайт по умолчанию берёт тексты из встроенного файла <code>dictionaries.ts</code>, а не из
+            пустой базы. Админка CRM показывает только то, что уже в Supabase. Нажмите «Импорт с сайта» один раз —
+            появятся все тексты и каталог; дальше правки здесь будут видны на сайте.
+          </>
+        }
+        action={
+          <Button
+            icon={<DatabaseOutlined />}
+            loading={seeding}
+            onClick={() => {
+              Modal.confirm({
+                title: 'Импорт контента с сайта',
+                content:
+                  'Скопировать все тексты, продукцию, услуги и блог из dictionaries.ts в Supabase? Существующие записи в этих таблицах будут перезаписаны.',
+                okText: 'Импортировать',
+                cancelText: 'Отмена',
+                onOk: async () => {
+                  setSeeding(true);
+                  try {
+                    const result = await siteCmsApi.seedFromDictionaries();
+                    message.success(result.message);
+                  } catch (err: unknown) {
+                    message.error(
+                      (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+                        'Ошибка импорта',
+                    );
+                  } finally {
+                    setSeeding(false);
+                  }
+                },
+              });
+            }}
+          >
+            Импорт с сайта
+          </Button>
+        }
+      />
 
       <Row gutter={[16, 16]}>
         {sections.map(({ to, icon: Icon, title, desc }) => (

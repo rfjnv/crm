@@ -48,6 +48,9 @@ export const siteCmsApi = {
 
   listInquiries: () => client.get<InquiryRow[]>('/site-cms/inquiries').then((r) => r.data),
 
+  seedFromDictionaries: () =>
+    client.post<{ message: string }>('/site-cms/seed').then((r) => r.data),
+
   uploadImage: (file: File, folder: string) => {
     const form = new FormData();
     form.append('file', file);

@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { AppError } from '../../lib/errors';
 import { isSupabaseConfigured } from '../../lib/config';
 import { getSupabaseAdmin } from '../../lib/supabase';
+import { dictionaryToContentRows, slugify } from './site-cms-dictionary.utils';
+import { dictionaries } from './seed/dictionaries';
 
 function admin() {
   if (!isSupabaseConfigured) {
@@ -199,6 +201,75 @@ export class SiteCmsService {
       .limit(200);
     if (error) mapDbError(error);
     return data ?? [];
+  }
+
+  /** Импорт текстов/каталога с сайта (dictionaries.ts) в Supabase — один раз после создания таблиц. */
+  async seedFromDictionaries(): Promise<{ message: string }> {
+    const sb = admin();
+    const locales = ['ru', 'uz', 'en'] as const;
+
+    for (const locale of locales) {
+      const dict = dictionaries[locale];
+      const rows = dictionaryToContentRows(locale, dict);
+
+      const { error: contentError } = await sb.from('content').upsert(
+        rows.map((r) => ({
+          locale: r.locale,
+          section: r.section,
+          key: r.key,
+          value: r.value,
+          updated_at: new Date().toISOString(),
+        })),
+        { onConflict: 'locale,section,key' },
+      );
+      if (contentError) mapDbError(contentError);
+
+      await sb.from('products').delete().eq('locale', locale);
+      if (dict.products.items.length) {
+        const { error } = await sb.from('products').insert(
+          dict.products.items.map((item, i) => ({
+            locale,
+            name: item.name,
+            category: item.category,
+            sort_order: i,
+          })),
+        );
+        if (error) mapDbError(error);
+      }
+
+      await sb.from('services').delete().eq('locale', locale);
+      if (dict.services.items.length) {
+        const { error } = await sb.from('services').insert(
+          dict.services.items.map((item, i) => ({
+            locale,
+            name: item.name,
+            description: item.description,
+            sort_order: i,
+          })),
+        );
+        if (error) mapDbError(error);
+      }
+
+      await sb.from('blog_posts').delete().eq('locale', locale);
+      if (dict.blog.posts.length) {
+        const { error } = await sb.from('blog_posts').insert(
+          dict.blog.posts.map((post, i) => ({
+            locale,
+            title: post.title,
+            slug: slugify(post.title) + (i > 0 ? `-${i}` : ''),
+            body: post.excerpt,
+            excerpt: post.excerpt,
+            category: post.category,
+            post_date: post.date,
+            sort_order: i,
+            published_at: new Date().toISOString(),
+          })),
+        );
+        if (error) mapDbError(error);
+      }
+    }
+
+    return { message: 'Данные с сайта импортированы в Supabase (RU, UZ, EN).' };
   }
 
   async uploadImage(file: Buffer, mimeType: string, folder: string): Promise<string> {

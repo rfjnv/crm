@@ -30,6 +30,8 @@ router.delete('/blog/:id', asyncHandler(siteCmsController.deleteBlogPost.bind(si
 
 router.get('/inquiries', asyncHandler(siteCmsController.listInquiries.bind(siteCmsController)));
 
+router.post('/seed', asyncHandler(siteCmsController.seedFromDictionaries.bind(siteCmsController)));
+
 router.post('/upload', siteCmsController.uploadImage);
 
 export default router;

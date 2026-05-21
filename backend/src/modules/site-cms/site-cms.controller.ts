@@ -79,6 +79,11 @@ export class SiteCmsController {
     res.json(data);
   }
 
+  async seedFromDictionaries(_req: Request, res: Response): Promise<void> {
+    const result = await siteCmsService.seedFromDictionaries();
+    res.json(result);
+  }
+
   uploadImage = [
     upload.single('file'),
     async (req: Request, res: Response): Promise<void> => {
