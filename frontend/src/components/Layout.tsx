@@ -77,6 +77,7 @@ import type { MenuProps } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
+import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
 import { tasksApi } from '../api/tasks.api';
@@ -123,11 +124,11 @@ export default function Layout() {
 
   // Права и роль в меню берутся из localStorage; после правок в «Пользователях» подтягиваем актуальный профиль с сервера.
   useEffect(() => {
-    if (!user || syncedProfileOnce.current) return;
+    if (!user || isSiteAdminUser(user) || syncedProfileOnce.current) return;
     syncedProfileOnce.current = true;
     authApi
       .me()
-      .then((fresh) => setUser(fresh))
+      .then((fresh) => setUser(enrichUserFromMe(fresh, user)))
       .catch(() => {
         syncedProfileOnce.current = false;
       });
@@ -136,11 +137,12 @@ export default function Layout() {
   useEffect(() => {
     let lastFocusSync = 0;
     const onFocus = () => {
-      if (!useAuthStore.getState().accessToken) return;
+      const current = useAuthStore.getState().user;
+      if (!useAuthStore.getState().accessToken || isSiteAdminUser(current)) return;
       const now = Date.now();
       if (now - lastFocusSync < 45_000) return;
       lastFocusSync = now;
-      authApi.me().then((fresh) => setUser(fresh)).catch(() => {});
+      authApi.me().then((fresh) => setUser(enrichUserFromMe(fresh, current))).catch(() => {});
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);

@@ -294,6 +294,8 @@ model Session {
   expiresAt            DateTime  @map("expires_at")
   revokedAt            DateTime? @map("revoked_at")
   replacedBySessionId  String?   @map("replaced_by_session_id")
+  /** Сессия входа через Supabase (админка сайта) — сохраняется при refresh */
+  supabaseUserId       String?   @map("supabase_user_id")
   lastUsedAt           DateTime? @map("last_used_at")
   ip                   String?
   userAgent            String?   @map("user_agent")

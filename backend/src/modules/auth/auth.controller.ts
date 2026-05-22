@@ -59,12 +59,18 @@ export class AuthController {
 
   async me(req: Request, res: Response): Promise<void> {
     const user = await authService.getMe(req.user!.userId);
+    const siteAdmin =
+      user.role === 'SITE_ADMIN'
+      || Boolean(req.user?.supabaseUserId);
+    const realSupabaseId =
+      req.user?.supabaseUserId && req.user.supabaseUserId !== 'site-admin'
+        ? req.user.supabaseUserId
+        : undefined;
+
     res.json({
       ...user,
-      ...(req.user?.supabaseUserId && {
-        supabaseUserId: req.user.supabaseUserId,
-        authSource: 'supabase' as const,
-      }),
+      ...(siteAdmin && { authSource: 'supabase' as const }),
+      ...(realSupabaseId && { supabaseUserId: realSupabaseId }),
     });
   }
 }

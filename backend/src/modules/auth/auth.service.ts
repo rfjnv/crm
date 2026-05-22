@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib/jwt';
@@ -107,13 +108,19 @@ export class AuthService {
       });
     }
 
-    // Create new session (rotation)
+    const supabase =
+      session.supabaseUserId != null
+        ? { supabaseUserId: session.supabaseUserId }
+        : session.user.role === Role.SITE_ADMIN
+          ? { supabaseUserId: 'site-admin' }
+          : undefined;
+
     const tokens = await this.createSessionForUser(
       session.userId,
       session.user.role,
       session.user.permissions,
       meta,
-      undefined,
+      supabase,
       session.id,
     );
 
@@ -175,6 +182,11 @@ export class AuthService {
     const refreshToken = signRefreshToken({ sessionId, userId });
     const refreshTokenHash = hashToken(refreshToken);
 
+    const supabaseUserId =
+      supabase?.supabaseUserId && supabase.supabaseUserId !== 'site-admin'
+        ? supabase.supabaseUserId
+        : null;
+
     await prisma.session.create({
       data: {
         id: sessionId,
@@ -185,6 +197,7 @@ export class AuthService {
         userAgent: meta.userAgent,
         lastUsedAt: new Date(),
         ...(replacedBySessionId && { replacedBySessionId }),
+        ...(supabaseUserId && { supabaseUserId }),
       },
     });
 

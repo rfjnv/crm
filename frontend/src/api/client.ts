@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { enrichUserFromMe } from '../lib/authUser';
 import { useAuthStore } from '../store/authStore';
 
 export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
@@ -71,7 +72,12 @@ client.interceptors.response.use(
         const meRes = await axios.get(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${data.accessToken}` },
         });
-        useAuthStore.getState().setAuth(meRes.data, data.accessToken, data.refreshToken);
+        const prev = useAuthStore.getState().user;
+        useAuthStore.getState().setAuth(
+          enrichUserFromMe(meRes.data, prev),
+          data.accessToken,
+          data.refreshToken,
+        );
       } catch { /* tokens already updated */ }
       processQueue(null, data.accessToken);
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
