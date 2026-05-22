@@ -72,6 +72,16 @@ type ProductAggRow = {
   deals_count: string;
 };
 
+type ClientProductNameRow = {
+  client_id: string;
+  product_id: string;
+  product_name: string;
+};
+
+/** Only clients inactive 30+ days (all reanimation candidates). */
+const SQL_REANIMATION_CANDIDATE_HAVING = Prisma.sql`
+  HAVING MAX(ds.effective_ts) < (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')`;
+
 type DealProductRow = {
   deal_id: string;
   product_id: string;
@@ -142,10 +152,12 @@ function buildProductPreview(row: { product_id: string; product_name: string; to
   };
 }
 
-async function loadListRows(user: AuthUser) {
+async function loadBaseClientRows(user: AuthUser, clientId?: string) {
   const dealFilter = getDealFilter(user);
+  const clientFilter = clientId ? Prisma.sql` AND c.id = ${clientId}` : Prisma.sql``;
+  const candidateHaving = clientId ? Prisma.sql`` : SQL_REANIMATION_CANDIDATE_HAVING;
 
-  const baseRows = await prisma.$queryRaw<BaseClientRow[]>(
+  return prisma.$queryRaw<BaseClientRow[]>(
     Prisma.sql`WITH deal_scope AS (
       SELECT
         d.id AS deal_id,
@@ -178,7 +190,7 @@ async function loadListRows(user: AuthUser) {
     FROM deal_scope ds
     JOIN clients c ON c.id = ds.client_id
     LEFT JOIN users u ON u.id = c.manager_id
-    WHERE c.is_archived = false
+    WHERE c.is_archived = false${clientFilter}
     GROUP BY
       c.id,
       c.company_name,
@@ -191,14 +203,22 @@ async function loadListRows(user: AuthUser) {
       c.manager_id,
       u.full_name,
       u.department
+    ${candidateHaving}
     ORDER BY MAX(ds.effective_ts) ASC, c.company_name ASC`,
   );
+}
 
+async function enrichClientRows(
+  user: AuthUser,
+  baseRows: BaseClientRow[],
+  opts: { includeProductPreviews: boolean },
+) {
   if (baseRows.length === 0) return [];
 
   const clientIds = baseRows.map((row) => row.client_id);
+  const dealFilter = getDealFilter(user);
 
-  const [lastDealRows, lastNoteRows, debtRows, productRows] = await Promise.all([
+  const [lastDealRows, lastNoteRows, debtRows, productNameRows, productRows] = await Promise.all([
     prisma.$queryRaw<LastDealRow[]>(
       Prisma.sql`WITH deal_scope AS (
         SELECT
@@ -246,23 +266,36 @@ async function loadListRows(user: AuthUser) {
         AND d.status NOT IN ('CANCELED', 'REJECTED')${dealFilter}
       GROUP BY d.client_id`,
     ),
-    prisma.$queryRaw<ProductAggRow[]>(
-      Prisma.sql`SELECT
+    prisma.$queryRaw<ClientProductNameRow[]>(
+      Prisma.sql`SELECT DISTINCT
         d.client_id,
         di.product_id,
-        p.name AS product_name,
-        COALESCE(SUM(di.requested_qty), 0)::text AS total_qty,
-        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS total_revenue,
-        MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS last_purchased_at,
-        COUNT(DISTINCT d.id)::text AS deals_count
+        p.name AS product_name
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
       WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-        AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
-      GROUP BY d.client_id, di.product_id, p.name
-      ORDER BY d.client_id ASC, SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
+        AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}`,
     ),
+    opts.includeProductPreviews
+      ? prisma.$queryRaw<ProductAggRow[]>(
+          Prisma.sql`SELECT
+            d.client_id,
+            di.product_id,
+            p.name AS product_name,
+            COALESCE(SUM(di.requested_qty), 0)::text AS total_qty,
+            COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS total_revenue,
+            MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS last_purchased_at,
+            COUNT(DISTINCT d.id)::text AS deals_count
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          JOIN products p ON p.id = di.product_id
+          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+            AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
+          GROUP BY d.client_id, di.product_id, p.name
+          ORDER BY d.client_id ASC, SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
+        )
+      : Promise.resolve([] as ProductAggRow[]),
   ]);
 
   const lastDealByClient = new Map(lastDealRows.map((row) => [row.client_id, row]));
@@ -272,12 +305,7 @@ async function loadListRows(user: AuthUser) {
   const allProductNamesByClient = new Map<string, string[]>();
   const allProductIdsByClient = new Map<string, string[]>();
 
-  for (const row of productRows) {
-    const preview = buildProductPreview(row);
-    const topList = topProductsByClient.get(row.client_id) ?? [];
-    topList.push(preview);
-    topProductsByClient.set(row.client_id, topList);
-
+  for (const row of productNameRows) {
     const names = allProductNamesByClient.get(row.client_id) ?? [];
     names.push(row.product_name);
     allProductNamesByClient.set(row.client_id, names);
@@ -287,7 +315,16 @@ async function loadListRows(user: AuthUser) {
     allProductIdsByClient.set(row.client_id, ids);
   }
 
-  const lastDealIds = lastDealRows.map((row) => row.deal_id);
+  if (opts.includeProductPreviews) {
+    for (const row of productRows) {
+      const preview = buildProductPreview(row);
+      const topList = topProductsByClient.get(row.client_id) ?? [];
+      topList.push(preview);
+      topProductsByClient.set(row.client_id, topList);
+    }
+  }
+
+  const lastDealIds = opts.includeProductPreviews ? lastDealRows.map((row) => row.deal_id) : [];
   const lastDealProductsByDeal = new Map<string, ReturnType<typeof buildProductPreview>[]>();
 
   if (lastDealIds.length > 0) {
@@ -368,9 +405,15 @@ async function loadListRows(user: AuthUser) {
   });
 }
 
+async function loadListRows(user: AuthUser) {
+  const baseRows = await loadBaseClientRows(user);
+  return enrichClientRows(user, baseRows, { includeProductPreviews: false });
+}
+
 async function loadClientSummary(user: AuthUser, clientId: string) {
-  const rows = await loadListRows(user);
-  return rows.find((row) => row.clientId === clientId) ?? null;
+  const baseRows = await loadBaseClientRows(user, clientId);
+  const rows = await enrichClientRows(user, baseRows, { includeProductPreviews: true });
+  return rows[0] ?? null;
 }
 
 router.get(

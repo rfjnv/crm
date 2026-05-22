@@ -336,16 +336,6 @@ export default function ReanimationPage() {
     return () => window.clearTimeout(t);
   }, [searchDraft, listState.q, patchListState]);
 
-  const tableFilterKey = useMemo(
-    () =>
-      JSON.stringify(
-        Object.fromEntries(
-          Object.entries(listState).filter(([k]) => k !== 'clientId' && k !== 'page' && k !== 'pageSize'),
-        ),
-      ),
-    [listState],
-  );
-
   const { page, pageSize } = listState;
 
   const flushSearchToUrl = useCallback(() => {
@@ -362,10 +352,14 @@ export default function ReanimationPage() {
     [flushSearchToUrl, navigate],
   );
 
-  const { data = [], isLoading, refetch, isFetching } = useQuery({
+  const { data = [], isLoading, isFetching, refetch } = useQuery({
     queryKey: ['analytics-reanimation'],
     queryFn: analyticsApi.getReanimationClients,
-    staleTime: 120_000,
+    staleTime: 15 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: (prev) => prev,
   });
 
   const drawerClientId = listState.clientId;
@@ -374,7 +368,10 @@ export default function ReanimationPage() {
     queryKey: ['analytics-reanimation-detail', drawerClientId],
     queryFn: () => analyticsApi.getReanimationClientDetail(drawerClientId!),
     enabled: Boolean(drawerClientId),
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
+    gcTime: 20 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const managerOptions = useMemo(
@@ -834,7 +831,7 @@ export default function ReanimationPage() {
         ) : filteredRows.length === 0 ? (
           <Empty description="По текущим фильтрам клиентов не найдено" />
         ) : (
-          <div key={tableFilterKey} className="reanimation-row-list">
+          <div className="reanimation-row-list">
             {paginatedRows.map((row) => renderClientRowCard(row))}
           </div>
         )}
