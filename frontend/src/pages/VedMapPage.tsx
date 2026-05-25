@@ -112,12 +112,15 @@ export default function VedMapPage() {
   const mapInstance = useRef<L.Map | null>(null);
   const markersLayer = useRef<L.LayerGroup | null>(null);
   const routesLayer = useRef<L.LayerGroup | null>(null);
+  const draftPlaceLayer = useRef<L.LayerGroup | null>(null);
   const buildRouteOnMapRef = useRef(false);
+  const mapClickModeRef = useRef<'none' | 'place-site' | 'build-route'>('none');
 
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const [visibleRouteIds, setVisibleRouteIds] = useState<string[]>([]);
-  const [pickOnMap, setPickOnMap] = useState(false);
+  const [placeSiteOnMap, setPlaceSiteOnMap] = useState(false);
   const [buildRouteOnMap, setBuildRouteOnMap] = useState(false);
+  const [draftPlaceLatLng, setDraftPlaceLatLng] = useState<LatLng | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   const [routeGeometries, setRouteGeometries] = useState<Record<string, LatLng[]>>({});
   const [draftGeometry, setDraftGeometry] = useState<LatLng[]>([]);
@@ -169,7 +172,22 @@ export default function VedMapPage() {
 
   useEffect(() => {
     buildRouteOnMapRef.current = buildRouteOnMap;
-  }, [buildRouteOnMap]);
+    mapClickModeRef.current = placeSiteOnMap
+      ? 'place-site'
+      : buildRouteOnMap
+        ? 'build-route'
+        : 'none';
+  }, [buildRouteOnMap, placeSiteOnMap]);
+
+  const applyPlacedCoordinates = useCallback((lat: number, lng: number) => {
+    const latitude = Math.round(lat * 1e6) / 1e6;
+    const longitude = Math.round(lng * 1e6) / 1e6;
+    siteForm.setFieldsValue({ latitude, longitude });
+    setDraftPlaceLatLng([latitude, longitude]);
+    setPlaceSiteOnMap(false);
+    setSiteModalOpen(true);
+    message.success('Метка на карте установлена — заполните данные и сохраните');
+  }, [siteForm]);
 
   useEffect(() => {
     if (draftWaypoints.length < 2) {
@@ -219,7 +237,8 @@ export default function VedMapPage() {
       qc.invalidateQueries({ queryKey: ['ved-map-sites'] });
       message.success('Точка добавлена');
       setSiteModalOpen(false);
-      setPickOnMap(false);
+      setPlaceSiteOnMap(false);
+      setDraftPlaceLatLng(null);
       siteForm.resetFields();
     },
     onError: (err: unknown) => {
@@ -235,7 +254,8 @@ export default function VedMapPage() {
       message.success('Точка обновлена');
       setSiteModalOpen(false);
       setEditingSite(null);
-      setPickOnMap(false);
+      setPlaceSiteOnMap(false);
+      setDraftPlaceLatLng(null);
     },
     onError: (err: unknown) => {
       message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка');
@@ -290,7 +310,22 @@ export default function VedMapPage() {
     },
   });
 
-  const openCreateSite = () => {
+  const startPlaceSiteOnMap = () => {
+    setEditingSite(null);
+    setBuildRouteOnMap(false);
+    setRouteModalOpen(false);
+    setDraftPlaceLatLng(null);
+    siteForm.resetFields();
+    siteForm.setFieldsValue({
+      supplierId: filterSupplierId,
+      siteType: 'FACTORY',
+    });
+    setPlaceSiteOnMap(true);
+    setSiteModalOpen(false);
+    message.info('Кликните на карте в нужном месте — появится метка');
+  };
+
+  const openCreateSiteForm = () => {
     setEditingSite(null);
     siteForm.resetFields();
     siteForm.setFieldsValue({
@@ -299,6 +334,7 @@ export default function VedMapPage() {
       latitude: 31.23,
       longitude: 121.47,
     });
+    setPlaceSiteOnMap(false);
     setSiteModalOpen(true);
   };
 
@@ -321,7 +357,7 @@ export default function VedMapPage() {
     setEditingRoute(null);
     setRoutePointIds([]);
     setBuildRouteOnMap(true);
-    setPickOnMap(false);
+    setPlaceSiteOnMap(false);
     routeForm.resetFields();
     routeForm.setFieldsValue({
       supplierId: filterSupplierId,
@@ -333,7 +369,7 @@ export default function VedMapPage() {
   const openEditRoute = (route: VedMapRoute) => {
     setEditingRoute(route);
     setBuildRouteOnMap(true);
-    setPickOnMap(false);
+    setPlaceSiteOnMap(false);
     setRoutePointIds(route.points.map((p) => p.siteId).filter((id): id is string => !!id));
     routeForm.setFieldsValue({
       name: route.name,
@@ -407,35 +443,70 @@ export default function VedMapPage() {
 
     markersLayer.current = L.layerGroup().addTo(map);
     routesLayer.current = L.layerGroup().addTo(map);
+    draftPlaceLayer.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
+    const t1 = window.setTimeout(() => map.invalidateSize(), 0);
+    const t2 = window.setTimeout(() => map.invalidateSize(), 350);
+
     return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
       map.remove();
       mapInstance.current = null;
       markersLayer.current = null;
       routesLayer.current = null;
+      draftPlaceLayer.current = null;
     };
   }, []);
 
-  // Map click for coordinate pick
+  useEffect(() => {
+    const el = mapRef.current;
+    const map = mapInstance.current;
+    if (!el || !map) return undefined;
+
+    const ro = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Map clicks: place new site marker or build route
   useEffect(() => {
     const map = mapInstance.current;
     if (!map) return;
 
     const onClick = (e: L.LeafletMouseEvent) => {
-      if (!pickOnMap) return;
-      siteForm.setFieldsValue({
-        latitude: Math.round(e.latlng.lat * 1e6) / 1e6,
-        longitude: Math.round(e.latlng.lng * 1e6) / 1e6,
-      });
-      message.info(`Координаты: ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+      if (mapClickModeRef.current === 'place-site') {
+        applyPlacedCoordinates(e.latlng.lat, e.latlng.lng);
+      }
     };
 
     map.on('click', onClick);
     return () => {
       map.off('click', onClick);
     };
-  }, [pickOnMap, siteForm]);
+  }, [applyPlacedCoordinates]);
+
+  // Draft pin for coordinates picked on map
+  useEffect(() => {
+    const layer = draftPlaceLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!draftPlaceLatLng) return;
+
+    const marker = L.marker(draftPlaceLatLng, {
+      icon: L.divIcon({
+        className: '',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        html: '<div style="width:20px;height:20px;border-radius:50%;background:#fa541c;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>',
+      }),
+      zIndexOffset: 1000,
+    });
+    layer.addLayer(marker);
+  }, [draftPlaceLatLng]);
 
   // Draw markers
   useEffect(() => {
@@ -449,8 +520,13 @@ export default function VedMapPage() {
       const marker = L.marker([site.latitude, site.longitude], {
         icon: makeSiteIcon(site, site.id === selectedSiteId, routeOrder),
       });
-      marker.on('click', () => {
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
         setSelectedSiteId(site.id);
+        if (mapClickModeRef.current === 'place-site') {
+          applyPlacedCoordinates(site.latitude, site.longitude);
+          return;
+        }
         if (buildRouteOnMapRef.current) {
           setRoutePointIds((prev) => (
             prev.includes(site.id) ? prev : [...prev, site.id]
@@ -469,7 +545,7 @@ export default function VedMapPage() {
     if (selectedSite) {
       map.flyTo([selectedSite.latitude, selectedSite.longitude], 8, { duration: 0.6 });
     }
-  }, [sites, selectedSiteId, selectedSite, routeOrderBySiteId]);
+  }, [sites, selectedSiteId, selectedSite, routeOrderBySiteId, applyPlacedCoordinates]);
 
   // Draw routes
   useEffect(() => {
@@ -540,17 +616,31 @@ export default function VedMapPage() {
         )}
         {canManage && (
           <>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateSite}>
-              Точка
+            <Button type="primary" icon={<PlusOutlined />} onClick={startPlaceSiteOnMap}>
+              Поставить точку
+            </Button>
+            <Button icon={<EditOutlined />} onClick={openCreateSiteForm}>
+              Точка вручную
             </Button>
             <Button icon={<NodeIndexOutlined />} onClick={openCreateRoute}>
               Построить маршрут
             </Button>
+            {placeSiteOnMap && (
+              <Button
+                onClick={() => {
+                  setPlaceSiteOnMap(false);
+                  setDraftPlaceLatLng(null);
+                }}
+              >
+                Отмена метки
+              </Button>
+            )}
             {buildRouteOnMap && (
               <Button
                 onClick={() => {
                   setBuildRouteOnMap(false);
                   setRoutePointIds([]);
+                  setRouteModalOpen(false);
                 }}
               >
                 Отмена маршрута
@@ -688,16 +778,39 @@ export default function VedMapPage() {
           style={{ flex: 1, minWidth: 0, position: 'relative' }}
           bodyStyle={{ padding: 0, height: '100%' }}
         >
-          <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: 400, borderRadius: 8 }} />
-          {buildRouteOnMap && (
+          <div
+            ref={mapRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: 400,
+              borderRadius: 8,
+              cursor: placeSiteOnMap ? 'crosshair' : undefined,
+            }}
+          />
+          {placeSiteOnMap && (
             <Card
               size="small"
               style={{
                 position: 'absolute', top: 12, left: 12, right: 12, maxWidth: 520, zIndex: 1000,
+                pointerEvents: 'none',
               }}
             >
               <Typography.Text>
-                <strong>Режим маршрута:</strong> кликайте точки на карте по порядку
+                <strong>Кликните на карте</strong> — здесь появится новая метка (завод, порт…).
+              </Typography.Text>
+            </Card>
+          )}
+          {buildRouteOnMap && !placeSiteOnMap && (
+            <Card
+              size="small"
+              style={{
+                position: 'absolute', top: 12, left: 12, right: 12, maxWidth: 520, zIndex: 1000,
+                pointerEvents: 'none',
+              }}
+            >
+              <Typography.Text>
+                <strong>Режим маршрута:</strong> кликайте существующие метки на карте по порядку
                 {routePointIds.length > 0 ? ` (${routePointIds.length})` : ''}.
                 {draftDistanceKm > 0 && ` ~${draftDistanceKm.toFixed(0)} km между остановками.`}
               </Typography.Text>
@@ -740,7 +853,12 @@ export default function VedMapPage() {
       <Modal
         title={editingSite ? 'Редактировать точку' : 'Новая точка на карте'}
         open={siteModalOpen}
-        onCancel={() => { setSiteModalOpen(false); setPickOnMap(false); setEditingSite(null); }}
+        onCancel={() => {
+          setSiteModalOpen(false);
+          setPlaceSiteOnMap(false);
+          setDraftPlaceLatLng(null);
+          setEditingSite(null);
+        }}
         onOk={saveSite}
         confirmLoading={createSiteMut.isPending || updateSiteMut.isPending}
         okText="Сохранить"
@@ -779,15 +897,18 @@ export default function VedMapPage() {
           {canManage && (
             <Space direction="vertical" style={{ width: '100%' }}>
               <Button
-                type={pickOnMap ? 'primary' : 'default'}
+                type="primary"
                 icon={<EnvironmentOutlined />}
                 onClick={() => {
-                  setPickOnMap((v) => !v);
-                  if (!pickOnMap) setBuildRouteOnMap(false);
+                  setBuildRouteOnMap(false);
+                  setRouteModalOpen(false);
+                  setPlaceSiteOnMap(true);
+                  setSiteModalOpen(false);
+                  message.info('Кликните на карте, чтобы изменить положение метки');
                 }}
                 block
               >
-                {pickOnMap ? 'Кликните на карте…' : 'Указать координаты кликом'}
+                Указать на карте кликом
               </Button>
               <Button
                 loading={geocoding}
@@ -829,6 +950,7 @@ export default function VedMapPage() {
       <Modal
         title={editingRoute ? 'Редактировать маршрут' : 'Новый маршрут'}
         open={routeModalOpen}
+        mask={!buildRouteOnMap}
         onCancel={() => {
           setRouteModalOpen(false);
           setEditingRoute(null);
@@ -865,7 +987,7 @@ export default function VedMapPage() {
             icon={<NodeIndexOutlined />}
             onClick={() => {
               setBuildRouteOnMap((v) => !v);
-              if (!buildRouteOnMap) setPickOnMap(false);
+              if (!buildRouteOnMap) setPlaceSiteOnMap(false);
             }}
             block
           >
