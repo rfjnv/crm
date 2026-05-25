@@ -20,9 +20,19 @@ import {
   DeleteOutlined,
   EditOutlined,
   EnvironmentOutlined,
+  NodeIndexOutlined,
   PlusOutlined,
-  SaveOutlined,
 } from '@ant-design/icons';
+import VedMapRoutePointsEditor from '../components/VedMapRoutePointsEditor';
+import { VED_MAP_COUNTRY_OPTIONS, displayCountryEnglish } from '../constants/vedMapCountries';
+import {
+  VED_MAP_TILE_ATTRIBUTION,
+  VED_MAP_TILE_URL,
+  fetchRouteGeometry,
+  geocodeAddress,
+  pathDistanceKm,
+  type LatLng,
+} from '../lib/vedMapGeo';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -50,27 +60,39 @@ const SITE_TYPE_COLORS: Record<SupplierSiteType, string> = {
   OTHER: '#8c8c8c',
 };
 
-function makeSiteIcon(site: SupplierSite, selected: boolean): L.DivIcon {
+function makeSiteIcon(
+  site: SupplierSite,
+  selected: boolean,
+  routeOrder: number | null,
+): L.DivIcon {
   const logo = uploadsUrl(site.supplier.logoPath);
   const color = SITE_TYPE_COLORS[site.siteType];
-  const size = selected ? 40 : 32;
+  const size = selected || routeOrder != null ? 40 : 32;
   const inner = logo
     ? `<img src="${logo}" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:4px;" />`
     : `<span style="font-size:11px;font-weight:700;color:${color};">${site.name.slice(0, 2).toUpperCase()}</span>`;
+  const badge = routeOrder != null
+    ? `<span style="
+        position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;
+        padding:0 4px;border-radius:8px;background:#1677ff;color:#fff;
+        font-size:10px;font-weight:700;line-height:16px;text-align:center;
+      ">${routeOrder}</span>`
+    : '';
 
   return L.divIcon({
     className: '',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
-    html: `<div style="
-      width:${size}px;height:${size}px;
-      border:3px solid ${selected ? '#faad14' : color};
-      border-radius:8px;
-      background:#fff;
-      box-shadow:0 2px 8px rgba(0,0,0,.25);
-      display:flex;align-items:center;justify-content:center;
-      overflow:hidden;
-    ">${inner}</div>`,
+    html: `<div style="position:relative;width:${size}px;height:${size}px;">
+      <div style="
+        width:${size}px;height:${size}px;
+        border:3px solid ${selected ? '#faad14' : routeOrder != null ? '#1677ff' : color};
+        border-radius:8px;
+        background:#fff;
+        box-shadow:0 2px 8px rgba(0,0,0,.25);
+        display:flex;align-items:center;justify-content:center;
+        overflow:hidden;
+      ">${inner}</div>${badge}</div>`,
   });
 }
 
@@ -90,10 +112,15 @@ export default function VedMapPage() {
   const mapInstance = useRef<L.Map | null>(null);
   const markersLayer = useRef<L.LayerGroup | null>(null);
   const routesLayer = useRef<L.LayerGroup | null>(null);
+  const buildRouteOnMapRef = useRef(false);
 
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const [visibleRouteIds, setVisibleRouteIds] = useState<string[]>([]);
   const [pickOnMap, setPickOnMap] = useState(false);
+  const [buildRouteOnMap, setBuildRouteOnMap] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [routeGeometries, setRouteGeometries] = useState<Record<string, LatLng[]>>({});
+  const [draftGeometry, setDraftGeometry] = useState<LatLng[]>([]);
   const [siteModalOpen, setSiteModalOpen] = useState(false);
   const [routeModalOpen, setRouteModalOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<SupplierSite | null>(null);
@@ -123,6 +150,68 @@ export default function VedMapPage() {
   );
 
   const selectedSite = sites.find((s) => s.id === selectedSiteId) ?? null;
+
+  const routeOrderBySiteId = useMemo(() => {
+    const map = new Map<string, number>();
+    routePointIds.forEach((id, i) => map.set(id, i + 1));
+    return map;
+  }, [routePointIds]);
+
+  const draftWaypoints = useMemo(
+    () => routePointIds
+      .map((id) => sites.find((s) => s.id === id))
+      .filter((s): s is SupplierSite => !!s)
+      .map((s) => [s.latitude, s.longitude] as LatLng),
+    [routePointIds, sites],
+  );
+
+  const draftDistanceKm = useMemo(() => pathDistanceKm(draftWaypoints), [draftWaypoints]);
+
+  useEffect(() => {
+    buildRouteOnMapRef.current = buildRouteOnMap;
+  }, [buildRouteOnMap]);
+
+  useEffect(() => {
+    if (draftWaypoints.length < 2) {
+      setDraftGeometry([]);
+      return undefined;
+    }
+    let cancelled = false;
+    fetchRouteGeometry(draftWaypoints).then((geom) => {
+      if (!cancelled) setDraftGeometry(geom);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftWaypoints]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const next: Record<string, LatLng[]> = {};
+      for (const route of routes) {
+        if (!visibleRouteIds.includes(route.id)) continue;
+        const wps = route.points.map((p) => [p.latitude, p.longitude] as LatLng);
+        if (wps.length < 2) continue;
+        next[route.id] = await fetchRouteGeometry(wps);
+      }
+      if (!cancelled) setRouteGeometries(next);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [routes, visibleRouteIds]);
+
+  useEffect(() => {
+    if (!routeModalOpen || editingRoute || routePointIds.length < 2) return;
+    const labels = routePointIds
+      .map((id) => sites.find((s) => s.id === id)?.name)
+      .filter((n): n is string => !!n);
+    if (labels.length >= 2) {
+      routeForm.setFieldValue('name', labels.join(' → '));
+    }
+  }, [routePointIds, routeModalOpen, editingRoute, sites, routeForm]);
 
   const createSiteMut = useMutation({
     mutationFn: (payload: SupplierSitePayload) => vedMapApi.createSite(payload),
@@ -168,6 +257,7 @@ export default function VedMapPage() {
       qc.invalidateQueries({ queryKey: ['ved-map-routes'] });
       message.success('Маршрут сохранён');
       setRouteModalOpen(false);
+      setBuildRouteOnMap(false);
       routeForm.resetFields();
       setRoutePointIds([]);
     },
@@ -183,6 +273,7 @@ export default function VedMapPage() {
       qc.invalidateQueries({ queryKey: ['ved-map-routes'] });
       message.success('Маршрут обновлён');
       setRouteModalOpen(false);
+      setBuildRouteOnMap(false);
       setEditingRoute(null);
       setRoutePointIds([]);
     },
@@ -229,6 +320,8 @@ export default function VedMapPage() {
   const openCreateRoute = () => {
     setEditingRoute(null);
     setRoutePointIds([]);
+    setBuildRouteOnMap(true);
+    setPickOnMap(false);
     routeForm.resetFields();
     routeForm.setFieldsValue({
       supplierId: filterSupplierId,
@@ -239,6 +332,8 @@ export default function VedMapPage() {
 
   const openEditRoute = (route: VedMapRoute) => {
     setEditingRoute(route);
+    setBuildRouteOnMap(true);
+    setPickOnMap(false);
     setRoutePointIds(route.points.map((p) => p.siteId).filter((id): id is string => !!id));
     routeForm.setFieldsValue({
       name: route.name,
@@ -304,9 +399,10 @@ export default function VedMapPage() {
     if (!mapRef.current || mapInstance.current) return;
 
     const map = L.map(mapRef.current, { zoomControl: true }).setView([30, 50], 3);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
+    L.tileLayer(VED_MAP_TILE_URL, {
+      attribution: VED_MAP_TILE_ATTRIBUTION,
       maxZoom: 19,
+      subdomains: 'abcd',
     }).addTo(map);
 
     markersLayer.current = L.layerGroup().addTo(map);
@@ -349,14 +445,23 @@ export default function VedMapPage() {
 
     layer.clearLayers();
     for (const site of sites) {
+      const routeOrder = routeOrderBySiteId.get(site.id) ?? null;
       const marker = L.marker([site.latitude, site.longitude], {
-        icon: makeSiteIcon(site, site.id === selectedSiteId),
+        icon: makeSiteIcon(site, site.id === selectedSiteId, routeOrder),
       });
-      marker.on('click', () => setSelectedSiteId(site.id));
+      marker.on('click', () => {
+        setSelectedSiteId(site.id);
+        if (buildRouteOnMapRef.current) {
+          setRoutePointIds((prev) => (
+            prev.includes(site.id) ? prev : [...prev, site.id]
+          ));
+        }
+      });
+      const countryEn = displayCountryEnglish(site.country);
       marker.bindPopup(
         `<strong>${site.name}</strong><br/>
         ${SUPPLIER_SITE_TYPE_LABELS[site.siteType]}<br/>
-        ${site.supplier.companyName}${site.country ? ` · ${site.country}` : ''}`,
+        ${site.supplier.companyName}${countryEn ? ` · ${countryEn}` : ''}`,
       );
       layer.addLayer(marker);
     }
@@ -364,7 +469,7 @@ export default function VedMapPage() {
     if (selectedSite) {
       map.flyTo([selectedSite.latitude, selectedSite.longitude], 8, { duration: 0.6 });
     }
-  }, [sites, selectedSiteId, selectedSite]);
+  }, [sites, selectedSiteId, selectedSite, routeOrderBySiteId]);
 
   // Draw routes
   useEffect(() => {
@@ -374,18 +479,34 @@ export default function VedMapPage() {
 
     for (const route of routes) {
       if (!visibleRouteIds.includes(route.id)) continue;
-      const latlngs = route.points.map((p) => [p.latitude, p.longitude] as [number, number]);
-      if (latlngs.length < 2) continue;
+      const waypoints = route.points.map((p) => [p.latitude, p.longitude] as LatLng);
+      if (waypoints.length < 2) continue;
+      const latlngs = routeGeometries[route.id] ?? waypoints;
+      const km = pathDistanceKm(waypoints);
       const polyline = L.polyline(latlngs, {
         color: route.color ?? '#22609A',
-        weight: 3,
-        opacity: 0.85,
-        dashArray: '8 6',
+        weight: 4,
+        opacity: 0.9,
       });
-      polyline.bindPopup(`<strong>${route.name}</strong><br/>${latlngs.length} точек`);
+      polyline.bindPopup(
+        `<strong>${route.name}</strong><br/>${route.points.length} stops · ~${km.toFixed(0)} km (direct)`,
+      );
       layer.addLayer(polyline);
     }
-  }, [routes, visibleRouteIds]);
+
+    if (draftGeometry.length >= 2) {
+      const draftLine = L.polyline(draftGeometry, {
+        color: '#fa8c16',
+        weight: 4,
+        opacity: 0.95,
+        dashArray: '6 4',
+      });
+      draftLine.bindPopup(
+        `Draft route · ${routePointIds.length} stops · ~${draftDistanceKm.toFixed(0)} km (direct)`,
+      );
+      layer.addLayer(draftLine);
+    }
+  }, [routes, visibleRouteIds, routeGeometries, draftGeometry, routePointIds.length, draftDistanceKm]);
 
   // Auto-show all routes when loaded first time
   useEffect(() => {
@@ -404,9 +525,14 @@ export default function VedMapPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 480 }}>
       <Space style={{ marginBottom: 12 }} wrap>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Карта ВЭД
-        </Typography.Title>
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Карта ВЭД
+          </Typography.Title>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Подписи на карте и страны — на английском · маршрут строится по дорогам между точками
+          </Typography.Text>
+        </div>
         {filterSupplierId && (
           <Tag closable onClose={() => navigate('/foreign-trade/map')}>
             Фильтр по поставщику
@@ -417,9 +543,19 @@ export default function VedMapPage() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreateSite}>
               Точка
             </Button>
-            <Button icon={<SaveOutlined />} onClick={openCreateRoute}>
-              Маршрут
+            <Button icon={<NodeIndexOutlined />} onClick={openCreateRoute}>
+              Построить маршрут
             </Button>
+            {buildRouteOnMap && (
+              <Button
+                onClick={() => {
+                  setBuildRouteOnMap(false);
+                  setRoutePointIds([]);
+                }}
+              >
+                Отмена маршрута
+              </Button>
+            )}
           </>
         )}
       </Space>
@@ -472,9 +608,16 @@ export default function VedMapPage() {
                             </Space>
                           )}
                           description={(
-                            <Link to={`/foreign-trade/suppliers/${site.supplierId}`} onClick={(e) => e.stopPropagation()}>
-                              {site.supplier.companyName}
-                            </Link>
+                            <span onClick={(e) => e.stopPropagation()} role="presentation">
+                              <Link to={`/foreign-trade/suppliers/${site.supplierId}`}>
+                                {site.supplier.companyName}
+                              </Link>
+                              {site.country && (
+                                <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
+                                  {displayCountryEnglish(site.country)}
+                                </Typography.Text>
+                              )}
+                            </span>
                           )}
                         />
                       </List.Item>
@@ -546,6 +689,20 @@ export default function VedMapPage() {
           bodyStyle={{ padding: 0, height: '100%' }}
         >
           <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: 400, borderRadius: 8 }} />
+          {buildRouteOnMap && (
+            <Card
+              size="small"
+              style={{
+                position: 'absolute', top: 12, left: 12, right: 12, maxWidth: 520, zIndex: 1000,
+              }}
+            >
+              <Typography.Text>
+                <strong>Режим маршрута:</strong> кликайте точки на карте по порядку
+                {routePointIds.length > 0 ? ` (${routePointIds.length})` : ''}.
+                {draftDistanceKm > 0 && ` ~${draftDistanceKm.toFixed(0)} km между остановками.`}
+              </Typography.Text>
+            </Card>
+          )}
           {selectedSite && (
             <Card
               size="small"
@@ -558,10 +715,22 @@ export default function VedMapPage() {
                 <Typography.Text type="secondary">
                   {SUPPLIER_SITE_TYPE_LABELS[selectedSite.siteType]} · {selectedSite.supplier.companyName}
                 </Typography.Text>
+                {selectedSite.country && (
+                  <Typography.Text>{displayCountryEnglish(selectedSite.country)}</Typography.Text>
+                )}
                 {selectedSite.address && <Typography.Text>{selectedSite.address}</Typography.Text>}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {selectedSite.latitude.toFixed(5)}, {selectedSite.longitude.toFixed(5)}
                 </Typography.Text>
+                {canManage && buildRouteOnMap && !routePointIds.includes(selectedSite.id) && (
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => setRoutePointIds((prev) => [...prev, selectedSite.id])}
+                  >
+                    Добавить в маршрут
+                  </Button>
+                )}
               </Space>
             </Card>
           )}
@@ -590,8 +759,14 @@ export default function VedMapPage() {
           <Form.Item name="address" label="Адрес">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="country" label="Страна">
-            <Input />
+          <Form.Item name="country" label="Country (English)">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="e.g. China"
+              options={VED_MAP_COUNTRY_OPTIONS}
+            />
           </Form.Item>
           <Space align="start" style={{ width: '100%' }} wrap>
             <Form.Item name="latitude" label="Широта" rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
@@ -602,14 +777,48 @@ export default function VedMapPage() {
             </Form.Item>
           </Space>
           {canManage && (
-            <Button
-              type={pickOnMap ? 'primary' : 'default'}
-              icon={<EnvironmentOutlined />}
-              onClick={() => setPickOnMap((v) => !v)}
-              block
-            >
-              {pickOnMap ? 'Кликните на карте…' : 'Указать на карте кликом'}
-            </Button>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Button
+                type={pickOnMap ? 'primary' : 'default'}
+                icon={<EnvironmentOutlined />}
+                onClick={() => {
+                  setPickOnMap((v) => !v);
+                  if (!pickOnMap) setBuildRouteOnMap(false);
+                }}
+                block
+              >
+                {pickOnMap ? 'Кликните на карте…' : 'Указать координаты кликом'}
+              </Button>
+              <Button
+                loading={geocoding}
+                icon={<EnvironmentOutlined />}
+                onClick={async () => {
+                  const { address, country } = siteForm.getFieldsValue();
+                  if (!address?.trim()) {
+                    message.warning('Введите адрес');
+                    return;
+                  }
+                  setGeocoding(true);
+                  try {
+                    const ll = await geocodeAddress(address, country);
+                    if (!ll) {
+                      message.warning('Адрес не найден (попробуйте на английском)');
+                      return;
+                    }
+                    siteForm.setFieldsValue({
+                      latitude: Math.round(ll[0] * 1e6) / 1e6,
+                      longitude: Math.round(ll[1] * 1e6) / 1e6,
+                    });
+                    message.success('Координаты найдены');
+                  } finally {
+                    setGeocoding(false);
+                  }
+                }}
+                block
+              >
+                Найти по адресу (English map)
+              </Button>
+            </Space>
           )}
           <Form.Item name="notes" label="Заметки" style={{ marginTop: 12 }}>
             <Input.TextArea rows={2} />
@@ -620,7 +829,12 @@ export default function VedMapPage() {
       <Modal
         title={editingRoute ? 'Редактировать маршрут' : 'Новый маршрут'}
         open={routeModalOpen}
-        onCancel={() => { setRouteModalOpen(false); setEditingRoute(null); setRoutePointIds([]); }}
+        onCancel={() => {
+          setRouteModalOpen(false);
+          setEditingRoute(null);
+          setRoutePointIds([]);
+          setBuildRouteOnMap(false);
+        }}
         onOk={saveRoute}
         confirmLoading={createRouteMut.isPending || updateRouteMut.isPending}
         okText="Сохранить"
@@ -636,18 +850,27 @@ export default function VedMapPage() {
           <Form.Item name="color" label="Цвет линии">
             <ColorPicker showText format="hex" />
           </Form.Item>
-          <Form.Item label={`Точки маршрута (${routePointIds.length}) — порядок сверху вниз`}>
-            <Select
-              mode="multiple"
-              placeholder="Выберите точки по порядку"
-              value={routePointIds}
+          <Form.Item
+            label={`Точки маршрута (${routePointIds.length})`}
+            extra="Кликайте маркеры на карте или меняйте порядок стрелками. Линия — по дорогам (OSRM)."
+          >
+            <VedMapRoutePointsEditor
+              siteIds={routePointIds}
+              sites={sites}
               onChange={setRoutePointIds}
-              options={sites.map((s) => ({
-                value: s.id,
-                label: `${s.name} (${s.supplier.companyName})`,
-              }))}
             />
           </Form.Item>
+          <Button
+            type={buildRouteOnMap ? 'primary' : 'dashed'}
+            icon={<NodeIndexOutlined />}
+            onClick={() => {
+              setBuildRouteOnMap((v) => !v);
+              if (!buildRouteOnMap) setPickOnMap(false);
+            }}
+            block
+          >
+            {buildRouteOnMap ? 'Сбор на карте включён' : 'Собирать маршрут кликом по карте'}
+          </Button>
           <Form.Item name="notes" label="Заметки">
             <Input.TextArea rows={2} />
           </Form.Item>
