@@ -4,37 +4,37 @@ import {
   ArrowUpOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import { displayCountryEnglish } from '../constants/vedMapCountries';
+import type { VedMapRouteStop } from '../lib/vedMapRouteStops';
+import { newRouteStopKey, routeStopLabel, routeStopSubtitle } from '../lib/vedMapRouteStops';
 import type { SupplierSite } from '../types';
 
 type Props = {
-  siteIds: string[];
+  stops: VedMapRouteStop[];
   sites: SupplierSite[];
-  onChange: (ids: string[]) => void;
+  onChange: (stops: VedMapRouteStop[]) => void;
   showPicker?: boolean;
 };
 
 export default function VedMapRoutePointsEditor({
-  siteIds,
+  stops,
   sites,
   onChange,
   showPicker = true,
 }: Props) {
   const move = (index: number, delta: number) => {
-    const next = [...siteIds];
+    const next = [...stops];
     const target = index + delta;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     onChange(next);
   };
 
-  const remove = (id: string) => onChange(siteIds.filter((x) => x !== id));
+  const remove = (key: string) => onChange(stops.filter((s) => s.key !== key));
 
-  const ordered = siteIds
-    .map((id) => sites.find((s) => s.id === id))
-    .filter((s): s is SupplierSite => !!s);
-
-  const availableToAdd = sites.filter((s) => !siteIds.includes(s.id));
+  const usedSiteIds = new Set(
+    stops.filter((s): s is VedMapRouteStop & { kind: 'site' } => s.kind === 'site').map((s) => s.siteId),
+  );
+  const availableToAdd = sites.filter((s) => !usedSiteIds.has(s.id));
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size={8}>
@@ -42,25 +42,27 @@ export default function VedMapRoutePointsEditor({
         <Select
           showSearch
           optionFilterProp="label"
-          placeholder="Add point to route"
+          placeholder="Добавить сохранённую точку"
           style={{ width: '100%' }}
           value={null}
-          onChange={(id: string) => onChange([...siteIds, id])}
+          onChange={(siteId: string) => {
+            onChange([...stops, { key: newRouteStopKey(), kind: 'site', siteId }]);
+          }}
           options={availableToAdd.map((s) => ({
             value: s.id,
-            label: `${s.name} — ${displayCountryEnglish(s.country) || '—'}`,
+            label: `${s.name} — ${routeStopSubtitle({ key: '', kind: 'site', siteId: s.id }, sites)}`,
           }))}
         />
       )}
-      {ordered.length === 0 ? (
+      {stops.length === 0 ? (
         <Typography.Text type="secondary">
-          Add at least 2 points (from the list or by clicking markers on the map).
+          Кликайте по карте или по меткам — минимум 2 точки. Порядок меняйте стрелками.
         </Typography.Text>
       ) : (
         <List
           size="small"
-          dataSource={ordered}
-          renderItem={(site, index) => (
+          dataSource={stops}
+          renderItem={(stop, index) => (
             <List.Item
               style={{ padding: '6px 0' }}
               actions={[
@@ -77,7 +79,7 @@ export default function VedMapRoutePointsEditor({
                   type="text"
                   size="small"
                   icon={<ArrowDownOutlined />}
-                  disabled={index === ordered.length - 1}
+                  disabled={index === stops.length - 1}
                   onClick={() => move(index, 1)}
                 />,
                 <Button
@@ -86,15 +88,16 @@ export default function VedMapRoutePointsEditor({
                   size="small"
                   danger
                   icon={<DeleteOutlined />}
-                  onClick={() => remove(site.id)}
+                  onClick={() => remove(stop.key)}
                 />,
               ]}
             >
               <Space size={6}>
-                <Tag color="blue">{index + 1}</Tag>
-                <span>{site.name}</span>
+                <Tag color={stop.kind === 'pin' ? 'orange' : 'blue'}>{index + 1}</Tag>
+                <span>{routeStopLabel(stop, sites)}</span>
+                {stop.kind === 'pin' && <Tag>на карте</Tag>}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {displayCountryEnglish(site.country) || '—'}
+                  {routeStopSubtitle(stop, sites)}
                 </Typography.Text>
               </Space>
             </List.Item>
