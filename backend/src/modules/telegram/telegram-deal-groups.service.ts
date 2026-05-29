@@ -52,6 +52,7 @@ function paymentMethodLabel(m: string | null | undefined): string {
     QR: 'QR',
     CLICK: 'Click',
     TERMINAL: 'Терминал',
+    DEBT: 'Долг',
   };
   return m ? map[m] || esc(m) : '—';
 }

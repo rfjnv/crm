@@ -262,7 +262,7 @@ export default function DealCreatePage() {
     // - TRANSFER + INN filled → to zav.sklada
     // - TRANSFER without INN → IN_PROGRESS (INN needed)
     if (!isDilnoza && paymentMethod) {
-      if (paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT') {
+      if (paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT' && paymentMethod !== 'DEBT') {
         return 'WAITING_WAREHOUSE_MANAGER';
       }
       if (paymentMethod === 'TRANSFER' && transferInn.trim()) {
@@ -554,7 +554,15 @@ export default function DealCreatePage() {
               }}>
                 <Switch
                   checked={isDebt}
-                  onChange={(v) => { setIsDebt(v); if (!v) { setDueDate(null); } }}
+                  onChange={(v) => {
+                    setIsDebt(v);
+                    if (v) {
+                      setPaymentMethod('DEBT');
+                    } else {
+                      setDueDate(null);
+                      if (paymentMethod === 'DEBT') setPaymentMethod('CASH');
+                    }
+                  }}
                   style={{ marginTop: 2, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
@@ -637,7 +645,16 @@ export default function DealCreatePage() {
             </Typography.Text>
             <Radio.Group
               value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+              onChange={(e) => {
+                const method = e.target.value as PaymentMethod;
+                setPaymentMethod(method);
+                if (method === 'DEBT') {
+                  setIsDebt(true);
+                } else if (paymentMethod === 'DEBT') {
+                  setIsDebt(false);
+                  setDueDate(null);
+                }
+              }}
               optionType="button"
               buttonStyle="solid"
               style={{ flexWrap: 'wrap' }}
@@ -649,10 +666,11 @@ export default function DealCreatePage() {
               <Radio.Button value="TERMINAL">Терминал</Radio.Button>
               <Radio.Button value="TRANSFER">Перечисление</Radio.Button>
               <Radio.Button value="INSTALLMENT">Рассрочка (безнал)</Radio.Button>
+              <Radio.Button value="DEBT">Долг</Radio.Button>
             </Radio.Group>
             {!isDilnoza && (
               <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-                Нал/безнал (кроме перечисления) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — сразу к бухгалтеру. Без ИНН — сначала «В работе».
+                Нал/безнал (кроме перечисления и долга) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — сразу к бухгалтеру. Без ИНН — сначала «В работе». «Долг» включает режим «В долг» и остаётся в работе до уточнения способа оплаты.
               </Typography.Text>
             )}
             {!isDilnoza && paymentMethod === 'TRANSFER' && (

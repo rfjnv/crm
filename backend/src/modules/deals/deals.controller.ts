@@ -128,6 +128,11 @@ export class DealsController {
     res.json(deal);
   }
 
+  async changePaymentMethod(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.changePaymentMethod(req.params.id as string, req.body, getUser(req));
+    res.json(deal);
+  }
+
   // Workflow: Finance
   async findForFinanceReview(req: Request, res: Response): Promise<void> {
     const deals = await dealsService.findForFinanceReview(getUser(req));

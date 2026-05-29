@@ -95,6 +95,7 @@ function PaymentMethodTag({ method }: { method: string | null }) {
     CLICK: { color: 'geekblue', label: 'Click' },
     TERMINAL: { color: 'magenta', label: 'Терминал' },
     INSTALLMENT: { color: 'gold', label: 'Рассрочка' },
+    DEBT: { color: 'red', label: 'Долг' },
   };
   if (!method) return <Text type="secondary">—</Text>;
   const cfg = map[method] ?? { color: 'default', label: method };

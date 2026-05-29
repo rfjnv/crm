@@ -29,7 +29,7 @@ import {
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
-  ShipmentDto, FinanceRejectDto, SendToFinanceDto,
+  ShipmentDto, FinanceRejectDto, SendToFinanceDto, ChangePaymentMethodDto,
   CreatePaymentRecordDto, UpdatePaymentRecordDto, ShipmentHoldDto,
   SuperOverrideDealDto,
   AssignLoadingDto, AssignDriverDto, StartDeliveryDto,
@@ -465,7 +465,11 @@ export class DealsService {
     // TRANSFER without INN → stay IN_PROGRESS (INN must be entered via "send to finance").
     // INSTALLMENT still requires manual sendToFinance.
     if (!canUseDilnozaCreatePayment && paymentMethodAtCreate && allHaveQty) {
-      if (paymentMethodAtCreate !== 'TRANSFER' && paymentMethodAtCreate !== 'INSTALLMENT') {
+      if (
+        paymentMethodAtCreate !== 'TRANSFER'
+        && paymentMethodAtCreate !== 'INSTALLMENT'
+        && paymentMethodAtCreate !== 'DEBT'
+      ) {
         initialStatus = 'WAITING_WAREHOUSE_MANAGER';
         allHaveQtyForTelegram = true;
       } else if (paymentMethodAtCreate === 'TRANSFER' && dto.transferInn?.trim()) {
@@ -897,6 +901,73 @@ export class DealsService {
     }
 
     await syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+    });
+
+    return this.findById(dealId, user);
+  }
+
+  /** Смена способа оплаты с «Долг» на фактический (в т.ч. после закрытия сделки). */
+  async changePaymentMethod(dealId: string, dto: ChangePaymentMethodDto, user: AuthUser) {
+    const allowedRoles: Role[] = ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
+    if (!allowedRoles.includes(user.role)) {
+      throw new AppError(403, 'Недостаточно прав для изменения способа оплаты');
+    }
+
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...ownerScope(user), isArchived: false },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    if (deal.paymentMethod !== 'DEBT') {
+      throw new AppError(400, 'Изменить способ оплаты можно только для сделок со способом «Долг»');
+    }
+
+    const updateData: Record<string, unknown> = {
+      paymentMethod: dto.paymentMethod as PaymentMethod,
+    };
+
+    const methodNeedsTransferPayload =
+      dto.paymentMethod === 'TRANSFER' || dto.paymentMethod === 'INSTALLMENT';
+    if (methodNeedsTransferPayload) {
+      const transferInn = dto.transferInn?.trim();
+      const transferDocuments = normalizeTransferDocuments(dto.transferDocuments);
+
+      if (!transferInn) {
+        throw new AppError(400, 'Укажите ИНН компании для перечисления');
+      }
+
+      if (transferDocuments.length === 0) {
+        throw new AppError(400, 'Выберите минимум один документ для перечисления');
+      }
+
+      updateData.transferInn = transferInn;
+      updateData.transferDocuments = JSON.stringify(transferDocuments);
+      updateData.transferType = dto.transferType ?? 'ONE_TIME';
+    } else {
+      updateData.transferInn = null;
+      updateData.transferDocuments = null;
+      updateData.transferType = null;
+    }
+
+    await prisma.deal.update({
+      where: { id: dealId },
+      data: updateData,
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: { paymentMethod: deal.paymentMethod },
+      after: { paymentMethod: dto.paymentMethod },
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 

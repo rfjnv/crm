@@ -646,6 +646,8 @@ export default function SuperOverridePanel({
                       { label: 'Click', value: 'CLICK' },
                       { label: 'Терминал', value: 'TERMINAL' },
                       { label: 'Перечисление', value: 'TRANSFER' },
+                      { label: 'Рассрочка', value: 'INSTALLMENT' },
+                      { label: 'Долг', value: 'DEBT' },
                     ]} />
                   </Form.Item>
                   <Form.Item name="paymentType" label="Тип оплаты">

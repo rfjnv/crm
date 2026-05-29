@@ -16,7 +16,7 @@ export const createDealDto = z.object({
   vehicleNumber: z.string().optional(),
   vehicleType: z.string().optional(),
   deliveryComment: z.string().optional(),
-  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'DEBT']).optional(),
   /** Dilnoza: комментарий / номер операции для способов без перечисления (в terms) */
   paymentNote: z.string().optional(),
   /** @deprecated предпочтительно paymentNote */
@@ -107,6 +107,13 @@ export const setItemQuantitiesDto = z.object({
   includeVat: z.boolean().default(true),
 });
 
+export const changePaymentMethodDto = z.object({
+  paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']),
+  transferInn: z.string().optional(),
+  transferDocuments: z.array(z.string()).optional(),
+  transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
+});
+
 export const sendToFinanceDto = z.object({
   paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']),
   transferInn: z.string().optional(),
@@ -152,6 +159,7 @@ export type CreateCommentDto = z.infer<typeof createCommentDto>;
 export type AddDealItemDto = z.infer<typeof addDealItemDto>;
 export type WarehouseResponseDto = z.infer<typeof warehouseResponseDto>;
 export type SetItemQuantitiesDto = z.infer<typeof setItemQuantitiesDto>;
+export type ChangePaymentMethodDto = z.infer<typeof changePaymentMethodDto>;
 export type SendToFinanceDto = z.infer<typeof sendToFinanceDto>;
 export type ShipmentDto = z.infer<typeof shipmentDto>;
 export type FinanceRejectDto = z.infer<typeof financeRejectDto>;
@@ -168,7 +176,7 @@ export const superOverrideDealDto = z.object({
   clientId: z.string().uuid().optional(),
   managerId: z.string().uuid().optional(),
   contractId: z.string().uuid().nullable().optional(),
-  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).nullable().optional(),
+  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'DEBT']).nullable().optional(),
   paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   paidAmount: z.number().min(0).optional(),
   dueDate: z.string().nullable().optional(),

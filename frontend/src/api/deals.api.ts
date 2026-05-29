@@ -130,6 +130,15 @@ export const dealsApi = {
   }) =>
     client.post<Deal>(`/deals/${dealId}/send-to-finance`, data).then((r) => r.data),
 
+  /** Смена способа оплаты с «Долг» на фактический (доступно и для закрытых сделок). */
+  changePaymentMethod: (dealId: string, data: {
+    paymentMethod: Exclude<PaymentMethod, 'DEBT'>;
+    transferInn?: string;
+    transferDocuments?: string[];
+    transferType?: 'ONE_TIME' | 'ANNUAL';
+  }) =>
+    client.patch<Deal>(`/deals/${dealId}/payment-method`, data).then((r) => r.data),
+
   // Workflow: Finance
   approveFinance: (dealId: string) =>
     client.post<Deal>(`/deals/${dealId}/finance-approve`).then((r) => r.data),

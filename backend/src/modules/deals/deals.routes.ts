@@ -7,7 +7,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import {
   createDealDto, updateDealDto, createCommentDto, paymentDto,
   addDealItemDto, warehouseResponseDto, setItemQuantitiesDto,
-  shipmentDto, financeRejectDto, sendToFinanceDto,
+  shipmentDto, financeRejectDto, sendToFinanceDto, changePaymentMethodDto,
   createPaymentRecordDto, updatePaymentRecordDto, shipmentHoldDto,
   assignLoadingDto, assignDriverDto, startDeliveryDto,
 } from './deals.dto';
@@ -62,6 +62,7 @@ router.post('/:id/set-quantities', authorize('MANAGER', 'ACCOUNTANT', 'ADMIN', '
 
 // Workflow: Send to Finance (Manager selects payment method)
 router.post('/:id/send-to-finance', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(sendToFinanceDto), asyncHandler(dealsController.sendToFinance.bind(dealsController)));
+router.patch('/:id/payment-method', authorize('MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'), validate(changePaymentMethodDto), asyncHandler(dealsController.changePaymentMethod.bind(dealsController)));
 
 // Workflow: Finance
 router.post('/:id/finance-approve', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.approveFinance.bind(dealsController)));

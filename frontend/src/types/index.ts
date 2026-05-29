@@ -336,7 +336,7 @@ export type DealStatus =
 export type DeliveryType = 'SELF_PICKUP' | 'YANDEX' | 'DELIVERY';
 
 export type PaymentType = 'FULL' | 'PARTIAL' | 'INSTALLMENT';
-export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'CLICK' | 'TERMINAL' | 'INSTALLMENT';
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'PAYME' | 'QR' | 'CLICK' | 'TERMINAL' | 'INSTALLMENT' | 'DEBT';
 export type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
 export type ContractType = 'ANNUAL' | 'ONE_TIME';

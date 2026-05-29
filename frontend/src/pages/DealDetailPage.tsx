@@ -43,6 +43,7 @@ const paymentMethodLabels: Record<string, string> = {
   TERMINAL: 'Терминал',
   TRANSFER: 'Перечисление',
   INSTALLMENT: 'Рассрочка',
+  DEBT: 'Долг',
 };
 
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
@@ -76,6 +77,8 @@ export default function DealDetailPage() {
   const [paymentRecordModal, setPaymentRecordModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState<{ id: string } | null>(null);
   const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
+  const [changeDebtPaymentModal, setChangeDebtPaymentModal] = useState(false);
+  const [debtPaymentChangeMode, setDebtPaymentChangeMode] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [transferPaymentModal, setTransferPaymentModal] = useState(false);
   const [transferInn, setTransferInn] = useState('');
@@ -295,6 +298,26 @@ export default function DealDetailPage() {
     },
   });
 
+  const changePaymentMethodMut = useMutation({
+    mutationFn: (data: Parameters<typeof dealsApi.changePaymentMethod>[1]) =>
+      dealsApi.changePaymentMethod(id!, data),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['deal', id], result);
+      setChangeDebtPaymentModal(false);
+      setTransferPaymentModal(false);
+      setDebtPaymentChangeMode(false);
+      setSelectedPaymentMethod(null);
+      setTransferInn('');
+      setTransferDocuments([...DEFAULT_TRANSFER_DOCUMENTS]);
+      setTransferType('ONE_TIME');
+      message.success('Способ оплаты обновлён');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
   const sendToFinanceMut = useMutation({
     mutationFn: (data: {
       paymentMethod: PaymentMethod;
@@ -308,6 +331,8 @@ export default function DealDetailPage() {
 
       setTimeout(() => {
         setSendToFinanceModal(false);
+        setChangeDebtPaymentModal(false);
+        setDebtPaymentChangeMode(false);
         setTransferPaymentModal(false);
         setSelectedPaymentMethod(null);
         setTransferInn('');
@@ -468,6 +493,9 @@ export default function DealDetailPage() {
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
+  const canChangeDebtPaymentMethod =
+    deal.paymentMethod === 'DEBT'
+    && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
   const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
@@ -560,7 +588,7 @@ export default function DealDetailPage() {
     // IN_PROGRESS with quantities → Send to finance
     if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
       const preMethod = deal.paymentMethod as string | null;
-      const isSimpleMethod = preMethod && preMethod !== 'TRANSFER' && preMethod !== 'INSTALLMENT';
+      const isSimpleMethod = preMethod && preMethod !== 'TRANSFER' && preMethod !== 'INSTALLMENT' && preMethod !== 'DEBT';
       if (isSimpleMethod) {
         // Payment method already selected at creation — skip modal, just confirm
         actions.push(
@@ -938,7 +966,23 @@ export default function DealDetailPage() {
               )}
               {deal.paymentMethod && (
                 <Descriptions.Item label="Способ оплаты">
-                  <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
+                  <Space wrap>
+                    <Tag color={deal.paymentMethod === 'DEBT' ? 'red' : 'blue'}>
+                      {paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}
+                    </Tag>
+                    {canChangeDebtPaymentMethod && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => {
+                          setSelectedPaymentMethod(null);
+                          setChangeDebtPaymentModal(true);
+                        }}
+                      >
+                        Уточнить способ оплаты
+                      </Button>
+                    )}
+                  </Space>
                 </Descriptions.Item>
               )}
               {deal.paymentMethod === 'TRANSFER' && deal.transferInn && (
@@ -1361,7 +1405,23 @@ export default function DealDetailPage() {
                       )}
                       {deal.paymentMethod && (
                         <Descriptions.Item label="Способ оплаты">
-                          <Tag color="blue">{paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}</Tag>
+                          <Space wrap>
+                            <Tag color={deal.paymentMethod === 'DEBT' ? 'red' : 'blue'}>
+                              {paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}
+                            </Tag>
+                            {canChangeDebtPaymentMethod && (
+                              <Button
+                                size="small"
+                                type="link"
+                                onClick={() => {
+                                  setSelectedPaymentMethod(null);
+                                  setChangeDebtPaymentModal(true);
+                                }}
+                              >
+                                Уточнить способ оплаты
+                              </Button>
+                            )}
+                          </Space>
                         </Descriptions.Item>
                       )}
                       <Descriptions.Item label="Статус">
@@ -1895,6 +1955,52 @@ export default function DealDetailPage() {
         </Form>
       </Modal>
 
+      {/* Change payment method from DEBT (including closed deals) */}
+      <Modal
+        title="Уточнить способ оплаты"
+        open={changeDebtPaymentModal}
+        onCancel={() => {
+          setChangeDebtPaymentModal(false);
+          setSelectedPaymentMethod(null);
+          setDebtPaymentChangeMode(false);
+        }}
+        onOk={() => {
+          if (!selectedPaymentMethod) {
+            message.warning('Выберите способ оплаты');
+            return;
+          }
+          if (selectedPaymentMethod === 'TRANSFER' || selectedPaymentMethod === 'INSTALLMENT') {
+            setDebtPaymentChangeMode(true);
+            setChangeDebtPaymentModal(false);
+            openTransferPaymentModal();
+            return;
+          }
+          changePaymentMethodMut.mutate({
+            paymentMethod: selectedPaymentMethod as Exclude<PaymentMethod, 'DEBT'>,
+          });
+        }}
+        confirmLoading={changePaymentMethodMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          Сделка оформлена в долг. Укажите фактический способ оплаты — можно изменить и после закрытия сделки.
+        </Typography.Paragraph>
+        <Radio.Group
+          value={selectedPaymentMethod}
+          onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+          style={{ width: '100%' }}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {(['CASH', 'PAYME', 'CLICK', 'TERMINAL', 'QR', 'TRANSFER', 'INSTALLMENT'] as const).map((method) => (
+              <Radio.Button key={method} value={method} style={{ width: '100%', height: 'auto', padding: '8px 16px', textAlign: 'left' }}>
+                {paymentMethodLabels[method]}
+              </Radio.Button>
+            ))}
+          </Space>
+        </Radio.Group>
+      </Modal>
+
       {/* Send to Finance Modal — Payment Method Selection */}
       <Modal
         title="Отправить в финансы"
@@ -1962,7 +2068,11 @@ export default function DealDetailPage() {
         open={transferPaymentModal}
         onCancel={() => {
           setTransferPaymentModal(false);
-          setSendToFinanceModal(true);
+          if (debtPaymentChangeMode) {
+            setChangeDebtPaymentModal(true);
+          } else {
+            setSendToFinanceModal(true);
+          }
           setTransferInn('');
           setTransferDocuments([...DEFAULT_TRANSFER_DOCUMENTS]);
           setTransferType('ONE_TIME');
@@ -1980,15 +2090,20 @@ export default function DealDetailPage() {
             message.error('Способ оплаты не выбран');
             return;
           }
-          sendToFinanceMut.mutate({
-            paymentMethod: selectedPaymentMethod,
+          const payload = {
+            paymentMethod: selectedPaymentMethod as Exclude<PaymentMethod, 'DEBT'>,
             transferInn: transferInn.trim(),
             transferDocuments,
             transferType,
-          });
+          };
+          if (debtPaymentChangeMode) {
+            changePaymentMethodMut.mutate(payload);
+          } else {
+            sendToFinanceMut.mutate(payload);
+          }
         }}
-        confirmLoading={sendToFinanceMut.isPending}
-        okText="Отправить в финансы"
+        confirmLoading={sendToFinanceMut.isPending || changePaymentMethodMut.isPending}
+        okText={debtPaymentChangeMode ? 'Сохранить' : 'Отправить в финансы'}
         cancelText="Назад"
         width={600}
       >

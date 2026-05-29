@@ -32,6 +32,7 @@ const methodLabels: Record<string, string> = {
   CLICK: 'Click',
   TERMINAL: 'Терминал',
   INSTALLMENT: 'Рассрочка',
+  DEBT: 'Долг',
 };
 
 const paymentStatusLabels: Record<string, { color: string; label: string }> = {
