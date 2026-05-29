@@ -17,6 +17,7 @@ import type {
   ReanimationClientDetail,
   ReanimationClientRow,
   DeadProductsResponse,
+  PaymentOverdueResponse,
 } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
@@ -156,6 +157,10 @@ export const analyticsApi = {
   getDeadProducts: (params?: { noSalesDays?: number; zeroStockDays?: number }) =>
     client
       .get<DeadProductsResponse>('/analytics/dead-products', { params })
+      .then((r) => r.data),
+  getPaymentOverdue: (params?: { dueSoonDays?: number }) =>
+    client
+      .get<PaymentOverdueResponse>('/analytics/payment-overdue', { params })
       .then((r) => r.data),
   exportDebtBreakdown: (year: number = new Date().getFullYear()) =>
     client.get('/analytics/history/export/debt-breakdown', {

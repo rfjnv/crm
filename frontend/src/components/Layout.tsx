@@ -60,6 +60,7 @@ import {
   EditOutlined,
   SoundOutlined,
   StopOutlined,
+  ClockCircleOutlined,
   NodeIndexOutlined,
   GlobalOutlined,
   FileTextOutlined,
@@ -565,6 +566,11 @@ export default function Layout() {
           key: '/manager/dead-products',
           icon: <StopOutlined />,
           label: <Link to="/manager/dead-products">Мёртвые товары</Link>,
+        },
+        {
+          key: '/manager/payment-overdue',
+          icon: <ClockCircleOutlined />,
+          label: <Link to="/manager/payment-overdue">Просрочка</Link>,
         },
         {
           key: '/analytics/calls',

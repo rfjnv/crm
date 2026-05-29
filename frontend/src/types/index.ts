@@ -1569,6 +1569,50 @@ export interface DeadProductsResponse {
   products: DeadProductRow[];
 }
 
+// ─── Payment overdue (manager analytics) ───
+
+export type PaymentOverdueBucket = 'OVERDUE' | 'DUE_SOON' | 'UPCOMING' | 'NO_DUE_DATE';
+
+export interface PaymentOverdueDealRow {
+  dealId: string;
+  title: string | null;
+  status: string;
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  creditStatus: string;
+  managerId: string | null;
+  managerName: string | null;
+  managerDepartment: string | null;
+  paymentType: string;
+  paymentStatus: string;
+  paymentMethod: string | null;
+  amount: number;
+  paidAmount: number;
+  remaining: number;
+  dueDate: string | null;
+  terms: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  bucket: PaymentOverdueBucket;
+  daysOverdue: number | null;
+  daysUntilDue: number | null;
+}
+
+export interface PaymentOverdueResponse {
+  today: string;
+  thresholds: { dueSoonDays: number };
+  summary: {
+    dealsCount: number;
+    totalRemaining: number;
+    overdueCount: number;
+    overdueRemaining: number;
+    bucketCounts: Record<PaymentOverdueBucket, number>;
+  };
+  managers: { id: string; fullName: string }[];
+  deals: PaymentOverdueDealRow[];
+}
+
 // ─── History Cohort Clients ───
 
 export interface HistoryCohortClient {
