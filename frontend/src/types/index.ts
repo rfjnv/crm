@@ -1607,6 +1607,7 @@ export interface PaymentOverdueResponse {
     totalRemaining: number;
     overdueCount: number;
     overdueRemaining: number;
+    noDueDateCount: number;
     bucketCounts: Record<PaymentOverdueBucket, number>;
   };
   managers: { id: string; fullName: string }[];

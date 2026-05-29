@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Role, Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
@@ -7,13 +7,13 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope, type AuthUser } from '../../lib/scope';
 
 const router = Router();
-const TASHKENT_TZ = 'Asia/Tashkent';
 
 router.use(authenticate);
 
 export type PaymentOverdueBucket = 'OVERDUE' | 'DUE_SOON' | 'UPCOMING' | 'NO_DUE_DATE';
 
 const DEFAULT_DUE_SOON_DAYS = 7;
+const TASHKENT_TZ = Prisma.sql`'Asia/Tashkent'`;
 
 function getAuthUser(req: Request): AuthUser {
   return {
@@ -21,16 +21,6 @@ function getAuthUser(req: Request): AuthUser {
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
   };
-}
-
-function tashkentDateKey(d: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TASHKENT_TZ }).format(d);
-}
-
-function daysBetweenKeys(fromKey: string, toKey: string): number {
-  const from = new Date(`${fromKey}T12:00:00Z`).getTime();
-  const to = new Date(`${toKey}T12:00:00Z`).getTime();
-  return Math.round((to - from) / 86_400_000);
 }
 
 function parsePositiveInt(raw: unknown, fallback: number, max = 90): number {
@@ -41,16 +31,38 @@ function parsePositiveInt(raw: unknown, fallback: number, max = 90): number {
 
 function classifyBucket(
   dueDate: Date | null,
-  todayKey: string,
+  daysUntilDue: number | null,
   dueSoonDays: number,
 ): PaymentOverdueBucket {
-  if (!dueDate) return 'NO_DUE_DATE';
-  const dueKey = tashkentDateKey(dueDate);
-  if (dueKey < todayKey) return 'OVERDUE';
-  const daysUntil = daysBetweenKeys(todayKey, dueKey);
-  if (daysUntil <= dueSoonDays) return 'DUE_SOON';
+  if (!dueDate || daysUntilDue === null) return 'NO_DUE_DATE';
+  if (daysUntilDue < 0) return 'OVERDUE';
+  if (daysUntilDue <= dueSoonDays) return 'DUE_SOON';
   return 'UPCOMING';
 }
+
+type DebtRow = {
+  deal_id: string;
+  title: string | null;
+  status: string;
+  amount: string;
+  paid_amount: string;
+  remaining: string;
+  payment_type: string;
+  payment_status: string;
+  payment_method: string | null;
+  due_date: Date | null;
+  terms: string | null;
+  created_at: Date;
+  closed_at: Date | null;
+  client_id: string;
+  company_name: string;
+  is_svip: boolean;
+  credit_status: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  manager_department: string | null;
+  days_until_due: number | null;
+};
 
 router.get(
   '/',
@@ -59,80 +71,92 @@ router.get(
     const user = getAuthUser(req);
     const dealScope = ownerScope(user);
     const dueSoonDays = parsePositiveInt(req.query.dueSoonDays, DEFAULT_DUE_SOON_DAYS);
-    const todayKey = tashkentDateKey(new Date());
+    const managerFilter = dealScope.managerId
+      ? Prisma.sql`AND d.manager_id = ${dealScope.managerId}`
+      : Prisma.empty;
 
-    const where: Prisma.DealWhereInput = {
-      isArchived: false,
-      status: { notIn: ['CANCELED', 'REJECTED'] },
-      paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-      paymentType: { in: ['PARTIAL', 'INSTALLMENT'] },
-      ...(dealScope.managerId ? { managerId: dealScope.managerId } : {}),
-    };
+    const rawRows = await prisma.$queryRaw<DebtRow[]>(Prisma.sql`
+      SELECT
+        d.id AS deal_id,
+        d.title,
+        d.status::text AS status,
+        d.amount::text AS amount,
+        d.paid_amount::text AS paid_amount,
+        (d.amount - d.paid_amount)::text AS remaining,
+        d.payment_type::text AS payment_type,
+        d.payment_status::text AS payment_status,
+        d.payment_method::text AS payment_method,
+        d.due_date,
+        d.terms,
+        d.created_at,
+        d.closed_at,
+        c.id AS client_id,
+        c.company_name,
+        c.is_svip,
+        c.credit_status::text AS credit_status,
+        u.id AS manager_id,
+        u.full_name AS manager_name,
+        u.department AS manager_department,
+        CASE
+          WHEN d.due_date IS NULL THEN NULL
+          ELSE (
+            (d.due_date AT TIME ZONE 'UTC' AT TIME ZONE ${TASHKENT_TZ})::date
+            - (NOW() AT TIME ZONE 'UTC' AT TIME ZONE ${TASHKENT_TZ})::date
+          )::int
+        END AS days_until_due
+      FROM deals d
+      JOIN clients c ON c.id = d.client_id
+      LEFT JOIN users u ON u.id = d.manager_id
+      WHERE d.is_archived = false
+        AND d.status NOT IN ('CANCELED', 'REJECTED')
+        AND d.payment_status IN ('UNPAID', 'PARTIAL')
+        AND (d.amount - d.paid_amount) > 0
+        ${managerFilter}
+      ORDER BY
+        CASE WHEN d.due_date IS NULL THEN 1 ELSE 0 END,
+        d.due_date ASC NULLS LAST,
+        (d.amount - d.paid_amount) DESC
+    `);
 
-    const deals = await prisma.deal.findMany({
-      where,
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        amount: true,
-        paidAmount: true,
-        paymentType: true,
-        paymentStatus: true,
-        paymentMethod: true,
-        dueDate: true,
-        terms: true,
-        createdAt: true,
-        closedAt: true,
-        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
-        manager: { select: { id: true, fullName: true, department: true } },
-      },
-      orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+    const todayKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Tashkent',
+    }).format(new Date());
+
+    const rows = rawRows.map((r) => {
+      const remaining = Number(r.remaining);
+      const daysUntilDue = r.days_until_due;
+      const bucket = classifyBucket(r.due_date, daysUntilDue, dueSoonDays);
+      const daysOverdue =
+        daysUntilDue !== null && daysUntilDue < 0 ? Math.abs(daysUntilDue) : null;
+      const daysUntilDuePositive =
+        daysUntilDue !== null && daysUntilDue >= 0 ? daysUntilDue : null;
+
+      return {
+        dealId: r.deal_id,
+        title: r.title,
+        status: r.status,
+        clientId: r.client_id,
+        clientName: r.company_name,
+        clientIsSvip: !!r.is_svip,
+        creditStatus: r.credit_status,
+        managerId: r.manager_id,
+        managerName: r.manager_name,
+        managerDepartment: r.manager_department,
+        paymentType: r.payment_type,
+        paymentStatus: r.payment_status,
+        paymentMethod: r.payment_method,
+        amount: Number(r.amount),
+        paidAmount: Number(r.paid_amount),
+        remaining,
+        dueDate: r.due_date ? r.due_date.toISOString() : null,
+        terms: r.terms,
+        createdAt: r.created_at.toISOString(),
+        closedAt: r.closed_at ? r.closed_at.toISOString() : null,
+        bucket,
+        daysOverdue,
+        daysUntilDue: daysUntilDuePositive,
+      };
     });
-
-    const rows = deals
-      .map((d) => {
-        const amount = Number(d.amount);
-        const paidAmount = Number(d.paidAmount);
-        const remaining = Math.round((amount - paidAmount) * 100) / 100;
-        if (remaining <= 0) return null;
-
-        const bucket = classifyBucket(d.dueDate, todayKey, dueSoonDays);
-        const dueKey = d.dueDate ? tashkentDateKey(d.dueDate) : null;
-        const daysOverdue =
-          bucket === 'OVERDUE' && dueKey ? daysBetweenKeys(dueKey, todayKey) : null;
-        const daysUntilDue =
-          d.dueDate && bucket !== 'OVERDUE' && dueKey
-            ? daysBetweenKeys(todayKey, dueKey)
-            : null;
-
-        return {
-          dealId: d.id,
-          title: d.title,
-          status: d.status,
-          clientId: d.client.id,
-          clientName: d.client.companyName,
-          clientIsSvip: !!d.client.isSvip,
-          creditStatus: d.client.creditStatus,
-          managerId: d.manager?.id ?? null,
-          managerName: d.manager?.fullName ?? null,
-          managerDepartment: d.manager?.department ?? null,
-          paymentType: d.paymentType,
-          paymentStatus: d.paymentStatus,
-          paymentMethod: d.paymentMethod,
-          amount,
-          paidAmount,
-          remaining,
-          dueDate: d.dueDate ? d.dueDate.toISOString() : null,
-          terms: d.terms,
-          createdAt: d.createdAt.toISOString(),
-          closedAt: d.closedAt ? d.closedAt.toISOString() : null,
-          bucket,
-          daysOverdue,
-          daysUntilDue,
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
 
     const bucketCounts: Record<PaymentOverdueBucket, number> = {
       OVERDUE: 0,
@@ -164,6 +188,7 @@ router.get(
         totalRemaining: Math.round(totalRemaining * 100) / 100,
         overdueCount: bucketCounts.OVERDUE,
         overdueRemaining: Math.round(overdueRemaining * 100) / 100,
+        noDueDateCount: bucketCounts.NO_DUE_DATE,
         bucketCounts,
       },
       managers,

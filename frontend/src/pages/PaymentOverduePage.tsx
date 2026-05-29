@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Card,
   Col,
+  Empty,
   Input,
   InputNumber,
   Pagination,
@@ -39,11 +41,15 @@ const BUCKET_META: Record<PaymentOverdueBucket, { label: string; color: string }
 };
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  FULL: 'Полная (остаток долга)',
   PARTIAL: 'Частично в долг',
   INSTALLMENT: 'Рассрочка',
 };
 
-type PresetKey = 'overdue' | 'due_soon' | 'all' | 'no_due';
+/** По умолчанию: просрочка + скоро срок + долги без даты (без далёких сроков). */
+const ATTENTION_BUCKETS: PaymentOverdueBucket[] = ['OVERDUE', 'DUE_SOON', 'NO_DUE_DATE'];
+
+type PresetKey = 'attention' | 'overdue' | 'due_soon' | 'all' | 'no_due';
 
 type SortBy = 'overdue_desc' | 'due_asc' | 'remaining_desc' | 'client_asc';
 
@@ -75,6 +81,7 @@ const FILTER_PATCH_KEYS: (keyof UrlState)[] = [
 ];
 
 function bucketsFromPreset(preset: PresetKey): PaymentOverdueBucket[] | null {
+  if (preset === 'attention') return [...ATTENTION_BUCKETS];
   if (preset === 'overdue') return ['OVERDUE'];
   if (preset === 'due_soon') return ['DUE_SOON', 'OVERDUE'];
   if (preset === 'no_due') return ['NO_DUE_DATE'];
@@ -93,7 +100,12 @@ function parseBuckets(raw: string | null): PaymentOverdueBucket[] {
 function parseParams(sp: URLSearchParams): UrlState {
   const presetRaw = sp.get('preset');
   const preset: PresetKey =
-    presetRaw === 'due_soon' || presetRaw === 'all' || presetRaw === 'no_due' ? presetRaw : 'overdue';
+    presetRaw === 'overdue' ||
+    presetRaw === 'due_soon' ||
+    presetRaw === 'all' ||
+    presetRaw === 'no_due'
+      ? presetRaw
+      : 'attention';
 
   const presetBuckets = bucketsFromPreset(preset);
   const buckets = presetBuckets ?? parseBuckets(sp.get('bucket'));
@@ -138,7 +150,7 @@ function parseParams(sp: URLSearchParams): UrlState {
 function serializeState(s: UrlState): URLSearchParams {
   const n = new URLSearchParams();
   if (s.q.trim()) n.set('q', s.q.trim());
-  if (s.preset !== 'overdue') n.set('preset', s.preset);
+  if (s.preset !== 'attention') n.set('preset', s.preset);
   else if (s.buckets.length > 0 && s.buckets.length < ALL_BUCKETS.length) {
     n.set('bucket', [...new Set(s.buckets)].sort().join(','));
   }
@@ -233,9 +245,17 @@ export default function PaymentOverduePage() {
     return () => window.clearTimeout(t);
   }, [searchDraft, listState.q, patchState]);
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['payment-overdue', listState.dueSoonDays],
     queryFn: () => analyticsApi.getPaymentOverdue({ dueSoonDays: listState.dueSoonDays }),
+    staleTime: 60_000,
   });
 
   const filtered = useMemo(() => {
@@ -357,11 +377,24 @@ export default function PaymentOverduePage() {
   ];
 
   const presetOptions = [
+    {
+      key: 'attention' as const,
+      label: data
+        ? `Нужно внимание (${data.summary.overdueCount + data.summary.noDueDateCount})`
+        : 'Нужно внимание',
+    },
     { key: 'overdue' as const, label: `Просрочка (${data?.summary.overdueCount ?? '…'})` },
     { key: 'due_soon' as const, label: 'Скоро срок' },
-    { key: 'no_due' as const, label: 'Без даты' },
-    { key: 'all' as const, label: 'Все в долг' },
+    { key: 'no_due' as const, label: `Без даты (${data?.summary.noDueDateCount ?? '…'})` },
+    { key: 'all' as const, label: `Все в долг (${data?.summary.dealsCount ?? '…'})` },
   ];
+
+  const apiError =
+    isError && error && typeof error === 'object' && 'response' in error
+      ? String((error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Ошибка загрузки')
+      : isError
+        ? 'Не удалось загрузить просрочку'
+        : null;
 
   return (
     <div className="payment-overdue-page">
@@ -372,9 +405,22 @@ export default function PaymentOverduePage() {
             Просрочка
           </Title>
           <Text type="secondary">
-            Кто взял в долг или рассрочку, на какой срок и что уже просрочено — по закрытым и активным сделкам.
+            Все сделки с непогашенным остатком: срок оплаты, просрочка в днях, менеджер. Включая долги без указанной даты.
           </Text>
         </div>
+
+        {apiError && (
+          <Alert
+            type="error"
+            showIcon
+            message={apiError}
+            action={
+              <Button size="small" onClick={() => void refetch()}>
+                Повторить
+              </Button>
+            }
+          />
+        )}
 
         {data?.summary && (
           <Row gutter={[12, 12]}>
@@ -391,6 +437,11 @@ export default function PaymentOverduePage() {
                   formatter={(v) => formatUZS(Number(v))}
                   loading={isLoading}
                 />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={6}>
+              <Card size="small">
+                <Statistic title="Без даты срока" value={data.summary.noDueDateCount} loading={isLoading} />
               </Card>
             </Col>
             <Col xs={12} sm={8} md={6}>
@@ -555,7 +606,21 @@ export default function PaymentOverduePage() {
               style: { cursor: 'pointer' },
               onClick: () => navigate(`/deals/${row.dealId}`),
             })}
-            locale={{ emptyText: 'Нет сделок по выбранным фильтрам' }}
+            locale={{
+              emptyText:
+                (data?.deals.length ?? 0) > 0 ? (
+                  <Empty
+                    description="По фильтрам ничего не найдено"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  >
+                    <Button size="small" onClick={() => patchState({ preset: 'all', buckets: [...ALL_BUCKETS] })}>
+                      Показать все в долг
+                    </Button>
+                  </Empty>
+                ) : (
+                  <Empty description="Нет сделок с непогашенным остатком" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ),
+            }}
           />
           {sorted.length > listState.pageSize && (
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
