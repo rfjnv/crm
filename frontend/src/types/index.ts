@@ -1524,6 +1524,51 @@ export interface ReanimationClientDetail {
   notes: ReanimationClientNote[];
 }
 
+// ─── Dead products (manager analytics) ───
+
+export type DeadProductIssue = 'STAGNANT' | 'ZERO_STOCK' | 'ZERO_LONG' | 'NEVER_SOLD' | 'NO_SALES';
+
+export interface DeadProductRow {
+  productId: string;
+  name: string;
+  sku: string;
+  unit: string;
+  category: string | null;
+  countryOfOrigin: string | null;
+  stock: number;
+  minStock: number;
+  purchasePrice: number | null;
+  salePrice: number | null;
+  isActive: boolean;
+  lifetimeDeals: number;
+  lifetimeQty: number;
+  lifetimeRevenue: number;
+  lastSaleAt: string | null;
+  lastInAt: string | null;
+  daysSinceLastSale: number | null;
+  daysAtZero: number | null;
+  qtySold90d: number;
+  revenue90d: number;
+  frozenValue: number;
+  issues: DeadProductIssue[];
+  isDead: boolean;
+}
+
+export interface DeadProductsResponse {
+  thresholds: { noSalesDays: number; zeroStockDays: number };
+  summary: {
+    totalActive: number;
+    deadCount: number;
+    zeroStockCount: number;
+    stagnantCount: number;
+    frozenCapital: number;
+    issueCounts: Record<DeadProductIssue, number>;
+  };
+  categories: string[];
+  countries: string[];
+  products: DeadProductRow[];
+}
+
 // ─── History Cohort Clients ───
 
 export interface HistoryCohortClient {

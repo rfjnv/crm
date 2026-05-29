@@ -59,6 +59,7 @@ import {
   DownOutlined,
   EditOutlined,
   SoundOutlined,
+  StopOutlined,
   NodeIndexOutlined,
   GlobalOutlined,
   FileTextOutlined,
@@ -559,6 +560,11 @@ export default function Layout() {
           key: '/manager/reanimation',
           icon: <SoundOutlined />,
           label: <Link to="/manager/reanimation">Реанимация</Link>,
+        },
+        {
+          key: '/manager/dead-products',
+          icon: <StopOutlined />,
+          label: <Link to="/manager/dead-products">Мёртвые товары</Link>,
         },
         {
           key: '/analytics/calls',

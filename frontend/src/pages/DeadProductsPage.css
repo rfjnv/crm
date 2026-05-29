@@ -1,0 +1,42 @@
+.dead-products-page {
+  padding-bottom: 64px;
+}
+
+.dead-products-filters-card .ant-card-body {
+  padding-top: 12px;
+}
+
+.dead-products-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dead-products-filter-item {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+.dead-products-filter-item--wide {
+  grid-column: span 6;
+}
+
+.dead-products-filter-item--compact {
+  grid-column: span 2;
+}
+
+@media (max-width: 991px) {
+  .dead-products-filter-item,
+  .dead-products-filter-item--wide,
+  .dead-products-filter-item--compact {
+    grid-column: span 12;
+  }
+}
+
+.dead-products-summary-row .ant-statistic-title {
+  font-size: 12px;
+}
+
+.dead-products-preset-tabs {
+  margin-bottom: 12px;
+}

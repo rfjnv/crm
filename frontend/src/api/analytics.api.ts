@@ -16,6 +16,7 @@ import type {
   AbcXyzResponse,
   ReanimationClientDetail,
   ReanimationClientRow,
+  DeadProductsResponse,
 } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
@@ -152,6 +153,10 @@ export const analyticsApi = {
     client.get<ReanimationClientRow[]>('/analytics/reanimation').then((r) => r.data),
   getReanimationClientDetail: (clientId: string) =>
     client.get<ReanimationClientDetail>(`/analytics/reanimation/${clientId}`).then((r) => r.data),
+  getDeadProducts: (params?: { noSalesDays?: number; zeroStockDays?: number }) =>
+    client
+      .get<DeadProductsResponse>('/analytics/dead-products', { params })
+      .then((r) => r.data),
   exportDebtBreakdown: (year: number = new Date().getFullYear()) =>
     client.get('/analytics/history/export/debt-breakdown', {
       params: { year },
