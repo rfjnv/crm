@@ -334,7 +334,7 @@ export default function DeadProductsPage() {
       }
       if (listState.countries.length > 0) {
         const c = row.countryOfOrigin || '';
-        if !listState.countries.includes(c)) return false;
+        if (!listState.countries.includes(c)) return false;
       }
 
       if (listState.stockFilter === 'zero' && row.stock > 0) return false;
