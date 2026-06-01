@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Descriptions, Card, Table, Typography, Spin, Tag, Space, Button,
@@ -52,6 +52,27 @@ import dayjs, { type Dayjs } from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 
 dayjs.extend(isoWeek);
+
+const CLIENT_DETAIL_TAB_KEYS = [
+  'info',
+  'portrait',
+  'deals',
+  'stock',
+  'analytics',
+  'payments',
+  'client-card',
+  'notes',
+  'history',
+] as const;
+
+type ClientDetailTab = (typeof CLIENT_DETAIL_TAB_KEYS)[number];
+
+function parseClientDetailTab(raw: string | null): ClientDetailTab {
+  if (raw && (CLIENT_DETAIL_TAB_KEYS as readonly string[]).includes(raw)) {
+    return raw as ClientDetailTab;
+  }
+  return 'info';
+}
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -158,6 +179,25 @@ const NOTES_SORT_OPTION_LABELS: Record<`${NotesBoardSortBy}:${NotesBoardSortOrde
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = parseClientDetailTab(searchParams.get('tab'));
+  const clientReturnPath = `/clients/${id}${location.search}`;
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (tab === 'info') {
+          next.delete('tab');
+        } else {
+          next.set('tab', tab);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const [contractModal, setContractModal] = useState(false);
   const [contractForm] = Form.useForm();
   const [editOpen, setEditOpen] = useState(false);
@@ -534,7 +574,7 @@ export default function ClientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
       message.success('Часть остатков отправлена в работу');
-      navigate(`/deals/${deal.id}`);
+      navigate(`/deals/${deal.id}`, { state: { from: `/clients/${id}?tab=stock` } });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки в работу';
@@ -549,7 +589,7 @@ export default function ClientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['client-analytics', id] });
       message.success('Все остатки отправлены в работу');
-      navigate(`/deals/${deal.id}`);
+      navigate(`/deals/${deal.id}`, { state: { from: `/clients/${id}?tab=stock` } });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки всех остатков';
@@ -675,7 +715,9 @@ export default function ClientDetailPage() {
         title: 'Сделка',
         dataIndex: ['sourceDeal', 'id'],
         render: (_: unknown, r: StockEventTableRow) =>
-          r.sourceDeal ? <Link to={`/deals/${r.sourceDeal.id}`}>{r.sourceDeal.title}</Link> : '—',
+          r.sourceDeal ? (
+            <Link to={`/deals/${r.sourceDeal.id}`} state={{ from: clientReturnPath }}>{r.sourceDeal.title}</Link>
+          ) : '—',
       },
       { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
     ];
@@ -712,7 +754,7 @@ export default function ClientDetailPage() {
           ),
       },
     ];
-  }, [user?.role, stockCorrectForm]);
+  }, [user?.role, stockCorrectForm, clientReturnPath]);
 
   // Client-side filtering of deals by payment status
   const filteredDeals = useMemo(() => {
@@ -889,7 +931,13 @@ export default function ClientDetailPage() {
   ];
 
   const dealColumns = [
-    { title: 'Сделка', dataIndex: 'title', render: (v: string, r: DealShort) => <Link to={`/deals/${r.id}`}>{v}</Link> },
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (v: string, r: DealShort) => (
+        <Link to={`/deals/${r.id}`} state={{ from: clientReturnPath }}>{v}</Link>
+      ),
+    },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string | undefined) => formatUZS(v ?? 0) },
@@ -917,7 +965,12 @@ export default function ClientDetailPage() {
   ];
 
   const paymentColumns = [
-    { title: 'Сделка', dataIndex: ['deal', 'title'], render: (v: string, r: PaymentRecord) => r.deal ? <Link to={`/deals/${r.dealId}`}>{v}</Link> : '—' },
+    {
+      title: 'Сделка',
+      dataIndex: ['deal', 'title'],
+      render: (v: string, r: PaymentRecord) =>
+        r.deal ? <Link to={`/deals/${r.dealId}`} state={{ from: clientReturnPath }}>{v}</Link> : '—',
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '—' },
     { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
@@ -1020,7 +1073,8 @@ export default function ClientDetailPage() {
       </div>
 
       <Tabs
-        defaultActiveKey="info"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
             key: 'info',
