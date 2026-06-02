@@ -17,15 +17,15 @@ export default function BackButton({ fallback }: Props) {
 
   const handleClick = () => {
     const returnTo = (location.state as BackNavigationState | null)?.from;
+    if (window.history.length > 2) {
+      navigate(-1);
+      return;
+    }
     if (returnTo) {
       navigate(returnTo);
       return;
     }
-    if (window.history.length > 2) {
-      navigate(-1);
-    } else {
-      navigate(fallback || '/dashboard');
-    }
+    navigate(fallback || '/dashboard');
   };
 
   return (
