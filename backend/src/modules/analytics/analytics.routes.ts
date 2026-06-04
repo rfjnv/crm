@@ -681,8 +681,8 @@ router.get(
       }),
       topClientsByOperationalRevenue(),
       // Top 5 products by quantity sold (CLOSED deals, deal_items only)
-      prisma.$queryRaw<{ product_id: string; name: string; total_quantity: string }[]>(
-        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(SUM(di.requested_qty), 0)::text as total_quantity
+      prisma.$queryRaw<{ product_id: string; name: string; unit: string; total_quantity: string }[]>(
+        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, COALESCE(SUM(di.requested_qty), 0)::text as total_quantity
          FROM deal_items di
          JOIN deals d ON d.id = di.deal_id
          JOIN products p ON p.id = di.product_id
@@ -690,7 +690,7 @@ router.get(
            AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
            AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
            AND di.requested_qty IS NOT NULL
-         GROUP BY p.id, p.name
+         GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(di.requested_qty) DESC
          LIMIT 5`,
       ),
@@ -738,6 +738,7 @@ router.get(
       topProducts: topProductsRaw.map((p) => ({
         productId: p.product_id,
         name: p.name,
+        unit: p.unit,
         totalQuantity: Number(p.total_quantity),
       })),
     };
@@ -864,12 +865,12 @@ router.get(
              OR MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) < NOW() - INTERVAL '30 days'
          ORDER BY p.stock DESC`
       ),
-      prisma.$queryRaw<{ product_id: string; name: string; total_sold: string }[]>(
-        Prisma.sql`SELECT p.id as product_id, p.name, SUM(m.quantity)::text as total_sold
+      prisma.$queryRaw<{ product_id: string; name: string; unit: string; total_sold: string }[]>(
+        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, SUM(m.quantity)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
          WHERE ${sqlMovementIsSale('m')}
-         GROUP BY p.id, p.name
+         GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`
       ),
@@ -889,7 +890,7 @@ router.get(
         lastOutDate: p.last_out_date ? p.last_out_date.toISOString().slice(0, 10) : null,
       })),
       topSelling: topSellingRaw.map((p) => ({
-        productId: p.product_id, name: p.name, totalSold: Number(p.total_sold),
+        productId: p.product_id, name: p.name, unit: p.unit, totalSold: Number(p.total_sold),
       })),
       frozenCapital: frozenCapitalRaw[0] ? Number(frozenCapitalRaw[0].value) : 0,
     };

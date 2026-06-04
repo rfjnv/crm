@@ -644,7 +644,7 @@ export interface AnalyticsSales {
     totalRevenue: number;
     shippedRevenue: number;
   }[];
-  topProducts: { productId: string; name: string; totalQuantity: number }[];
+  topProducts: { productId: string; name: string; unit: string; totalQuantity: number }[];
 }
 
 export interface AnalyticsFinance {
@@ -658,7 +658,7 @@ export interface AnalyticsFinance {
 export interface AnalyticsWarehouse {
   belowMinStock: { id: string; name: string; sku: string; stock: number; minStock: number }[];
   deadStock: { id: string; name: string; sku: string; stock: number; lastOutDate: string | null }[];
-  topSelling: { productId: string; name: string; totalSold: number }[];
+  topSelling: { productId: string; name: string; unit: string; totalSold: number }[];
   frozenCapital: number;
 }
 

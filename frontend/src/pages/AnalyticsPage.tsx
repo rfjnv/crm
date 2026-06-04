@@ -17,6 +17,7 @@ import {
   ShoppingOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
@@ -237,7 +238,7 @@ function statsRowToHierarchySales(row: HierarchyMerchandiseStatsRow) {
 function buildComparisonRows(level: CompareLevel, items: HierarchyCompareItem[]) {
   const baseRows: Array<{ metric: string;[key: string]: string | number }> = [
     { metric: 'Сделок' },
-    { metric: 'Продано (шт.)' },
+    { metric: 'Продано' },
     { metric: 'Выручка' },
     { metric: 'Ср. чек' },
     { metric: 'Ср. цена / ед.' },
@@ -251,7 +252,7 @@ function buildComparisonRows(level: CompareLevel, items: HierarchyCompareItem[])
 
   for (const item of items) {
     baseRows[0][item.key] = item.salesDeals;
-    baseRows[1][item.key] = item.soldQty.toLocaleString('ru-RU');
+    baseRows[1][item.key] = `${item.soldQty.toLocaleString('ru-RU')} ${item.unit || 'шт.'}`;
     baseRows[2][item.key] = formatUZS(item.salesRevenue);
     baseRows[3][item.key] = formatUZS(item.avgDealRevenue);
     baseRows[4][item.key] = formatUZS(item.avgUnitPrice);
@@ -634,12 +635,14 @@ export default function AnalyticsPage() {
   const productBarData = sales.topProducts.map((p) => ({
     name: p.name,
     value: p.totalQuantity,
+    unit: p.unit,
     productId: p.productId,
   }));
 
   const topSellingBarData = warehouse.topSelling.map((p) => ({
     name: p.name,
     value: p.totalSold,
+    unit: p.unit,
     productId: p.productId,
   }));
 
@@ -837,7 +840,9 @@ export default function AnalyticsPage() {
                     x: { labelFill: token.colorTextSecondary },
                     y: { labelFill: token.colorTextSecondary },
                   }}
-                  tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
+                  tooltip={{
+                    items: [{ field: 'value', channel: 'y', name: 'Продано', valueFormatter: (v: number, datum: { unit?: string }) => `${v} ${datum?.unit || 'шт.'}` }],
+                  }}
                   theme={chartTheme}
                   onReady={(plot) => {
                     plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
@@ -1509,7 +1514,7 @@ export default function AnalyticsPage() {
                         >
                           <List.Item.Meta
                             title={item.name}
-                            description={`Продано: ${sales.soldQty.toLocaleString('ru-RU')} • Выручка: ${formatUZS(sales.salesRevenue)}`}
+                            description={`Продано: ${sales.soldQty.toLocaleString('ru-RU')} ${item.unit || 'шт.'} • Выручка: ${formatUZS(sales.salesRevenue)}`}
                           />
                         </List.Item>
                       );
@@ -1693,7 +1698,7 @@ export default function AnalyticsPage() {
 
                     <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
                       <Col xs={24} md={12}>
-                        <Card size="small" title={`📦 Продаж (шт.)`} style={{ borderRadius: 10 }}>
+                        <Card size="small" title="📦 Продано" style={{ borderRadius: 10 }}>
                           {qtyChartData.length > 0 ? (
                             <Bar
                               data={qtyChartData}
@@ -1855,7 +1860,9 @@ export default function AnalyticsPage() {
                 x: { labelFill: token.colorTextSecondary },
                 y: { labelFill: token.colorTextSecondary },
               }}
-              tooltip={{ items: [{ field: 'value', channel: 'y', name: 'Продано' }] }}
+              tooltip={{
+                items: [{ field: 'value', channel: 'y', name: 'Продано', valueFormatter: (v: number, datum: { unit?: string }) => `${v} ${datum?.unit || 'шт.'}` }],
+              }}
               theme={chartTheme}
               onReady={(plot) => {
                 plot.chart.on('element:click', (evt: { data?: { data?: { productId?: string } } }) => {
@@ -2250,7 +2257,10 @@ export default function AnalyticsPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>
+        <Space>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
+          <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>
+        </Space>
         <Space wrap>
           <RangePicker
             value={exportRange}
@@ -2275,16 +2285,17 @@ export default function AnalyticsPage() {
             value={periodPreset}
             onChange={(v) => setPeriodPreset(v as AnalyticsPeriodPreset)}
           />
-          {periodPreset === 'custom' && (
-            <RangePicker
-              value={analyticsRange}
-              onChange={(v) => {
-                if (v?.[0] && v?.[1]) setAnalyticsRange([v[0], v[1]]);
-              }}
-              format="DD.MM.YYYY"
-              allowClear={false}
-            />
-          )}
+          <RangePicker
+            value={analyticsRange}
+            onChange={(v) => {
+              if (v?.[0] && v?.[1]) {
+                setAnalyticsRange([v[0], v[1]]);
+                setPeriodPreset('custom');
+              }
+            }}
+            format="DD.MM.YYYY"
+            allowClear={false}
+          />
         </Space>
       </div>
 
