@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs, Input } from 'antd';
-import { CalendarOutlined, ApartmentOutlined, SearchOutlined } from '@ant-design/icons';
+import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs, Input, Button, Space } from 'antd';
+import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
@@ -407,7 +407,10 @@ export default function ClientActivityMatrixPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 12 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
+      <Space style={{ marginBottom: 12 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
+        <Title level={4} style={{ margin: 0 }}><CalendarOutlined /> Аналитика для менеджеров</Title>
+      </Space>
 
       <Tabs
         activeKey={view}
@@ -427,29 +430,36 @@ export default function ClientActivityMatrixPage() {
               <Card
         size="small"
         extra={(
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Select
-              value={year}
-              onChange={(nextYear) => patchListParams({ year: nextYear, selectedMonths: [], page: 1 })}
-              style={{ width: 110 }}
-              options={[2024, 2025, 2026, 2027].map((y) => ({ label: y, value: y }))}
-            />
-            <Select
-              mode="multiple"
-              placeholder="Месяцы"
-              allowClear
-              style={{ width: isMobile ? 220 : 220 }}
-              maxTagCount={2}
-              value={selectedMonths}
-              onChange={(vals) => patchListParams({ selectedMonths: [...vals].sort((a, b) => a - b), page: 1 })}
-              options={visibleMonths.map((m) => ({ label: MONTH_LABELS[m], value: m }))}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <DatePicker.RangePicker
+              picker="month"
+              value={
+                selectedMonths.length > 0
+                  ? [
+                      dayjs().year(year).month(selectedMonths[0] - 1).startOf('month'),
+                      dayjs().year(year).month(selectedMonths[selectedMonths.length - 1] - 1).endOf('month'),
+                    ]
+                  : [dayjs().year(year).startOf('year'), dayjs().year(year).endOf('year')]
+              }
+              onChange={(range) => {
+                if (!range?.[0] || !range?.[1]) return;
+                const startYear = range[0].year();
+                const startMonth = range[0].month() + 1;
+                const endMonth = range[0].year() === range[1].year() ? range[1].month() + 1 : 12;
+                const months: number[] = [];
+                for (let m = startMonth; m <= endMonth; m++) months.push(m);
+                patchListParams({ year: startYear, selectedMonths: months, page: 1 });
+              }}
+              allowClear={false}
+              format="MMM YYYY"
+              style={{ width: 230 }}
             />
             <Select
               mode="multiple"
               placeholder="Фильтр клиентов"
               allowClear
               showSearch
-              style={{ width: isMobile ? 220 : 320 }}
+              style={{ width: isMobile ? 220 : 280 }}
               maxTagCount={2}
               value={selectedClients}
               onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
