@@ -998,8 +998,13 @@ router.get(
   }),
 );
 
-function computeDynamicCreditStatus(totalDebt: number, avgDaysToSettle: number | null): string {
+function computeDynamicCreditStatus(
+  totalDebt: number,
+  avgDaysToSettle: number | null,
+  hasOverdueDebt: boolean,
+): string {
   if (totalDebt > 0) {
+    if (!hasOverdueDebt) return 'SATISFACTORY'; // долг есть, но срок ещё не истёк
     if (avgDaysToSettle === null || avgDaysToSettle > 30) return 'NEGATIVE';
     return 'SATISFACTORY';
   }
@@ -1042,6 +1047,7 @@ router.get(
         paymentType: true,
         createdAt: true,
         closedAt: true,
+        dueDate: true,
         clientId: true,
         managerId: true,
         client: { select: { id: true, companyName: true, contactName: true, isSvip: true, creditStatus: true } },
@@ -1090,6 +1096,7 @@ router.get(
         paymentStatus: d.paymentStatus,
         paymentType: d.paymentType,
         closedAt: d.closedAt,
+        dueDate: d.dueDate ?? null,
         clientId: d.clientId,
         clientName: d.client?.companyName ?? '',
         clientContact: d.client?.contactName ?? null,
@@ -1160,9 +1167,15 @@ router.get(
         .filter((d) => d.remaining > 0 || d.paymentType !== 'FULL')
         .reduce((s, d) => s + d.amount, 0);
 
+      // Overdue = has remaining debt AND (no dueDate OR dueDate has passed)
+      const now = new Date();
+      const hasOverdueDebt = c.deals.some(
+        (d) => d.remaining > 0 && (!d.dueDate || new Date(d.dueDate) < now),
+      );
+
       return {
         ...c,
-        creditStatus: computeDynamicCreditStatus(totalDebt, avgDaysToSettle),
+        creditStatus: computeDynamicCreditStatus(totalDebt, avgDaysToSettle, hasOverdueDebt),
         totalRevenue,
         totalPaid,
         totalDebt,
