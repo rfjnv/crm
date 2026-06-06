@@ -235,6 +235,7 @@ export interface DepartmentReportClient {
   totalRevenue: number;
   totalPaid: number;
   totalDebt: number;
+  totalDebtIssued: number;
   dealsCount: number;
   dealsWithDebt: number;
   dealsFullyPaid: number;

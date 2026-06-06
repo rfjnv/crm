@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   Card,
@@ -36,6 +36,8 @@ import {
   FilterOutlined,
   BarChartOutlined,
   FileSearchOutlined,
+  StarOutlined,
+  TrophyOutlined,
 } from '@ant-design/icons';
 import { analyticsApi, type DepartmentReportClient, type DepartmentReportDeal } from '../api/analytics.api';
 import { usersApi } from '../api/users.api';
@@ -49,6 +51,7 @@ const { RangePicker } = DatePicker;
 type PeriodPreset = 'week' | 'month' | 'quarter' | 'year' | 'custom';
 type DebtFilter = 'all' | 'has_debt' | 'fully_paid' | 'no_debt';
 type SortOption = 'revenue_desc' | 'debt_desc' | 'client_asc' | 'days_asc';
+type QuickFilter = 'all' | 'top10' | 'svip';
 
 const PRESET_LABELS: Record<PeriodPreset, string> = {
   week: 'Неделя',
@@ -104,23 +107,45 @@ function PaymentMethodTag({ method }: { method: string | null }) {
 
 export default function DepartmentReportPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token } = theme.useToken();
 
-  const [preset, setPreset] = useState<PeriodPreset>('month');
-  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [managerId, setManagerId] = useState<string | undefined>(undefined);
+  // ── All filter state lives in URL so it survives navigation ──
+  const preset = (searchParams.get('preset') as PeriodPreset) ?? 'month';
+  const customFrom = searchParams.get('cf') ?? '';
+  const customTo = searchParams.get('ct') ?? '';
+  const managerId = searchParams.get('mgr') || undefined;
+  const debtFilter = (searchParams.get('debt') as DebtFilter) ?? 'all';
+  const creditFilter = (searchParams.get('credit') ?? '').split(',').filter(Boolean);
+  const sortBy = (searchParams.get('sort') as SortOption) ?? 'revenue_desc';
+  const quickFilter = (searchParams.get('quick') as QuickFilter) ?? 'all';
+  const selectedClientIds = (searchParams.get('cli') ?? '').split(',').filter(Boolean);
+
+  // Ephemeral — no need to persist in URL
   const [search, setSearch] = useState('');
-  const [debtFilter, setDebtFilter] = useState<DebtFilter>('all');
-  const [creditFilter, setCreditFilter] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>('revenue_desc');
   const [drawerClient, setDrawerClient] = useState<DepartmentReportClient | null>(null);
 
+  function patchParams(patch: Record<string, string | null>) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === null || v === '') next.delete(k);
+          else next.set(k, v);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  const customRangeValue: [Dayjs, Dayjs] | null =
+    customFrom && customTo ? [dayjs(customFrom), dayjs(customTo)] : null;
+
   const [from, to] = useMemo((): [string, string] => {
-    if (preset === 'custom' && customRange) {
-      return [customRange[0].format('YYYY-MM-DD'), customRange[1].format('YYYY-MM-DD')];
-    }
+    if (preset === 'custom' && customFrom && customTo) return [customFrom, customTo];
     return getPresetRange(preset);
-  }, [preset, customRange]);
+  }, [preset, customFrom, customTo]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['department-report', from, to, managerId],
@@ -142,6 +167,14 @@ export default function DepartmentReportPage() {
       .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
   }, [users]);
 
+  // Client options for multi-select — built from loaded data
+  const clientOptions = useMemo(() => {
+    if (!data) return [];
+    return [...data.clients]
+      .sort((a, b) => a.clientName.localeCompare(b.clientName))
+      .map((c) => ({ value: c.clientId, label: c.clientName }));
+  }, [data]);
+
   const filteredClients = useMemo(() => {
     if (!data) return [];
     let result = data.clients;
@@ -153,11 +186,15 @@ export default function DepartmentReportPage() {
     }
 
     if (debtFilter === 'has_debt') result = result.filter((c) => c.totalDebt > 0);
-    else if (debtFilter === 'fully_paid') result = result.filter((c) => c.totalDebt === 0 && c.dealsWithDebt > 0);
+    else if (debtFilter === 'fully_paid') result = result.filter((c) => c.totalDebt === 0 && c.dealsFullyPaid > 0);
     else if (debtFilter === 'no_debt') result = result.filter((c) => c.dealsWithDebt === 0);
 
     if (creditFilter.length > 0) {
       result = result.filter((c) => creditFilter.includes(c.creditStatus));
+    }
+
+    if (selectedClientIds.length > 0) {
+      result = result.filter((c) => selectedClientIds.includes(c.clientId));
     }
 
     result = [...result].sort((a, b) => {
@@ -172,8 +209,12 @@ export default function DepartmentReportPage() {
       return 0;
     });
 
+    // Quick filters applied after sort so "Топ 10" picks the top by revenue
+    if (quickFilter === 'top10') result = result.slice(0, 10);
+    else if (quickFilter === 'svip') result = result.filter((c) => c.isSvip);
+
     return result;
-  }, [data, search, debtFilter, creditFilter, sortBy]);
+  }, [data, search, debtFilter, creditFilter, sortBy, quickFilter, selectedClientIds]);
 
   const totals = data?.totals;
   const debtRatio = totals && totals.totalRevenue > 0
@@ -256,16 +297,17 @@ export default function DepartmentReportPage() {
       title: 'Дней возврата',
       key: 'days',
       width: 120,
-      render: (_: unknown, d: DepartmentReportDeal) =>
-        d.daysToSettle !== null ? (
-          <Tag color={d.daysToSettle <= 7 ? 'green' : d.daysToSettle <= 30 ? 'orange' : 'red'}>
-            {d.daysToSettle} дн.
+      render: (_: unknown, d: DepartmentReportDeal) => {
+        if (d.daysToSettle === null) {
+          return d.remaining > 0 ? <Tag color="red">Не вернул</Tag> : <Text type="secondary">—</Text>;
+        }
+        const days = Math.max(0, d.daysToSettle);
+        return (
+          <Tag color={days <= 7 ? 'green' : days <= 30 ? 'orange' : 'red'}>
+            {days} дн.
           </Tag>
-        ) : d.remaining > 0 ? (
-          <Tag color="red">Не вернул</Tag>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
+        );
+      },
     },
   ];
 
@@ -314,10 +356,10 @@ export default function DepartmentReportPage() {
       title: 'Выдано в долг',
       key: 'debt_issued',
       width: 150,
-      sorter: (a: DepartmentReportClient, b: DepartmentReportClient) => a.totalDebt - b.totalDebt,
+      sorter: (a: DepartmentReportClient, b: DepartmentReportClient) => a.totalDebtIssued - b.totalDebtIssued,
       render: (_: unknown, c: DepartmentReportClient) => (
-        c.dealsWithDebt > 0
-          ? <Text style={{ color: token.colorWarning }}>{formatUZS(c.totalRevenue - c.totalPaid + c.totalDebt)}</Text>
+        c.totalDebtIssued > 0
+          ? <Text style={{ color: token.colorWarning }}>{formatUZS(c.totalDebtIssued)}</Text>
           : <Text type="secondary">—</Text>
       ),
     },
@@ -415,12 +457,18 @@ export default function DepartmentReportPage() {
           <Segmented
             options={Object.entries(PRESET_LABELS).map(([k, v]) => ({ label: v, value: k }))}
             value={preset}
-            onChange={(v) => setPreset(v as PeriodPreset)}
+            onChange={(v) => patchParams({ preset: v as string, cf: null, ct: null })}
           />
           {preset === 'custom' && (
             <RangePicker
-              value={customRange}
-              onChange={(v) => setCustomRange(v as [Dayjs, Dayjs] | null)}
+              value={customRangeValue}
+              onChange={(v) => {
+                const range = v as [Dayjs, Dayjs] | null;
+                patchParams({
+                  cf: range ? range[0].format('YYYY-MM-DD') : null,
+                  ct: range ? range[1].format('YYYY-MM-DD') : null,
+                });
+              }}
               format="DD.MM.YYYY"
               allowClear={false}
             />
@@ -431,14 +479,14 @@ export default function DepartmentReportPage() {
             style={{ minWidth: 180 }}
             options={managers}
             value={managerId}
-            onChange={setManagerId}
+            onChange={(v) => patchParams({ mgr: v ?? null })}
           />
           <Select
             placeholder="Статус долга"
             allowClear
             style={{ minWidth: 160 }}
             value={debtFilter === 'all' ? undefined : debtFilter}
-            onChange={(v) => setDebtFilter(v ?? 'all')}
+            onChange={(v) => patchParams({ debt: v ?? null })}
             options={[
               { value: 'has_debt', label: 'Есть долг' },
               { value: 'fully_paid', label: 'Погашен' },
@@ -450,7 +498,7 @@ export default function DepartmentReportPage() {
             placeholder={<><FilterOutlined /> Кредит. статус</>}
             style={{ minWidth: 180 }}
             value={creditFilter}
-            onChange={setCreditFilter}
+            onChange={(v) => patchParams({ credit: v.join(',') || null })}
             options={[
               { value: 'NORMAL', label: 'Нормальный' },
               { value: 'SATISFACTORY', label: 'Удовлетворительный' },
@@ -461,7 +509,7 @@ export default function DepartmentReportPage() {
             placeholder="Сортировка"
             style={{ minWidth: 180 }}
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(v) => patchParams({ sort: v })}
             options={[
               { value: 'revenue_desc', label: 'По выручке ↓' },
               { value: 'debt_desc', label: 'По долгу ↓' },
@@ -469,6 +517,33 @@ export default function DepartmentReportPage() {
               { value: 'days_asc', label: 'По сроку возврата ↑' },
             ]}
           />
+          <Select
+            placeholder={<><TrophyOutlined /> Быстрый фильтр</>}
+            style={{ minWidth: 160 }}
+            value={quickFilter}
+            onChange={(v) => patchParams({ quick: v === 'all' ? null : v })}
+            options={[
+              { value: 'all', label: 'Все клиенты' },
+              { value: 'top10', label: <><TrophyOutlined /> Топ 10</> },
+              { value: 'svip', label: <><StarOutlined /> SVIP</> },
+            ]}
+          />
+          {clientOptions.length > 0 && (
+            <Select
+              mode="multiple"
+              placeholder="Выбрать клиентов"
+              allowClear
+              showSearch
+              style={{ minWidth: 220, maxWidth: 360 }}
+              options={clientOptions}
+              value={selectedClientIds.length > 0 ? selectedClientIds : undefined}
+              onChange={(v: string[]) => patchParams({ cli: v.join(',') || null })}
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              maxTagCount="responsive"
+            />
+          )}
         </Space>
       </Card>
 
@@ -639,7 +714,7 @@ export default function DepartmentReportPage() {
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={3}>
                       <Text strong style={{ color: token.colorWarning }}>
-                        {formatUZS(filteredClients.reduce((s, c) => s + (c.totalRevenue - c.totalPaid + c.totalDebt), 0))}
+                        {formatUZS(filteredClients.reduce((s, c) => s + c.totalDebtIssued, 0))}
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={4}>
@@ -776,9 +851,14 @@ export default function DepartmentReportPage() {
                       <Text type="secondary" style={{ fontSize: 11 }}>Дней возврата</Text>
                       <div>
                         {deal.daysToSettle !== null
-                          ? <Tag color={deal.daysToSettle <= 7 ? 'green' : deal.daysToSettle <= 30 ? 'orange' : 'red'}>
-                              {deal.daysToSettle} дн.
-                            </Tag>
+                          ? (() => {
+                              const days = Math.max(0, deal.daysToSettle);
+                              return (
+                                <Tag color={days <= 7 ? 'green' : days <= 30 ? 'orange' : 'red'}>
+                                  {days} дн.
+                                </Tag>
+                              );
+                            })()
                           : deal.remaining > 0
                             ? <Tag color="red">Не вернул</Tag>
                             : '—'}

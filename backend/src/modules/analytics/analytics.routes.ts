@@ -998,6 +998,17 @@ router.get(
   }),
 );
 
+function computeDynamicCreditStatus(totalDebt: number, avgDaysToSettle: number | null): string {
+  if (totalDebt > 0) {
+    if (avgDaysToSettle === null || avgDaysToSettle > 30) return 'NEGATIVE';
+    return 'SATISFACTORY';
+  }
+  if (avgDaysToSettle === null) return 'NORMAL';
+  if (avgDaysToSettle > 30) return 'NEGATIVE';
+  if (avgDaysToSettle > 7) return 'SATISFACTORY';
+  return 'NORMAL';
+}
+
 // ──── DEPARTMENT REPORT ────
 router.get(
   '/department-report',
@@ -1139,20 +1150,28 @@ router.get(
         .flatMap((d) => d.payments.map((p) => p.paidAt))
         .sort()
         .reverse()[0] ?? null;
-      const avgDaysToSettle = c.deals
-        .filter((d) => d.daysToSettle !== null && d.daysToSettle >= 0)
-        .reduce((acc, d, _, arr) => acc + (d.daysToSettle! / arr.length), 0);
+      const settledDeals = c.deals.filter((d) => d.daysToSettle !== null && d.daysToSettle >= 0);
+      const avgDaysToSettle = settledDeals.length > 0
+        ? Math.round(settledDeals.reduce((acc, d) => acc + d.daysToSettle!, 0) / settledDeals.length)
+        : null;
+
+      // Amount of deals that involved credit (not fully paid upfront)
+      const totalDebtIssued = c.deals
+        .filter((d) => d.remaining > 0 || d.paymentType !== 'FULL')
+        .reduce((s, d) => s + d.amount, 0);
 
       return {
         ...c,
+        creditStatus: computeDynamicCreditStatus(totalDebt, avgDaysToSettle),
         totalRevenue,
         totalPaid,
         totalDebt,
+        totalDebtIssued,
         dealsCount: c.deals.length,
         dealsWithDebt,
         dealsFullyPaid,
         lastPaymentDate,
-        avgDaysToSettle: dealsFullyPaid > 0 ? Math.round(avgDaysToSettle) : null,
+        avgDaysToSettle,
       };
     });
 
