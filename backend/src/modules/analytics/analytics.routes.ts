@@ -310,6 +310,23 @@ router.get(
         return { clientId, companyName, days, total };
       })
       .sort((a, b) => b.total - a.total);
+
+    // Add ALL remaining clients (those with no notes in this period) as empty rows
+    const existingClientIds = new Set(matrixRows.map((r) => r.clientId));
+    const remainingClients = await prisma.client.findMany({
+      where: {
+        ...(existingClientIds.size > 0 ? { id: { notIn: [...existingClientIds] } } : {}),
+        ...(clientSearch.length > 0
+          ? { companyName: { contains: clientSearch, mode: 'insensitive' } }
+          : {}),
+      },
+      select: { id: true, companyName: true },
+      orderBy: { companyName: 'asc' },
+    });
+    for (const c of remainingClients) {
+      matrixRows.push({ clientId: c.id, companyName: c.companyName, days: {}, total: 0 });
+    }
+
     const clientMatrix = { rows: matrixRows, days: dayList };
 
     const feed = feedRows.map((n) => ({

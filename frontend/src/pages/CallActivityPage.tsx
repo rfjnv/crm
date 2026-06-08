@@ -20,6 +20,7 @@ import {
   Space,
   Tooltip,
   Drawer,
+  Pagination,
   message,
 } from 'antd';
 import { PhoneOutlined, UserOutlined } from '@ant-design/icons';
@@ -41,6 +42,8 @@ const MANAGER_COLORS = [
 
 const SHORT_MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
+const MATRIX_PAGE_SIZE = 50;
+
 export default function CallActivityPage() {
   const { token } = theme.useToken();
   const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
@@ -52,6 +55,7 @@ export default function CallActivityPage() {
   const [clientSearchInput, setClientSearchInput] = useState('');
   const [debouncedClientSearch, setDebouncedClientSearch] = useState('');
   const [matrixSearch, setMatrixSearch] = useState('');
+  const [matrixPage, setMatrixPage] = useState(1);
   const [noteDrawer, setNoteDrawer] = useState<{ clientId: string; companyName: string; day: string } | null>(null);
 
   useEffect(() => {
@@ -162,9 +166,17 @@ export default function CallActivityPage() {
   const filteredMatrixRows = useMemo(() => {
     const rows = data?.clientMatrix?.rows ?? [];
     const q = matrixSearch.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.companyName.toLowerCase().includes(q));
+    const filtered = q ? rows.filter((r) => r.companyName.toLowerCase().includes(q)) : rows;
+    return filtered;
   }, [data?.clientMatrix?.rows, matrixSearch]);
+
+  // reset page when filter or data changes
+  useEffect(() => { setMatrixPage(1); }, [filteredMatrixRows]);
+
+  const pagedMatrixRows = useMemo(() => {
+    const start = (matrixPage - 1) * MATRIX_PAGE_SIZE;
+    return filteredMatrixRows.slice(start, start + MATRIX_PAGE_SIZE);
+  }, [filteredMatrixRows, matrixPage]);
 
   const summaryColumns = [
     {
@@ -357,13 +369,14 @@ export default function CallActivityPage() {
             </Row>
           ) : null}
 
-          {!isManager && data.clientMatrix && data.clientMatrix.rows.length > 0 ? (
+          {!isManager && data.clientMatrix ? (
             <Card
               size="small"
               title={
-                <Space align="center" size={8}>
+                <Space align="center" size={8} wrap>
                   <span>Матрица контактов по клиентам</span>
-                  <Tag color="blue">{data.clientMatrix.rows.length} клиентов</Tag>
+                  <Tag color="blue">{filteredMatrixRows.filter((r) => r.total > 0).length} с контактами</Tag>
+                  <Tag>{filteredMatrixRows.length} клиентов всего</Tag>
                   <Tag>{data.clientMatrix.days.length} дней</Tag>
                 </Space>
               }
@@ -438,7 +451,7 @@ export default function CallActivityPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMatrixRows.map((row) => (
+                    {pagedMatrixRows.map((row) => (
                       <tr key={row.clientId}>
                         <td style={{
                           position: 'sticky', left: 0, zIndex: 1,
@@ -511,9 +524,9 @@ export default function CallActivityPage() {
                           borderBottom: `1px solid ${token.colorBorderSecondary}`,
                           borderLeft: `1px solid ${token.colorBorderSecondary}`,
                           padding: '3px 6px',
-                          color: token.colorPrimary,
+                          color: row.total > 0 ? token.colorPrimary : token.colorTextQuaternary,
                         }}>
-                          {row.total}
+                          {row.total > 0 ? row.total : '—'}
                         </td>
                       </tr>
                     ))}
@@ -523,6 +536,19 @@ export default function CallActivityPage() {
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет клиентов" style={{ margin: '16px 0' }} />
                 )}
               </div>
+              {filteredMatrixRows.length > MATRIX_PAGE_SIZE && (
+                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                  <Pagination
+                    size="small"
+                    current={matrixPage}
+                    pageSize={MATRIX_PAGE_SIZE}
+                    total={filteredMatrixRows.length}
+                    onChange={(p) => setMatrixPage(p)}
+                    showSizeChanger={false}
+                    showTotal={(total, range) => `${range[0]}–${range[1]} из ${total} клиентов`}
+                  />
+                </div>
+              )}
             </Card>
           ) : null}
 
