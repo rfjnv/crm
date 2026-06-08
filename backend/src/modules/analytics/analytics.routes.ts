@@ -215,8 +215,10 @@ router.get(
         where,
         select: {
           userId: true,
+          clientId: true,
           createdAt: true,
           user: { select: { fullName: true } },
+          client: { select: { companyName: true } },
         },
       }),
       prisma.clientNote.findMany({
@@ -282,6 +284,34 @@ router.get(
       total: s.contactCount,
     }));
 
+    type MatrixCell = { userId: string; fullName: string; count: number };
+    const clientDayManagerMap = new Map<string, { companyName: string; dayMap: Map<string, Map<string, MatrixCell>> }>();
+    for (const row of aggRows) {
+      const day = utcInstantToTashkentDayKey(row.createdAt);
+      const cid = row.clientId;
+      const uid = row.userId;
+      if (!clientDayManagerMap.has(cid)) {
+        clientDayManagerMap.set(cid, { companyName: row.client.companyName, dayMap: new Map() });
+      }
+      const ce = clientDayManagerMap.get(cid)!;
+      if (!ce.dayMap.has(day)) ce.dayMap.set(day, new Map());
+      const dm = ce.dayMap.get(day)!;
+      if (!dm.has(uid)) dm.set(uid, { userId: uid, fullName: row.user.fullName, count: 0 });
+      dm.get(uid)!.count += 1;
+    }
+    const matrixRows = [...clientDayManagerMap.entries()]
+      .map(([clientId, { companyName, dayMap }]) => {
+        let total = 0;
+        const days: Record<string, MatrixCell[]> = {};
+        for (const [day, manMap] of dayMap.entries()) {
+          days[day] = [...manMap.values()];
+          total += days[day].reduce((s, m) => s + m.count, 0);
+        }
+        return { clientId, companyName, days, total };
+      })
+      .sort((a, b) => b.total - a.total);
+    const clientMatrix = { rows: matrixRows, days: dayList };
+
     const feed = feedRows.map((n) => ({
       id: n.id,
       userId: n.userId,
@@ -298,6 +328,7 @@ router.get(
       lineChart,
       barChart,
       feed,
+      clientMatrix,
     });
   }),
 );

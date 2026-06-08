@@ -80,6 +80,15 @@ export type CallActivitySummaryRow = {
   lastActivityAt: string;
 };
 
+export type CallActivityMatrixCell = { userId: string; fullName: string; count: number };
+
+export type CallActivityMatrixRow = {
+  clientId: string;
+  companyName: string;
+  days: Record<string, CallActivityMatrixCell[]>;
+  total: number;
+};
+
 export type CallActivityResponse = {
   range: { key: CallActivityRangeKey; start: string; end: string };
   summary: CallActivitySummaryRow[];
@@ -94,6 +103,10 @@ export type CallActivityResponse = {
     preview: string;
     createdAt: string;
   }[];
+  clientMatrix?: {
+    days: string[];
+    rows: CallActivityMatrixRow[];
+  };
 };
 
 export const analyticsApi = {
