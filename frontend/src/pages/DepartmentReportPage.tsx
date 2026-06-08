@@ -216,7 +216,20 @@ export default function DepartmentReportPage() {
     return result;
   }, [data, search, debtFilter, creditFilter, sortBy, quickFilter, selectedClientIds]);
 
-  const totals = data?.totals;
+  // Totals computed from filteredClients so KPI cards react to all filters
+  const totals = useMemo(() => {
+    if (filteredClients.length === 0) return null;
+    const totalRevenue = filteredClients.reduce((s, c) => s + c.totalRevenue, 0);
+    const totalPaid = filteredClients.reduce((s, c) => s + c.totalPaid, 0);
+    const totalDebtIssued = filteredClients.reduce((s, c) => s + c.totalDebtIssued, 0);
+    const totalDebtRemaining = filteredClients.reduce((s, c) => s + c.totalDebt, 0);
+    const totalDebtRepaid = Math.max(0, totalDebtIssued - totalDebtRemaining);
+    const dealsCount = filteredClients.reduce((s, c) => s + c.dealsCount, 0);
+    const clientCount = filteredClients.length;
+    const dealsWithDebt = filteredClients.reduce((s, c) => s + c.dealsWithDebt, 0);
+    return { totalRevenue, totalPaid, totalDebtIssued, totalDebtRemaining, totalDebtRepaid, dealsCount, clientCount, dealsWithDebt };
+  }, [filteredClients]);
+
   const debtRatio = totals && totals.totalRevenue > 0
     ? Math.round((totals.totalDebtIssued / totals.totalRevenue) * 100)
     : 0;
