@@ -333,6 +333,42 @@ router.get(
   }),
 );
 
+router.get(
+  '/call-activity/client-day-notes',
+  authorize('SUPER_ADMIN', 'ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const clientId = String(req.query.clientId ?? '').trim();
+    const dayParam = String(req.query.day ?? '').trim();
+    if (!clientId || !dayParam) throw new AppError(400, 'clientId and day are required');
+    const m = CALL_ACTIVITY_CUSTOM_YMD.exec(dayParam);
+    if (!m) throw new AppError(400, 'day must be YYYY-MM-DD');
+    const start = tashkentDayStartUtc(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const end = new Date(start.getTime() + 86400000);
+    const notes = await prisma.clientNote.findMany({
+      where: { clientId, deletedAt: null, createdAt: { gte: start, lt: end } },
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
+        userId: true,
+        user: { select: { fullName: true } },
+        client: { select: { companyName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({
+      notes: notes.map((n) => ({
+        id: n.id,
+        content: n.content,
+        createdAt: n.createdAt.toISOString(),
+        userId: n.userId,
+        managerName: n.user.fullName,
+        companyName: n.client.companyName,
+      })),
+    });
+  }),
+);
+
 /**
  * Компактные агрегаты для вкладки «Иерархия товаров» (без списка всех строк — быстрый ответ).
  * Правила те же, что у `hierarchy-closed-items`.

@@ -80,6 +80,15 @@ export type CallActivitySummaryRow = {
   lastActivityAt: string;
 };
 
+export type CallActivityNote = {
+  id: string;
+  content: string;
+  createdAt: string;
+  userId: string;
+  managerName: string;
+  companyName: string;
+};
+
 export type CallActivityMatrixCell = { userId: string; fullName: string; count: number };
 
 export type CallActivityMatrixRow = {
@@ -125,6 +134,11 @@ export const analyticsApi = {
       .get<HierarchyMerchandiseStats>('/analytics/hierarchy-merchandise-stats', {
         params: { from: fromIso },
       })
+      .then((r) => r.data),
+
+  getCallActivityClientDayNotes: (clientId: string, day: string) =>
+    client
+      .get<{ notes: CallActivityNote[] }>('/analytics/call-activity/client-day-notes', { params: { clientId, day } })
       .then((r) => r.data),
 
   getCallActivity: (params: {

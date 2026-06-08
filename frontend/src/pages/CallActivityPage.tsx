@@ -19,12 +19,13 @@ import {
   DatePicker,
   Space,
   Tooltip,
+  Drawer,
   message,
 } from 'antd';
 import { PhoneOutlined, UserOutlined } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/charts';
 import dayjs from 'dayjs';
-import { analyticsApi, type CallActivityRange } from '../api/analytics.api';
+import { analyticsApi, type CallActivityRange, type CallActivityNote } from '../api/analytics.api';
 import type { Dayjs } from 'dayjs';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
@@ -51,6 +52,7 @@ export default function CallActivityPage() {
   const [clientSearchInput, setClientSearchInput] = useState('');
   const [debouncedClientSearch, setDebouncedClientSearch] = useState('');
   const [matrixSearch, setMatrixSearch] = useState('');
+  const [noteDrawer, setNoteDrawer] = useState<{ clientId: string; companyName: string; day: string } | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedClientSearch(clientSearchInput.trim()), 300);
@@ -85,6 +87,12 @@ export default function CallActivityPage() {
     queryKey: ['users'],
     queryFn: () => usersApi.list(),
     enabled: !isManager,
+  });
+
+  const { data: notesData, isLoading: notesLoading } = useQuery({
+    queryKey: ['call-activity-client-day-notes', noteDrawer?.clientId, noteDrawer?.day],
+    queryFn: () => analyticsApi.getCallActivityClientDayNotes(noteDrawer!.clientId, noteDrawer!.day),
+    enabled: !!noteDrawer,
   });
 
   const managerOptions = useMemo(
@@ -448,12 +456,17 @@ export default function CallActivityPage() {
                         {data.clientMatrix!.days.map((day) => {
                           const managers = row.days[day] ?? [];
                           return (
-                            <td key={day} style={{
-                              textAlign: 'center', verticalAlign: 'middle',
-                              padding: '3px 2px', height: 32,
-                              borderBottom: `1px solid ${token.colorBorderSecondary}`,
-                              background: managers.length > 0 ? `${token.colorPrimaryBg}` : undefined,
-                            }}>
+                            <td
+                              key={day}
+                              onClick={() => managers.length > 0 && setNoteDrawer({ clientId: row.clientId, companyName: row.companyName, day })}
+                              style={{
+                                textAlign: 'center', verticalAlign: 'middle',
+                                padding: '3px 2px', height: 32,
+                                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                                background: managers.length > 0 ? `${token.colorPrimaryBg}` : undefined,
+                                cursor: managers.length > 0 ? 'pointer' : 'default',
+                              }}
+                            >
                               {managers.length > 0 ? (
                                 <Tooltip
                                   title={
@@ -537,6 +550,53 @@ export default function CallActivityPage() {
           </Card>
         </>
       )}
+
+      <Drawer
+        open={!!noteDrawer}
+        onClose={() => setNoteDrawer(null)}
+        title={
+          noteDrawer ? (
+            <Space>
+              <Link to={`/clients/${noteDrawer.clientId}`} onClick={() => setNoteDrawer(null)}>
+                {noteDrawer.companyName}
+              </Link>
+              <Text type="secondary">—</Text>
+              <Text>{dayjs(noteDrawer.day).format('DD.MM.YYYY')}</Text>
+            </Space>
+          ) : null
+        }
+        width={520}
+      >
+        {notesLoading ? (
+          <Spin style={{ display: 'block', margin: '40px auto' }} />
+        ) : !notesData?.notes.length ? (
+          <Empty description="Нет заметок" />
+        ) : (
+          <List
+            dataSource={notesData.notes}
+            renderItem={(note: CallActivityNote) => (
+              <List.Item style={{ alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Space size={6}>
+                    <span style={{
+                      display: 'inline-block', width: 10, height: 10, borderRadius: 3, flexShrink: 0,
+                      background: managerColorMap.get(note.userId) ?? token.colorTextSecondary,
+                      verticalAlign: 'middle',
+                    }} />
+                    <Text strong>{note.managerName}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {dayjs(note.createdAt).format('HH:mm')}
+                    </Text>
+                  </Space>
+                  <div style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                    {note.content}
+                  </div>
+                </div>
+              </List.Item>
+            )}
+          />
+        )}
+      </Drawer>
     </div>
   );
 }
