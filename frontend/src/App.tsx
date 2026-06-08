@@ -54,6 +54,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import HistoryAnalyticsPage from './pages/HistoryAnalyticsPage';
 import CallActivityPage from './pages/CallActivityPage';
+import ContactMatrixPage from './pages/ContactMatrixPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import ReanimationPage from './pages/ReanimationPage';
 import DeadProductsPage from './pages/DeadProductsPage';
@@ -169,6 +170,9 @@ export default function App() {
                   <Route path="/manager/dead-products" element={<DeadProductsPage />} />
                   <Route path="/manager/payment-overdue" element={<PaymentOverduePage />} />
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
+                </Route>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />

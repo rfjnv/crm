@@ -578,6 +578,13 @@ export default function Layout() {
           label: <Link to="/analytics/calls">Обзвоны</Link>,
         },
         ...(hasRole('SUPER_ADMIN', 'ADMIN')
+          ? [{
+              key: '/analytics/contact-matrix',
+              icon: <NodeIndexOutlined />,
+              label: <Link to="/analytics/contact-matrix">Матрица контактов</Link>,
+            }]
+          : []),
+        ...(hasRole('SUPER_ADMIN', 'ADMIN')
           ? [
             {
               key: '/analytics',
