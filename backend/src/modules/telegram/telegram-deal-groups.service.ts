@@ -1422,3 +1422,69 @@ export async function onDealStatusChanged(
     await trySendProductionTelegram(dealId);
   }
 }
+
+export type TelegramGroupTarget = 'warehouse' | 'production' | 'finance';
+
+/**
+ * Ручная отправка сделки в выбранную Telegram-группу.
+ * Не проверяет текущий статус сделки, не обновляет флаги sentTo*.
+ */
+export async function sendDealToGroupManually(
+  dealId: string,
+  group: TelegramGroupTarget,
+  senderName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const chatId =
+    group === 'warehouse'
+      ? config.telegram.groupWarehouseChatId
+      : group === 'production'
+        ? config.telegram.groupProductionChatId
+        : config.telegram.groupFinanceChatId;
+
+  if (!chatId) {
+    return { ok: false, error: `Chat ID for group "${group}" is not configured` };
+  }
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      client: { select: { companyName: true, contactName: true, inn: true } },
+      manager: { select: { fullName: true } },
+      contract: { select: { contractNumber: true, contractType: true } },
+      items: {
+        include: { product: { select: { name: true, sku: true, unit: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+      comments: {
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { author: { select: { fullName: true } } },
+      },
+      shipment: {
+        select: { vehicleType: true, vehicleNumber: true, shipmentComment: true },
+      },
+    },
+  });
+
+  if (!deal) return { ok: false, error: 'Deal not found' };
+
+  let body: string;
+
+  if (group === 'warehouse') {
+    body = buildWarehouseQueueTelegramHtml(deal);
+  } else if (group === 'production') {
+    const { header } = productionSyncHeaderForEdit(deal.status, deal.items);
+    body = buildProductionGroupHtml(deal, header, itemsHavePositiveQty(deal.items));
+  } else {
+    body = buildFinanceQueueTelegramHtml(deal);
+  }
+
+  const manualLine = `📤 <b>Ручная отправка</b> — ${esc(senderName)}\n\n`;
+  body = manualLine + body;
+
+  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  if (sentId == null) {
+    return { ok: false, error: 'Telegram API returned null message ID' };
+  }
+  return { ok: true };
+}

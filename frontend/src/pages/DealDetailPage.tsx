@@ -10,7 +10,7 @@ import {
   SendOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ArrowRightOutlined, ArrowLeftOutlined, EditOutlined, DollarOutlined,
   FileTextOutlined, LinkOutlined, ThunderboltOutlined, AuditOutlined, FilePdfOutlined,
-  CalendarOutlined, WarningOutlined,
+  CalendarOutlined, WarningOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { adminApi } from '../api/admin.api';
@@ -86,6 +86,8 @@ export default function DealDetailPage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
+  const [sendToGroupModal, setSendToGroupModal] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<'warehouse' | 'production' | 'finance'>('warehouse');
   const [overrideModal, setOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
@@ -478,6 +480,18 @@ export default function DealDetailPage() {
     },
   });
 
+  const sendToGroupMut = useMutation({
+    mutationFn: (group: 'warehouse' | 'production' | 'finance') => dealsApi.sendToGroup(id!, group),
+    onSuccess: () => {
+      message.success('Сообщение отправлено в группу');
+      setSendToGroupModal(false);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка отправки';
+      message.error(msg);
+    },
+  });
+
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (!dealData) {
     return (
@@ -687,6 +701,19 @@ export default function DealDetailPage() {
             Отменить
           </Button>
         </Popconfirm>,
+      );
+    }
+
+    // Send to Telegram group (ADMIN/SUPER_ADMIN/MANAGER)
+    if (isAdmin || role === 'MANAGER') {
+      actions.push(
+        <Button
+          key="send-to-group"
+          icon={<TeamOutlined />}
+          onClick={() => setSendToGroupModal(true)}
+        >
+          Отправить в группу
+        </Button>,
       );
     }
 
@@ -2401,6 +2428,31 @@ export default function DealDetailPage() {
           onChange={(e) => setDeleteReason(e.target.value)}
           placeholder="Укажите причину удаления (мин. 3 символа)..."
           status={deleteReason.length > 0 && deleteReason.length < 3 ? 'error' : undefined}
+        />
+      </Modal>
+
+      {/* Send to Telegram Group Modal */}
+      <Modal
+        title={<Space><TeamOutlined /> Отправить в Telegram-группу</Space>}
+        open={sendToGroupModal}
+        onCancel={() => setSendToGroupModal(false)}
+        onOk={() => sendToGroupMut.mutate(selectedGroup)}
+        confirmLoading={sendToGroupMut.isPending}
+        okText="Отправить"
+        cancelText="Отмена"
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          Выберите группу для отправки информации о сделке. Сообщение будет отмечено как ручная отправка.
+        </Typography.Paragraph>
+        <Select
+          value={selectedGroup}
+          onChange={(v) => setSelectedGroup(v)}
+          style={{ width: '100%' }}
+          options={[
+            { value: 'warehouse', label: '📦 Склад (Warehouse)' },
+            { value: 'production', label: '⚙️ Производство (Production)' },
+            { value: 'finance', label: '💰 Финансы (Finance)' },
+          ]}
         />
       </Modal>
     </div>

@@ -99,4 +99,7 @@ router.post('/:id/mark-loaded', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'WARE
 router.post('/:id/assign-driver', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(assignDriverDto), asyncHandler(dealsController.assignDriver.bind(dealsController)));
 router.post('/:id/deliver', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.deliverDeal.bind(dealsController)));
 
+// Manual: send deal info to a specific Telegram group
+router.post('/:id/send-to-group', authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER'), asyncHandler(dealsController.sendToGroup.bind(dealsController)));
+
 export default router;

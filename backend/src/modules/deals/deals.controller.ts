@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { DealStatus, PaymentStatus, Role } from '@prisma/client';
 import { dealsService } from './deals.service';
 import { AuthUser } from '../../lib/scope';
+import { sendDealToGroupManually, TelegramGroupTarget } from '../telegram/telegram-deal-groups.service';
 
 const PAYMENT_STATUS_QUERY = new Set<PaymentStatus>(['UNPAID', 'PARTIAL', 'PAID']);
 
@@ -352,6 +353,27 @@ export class DealsController {
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('Content-Length', buffer.length);
     res.end(buffer);
+  }
+
+  async sendToGroup(req: Request, res: Response): Promise<void> {
+    const user = getUser(req);
+    const { group } = req.body as { group?: string };
+    const validGroups: TelegramGroupTarget[] = ['warehouse', 'production', 'finance'];
+    if (!group || !validGroups.includes(group as TelegramGroupTarget)) {
+      res.status(400).json({ error: 'group must be one of: warehouse, production, finance' });
+      return;
+    }
+    const senderUser = await dealsService.getUserName(user.userId);
+    const result = await sendDealToGroupManually(
+      req.params.id as string,
+      group as TelegramGroupTarget,
+      senderUser,
+    );
+    if (!result.ok) {
+      res.status(500).json({ error: result.error ?? 'Failed to send to group' });
+      return;
+    }
+    res.json({ ok: true });
   }
 }
 

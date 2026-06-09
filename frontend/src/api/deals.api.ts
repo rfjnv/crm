@@ -260,6 +260,9 @@ export const dealsApi = {
   startDelivery: (dealIds: string[]) => client.post('/deals/start-delivery', { dealIds }).then((r) => r.data),
   deliverDeal: (dealId: string) => client.post(`/deals/${dealId}/deliver`).then((r) => r.data),
 
+  sendToGroup: (dealId: string, group: 'warehouse' | 'production' | 'finance') =>
+    client.post<{ ok: boolean }>(`/deals/${dealId}/send-to-group`, { group }).then((r) => r.data),
+
   downloadPaymentReceipt: (dealId: string) =>
     client.get(`/deals/${dealId}/payment-receipt`, {
       params: { ts: Date.now() },

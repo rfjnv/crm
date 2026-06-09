@@ -3844,6 +3844,11 @@ export class DealsService {
     const safeName = deal.title.replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     return { buffer, filename: `receipt_${safeName}.pdf` };
   }
+
+  async getUserName(userId: string): Promise<string> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+    return user?.fullName ?? 'Неизвестный';
+  }
 }
 
 export const dealsService = new DealsService();
