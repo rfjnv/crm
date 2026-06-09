@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../../lib/prisma';
+import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
@@ -11,6 +12,7 @@ import {
 } from './note-audit.service';
 
 export const noteAuditRoutes = Router();
+noteAuditRoutes.use(authenticate);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
