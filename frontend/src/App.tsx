@@ -68,6 +68,7 @@ import AiAssistantPage from './pages/AiAssistantPage';
 import AiTrainingPage from './pages/AiTrainingPage';
 import AudioTranscriptionPage from './pages/AudioTranscriptionPage';
 import CallAuditDashboardPage from './pages/CallAuditDashboardPage';
+import NoteAuditPage from './pages/NoteAuditPage';
 import NotesBoardPage from './pages/NotesBoardPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
@@ -173,6 +174,7 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
+                  <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />

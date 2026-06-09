@@ -243,6 +243,9 @@ model User {
   reviewsReceived        WorkerReview[]         @relation("WorkerReviewReceived")
   reviewsGiven           WorkerReview[]         @relation("WorkerReviewGiven")
   vedMapRoutesCreated    VedMapRoute[]          @relation("VedMapRouteCreator")
+  noteAuditReports       NoteAuditReport[]      @relation("NoteAuditManager")
+  noteAuditCorrections   NoteAuditReport[]      @relation("NoteAuditCorrectedBy")
+  noteAuditMemories      NoteAuditMemory[]      @relation("NoteAuditMemoryCreator")
 
   @@map("users")
 }
@@ -1391,4 +1394,72 @@ model ExchangeRate {
   @@index([date])
   @@index([currency])
   @@map("exchange_rates")
+}
+
+// ==================== NOTE AUDIT ====================
+
+/// AI-generated weekly quality report for a manager's client notes
+model NoteAuditReport {
+  id          String   @id @default(uuid())
+  managerId   String   @map("manager_id")
+  manager     User     @relation("NoteAuditManager", fields: [managerId], references: [id])
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  // AI scores 1–10 (0 = no data)
+  scoreSpecificity Float @map("score_specificity")
+  scoreFollowUp    Float @map("score_follow_up")
+  scoreNextStep    Float @map("score_next_step")
+  scoreTone        Float @map("score_tone")
+  scoreOverall     Float @map("score_overall")
+
+  // AI analysis text
+  summary             String @db.Text
+  feedbackSpecificity String @db.Text @map("feedback_specificity")
+  feedbackFollowUp    String @db.Text @map("feedback_follow_up")
+  feedbackNextStep    String @db.Text @map("feedback_next_step")
+  feedbackTone        String @db.Text @map("feedback_tone")
+
+  goodExamples String? @db.Text @map("good_examples") // JSON string[]
+  badExamples  String? @db.Text @map("bad_examples")  // JSON string[]
+
+  notesCount   Int    @map("notes_count")
+  status       String @default("PENDING") // PENDING | DONE | ERROR
+  errorMessage String? @db.Text @map("error_message")
+
+  // Super-admin correction
+  isCorrected   Boolean   @default(false)   @map("is_corrected")
+  correctedById String?   @map("corrected_by_id")
+  correctedBy   User?     @relation("NoteAuditCorrectedBy", fields: [correctedById], references: [id])
+  correctedAt   DateTime? @map("corrected_at")
+  correctionReason String? @db.Text @map("correction_reason")
+
+  correctedScoreSpecificity Float? @map("corrected_score_specificity")
+  correctedScoreFollowUp    Float? @map("corrected_score_follow_up")
+  correctedScoreNextStep    Float? @map("corrected_score_next_step")
+  correctedScoreTone        Float? @map("corrected_score_tone")
+  correctedScoreOverall     Float? @map("corrected_score_overall")
+  correctedSummary          String? @db.Text @map("corrected_summary")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([managerId])
+  @@index([periodStart])
+  @@map("note_audit_reports")
+}
+
+/// Stored learnings from super-admin corrections — injected into future AI prompts
+model NoteAuditMemory {
+  id          String @id @default(uuid())
+  managerId   String @map("manager_id") // specific manager ID or "*" for all
+
+  context     String @db.Text // human-readable correction summary injected into prompt
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("NoteAuditMemoryCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([managerId])
+  @@map("note_audit_memory")
 }

@@ -66,6 +66,7 @@ import {
   FileTextOutlined,
   ImportOutlined,
   MergeCellsOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -582,6 +583,11 @@ export default function Layout() {
               key: '/analytics/contact-matrix',
               icon: <NodeIndexOutlined />,
               label: <Link to="/analytics/contact-matrix">Матрица контактов</Link>,
+            },
+            {
+              key: '/analytics/note-audit',
+              icon: <RobotOutlined />,
+              label: <Link to="/analytics/note-audit">AI Аудит заметок</Link>,
             }]
           : []),
         ...(hasRole('SUPER_ADMIN', 'ADMIN')
