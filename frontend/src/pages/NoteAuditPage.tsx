@@ -44,7 +44,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { noteAuditApi, type NoteAuditReport, type NoteAuditMemory } from '../api/noteAudit.api';
 import { useAuthStore } from '../store/authStore';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -315,11 +315,9 @@ function ManagerRadarChart({ report }: { report: NoteAuditReport }) {
 
 function CorrectionForm({
   report,
-  onClose,
   onSaved,
 }: {
   report: NoteAuditReport;
-  onClose: () => void;
   onSaved: () => void;
 }) {
   const [form] = Form.useForm();
@@ -597,7 +595,6 @@ function ReportDetail({
           <Divider>Корректировка</Divider>
           <CorrectionForm
             report={report}
-            onClose={() => setShowCorrect(false)}
             onSaved={() => setShowCorrect(false)}
           />
         </>
