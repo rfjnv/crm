@@ -35,7 +35,6 @@ import {
 import type {
   DealStatus,
   DealShort,
-  DealShortItem,
   PaymentStatus,
   PaymentRecord,
   Product,
