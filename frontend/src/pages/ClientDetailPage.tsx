@@ -35,6 +35,7 @@ import {
 import type {
   DealStatus,
   DealShort,
+  DealShortItem,
   PaymentStatus,
   PaymentRecord,
   Product,
@@ -211,6 +212,8 @@ export default function ClientDetailPage() {
 
   // Client-side payment status filter (no API call on change)
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL');
+  const [dealSearch, setDealSearch] = useState('');
+  const [dealDateRange, setDealDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
 
   // Analytics period
   const [analyticsPeriod, setAnalyticsPeriod] = useState<number>(30);
@@ -756,12 +759,26 @@ export default function ClientDetailPage() {
     ];
   }, [user?.role, stockCorrectForm, clientReturnPath]);
 
-  // Client-side filtering of deals by payment status
+  // Client-side filtering of deals by payment status, search, and date range
   const filteredDeals = useMemo(() => {
-    const deals = client?.deals ?? [];
-    if (paymentFilter === 'ALL') return deals;
-    return deals.filter((d) => getPaymentCategory(d) === paymentFilter);
-  }, [client?.deals, paymentFilter]);
+    let deals = client?.deals ?? [];
+    if (paymentFilter !== 'ALL') deals = deals.filter((d) => getPaymentCategory(d) === paymentFilter);
+    if (dealSearch.trim()) {
+      const q = dealSearch.trim().toLowerCase();
+      deals = deals.filter(
+        (d) =>
+          d.title.toLowerCase().includes(q) ||
+          (d.items ?? []).some((it) => it.product.name.toLowerCase().includes(q) || it.product.sku.toLowerCase().includes(q)),
+      );
+    }
+    if (dealDateRange?.[0]) {
+      deals = deals.filter((d) => dayjs(d.createdAt).isAfter(dealDateRange[0]!.startOf('day').subtract(1, 'ms')));
+    }
+    if (dealDateRange?.[1]) {
+      deals = deals.filter((d) => dayjs(d.createdAt).isBefore(dealDateRange[1]!.endOf('day').add(1, 'ms')));
+    }
+    return deals;
+  }, [client?.deals, paymentFilter, dealSearch, dealDateRange]);
 
   const sendOnePositionToWork = (productId: string) => {
     const position = stockData?.positions.find((p) => p.productId === productId);
@@ -939,6 +956,23 @@ export default function ClientDetailPage() {
       ),
     },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
+    {
+      title: 'Товары',
+      key: 'items',
+      render: (_: unknown, r: DealShort) => {
+        if (!r.items?.length) return <Typography.Text type="secondary">—</Typography.Text>;
+        return (
+          <Space size={[4, 4]} wrap>
+            {r.items.map((it) => (
+              <Tag key={it.id} style={{ margin: 0 }}>
+                {it.product.name}
+                {it.requestedQty != null ? ` · ${it.requestedQty} ${it.product.unit}` : ''}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string | undefined) => formatUZS(v ?? 0) },
     {
@@ -1233,11 +1267,27 @@ export default function ClientDetailPage() {
               <Card
                 bordered={false}
                 extra={
-                  <Segmented
-                    value={paymentFilter}
-                    onChange={(v) => setPaymentFilter(v as PaymentFilter)}
-                    options={paymentFilterOptions}
-                  />
+                  <Space wrap size={[8, 8]}>
+                    <Input.Search
+                      allowClear
+                      placeholder="Поиск по названию сделки..."
+                      style={{ width: 240 }}
+                      value={dealSearch}
+                      onChange={(e) => setDealSearch(e.target.value)}
+                    />
+                    <DatePicker.RangePicker
+                      value={dealDateRange}
+                      format="DD.MM.YYYY"
+                      allowEmpty={[true, true]}
+                      placeholder={['Дата с', 'Дата по']}
+                      onChange={(range) => setDealDateRange(range)}
+                    />
+                    <Segmented
+                      value={paymentFilter}
+                      onChange={(v) => setPaymentFilter(v as PaymentFilter)}
+                      options={paymentFilterOptions}
+                    />
+                  </Space>
                 }
               >
                 <Table
@@ -1249,6 +1299,35 @@ export default function ClientDetailPage() {
                   columns={dealColumns}
                   locale={{ emptyText: 'Нет сделок' }}
                   scroll={{ x: 500 }}
+                  expandable={{
+                    rowExpandable: (r) => (r.items?.length ?? 0) > 0,
+                    expandedRowRender: (r) => (
+                      <Table<DealShortItem>
+                        dataSource={r.items ?? []}
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                        showHeader={false}
+                        columns={[
+                          {
+                            dataIndex: ['product', 'name'],
+                            render: (_: unknown, it: DealShortItem) => `${it.product.name} (${it.product.sku})`,
+                          },
+                          {
+                            dataIndex: 'requestedQty',
+                            align: 'right' as const,
+                            render: (v: number | null, it: DealShortItem) =>
+                              v != null ? `${v} ${it.product.unit}` : '—',
+                          },
+                          {
+                            dataIndex: 'price',
+                            align: 'right' as const,
+                            render: (v: string | null) => (v != null ? formatUZS(Number(v)) : '—'),
+                          },
+                        ]}
+                      />
+                    ),
+                  }}
                   summary={() => {
                     const deals = filteredDeals.filter((d) => d.status !== 'CANCELED');
                     if (deals.length === 0) return null;

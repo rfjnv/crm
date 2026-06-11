@@ -211,6 +211,14 @@ export class ClientsService {
             paymentStatus: true,
             paymentType: true,
             createdAt: true,
+            items: {
+              select: {
+                id: true,
+                requestedQty: true,
+                price: true,
+                product: { select: { id: true, name: true, sku: true, unit: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
         },

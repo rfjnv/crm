@@ -301,6 +301,13 @@ export interface ClientStockResponse {
   };
 }
 
+export interface DealShortItem {
+  id: string;
+  requestedQty: number | null;
+  price: string | null;
+  product: { id: string; name: string; sku: string; unit: string };
+}
+
 export interface DealShort {
   id: string;
   title: string;
@@ -310,6 +317,7 @@ export interface DealShort {
   paymentStatus?: PaymentStatus;
   paymentType?: PaymentType;
   createdAt: string;
+  items?: DealShortItem[];
 }
 
 export type DealStatus =
