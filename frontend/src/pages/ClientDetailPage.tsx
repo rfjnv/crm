@@ -951,28 +951,31 @@ export default function ClientDetailPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (v: string, r: DealShort) => (
-        <Link to={`/deals/${r.id}`} state={{ from: clientReturnPath }}>{v}</Link>
-      ),
-    },
-    { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
-    {
-      title: 'Товары',
-      key: 'items',
-      render: (_: unknown, r: DealShort) => {
-        if (!r.items?.length) return <Typography.Text type="secondary">—</Typography.Text>;
-        return (
-          <Space size={[4, 4]} wrap>
-            {r.items.map((it) => (
-              <Tag key={it.id} style={{ margin: 0 }}>
+      render: (v: string, r: DealShort) => {
+        const items = r.items ?? [];
+        const tooltipContent = items.length ? (
+          <div>
+            {items.map((it) => (
+              <div key={it.id}>
                 {it.product.name}
                 {it.requestedQty != null ? ` · ${it.requestedQty} ${it.product.unit}` : ''}
-              </Tag>
+              </div>
             ))}
-          </Space>
+          </div>
+        ) : null;
+        return (
+          <Tooltip title={tooltipContent} placement="right">
+            <Link to={`/deals/${r.id}`} state={{ from: clientReturnPath }}>{v}</Link>
+            {items.length > 0 && (
+              <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                ({items.length})
+              </Typography.Text>
+            )}
+          </Tooltip>
         );
       },
     },
+    { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string | undefined) => formatUZS(v ?? 0) },
     {
@@ -1299,35 +1302,6 @@ export default function ClientDetailPage() {
                   columns={dealColumns}
                   locale={{ emptyText: 'Нет сделок' }}
                   scroll={{ x: 500 }}
-                  expandable={{
-                    rowExpandable: (r) => (r.items?.length ?? 0) > 0,
-                    expandedRowRender: (r) => (
-                      <Table<DealShortItem>
-                        dataSource={r.items ?? []}
-                        rowKey="id"
-                        size="small"
-                        pagination={false}
-                        showHeader={false}
-                        columns={[
-                          {
-                            dataIndex: ['product', 'name'],
-                            render: (_: unknown, it: DealShortItem) => `${it.product.name} (${it.product.sku})`,
-                          },
-                          {
-                            dataIndex: 'requestedQty',
-                            align: 'right' as const,
-                            render: (v: number | null, it: DealShortItem) =>
-                              v != null ? `${v} ${it.product.unit}` : '—',
-                          },
-                          {
-                            dataIndex: 'price',
-                            align: 'right' as const,
-                            render: (v: string | null) => (v != null ? formatUZS(Number(v)) : '—'),
-                          },
-                        ]}
-                      />
-                    ),
-                  }}
                   summary={() => {
                     const deals = filteredDeals.filter((d) => d.status !== 'CANCELED');
                     if (deals.length === 0) return null;
