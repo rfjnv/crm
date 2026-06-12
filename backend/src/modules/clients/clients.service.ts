@@ -1067,7 +1067,7 @@ export class ClientsService {
     });
   }
 
-  async getAnalytics(id: string, user: AuthUser, periodDays: number = 30) {
+  async getAnalytics(id: string, user: AuthUser, periodDays: number = 30, dateFrom?: Date, dateTo?: Date) {
     const client = await prisma.client.findFirst({
       where: { id, ...clientOwnerScope(user) },
     });
@@ -1076,8 +1076,12 @@ export class ClientsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
-    const periodStart = new Date();
-    periodStart.setDate(periodStart.getDate() - periodDays);
+    const periodStart = dateFrom ?? (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - periodDays);
+      return d;
+    })();
+    const periodEnd = dateTo ?? new Date();
 
     // All deals for this client (not archived)
     const allDeals = await prisma.deal.findMany({
@@ -1108,7 +1112,8 @@ export class ClientsService {
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
           AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}`,
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}`,
       ),
       prisma.$queryRaw<{ day: Date; amount: string }[]>(
         Prisma.sql`
@@ -1119,6 +1124,7 @@ export class ClientsService {
         WHERE d.client_id = ${id}
           AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}
         GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
         ORDER BY day ASC`,
       ),
@@ -1130,6 +1136,7 @@ export class ClientsService {
         WHERE d.client_id = ${id}
           AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}
           AND di.requested_qty IS NOT NULL
         GROUP BY di.product_id
         ORDER BY SUM(di.requested_qty) DESC

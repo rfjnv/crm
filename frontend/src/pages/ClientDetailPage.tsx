@@ -216,6 +216,7 @@ export default function ClientDetailPage() {
 
   // Analytics period
   const [analyticsPeriod, setAnalyticsPeriod] = useState<number>(30);
+  const [analyticsDateRange, setAnalyticsDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [stockProductId, setStockProductId] = useState<string>();
   const [stockQty, setStockQty] = useState<number>(1);
   const [stockPrice, setStockPrice] = useState<number | undefined>(undefined);
@@ -262,9 +263,12 @@ export default function ClientDetailPage() {
     enabled: !!id,
   });
 
+  const analyticsFrom = analyticsDateRange?.[0]?.format('YYYY-MM-DD');
+  const analyticsTo = analyticsDateRange?.[1]?.format('YYYY-MM-DD');
+
   const { data: analytics } = useQuery({
-    queryKey: ['client-analytics', id, analyticsPeriod],
-    queryFn: () => clientsApi.analytics(id!, analyticsPeriod),
+    queryKey: ['client-analytics', id, analyticsPeriod, analyticsFrom, analyticsTo],
+    queryFn: () => clientsApi.analytics(id!, analyticsPeriod, analyticsFrom, analyticsTo),
     enabled: !!id,
   });
 
@@ -1424,16 +1428,27 @@ export default function ClientDetailPage() {
             label: 'Аналитика',
             children: (
               <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Segmented
-                    value={analyticsPeriod}
-                    onChange={(v) => setAnalyticsPeriod(v as number)}
-                    options={[
-                      { label: '30 дней', value: 30 },
-                      { label: '90 дней', value: 90 },
-                      { label: 'Год', value: 365 },
-                    ]}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <DatePicker.RangePicker
+                    value={analyticsDateRange}
+                    onChange={(range) => {
+                      setAnalyticsDateRange(range as [Dayjs | null, Dayjs | null] | null);
+                    }}
+                    format="DD.MM.YYYY"
+                    allowClear
+                    placeholder={['Начало', 'Конец']}
                   />
+                  {!analyticsDateRange && (
+                    <Segmented
+                      value={analyticsPeriod}
+                      onChange={(v) => setAnalyticsPeriod(v as number)}
+                      options={[
+                        { label: '30 дней', value: 30 },
+                        { label: '90 дней', value: 90 },
+                        { label: 'Год', value: 365 },
+                      ]}
+                    />
+                  )}
                 </div>
 
                 {analytics && (

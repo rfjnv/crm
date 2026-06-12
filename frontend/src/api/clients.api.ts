@@ -78,8 +78,10 @@ export const clientsApi = {
 
   payments: (id: string) => client.get<PaymentRecord[]>(`/clients/${id}/payments`).then((r) => r.data),
 
-  analytics: (id: string, periodDays?: number) =>
-    client.get<ClientAnalytics>(`/clients/${id}/analytics`, { params: periodDays ? { periodDays } : {} }).then((r) => r.data),
+  analytics: (id: string, periodDays?: number, dateFrom?: string, dateTo?: string) =>
+    client.get<ClientAnalytics>(`/clients/${id}/analytics`, {
+      params: dateFrom && dateTo ? { dateFrom, dateTo } : periodDays ? { periodDays } : {},
+    }).then((r) => r.data),
 
   stock: (id: string, params?: { historyLimit?: number }) =>
     client.get<ClientStockResponse>(`/clients/${id}/stock`, { params }).then((r) => r.data),

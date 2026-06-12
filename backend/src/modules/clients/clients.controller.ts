@@ -84,7 +84,9 @@ export class ClientsController {
 
   async getAnalytics(req: Request, res: Response): Promise<void> {
     const periodDays = req.query.periodDays ? parseInt(req.query.periodDays as string, 10) : 30;
-    const analytics = await clientsService.getAnalytics(req.params.id as string, getUser(req), periodDays);
+    const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
+    const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
+    const analytics = await clientsService.getAnalytics(req.params.id as string, getUser(req), periodDays, dateFrom, dateTo);
     res.json(analytics);
   }
 
