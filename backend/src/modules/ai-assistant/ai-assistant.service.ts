@@ -17,39 +17,64 @@ const FORBIDDEN_KEYWORDS = [
 const MAX_CHAT_HISTORY = 20;
 
 const DB_SCHEMA = `
-\u2550\u2550 CORE TABLES \u2550\u2550
+\u2550\u2550\u2550 CORE TABLES \u2550\u2550\u2550
 
 Table: users
-  id, login, full_name, role (SUPER_ADMIN|ADMIN|OPERATOR|MANAGER|ACCOUNTANT|WAREHOUSE|WAREHOUSE_MANAGER|DRIVER|LOADER), is_active, created_at
+  id, login, full_name, role (SUPER_ADMIN|ADMIN|OPERATOR|MANAGER|ACCOUNTANT|WAREHOUSE|WAREHOUSE_MANAGER|DRIVER|LOADER)
+  department (nullable), is_active, created_at, updated_at
 
 Table: clients
-  id, company_name, contact_name, phone, email, address, notes, inn, manager_id (FK->users), is_archived, created_at, updated_at
+  id, company_name, contact_name, phone, email, address, notes, inn
+  bank_name (nullable), bank_account (nullable), mfo (nullable), vat_reg_code (nullable), oked (nullable)
+  manager_id (FK->users), is_svip (bool \u2014 VIP client flag), credit_status (NORMAL|BLOCKED|LIMITED)
+  is_archived, created_at, updated_at
+  Portrait fields (text): portrait_profile, portrait_goals, portrait_pains, portrait_fears, portrait_objections
 
 Table: deals
   id, title, status (NEW|IN_PROGRESS|WAITING_STOCK_CONFIRMATION|STOCK_CONFIRMED|WAITING_FINANCE|FINANCE_APPROVED|ADMIN_APPROVED|READY_FOR_SHIPMENT|SHIPMENT_ON_HOLD|SHIPPED|PENDING_APPROVAL|CLOSED|CANCELED|REJECTED|REOPENED|WAITING_WAREHOUSE_MANAGER|PENDING_ADMIN|READY_FOR_LOADING|LOADING_ASSIGNED|READY_FOR_DELIVERY|IN_DELIVERY)
-  amount (decimal), client_id (FK->clients), manager_id (FK->users), contract_id (FK->contracts, nullable)
-  payment_type (FULL|PARTIAL|INSTALLMENT), paid_amount (decimal), payment_status (UNPAID|PARTIAL|PAID)
-  discount (decimal), is_archived, closed_at (nullable), created_at, updated_at, delivery_type (nullable)
+  amount (decimal), paid_amount (decimal), discount (decimal)
+  client_id (FK->clients), manager_id (FK->users), contract_id (FK->contracts, nullable)
+  payment_type (FULL|PARTIAL|INSTALLMENT), payment_status (UNPAID|PARTIAL|PAID)
+  payment_method (nullable \u2014 CASH|TRANSFER|CLICK|CARD|UZUM|OTHER)
+  due_date (nullable \u2014 payment deadline), include_vat (bool), terms (nullable)
+  delivery_type (nullable), is_session_deal (bool \u2014 ongoing session deal for production)
+  transfer_inn, transfer_documents, transfer_type (nullable \u2014 bank transfer details)
+  is_archived, closed_at (nullable), created_at, updated_at
 
 Table: deal_items
-  id, deal_id (FK->deals), product_id (FK->products), requested_qty, price, line_total, deal_date (nullable), shipped_at (nullable), delivered_at (nullable), is_problem, created_at
+  id, deal_id (FK->deals), product_id (FK->products)
+  requested_qty (decimal), price (decimal), line_total (decimal)
+  closing_balance (decimal nullable \u2014 client stock after this line)
+  source_op_type (nullable \u2014 import source tag)
+  request_comment (nullable), warehouse_comment (nullable)
+  confirmed_by (FK->users, nullable), confirmed_at (nullable)
+  deal_date (nullable \u2014 actual sale date), shipped_at (nullable), delivered_at (nullable)
+  is_problem (bool), created_at
 
 Table: products
-  id, name, sku (unique), unit, category (nullable), stock (current balance), min_stock, purchase_price, sale_price, is_active, created_at
+  id, name, sku (unique), unit, format (nullable), category (nullable), country_of_origin (nullable)
+  stock (current balance decimal), min_stock (decimal)
+  purchase_price (nullable decimal), sale_price (nullable decimal), installment_price (nullable decimal)
+  pricing_mode (PER_UNIT|PER_SQM etc.), is_active, created_at, updated_at
+  supplier_id (FK->suppliers, nullable)
 
 Table: payments
-  id, deal_id (FK->deals), client_id (FK->clients), amount, paid_at, method (nullable), note (nullable), created_by (FK->users), created_at
+  id, deal_id (FK->deals), client_id (FK->clients), amount (decimal)
+  paid_at, method (nullable), note (nullable)
+  created_by (FK->users), received_by_id (FK->users, nullable), created_at
 
 Table: contracts
-  id, client_id (FK->clients), contract_number (unique), contract_type (ANNUAL|ONE_TIME), amount, start_date, end_date, is_active, created_at
+  id, client_id (FK->clients), contract_number (unique), contract_type (ANNUAL|ONE_TIME)
+  amount, start_date, end_date, is_active, created_at
 
 Table: expenses
   id, date, category, amount, note, status, created_by (FK->users), created_at
 
-\u2550\u2550 HISTORY & ACTIVITY TABLES \u2550\u2550
+\u2550\u2550\u2550 HISTORY & ACTIVITY TABLES \u2550\u2550\u2550
 
 Table: audit_logs -- log of ALL actions (who changed what, when)
-  id, user_id (FK->users), action (enum), entity_type (text, e.g. 'deal','client'), entity_id, before (JSON -- old value), after (JSON -- new value), reason, created_at
+  id, user_id (FK->users), action (enum), entity_type (text, e.g. 'deal','client'), entity_id
+  before (JSON -- old value), after (JSON -- new value), reason, created_at
   USE: track deal status changes, price adjustments, who edited what, deal lifecycle
 
 Table: deal_comments -- comments on deals
@@ -61,7 +86,8 @@ Table: client_notes -- notes about clients
   USE: follow-up frequency, client engagement tracking
 
 Table: inventory_movements -- warehouse stock movements
-  id, product_id (FK->products), type (IN|OUT|ADJUSTMENT|RETURN|TRANSFER|WRITE_OFF), quantity, deal_id (FK->deals, nullable), note, created_by, created_at
+  id, product_id (FK->products), type (IN|OUT|ADJUSTMENT|RETURN|TRANSFER|WRITE_OFF)
+  quantity, deal_id (FK->deals, nullable), note, created_by, created_at
   USE: product demand velocity, stock turnover, returns analysis
 
 Table: shipments -- deliveries
@@ -69,7 +95,8 @@ Table: shipments -- deliveries
   USE: delivery timeline, logistics efficiency
 
 Table: tasks -- employee tasks
-  id, title, description, status (TODO|IN_PROGRESS|DONE|CANCELLED), assignee_id (FK->users), created_by_id (FK->users), due_date, approved_at, created_at
+  id, title, description, status (TODO|IN_PROGRESS|DONE|CANCELLED)
+  assignee_id (FK->users), created_by_id (FK->users), due_date, approved_at, created_at
   USE: workload distribution, task completion rates
 
 Table: deal_ratings -- customer QR feedback
@@ -1172,7 +1199,7 @@ async function executeAiQuery(
   }));
 
   const planResponse = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     temperature: 0,
     messages: [
       { role: 'system', content: fullPrompt },
@@ -1240,7 +1267,7 @@ Return ONLY valid JSON.`,
 
   if (allResults.length === 0 && failedQueries.length > 0) {
     const retryResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       temperature: 0,
       messages: [
         { role: 'system', content: fullPrompt },
@@ -1289,7 +1316,7 @@ Return: { "queries": ["SELECT ..."] }`,
   ).join('\n\n');
 
   const answerResponse = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     temperature: 0.4,
     messages: [
       { role: 'system', content: fullPrompt },
