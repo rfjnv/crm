@@ -7,7 +7,7 @@ import { sendDealToGroupManually, TelegramGroupTarget } from '../telegram/telegr
 const PAYMENT_STATUS_QUERY = new Set<PaymentStatus>(['UNPAID', 'PARTIAL', 'PAID']);
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
 }
 
 export class DealsController {

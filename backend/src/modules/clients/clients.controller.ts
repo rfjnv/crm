@@ -16,7 +16,7 @@ const clientFiltersSchema = z.object({
 });
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
 }
 
 export class ClientsController {
