@@ -20,6 +20,7 @@ const userSelect = {
   badgeIcon: true,
   badgeColor: true,
   badgeLabel: true,
+  company: { select: { id: true, name: true, displayName: true } },
 };
 
 export class UsersService {
@@ -104,6 +105,7 @@ export class UsersService {
         department: dept || null,
         role: dto.role,
         permissions,
+        ...(dto.companyId && { companyId: dto.companyId }),
       },
       select: userSelect,
     });
@@ -152,6 +154,7 @@ export class UsersService {
     if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;
     if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
     if (dto.badgeLabel !== undefined) data.badgeLabel = dto.badgeLabel;
+    if (dto.companyId !== undefined) data.companyId = dto.companyId;
 
     if (Object.keys(data).length === 0) {
       throw new AppError(400, 'Нет данных для обновления');

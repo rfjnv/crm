@@ -1,5 +1,5 @@
 import client from './client';
-import type { MonthlyGoalProgress, User, Permission, UserKPI, UserMedalHistoryEntry } from '../types';
+import type { MonthlyGoalProgress, User, Permission, UserKPI, UserMedalHistoryEntry, Company } from '../types';
 
 export const usersApi = {
   /**
@@ -20,6 +20,7 @@ export const usersApi = {
     role: string;
     department?: string | null;
     permissions?: Permission[];
+    companyId?: string;
   }) =>
     client.post<User>('/users', data).then((r) => r.data),
 
@@ -36,9 +37,13 @@ export const usersApi = {
       badgeIcon: string | null;
       badgeColor: string | null;
       badgeLabel: string | null;
+      companyId: string | null;
     }>,
   ) =>
     client.patch<User>(`/users/${id}`, data).then((r) => r.data),
+
+  listCompanies: () =>
+    client.get<Company[]>('/companies').then((r) => r.data),
 
   deactivate: (id: string) => client.delete<User>(`/users/${id}`).then((r) => r.data),
 

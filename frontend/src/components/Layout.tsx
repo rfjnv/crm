@@ -741,16 +741,31 @@ export default function Layout() {
           background: themeToken.colorBgContainer,
         }}
       >
-        <img
-          src={(!isMobile && collapsed) ? miniLogo : logo}
-          alt="Polygraph Business"
-          style={{
-            height: (!isMobile && collapsed) ? 40 : 52,
-            maxWidth: (!isMobile && collapsed) ? 48 : 192,
-            objectFit: 'contain',
+        {user?.company?.name === 'grand-astra' ? (
+          <span style={{
+            fontWeight: 700,
+            fontSize: (!isMobile && collapsed) ? 11 : 16,
+            color: themeToken.colorPrimary,
+            letterSpacing: 0.5,
             transition: 'all 0.3s',
-          }}
-        />
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {(!isMobile && collapsed) ? 'GA' : 'Grand Astra'}
+          </span>
+        ) : (
+          <img
+            src={(!isMobile && collapsed) ? miniLogo : logo}
+            alt="Polygraph Business"
+            style={{
+              height: (!isMobile && collapsed) ? 40 : 52,
+              maxWidth: (!isMobile && collapsed) ? 48 : 192,
+              objectFit: 'contain',
+              transition: 'all 0.3s',
+            }}
+          />
+        )}
       </Link>
       <Menu
         mode="inline"

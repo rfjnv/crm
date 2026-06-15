@@ -91,6 +91,11 @@ export default function UsersPage() {
     queryFn: () => usersApi.list({ includeInactive: true }),
   });
 
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: usersApi.listCompanies,
+  });
+
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['user-kpi', kpiUser?.id, kpiPeriod],
     queryFn: () => usersApi.kpi(kpiUser!.id, kpiPeriod),
@@ -238,6 +243,7 @@ export default function UsersPage() {
       badgeIcon: user.badgeIcon ?? undefined,
       badgeColor: user.badgeColor || '#22609A',
       badgeLabel: user.badgeLabel ?? '',
+      companyId: user.company?.id ?? undefined,
     });
     setOpen(true);
   }
@@ -263,6 +269,7 @@ export default function UsersPage() {
         const rawLabel = (values.badgeLabel as string | undefined)?.trim();
         data.badgeLabel = rawLabel || null;
       }
+      if (values.companyId !== undefined) data.companyId = (values.companyId as string) || null;
       updateMut.mutate({
         id: editingUser.id,
         data: data as Partial<{
@@ -275,12 +282,13 @@ export default function UsersPage() {
           badgeIcon: string | null;
           badgeColor: string | null;
           badgeLabel: string | null;
+          companyId: string | null;
         }>,
       });
     } else {
       const dept = ((values.department as string | undefined) ?? '').trim();
       createMut.mutate({
-        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }),
+        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[]; companyId?: string }),
         ...(dept ? { department: dept } : {}),
       });
     }
@@ -303,6 +311,14 @@ export default function UsersPage() {
       },
       { title: 'Логин', dataIndex: 'login', width: 120 },
       { title: 'ФИО', dataIndex: 'fullName', ellipsis: true },
+      {
+        title: 'Компания',
+        key: 'company',
+        width: 140,
+        render: (_: unknown, r: User) => r.company ? (
+          <Tag color={r.company.name === 'grand-astra' ? 'purple' : 'blue'}>{r.company.displayName}</Tag>
+        ) : '—',
+      },
       {
         title: 'Отдел',
         dataIndex: 'department',
@@ -448,6 +464,15 @@ export default function UsersPage() {
           <Form.Item name="department" label="Отдел">
             <Input placeholder="Например: B2B, розница, регион" maxLength={120} allowClear />
           </Form.Item>
+          {isSuperAdmin && (
+            <Form.Item name="companyId" label="Компания">
+              <Select
+                allowClear
+                placeholder="Выберите компанию"
+                options={companies.map((c) => ({ value: c.id, label: c.displayName }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item
             name="password"
             label={isEditing ? 'Новый пароль (оставьте пустым)' : 'Пароль'}
