@@ -2381,7 +2381,7 @@ export default function DealDetailPage() {
           footer={null}
           width="100vw"
           style={{ top: 0, margin: 0, padding: 0, maxWidth: '100vw' }}
-          styles={{ content: { borderRadius: 0, minHeight: '100dvh' }, body: { height: 'calc(100dvh - 57px)', overflow: 'auto' } }}
+          styles={{ body: { height: 'calc(100dvh - 57px)', overflow: 'auto' } }}
           destroyOnClose
         >
           <SuperOverridePanel
