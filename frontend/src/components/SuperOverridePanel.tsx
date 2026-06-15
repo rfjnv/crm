@@ -202,11 +202,19 @@ export default function SuperOverridePanel({
       // (AntD хранит undefined как null для незарегистрированных полей), что
       // отправляло contractId: null и откреплял договор. Теперь contractId
       // не попадает в store и никогда не трогается при override.
-      if ((values.paymentMethod || null) !== (deal.paymentMethod || null)) data.paymentMethod = values.paymentMethod || null;
-      if (values.paymentType !== deal.paymentType) data.paymentType = values.paymentType;
-      if (values.paidAmount !== Number(deal.paidAmount)) data.paidAmount = values.paidAmount;
-      if (values.discount !== Number(deal.discount || 0)) data.discount = values.discount;
-      if (values.terms !== (deal.terms || '')) data.terms = values.terms || null;
+      // Read payment fields via getFieldValue to get store value even if "Оплата" tab was never visited.
+      // validateFields() only returns mounted Form.Item values; unvisited tabs are lazy-rendered and may
+      // return undefined, causing silent field resets (e.g. paymentMethod → null → contract card gone).
+      const fPaymentMethod = form.getFieldValue('paymentMethod');
+      if ((fPaymentMethod || null) !== (deal.paymentMethod || null)) data.paymentMethod = fPaymentMethod || null;
+      const fPaymentType = form.getFieldValue('paymentType');
+      if (fPaymentType !== deal.paymentType) data.paymentType = fPaymentType;
+      const fPaidAmount = form.getFieldValue('paidAmount');
+      if (fPaidAmount !== Number(deal.paidAmount)) data.paidAmount = fPaidAmount;
+      const fDiscount = form.getFieldValue('discount');
+      if (fDiscount !== Number(deal.discount || 0)) data.discount = fDiscount;
+      const fTerms = form.getFieldValue('terms');
+      if ((fTerms ?? '') !== (deal.terms || '')) data.terms = fTerms || null;
 
       if ((values.deliveryType || null) !== (deal.deliveryType || null)) data.deliveryType = values.deliveryType || null;
       if ((values.vehicleNumber || '') !== (deal.vehicleNumber || '')) data.vehicleNumber = values.vehicleNumber || null;
@@ -215,7 +223,8 @@ export default function SuperOverridePanel({
       if ((values.loadingAssigneeId || null) !== (deal.loadingAssigneeId || null)) data.loadingAssigneeId = values.loadingAssigneeId || null;
       if ((values.deliveryDriverId || null) !== (deal.deliveryDriverId || null)) data.deliveryDriverId = values.deliveryDriverId || null;
 
-      const formDueDate = values.dueDate ? values.dueDate.toISOString() : null;
+      const fDueDate = form.getFieldValue('dueDate');
+      const formDueDate = fDueDate ? fDueDate.toISOString() : null;
       const dealDueDate = deal.dueDate ? dayjs(deal.dueDate).toISOString() : null;
       if (formDueDate !== dealDueDate) data.dueDate = formDueDate;
 
@@ -634,6 +643,7 @@ export default function SuperOverridePanel({
           {
             key: 'payment',
             label: 'Оплата',
+            forceRender: true,
             children: (
               <Form form={form} layout="vertical">
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
