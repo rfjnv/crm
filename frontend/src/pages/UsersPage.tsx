@@ -91,10 +91,11 @@ export default function UsersPage() {
     queryFn: () => usersApi.list({ includeInactive: true }),
   });
 
-  const { data: companies = [] } = useQuery({
+  const { data: companies = [], error: companiesError } = useQuery({
     queryKey: ['companies'],
     queryFn: usersApi.listCompanies,
   });
+  if (companiesError) console.error('[companies]', companiesError);
 
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['user-kpi', kpiUser?.id, kpiPeriod],
