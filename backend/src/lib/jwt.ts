@@ -5,6 +5,7 @@ export interface AccessTokenPayload {
   userId: string;
   role: string;
   permissions: string[];
+  companyId?: string;
   /** ID refresh-сессии (для «текущее устройство» в списке сеансов) */
   sessionId?: string;
   /** ID пользователя Supabase (вход по email) */

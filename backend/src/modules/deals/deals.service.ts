@@ -5,7 +5,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
-import { AuthUser, ownerScope } from '../../lib/scope';
+import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
 import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
@@ -275,9 +275,11 @@ export class DealsService {
       }
     }
 
+    const cs = companyScope(user);
     const where: Prisma.DealWhereInput = {
       ...ownerScope(user),
       isArchived: false,
+      ...(cs.companyId ? { client: { companyId: cs.companyId } } : {}),
     };
 
     if (filters?.status) {

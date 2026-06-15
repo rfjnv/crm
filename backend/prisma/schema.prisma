@@ -187,6 +187,7 @@ model Company {
   createdAt   DateTime @default(now()) @map("created_at")
 
   users       User[]
+  clients     Client[]
 
   @@map("companies")
 }
@@ -353,9 +354,11 @@ model Client {
   isSvip      Boolean  @default(false) @map("is_svip")
   creditStatus ClientCreditStatus @default(NORMAL) @map("credit_status")
   isArchived  Boolean  @default(false) @map("is_archived")
+  companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   manager     User         @relation("ClientManager", fields: [managerId], references: [id])
   deals       Deal[]
   contracts   Contract[]

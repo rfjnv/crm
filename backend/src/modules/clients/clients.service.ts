@@ -252,6 +252,7 @@ export class ClientsService {
       data: {
         ...rest,
         managerId,
+        ...(user.companyId ? { companyId: user.companyId } : {}),
       },
     });
 
