@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
@@ -39,6 +39,7 @@ function extractDealScope(req: Request) {
     userId: req.user!.userId,
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
   };
   return ownerScope(user);
 }

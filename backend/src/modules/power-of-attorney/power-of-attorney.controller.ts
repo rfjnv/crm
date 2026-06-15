@@ -4,7 +4,7 @@ import { poaService } from './power-of-attorney.service';
 import { AuthUser } from '../../lib/scope';
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
 }
 
 function setPdfDownloadHeaders(res: Response, filename: string) {

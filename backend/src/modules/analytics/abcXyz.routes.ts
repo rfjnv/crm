@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
@@ -117,6 +117,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
     const fromQ = typeof req.query.from === 'string' ? req.query.from.trim() : '';

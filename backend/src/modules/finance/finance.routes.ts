@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { Role, Prisma, PaymentMethod, PaymentStatus as PrismaPaymentStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
@@ -59,12 +59,16 @@ router.get(
       fromDate = startOfDay;
     }
 
+    const reqUser = req.user!;
+    const companyId = (reqUser.role !== 'SUPER_ADMIN' && reqUser.companyId) ? reqUser.companyId : undefined;
+
     // Build where clause for payments
     const where: Prisma.PaymentWhereInput = {
       paidAt: {
         gte: fromDate,
         ...(toDate ? { lt: toDate } : {}),
       },
+      ...(companyId ? { client: { companyId } } : {}),
     };
 
     if (managerId) {
@@ -179,6 +183,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
 
@@ -434,6 +439,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
     const managerId = req.query.managerId as string | undefined;
@@ -499,6 +505,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
 
@@ -556,6 +563,7 @@ router.post(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
 

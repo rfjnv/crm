@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import {
@@ -22,8 +22,12 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
+    const companyClause = (user.role !== 'SUPER_ADMIN' && user.companyId)
+      ? Prisma.sql`AND d.client_id IN (SELECT id FROM clients WHERE company_id = ${user.companyId})`
+      : Prisma.sql``;
 
     const TASHKENT_OFFSET = 5 * 60 * 60 * 1000; // UTC+5
     const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
@@ -120,7 +124,8 @@ router.get(
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
-               AND d.manager_id = ${dealScope.managerId}`,
+               AND d.manager_id = ${dealScope.managerId}
+               ${companyClause}`,
           )
         : prisma.$queryRaw<{ total: string }[]>(
             Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
@@ -128,7 +133,8 @@ router.get(
              JOIN deals d ON d.id = di.deal_id
              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}`,
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+               ${companyClause}`,
           );
 
     const revenueByDayInRange = (rangeStart: Date, rangeEndExclusive: Date) =>
@@ -234,6 +240,7 @@ router.get(
                           WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
                             AND d.manager_id = ${dealScope.managerId}
                             AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+                            ${companyClause}
                           ORDER BY d.client_id, d.created_at DESC
                         )
                         SELECT
@@ -251,6 +258,7 @@ router.get(
                           FROM deals d
                           WHERE d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')
                             AND EXISTS (SELECT 1 FROM deal_items di WHERE di.deal_id = d.id AND di.closing_balance IS NOT NULL)
+                            ${companyClause}
                           ORDER BY d.client_id, d.created_at DESC
                         )
                         SELECT
@@ -392,6 +400,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
 
@@ -406,6 +415,9 @@ router.get(
     const dealManagerClause = dealScope.managerId
       ? Prisma.sql`AND d.manager_id = ${dealScope.managerId}`
       : Prisma.sql`AND TRUE`;
+    const companyClause = (user.role !== 'SUPER_ADMIN' && user.companyId)
+      ? Prisma.sql`AND d.client_id IN (SELECT id FROM clients WHERE company_id = ${user.companyId})`
+      : Prisma.sql``;
 
     // Только строки сделок: выручка признаётся при закрытии сделки.
     const rows = await prisma.$queryRaw<{
@@ -442,6 +454,7 @@ router.get(
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${startOfToday}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
           ${dealManagerClause}
+          ${companyClause}
         ORDER BY deal_date DESC`,
     );
 

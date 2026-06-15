@@ -12,11 +12,20 @@ const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHO
 /** Roles that have no business reason to browse the client list */
 const CLIENT_BLOCKED_ROLES: Role[] = ['DRIVER', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
 
-export function ownerScope(user: AuthUser): { managerId?: string } {
+export function ownerScope(user: AuthUser): { managerId?: string; client?: { companyId: string } } {
+  const clientCompany = (user.role !== 'SUPER_ADMIN' && user.companyId)
+    ? { client: { companyId: user.companyId } }
+    : {};
   if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_deals')) {
-    return {};
+    return { ...clientCompany };
   }
-  return { managerId: user.userId };
+  return { managerId: user.userId, ...clientCompany };
+}
+
+/** Prisma.sql clause for filtering deals by company in raw SQL queries */
+export function ownerScopeCompanySql(user: AuthUser) {
+  if (user.role === 'SUPER_ADMIN' || !user.companyId) return null;
+  return user.companyId;
 }
 
 /** Returns company filter clause — SUPER_ADMIN sees all companies */

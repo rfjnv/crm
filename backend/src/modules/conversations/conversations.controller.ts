@@ -5,7 +5,7 @@ import { AuthUser } from '../../lib/scope';
 import { sendMessageDto, editMessageDto } from './conversations.dto';
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
 }
 
 export class ConversationsController {
