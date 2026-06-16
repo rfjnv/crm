@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
   Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination,
-  Drawer, Statistic, Row, Col, Slider, Progress, Badge, Divider,
+  Drawer, Statistic, Row, Col, Slider, Progress, Badge,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
@@ -872,9 +872,9 @@ export default function ProductsPage() {
         </Row>
 
         {/* Stock health */}
-        <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, marginBottom: 8, borderBottom: `1px solid ${token.colorBorder}`, paddingBottom: 4 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>Состояние остатков</Typography.Text>
-        </Divider>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography.Text style={{ color: token.colorSuccess }}>В норме</Typography.Text>
@@ -911,9 +911,9 @@ export default function ProductsPage() {
         {/* By category */}
         {analytics.byCategory.length > 0 && (
           <>
-            <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+            <div style={{ marginTop: 20, marginBottom: 8, borderBottom: `1px solid ${token.colorBorder}`, paddingBottom: 4 }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>По категориям (стоимость склада)</Typography.Text>
-            </Divider>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {analytics.byCategory.map(({ cat, count, stockValue }) => (
                 <div key={cat}>
@@ -941,9 +941,9 @@ export default function ProductsPage() {
         {/* Top by stock value */}
         {analytics.topByValue.length > 0 && (
           <>
-            <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+            <div style={{ marginTop: 20, marginBottom: 8, borderBottom: `1px solid ${token.colorBorder}`, paddingBottom: 4 }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>Топ-10 по стоимости склада</Typography.Text>
-            </Divider>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {analytics.topByValue.map((p, i) => {
                 const val = Number(p.stock) * Number(p.salePrice || 0);
