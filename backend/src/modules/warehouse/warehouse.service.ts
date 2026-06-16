@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import {
   resolveProductChartGranularity,
@@ -14,13 +14,15 @@ import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto,
 export class WarehouseService {
   // ==================== PRODUCTS ====================
 
-  async findAllProducts() {
+  async findAllProducts(role?: Role, companyId?: string) {
+    const where = (role !== 'SUPER_ADMIN' && companyId) ? { companyId } : {};
     return prisma.product.findMany({
+      where,
       orderBy: { name: 'asc' },
     });
   }
 
-  async createProduct(dto: CreateProductDto, userId: string) {
+  async createProduct(dto: CreateProductDto, userId: string, companyId?: string) {
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {
       throw new AppError(409, 'Товар с таким артикулом уже существует');
@@ -29,6 +31,7 @@ export class WarehouseService {
     const { manufacturedAt, expiresAt, specifications, ...rest } = dto;
     const data: Prisma.ProductCreateInput = {
       ...rest,
+      ...(companyId ? { companyId } : {}),
       ...(specifications ? { specifications: specifications as Prisma.InputJsonValue } : {}),
       ...(manufacturedAt ? { manufacturedAt: new Date(manufacturedAt) } : {}),
       ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),

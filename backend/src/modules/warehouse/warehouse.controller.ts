@@ -3,13 +3,13 @@ import { warehouseService } from './warehouse.service';
 
 export class WarehouseController {
   // Products
-  async findAllProducts(_req: Request, res: Response): Promise<void> {
-    const products = await warehouseService.findAllProducts();
+  async findAllProducts(req: Request, res: Response): Promise<void> {
+    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
     res.json(products);
   }
 
   async createProduct(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.createProduct(req.body, req.user!.userId as string);
+    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId);
     res.status(201).json(product);
   }
 

@@ -188,6 +188,7 @@ model Company {
 
   users       User[]
   clients     Client[]
+  products    Product[]
 
   @@map("companies")
 }
@@ -638,9 +639,11 @@ model Product {
   manufacturedAt  DateTime? @map("manufactured_at")
   expiresAt       DateTime? @map("expires_at")
   supplierId      String?  @map("supplier_id")
+  companyId       String?  @map("company_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  company   Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
   supplier  Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   movements InventoryMovement[]
   dealItems DealItem[]
