@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
   Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination,
-  Drawer, Statistic, Row, Col, Slider, Progress, Badge,
+  Drawer, Statistic, Row, Col, Slider, Progress, Badge, Switch, Popover, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
-  FilterOutlined, ClearOutlined,
+  FilterOutlined, ClearOutlined, TableOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -55,6 +55,33 @@ export default function ProductsPage() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
+
+  const ALL_COLUMN_KEYS = [
+    { key: 'sku', label: 'Артикул' },
+    { key: 'format', label: 'Формат' },
+    { key: 'category', label: 'Категория' },
+    { key: 'countryOfOrigin', label: 'Страна' },
+    { key: 'unit', label: 'Ед. изм.' },
+    { key: 'stock', label: 'Остаток' },
+    { key: 'minStock', label: 'Мин. остаток' },
+    ...(isSuperAdmin ? [{ key: 'purchasePrice', label: 'Цена закупки' }] : []),
+    { key: 'salePrice', label: 'Цена продажи' },
+    { key: 'installmentPrice', label: 'Цена рассрочки' },
+    { key: 'isActive', label: 'Статус' },
+  ];
+
+  const STORAGE_KEY = 'products_hidden_columns';
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  });
+
+  function toggleColumn(key: string) {
+    setHiddenColumns((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
@@ -198,22 +225,25 @@ export default function ProductsPage() {
     setSelectedRowKeys([]);
   }
 
-  const columns = [
+  const allColumns = [
     {
+      key: 'name',
       title: 'Название',
       dataIndex: 'name',
+      fixed: true,
       render: (v: string, r: Product) => (
         <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/inventory/products/${r.id}`)}>
           {v}
         </Button>
       ),
     },
-    { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
-    { title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
-    { title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
-    { title: 'Страна', dataIndex: 'countryOfOrigin', render: (v: string | null) => v || '—' },
-    { title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
+    { key: 'sku', title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
+    { key: 'format', title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
+    { key: 'category', title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
+    { key: 'countryOfOrigin', title: 'Страна', dataIndex: 'countryOfOrigin', render: (v: string | null) => v || '—' },
+    { key: 'unit', title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
     {
+      key: 'stock',
       title: 'Остаток',
       dataIndex: 'stock',
       align: 'right' as const,
@@ -229,8 +259,9 @@ export default function ProductsPage() {
         );
       },
     },
-    { title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
+    { key: 'minStock', title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
     ...(isSuperAdmin ? [{
+      key: 'purchasePrice',
       title: 'Цена закупки',
       dataIndex: 'purchasePrice',
       align: 'right' as const,
@@ -239,6 +270,7 @@ export default function ProductsPage() {
       render: (v: string | null) => v ? formatUZS(v) : '—',
     }] : []),
     {
+      key: 'salePrice',
       title: 'Цена продажи',
       dataIndex: 'salePrice',
       align: 'right' as const,
@@ -247,6 +279,7 @@ export default function ProductsPage() {
       render: (v: string | null) => v ? formatUZS(v) : '—',
     },
     {
+      key: 'installmentPrice',
       title: 'Цена рассрочки',
       dataIndex: 'installmentPrice',
       align: 'right' as const,
@@ -254,14 +287,28 @@ export default function ProductsPage() {
       render: (v: string | null) => v ? formatUZS(v) : '—',
     },
     {
+      key: 'isActive',
       title: 'Статус',
       dataIndex: 'isActive',
-      width: 100,
-      render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Активен' : 'Неактивен'}</Tag>,
+      width: canManageProducts ? 90 : 100,
+      render: (v: boolean, r: Product) =>
+        canManageProducts ? (
+          <Switch
+            size="small"
+            checked={v}
+            checkedChildren="Акт."
+            unCheckedChildren="Неакт."
+            loading={updateMut.isPending && editProduct?.id === r.id}
+            onChange={(checked) => updateMut.mutate({ id: r.id, data: { isActive: checked } })}
+          />
+        ) : (
+          <Tag color={v ? 'green' : 'default'}>{v ? 'Активен' : 'Неактивен'}</Tag>
+        ),
     },
     ...(canManageProducts ? [{
+      key: '_actions',
       title: '',
-      width: 110,
+      width: 80,
       render: (_: unknown, r: Product) => (
         <Space size={0}>
           <Button
@@ -290,6 +337,8 @@ export default function ProductsPage() {
       ),
     }] : []),
   ];
+
+  const columns = allColumns.filter((c) => !hiddenColumns.includes(c.key));
 
   // ── Quick analytics computation ──────────────────────────────────
   const analytics = useMemo(() => {
@@ -429,6 +478,48 @@ export default function ProductsPage() {
           >
             {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
           </Button>
+          {!isMobile && (
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              title={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Столбцы</span>
+                  {hiddenColumns.length > 0 && (
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0 }}
+                      onClick={() => { setHiddenColumns([]); localStorage.removeItem(STORAGE_KEY); }}
+                    >
+                      Показать все
+                    </Button>
+                  )}
+                </div>
+              }
+              content={
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 160 }}>
+                  {ALL_COLUMN_KEYS.map(({ key, label }) => (
+                    <Checkbox
+                      key={key}
+                      checked={!hiddenColumns.includes(key)}
+                      onChange={() => toggleColumn(key)}
+                    >
+                      {label}
+                    </Checkbox>
+                  ))}
+                </div>
+              }
+            >
+              <Button
+                icon={<TableOutlined />}
+                type={hiddenColumns.length > 0 ? 'primary' : 'default'}
+                ghost={hiddenColumns.length > 0}
+              >
+                Столбцы{hiddenColumns.length > 0 ? ` (−${hiddenColumns.length})` : ''}
+              </Button>
+            </Popover>
+          )}
           {isSuperAdmin && (
             <Button onClick={() => setAuditOpen(true)} block={isMobile}>
               История аудита
