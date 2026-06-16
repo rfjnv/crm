@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined, ApartmentOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import {
+  Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
+  Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination,
+  Drawer, Statistic, Row, Col, Slider, Progress, Badge, Divider,
+} from 'antd';
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
+  ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
+  FilterOutlined, ClearOutlined,
+} from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
@@ -18,15 +26,26 @@ export default function ProductsPage() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
+
+  // Filters
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [countryFilter, setCountryFilter] = useState<string | undefined>();
+  const [unitFilter, setUnitFilter] = useState<string | undefined>();
+  const [formatFilter, setFormatFilter] = useState<string | undefined>();
   const [stockFilter, setStockFilter] = useState<string>('all');
   const [activeFilter, setActiveFilter] = useState<string>('active');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [priceRange, setPriceRange] = useState<[number, number] | null>(null);
+  const [showExtraFilters, setShowExtraFilters] = useState(false);
+
+  // Selection
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 20;
   const [listMode, setListMode] = useState<'table' | 'hierarchy'>('table');
@@ -49,31 +68,62 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setMobilePage(1);
-  }, [debouncedSearch, categoryFilter, countryFilter, stockFilter, activeFilter]);
+    setSelectedRowKeys([]);
+  }, [debouncedSearch, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, activeFilter, priceRange]);
+
+  // Price bounds for slider
+  const priceBounds = useMemo(() => {
+    const prices = (products ?? [])
+      .map((p) => Number(p.salePrice || 0))
+      .filter((p) => p > 0);
+    if (!prices.length) return [0, 0] as [number, number];
+    return [Math.floor(Math.min(...prices)), Math.ceil(Math.max(...prices))] as [number, number];
+  }, [products]);
 
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
       if (debouncedSearch) {
-        const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? ''].join(' ');
+        const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? '', p.format ?? ''].join(' ');
         if (!matchesSearch(haystack, debouncedSearch)) return false;
       }
       if (activeFilter === 'active' && !p.isActive) return false;
       if (activeFilter === 'inactive' && p.isActive) return false;
       if (categoryFilter && p.category !== categoryFilter) return false;
       if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
+      if (unitFilter && p.unit !== unitFilter) return false;
+      if (formatFilter && p.format !== formatFilter) return false;
       if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
       if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
+      if (priceRange) {
+        const price = Number(p.salePrice || 0);
+        if (price < priceRange[0] || price > priceRange[1]) return false;
+      }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, stockFilter]);
+  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange]);
 
   const filteredMobileSlice = useMemo(() => {
     const start = (mobilePage - 1) * mobilePageSize;
     return filtered.slice(start, start + mobilePageSize);
   }, [filtered, mobilePage, mobilePageSize]);
 
+  // Analytics target: selected rows if any, otherwise all filtered
+  const analyticsTarget = useMemo(() => {
+    if (selectedRowKeys.length > 0) {
+      return filtered.filter((p) => selectedRowKeys.includes(p.id));
+    }
+    return filtered;
+  }, [filtered, selectedRowKeys]);
+
   const categories = [...new Set((products ?? []).map((p) => p.category).filter(Boolean))] as string[];
   const countries = [...new Set((products ?? []).map((p) => p.countryOfOrigin).filter(Boolean))] as string[];
+  const units = [...new Set((products ?? []).map((p) => p.unit).filter(Boolean))] as string[];
+  const formats = [...new Set((products ?? []).map((p) => p.format).filter(Boolean))] as string[];
+
+  const hasExtraFilters = !!(unitFilter || formatFilter || priceRange);
+  const activeFiltersCount = [categoryFilter, countryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
+    + (stockFilter !== 'all' ? 1 : 0)
+    + (activeFilter !== 'active' ? 1 : 0);
 
   const createMut = useMutation({
     mutationFn: (data: Record<string, unknown>) => inventoryApi.createProduct(data as Parameters<typeof inventoryApi.createProduct>[0]),
@@ -117,8 +167,47 @@ export default function ProductsPage() {
     },
   });
 
+  function openEditForm(r: Product) {
+    setEditProduct(r);
+    editForm.setFieldsValue({
+      name: r.name,
+      sku: r.sku,
+      unit: r.unit,
+      format: r.format,
+      category: r.category,
+      countryOfOrigin: r.countryOfOrigin,
+      minStock: r.minStock,
+      purchasePrice: r.purchasePrice ? Number(r.purchasePrice) : undefined,
+      salePrice: r.salePrice ? Number(r.salePrice) : undefined,
+      installmentPrice: r.installmentPrice ? Number(r.installmentPrice) : undefined,
+      manufacturedAt: r.manufacturedAt ? dayjs(r.manufacturedAt) : null,
+      expiresAt: r.expiresAt ? dayjs(r.expiresAt) : null,
+      isActive: r.isActive,
+    });
+  }
+
+  function clearAllFilters() {
+    setCategoryFilter(undefined);
+    setCountryFilter(undefined);
+    setUnitFilter(undefined);
+    setFormatFilter(undefined);
+    setStockFilter('all');
+    setActiveFilter('active');
+    setSearchInput('');
+    setPriceRange(null);
+    setSelectedRowKeys([]);
+  }
+
   const columns = [
-    { title: 'Название', dataIndex: 'name', render: (v: string, r: Product) => <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/inventory/products/${r.id}`)}>{v}</Button> },
+    {
+      title: 'Название',
+      dataIndex: 'name',
+      render: (v: string, r: Product) => (
+        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/inventory/products/${r.id}`)}>
+          {v}
+        </Button>
+      ),
+    },
     { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
     { title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
@@ -129,6 +218,7 @@ export default function ProductsPage() {
       dataIndex: 'stock',
       align: 'right' as const,
       width: 90,
+      sorter: (a: Product, b: Product) => Number(a.stock) - Number(b.stock),
       render: (v: number, r: Product) => {
         const stock = Number(v);
         const min = Number(r.minStock || 10);
@@ -145,6 +235,7 @@ export default function ProductsPage() {
       dataIndex: 'purchasePrice',
       align: 'right' as const,
       width: 130,
+      sorter: (a: Product, b: Product) => Number(a.purchasePrice || 0) - Number(b.purchasePrice || 0),
       render: (v: string | null) => v ? formatUZS(v) : '—',
     }] : []),
     {
@@ -152,6 +243,7 @@ export default function ProductsPage() {
       dataIndex: 'salePrice',
       align: 'right' as const,
       width: 130,
+      sorter: (a: Product, b: Product) => Number(a.salePrice || 0) - Number(b.salePrice || 0),
       render: (v: string | null) => v ? formatUZS(v) : '—',
     },
     {
@@ -182,24 +274,7 @@ export default function ProductsPage() {
             type="text"
             icon={<EditOutlined />}
             size="small"
-            onClick={() => {
-              setEditProduct(r);
-              editForm.setFieldsValue({
-                name: r.name,
-                sku: r.sku,
-                unit: r.unit,
-                format: r.format,
-                category: r.category,
-                countryOfOrigin: r.countryOfOrigin,
-                minStock: r.minStock,
-                purchasePrice: r.purchasePrice ? Number(r.purchasePrice) : undefined,
-                salePrice: r.salePrice ? Number(r.salePrice) : undefined,
-                installmentPrice: r.installmentPrice ? Number(r.installmentPrice) : undefined,
-                manufacturedAt: r.manufacturedAt ? dayjs(r.manufacturedAt) : null,
-                expiresAt: r.expiresAt ? dayjs(r.expiresAt) : null,
-                isActive: r.isActive,
-              });
-            }}
+            onClick={() => openEditForm(r)}
           />
           <Popconfirm
             title="Удалить товар?"
@@ -216,17 +291,58 @@ export default function ProductsPage() {
     }] : []),
   ];
 
+  // ── Quick analytics computation ──────────────────────────────────
+  const analytics = useMemo(() => {
+    const items = analyticsTarget;
+    const totalCount = items.length;
+    const zeroStock = items.filter((p) => Number(p.stock) === 0).length;
+    const lowStock = items.filter((p) => Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock || 10)).length;
+    const okStock = totalCount - zeroStock - lowStock;
+
+    const totalStockValueSale = items.reduce((s, p) => s + Number(p.stock) * Number(p.salePrice || 0), 0);
+    const totalStockValuePurchase = items.reduce((s, p) => s + Number(p.stock) * Number(p.purchasePrice || 0), 0);
+    const totalUnits = items.reduce((s, p) => s + Number(p.stock), 0);
+
+    // By category
+    const catMap: Record<string, { count: number; stockValue: number }> = {};
+    for (const p of items) {
+      const cat = p.category || '(без категории)';
+      if (!catMap[cat]) catMap[cat] = { count: 0, stockValue: 0 };
+      catMap[cat].count++;
+      catMap[cat].stockValue += Number(p.stock) * Number(p.salePrice || 0);
+    }
+    const byCategory = Object.entries(catMap)
+      .map(([cat, v]) => ({ cat, ...v }))
+      .sort((a, b) => b.stockValue - a.stockValue)
+      .slice(0, 8);
+
+    // Top by sale stock value
+    const topByValue = [...items]
+      .filter((p) => Number(p.stock) > 0)
+      .sort((a, b) => Number(b.stock) * Number(b.salePrice || 0) - Number(a.stock) * Number(a.salePrice || 0))
+      .slice(0, 10);
+
+    return { totalCount, zeroStock, lowStock, okStock, totalStockValueSale, totalStockValuePurchase, totalUnits, byCategory, topByValue };
+  }, [analyticsTarget]);
+
+  const analyticsLabel = selectedRowKeys.length > 0
+    ? `Аналитика (${selectedRowKeys.length} выбрано)`
+    : `Аналитика (${filtered.length} товаров)`;
+
   return (
     <div>
+      {/* Search */}
       <div style={{ marginBottom: 12 }}>
         <Input.Search
           allowClear
-          placeholder="Поиск по названию или артикулу (SKU)..."
+          placeholder="Поиск по названию, артикулу, формату..."
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           style={{ width: '100%', maxWidth: isMobile ? '100%' : 420 }}
         />
       </div>
+
+      {/* Controls row */}
       <div
         style={{
           display: 'flex',
@@ -235,11 +351,16 @@ export default function ProductsPage() {
           alignItems: isMobile ? 'stretch' : 'flex-start',
           justifyContent: 'space-between',
           gap: isMobile ? 12 : 16,
-          marginBottom: 16,
+          marginBottom: showExtraFilters ? 8 : 16,
         }}
       >
-        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 8 : 12} style={{ width: isMobile ? '100%' : 'auto' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>Товары</Typography.Title>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 8 : 12} style={{ width: isMobile ? '100%' : 'auto' }} wrap>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Товары
+            {activeFiltersCount > 0 && (
+              <Badge count={activeFiltersCount} size="small" style={{ marginLeft: 8, backgroundColor: token.colorPrimary }} />
+            )}
+          </Typography.Title>
           <Segmented
             value={listMode}
             onChange={(v) => setListMode(v as 'table' | 'hierarchy')}
@@ -259,7 +380,7 @@ export default function ProductsPage() {
           <Select
             allowClear
             placeholder="Страна"
-            style={{ width: isMobile ? '100%' : 160 }}
+            style={{ width: isMobile ? '100%' : 140 }}
             value={countryFilter}
             onChange={setCountryFilter}
             options={countries.map((c) => ({ label: c, value: c }))}
@@ -284,8 +405,30 @@ export default function ProductsPage() {
               { label: 'Все товары', value: 'all' },
             ]}
           />
+          <Button
+            icon={<FilterOutlined />}
+            onClick={() => setShowExtraFilters((v) => !v)}
+            type={showExtraFilters || hasExtraFilters ? 'primary' : 'default'}
+            ghost={showExtraFilters || hasExtraFilters}
+          >
+            {isMobile ? 'Ещё' : 'Доп. фильтры'}
+          </Button>
+          {activeFiltersCount > 0 && (
+            <Button icon={<ClearOutlined />} onClick={clearAllFilters} type="text">
+              Сбросить
+            </Button>
+          )}
         </Space>
+
         <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
+          <Button
+            icon={<ThunderboltOutlined />}
+            onClick={() => setAnalyticsOpen(true)}
+            type="default"
+            block={isMobile}
+          >
+            {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
+          </Button>
           {isSuperAdmin && (
             <Button onClick={() => setAuditOpen(true)} block={isMobile}>
               История аудита
@@ -299,6 +442,93 @@ export default function ProductsPage() {
         </Space>
       </div>
 
+      {/* Extra filters row */}
+      {showExtraFilters && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 16px',
+            marginBottom: 16,
+            background: token.colorFillQuaternary,
+            borderRadius: token.borderRadius,
+          }}
+        >
+          <Select
+            allowClear
+            placeholder="Ед. измерения"
+            style={{ width: 140 }}
+            value={unitFilter}
+            onChange={setUnitFilter}
+            options={units.map((u) => ({ label: u, value: u }))}
+          />
+          <Select
+            allowClear
+            placeholder="Формат"
+            style={{ width: 180 }}
+            value={formatFilter}
+            onChange={setFormatFilter}
+            showSearch
+            options={formats.map((f) => ({ label: f, value: f }))}
+          />
+          {priceBounds[1] > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                Цена продажи:
+              </Typography.Text>
+              <Slider
+                range
+                min={priceBounds[0]}
+                max={priceBounds[1]}
+                value={priceRange ?? priceBounds}
+                onChange={(v) => {
+                  const [lo, hi] = v as [number, number];
+                  if (lo === priceBounds[0] && hi === priceBounds[1]) {
+                    setPriceRange(null);
+                  } else {
+                    setPriceRange([lo, hi]);
+                  }
+                }}
+                style={{ width: 200 }}
+                tooltip={{ formatter: (v) => formatUZS(v ?? 0) }}
+              />
+              {priceRange && (
+                <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                  {formatUZS(priceRange[0])} — {formatUZS(priceRange[1])}
+                </Typography.Text>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Selection bar */}
+      {selectedRowKeys.length > 0 && listMode === 'table' && !isMobile && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '8px 16px',
+            marginBottom: 12,
+            background: token.colorPrimaryBg,
+            border: `1px solid ${token.colorPrimaryBorder}`,
+            borderRadius: token.borderRadius,
+          }}
+        >
+          <Typography.Text strong style={{ color: token.colorPrimary }}>
+            Выбрано: {selectedRowKeys.length} из {filtered.length}
+          </Typography.Text>
+          <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={() => setAnalyticsOpen(true)}>
+            Аналитика по выбранным
+          </Button>
+          <Button size="small" onClick={() => setSelectedRowKeys([])}>
+            Снять выбор
+          </Button>
+        </div>
+      )}
+
       {listMode === 'hierarchy' ? (
         <ProductHierarchyPanel
           products={filtered}
@@ -309,24 +539,7 @@ export default function ProductsPage() {
               ? 'Показаны товары по текущим фильтрам и поиску.'
               : undefined
           }
-          onEditProduct={(p) => {
-            setEditProduct(p);
-            editForm.setFieldsValue({
-              name: p.name,
-              sku: p.sku,
-              unit: p.unit,
-              format: p.format,
-              category: p.category,
-              countryOfOrigin: p.countryOfOrigin,
-              minStock: p.minStock,
-              purchasePrice: p.purchasePrice ? Number(p.purchasePrice) : undefined,
-              salePrice: p.salePrice ? Number(p.salePrice) : undefined,
-              installmentPrice: p.installmentPrice ? Number(p.installmentPrice) : undefined,
-              manufacturedAt: p.manufacturedAt ? dayjs(p.manufacturedAt) : null,
-              expiresAt: p.expiresAt ? dayjs(p.expiresAt) : null,
-              isActive: p.isActive,
-            });
-          }}
+          onEditProduct={(p) => openEditForm(p)}
           onAddProductInCategory={(category) => {
             setOpen(true);
             form.resetFields();
@@ -404,6 +617,11 @@ export default function ProductsPage() {
           size="middle"
           bordered={false}
           scroll={{ x: 600 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+            preserveSelectedRowKeys: false,
+          }}
         />
       )}
 
@@ -578,6 +796,192 @@ export default function ProductsPage() {
       >
         <ProductAuditHistoryPanel />
       </Modal>
+
+      {/* Quick Analytics Drawer */}
+      <Drawer
+        title={analyticsLabel}
+        open={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
+        width={isMobile ? '100%' : 520}
+        extra={
+          selectedRowKeys.length > 0 && (
+            <Button size="small" onClick={() => setSelectedRowKeys([])}>
+              Снять выбор
+            </Button>
+          )
+        }
+      >
+        {/* Summary stats */}
+        <Row gutter={[12, 12]}>
+          <Col span={8}>
+            <Card size="small" styles={{ body: { padding: '12px 10px' } }}>
+              <Statistic
+                title="Товаров"
+                value={analytics.totalCount}
+                valueStyle={{ fontSize: 22 }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card size="small" styles={{ body: { padding: '12px 10px' } }}>
+              <Statistic
+                title="Ед. на складе"
+                value={analytics.totalUnits}
+                valueStyle={{ fontSize: 22 }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card
+              size="small"
+              styles={{ body: { padding: '12px 10px' } }}
+              style={{ borderColor: analytics.zeroStock > 0 ? token.colorError : undefined }}
+            >
+              <Statistic
+                title="Нет остатка"
+                value={analytics.zeroStock}
+                valueStyle={{ fontSize: 22, color: analytics.zeroStock > 0 ? token.colorError : undefined }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
+          <Col span={12}>
+            <Card size="small" styles={{ body: { padding: '12px 10px' } }}>
+              <Statistic
+                title="Стоимость (по цене продажи)"
+                value={analytics.totalStockValueSale}
+                formatter={(v) => formatUZS(Number(v))}
+                valueStyle={{ fontSize: 16, color: token.colorSuccess }}
+              />
+            </Card>
+          </Col>
+          {isSuperAdmin && (
+            <Col span={12}>
+              <Card size="small" styles={{ body: { padding: '12px 10px' } }}>
+                <Statistic
+                  title="Стоимость (по цене закупки)"
+                  value={analytics.totalStockValuePurchase}
+                  formatter={(v) => formatUZS(Number(v))}
+                  valueStyle={{ fontSize: 16 }}
+                />
+              </Card>
+            </Col>
+          )}
+        </Row>
+
+        {/* Stock health */}
+        <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Состояние остатков</Typography.Text>
+        </Divider>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography.Text style={{ color: token.colorSuccess }}>В норме</Typography.Text>
+            <Typography.Text strong>{analytics.okStock}</Typography.Text>
+          </div>
+          <Progress
+            percent={analytics.totalCount ? Math.round((analytics.okStock / analytics.totalCount) * 100) : 0}
+            strokeColor={token.colorSuccess}
+            showInfo={false}
+            size="small"
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography.Text style={{ color: token.colorWarning }}>Мало (ниже мин.)</Typography.Text>
+            <Typography.Text strong>{analytics.lowStock}</Typography.Text>
+          </div>
+          <Progress
+            percent={analytics.totalCount ? Math.round((analytics.lowStock / analytics.totalCount) * 100) : 0}
+            strokeColor={token.colorWarning}
+            showInfo={false}
+            size="small"
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography.Text style={{ color: token.colorError }}>Нет в наличии</Typography.Text>
+            <Typography.Text strong>{analytics.zeroStock}</Typography.Text>
+          </div>
+          <Progress
+            percent={analytics.totalCount ? Math.round((analytics.zeroStock / analytics.totalCount) * 100) : 0}
+            strokeColor={token.colorError}
+            showInfo={false}
+            size="small"
+          />
+        </div>
+
+        {/* By category */}
+        {analytics.byCategory.length > 0 && (
+          <>
+            <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>По категориям (стоимость склада)</Typography.Text>
+            </Divider>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {analytics.byCategory.map(({ cat, count, stockValue }) => (
+                <div key={cat}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <Typography.Text ellipsis style={{ maxWidth: '55%' }}>{cat}</Typography.Text>
+                    <Space size={8}>
+                      <Tag style={{ margin: 0 }}>{count} поз.</Tag>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {formatUZS(stockValue)}
+                      </Typography.Text>
+                    </Space>
+                  </div>
+                  <Progress
+                    percent={analytics.totalStockValueSale > 0 ? Math.round((stockValue / analytics.totalStockValueSale) * 100) : 0}
+                    strokeColor={token.colorPrimary}
+                    showInfo={false}
+                    size="small"
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Top by stock value */}
+        {analytics.topByValue.length > 0 && (
+          <>
+            <Divider orientation="left" orientationMargin={0} style={{ marginTop: 20 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Топ-10 по стоимости склада</Typography.Text>
+            </Divider>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {analytics.topByValue.map((p, i) => {
+                const val = Number(p.stock) * Number(p.salePrice || 0);
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: i % 2 === 0 ? token.colorFillQuaternary : 'transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => { setAnalyticsOpen(false); navigate(`/inventory/products/${p.id}`); }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 11, minWidth: 16 }}>
+                        {i + 1}.
+                      </Typography.Text>
+                      <Typography.Text ellipsis style={{ maxWidth: 220 }}>{p.name}</Typography.Text>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <Typography.Text strong style={{ fontSize: 12 }}>
+                        {formatUZS(val)}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                        {p.stock} {p.unit}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Drawer>
     </div>
   );
 }
