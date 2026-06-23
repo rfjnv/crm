@@ -14,50 +14,53 @@ import type { HistoryClientActivity, Product } from '../types';
 const { Title } = Typography;
 
 const MONTH_LABELS: Record<number, string> = {
-  1: 'Янв',
-  2: 'Фев',
-  3: 'Мар',
-  4: 'Апр',
-  5: 'Май',
-  6: 'Июн',
-  7: 'Июл',
-  8: 'Авг',
-  9: 'Сен',
-  10: 'Окт',
-  11: 'Ноя',
-  12: 'Дек',
+  1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
+  7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек',
 };
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 type MatrixTabView = 'matrix' | 'hierarchy-clients';
 
-function parseMatrixListParams(sp: URLSearchParams): {
+const CY = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
+  const y = CY - 2 + i;
+  return { label: String(y), value: y };
+});
+const MONTH_OPTIONS = Object.entries(MONTH_LABELS).map(([k, v]) => ({ value: Number(k), label: v }));
+
+// ── URL params ──────────────────────────────────────────────────────────────
+
+type ListParams = {
   year: number;
+  year2: number;
   selectedMonths: number[];
   selectedClients: string[];
   clientSearch: string;
   page: number;
   pageSize: number;
   view: MatrixTabView;
-} {
-  const cy = new Date().getFullYear();
-  const rawY = parseInt(sp.get('year') || String(cy), 10);
-  const year = Number.isFinite(rawY) && rawY >= 2020 && rawY <= 2035 ? rawY : cy;
+};
+
+function parseParams(sp: URLSearchParams): ListParams {
+  const rawY = parseInt(sp.get('year') || String(CY), 10);
+  const year = Number.isFinite(rawY) && rawY >= 2020 && rawY <= 2035 ? rawY : CY;
+
+  const rawY2 = parseInt(sp.get('year2') || String(year), 10);
+  const year2Raw = Number.isFinite(rawY2) && rawY2 >= 2020 && rawY2 <= 2035 ? rawY2 : year;
+  const year2 = Math.max(year, year2Raw);
 
   const monthsPart = sp.get('months');
   const selectedMonths = monthsPart
-    ? [...new Set(
-        monthsPart.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n >= 1 && n <= 12),
-      )].sort((a, b) => a - b)
+    ? [...new Set(monthsPart.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n >= 1 && n <= 12))].sort((a, b) => a - b)
     : [];
 
   const clientsPart = sp.get('clients');
   const selectedClients = clientsPart
     ? [...new Set(clientsPart.split(',').map((s) => s.trim()).filter(Boolean))]
     : [];
-  const clientSearch = sp.get('clientSearch') || '';
 
+  const clientSearch = sp.get('clientSearch') || '';
   const rawPage = parseInt(sp.get('page') || '1', 10);
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
   const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
@@ -65,67 +68,100 @@ function parseMatrixListParams(sp: URLSearchParams): {
   const tabRaw = sp.get('view');
   const view = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
 
-  return { year, selectedMonths, selectedClients, clientSearch, page, pageSize, view };
+  return { year, year2, selectedMonths, selectedClients, clientSearch, page, pageSize, view };
 }
 
-function mergeMatrixListSearchParams(
-  prev: URLSearchParams,
-  patch: Partial<{
-    year: number;
-    selectedMonths: number[];
-    selectedClients: string[];
-    clientSearch: string;
-    page: number;
-    pageSize: number;
-    view: MatrixTabView;
-  }>,
-): URLSearchParams {
-  const cur = parseMatrixListParams(prev);
-  const next = {
-    year: patch.year ?? cur.year,
-    selectedMonths: patch.selectedMonths !== undefined ? patch.selectedMonths : cur.selectedMonths,
-    selectedClients: patch.selectedClients !== undefined ? patch.selectedClients : cur.selectedClients,
-    clientSearch: patch.clientSearch !== undefined ? patch.clientSearch : cur.clientSearch,
-    page: patch.page ?? cur.page,
-    pageSize: patch.pageSize ?? cur.pageSize,
-    view: patch.view ?? cur.view,
-  };
-  const cy = new Date().getFullYear();
-  const merged = new URLSearchParams(prev);
+function mergeParams(prev: URLSearchParams, patch: Partial<ListParams>): URLSearchParams {
+  const cur = parseParams(prev);
+  const next: ListParams = { ...cur, ...patch };
+  if (next.year2 < next.year) next.year2 = next.year;
+  const sp = new URLSearchParams(prev);
 
-  if (next.year !== cy) merged.set('year', String(next.year));
-  else merged.delete('year');
+  next.year !== CY ? sp.set('year', String(next.year)) : sp.delete('year');
+  next.year2 !== next.year ? sp.set('year2', String(next.year2)) : sp.delete('year2');
+  next.selectedMonths.length ? sp.set('months', next.selectedMonths.join(',')) : sp.delete('months');
+  next.selectedClients.length ? sp.set('clients', next.selectedClients.join(',')) : sp.delete('clients');
+  next.clientSearch.trim() ? sp.set('clientSearch', next.clientSearch) : sp.delete('clientSearch');
+  next.page !== 1 ? sp.set('page', String(next.page)) : sp.delete('page');
+  next.pageSize !== DEFAULT_PAGE_SIZE ? sp.set('pageSize', String(next.pageSize)) : sp.delete('pageSize');
+  next.view !== 'matrix' ? sp.set('view', next.view) : sp.delete('view');
 
-  if (next.selectedMonths.length) merged.set('months', next.selectedMonths.join(','));
-  else merged.delete('months');
-
-  if (next.selectedClients.length) merged.set('clients', next.selectedClients.join(','));
-  else merged.delete('clients');
-
-  if (next.clientSearch.trim()) merged.set('clientSearch', next.clientSearch);
-  else merged.delete('clientSearch');
-
-  if (next.page !== 1) merged.set('page', String(next.page));
-  else merged.delete('page');
-
-  if (next.pageSize !== DEFAULT_PAGE_SIZE) merged.set('pageSize', String(next.pageSize));
-  else merged.delete('pageSize');
-
-  if (next.view !== 'matrix') merged.set('view', next.view);
-  else merged.delete('view');
-
-  return merged;
+  return sp;
 }
+
+// ── Unified row type for multi-year ─────────────────────────────────────────
+
+type UnifiedRow = {
+  clientId: string;
+  companyName: string;
+  lastContactAt: string | null;
+  lastContactByName: string | null;
+  revenueByYM: Map<string, number>; // key: `${year}-${month}`
+};
+
+function buildUnifiedRows(
+  activity1: HistoryClientActivity[],
+  activity2: HistoryClientActivity[],
+  year1: number,
+  year2: number,
+): UnifiedRow[] {
+  const map = new Map<string, UnifiedRow>();
+
+  for (const c of activity1) {
+    const row: UnifiedRow = {
+      clientId: c.clientId,
+      companyName: c.companyName,
+      lastContactAt: c.lastContactAt ?? null,
+      lastContactByName: c.lastContactByName ?? null,
+      revenueByYM: new Map(),
+    };
+    for (const md of c.monthlyData) {
+      row.revenueByYM.set(`${year1}-${md.month}`, md.revenue);
+    }
+    map.set(c.clientId, row);
+  }
+
+  for (const c of activity2) {
+    const existing = map.get(c.clientId);
+    if (existing) {
+      for (const md of c.monthlyData) {
+        existing.revenueByYM.set(`${year2}-${md.month}`, md.revenue);
+      }
+      // keep the more recent lastContact
+      if (c.lastContactAt && (!existing.lastContactAt || c.lastContactAt > existing.lastContactAt)) {
+        existing.lastContactAt = c.lastContactAt;
+        existing.lastContactByName = c.lastContactByName ?? null;
+      }
+    } else {
+      const row: UnifiedRow = {
+        clientId: c.clientId,
+        companyName: c.companyName,
+        lastContactAt: c.lastContactAt ?? null,
+        lastContactByName: c.lastContactByName ?? null,
+        revenueByYM: new Map(),
+      };
+      for (const md of c.monthlyData) {
+        row.revenueByYM.set(`${year2}-${md.month}`, md.revenue);
+      }
+      map.set(c.clientId, row);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function ClientActivityMatrixPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const listState = useMemo(() => parseMatrixListParams(searchParams), [searchParams]);
-  const { year, selectedMonths, selectedClients, clientSearch, page, pageSize, view } = listState;
+  const listState = useMemo(() => parseParams(searchParams), [searchParams]);
+  const { year, year2, selectedMonths, selectedClients, clientSearch, page, pageSize, view } = listState;
+  const isMultiYear = year2 > year;
 
   const isMobile = useIsMobile();
-  const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
+  const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number; year: number } | null>(null);
   const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
   const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [listSort, setListSort] = useState<'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'active_desc' | 'active_asc'>('name_asc');
@@ -134,11 +170,20 @@ export default function ClientActivityMatrixPage() {
 
   const matrixStale = 120_000;
 
-  const { data, isLoading } = useQuery({
+  const { data: data1, isLoading: loading1 } = useQuery({
     queryKey: ['manager-client-activity', year],
     queryFn: () => analyticsApi.getHistory(year),
     staleTime: matrixStale,
   });
+
+  const { data: data2, isLoading: loading2 } = useQuery({
+    queryKey: ['manager-client-activity', year2],
+    queryFn: () => analyticsApi.getHistory(year2),
+    enabled: isMultiYear,
+    staleTime: matrixStale,
+  });
+
+  const isLoading = loading1 || (isMultiYear && loading2);
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products', 'hierarchy-clients'],
@@ -152,73 +197,102 @@ export default function ClientActivityMatrixPage() {
   );
 
   const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
-    queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, year],
-    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, year),
+    queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, cellDrawer?.year],
+    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, cellDrawer!.year),
     enabled: !!cellDrawer,
     staleTime: matrixStale,
   });
 
-  const clientActivity = data?.clientActivity ?? [];
+  // ── Unified data ────────────────────────────────────────────────────────────
 
-  const visibleMonths = useMemo(() => {
-    if (!data?.monthlyTrend?.length) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    const maxMonth = Math.max(...data.monthlyTrend.map((m) => m.month));
-    return Array.from({ length: maxMonth }, (_, i) => i + 1);
-  }, [data?.monthlyTrend]);
+  const unifiedRows = useMemo(() => {
+    const a1 = data1?.clientActivity ?? [];
+    const a2 = isMultiYear ? (data2?.clientActivity ?? []) : [];
+    return buildUnifiedRows(a1, a2, year, year2);
+  }, [data1, data2, year, year2, isMultiYear]);
 
-  const displayedMonths = useMemo(() => {
-    if (selectedMonths.length === 0) return visibleMonths;
-    // Show all selected months as columns, even if no data yet (they'll render as empty)
-    return [...selectedMonths].sort((a, b) => a - b);
-  }, [selectedMonths, visibleMonths]);
-
-  const filteredActivity = useMemo(() => {
-    let rows = clientActivity;
-    if (selectedClients.length > 0) {
-      rows = rows.filter((c) => selectedClients.includes(c.clientId));
+  // Periods to display as columns: {year, month}[]
+  const displayedPeriods = useMemo(() => {
+    if (isMultiYear) {
+      // All 12 months of year1, then available months of year2
+      const maxMonth2 = data2?.monthlyTrend?.length
+        ? Math.max(...data2.monthlyTrend.map((m) => m.month))
+        : 12;
+      const periods: { year: number; month: number }[] = [];
+      for (let m = 1; m <= 12; m++) periods.push({ year, month: m });
+      for (let m = 1; m <= maxMonth2; m++) periods.push({ year: year2, month: m });
+      return periods;
     }
-    const q = clientSearch.trim();
-    if (!q) return rows;
-    return rows.filter((c) => matchesSearch(c.companyName, q));
-  }, [clientActivity, clientSearch, selectedClients]);
+    // Single-year mode
+    const visibleMonths = data1?.monthlyTrend?.length
+      ? Array.from({ length: Math.max(...data1.monthlyTrend.map((m) => m.month)) }, (_, i) => i + 1)
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const months = selectedMonths.length > 0 ? [...selectedMonths] : visibleMonths;
+    return months.map((m) => ({ year, month: m }));
+  }, [isMultiYear, year, year2, data1, data2, selectedMonths]);
+
+  const maxRevenue = useMemo(() => {
+    let max = 1;
+    for (const row of unifiedRows) {
+      for (const v of row.revenueByYM.values()) {
+        if (v > max) max = v;
+      }
+    }
+    return max;
+  }, [unifiedRows]);
+
+  function getRevenue(row: UnifiedRow, yr: number, month: number): number {
+    return row.revenueByYM.get(`${yr}-${month}`) ?? 0;
+  }
+
+  function revenueColor(revenue: number): string {
+    const noData = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
+    if (revenue <= 0) return noData;
+    return `rgba(56,218,17,${0.2 + Math.min(revenue / maxRevenue, 1) * 0.8})`;
+  }
+
+  // ── Filtering / sorting ─────────────────────────────────────────────────────
 
   const departmentOptions = useMemo(() => {
     const depts = Array.from(
-      new Set(
-        clientActivity
-          .map((c) => (c.managerDepartment || '').trim())
-          .filter(Boolean),
-      ),
+      new Set((data1?.clientActivity ?? []).map((c) => (c.managerDepartment || '').trim()).filter(Boolean)),
     ).sort((a, b) => a.localeCompare(b, 'ru'));
     return depts.map((d) => ({ label: d, value: d }));
-  }, [clientActivity]);
+  }, [data1]);
+
+  const filteredRows = useMemo(() => {
+    let rows = unifiedRows;
+    if (selectedClients.length > 0) rows = rows.filter((r) => selectedClients.includes(r.clientId));
+    const q = clientSearch.trim();
+    if (q) rows = rows.filter((r) => matchesSearch(r.companyName, q));
+    return rows;
+  }, [unifiedRows, selectedClients, clientSearch]);
 
   const listRows = useMemo(() => {
-    const toPeriodRevenue = (row: HistoryClientActivity): number => {
-      const source = selectedMonths.length
-        ? row.monthlyData.filter((m) => selectedMonths.includes(m.month))
-        : row.monthlyData;
-      return source.reduce((sum, m) => sum + Number(m.revenue || 0), 0);
-    };
+    const periodRevenue = (row: UnifiedRow) =>
+      displayedPeriods.reduce((sum, p) => sum + getRevenue(row, p.year, p.month), 0);
+    const activeCount = (row: UnifiedRow) =>
+      displayedPeriods.filter((p) => getRevenue(row, p.year, p.month) > 0).length;
 
-    let rows = filteredActivity.map((r) => ({
+    let rows = filteredRows.map((r) => ({
       ...r,
-      periodRevenue: toPeriodRevenue(r),
-      periodActiveMonths: (selectedMonths.length ? selectedMonths : visibleMonths).filter((m) =>
-        r.monthlyData.some((x) => x.month === m && Number(x.revenue) > 0),
-      ).length,
+      periodRevenue: periodRevenue(r),
+      periodActiveMonths: activeCount(r),
     }));
 
     if (departmentFilter !== 'all') {
-      rows = rows.filter((r) => (r.managerDepartment || '').trim() === departmentFilter);
+      const dept = departmentFilter;
+      rows = rows.filter((r) => {
+        const c = data1?.clientActivity?.find((c) => c.clientId === r.clientId);
+        return (c?.managerDepartment || '').trim() === dept;
+      });
     }
 
     if (revenueFilter === 'gt_0') rows = rows.filter((r) => r.periodRevenue > 0);
     if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
     if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
 
-    const sorted = [...rows];
-    sorted.sort((a, b) => {
+    return [...rows].sort((a, b) => {
       if (listSort === 'name_asc') return a.companyName.localeCompare(b.companyName, 'ru');
       if (listSort === 'name_desc') return b.companyName.localeCompare(a.companyName, 'ru');
       if (listSort === 'revenue_desc') return b.periodRevenue - a.periodRevenue;
@@ -226,19 +300,11 @@ export default function ClientActivityMatrixPage() {
       if (listSort === 'active_desc') return b.periodActiveMonths - a.periodActiveMonths;
       return a.periodActiveMonths - b.periodActiveMonths;
     });
-    return sorted;
-  }, [
-    filteredActivity,
-    listSort,
-    revenueFilter,
-    departmentFilter,
-    selectedMonths,
-    visibleMonths,
-  ]);
+  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, listSort, data1]);
 
   const patchListParams = useCallback(
-    (patch: Parameters<typeof mergeMatrixListSearchParams>[1], nav?: { replace?: boolean }) => {
-      setSearchParams((prev) => mergeMatrixListSearchParams(prev, patch), nav);
+    (patch: Partial<ListParams>, nav?: { replace?: boolean }) => {
+      setSearchParams((prev) => mergeParams(prev, patch), nav);
     },
     [setSearchParams],
   );
@@ -248,12 +314,10 @@ export default function ClientActivityMatrixPage() {
 
   useEffect(() => {
     if (listRows.length === 0) return;
-    if (page !== safePage) {
-      patchListParams({ page: safePage }, { replace: true });
-    }
+    if (page !== safePage) patchListParams({ page: safePage }, { replace: true });
   }, [listRows.length, page, safePage, patchListParams]);
 
-  const pagedActivity = useMemo(() => {
+  const pagedRows = useMemo(() => {
     const start = (safePage - 1) * pageSize;
     return listRows.slice(start, start + pageSize);
   }, [listRows, safePage, pageSize]);
@@ -262,29 +326,24 @@ export default function ClientActivityMatrixPage() {
     if (!cellDrawer) return;
     setDrawerSortOrder('desc');
     setDrawerDateRange(null);
-  }, [cellDrawer?.clientId, cellDrawer?.month]);
+  }, [cellDrawer?.clientId, cellDrawer?.month, cellDrawer?.year]);
 
   const filteredDrawerItems = useMemo(() => {
     let items = [...(clientMonthData?.items ?? [])];
-
     if (drawerDateRange) {
       const [from, to] = drawerDateRange;
       const fromTs = from.startOf('day').valueOf();
       const toTs = to.endOf('day').valueOf();
       items = items.filter((item) => {
         if (!item.createdAt) return false;
-        const ts = dayjs(item.createdAt).valueOf();
-        return ts >= fromTs && ts <= toTs;
+        return dayjs(item.createdAt).valueOf() >= fromTs && dayjs(item.createdAt).valueOf() <= toTs;
       });
     }
-
-    items.sort((a, b) => {
+    return items.sort((a, b) => {
       const aTs = a.createdAt ? dayjs(a.createdAt).valueOf() : 0;
       const bTs = b.createdAt ? dayjs(b.createdAt).valueOf() : 0;
       return drawerSortOrder === 'desc' ? bTs - aTs : aTs - bTs;
     });
-
-    return items;
   }, [clientMonthData?.items, drawerDateRange, drawerSortOrder]);
 
   const filteredDrawerTotal = useMemo(
@@ -292,106 +351,104 @@ export default function ClientActivityMatrixPage() {
     [filteredDrawerItems],
   );
 
-  const noDataColor = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
+  // ── Table columns ────────────────────────────────────────────────────────────
 
-  const maxMonthRevenue = useMemo(() => {
-    const all = clientActivity.flatMap((c) => c.monthlyData.map((m) => m.revenue));
-    return all.reduce((a, b) => Math.max(a, b), 1);
-  }, [clientActivity]);
-
-  function getMonthRevenue(record: HistoryClientActivity, month: number): number {
-    const m = record.monthlyData.find((d) => d.month === month);
-    return m ? m.revenue : 0;
-  }
-
-  function getRevenueColor(revenue: number): string {
-    if (revenue <= 0) return noDataColor;
-    const intensity = Math.min(revenue / maxMonthRevenue, 1);
-    return `rgba(56,218,17,${0.2 + intensity * 0.8})`;
-  }
-
-  const activityCols = [
+  const activityCols = useMemo(() => [
     {
       title: 'Клиент',
       dataIndex: 'companyName',
       key: 'companyName',
       fixed: 'left' as const,
       width: 260,
-      render: (_: string, r: HistoryClientActivity) => (
+      render: (_: string, r: UnifiedRow) => (
         <a onClick={() => navigate(`/clients/${r.clientId}`)}>{r.companyName}</a>
       ),
     },
     {
-      title: 'Последний контакт',
+      title: 'Посл. контакт',
       key: 'lastContact',
-      width: 168,
+      width: 150,
       fixed: 'left' as const,
-      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => {
+      sorter: (a: UnifiedRow, b: UnifiedRow) => {
         const ta = a.lastContactAt ? dayjs(a.lastContactAt).valueOf() : 0;
         const tb = b.lastContactAt ? dayjs(b.lastContactAt).valueOf() : 0;
         return ta - tb;
       },
-      render: (_: unknown, r: HistoryClientActivity) => {
-        if (!r.lastContactAt) {
-          return <Typography.Text type="secondary">—</Typography.Text>;
-        }
+      render: (_: unknown, r: UnifiedRow) => {
+        if (!r.lastContactAt) return <Typography.Text type="secondary">—</Typography.Text>;
         const when = dayjs(r.lastContactAt);
-        const label = when.format('DD.MM.YYYY HH:mm');
-        const who = r.lastContactByName || '—';
         return (
-          <Tooltip title={`${label} — ${who}`}>
+          <Tooltip title={`${when.format('DD.MM.YYYY HH:mm')} — ${r.lastContactByName || '—'}`}>
             <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-              <div>{label}</div>
+              <div>{when.format('DD.MM.YYYY')}</div>
               <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis>
-                {who}
+                {r.lastContactByName || '—'}
               </Typography.Text>
             </div>
           </Tooltip>
         );
       },
     },
-    ...displayedMonths.map((m) => ({
-      title: MONTH_LABELS[m],
-      key: `m${m}`,
-      width: 76,
-      align: 'center' as const,
-      render: (_: unknown, record: HistoryClientActivity) => {
-        const revenue = getMonthRevenue(record, m);
-        const bgColor = getRevenueColor(revenue);
-        const isClickable = revenue > 0;
-        const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
-        return (
-          <Tooltip title={revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}>
-            <div
-              style={{
-                width: 34,
-                height: 26,
-                borderRadius: 6,
-                margin: '0 auto',
-                backgroundColor: bgColor,
-                color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
-                fontSize: 11,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: isClickable ? 'pointer' : 'default',
-              }}
-              onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
-            >
-              {revenue > 0 ? '●' : '—'}
-            </div>
-          </Tooltip>
-        );
-      },
-    })),
+    ...displayedPeriods.map((p) => {
+      // In multi-year mode show short year suffix on first month of each year
+      const isFirstOfYear = isMultiYear && p.month === 1;
+      const colTitle = isMultiYear
+        ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}`
+        : MONTH_LABELS[p.month];
+      return {
+        title: (
+          <span style={isFirstOfYear ? { borderLeft: `2px solid ${token.colorBorder}`, paddingLeft: 4 } : undefined}>
+            {colTitle}
+          </span>
+        ),
+        key: `y${p.year}m${p.month}`,
+        width: isMultiYear ? 68 : 76,
+        align: 'center' as const,
+        onHeaderCell: () => isFirstOfYear ? { style: { borderLeft: `2px solid ${token.colorBorder}` } } : {},
+        render: (_: unknown, record: UnifiedRow) => {
+          const revenue = getRevenue(record, p.year, p.month);
+          const intensity = revenue > 0 ? Math.min(revenue / maxRevenue, 1) : 0;
+          return (
+            <Tooltip title={revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}>
+              <div
+                style={{
+                  width: 34, height: 26, borderRadius: 6, margin: '0 auto',
+                  backgroundColor: revenueColor(revenue),
+                  color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
+                  fontSize: 11, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: revenue > 0 ? 'pointer' : 'default',
+                }}
+                onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
+              >
+                {revenue > 0 ? '●' : '—'}
+              </div>
+            </Tooltip>
+          );
+        },
+      };
+    }),
     {
-      title: 'Активные',
+      title: 'Активных',
       key: 'active',
-      width: 100,
-      render: (_: unknown, r: HistoryClientActivity) => <Tag color="blue">{r.activeMonths.length} мес.</Tag>,
+      width: 90,
+      render: (_: unknown, r: UnifiedRow) => {
+        const count = displayedPeriods.filter((p) => getRevenue(r, p.year, p.month) > 0).length;
+        return <Tag color="blue">{count} мес.</Tag>;
+      },
     },
-  ];
+  ], [displayedPeriods, isMultiYear, maxRevenue, navigate, token]);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const noDataColor = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
+  const fromMonth = selectedMonths.length > 0 ? selectedMonths[0] : undefined;
+  const toMonth = selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined;
+
+  const clientOptions = useMemo(
+    () => unifiedRows.map((c) => ({ label: c.companyName, value: c.clientId })),
+    [unifiedRows],
+  );
 
   return (
     <div>
@@ -407,208 +464,193 @@ export default function ClientActivityMatrixPage() {
         items={[
           {
             key: 'matrix',
-            label: (
-              <span>
-                <CalendarOutlined /> Матрица по месяцам
-              </span>
-            ),
+            label: <span><CalendarOutlined /> Матрица по месяцам</span>,
             children: isLoading ? (
               <div style={{ textAlign: 'center', padding: 48 }}><Spin size="large" /></div>
             ) : (
               <Card
-        size="small"
-        extra={(
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Select
-              value={year}
-              onChange={(y) => patchListParams({ year: y, selectedMonths: [], page: 1 })}
-              style={{ width: 90 }}
-              options={Array.from({ length: 5 }, (_, i) => {
-                const y = new Date().getFullYear() - 2 + i;
-                return { label: String(y), value: y };
-              })}
-            />
-            <Select
-              placeholder="С месяца"
-              allowClear
-              style={{ width: 110 }}
-              value={selectedMonths.length > 0 ? selectedMonths[0] : undefined}
-              options={Object.entries(MONTH_LABELS).map(([k, v]) => ({ value: Number(k), label: v }))}
-              onChange={(from: number | undefined) => {
-                const to = selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined;
-                if (!from) { patchListParams({ selectedMonths: [], page: 1 }); return; }
-                const end = to && to >= from ? to : 12;
-                patchListParams({ selectedMonths: Array.from({ length: end - from + 1 }, (_, i) => from + i), page: 1 });
-              }}
-            />
-            <Typography.Text type="secondary">—</Typography.Text>
-            <Select
-              placeholder="По месяц"
-              allowClear
-              style={{ width: 110 }}
-              value={selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined}
-              options={Object.entries(MONTH_LABELS)
-                .map(([k, v]) => ({ value: Number(k), label: v }))
-                .filter(o => selectedMonths.length === 0 || o.value >= selectedMonths[0])}
-              onChange={(to: number | undefined) => {
-                const from = selectedMonths.length > 0 ? selectedMonths[0] : undefined;
-                if (!to) { patchListParams({ selectedMonths: [], page: 1 }); return; }
-                const start = from && from <= to ? from : 1;
-                patchListParams({ selectedMonths: Array.from({ length: to - start + 1 }, (_, i) => start + i), page: 1 });
-              }}
-            />
-            <Select
-              mode="multiple"
-              placeholder="Фильтр клиентов"
-              allowClear
-              showSearch
-              style={{ width: isMobile ? 220 : 280 }}
-              maxTagCount={2}
-              value={selectedClients}
-              onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
-              options={clientActivity.map((c) => ({ label: c.companyName, value: c.clientId }))}
-              filterOption={smartFilterOption}
-            />
-          </div>
-        )}
-      >
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Input
-            allowClear
-            prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
-            placeholder="Поиск по клиенту"
-            value={clientSearch}
-            onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
-            style={{ width: isMobile ? 220 : 280 }}
-          />
-          <Select
-            value={listSort}
-            onChange={(v) => {
-              setListSort(v);
-              patchListParams({ page: 1 });
-            }}
-            style={{ width: isMobile ? 220 : 220 }}
-            options={[
-              { label: 'Сорт: А-Я', value: 'name_asc' },
-              { label: 'Сорт: Я-А', value: 'name_desc' },
-              { label: 'Сорт: выручка (убыв.)', value: 'revenue_desc' },
-              { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' },
-              { label: 'Сорт: активные мес. (убыв.)', value: 'active_desc' },
-              { label: 'Сорт: активные мес. (возр.)', value: 'active_asc' },
-            ]}
-          />
-          <Select
-            value={revenueFilter}
-            onChange={(v) => {
-              setRevenueFilter(v);
-              patchListParams({ page: 1 });
-            }}
-            style={{ width: isMobile ? 220 : 200 }}
-            options={[
-              { label: 'Выручка: все', value: 'all' },
-              { label: 'Выручка > 0', value: 'gt_0' },
-              { label: 'Выручка ≥ 1 млн', value: 'gte_1m' },
-              { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
-            ]}
-          />
-          <Select
-            value={departmentFilter}
-            onChange={(v) => {
-              setDepartmentFilter(v);
-              patchListParams({ page: 1 });
-            }}
-            style={{ width: isMobile ? 220 : 220 }}
-            options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
-          />
-        </div>
+                size="small"
+                extra={(
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Year range */}
+                    <Select
+                      value={year}
+                      onChange={(y) => patchListParams({ year: y, year2: Math.max(y, year2), selectedMonths: [], page: 1 })}
+                      style={{ width: 90 }}
+                      options={YEAR_OPTIONS}
+                    />
+                    <Typography.Text type="secondary">—</Typography.Text>
+                    <Select
+                      value={year2}
+                      onChange={(y) => patchListParams({ year2: y, selectedMonths: [], page: 1 })}
+                      style={{ width: 90 }}
+                      options={YEAR_OPTIONS.filter((o) => o.value >= year)}
+                    />
 
-        {isMobile ? (
-          <div>
-            <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {pagedActivity.map((record) => (
-              <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
+                    {/* Month range — only in single-year mode */}
+                    {!isMultiYear && (
+                      <>
+                        <Typography.Text type="secondary" style={{ marginLeft: 8 }}>С</Typography.Text>
+                        <Select
+                          placeholder="Янв"
+                          allowClear
+                          style={{ width: 100 }}
+                          value={fromMonth}
+                          options={MONTH_OPTIONS}
+                          onChange={(from: number | undefined) => {
+                            if (!from) { patchListParams({ selectedMonths: [], page: 1 }); return; }
+                            const end = toMonth && toMonth >= from ? toMonth : 12;
+                            patchListParams({ selectedMonths: Array.from({ length: end - from + 1 }, (_, i) => from + i), page: 1 });
+                          }}
+                        />
+                        <Typography.Text type="secondary">по</Typography.Text>
+                        <Select
+                          placeholder="Дек"
+                          allowClear
+                          style={{ width: 100 }}
+                          value={toMonth}
+                          options={MONTH_OPTIONS.filter((o) => !fromMonth || o.value >= fromMonth)}
+                          onChange={(to: number | undefined) => {
+                            if (!to) { patchListParams({ selectedMonths: [], page: 1 }); return; }
+                            const start = fromMonth && fromMonth <= to ? fromMonth : 1;
+                            patchListParams({ selectedMonths: Array.from({ length: to - start + 1 }, (_, i) => start + i), page: 1 });
+                          }}
+                        />
+                      </>
+                    )}
+
+                    <Select
+                      mode="multiple"
+                      placeholder="Фильтр клиентов"
+                      allowClear
+                      showSearch
+                      style={{ width: isMobile ? 220 : 260 }}
+                      maxTagCount={2}
+                      value={selectedClients}
+                      onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
+                      options={clientOptions}
+                      filterOption={smartFilterOption}
+                    />
+                  </div>
+                )}
+              >
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных</span>
+                  {isMultiYear && (
+                    <Tag color="blue">{year} + {year2} · {displayedPeriods.length} месяцев</Tag>
+                  )}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {displayedMonths.map((m) => {
-                    const revenue = getMonthRevenue(record, m);
-                    const isClickable = revenue > 0;
-                    return (
-                      <Tooltip key={m} title={`${MONTH_LABELS[m]}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
-                        <div style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 6,
-                          backgroundColor: getRevenueColor(revenue),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 10,
-                          fontWeight: 500,
-                          cursor: isClickable ? 'pointer' : 'default',
-                        }}>
-                          <span
-                            style={{ width: '100%', textAlign: 'center' }}
-                            onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
-                          >
-                            {MONTH_LABELS[m]}
-                          </span>
+
+                {/* Filters row */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
+                    placeholder="Поиск по клиенту"
+                    value={clientSearch}
+                    onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
+                    style={{ width: isMobile ? 220 : 260 }}
+                  />
+                  <Select
+                    value={listSort}
+                    onChange={(v) => { setListSort(v); patchListParams({ page: 1 }); }}
+                    style={{ width: 220 }}
+                    options={[
+                      { label: 'Сорт: А-Я', value: 'name_asc' },
+                      { label: 'Сорт: Я-А', value: 'name_desc' },
+                      { label: 'Сорт: выручка ↓', value: 'revenue_desc' },
+                      { label: 'Сорт: выручка ↑', value: 'revenue_asc' },
+                      { label: 'Сорт: активные мес. ↓', value: 'active_desc' },
+                      { label: 'Сорт: активные мес. ↑', value: 'active_asc' },
+                    ]}
+                  />
+                  <Select
+                    value={revenueFilter}
+                    onChange={(v) => { setRevenueFilter(v); patchListParams({ page: 1 }); }}
+                    style={{ width: 180 }}
+                    options={[
+                      { label: 'Выручка: все', value: 'all' },
+                      { label: 'Выручка > 0', value: 'gt_0' },
+                      { label: 'Выручка ≥ 1 млн', value: 'gte_1m' },
+                      { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
+                    ]}
+                  />
+                  <Select
+                    value={departmentFilter}
+                    onChange={(v) => { setDepartmentFilter(v); patchListParams({ page: 1 }); }}
+                    style={{ width: 200 }}
+                    options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
+                  />
+                </div>
+
+                {/* Mobile view */}
+                {isMobile ? (
+                  <div>
+                    <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {pagedRows.map((record) => (
+                        <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                            <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {displayedPeriods.map((p) => {
+                              const revenue = getRevenue(record, p.year, p.month);
+                              const label = isMultiYear ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}` : MONTH_LABELS[p.month];
+                              return (
+                                <Tooltip key={`${p.year}-${p.month}`} title={`${label}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                                  <div style={{
+                                    width: 38, height: 38, borderRadius: 6,
+                                    backgroundColor: revenueColor(revenue),
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 10, fontWeight: 500,
+                                    cursor: revenue > 0 ? 'pointer' : 'default',
+                                  }}
+                                    onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
+                                  >
+                                    {label}
+                                  </div>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </Tooltip>
-                    );
-                  })}
-                </div>
-              </div>
-              ))}
-            </div>
-            {listRows.length > pageSize && (
-              <div style={{ textAlign: 'center', marginTop: 12 }}>
-                <Pagination
-                  current={safePage}
-                  total={listRows.length}
-                  pageSize={pageSize}
-                  showSizeChanger
-                  pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-                  onChange={(p, ps) => patchListParams({ page: p, pageSize: ps })}
-                  size="small"
-                />
-              </div>
-            )}
-          </div>
-        ) : (
-          <Table
-            dataSource={listRows}
-            columns={activityCols}
-            rowKey="clientId"
-            size="small"
-            pagination={{
-              current: safePage,
-              pageSize,
-              total: listRows.length,
-              showSizeChanger: true,
-              pageSizeOptions: [...PAGE_SIZE_OPTIONS],
-              showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-              onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
-            }}
-            scroll={{ x: 1200 }}
-          />
-        )}
-      </Card>
+                      ))}
+                    </div>
+                    {listRows.length > pageSize && (
+                      <div style={{ textAlign: 'center', marginTop: 12 }}>
+                        <Pagination
+                          current={safePage} total={listRows.length} pageSize={pageSize}
+                          showSizeChanger pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+                          onChange={(p, ps) => patchListParams({ page: p, pageSize: ps })}
+                          size="small"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Table
+                    dataSource={pagedRows}
+                    columns={activityCols}
+                    rowKey="clientId"
+                    size="small"
+                    pagination={{
+                      current: safePage, pageSize, total: listRows.length,
+                      showSizeChanger: true, pageSizeOptions: [...PAGE_SIZE_OPTIONS],
+                      showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
+                      onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
+                    }}
+                    scroll={{ x: 1200 }}
+                  />
+                )}
+              </Card>
             ),
           },
           {
             key: 'hierarchy-clients',
-            label: (
-              <span>
-                <ApartmentOutlined /> Клиенты по иерархии
-              </span>
-            ),
+            label: <span><ApartmentOutlined /> Клиенты по иерархии</span>,
             children: (
               <HierarchyClientsAnalyticsPanel
                 products={visibleProducts}
@@ -622,15 +664,14 @@ export default function ClientActivityMatrixPage() {
         ]}
       />
 
+      {/* Cell drill-down drawer */}
       <Drawer
-        title={cellDrawer ? `${cellDrawer.clientName} - ${MONTH_LABELS[cellDrawer.month]} ${year}` : ''}
+        title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} ${cellDrawer.year}` : ''}
         open={!!cellDrawer}
         onClose={() => setCellDrawer(null)}
         width="100%"
       >
-        {clientMonthLoading ? (
-          <Spin />
-        ) : (
+        {clientMonthLoading ? <Spin /> : (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
               <DatePicker.RangePicker
@@ -666,10 +707,7 @@ export default function ClientActivityMatrixPage() {
                 { title: 'Итого', dataIndex: 'total', key: 'total', width: 120, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
                 { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
                 {
-                  title: 'Дата',
-                  dataIndex: 'createdAt',
-                  key: 'createdAt',
-                  width: 110,
+                  title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 110,
                   render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—',
                 },
               ]}
