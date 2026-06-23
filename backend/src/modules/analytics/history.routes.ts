@@ -258,20 +258,26 @@ router.get(
       GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
-    // Sum deal line totals by calendar month of shipment event (warehouse date) — unchanged meaning, key still `shipped`
+    // Sum deal revenue by calendar month of first OUT inventory movement — avoids dependency on `shipments` table
     const shippedAtByMonthRaw = await prisma.$queryRaw<
       { month: number; shipped: string }[]
     >(
       Prisma.sql`SELECT
-        EXTRACT(MONTH FROM (s.shipped_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
+        EXTRACT(MONTH FROM (out_dates.out_date AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
         COALESCE(SUM(di_rev.rev), 0)::text as shipped
-      FROM shipments s
-      JOIN deals d ON d.id = s.deal_id
+      FROM (
+        SELECT deal_id, MIN(created_at) as out_date
+        FROM inventory_movements
+        WHERE type = 'OUT'
+          AND deal_id IS NOT NULL
+          AND created_at >= ${yearStart} AND created_at < ${yearEnd}
+        GROUP BY deal_id
+      ) out_dates
+      JOIN deals d ON d.id = out_dates.deal_id
       LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
       WHERE d.is_archived = false
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-        AND s.shipped_at >= ${yearStart} AND s.shipped_at < ${yearEnd}
-      GROUP BY EXTRACT(MONTH FROM (s.shipped_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+      GROUP BY EXTRACT(MONTH FROM (out_dates.out_date AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
     const shippedRevenueMap = new Map(shippedRevenueByMonthRaw.map((r) => [r.month, Number(r.shipped_revenue)]));

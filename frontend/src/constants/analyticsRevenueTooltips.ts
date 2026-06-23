@@ -14,9 +14,9 @@ export const TOOLTIP_OPERATIONAL_REVENUE =
 export const TOOLTIP_SHIPPED_REVENUE =
   'Совпадает с основной выручкой: учитываются только закрытые сделки, только строки deal_items.';
 
-/** History monthly series: sum tied to warehouse shipment timestamp */
+/** History monthly series: sum tied to first OUT inventory movement */
 export const TOOLTIP_SHIPPED_AT_MONTHLY =
-  'Сумма строк по фактической дате отгрузки на складе (shipped_at), по месяцу этой даты. ' +
+  'Сумма строк сделок по дате первого списания со склада (OUT-движение). ' +
   'Это логистический срез: он может не совпадать с выручкой по дате строки сделки.';
 
 /** Short labels for chart legend */
