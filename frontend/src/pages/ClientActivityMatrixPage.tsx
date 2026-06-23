@@ -322,18 +322,6 @@ export default function ClientActivityMatrixPage() {
       ),
     },
     {
-      title: 'Отдел',
-      dataIndex: 'managerDepartment',
-      key: 'managerDepartment',
-      fixed: 'left' as const,
-      width: 120,
-      ellipsis: true,
-      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) =>
-        (a.managerDepartment || '').localeCompare(b.managerDepartment || '', 'ru'),
-      render: (v: string | null | undefined) =>
-        v ? <Typography.Text style={{ fontSize: 12 }}>{v}</Typography.Text> : <Typography.Text type="secondary">—</Typography.Text>,
-    },
-    {
       title: 'Последний контакт',
       key: 'lastContact',
       width: 168,
@@ -440,31 +428,34 @@ export default function ClientActivityMatrixPage() {
                 return { label: String(y), value: y };
               })}
             />
-            <DatePicker.RangePicker
-              picker="month"
-              value={
-                selectedMonths.length > 0
-                  ? [
-                      dayjs().year(year).month(selectedMonths[0] - 1).startOf('month'),
-                      dayjs().year(year).month(selectedMonths[selectedMonths.length - 1] - 1).endOf('month'),
-                    ]
-                  : null
-              }
-              onChange={(range) => {
-                if (!range?.[0] || !range?.[1]) {
-                  patchListParams({ selectedMonths: [], page: 1 });
-                  return;
-                }
-                const startMonth = range[0].month() + 1;
-                const endMonth = range[1].month() + 1;
-                const months: number[] = [];
-                for (let m = startMonth; m <= endMonth; m++) months.push(m);
-                patchListParams({ selectedMonths: months, page: 1 });
+            <Select
+              placeholder="С месяца"
+              allowClear
+              style={{ width: 110 }}
+              value={selectedMonths.length > 0 ? selectedMonths[0] : undefined}
+              options={Object.entries(MONTH_LABELS).map(([k, v]) => ({ value: Number(k), label: v }))}
+              onChange={(from: number | undefined) => {
+                const to = selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined;
+                if (!from) { patchListParams({ selectedMonths: [], page: 1 }); return; }
+                const end = to && to >= from ? to : 12;
+                patchListParams({ selectedMonths: Array.from({ length: end - from + 1 }, (_, i) => from + i), page: 1 });
               }}
-              disabledDate={(d) => d.year() !== year}
-              placeholder={['Нач. месяц', 'Кон. месяц']}
-              format="MMM"
-              style={{ width: 200 }}
+            />
+            <Typography.Text type="secondary">—</Typography.Text>
+            <Select
+              placeholder="По месяц"
+              allowClear
+              style={{ width: 110 }}
+              value={selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined}
+              options={Object.entries(MONTH_LABELS)
+                .map(([k, v]) => ({ value: Number(k), label: v }))
+                .filter(o => selectedMonths.length === 0 || o.value >= selectedMonths[0])}
+              onChange={(to: number | undefined) => {
+                const from = selectedMonths.length > 0 ? selectedMonths[0] : undefined;
+                if (!to) { patchListParams({ selectedMonths: [], page: 1 }); return; }
+                const start = from && from <= to ? from : 1;
+                patchListParams({ selectedMonths: Array.from({ length: to - start + 1 }, (_, i) => start + i), page: 1 });
+              }}
             />
             <Select
               mode="multiple"
