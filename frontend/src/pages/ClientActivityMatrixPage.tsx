@@ -168,8 +168,8 @@ export default function ClientActivityMatrixPage() {
 
   const displayedMonths = useMemo(() => {
     if (selectedMonths.length === 0) return visibleMonths;
-    const available = new Set(visibleMonths);
-    return selectedMonths.filter((m) => available.has(m)).sort((a, b) => a - b);
+    // Show all selected months as columns, even if no data yet (they'll render as empty)
+    return [...selectedMonths].sort((a, b) => a - b);
   }, [selectedMonths, visibleMonths]);
 
   const filteredActivity = useMemo(() => {
@@ -431,6 +431,15 @@ export default function ClientActivityMatrixPage() {
         size="small"
         extra={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Select
+              value={year}
+              onChange={(y) => patchListParams({ year: y, selectedMonths: [], page: 1 })}
+              style={{ width: 90 }}
+              options={Array.from({ length: 5 }, (_, i) => {
+                const y = new Date().getFullYear() - 2 + i;
+                return { label: String(y), value: y };
+              })}
+            />
             <DatePicker.RangePicker
               picker="month"
               value={
@@ -439,20 +448,23 @@ export default function ClientActivityMatrixPage() {
                       dayjs().year(year).month(selectedMonths[0] - 1).startOf('month'),
                       dayjs().year(year).month(selectedMonths[selectedMonths.length - 1] - 1).endOf('month'),
                     ]
-                  : [dayjs().year(year).startOf('year'), dayjs().year(year).endOf('year')]
+                  : null
               }
               onChange={(range) => {
-                if (!range?.[0] || !range?.[1]) return;
-                const startYear = range[0].year();
+                if (!range?.[0] || !range?.[1]) {
+                  patchListParams({ selectedMonths: [], page: 1 });
+                  return;
+                }
                 const startMonth = range[0].month() + 1;
-                const endMonth = range[0].year() === range[1].year() ? range[1].month() + 1 : 12;
+                const endMonth = range[1].month() + 1;
                 const months: number[] = [];
                 for (let m = startMonth; m <= endMonth; m++) months.push(m);
-                patchListParams({ year: startYear, selectedMonths: months, page: 1 });
+                patchListParams({ selectedMonths: months, page: 1 });
               }}
-              allowClear={false}
-              format="MMM YYYY"
-              style={{ width: 230 }}
+              disabledDate={(d) => d.year() !== year}
+              placeholder={['Нач. месяц', 'Кон. месяц']}
+              format="MMM"
+              style={{ width: 200 }}
             />
             <Select
               mode="multiple"
