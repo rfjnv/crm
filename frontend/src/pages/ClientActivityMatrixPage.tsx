@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Select, Spin, Table, Tooltip, Tag, Typography, theme, Drawer, DatePicker, Pagination, Tabs, Input, Button, Space } from 'antd';
+import {
+  Card, Select, Spin, Table, Tooltip, Tag, Typography, theme,
+  Drawer, DatePicker, Pagination, Tabs, Input, Button, Space,
+} from 'antd';
 import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
@@ -22,19 +25,16 @@ const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 type MatrixTabView = 'matrix' | 'hierarchy-clients';
 
-const CY = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
-  const y = CY - 2 + i;
-  return { label: String(y), value: y };
-});
-const MONTH_OPTIONS = Object.entries(MONTH_LABELS).map(([k, v]) => ({ value: Number(k), label: v }));
-
 // ── URL params ──────────────────────────────────────────────────────────────
 
+const CY = new Date().getFullYear();
+const CM = new Date().getMonth() + 1;
+
 type ListParams = {
-  year: number;
-  year2: number;
-  selectedMonths: number[];
+  fromYear: number;
+  fromMonth: number;
+  toYear: number;
+  toMonth: number;
   selectedClients: string[];
   clientSearch: string;
   page: number;
@@ -43,43 +43,51 @@ type ListParams = {
 };
 
 function parseParams(sp: URLSearchParams): ListParams {
-  const rawY = parseInt(sp.get('year') || String(CY), 10);
-  const year = Number.isFinite(rawY) && rawY >= 2020 && rawY <= 2035 ? rawY : CY;
+  const fromRaw = sp.get('from') || `${CY}-01`;
+  const toRaw = sp.get('to') || `${CY}-${String(CM).padStart(2, '0')}`;
 
-  const rawY2 = parseInt(sp.get('year2') || String(year), 10);
-  const year2Raw = Number.isFinite(rawY2) && rawY2 >= 2020 && rawY2 <= 2035 ? rawY2 : year;
-  const year2 = Math.max(year, year2Raw);
+  const [fy, fm] = fromRaw.split('-').map(Number);
+  const [ty, tm] = toRaw.split('-').map(Number);
 
-  const monthsPart = sp.get('months');
-  const selectedMonths = monthsPart
-    ? [...new Set(monthsPart.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n >= 1 && n <= 12))].sort((a, b) => a - b)
-    : [];
+  const fromYear = fy >= 2020 && fy <= 2035 ? fy : CY;
+  const fromMonth = fm >= 1 && fm <= 12 ? fm : 1;
+  const toYear = ty >= 2020 && ty <= 2035 ? ty : CY;
+  const toMonth = tm >= 1 && tm <= 12 ? tm : CM;
 
   const clientsPart = sp.get('clients');
   const selectedClients = clientsPart
     ? [...new Set(clientsPart.split(',').map((s) => s.trim()).filter(Boolean))]
     : [];
-
   const clientSearch = sp.get('clientSearch') || '';
   const rawPage = parseInt(sp.get('page') || '1', 10);
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
   const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
   const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
   const tabRaw = sp.get('view');
-  const view = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
+  const view: MatrixTabView = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
 
-  return { year, year2, selectedMonths, selectedClients, clientSearch, page, pageSize, view };
+  // Ensure from <= to
+  const startTs = fromYear * 100 + fromMonth;
+  const endTs = toYear * 100 + toMonth;
+  if (startTs > endTs) {
+    return { fromYear: toYear, fromMonth: toMonth, toYear: fromYear, toMonth: fromMonth, selectedClients, clientSearch, page, pageSize, view };
+  }
+
+  return { fromYear, fromMonth, toYear, toMonth, selectedClients, clientSearch, page, pageSize, view };
 }
 
 function mergeParams(prev: URLSearchParams, patch: Partial<ListParams>): URLSearchParams {
   const cur = parseParams(prev);
   const next: ListParams = { ...cur, ...patch };
-  if (next.year2 < next.year) next.year2 = next.year;
   const sp = new URLSearchParams(prev);
 
-  next.year !== CY ? sp.set('year', String(next.year)) : sp.delete('year');
-  next.year2 !== next.year ? sp.set('year2', String(next.year2)) : sp.delete('year2');
-  next.selectedMonths.length ? sp.set('months', next.selectedMonths.join(',')) : sp.delete('months');
+  const defaultFrom = `${CY}-01`;
+  const defaultTo = `${CY}-${String(CM).padStart(2, '0')}`;
+  const fromStr = `${next.fromYear}-${String(next.fromMonth).padStart(2, '0')}`;
+  const toStr = `${next.toYear}-${String(next.toMonth).padStart(2, '0')}`;
+
+  fromStr !== defaultFrom ? sp.set('from', fromStr) : sp.delete('from');
+  toStr !== defaultTo ? sp.set('to', toStr) : sp.delete('to');
   next.selectedClients.length ? sp.set('clients', next.selectedClients.join(',')) : sp.delete('clients');
   next.clientSearch.trim() ? sp.set('clientSearch', next.clientSearch) : sp.delete('clientSearch');
   next.page !== 1 ? sp.set('page', String(next.page)) : sp.delete('page');
@@ -89,64 +97,57 @@ function mergeParams(prev: URLSearchParams, patch: Partial<ListParams>): URLSear
   return sp;
 }
 
-// ── Unified row type for multi-year ─────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+type YearMonth = { year: number; month: number };
+
+function buildPeriods(fromYear: number, fromMonth: number, toYear: number, toMonth: number): YearMonth[] {
+  const periods: YearMonth[] = [];
+  let y = fromYear, m = fromMonth;
+  while (y < toYear || (y === toYear && m <= toMonth)) {
+    periods.push({ year: y, month: m });
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return periods;
+}
 
 type UnifiedRow = {
   clientId: string;
   companyName: string;
   lastContactAt: string | null;
   lastContactByName: string | null;
-  revenueByYM: Map<string, number>; // key: `${year}-${month}`
+  revenueByYM: Map<string, number>;
 };
 
-function buildUnifiedRows(
-  activity1: HistoryClientActivity[],
-  activity2: HistoryClientActivity[],
-  year1: number,
-  year2: number,
+function mergeYearData(
+  years: number[],
+  dataByYear: Map<number, HistoryClientActivity[]>,
 ): UnifiedRow[] {
   const map = new Map<string, UnifiedRow>();
-
-  for (const c of activity1) {
-    const row: UnifiedRow = {
-      clientId: c.clientId,
-      companyName: c.companyName,
-      lastContactAt: c.lastContactAt ?? null,
-      lastContactByName: c.lastContactByName ?? null,
-      revenueByYM: new Map(),
-    };
-    for (const md of c.monthlyData) {
-      row.revenueByYM.set(`${year1}-${md.month}`, md.revenue);
-    }
-    map.set(c.clientId, row);
-  }
-
-  for (const c of activity2) {
-    const existing = map.get(c.clientId);
-    if (existing) {
+  for (const yr of years) {
+    const activity = dataByYear.get(yr) ?? [];
+    for (const c of activity) {
+      let row = map.get(c.clientId);
+      if (!row) {
+        row = {
+          clientId: c.clientId,
+          companyName: c.companyName,
+          lastContactAt: c.lastContactAt ?? null,
+          lastContactByName: c.lastContactByName ?? null,
+          revenueByYM: new Map(),
+        };
+        map.set(c.clientId, row);
+      }
       for (const md of c.monthlyData) {
-        existing.revenueByYM.set(`${year2}-${md.month}`, md.revenue);
+        row.revenueByYM.set(`${yr}-${md.month}`, md.revenue);
       }
-      // keep the more recent lastContact
-      if (c.lastContactAt && (!existing.lastContactAt || c.lastContactAt > existing.lastContactAt)) {
-        existing.lastContactAt = c.lastContactAt;
-        existing.lastContactByName = c.lastContactByName ?? null;
+      if (c.lastContactAt && (!row.lastContactAt || c.lastContactAt > row.lastContactAt)) {
+        row.lastContactAt = c.lastContactAt;
+        row.lastContactByName = c.lastContactByName ?? null;
       }
-    } else {
-      const row: UnifiedRow = {
-        clientId: c.clientId,
-        companyName: c.companyName,
-        lastContactAt: c.lastContactAt ?? null,
-        lastContactByName: c.lastContactByName ?? null,
-        revenueByYM: new Map(),
-      };
-      for (const md of c.monthlyData) {
-        row.revenueByYM.set(`${year2}-${md.month}`, md.revenue);
-      }
-      map.set(c.clientId, row);
     }
   }
-
   return Array.from(map.values());
 }
 
@@ -156,9 +157,8 @@ export default function ClientActivityMatrixPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const listState = useMemo(() => parseParams(searchParams), [searchParams]);
-  const { year, year2, selectedMonths, selectedClients, clientSearch, page, pageSize, view } = listState;
-  const isMultiYear = year2 > year;
+  const params = useMemo(() => parseParams(searchParams), [searchParams]);
+  const { fromYear, fromMonth, toYear, toMonth, selectedClients, clientSearch, page, pageSize, view } = params;
 
   const isMobile = useIsMobile();
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number; year: number } | null>(null);
@@ -170,20 +170,32 @@ export default function ClientActivityMatrixPage() {
 
   const matrixStale = 120_000;
 
-  const { data: data1, isLoading: loading1 } = useQuery({
-    queryKey: ['manager-client-activity', year],
-    queryFn: () => analyticsApi.getHistory(year),
-    staleTime: matrixStale,
+  // Derive unique years in range
+  const yearsInRange = useMemo(() => {
+    const ys: number[] = [];
+    for (let y = fromYear; y <= toYear; y++) ys.push(y);
+    return ys;
+  }, [fromYear, toYear]);
+
+  // Fetch each year in parallel
+  const yearQueries = useQueries({
+    queries: yearsInRange.map((yr) => ({
+      queryKey: ['manager-client-activity', yr],
+      queryFn: () => analyticsApi.getHistory(yr),
+      staleTime: matrixStale,
+    })),
   });
 
-  const { data: data2, isLoading: loading2 } = useQuery({
-    queryKey: ['manager-client-activity', year2],
-    queryFn: () => analyticsApi.getHistory(year2),
-    enabled: isMultiYear,
-    staleTime: matrixStale,
-  });
+  const isLoading = yearQueries.some((q) => q.isLoading);
 
-  const isLoading = loading1 || (isMultiYear && loading2);
+  const dataByYear = useMemo(() => {
+    const map = new Map<number, HistoryClientActivity[]>();
+    yearsInRange.forEach((yr, i) => {
+      const activity = yearQueries[i]?.data?.clientActivity;
+      if (activity) map.set(yr, activity);
+    });
+    return map;
+  }, [yearQueries, yearsInRange]);
 
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products', 'hierarchy-clients'],
@@ -203,33 +215,19 @@ export default function ClientActivityMatrixPage() {
     staleTime: matrixStale,
   });
 
-  // ── Unified data ────────────────────────────────────────────────────────────
+  // ── Data ─────────────────────────────────────────────────────────────────────
 
-  const unifiedRows = useMemo(() => {
-    const a1 = data1?.clientActivity ?? [];
-    const a2 = isMultiYear ? (data2?.clientActivity ?? []) : [];
-    return buildUnifiedRows(a1, a2, year, year2);
-  }, [data1, data2, year, year2, isMultiYear]);
+  const unifiedRows = useMemo(
+    () => mergeYearData(yearsInRange, dataByYear),
+    [yearsInRange, dataByYear],
+  );
 
-  // Periods to display as columns: {year, month}[]
-  const displayedPeriods = useMemo(() => {
-    if (isMultiYear) {
-      // All 12 months of year1, then available months of year2
-      const maxMonth2 = data2?.monthlyTrend?.length
-        ? Math.max(...data2.monthlyTrend.map((m) => m.month))
-        : 12;
-      const periods: { year: number; month: number }[] = [];
-      for (let m = 1; m <= 12; m++) periods.push({ year, month: m });
-      for (let m = 1; m <= maxMonth2; m++) periods.push({ year: year2, month: m });
-      return periods;
-    }
-    // Single-year mode
-    const visibleMonths = data1?.monthlyTrend?.length
-      ? Array.from({ length: Math.max(...data1.monthlyTrend.map((m) => m.month)) }, (_, i) => i + 1)
-      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    const months = selectedMonths.length > 0 ? [...selectedMonths] : visibleMonths;
-    return months.map((m) => ({ year, month: m }));
-  }, [isMultiYear, year, year2, data1, data2, selectedMonths]);
+  const displayedPeriods = useMemo(
+    () => buildPeriods(fromYear, fromMonth, toYear, toMonth),
+    [fromYear, fromMonth, toYear, toMonth],
+  );
+
+  const isMultiYear = toYear > fromYear;
 
   const maxRevenue = useMemo(() => {
     let max = 1;
@@ -246,19 +244,19 @@ export default function ClientActivityMatrixPage() {
   }
 
   function revenueColor(revenue: number): string {
-    const noData = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
+    const noData = token.colorFillTertiary || '#2f2f2f';
     if (revenue <= 0) return noData;
     return `rgba(56,218,17,${0.2 + Math.min(revenue / maxRevenue, 1) * 0.8})`;
   }
 
-  // ── Filtering / sorting ─────────────────────────────────────────────────────
+  // ── Filtering / sorting ───────────────────────────────────────────────────────
 
   const departmentOptions = useMemo(() => {
     const depts = Array.from(
-      new Set((data1?.clientActivity ?? []).map((c) => (c.managerDepartment || '').trim()).filter(Boolean)),
+      new Set((dataByYear.get(fromYear) ?? []).map((c) => (c.managerDepartment || '').trim()).filter(Boolean)),
     ).sort((a, b) => a.localeCompare(b, 'ru'));
     return depts.map((d) => ({ label: d, value: d }));
-  }, [data1]);
+  }, [dataByYear, fromYear]);
 
   const filteredRows = useMemo(() => {
     let rows = unifiedRows;
@@ -283,7 +281,7 @@ export default function ClientActivityMatrixPage() {
     if (departmentFilter !== 'all') {
       const dept = departmentFilter;
       rows = rows.filter((r) => {
-        const c = data1?.clientActivity?.find((c) => c.clientId === r.clientId);
+        const c = (dataByYear.get(fromYear) ?? []).find((c) => c.clientId === r.clientId);
         return (c?.managerDepartment || '').trim() === dept;
       });
     }
@@ -300,9 +298,9 @@ export default function ClientActivityMatrixPage() {
       if (listSort === 'active_desc') return b.periodActiveMonths - a.periodActiveMonths;
       return a.periodActiveMonths - b.periodActiveMonths;
     });
-  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, listSort, data1]);
+  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, listSort, dataByYear, fromYear]);
 
-  const patchListParams = useCallback(
+  const patchParams = useCallback(
     (patch: Partial<ListParams>, nav?: { replace?: boolean }) => {
       setSearchParams((prev) => mergeParams(prev, patch), nav);
     },
@@ -314,8 +312,8 @@ export default function ClientActivityMatrixPage() {
 
   useEffect(() => {
     if (listRows.length === 0) return;
-    if (page !== safePage) patchListParams({ page: safePage }, { replace: true });
-  }, [listRows.length, page, safePage, patchListParams]);
+    if (page !== safePage) patchParams({ page: safePage }, { replace: true });
+  }, [listRows.length, page, safePage, patchParams]);
 
   const pagedRows = useMemo(() => {
     const start = (safePage - 1) * pageSize;
@@ -336,7 +334,8 @@ export default function ClientActivityMatrixPage() {
       const toTs = to.endOf('day').valueOf();
       items = items.filter((item) => {
         if (!item.createdAt) return false;
-        return dayjs(item.createdAt).valueOf() >= fromTs && dayjs(item.createdAt).valueOf() <= toTs;
+        const ts = dayjs(item.createdAt).valueOf();
+        return ts >= fromTs && ts <= toTs;
       });
     }
     return items.sort((a, b) => {
@@ -351,7 +350,7 @@ export default function ClientActivityMatrixPage() {
     [filteredDrawerItems],
   );
 
-  // ── Table columns ────────────────────────────────────────────────────────────
+  // ── Table columns ─────────────────────────────────────────────────────────────
 
   const activityCols = useMemo(() => [
     {
@@ -367,13 +366,10 @@ export default function ClientActivityMatrixPage() {
     {
       title: 'Посл. контакт',
       key: 'lastContact',
-      width: 150,
+      width: 148,
       fixed: 'left' as const,
-      sorter: (a: UnifiedRow, b: UnifiedRow) => {
-        const ta = a.lastContactAt ? dayjs(a.lastContactAt).valueOf() : 0;
-        const tb = b.lastContactAt ? dayjs(b.lastContactAt).valueOf() : 0;
-        return ta - tb;
-      },
+      sorter: (a: UnifiedRow, b: UnifiedRow) =>
+        (a.lastContactAt ?? '').localeCompare(b.lastContactAt ?? ''),
       render: (_: unknown, r: UnifiedRow) => {
         if (!r.lastContactAt) return <Typography.Text type="secondary">—</Typography.Text>;
         const when = dayjs(r.lastContactAt);
@@ -390,21 +386,15 @@ export default function ClientActivityMatrixPage() {
       },
     },
     ...displayedPeriods.map((p) => {
-      // In multi-year mode show short year suffix on first month of each year
-      const isFirstOfYear = isMultiYear && p.month === 1;
-      const colTitle = isMultiYear
-        ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}`
-        : MONTH_LABELS[p.month];
+      const isNewYear = isMultiYear && p.month === 1;
       return {
-        title: (
-          <span style={isFirstOfYear ? { borderLeft: `2px solid ${token.colorBorder}`, paddingLeft: 4 } : undefined}>
-            {colTitle}
-          </span>
-        ),
+        title: isMultiYear
+          ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}`
+          : MONTH_LABELS[p.month],
         key: `y${p.year}m${p.month}`,
-        width: isMultiYear ? 68 : 76,
+        width: isMultiYear ? 64 : 72,
         align: 'center' as const,
-        onHeaderCell: () => isFirstOfYear ? { style: { borderLeft: `2px solid ${token.colorBorder}` } } : {},
+        onHeaderCell: () => isNewYear ? { style: { borderLeft: `2px solid ${token.colorPrimary}` } } : {},
         render: (_: unknown, record: UnifiedRow) => {
           const revenue = getRevenue(record, p.year, p.month);
           const intensity = revenue > 0 ? Math.min(revenue / maxRevenue, 1) : 0;
@@ -412,12 +402,13 @@ export default function ClientActivityMatrixPage() {
             <Tooltip title={revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}>
               <div
                 style={{
-                  width: 34, height: 26, borderRadius: 6, margin: '0 auto',
+                  width: 32, height: 24, borderRadius: 5, margin: '0 auto',
                   backgroundColor: revenueColor(revenue),
                   color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
-                  fontSize: 11, fontWeight: 600,
+                  fontSize: 10, fontWeight: 600,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: revenue > 0 ? 'pointer' : 'default',
+                  borderLeft: isNewYear ? `2px solid ${token.colorPrimary}` : undefined,
                 }}
                 onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
               >
@@ -439,16 +430,18 @@ export default function ClientActivityMatrixPage() {
     },
   ], [displayedPeriods, isMultiYear, maxRevenue, navigate, token]);
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
 
-  const noDataColor = token.colorFillTertiary || token.colorBgContainerDisabled || '#2f2f2f';
-  const fromMonth = selectedMonths.length > 0 ? selectedMonths[0] : undefined;
-  const toMonth = selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : undefined;
-
+  const noDataColor = token.colorFillTertiary || '#2f2f2f';
   const clientOptions = useMemo(
     () => unifiedRows.map((c) => ({ label: c.companyName, value: c.clientId })),
     [unifiedRows],
   );
+
+  const rangeValue: [Dayjs, Dayjs] = [
+    dayjs(`${fromYear}-${String(fromMonth).padStart(2, '0')}-01`),
+    dayjs(`${toYear}-${String(toMonth).padStart(2, '0')}-01`),
+  ];
 
   return (
     <div>
@@ -459,7 +452,7 @@ export default function ClientActivityMatrixPage() {
 
       <Tabs
         activeKey={view}
-        onChange={(next) => patchListParams({ view: next as MatrixTabView })}
+        onChange={(next) => patchParams({ view: next as MatrixTabView })}
         destroyInactiveTabPane
         items={[
           {
@@ -472,52 +465,23 @@ export default function ClientActivityMatrixPage() {
                 size="small"
                 extra={(
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* Year range */}
-                    <Select
-                      value={year}
-                      onChange={(y) => patchListParams({ year: y, year2: Math.max(y, year2), selectedMonths: [], page: 1 })}
-                      style={{ width: 90 }}
-                      options={YEAR_OPTIONS}
+                    {/* Single range picker — month granularity, any span */}
+                    <DatePicker.RangePicker
+                      picker="month"
+                      value={rangeValue}
+                      format="MMM YYYY"
+                      allowClear={false}
+                      onChange={(range) => {
+                        if (!range?.[0] || !range?.[1]) return;
+                        patchParams({
+                          fromYear: range[0].year(),
+                          fromMonth: range[0].month() + 1,
+                          toYear: range[1].year(),
+                          toMonth: range[1].month() + 1,
+                          page: 1,
+                        });
+                      }}
                     />
-                    <Typography.Text type="secondary">—</Typography.Text>
-                    <Select
-                      value={year2}
-                      onChange={(y) => patchListParams({ year2: y, selectedMonths: [], page: 1 })}
-                      style={{ width: 90 }}
-                      options={YEAR_OPTIONS.filter((o) => o.value >= year)}
-                    />
-
-                    {/* Month range — only in single-year mode */}
-                    {!isMultiYear && (
-                      <>
-                        <Typography.Text type="secondary" style={{ marginLeft: 8 }}>С</Typography.Text>
-                        <Select
-                          placeholder="Янв"
-                          allowClear
-                          style={{ width: 100 }}
-                          value={fromMonth}
-                          options={MONTH_OPTIONS}
-                          onChange={(from: number | undefined) => {
-                            if (!from) { patchListParams({ selectedMonths: [], page: 1 }); return; }
-                            const end = toMonth && toMonth >= from ? toMonth : 12;
-                            patchListParams({ selectedMonths: Array.from({ length: end - from + 1 }, (_, i) => from + i), page: 1 });
-                          }}
-                        />
-                        <Typography.Text type="secondary">по</Typography.Text>
-                        <Select
-                          placeholder="Дек"
-                          allowClear
-                          style={{ width: 100 }}
-                          value={toMonth}
-                          options={MONTH_OPTIONS.filter((o) => !fromMonth || o.value >= fromMonth)}
-                          onChange={(to: number | undefined) => {
-                            if (!to) { patchListParams({ selectedMonths: [], page: 1 }); return; }
-                            const start = fromMonth && fromMonth <= to ? fromMonth : 1;
-                            patchListParams({ selectedMonths: Array.from({ length: to - start + 1 }, (_, i) => start + i), page: 1 });
-                          }}
-                        />
-                      </>
-                    )}
 
                     <Select
                       mode="multiple"
@@ -527,7 +491,7 @@ export default function ClientActivityMatrixPage() {
                       style={{ width: isMobile ? 220 : 260 }}
                       maxTagCount={2}
                       value={selectedClients}
-                      onChange={(vals) => patchListParams({ selectedClients: vals, page: 1 })}
+                      onChange={(vals) => patchParams({ selectedClients: vals, page: 1 })}
                       options={clientOptions}
                       filterOption={smartFilterOption}
                     />
@@ -536,12 +500,16 @@ export default function ClientActivityMatrixPage() {
               >
                 {/* Legend */}
                 <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных</span>
-                  {isMultiYear && (
-                    <Tag color="blue">{year} + {year2} · {displayedPeriods.length} месяцев</Tag>
-                  )}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных
+                  </span>
+                  <Tag>{displayedPeriods.length} мес.</Tag>
                 </div>
 
                 {/* Filters row */}
@@ -551,12 +519,12 @@ export default function ClientActivityMatrixPage() {
                     prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
                     placeholder="Поиск по клиенту"
                     value={clientSearch}
-                    onChange={(e) => patchListParams({ clientSearch: e.target.value, page: 1 })}
+                    onChange={(e) => patchParams({ clientSearch: e.target.value, page: 1 })}
                     style={{ width: isMobile ? 220 : 260 }}
                   />
                   <Select
                     value={listSort}
-                    onChange={(v) => { setListSort(v); patchListParams({ page: 1 }); }}
+                    onChange={(v) => { setListSort(v); patchParams({ page: 1 }); }}
                     style={{ width: 220 }}
                     options={[
                       { label: 'Сорт: А-Я', value: 'name_asc' },
@@ -569,7 +537,7 @@ export default function ClientActivityMatrixPage() {
                   />
                   <Select
                     value={revenueFilter}
-                    onChange={(v) => { setRevenueFilter(v); patchListParams({ page: 1 }); }}
+                    onChange={(v) => { setRevenueFilter(v); patchParams({ page: 1 }); }}
                     style={{ width: 180 }}
                     options={[
                       { label: 'Выручка: все', value: 'all' },
@@ -578,15 +546,17 @@ export default function ClientActivityMatrixPage() {
                       { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
                     ]}
                   />
-                  <Select
-                    value={departmentFilter}
-                    onChange={(v) => { setDepartmentFilter(v); patchListParams({ page: 1 }); }}
-                    style={{ width: 200 }}
-                    options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
-                  />
+                  {departmentOptions.length > 0 && (
+                    <Select
+                      value={departmentFilter}
+                      onChange={(v) => { setDepartmentFilter(v); patchParams({ page: 1 }); }}
+                      style={{ width: 200 }}
+                      options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
+                    />
+                  )}
                 </div>
 
-                {/* Mobile view */}
+                {/* Mobile */}
                 {isMobile ? (
                   <div>
                     <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -598,16 +568,19 @@ export default function ClientActivityMatrixPage() {
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                             {displayedPeriods.map((p) => {
                               const revenue = getRevenue(record, p.year, p.month);
-                              const label = isMultiYear ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}` : MONTH_LABELS[p.month];
+                              const label = isMultiYear
+                                ? `${MONTH_LABELS[p.month]}${String(p.year).slice(2)}`
+                                : MONTH_LABELS[p.month];
                               return (
-                                <Tooltip key={`${p.year}-${p.month}`} title={`${label}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
-                                  <div style={{
-                                    width: 38, height: 38, borderRadius: 6,
-                                    backgroundColor: revenueColor(revenue),
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: 10, fontWeight: 500,
-                                    cursor: revenue > 0 ? 'pointer' : 'default',
-                                  }}
+                                <Tooltip key={`${p.year}-${p.month}`} title={`${MONTH_LABELS[p.month]} ${p.year}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                                  <div
+                                    style={{
+                                      width: 38, height: 38, borderRadius: 6,
+                                      backgroundColor: revenueColor(revenue),
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      fontSize: 10, fontWeight: 500,
+                                      cursor: revenue > 0 ? 'pointer' : 'default',
+                                    }}
                                     onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
                                   >
                                     {label}
@@ -624,7 +597,7 @@ export default function ClientActivityMatrixPage() {
                         <Pagination
                           current={safePage} total={listRows.length} pageSize={pageSize}
                           showSizeChanger pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-                          onChange={(p, ps) => patchListParams({ page: p, pageSize: ps })}
+                          onChange={(p, ps) => patchParams({ page: p, pageSize: ps })}
                           size="small"
                         />
                       </div>
@@ -640,7 +613,7 @@ export default function ClientActivityMatrixPage() {
                       current: safePage, pageSize, total: listRows.length,
                       showSizeChanger: true, pageSizeOptions: [...PAGE_SIZE_OPTIONS],
                       showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-                      onChange: (p, ps) => patchListParams({ page: p, pageSize: ps }),
+                      onChange: (p, ps) => patchParams({ page: p, pageSize: ps }),
                     }}
                     scroll={{ x: 1200 }}
                   />
@@ -657,14 +630,13 @@ export default function ClientActivityMatrixPage() {
                 fetchEnabled={view === 'hierarchy-clients'}
                 persistPrefix="mgr_hc"
                 clientSearchTerm={clientSearch}
-                onClientSearchTermChange={(value) => patchListParams({ clientSearch: value, page: 1 })}
+                onClientSearchTermChange={(value) => patchParams({ clientSearch: value, page: 1 })}
               />
             ),
           },
         ]}
       />
 
-      {/* Cell drill-down drawer */}
       <Drawer
         title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} ${cellDrawer.year}` : ''}
         open={!!cellDrawer}
