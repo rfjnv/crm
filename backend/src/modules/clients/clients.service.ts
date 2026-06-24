@@ -341,10 +341,6 @@ export class ClientsService {
   }
 
   async setCreditStatus(id: string, creditStatus: ClientCreditStatus, user: AuthUser) {
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-      throw new AppError(403, 'Только администратор может менять кредитный статус клиента');
-    }
-
     const client = await prisma.client.findUnique({ where: { id } });
     if (!client) {
       throw new AppError(404, 'Клиент не найден');
