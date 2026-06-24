@@ -887,6 +887,7 @@ export default function ClientDetailPage() {
   if (!client) return <Typography.Text>Клиент не найден</Typography.Text>;
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canChangeStatus = isAdmin || user?.role === 'MANAGER' || user?.role === 'OPERATOR';
   const canEdit = isAdmin || user?.permissions?.includes('edit_client');
 
   const openPortraitEdit = () => {
@@ -1095,16 +1096,16 @@ export default function ClientDetailPage() {
               {client.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
             </Button>
           )}
-          {isAdmin && (
+          {canChangeStatus && (
             <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
               size="middle"
               value={client.creditStatus || 'NORMAL'}
-              style={{ width: 180 }}
+              style={{ width: 175 }}
               onChange={(value) => creditStatusMut.mutate(value)}
               options={[
-                { value: 'NORMAL', label: 'Статус: обычный' },
-                { value: 'SATISFACTORY', label: 'Статус: У (огранич.)' },
-                { value: 'NEGATIVE', label: 'Статус: Н (без долга)' },
+                { value: 'NORMAL', label: 'Активный' },
+                { value: 'SATISFACTORY', label: 'Нейтральный' },
+                { value: 'NEGATIVE', label: 'Негативный' },
               ]}
             />
           )}
@@ -1133,12 +1134,12 @@ export default function ClientDetailPage() {
                         : '—'}
                     </Descriptions.Item>
                     <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
-                    <Descriptions.Item label="Кредитный статус">
+                    <Descriptions.Item label="Статус клиента">
                       {client.creditStatus === 'NEGATIVE'
-                        ? 'Н — Негатив (без долга)'
+                        ? 'Негативный — нельзя в долг'
                         : client.creditStatus === 'SATISFACTORY'
-                          ? 'У — Удовлетворительный (ограниченный долг)'
-                          : 'Обычный'}
+                          ? 'Нейтральный — ограниченный долг'
+                          : 'Активный'}
                     </Descriptions.Item>
                     <Descriptions.Item label="Заметки">{client.notes || '—'}</Descriptions.Item>
                   </Descriptions>

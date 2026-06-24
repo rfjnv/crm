@@ -31,7 +31,7 @@ router.post('/normalize-phones', authorize('SUPER_ADMIN'), asyncHandler(clientsC
 router.patch('/:id/svip', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.toggleSvip.bind(clientsController)));
 router.patch(
   '/:id/credit-status',
-  authorize('SUPER_ADMIN', 'ADMIN'),
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR'),
   validate(setClientCreditStatusDto),
   asyncHandler(clientsController.setCreditStatus.bind(clientsController)),
 );

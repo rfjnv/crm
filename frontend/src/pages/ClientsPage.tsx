@@ -190,6 +190,7 @@ export default function ClientsPage() {
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canChangeStatus = isAdmin || user?.role === 'MANAGER' || user?.role === 'OPERATOR';
   const canCreateClient = isAdmin || user?.role === 'OPERATOR' || user?.role === 'MANAGER' || user?.role === 'HR';
   const canAssignManager = isAdmin || user?.role === 'OPERATOR';
 
@@ -282,9 +283,9 @@ export default function ClientsPage() {
       clientsApi.setCreditStatus(id, creditStatus),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      message.success('Кредитный статус клиента обновлён');
+      message.success('Статус клиента обновлён');
     },
-    onError: () => message.error('Ошибка изменения кредитного статуса'),
+    onError: () => message.error('Ошибка изменения статуса'),
   });
 
   const openEdit = (client: Client) => {
@@ -363,16 +364,16 @@ export default function ClientsPage() {
                   title={r.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
                 />
               )}
-              {isAdmin && (
+              {canChangeStatus && (
                 <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
                   size="small"
                   value={r.creditStatus || 'NORMAL'}
-                  style={{ width: 94 }}
+                  style={{ width: 120 }}
                   onChange={(value) => creditStatusMut.mutate({ id: r.id, creditStatus: value })}
                   options={[
-                    { value: 'NORMAL', label: 'Статус: —' },
-                    { value: 'SATISFACTORY', label: 'Статус: У' },
-                    { value: 'NEGATIVE', label: 'Статус: Н' },
+                    { value: 'NORMAL', label: 'Активный' },
+                    { value: 'SATISFACTORY', label: 'Нейтральный' },
+                    { value: 'NEGATIVE', label: 'Негативный' },
                   ]}
                 />
               )}
@@ -579,7 +580,7 @@ export default function ClientsPage() {
                     </div>
                   )}
                 </div>
-                {(isAdmin || user?.permissions?.includes('edit_client')) && (
+                {(isAdmin || canChangeStatus || user?.permissions?.includes('edit_client')) && (
                   <Space size={4}>
                     {isAdmin && (
                       <Button
@@ -589,16 +590,16 @@ export default function ClientsPage() {
                         onClick={() => svipMut.mutate(client.id)}
                       />
                     )}
-                    {isAdmin && (
+                    {canChangeStatus && (
                       <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
                         size="small"
                         value={client.creditStatus || 'NORMAL'}
-                        style={{ width: 94 }}
+                        style={{ width: 120 }}
                         onChange={(value) => creditStatusMut.mutate({ id: client.id, creditStatus: value })}
                         options={[
-                          { value: 'NORMAL', label: '—' },
-                          { value: 'SATISFACTORY', label: 'У' },
-                          { value: 'NEGATIVE', label: 'Н' },
+                          { value: 'NORMAL', label: 'Активный' },
+                          { value: 'SATISFACTORY', label: 'Нейтральный' },
+                          { value: 'NEGATIVE', label: 'Негативный' },
                         ]}
                       />
                     )}
