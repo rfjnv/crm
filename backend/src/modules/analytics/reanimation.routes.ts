@@ -5,8 +5,7 @@ import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
-  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
-  SQL_EFFECTIVE_REVENUE_ITEM_TS,
+  SQL_EFFECTIVE_ITEM_TS,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -24,6 +23,14 @@ const TASHKENT_TZ = Prisma.sql`'Asia/Tashkent'`;
 const ONE_TIME_LOST_DAYS = 30;
 const REPEAT_SLEEPING_DAYS = 30;
 const REPEAT_CHURNED_DAYS = 60;
+
+/**
+ * Reanimation uses ALL non-canceled, non-rejected deals — including IN_PROGRESS (deals with debt).
+ * Excel import sets status='IN_PROGRESS' for deals with outstanding debt, so using the
+ * standard SQL_DEALS_REVENUE_ANALYTICS_FILTER (which requires status='CLOSED') would exclude
+ * those clients entirely, causing zero results for most of the client base.
+ */
+const SQL_REANIMATION_DEAL_FILTER = Prisma.sql`d.status NOT IN ('CANCELED', 'REJECTED') AND d.is_archived = false`;
 
 type BaseClientRow = {
   client_id: string;
@@ -167,11 +174,11 @@ async function loadBaseClientRows(user: AuthUser, clientId?: string) {
       SELECT
         d.id AS deal_id,
         d.client_id,
-        MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS effective_ts,
+        MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
         COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}${dealFilter}
+      WHERE ${SQL_REANIMATION_DEAL_FILTER}${dealFilter}
       GROUP BY d.id, d.client_id
     )
     SELECT
@@ -230,12 +237,12 @@ async function enrichClientRows(
           d.id AS deal_id,
           d.client_id,
           d.title AS deal_title,
-          MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS effective_ts,
+          MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
           MAX(d.created_at) AS created_at,
           COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        WHERE ${SQL_REANIMATION_DEAL_FILTER}
           AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
         GROUP BY d.id, d.client_id, d.title
       )
@@ -279,7 +286,7 @@ async function enrichClientRows(
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN products p ON p.id = di.product_id
-      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+      WHERE ${SQL_REANIMATION_DEAL_FILTER}
         AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}`,
     ),
     opts.includeProductPreviews
@@ -290,12 +297,12 @@ async function enrichClientRows(
             p.name AS product_name,
             COALESCE(SUM(di.requested_qty), 0)::text AS total_qty,
             COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS total_revenue,
-            MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS last_purchased_at,
+            MAX(${SQL_EFFECTIVE_ITEM_TS}) AS last_purchased_at,
             COUNT(DISTINCT d.id)::text AS deals_count
           FROM deal_items di
           JOIN deals d ON d.id = di.deal_id
           JOIN products p ON p.id = di.product_id
-          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          WHERE ${SQL_REANIMATION_DEAL_FILTER}
             AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
           GROUP BY d.client_id, di.product_id, p.name
           ORDER BY d.client_id ASC, SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
@@ -431,114 +438,9 @@ router.get(
   }),
 );
 
-router.get(
-  '/:clientId',
-  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
-  asyncHandler(async (req: Request, res: Response) => {
-    const user = getAuthUser(req);
-    const clientId = req.params.clientId as string;
-    const dealFilter = getDealFilter(user);
-
-    const client = await loadClientSummary(user, clientId);
-    if (!client) {
-      throw new AppError(404, 'Клиент не найден или недоступен');
-    }
-
-    const [recentDeals, productStats, notes] = await Promise.all([
-      prisma.$queryRaw<RecentDealRow[]>(
-        Prisma.sql`WITH deal_scope AS (
-          SELECT
-            d.id AS deal_id,
-            d.client_id,
-            d.title AS deal_title,
-            d.created_at,
-            d.amount,
-            d.paid_amount,
-            d.payment_status,
-            MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS effective_ts,
-            COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
-          FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-            AND d.client_id = ${clientId}${dealFilter}
-          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status
-        )
-        SELECT
-          deal_id,
-          deal_title,
-          created_at,
-          effective_ts,
-          deal_revenue::text AS deal_revenue,
-          amount::text,
-          paid_amount::text AS paid_amount,
-          payment_status
-        FROM deal_scope
-        ORDER BY effective_ts DESC, created_at DESC, deal_id DESC
-        LIMIT 15`,
-      ),
-      prisma.$queryRaw<ProductAggRow[]>(
-        Prisma.sql`SELECT
-          d.client_id,
-          di.product_id,
-          p.name AS product_name,
-          COALESCE(SUM(di.requested_qty), 0)::text AS total_qty,
-          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS total_revenue,
-          MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS last_purchased_at,
-          COUNT(DISTINCT d.id)::text AS deals_count
-        FROM deal_items di
-        JOIN deals d ON d.id = di.deal_id
-        JOIN products p ON p.id = di.product_id
-        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-          AND d.client_id = ${clientId}${dealFilter}
-        GROUP BY d.client_id, di.product_id, p.name
-        ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
-      ),
-      prisma.$queryRaw<RecentNoteRow[]>(
-        Prisma.sql`SELECT
-          cn.id,
-          cn.created_at,
-          u.full_name AS author_name,
-          cn.content
-        FROM client_notes cn
-        JOIN users u ON u.id = cn.user_id
-        WHERE cn.deleted_at IS NULL
-          AND cn.client_id = ${clientId}
-        ORDER BY cn.created_at DESC
-        LIMIT 12`,
-      ),
-    ]);
-
-    res.json({
-      client,
-      recentDeals: recentDeals.map((row) => ({
-        dealId: row.deal_id,
-        title: row.deal_title,
-        createdAt: row.created_at.toISOString(),
-        effectiveAt: row.effective_ts.toISOString(),
-        revenue: Number(row.deal_revenue),
-        amount: Number(row.amount),
-        paidAmount: Number(row.paid_amount),
-        paymentStatus: row.payment_status,
-      })),
-      productStats: productStats.map((row) => ({
-        productId: row.product_id,
-        productName: row.product_name,
-        totalQty: Math.round(Number(row.total_qty) * 100) / 100,
-        totalRevenue: Number(row.total_revenue),
-        lastPurchasedAt: row.last_purchased_at.toISOString(),
-        dealsCount: Number(row.deals_count),
-      })),
-      notes: notes.map((row) => ({
-        id: row.id,
-        createdAt: row.created_at.toISOString(),
-        authorName: row.author_name,
-        preview: row.content.length > 400 ? `${row.content.slice(0, 400)}...` : row.content,
-      })),
-    });
-  }),
-);
-
 // ==================== AI Report ====================
+// IMPORTANT: these routes must be registered BEFORE GET /:clientId
+// to prevent Express from matching /ai-report as clientId="ai-report"
 
 const PAGE_KEY = 'reanimation';
 const REGEN_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours for non-admins
@@ -696,6 +598,116 @@ ${dataText}
       content: report.content,
       generatedBy: report.author.fullName,
       generatedAt: report.generatedAt.toISOString(),
+    });
+  }),
+);
+
+// ==================== Client Detail ====================
+// Registered AFTER /ai-report to avoid route shadowing.
+
+router.get(
+  '/:clientId',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = getAuthUser(req);
+    const clientId = req.params.clientId as string;
+    const dealFilter = getDealFilter(user);
+
+    const client = await loadClientSummary(user, clientId);
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден или недоступен');
+    }
+
+    const [recentDeals, productStats, notes] = await Promise.all([
+      prisma.$queryRaw<RecentDealRow[]>(
+        Prisma.sql`WITH deal_scope AS (
+          SELECT
+            d.id AS deal_id,
+            d.client_id,
+            d.title AS deal_title,
+            d.created_at,
+            d.amount,
+            d.paid_amount,
+            d.payment_status,
+            MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
+            COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE ${SQL_REANIMATION_DEAL_FILTER}
+            AND d.client_id = ${clientId}${dealFilter}
+          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status
+        )
+        SELECT
+          deal_id,
+          deal_title,
+          created_at,
+          effective_ts,
+          deal_revenue::text AS deal_revenue,
+          amount::text,
+          paid_amount::text AS paid_amount,
+          payment_status
+        FROM deal_scope
+        ORDER BY effective_ts DESC, created_at DESC, deal_id DESC
+        LIMIT 15`,
+      ),
+      prisma.$queryRaw<ProductAggRow[]>(
+        Prisma.sql`SELECT
+          d.client_id,
+          di.product_id,
+          p.name AS product_name,
+          COALESCE(SUM(di.requested_qty), 0)::text AS total_qty,
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS total_revenue,
+          MAX(${SQL_EFFECTIVE_ITEM_TS}) AS last_purchased_at,
+          COUNT(DISTINCT d.id)::text AS deals_count
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        JOIN products p ON p.id = di.product_id
+        WHERE ${SQL_REANIMATION_DEAL_FILTER}
+          AND d.client_id = ${clientId}${dealFilter}
+        GROUP BY d.client_id, di.product_id, p.name
+        ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
+      ),
+      prisma.$queryRaw<RecentNoteRow[]>(
+        Prisma.sql`SELECT
+          cn.id,
+          cn.created_at,
+          u.full_name AS author_name,
+          cn.content
+        FROM client_notes cn
+        JOIN users u ON u.id = cn.user_id
+        WHERE cn.deleted_at IS NULL
+          AND cn.client_id = ${clientId}
+        ORDER BY cn.created_at DESC
+        LIMIT 12`,
+      ),
+    ]);
+
+    res.json({
+      client,
+      recentDeals: recentDeals.map((row) => ({
+        dealId: row.deal_id,
+        title: row.deal_title,
+        createdAt: row.created_at.toISOString(),
+        effectiveAt: row.effective_ts.toISOString(),
+        revenue: Number(row.deal_revenue),
+        amount: Number(row.amount),
+        paidAmount: Number(row.paid_amount),
+        paymentStatus: row.payment_status,
+      })),
+      productStats: productStats.map((row) => ({
+        productId: row.product_id,
+        productName: row.product_name,
+        totalQty: Math.round(Number(row.total_qty) * 100) / 100,
+        totalRevenue: Number(row.total_revenue),
+        lastPurchasedAt: row.last_purchased_at.toISOString(),
+        dealsCount: Number(row.deals_count),
+      })),
+      notes: notes.map((row) => ({
+        id: row.id,
+        createdAt: row.created_at.toISOString(),
+        authorName: row.author_name,
+        preview: row.content.length > 400 ? `${row.content.slice(0, 400)}...` : row.content,
+      })),
     });
   }),
 );
