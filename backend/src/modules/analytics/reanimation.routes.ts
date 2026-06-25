@@ -524,45 +524,67 @@ router.post(
     const formatMoney = (v: number) => v.toLocaleString('ru-RU') + ' сум';
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU');
 
+    const STATUS_LABEL: Record<string, string> = {
+      ONE_TIME_LOST: 'Разовый (пропал)',
+      SLEEPING: 'Повторный (уснул)',
+      CHURNED: 'Перестал покупать',
+      ACTIVE: 'Активный',
+    };
+
+    const fmtContact = (r: (typeof rows)[number]) => {
+      if (!r.lastContactAt) return 'контакта нет';
+      const days = r.daysSinceLastContact;
+      const who = r.lastContactByName || '?';
+      const preview = r.lastContactPreview ? ` — «${r.lastContactPreview.slice(0, 60)}»` : '';
+      return `${days} дн. назад (${who})${preview}`;
+    };
+
+    // Clients with recent contact (last 14 days) — manager is already working on them
+    const recentlyContacted = rows.filter((r) => (r.daysSinceLastContact ?? 999) <= 14);
+
     const dataText = `
 ДАННЫЕ СТРАНИЦЫ «РЕАНИМАЦИЯ КЛИЕНТОВ» (дата генерации: ${new Date().toLocaleDateString('ru-RU')})
 
 === СВОДКА ===
 Всего клиентов на реанимации: ${totalClients}
-  - Перестали покупать (CHURNED, 60+ дней): ${churned.length}
-  - Разовые (ONE_TIME_LOST, 30+ дней): ${onceAndGone.length}
-  - Засыпающие (SLEEPING, 30-60 дней): ${sleeping.length}
+  - Перестали покупать (60+ дней без покупки): ${churned.length}
+  - Разовые (30+ дней, купили один раз): ${onceAndGone.length}
+  - Засыпающие (30–60 дней): ${sleeping.length}
 Клиентов с долгом: ${withDebt.length} — общий долг: ${formatMoney(totalDebt)}
-Суммарная выручка (историческая): ${formatMoney(totalRevenueLost)}
+Суммарная историческая выручка: ${formatMoney(totalRevenueLost)}
 Средний простой без покупки: ${avgDaysSince} дней
+Клиентов, с которыми менеджеры связались за последние 14 дней: ${recentlyContacted.length}
 
-=== ТОП-10 ПО ВЫРУЧКЕ (кандидаты на реанимацию) ===
-${topByRevenue.map((r, i) => `${i + 1}. ${r.companyName} | менеджер: ${r.managerName} | выручка: ${formatMoney(r.totalRevenue)} | сделок: ${r.closedDealsCount} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. | долг: ${formatMoney(r.currentDebt)} | статус: ${r.status}`).join('\n')}
+=== ТОП-10 ПО ВЫРУЧКЕ ===
+${topByRevenue.map((r, i) => `${i + 1}. ${r.companyName} | менеджер: ${r.managerName} | выручка: ${formatMoney(r.totalRevenue)} | сделок: ${r.closedDealsCount} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. | долг: ${formatMoney(r.currentDebt)} | категория: ${STATUS_LABEL[r.status] ?? r.status} | последний контакт: ${fmtContact(r)}`).join('\n')}
 
 === ТОП-10 ПО ДОЛГУ ===
-${topByDebt.length > 0 ? topByDebt.map((r, i) => `${i + 1}. ${r.companyName} | долг: ${formatMoney(r.currentDebt)} | менеджер: ${r.managerName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн.`).join('\n') : 'Нет клиентов с долгом'}
+${topByDebt.length > 0 ? topByDebt.map((r, i) => `${i + 1}. ${r.companyName} | долг: ${formatMoney(r.currentDebt)} | менеджер: ${r.managerName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. | последний контакт: ${fmtContact(r)}`).join('\n') : 'Нет клиентов с долгом'}
 
 === ТОП-10 САМЫХ ДОЛГО НЕАКТИВНЫХ ===
-${longestInactive.map((r, i) => `${i + 1}. ${r.companyName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. (последняя: ${formatDate(r.lastPurchaseAt)}) | выручка: ${formatMoney(r.totalRevenue)} | менеджер: ${r.managerName}`).join('\n')}
+${longestInactive.map((r, i) => `${i + 1}. ${r.companyName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. (последняя: ${formatDate(r.lastPurchaseAt)}) | выручка: ${formatMoney(r.totalRevenue)} | менеджер: ${r.managerName} | последний контакт: ${fmtContact(r)}`).join('\n')}
 
 === РАЗБИВКА ПО МЕНЕДЖЕРАМ ===
-${managerStats.map((m) => `${m.name}: клиентов на реанимации: ${m.count}, суммарная их выручка: ${formatMoney(m.revenue)}, долг: ${formatMoney(m.debt)}`).join('\n')}
+${managerStats.map((m) => `${m.name}: клиентов на реанимации: ${m.count}, суммарная выручка: ${formatMoney(m.revenue)}, долг: ${formatMoney(m.debt)}`).join('\n')}
 `.trim();
 
-    const prompt = `Ты — аналитик CRM-системы для компании, торгующей ламинатом и строительными материалами. Тебе предоставлены данные страницы «Реанимация клиентов» — это клиенты, которые перестали покупать или купили лишь раз и пропали.
+    const prompt = `Ты — аналитик CRM-системы для компании, торгующей ламинатом и строительными материалами. Тебе предоставлены данные страницы «Реанимация клиентов» — клиенты, которые перестали покупать.
+
+Важно: поле «последний контакт» показывает, когда менеджер оставил заметку по этому клиенту в CRM. Это сигнал активности: если контакт недавний — менеджер уже работает с клиентом.
 
 ${dataText}
 
 Составь подробный аналитический отчёт на русском языке. Включи:
-1. **Общая картина** — кратко опиши масштаб проблемы (деньги, клиенты, менеджеры)
-2. **Деньги «застрявшие» в пассивных клиентах** — оцени потенциал возврата, выдели ключевые риски по долгам
-3. **Анализ по категориям** — что отличает «разовых» от «переставших покупать», на кого делать ставку
-4. **Приоритетные клиенты для звонка** — назови конкретные компании из топа (используй реальные имена из данных), объясни почему именно они
-5. **Анализ по менеджерам** — у кого больше всего спящих клиентов, кто несёт наибольшую потенциальную ответственность
-6. **Конкретные рекомендации** — 5-7 actionable шагов для реанимации, с указанием приоритетов
-7. **Риски** — что будет, если ничего не предпринять
+1. **Общая картина** — масштаб проблемы: деньги, клиенты, степень охвата менеджерами
+2. **Деньги в пассивных клиентах** — потенциал возврата, риски по долгам
+3. **Анализ по категориям** — разовые vs перестали покупать, на кого делать ставку
+4. **Приоритетные клиенты для звонка** — конкретные компании из топа, с учётом свежести контакта (не дублируй тех, по кому контакт был недавно — они уже в работе)
+5. **Брошенные клиенты** — кто давно без контакта, риск потери
+6. **Анализ по менеджерам** — у кого сколько спящих, кто активно работает с реанимацией
+7. **Рекомендации** — 5–7 конкретных шагов с приоритетами
+8. **Риски** — что будет, если ничего не предпринять
 
-Пиши структурированно с заголовками markdown. Будь конкретен — используй числа и имена из данных.`;
+Пиши структурированно с заголовками markdown. Используй реальные имена и цифры из данных. Не используй технические коды — только понятные названия категорий.`;
 
     const stream = anthropic.messages.stream({
       model: 'claude-opus-4-8',
