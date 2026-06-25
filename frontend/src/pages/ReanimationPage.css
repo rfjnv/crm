@@ -1,11 +1,17 @@
 .reanimation-page {
-  padding-bottom: 64px;
+  padding-bottom: 80px;
 }
+
+/* ─── Filter card ─────────────────────────────────────────────────────────── */
 
 .reanimation-filters-card .ant-card-body {
   padding-top: 12px;
 }
 
+/* 12-column filter grid — 3 clean rows, no orphaned items:
+   Row 1: Search(6) + Status(6)
+   Row 2: Managers(3) + Dept(3) + Products(3) + Days range(3)
+   Row 3: Debt(3) + Contact(3) + Sort(3) + Reset(3)           */
 .reanimation-filters-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -21,30 +27,53 @@
   grid-column: span 6;
 }
 
-.reanimation-filter-item--compact {
-  grid-column: span 2;
-}
-
 .reanimation-filter-item--action {
   display: flex;
-  align-items: stretch;
+  align-items: flex-end;
 }
+
+.reanimation-filter-item--action .ant-btn {
+  width: 100%;
+}
+
+/* Days-since-purchase range: two compact InputNumbers side by side */
+.reanimation-days-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reanimation-days-range .ant-input-number {
+  flex: 1;
+  min-width: 0;
+}
+
+.reanimation-days-range__sep {
+  color: var(--ant-color-text-quaternary);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* ─── Row list ────────────────────────────────────────────────────────────── */
 
 .reanimation-row-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
+
+/* ─── Row card ────────────────────────────────────────────────────────────── */
 
 .reanimation-row-card {
   width: 100%;
-  border-radius: 12px;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .reanimation-row-card .ant-card-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .reanimation-row-card__top {
@@ -57,16 +86,17 @@
 .reanimation-row-card__client {
   min-width: 0;
   flex: 1;
-}
-
-.reanimation-row-card__actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   gap: 4px;
+}
+
+/* Single action per card — no column stacking needed */
+.reanimation-row-card__actions {
   flex-shrink: 0;
 }
 
+/* 4-column data grid inside each row card */
 .reanimation-row-card__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -77,35 +107,27 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
-.reanimation-client-cell,
-.reanimation-manager-cell,
-.reanimation-activity-cell,
-.reanimation-metrics-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.reanimation-item-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 1px;
 }
 
 .reanimation-client-cell__meta {
   margin-top: 2px;
 }
 
-.reanimation-activity-cell,
-.reanimation-metrics-cell {
-  gap: 10px;
-}
-
-.reanimation-activity-cell > div,
-.reanimation-metrics-cell > div {
-  min-width: 0;
-}
+/* ─── Drawer ──────────────────────────────────────────────────────────────── */
 
 .reanimation-drawer-card {
   height: 100%;
 }
+
+/* ─── Pagination bar (fixed bottom) ──────────────────────────────────────── */
 
 .reanimation-pagination-bar {
   position: fixed;
@@ -129,52 +151,45 @@
   row-gap: 8px;
 }
 
-@media (max-width: 768px) {
-  .reanimation-page {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  }
+/* ─── AI report card ──────────────────────────────────────────────────────── */
 
-  .reanimation-filters-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .reanimation-filter-item,
-  .reanimation-filter-item--wide,
-  .reanimation-filter-item--compact,
-  .reanimation-filter-item--action {
-    grid-column: span 1;
-  }
-
-  .reanimation-row-card__top {
-    flex-direction: column;
-  }
-
-  .reanimation-row-card__actions {
-    width: 100%;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .reanimation-row-card__grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .reanimation-activity-cell,
-  .reanimation-metrics-cell {
-    gap: 8px;
-  }
-
-  .reanimation-pagination-bar {
-    left: 0;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    padding: 8px 12px;
-  }
+/* Loading state while generating */
+.ai-report-generating {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 4px;
 }
 
-/* AI Report */
+/* Collapsed hint — styled as an accessible, clickable area */
+.ai-report-collapsed-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin: 0;
+  background: var(--ant-color-fill-quaternary);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+  color: var(--ant-color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.ai-report-collapsed-hint:hover {
+  background: var(--ant-color-fill-tertiary);
+  border-color: var(--ant-color-primary-border);
+  color: var(--ant-color-text);
+}
+
+.ai-report-collapsed-hint > span:nth-child(2) {
+  flex: 1;
+}
+
+/* Markdown rendered content */
 .ai-report-content {
   font-size: 14px;
   line-height: 1.7;
@@ -228,4 +243,68 @@
 .ai-report-content th {
   background: var(--ant-color-fill-quaternary);
   font-weight: 600;
+}
+
+/* ─── Tablet breakpoint (769px – 1100px) ─────────────────────────────────── */
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  /* Filter row 2 items: stack into 2 columns on medium screens */
+  .reanimation-filter-item {
+    grid-column: span 6;
+  }
+
+  .reanimation-filter-item--wide {
+    grid-column: span 6;
+  }
+
+  /* Row card: 2-column data grid instead of 4 */
+  .reanimation-row-card__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+/* ─── Mobile breakpoint (≤ 768px) ────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .reanimation-page {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* All filter items become full-width */
+  .reanimation-filters-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reanimation-filter-item,
+  .reanimation-filter-item--wide,
+  .reanimation-filter-item--action {
+    grid-column: span 1;
+  }
+
+  /* Row card top section stacks vertically */
+  .reanimation-row-card__top {
+    flex-direction: column;
+  }
+
+  .reanimation-row-card__actions {
+    width: 100%;
+  }
+
+  .reanimation-row-card__actions .ant-btn {
+    width: 100%;
+  }
+
+  /* Single-column data grid on mobile */
+  .reanimation-row-card__grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Pagination bar above mobile nav */
+  .reanimation-pagination-bar {
+    left: 0;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 12px;
+  }
 }

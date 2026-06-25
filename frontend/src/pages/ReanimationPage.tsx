@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Col,
@@ -15,7 +16,9 @@ import {
   Pagination,
   Row,
   Select,
+  Skeleton,
   Space,
+  Spin,
   Statistic,
   Table,
   Tag,
@@ -23,7 +26,13 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { RobotOutlined, ReloadOutlined, SoundOutlined } from '@ant-design/icons';
+import {
+  ArrowRightOutlined,
+  LoadingOutlined,
+  ReloadOutlined,
+  RobotOutlined,
+  SoundOutlined,
+} from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import dayjs from 'dayjs';
@@ -46,7 +55,6 @@ const { Title, Text, Paragraph } = Typography;
 
 const CANDIDATE_STATUSES: ReanimationStatus[] = ['ONE_TIME_LOST', 'SLEEPING', 'CHURNED'];
 
-/** Фильтр списка: «Все» = все кандидаты реанимации; иначе один из двух основных статусов. */
 type ReanimationStatusFilter = 'all' | 'CHURNED' | 'ONE_TIME_LOST';
 
 const STATUS_FILTER_OPTIONS: { value: ReanimationStatusFilter; label: string }[] = [
@@ -158,11 +166,15 @@ function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlStat
 
   const contactRaw = sp.get('contact');
   const contactFilter: ContactFilter =
-    contactRaw === 'no_contact' || contactRaw === 'stale_7' || contactRaw === 'stale_30' ? contactRaw : 'all';
+    contactRaw === 'no_contact' || contactRaw === 'stale_7' || contactRaw === 'stale_30'
+      ? contactRaw
+      : 'all';
 
   const sortRaw = sp.get('sort');
   const sortBy: ReanimationSortBy =
-    sortRaw && (SORT_OPTIONS as string[]).includes(sortRaw) ? (sortRaw as ReanimationSortBy) : 'inactive_desc';
+    sortRaw && (SORT_OPTIONS as string[]).includes(sortRaw)
+      ? (sortRaw as ReanimationSortBy)
+      : 'inactive_desc';
 
   const minRaw = sp.get('min');
   let minDays: number | null = 30;
@@ -185,7 +197,9 @@ function parseReanimationListParams(sp: URLSearchParams): ReanimationListUrlStat
   const rawPage = parseInt(sp.get('page') || '1', 10);
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
   const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
-  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs)
+    ? rawPs
+    : DEFAULT_PAGE_SIZE;
 
   return {
     q,
@@ -252,7 +266,7 @@ function mergeReanimationListParams(
 const STATUS_META: Record<ReanimationStatus, { label: string; color: string }> = {
   ACTIVE: { label: 'Активный', color: 'default' },
   ONE_TIME_LOST: { label: 'Раз купил и пропал', color: 'orange' },
-  SLEEPING: { label: 'Повторный, но уснул', color: 'gold' },
+  SLEEPING: { label: 'Повторный, уснул', color: 'gold' },
   CHURNED: { label: 'Перестал покупать', color: 'red' },
 };
 
@@ -273,6 +287,14 @@ function formatDateTime(value: string | null | undefined) {
 function formatDays(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
   return `${value} дн.`;
+}
+
+/** Urgency color for "days since last purchase" */
+function getDaysStyle(days: number | null | undefined): CSSProperties {
+  if (days === null || days === undefined) return {};
+  if (days >= 90) return { color: '#cf1322', fontWeight: 600 };
+  if (days >= 60) return { color: '#d46b08', fontWeight: 500 };
+  return { color: '#d48806' };
 }
 
 function buildSearchHaystack(row: ReanimationClientRow) {
@@ -315,6 +337,8 @@ function renderProductButtons(
   );
 }
 
+// ─── AI Report Card ────────────────────────────────────────────────────────────
+
 interface AiReportCardProps {
   report: ReanimationAiReport | null;
   isLoading: boolean;
@@ -325,32 +349,47 @@ interface AiReportCardProps {
   onGenerate: () => void;
 }
 
-function AiReportCard({ report, isLoading, isGenerating, error, expanded, onToggleExpand, onGenerate }: AiReportCardProps) {
+function AiReportCard({
+  report,
+  isLoading,
+  isGenerating,
+  error,
+  expanded,
+  onToggleExpand,
+  onGenerate,
+}: AiReportCardProps) {
   const generatedAt = report?.generatedAt ? new Date(report.generatedAt) : null;
   const ageMs = generatedAt ? Date.now() - generatedAt.getTime() : null;
-  const ageTxt = ageMs !== null
-    ? ageMs < 60_000 ? 'только что'
-    : ageMs < 3_600_000 ? `${Math.round(ageMs / 60_000)} мин. назад`
-    : ageMs < 86_400_000 ? `${Math.round(ageMs / 3_600_000)} ч. назад`
-    : generatedAt!.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-    : null;
+  const ageTxt =
+    ageMs !== null
+      ? ageMs < 60_000
+        ? 'только что'
+        : ageMs < 3_600_000
+          ? `${Math.round(ageMs / 60_000)} мин. назад`
+          : ageMs < 86_400_000
+            ? `${Math.round(ageMs / 3_600_000)} ч. назад`
+            : generatedAt!.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+      : null;
 
   const cardExtra = report ? (
-    <Space>
+    <Space size={8}>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        {report.generatedBy} • {ageTxt}
+        {report.generatedBy} · {ageTxt}
       </Text>
-      <Tooltip title={isGenerating ? 'Генерация...' : 'Сгенерировать новый отчёт'}>
+      <Tooltip title="Сгенерировать новый отчёт">
         <Button
           size="small"
           icon={<RobotOutlined />}
           loading={isGenerating}
-          onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGenerate();
+          }}
         >
           Обновить
         </Button>
       </Tooltip>
-      <Button size="small" type="link" onClick={onToggleExpand}>
+      <Button size="small" type="link" style={{ padding: 0 }} onClick={onToggleExpand}>
         {expanded ? 'Свернуть' : 'Развернуть'}
       </Button>
     </Space>
@@ -362,7 +401,7 @@ function AiReportCard({ report, isLoading, isGenerating, error, expanded, onTogg
       onClick={onGenerate}
       disabled={isLoading}
     >
-      {isGenerating ? 'Генерация отчёта...' : 'Сгенерировать AI-отчёт'}
+      {isGenerating ? 'Генерация...' : 'Сгенерировать AI-отчёт'}
     </Button>
   );
 
@@ -370,51 +409,72 @@ function AiReportCard({ report, isLoading, isGenerating, error, expanded, onTogg
     <Card
       size="small"
       title={
-        <Space>
+        <Space size={6}>
           <RobotOutlined />
           <span>AI-анализ реанимации</span>
           {!report && !isLoading && !isGenerating && (
             <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
-              — нажмите кнопку, чтобы получить аналитический отчёт
+              — нажмите кнопку справа для получения отчёта
             </Text>
           )}
         </Space>
       }
       extra={cardExtra}
       style={{ marginBottom: 12 }}
-      styles={{ body: { padding: report && expanded ? '12px 16px' : (report ? 0 : '12px 16px') } }}
     >
       {error && (
         <Alert
           type="error"
-          message={(error as Error & { response?: { data?: { message?: string } } })?.response?.data?.message || error.message}
+          message={
+            (error as Error & { response?: { data?: { message?: string } } })?.response?.data
+              ?.message || error.message
+          }
           showIcon
-          style={{ marginBottom: report ? 8 : 0 }}
+          style={{ marginBottom: 8 }}
         />
       )}
+
       {isGenerating && (
-        <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--ant-color-text-secondary)' }}>
-          <RobotOutlined spin style={{ fontSize: 24, marginBottom: 8 }} />
-          <div>Анализирую данные с помощью Claude AI...</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>Это может занять 30–60 секунд</div>
+        <div className="ai-report-generating">
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 28 }} />} />
+          <div>
+            <Text>Анализирую данные с помощью Claude AI...</Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Это может занять 30–60 секунд
+            </Text>
+          </div>
         </div>
       )}
+
       {report && !isGenerating && expanded && (
         <div className="ai-report-content">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.content}</ReactMarkdown>
         </div>
       )}
+
       {report && !isGenerating && !expanded && (
-        <div
-          style={{ padding: '8px 16px', cursor: 'pointer', color: 'var(--ant-color-text-secondary)', fontSize: 13 }}
-          onClick={onToggleExpand}
-        >
-          Отчёт готов — нажмите «Развернуть» для просмотра
-        </div>
+        <button className="ai-report-collapsed-hint" onClick={onToggleExpand} type="button">
+          <RobotOutlined />
+          <span>Отчёт готов — нажмите чтобы развернуть</span>
+          <ArrowRightOutlined style={{ fontSize: 11 }} />
+        </button>
       )}
     </Card>
   );
 }
+
+// ─── Row card skeleton ─────────────────────────────────────────────────────────
+
+function RowCardSkeleton() {
+  return (
+    <Card size="small" className="reanimation-row-card">
+      <Skeleton active paragraph={{ rows: 3 }} />
+    </Card>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ReanimationPage() {
   const navigate = useNavigate();
@@ -545,10 +605,14 @@ export default function ReanimationPage() {
       rows = rows.filter((row) => managerIds.includes(row.managerId));
     }
     if (departments.length > 0) {
-      rows = rows.filter((row) => row.managerDepartment && departments.includes(row.managerDepartment));
+      rows = rows.filter(
+        (row) => row.managerDepartment && departments.includes(row.managerDepartment),
+      );
     }
     if (productNames.length > 0) {
-      rows = rows.filter((row) => productNames.every((productName) => row.productNames.includes(productName)));
+      rows = rows.filter((row) =>
+        productNames.every((productName) => row.productNames.includes(productName)),
+      );
     }
     if (debtFilter === 'with_debt') {
       rows = rows.filter((row) => row.currentDebt > 0);
@@ -576,12 +640,17 @@ export default function ReanimationPage() {
     }
 
     rows.sort((a, b) => {
-      if (sortBy === 'inactive_desc') return (b.daysSinceLastPurchase ?? 0) - (a.daysSinceLastPurchase ?? 0);
-      if (sortBy === 'inactive_asc') return (a.daysSinceLastPurchase ?? 0) - (b.daysSinceLastPurchase ?? 0);
+      if (sortBy === 'inactive_desc')
+        return (b.daysSinceLastPurchase ?? 0) - (a.daysSinceLastPurchase ?? 0);
+      if (sortBy === 'inactive_asc')
+        return (a.daysSinceLastPurchase ?? 0) - (b.daysSinceLastPurchase ?? 0);
       if (sortBy === 'revenue_desc') return b.totalRevenue - a.totalRevenue;
       if (sortBy === 'deals_desc') return b.closedDealsCount - a.closedDealsCount;
       if (sortBy === 'debt_desc') return b.currentDebt - a.currentDebt;
-      return (b.daysSinceLastContact ?? Number.POSITIVE_INFINITY) - (a.daysSinceLastContact ?? Number.POSITIVE_INFINITY);
+      return (
+        (b.daysSinceLastContact ?? Number.POSITIVE_INFINITY) -
+        (a.daysSinceLastContact ?? Number.POSITIVE_INFINITY)
+      );
     });
 
     return rows;
@@ -611,6 +680,21 @@ export default function ReanimationPage() {
     return { visible: visible.length, lostSingle, sleeping, churned, withDebt };
   }, [filteredRows]);
 
+  /** Count of non-default active filters for the badge */
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (listState.q.trim()) n++;
+    if (!statusSelectionIsDefault(listState.statuses)) n++;
+    if (listState.managerIds.length > 0) n++;
+    if (listState.departments.length > 0) n++;
+    if (listState.productNames.length > 0) n++;
+    if (listState.debtFilter !== 'all') n++;
+    if (listState.contactFilter !== 'all') n++;
+    if (listState.minDays !== null && listState.minDays !== 30) n++;
+    if (listState.maxDays !== null) n++;
+    return n;
+  }, [listState]);
+
   const resetFilters = () => {
     setSearchDraft('');
     setSearchParams(new URLSearchParams(), { replace: true });
@@ -639,20 +723,24 @@ export default function ReanimationPage() {
             <Text type="secondary">{row.contactName || 'Контакт не указан'}</Text>
           </div>
           <div className="reanimation-client-cell__meta">
-            <Space size={[8, 6]} wrap>
+            <Space size={[6, 6]} wrap>
               <Tag color={STATUS_META[row.status].color}>{STATUS_META[row.status].label}</Tag>
               {row.phone ? <Text type="secondary">{row.phone}</Text> : null}
               {row.currentDebt > 0 ? <Tag color="red">Долг</Tag> : null}
-              {!row.lastContactAt ? <Tag>Без контакта</Tag> : null}
+              {!row.lastContactAt ? <Tag color="orange">Без контакта</Tag> : null}
             </Space>
           </div>
         </div>
 
-        <div className="reanimation-row-card__actions" onClick={(e) => e.stopPropagation()}>
-          <Button size="small" type="primary" onClick={() => patchListState({ clientId: row.clientId })}>
-            Открыть
-          </Button>
-          <Button size="small" type="link" onClick={() => goToClientCard(row.clientId)}>
+        {/* Single action: go to full client card. Opening the drawer = click anywhere on card. */}
+        <div
+          className="reanimation-row-card__actions"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            size="small"
+            onClick={() => goToClientCard(row.clientId)}
+          >
             Карточка
           </Button>
         </div>
@@ -660,38 +748,38 @@ export default function ReanimationPage() {
 
       <div className="reanimation-row-card__grid">
         <div className="reanimation-row-card__item">
-          <Text type="secondary">Ответственный</Text>
-          <div>{row.managerName}</div>
+          <Text type="secondary" className="reanimation-item-label">Ответственный</Text>
+          <Text strong>{row.managerName}</Text>
           <Text type="secondary">{row.managerDepartment || 'Без отдела'}</Text>
         </div>
 
         <div className="reanimation-row-card__item">
-          <Text type="secondary">Последняя покупка</Text>
-          <div>{formatDate(row.lastPurchaseAt)}</div>
-          <Text strong>{formatDays(row.daysSinceLastPurchase)}</Text>
+          <Text type="secondary" className="reanimation-item-label">Последняя покупка</Text>
+          <Text>{formatDate(row.lastPurchaseAt)}</Text>
+          <Text style={getDaysStyle(row.daysSinceLastPurchase)}>
+            {formatDays(row.daysSinceLastPurchase)}
+          </Text>
         </div>
 
         <div className="reanimation-row-card__item">
-          <Text type="secondary">Последний контакт</Text>
-          <div>{row.lastContactAt ? formatDateTime(row.lastContactAt) : 'Не было'}</div>
+          <Text type="secondary" className="reanimation-item-label">Последний контакт</Text>
+          <Text>{row.lastContactAt ? formatDateTime(row.lastContactAt) : 'Не было'}</Text>
           <Text type="secondary">
             {row.lastContactAt
               ? `${row.lastContactByName || 'Без автора'}${
-                  row.daysSinceLastContact !== null && row.daysSinceLastContact !== undefined
-                    ? ` • ${formatDays(row.daysSinceLastContact)}`
-                    : ''
+                  row.daysSinceLastContact != null ? ` · ${formatDays(row.daysSinceLastContact)}` : ''
                 }`
               : 'Нужен первый контакт'}
           </Text>
         </div>
 
         <div className="reanimation-row-card__item">
-          <Text type="secondary">Ключевые цифры</Text>
-          <div>Сделок: {row.closedDealsCount}</div>
-          <div>Выручка: {formatMoney(row.totalRevenue)}</div>
-          <Text type={row.currentDebt > 0 ? 'danger' : 'secondary'}>
-            Долг: {formatMoney(row.currentDebt)}
-          </Text>
+          <Text type="secondary" className="reanimation-item-label">Показатели</Text>
+          <Text>{row.closedDealsCount} сделок</Text>
+          <Text type="secondary">{formatMoney(row.totalRevenue)} сум</Text>
+          {row.currentDebt > 0 && (
+            <Text type="danger">Долг: {formatMoney(row.currentDebt)}</Text>
+          )}
         </div>
       </div>
     </Card>
@@ -701,8 +789,20 @@ export default function ReanimationPage() {
 
   const productStatColumns = [
     { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
-    { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 90, align: 'right' as const },
-    { title: 'Кол-во', dataIndex: 'totalQty', key: 'totalQty', width: 110, align: 'right' as const },
+    {
+      title: 'Сделок',
+      dataIndex: 'dealsCount',
+      key: 'dealsCount',
+      width: 80,
+      align: 'right' as const,
+    },
+    {
+      title: 'Кол-во',
+      dataIndex: 'totalQty',
+      key: 'totalQty',
+      width: 100,
+      align: 'right' as const,
+    },
     {
       title: 'Выручка',
       dataIndex: 'totalRevenue',
@@ -715,7 +815,7 @@ export default function ReanimationPage() {
       title: 'Последняя покупка',
       dataIndex: 'lastPurchasedAt',
       key: 'lastPurchasedAt',
-      width: 140,
+      width: 130,
       render: (value: string) => formatDate(value),
     },
   ];
@@ -726,7 +826,7 @@ export default function ReanimationPage() {
       title: 'Дата',
       dataIndex: 'effectiveAt',
       key: 'effectiveAt',
-      width: 130,
+      width: 110,
       render: (value: string) => formatDate(value),
     },
     {
@@ -745,20 +845,39 @@ export default function ReanimationPage() {
       align: 'right' as const,
       render: (value: number) => formatMoney(value),
     },
-    { title: 'Статус оплаты', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 140 },
+    {
+      title: 'Статус',
+      dataIndex: 'paymentStatus',
+      key: 'paymentStatus',
+      width: 120,
+    },
   ];
+
+  const filterCardTitle = (
+    <Space size={8}>
+      <span>Фильтры</span>
+      {activeFilterCount > 0 && (
+        <Badge
+          count={activeFilterCount}
+          size="small"
+          style={{ backgroundColor: 'var(--ant-color-primary)' }}
+        />
+      )}
+    </Space>
+  );
 
   return (
     <div className="reanimation-page">
-      <Row justify="space-between" align="middle" gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      {/* ── Header ── */}
+      <Row justify="space-between" align="middle" gutter={[12, 8]} style={{ marginBottom: 16 }}>
         <Col flex="auto">
           <Title level={4} style={{ margin: 0 }}>
             <SoundOutlined style={{ marginRight: 8 }} />
             Реанимация клиентов
           </Title>
-          <Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
-            Одна страница для поиска клиентов, которые купили один раз и пропали или перестали покупать. Все ключевые данные, товары и последние сделки доступны без выхода со страницы.
-          </Paragraph>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            Клиенты, которые купили один раз и пропали, или перестали покупать.
+          </Text>
         </Col>
         <Col>
           <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
@@ -767,7 +886,7 @@ export default function ReanimationPage() {
         </Col>
       </Row>
 
-      {/* AI Report Card */}
+      {/* ── AI Report ── */}
       <AiReportCard
         report={aiReportQuery.data ?? null}
         isLoading={aiReportQuery.isLoading}
@@ -778,36 +897,52 @@ export default function ReanimationPage() {
         onGenerate={() => generateReportMutation.mutate()}
       />
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-        <Col xs={12} md={6}>
+      {/* ── Summary stats ── */}
+      <Row gutter={[10, 10]} style={{ marginBottom: 12 }}>
+        <Col xs={12} sm={6}>
           <Card size="small">
-            <Statistic title="Кандидаты" value={summary.visible} suffix={`/ ${allCandidates.length}`} />
+            <Statistic
+              title="Кандидаты"
+              value={summary.visible}
+              suffix={<Text type="secondary" style={{ fontSize: 13 }}>/ {allCandidates.length}</Text>}
+            />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} sm={6}>
           <Card size="small">
-            <Statistic title="Разовые пропали" value={summary.lostSingle} />
+            <Statistic title="Разовые" value={summary.lostSingle} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} sm={6}>
           <Card size="small">
-            <Statistic title="Повторные уснули" value={summary.sleeping} />
+            <Statistic title="Уснувшие" value={summary.sleeping} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} sm={6}>
           <Card size="small">
-            <Statistic title="С долгом" value={summary.withDebt} />
+            <Statistic
+              title="С долгом"
+              value={summary.withDebt}
+              valueStyle={summary.withDebt > 0 ? { color: '#cf1322' } : undefined}
+            />
           </Card>
         </Col>
       </Row>
 
+      {/* ── Filters ──
+          Layout (12-col grid, 3 clean rows):
+          Row 1: Search (6) + Status (6)
+          Row 2: Managers (3) + Dept (3) + Products (3) + Days range (3)
+          Row 3: Debt (3) + Contact (3) + Sort (3) + Reset (3)
+      */}
       <Card
         size="small"
-        title="Фильтры"
+        title={filterCardTitle}
         className="reanimation-filters-card"
         style={{ marginBottom: 12 }}
       >
         <div className="reanimation-filters-grid">
+          {/* Row 1 */}
           <div className="reanimation-filter-item reanimation-filter-item--wide">
             <Input.Search
               className={APP_INPUT}
@@ -835,6 +970,8 @@ export default function ReanimationPage() {
               options={STATUS_FILTER_OPTIONS}
             />
           </div>
+
+          {/* Row 2 */}
           <div className="reanimation-filter-item">
             <Select
               mode="multiple"
@@ -880,40 +1017,48 @@ export default function ReanimationPage() {
               maxTagCount={2}
             />
           </div>
-          <div className="reanimation-filter-item reanimation-filter-item--compact">
-            <InputNumber
-              className={APP_INPUT}
-              style={{ width: '100%' }}
-              min={0}
-              value={listState.minDays}
-              onChange={(value) =>
-                patchListState({ minDays: typeof value === 'number' ? value : null })
-              }
-              placeholder="От, дней"
-            />
+          {/* Combined days-since-purchase range — single span-3 item */}
+          <div className="reanimation-filter-item">
+            <div className="reanimation-days-range">
+              <InputNumber
+                className={APP_INPUT}
+                style={{ flex: 1, minWidth: 0 }}
+                min={0}
+                value={listState.minDays}
+                onChange={(value) =>
+                  patchListState({ minDays: typeof value === 'number' ? value : null })
+                }
+                placeholder="Дней от"
+              />
+              <span className="reanimation-days-range__sep">—</span>
+              <InputNumber
+                className={APP_INPUT}
+                style={{ flex: 1, minWidth: 0 }}
+                min={0}
+                value={listState.maxDays}
+                onChange={(value) =>
+                  patchListState({ maxDays: typeof value === 'number' ? value : null })
+                }
+                placeholder="до"
+              />
+            </div>
+            <Text type="secondary" style={{ fontSize: 11, marginTop: 2, display: 'block' }}>
+              Дней без покупки
+            </Text>
           </div>
-          <div className="reanimation-filter-item reanimation-filter-item--compact">
-            <InputNumber
-              className={APP_INPUT}
-              style={{ width: '100%' }}
-              min={0}
-              value={listState.maxDays}
-              onChange={(value) =>
-                patchListState({ maxDays: typeof value === 'number' ? value : null })
-              }
-              placeholder="До, дней"
-            />
-          </div>
+
+          {/* Row 3 */}
           <div className="reanimation-filter-item">
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
+              placeholder="Долг"
               value={listState.debtFilter}
               onChange={(value) => patchListState({ debtFilter: value as DebtFilter })}
               options={[
-                { value: 'all', label: 'Долг: все' },
-                { value: 'with_debt', label: 'Только с долгом' },
-                { value: 'without_debt', label: 'Без долга / переплата' },
+                { value: 'all', label: 'Любой долг' },
+                { value: 'with_debt', label: 'Есть долг' },
+                { value: 'without_debt', label: 'Нет долга' },
               ]}
             />
           </div>
@@ -921,13 +1066,14 @@ export default function ReanimationPage() {
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
+              placeholder="Контакты"
               value={listState.contactFilter}
               onChange={(value) => patchListState({ contactFilter: value as ContactFilter })}
               options={[
-                { value: 'all', label: 'Контакты: все' },
+                { value: 'all', label: 'Все контакты' },
                 { value: 'no_contact', label: 'Без заметок' },
-                { value: 'stale_7', label: 'Контакт не был 7+ дней' },
-                { value: 'stale_30', label: 'Контакт не был 30+ дней' },
+                { value: 'stale_7', label: 'Нет контакта 7+ дн.' },
+                { value: 'stale_30', label: 'Нет контакта 30+ дн.' },
               ]}
             />
           </div>
@@ -935,37 +1081,55 @@ export default function ReanimationPage() {
             <Select
               className={APP_INPUT}
               style={{ width: '100%' }}
+              placeholder="Сортировка"
               value={listState.sortBy}
               onChange={(value) => patchListState({ sortBy: value as ReanimationSortBy })}
               options={[
-                { value: 'inactive_desc', label: 'Сорт: дольше всего без покупки' },
-                { value: 'inactive_asc', label: 'Сорт: ближе к активности' },
-                { value: 'revenue_desc', label: 'Сорт: по выручке' },
-                { value: 'deals_desc', label: 'Сорт: по числу сделок' },
-                { value: 'debt_desc', label: 'Сорт: по долгу' },
-                { value: 'contact_oldest', label: 'Сорт: самый старый контакт' },
+                { value: 'inactive_desc', label: 'Дольше без покупки' },
+                { value: 'inactive_asc', label: 'Ближе к активности' },
+                { value: 'revenue_desc', label: 'По выручке' },
+                { value: 'deals_desc', label: 'По числу сделок' },
+                { value: 'debt_desc', label: 'По долгу' },
+                { value: 'contact_oldest', label: 'Старейший контакт' },
               ]}
             />
           </div>
           <div className="reanimation-filter-item reanimation-filter-item--action">
-            <Button block onClick={resetFilters}>
-              Сбросить фильтры
+            <Button
+              block
+              onClick={resetFilters}
+              disabled={activeFilterCount === 0}
+            >
+              {activeFilterCount > 0 ? `Сбросить (${activeFilterCount})` : 'Сбросить'}
             </Button>
           </div>
         </div>
       </Card>
 
+      {/* ── Client list ── */}
       <Card
         size="small"
         title={`Список клиентов (${filteredRows.length})`}
-        extra={<Text type="secondary">По умолчанию показаны только кандидаты на возврат</Text>}
+        extra={
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Только кандидаты на возврат
+          </Text>
+        }
       >
         {isLoading ? (
-          <div style={{ padding: 40, textAlign: 'center' }}>
-            <Text type="secondary">Загрузка данных...</Text>
+          <div className="reanimation-row-list">
+            {[1, 2, 3].map((i) => (
+              <RowCardSkeleton key={i} />
+            ))}
           </div>
         ) : filteredRows.length === 0 ? (
-          <Empty description="По текущим фильтрам клиентов не найдено" />
+          <Empty
+            description={
+              activeFilterCount > 0
+                ? 'По текущим фильтрам клиентов не найдено'
+                : 'Нет клиентов для реанимации'
+            }
+          />
         ) : (
           <div className="reanimation-row-list">
             {paginatedRows.map((row) => renderClientRowCard(row))}
@@ -973,15 +1137,20 @@ export default function ReanimationPage() {
         )}
       </Card>
 
-      {!isLoading && filteredRows.length > 0 ? (
-        <div className="reanimation-pagination-bar" role="navigation" aria-label="Пагинация списка клиентов">
+      {/* ── Pagination ── */}
+      {!isLoading && filteredRows.length > pageSize ? (
+        <div
+          className="reanimation-pagination-bar"
+          role="navigation"
+          aria-label="Пагинация списка клиентов"
+        >
           <Pagination
             current={page}
             pageSize={pageSize}
             total={filteredRows.length}
             showSizeChanger
             pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-            showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+            showTotal={(total, range) => `${range[0]}–${range[1]} из ${total}`}
             onChange={(nextPage, nextPageSize) => {
               patchListState({
                 page: nextPage,
@@ -993,15 +1162,27 @@ export default function ReanimationPage() {
         </div>
       ) : null}
 
+      {/* ── Client detail drawer ── */}
       <Drawer
-        width={isMobile ? '100%' : 1120}
+        width={isMobile ? '100%' : Math.min(960, window.innerWidth - 64)}
         open={Boolean(drawerClientId)}
         onClose={() => patchListState({ clientId: null })}
         title={drawerData?.client.companyName || 'Карточка клиента'}
+        extra={
+          drawerData && (
+            <Button
+              size="small"
+              type="link"
+              onClick={() => goToClientCard(drawerData.client.clientId)}
+            >
+              Открыть полную карточку →
+            </Button>
+          )
+        }
       >
         {!drawerClientId || drawerQuery.isLoading || !drawerData ? (
-          <div style={{ paddingTop: 24 }}>
-            <Text type="secondary">Загрузка деталей...</Text>
+          <div style={{ paddingTop: 8 }}>
+            <Skeleton active paragraph={{ rows: 6 }} />
           </div>
         ) : (
           <>
@@ -1015,32 +1196,96 @@ export default function ReanimationPage() {
                       {
                         key: 'status',
                         label: 'Статус',
-                        children: <Tag color={STATUS_META[drawerData.client.status].color}>{STATUS_META[drawerData.client.status].label}</Tag>,
+                        children: (
+                          <Tag color={STATUS_META[drawerData.client.status].color}>
+                            {STATUS_META[drawerData.client.status].label}
+                          </Tag>
+                        ),
                       },
-                      { key: 'manager', label: 'Менеджер', children: `${drawerData.client.managerName}${drawerData.client.managerDepartment ? ` • ${drawerData.client.managerDepartment}` : ''}` },
-                      { key: 'contact', label: 'Контакт', children: drawerData.client.contactName || '—' },
-                      { key: 'phone', label: 'Телефон', children: drawerData.client.phone || '—' },
-                      { key: 'telegram', label: 'Telegram', children: drawerData.client.email || '—' },
-                      { key: 'address', label: 'Адрес', children: drawerData.client.address || '—' },
-                      { key: 'purchase', label: 'Последняя покупка', children: `${formatDate(drawerData.client.lastPurchaseAt)} • ${formatDays(drawerData.client.daysSinceLastPurchase)}` },
-                      { key: 'contactAt', label: 'Последний контакт', children: `${formatDateTime(drawerData.client.lastContactAt)}${drawerData.client.lastContactByName ? ` • ${drawerData.client.lastContactByName}` : ''}` },
+                      {
+                        key: 'manager',
+                        label: 'Менеджер',
+                        children: `${drawerData.client.managerName}${
+                          drawerData.client.managerDepartment
+                            ? ` · ${drawerData.client.managerDepartment}`
+                            : ''
+                        }`,
+                      },
+                      {
+                        key: 'contact',
+                        label: 'Контакт',
+                        children: drawerData.client.contactName || '—',
+                      },
+                      {
+                        key: 'phone',
+                        label: 'Телефон',
+                        children: drawerData.client.phone || '—',
+                      },
+                      {
+                        key: 'telegram',
+                        label: 'Telegram',
+                        children: drawerData.client.email || '—',
+                      },
+                      {
+                        key: 'address',
+                        label: 'Адрес',
+                        children: drawerData.client.address || '—',
+                      },
+                      {
+                        key: 'purchase',
+                        label: 'Последняя покупка',
+                        children: (
+                          <span style={getDaysStyle(drawerData.client.daysSinceLastPurchase)}>
+                            {formatDate(drawerData.client.lastPurchaseAt)} ·{' '}
+                            {formatDays(drawerData.client.daysSinceLastPurchase)}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'contactAt',
+                        label: 'Последний контакт',
+                        children: `${formatDateTime(drawerData.client.lastContactAt)}${
+                          drawerData.client.lastContactByName
+                            ? ` · ${drawerData.client.lastContactByName}`
+                            : ''
+                        }`,
+                      },
                     ]}
                   />
                 </Card>
               </Col>
               <Col xs={24} md={12}>
-                <Row gutter={[12, 12]}>
+                <Row gutter={[10, 10]}>
                   <Col span={12}>
-                    <Card size="small"><Statistic title="Сделок" value={drawerData.client.closedDealsCount} /></Card>
+                    <Card size="small">
+                      <Statistic title="Сделок" value={drawerData.client.closedDealsCount} />
+                    </Card>
                   </Col>
                   <Col span={12}>
-                    <Card size="small"><Statistic title="Активных месяцев" value={drawerData.client.activeMonthsCount} /></Card>
+                    <Card size="small">
+                      <Statistic
+                        title="Активных мес."
+                        value={drawerData.client.activeMonthsCount}
+                      />
+                    </Card>
                   </Col>
                   <Col span={12}>
-                    <Card size="small"><Statistic title="Выручка" value={drawerData.client.totalRevenue} formatter={(value) => formatMoney(Number(value))} /></Card>
+                    <Card size="small">
+                      <Statistic
+                        title="Выручка"
+                        value={drawerData.client.totalRevenue}
+                        formatter={(value) => formatMoney(Number(value))}
+                      />
+                    </Card>
                   </Col>
                   <Col span={12}>
-                    <Card size="small"><Statistic title="Средний чек" value={drawerData.client.avgDealAmount} formatter={(value) => formatMoney(Number(value))} /></Card>
+                    <Card size="small">
+                      <Statistic
+                        title="Средний чек"
+                        value={drawerData.client.avgDealAmount}
+                        formatter={(value) => formatMoney(Number(value))}
+                      />
+                    </Card>
                   </Col>
                   <Col span={24}>
                     <Card size="small">
@@ -1048,7 +1293,9 @@ export default function ReanimationPage() {
                         title="Текущий долг"
                         value={drawerData.client.currentDebt}
                         formatter={(value) => formatMoney(Number(value))}
-                        valueStyle={drawerData.client.currentDebt > 0 ? { color: '#cf1322' } : undefined}
+                        valueStyle={
+                          drawerData.client.currentDebt > 0 ? { color: '#cf1322' } : undefined
+                        }
                       />
                     </Card>
                   </Col>
@@ -1062,17 +1309,31 @@ export default function ReanimationPage() {
                   {drawerData.client.lastDeal ? (
                     <Space direction="vertical" size={8} style={{ width: '100%' }}>
                       <Space wrap>
-                        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => navigate(`/deals/${drawerData.client.lastDeal!.dealId}`)}>
+                        <Button
+                          type="link"
+                          style={{ padding: 0, height: 'auto' }}
+                          onClick={() =>
+                            navigate(`/deals/${drawerData.client.lastDeal!.dealId}`)
+                          }
+                        >
                           {drawerData.client.lastDeal.title}
                         </Button>
                         <Text type="secondary">
-                          {formatDate(drawerData.client.lastDeal.effectiveAt)} • {formatMoney(drawerData.client.lastDeal.revenue)}
+                          {formatDate(drawerData.client.lastDeal.effectiveAt)} ·{' '}
+                          {formatMoney(drawerData.client.lastDeal.revenue)} сум
                         </Text>
                       </Space>
-                      {renderProductButtons(drawerData.client.lastDealProducts, navigate, 'Товары последней сделки не найдены')}
+                      {renderProductButtons(
+                        drawerData.client.lastDealProducts,
+                        navigate,
+                        'Товары последней сделки не найдены',
+                      )}
                     </Space>
                   ) : (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Последняя сделка не найдена" />
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Последняя сделка не найдена"
+                    />
                   )}
                 </Card>
               </Col>
@@ -1080,22 +1341,36 @@ export default function ReanimationPage() {
                 <Card size="small" title="Что важно сейчас" className="reanimation-drawer-card">
                   <Space direction="vertical" size={10} style={{ width: '100%' }}>
                     <div>
-                      <Text type="secondary">Последний контакт</Text>
-                      <div>{drawerData.client.lastContactAt ? formatDateTime(drawerData.client.lastContactAt) : 'Контакта ещё не было'}</div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Последний контакт
+                      </Text>
+                      <div>
+                        {drawerData.client.lastContactAt
+                          ? formatDateTime(drawerData.client.lastContactAt)
+                          : 'Контакта ещё не было'}
+                      </div>
                       <Text type="secondary">
                         {drawerData.client.lastContactByName || 'Без ответственного'}
                       </Text>
                     </div>
                     <div>
-                      <Text type="secondary">Последняя заметка</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Последняя заметка
+                      </Text>
                       <Paragraph style={{ margin: '4px 0 0' }}>
                         {drawerData.client.lastContactPreview || 'Краткой заметки пока нет'}
                       </Paragraph>
                     </div>
                     <div>
-                      <Text type="secondary">Хит-товары клиента</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Хит-товары клиента
+                      </Text>
                       <div style={{ marginTop: 4 }}>
-                        {renderProductButtons(drawerData.client.topProducts, navigate, 'Нет часто покупаемых товаров')}
+                        {renderProductButtons(
+                          drawerData.client.topProducts,
+                          navigate,
+                          'Нет часто покупаемых товаров',
+                        )}
                       </div>
                     </div>
                   </Space>
@@ -1141,28 +1416,32 @@ export default function ReanimationPage() {
                 },
                 {
                   key: 'notes',
-                  label: 'Контакты и заметки',
-                  children: drawerData.notes.length === 0 ? (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Заметок по клиенту пока нет" />
-                  ) : (
-                    <List
-                      size="small"
-                      dataSource={drawerData.notes}
-                      renderItem={(item) => (
-                        <List.Item>
-                          <div style={{ width: '100%' }}>
-                            <Space wrap size={8}>
-                              <Text strong>{item.authorName}</Text>
-                              <Text type="secondary">{formatDateTime(item.createdAt)}</Text>
-                            </Space>
-                            <Paragraph style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
-                              {item.preview}
-                            </Paragraph>
-                          </div>
-                        </List.Item>
-                      )}
-                    />
-                  ),
+                  label: 'Заметки',
+                  children:
+                    drawerData.notes.length === 0 ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="Заметок по клиенту пока нет"
+                      />
+                    ) : (
+                      <List
+                        size="small"
+                        dataSource={drawerData.notes}
+                        renderItem={(item) => (
+                          <List.Item>
+                            <div style={{ width: '100%' }}>
+                              <Space wrap size={8}>
+                                <Text strong>{item.authorName}</Text>
+                                <Text type="secondary">{formatDateTime(item.createdAt)}</Text>
+                              </Space>
+                              <Paragraph style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
+                                {item.preview}
+                              </Paragraph>
+                            </div>
+                          </List.Item>
+                        )}
+                      />
+                    ),
                 },
               ]}
             />
