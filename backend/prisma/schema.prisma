@@ -247,6 +247,7 @@ model User {
   aiChats             AiChat[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
+  aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
   medalsGranted       UserMedalHistory[] @relation("MedalHistoryGrantedBy")
   medalsRemoved       UserMedalHistory[] @relation("MedalHistoryRemovedBy")
@@ -635,6 +636,8 @@ model Product {
   installmentPrice Decimal? @db.Decimal(12, 2) @map("installment_price")
   pricingMode     String   @default("PER_UNIT") @map("pricing_mode")
   specifications  Json?
+  description     String?
+  imageUrl        String?  @map("image_url")
   isActive        Boolean  @default(true) @map("is_active")
   manufacturedAt  DateTime? @map("manufactured_at")
   expiresAt       DateTime? @map("expires_at")
@@ -1482,4 +1485,20 @@ model NoteAuditMemory {
 
   @@index([managerId])
   @@map("note_audit_memory")
+}
+
+
+// ==================== AI REPORTS ====================
+
+/// Cached AI-generated page reports (one per page key)
+model AiReport {
+  id          String   @id @default(uuid())
+  pageKey     String   @unique @map("page_key")
+  content     String   @db.Text
+  generatedBy String   @map("generated_by")
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  author User @relation("AiReportAuthor", fields: [generatedBy], references: [id], onDelete: Cascade)
+
+  @@map("ai_reports")
 }

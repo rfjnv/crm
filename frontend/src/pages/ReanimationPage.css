@@ -173,3 +173,59 @@
     padding: 8px 12px;
   }
 }
+
+/* AI Report */
+.ai-report-content {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ai-report-content h1,
+.ai-report-content h2,
+.ai-report-content h3,
+.ai-report-content h4 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.ai-report-content h1 { font-size: 18px; }
+.ai-report-content h2 { font-size: 16px; }
+.ai-report-content h3 { font-size: 14px; }
+
+.ai-report-content p {
+  margin-bottom: 8px;
+}
+
+.ai-report-content ul,
+.ai-report-content ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.ai-report-content li {
+  margin-bottom: 4px;
+}
+
+.ai-report-content strong {
+  font-weight: 600;
+}
+
+.ai-report-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.ai-report-content th,
+.ai-report-content td {
+  border: 1px solid var(--ant-color-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.ai-report-content th {
+  background: var(--ant-color-fill-quaternary);
+  font-weight: 600;
+}

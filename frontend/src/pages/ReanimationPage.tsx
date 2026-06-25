@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -19,9 +20,12 @@ import {
   Table,
   Tag,
   Tabs,
+  Tooltip,
   Typography,
 } from 'antd';
-import { ReloadOutlined, SoundOutlined } from '@ant-design/icons';
+import { RobotOutlined, ReloadOutlined, SoundOutlined } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import dayjs from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -30,6 +34,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { matchesSearch, smartFilterOption } from '../utils/translit';
 import './ReanimationPage.css';
 import type {
+  ReanimationAiReport,
   ReanimationClientDetail,
   ReanimationClientProductStat,
   ReanimationClientRow,
@@ -310,11 +315,114 @@ function renderProductButtons(
   );
 }
 
+interface AiReportCardProps {
+  report: ReanimationAiReport | null;
+  isLoading: boolean;
+  isGenerating: boolean;
+  error: Error | null;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onGenerate: () => void;
+}
+
+function AiReportCard({ report, isLoading, isGenerating, error, expanded, onToggleExpand, onGenerate }: AiReportCardProps) {
+  const generatedAt = report?.generatedAt ? new Date(report.generatedAt) : null;
+  const ageMs = generatedAt ? Date.now() - generatedAt.getTime() : null;
+  const ageTxt = ageMs !== null
+    ? ageMs < 60_000 ? 'только что'
+    : ageMs < 3_600_000 ? `${Math.round(ageMs / 60_000)} мин. назад`
+    : ageMs < 86_400_000 ? `${Math.round(ageMs / 3_600_000)} ч. назад`
+    : generatedAt!.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    : null;
+
+  const cardExtra = report ? (
+    <Space>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {report.generatedBy} • {ageTxt}
+      </Text>
+      <Tooltip title={isGenerating ? 'Генерация...' : 'Сгенерировать новый отчёт'}>
+        <Button
+          size="small"
+          icon={<RobotOutlined />}
+          loading={isGenerating}
+          onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+        >
+          Обновить
+        </Button>
+      </Tooltip>
+      <Button size="small" type="link" onClick={onToggleExpand}>
+        {expanded ? 'Свернуть' : 'Развернуть'}
+      </Button>
+    </Space>
+  ) : (
+    <Button
+      type="primary"
+      icon={<RobotOutlined />}
+      loading={isGenerating}
+      onClick={onGenerate}
+      disabled={isLoading}
+    >
+      {isGenerating ? 'Генерация отчёта...' : 'Сгенерировать AI-отчёт'}
+    </Button>
+  );
+
+  return (
+    <Card
+      size="small"
+      title={
+        <Space>
+          <RobotOutlined />
+          <span>AI-анализ реанимации</span>
+          {!report && !isLoading && !isGenerating && (
+            <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+              — нажмите кнопку, чтобы получить аналитический отчёт
+            </Text>
+          )}
+        </Space>
+      }
+      extra={cardExtra}
+      style={{ marginBottom: 12 }}
+      styles={{ body: { padding: report && expanded ? '12px 16px' : (report ? 0 : '12px 16px') } }}
+    >
+      {error && (
+        <Alert
+          type="error"
+          message={(error as Error & { response?: { data?: { message?: string } } })?.response?.data?.message || error.message}
+          showIcon
+          style={{ marginBottom: report ? 8 : 0 }}
+        />
+      )}
+      {isGenerating && (
+        <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--ant-color-text-secondary)' }}>
+          <RobotOutlined spin style={{ fontSize: 24, marginBottom: 8 }} />
+          <div>Анализирую данные с помощью Claude AI...</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>Это может занять 30–60 секунд</div>
+        </div>
+      )}
+      {report && !isGenerating && expanded && (
+        <div className="ai-report-content">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.content}</ReactMarkdown>
+        </div>
+      )}
+      {report && !isGenerating && !expanded && (
+        <div
+          style={{ padding: '8px 16px', cursor: 'pointer', color: 'var(--ant-color-text-secondary)', fontSize: 13 }}
+          onClick={onToggleExpand}
+        >
+          Отчёт готов — нажмите «Развернуть» для просмотра
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function ReanimationPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseReanimationListParams(searchParams), [searchParams]);
+  const [aiReportExpanded, setAiReportExpanded] = useState(false);
 
   const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchListState = useCallback(
@@ -372,6 +480,23 @@ export default function ReanimationPage() {
     gcTime: 20 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+  });
+
+  const aiReportQuery = useQuery({
+    queryKey: ['analytics-reanimation-ai-report'],
+    queryFn: analyticsApi.getReanimationAiReport,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const generateReportMutation = useMutation({
+    mutationFn: analyticsApi.generateReanimationAiReport,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['analytics-reanimation-ai-report'], data);
+      setAiReportExpanded(true);
+    },
   });
 
   const managerOptions = useMemo(
@@ -641,6 +766,17 @@ export default function ReanimationPage() {
           </Button>
         </Col>
       </Row>
+
+      {/* AI Report Card */}
+      <AiReportCard
+        report={aiReportQuery.data ?? null}
+        isLoading={aiReportQuery.isLoading}
+        isGenerating={generateReportMutation.isPending}
+        error={generateReportMutation.error as Error | null}
+        expanded={aiReportExpanded}
+        onToggleExpand={() => setAiReportExpanded((v) => !v)}
+        onGenerate={() => generateReportMutation.mutate()}
+      />
 
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
         <Col xs={12} md={6}>

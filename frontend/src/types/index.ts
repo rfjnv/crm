@@ -527,6 +527,8 @@ export interface Product {
   salePrice?: string | null;
   installmentPrice?: string | null;
   specifications?: Record<string, unknown> | null;
+  description?: string | null;
+  imageUrl?: string | null;
   isActive: boolean;
   manufacturedAt?: string | null;
   expiresAt?: string | null;
@@ -1537,6 +1539,13 @@ export interface ReanimationClientDetail {
   recentDeals: ReanimationClientDeal[];
   productStats: ReanimationClientProductStat[];
   notes: ReanimationClientNote[];
+}
+
+export interface ReanimationAiReport {
+  id: string;
+  content: string;
+  generatedBy: string;
+  generatedAt: string;
 }
 
 // ─── Dead products (manager analytics) ───

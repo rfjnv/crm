@@ -1,5 +1,7 @@
 ﻿import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
+import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
@@ -11,6 +13,8 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { authorize } from '../../middleware/authorize';
 import { ownerScope, type AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
+
+const anthropic = new Anthropic({ apiKey: config.claude.apiKey });
 
 const router = Router();
 
@@ -530,6 +534,168 @@ router.get(
         authorName: row.author_name,
         preview: row.content.length > 400 ? `${row.content.slice(0, 400)}...` : row.content,
       })),
+    });
+  }),
+);
+
+// ==================== AI Report ====================
+
+const PAGE_KEY = 'reanimation';
+const REGEN_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours for non-admins
+
+router.get(
+  '/ai-report',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    const report = await prisma.aiReport.findUnique({
+      where: { pageKey: PAGE_KEY },
+      include: { author: { select: { fullName: true } } },
+    });
+    if (!report) {
+      res.json(null);
+      return;
+    }
+    res.json({
+      id: report.id,
+      content: report.content,
+      generatedBy: report.author.fullName,
+      generatedAt: report.generatedAt.toISOString(),
+    });
+  }),
+);
+
+router.post(
+  '/ai-report',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const role = req.user!.role as Role;
+    const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+
+    // Throttle for non-admins: max once per 4 hours
+    if (!isAdmin) {
+      const existing = await prisma.aiReport.findUnique({ where: { pageKey: PAGE_KEY } });
+      if (existing) {
+        const age = Date.now() - existing.generatedAt.getTime();
+        if (age < REGEN_COOLDOWN_MS) {
+          const waitMin = Math.ceil((REGEN_COOLDOWN_MS - age) / 60_000);
+          throw new AppError(429, `Отчёт был сгенерирован недавно. Повторная генерация будет доступна через ${waitMin} мин.`);
+        }
+      }
+    }
+
+    // Load reanimation data (admin scope — full data for the report)
+    const adminUser: AuthUser = { userId, role, permissions: [], companyId: req.user!.companyId };
+    const baseRows = await loadBaseClientRows(adminUser);
+    const rows = await enrichClientRows(adminUser, baseRows, { includeProductPreviews: false });
+
+    const totalClients = rows.length;
+    const withDebt = rows.filter((r) => r.currentDebt > 0);
+    const totalDebt = withDebt.reduce((s, r) => s + r.currentDebt, 0);
+    const churned = rows.filter((r) => r.status === 'CHURNED');
+    const onceAndGone = rows.filter((r) => r.status === 'ONE_TIME_LOST');
+    const sleeping = rows.filter((r) => r.status === 'SLEEPING');
+    const totalRevenueLost = rows.reduce((s, r) => s + r.totalRevenue, 0);
+    const avgDaysSince = rows.length
+      ? Math.round(rows.reduce((s, r) => s + (r.daysSinceLastPurchase ?? 0), 0) / rows.length)
+      : 0;
+
+    // Top clients by revenue
+    const topByRevenue = [...rows].sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 10);
+    // Top clients by debt
+    const topByDebt = [...withDebt].sort((a, b) => b.currentDebt - a.currentDebt).slice(0, 10);
+    // Longest inactive
+    const longestInactive = [...rows]
+      .sort((a, b) => (b.daysSinceLastPurchase ?? 0) - (a.daysSinceLastPurchase ?? 0))
+      .slice(0, 10);
+    // Manager breakdown
+    const byManager = new Map<string, { name: string; count: number; revenue: number; debt: number }>();
+    for (const r of rows) {
+      const entry = byManager.get(r.managerId) ?? { name: r.managerName, count: 0, revenue: 0, debt: 0 };
+      entry.count++;
+      entry.revenue += r.totalRevenue;
+      entry.debt += r.currentDebt;
+      byManager.set(r.managerId, entry);
+    }
+    const managerStats = Array.from(byManager.values()).sort((a, b) => b.count - a.count);
+
+    const formatMoney = (v: number) => v.toLocaleString('ru-RU') + ' сум';
+    const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU');
+
+    const dataText = `
+ДАННЫЕ СТРАНИЦЫ «РЕАНИМАЦИЯ КЛИЕНТОВ» (дата генерации: ${new Date().toLocaleDateString('ru-RU')})
+
+=== СВОДКА ===
+Всего клиентов на реанимации: ${totalClients}
+  - Перестали покупать (CHURNED, 60+ дней): ${churned.length}
+  - Разовые (ONE_TIME_LOST, 30+ дней): ${onceAndGone.length}
+  - Засыпающие (SLEEPING, 30-60 дней): ${sleeping.length}
+Клиентов с долгом: ${withDebt.length} — общий долг: ${formatMoney(totalDebt)}
+Суммарная выручка (историческая): ${formatMoney(totalRevenueLost)}
+Средний простой без покупки: ${avgDaysSince} дней
+
+=== ТОП-10 ПО ВЫРУЧКЕ (кандидаты на реанимацию) ===
+${topByRevenue.map((r, i) => `${i + 1}. ${r.companyName} | менеджер: ${r.managerName} | выручка: ${formatMoney(r.totalRevenue)} | сделок: ${r.closedDealsCount} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. | долг: ${formatMoney(r.currentDebt)} | статус: ${r.status}`).join('\n')}
+
+=== ТОП-10 ПО ДОЛГУ ===
+${topByDebt.length > 0 ? topByDebt.map((r, i) => `${i + 1}. ${r.companyName} | долг: ${formatMoney(r.currentDebt)} | менеджер: ${r.managerName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн.`).join('\n') : 'Нет клиентов с долгом'}
+
+=== ТОП-10 САМЫХ ДОЛГО НЕАКТИВНЫХ ===
+${longestInactive.map((r, i) => `${i + 1}. ${r.companyName} | без покупки: ${r.daysSinceLastPurchase ?? '?'} дн. (последняя: ${formatDate(r.lastPurchaseAt)}) | выручка: ${formatMoney(r.totalRevenue)} | менеджер: ${r.managerName}`).join('\n')}
+
+=== РАЗБИВКА ПО МЕНЕДЖЕРАМ ===
+${managerStats.map((m) => `${m.name}: клиентов на реанимации: ${m.count}, суммарная их выручка: ${formatMoney(m.revenue)}, долг: ${formatMoney(m.debt)}`).join('\n')}
+`.trim();
+
+    const prompt = `Ты — аналитик CRM-системы для компании, торгующей ламинатом и строительными материалами. Тебе предоставлены данные страницы «Реанимация клиентов» — это клиенты, которые перестали покупать или купили лишь раз и пропали.
+
+${dataText}
+
+Составь подробный аналитический отчёт на русском языке. Включи:
+1. **Общая картина** — кратко опиши масштаб проблемы (деньги, клиенты, менеджеры)
+2. **Деньги «застрявшие» в пассивных клиентах** — оцени потенциал возврата, выдели ключевые риски по долгам
+3. **Анализ по категориям** — что отличает «разовых» от «переставших покупать», на кого делать ставку
+4. **Приоритетные клиенты для звонка** — назови конкретные компании из топа (используй реальные имена из данных), объясни почему именно они
+5. **Анализ по менеджерам** — у кого больше всего спящих клиентов, кто несёт наибольшую потенциальную ответственность
+6. **Конкретные рекомендации** — 5-7 actionable шагов для реанимации, с указанием приоритетов
+7. **Риски** — что будет, если ничего не предпринять
+
+Пиши структурированно с заголовками markdown. Будь конкретен — используй числа и имена из данных.`;
+
+    const stream = anthropic.messages.stream({
+      model: 'claude-opus-4-8',
+      max_tokens: 4096,
+      thinking: { type: 'adaptive' },
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const message = await stream.finalMessage();
+    const content = message.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { type: 'text'; text: string }).text)
+      .join('');
+
+    const report = await prisma.aiReport.upsert({
+      where: { pageKey: PAGE_KEY },
+      create: {
+        pageKey: PAGE_KEY,
+        content,
+        generatedBy: userId,
+        generatedAt: new Date(),
+      },
+      update: {
+        content,
+        generatedBy: userId,
+        generatedAt: new Date(),
+      },
+      include: { author: { select: { fullName: true } } },
+    });
+
+    res.json({
+      id: report.id,
+      content: report.content,
+      generatedBy: report.author.fullName,
+      generatedAt: report.generatedAt.toISOString(),
     });
   }),
 );

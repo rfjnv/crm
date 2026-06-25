@@ -16,6 +16,7 @@ import type {
   AbcXyzResponse,
   ReanimationClientDetail,
   ReanimationClientRow,
+  ReanimationAiReport,
   DeadProductsResponse,
   PaymentOverdueResponse,
 } from '../types';
@@ -181,6 +182,10 @@ export const analyticsApi = {
     client.get<ReanimationClientRow[]>('/analytics/reanimation').then((r) => r.data),
   getReanimationClientDetail: (clientId: string) =>
     client.get<ReanimationClientDetail>(`/analytics/reanimation/${clientId}`).then((r) => r.data),
+  getReanimationAiReport: () =>
+    client.get<ReanimationAiReport | null>('/analytics/reanimation/ai-report').then((r) => r.data),
+  generateReanimationAiReport: () =>
+    client.post<ReanimationAiReport>('/analytics/reanimation/ai-report').then((r) => r.data),
   getDeadProducts: (params?: { noSalesDays?: number; zeroStockDays?: number }) =>
     client
       .get<DeadProductsResponse>('/analytics/dead-products', { params })
