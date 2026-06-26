@@ -28,6 +28,7 @@ import {
 } from 'antd';
 import {
   ArrowRightOutlined,
+  FileExcelOutlined,
   LoadingOutlined,
   ReloadOutlined,
   RobotOutlined,
@@ -483,6 +484,16 @@ export default function ReanimationPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseReanimationListParams(searchParams), [searchParams]);
   const [aiReportExpanded, setAiReportExpanded] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      await analyticsApi.exportReanimation();
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
 
   const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchListState = useCallback(
@@ -880,9 +891,21 @@ export default function ReanimationPage() {
           </Text>
         </Col>
         <Col>
-          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
-            Обновить
-          </Button>
+          <Space wrap>
+            <Tooltip title="Скачать все данные реанимации в Excel (2 листа: клиенты + товары)">
+              <Button
+                icon={<FileExcelOutlined />}
+                loading={isExporting}
+                onClick={handleExport}
+                style={{ color: '#389e0d', borderColor: '#73d13d' }}
+              >
+                Экспорт в Excel
+              </Button>
+            </Tooltip>
+            <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
+              Обновить
+            </Button>
+          </Space>
         </Col>
       </Row>
 

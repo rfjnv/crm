@@ -1,6 +1,7 @@
 ﻿import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
+import XLSX from 'xlsx';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import {
@@ -471,6 +472,119 @@ router.get(
     const user = getAuthUser(req);
     const rows = await loadListRows(user);
     res.json(rows);
+  }),
+);
+
+// ==================== Excel Export ====================
+// Must be before /:clientId to avoid route shadowing
+
+const STATUS_LABEL_EXPORT: Record<string, string> = {
+  ONE_TIME_LOST: 'Разовый (пропал)',
+  SLEEPING: 'Повторный (уснул)',
+  CHURNED: 'Перестал покупать',
+  ACTIVE: 'Активный',
+};
+
+const CREDIT_STATUS_LABEL: Record<string, string> = {
+  NORMAL: 'Нормальный',
+  SATISFACTORY: 'Удовлетворительный',
+  NEGATIVE: 'Негативный',
+};
+
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return iso.slice(0, 10);
+}
+
+function fmtNum(n: number): number {
+  return Math.round(n);
+}
+
+router.get(
+  '/export',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = getAuthUser(req);
+    const baseRows = await loadBaseClientRows(user);
+    const rows = await enrichClientRows(user, baseRows, { includeProductPreviews: true });
+
+    // ── Sheet 1: clients overview ──────────────────────────────────────────
+    type ClientRow = Record<string, string | number>;
+    const clientSheet: ClientRow[] = rows.map((r) => ({
+      'Клиент': r.companyName,
+      'Контакт': r.contactName || '',
+      'Телефон': r.phone || '',
+      'Email': r.email || '',
+      'Адрес': r.address || '',
+      'Менеджер': r.managerName,
+      'Отдел': r.managerDepartment || '',
+      'Статус реанимации': STATUS_LABEL_EXPORT[r.status] ?? r.status,
+      'Дней без покупки': r.daysSinceLastPurchase ?? 0,
+      'Первая покупка': fmtDate(r.firstPurchaseAt),
+      'Последняя покупка': fmtDate(r.lastPurchaseAt),
+      'Всего сделок': r.closedDealsCount,
+      'Выручка (сум)': fmtNum(r.totalRevenue),
+      'Средний чек (сум)': fmtNum(r.avgDealAmount),
+      'Активных месяцев': r.activeMonthsCount,
+      'Текущий долг (сум)': fmtNum(r.currentDebt),
+      'SVIP': r.isSvip ? 'Да' : 'Нет',
+      'Кредитный статус': CREDIT_STATUS_LABEL[r.creditStatus] ?? r.creditStatus,
+      'Последний контакт (дата)': fmtDate(r.lastContactAt),
+      'Последний контакт (кто)': r.lastContactByName || '',
+      'Последний контакт (заметка)': r.lastContactPreview || '',
+      'Последняя сделка': r.lastDeal?.title || '',
+      'Дата последней сделки': fmtDate(r.lastDeal?.effectiveAt),
+      'Сумма последней сделки (сум)': r.lastDeal ? fmtNum(r.lastDeal.revenue) : 0,
+      'Все товары клиента': r.productNames.join('; '),
+    }));
+
+    const wsClients = XLSX.utils.json_to_sheet(clientSheet, {
+      header: [
+        'Клиент', 'Контакт', 'Телефон', 'Email', 'Адрес',
+        'Менеджер', 'Отдел',
+        'Статус реанимации', 'Дней без покупки',
+        'Первая покупка', 'Последняя покупка',
+        'Всего сделок', 'Выручка (сум)', 'Средний чек (сум)', 'Активных месяцев',
+        'Текущий долг (сум)', 'SVIP', 'Кредитный статус',
+        'Последний контакт (дата)', 'Последний контакт (кто)', 'Последний контакт (заметка)',
+        'Последняя сделка', 'Дата последней сделки', 'Сумма последней сделки (сум)',
+        'Все товары клиента',
+      ],
+    });
+
+    // ── Sheet 2: top products per client ─────────────────────────────────
+    type ProductRow = Record<string, string | number>;
+    const productSheet: ProductRow[] = [];
+    for (const r of rows) {
+      for (const p of r.topProducts) {
+        productSheet.push({
+          'Клиент': r.companyName,
+          'Менеджер': r.managerName,
+          'Товар': p.productName,
+          'Кол-во (итого)': Math.round(p.qty * 100) / 100,
+          'Выручка (сум)': fmtNum(p.revenue),
+          'Последняя покупка': fmtDate(p.lastPurchasedAt),
+        });
+      }
+    }
+
+    const wsProducts = XLSX.utils.json_to_sheet(
+      productSheet.length > 0 ? productSheet : [{ 'Клиент': '', 'Менеджер': '', 'Товар': '', 'Кол-во (итого)': 0, 'Выручка (сум)': 0, 'Последняя покупка': '' }],
+      { header: ['Клиент', 'Менеджер', 'Товар', 'Кол-во (итого)', 'Выручка (сум)', 'Последняя покупка'] },
+    );
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsClients, 'Реанимация');
+    XLSX.utils.book_append_sheet(wb, wsProducts, 'Топ товары');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `reanimation_${today}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
   }),
 );
 

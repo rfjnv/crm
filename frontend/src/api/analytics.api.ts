@@ -186,6 +186,18 @@ export const analyticsApi = {
     client.get<ReanimationAiReport | null>('/analytics/reanimation/ai-report').then((r) => r.data),
   generateReanimationAiReport: () =>
     client.post<ReanimationAiReport>('/analytics/reanimation/ai-report').then((r) => r.data),
+  exportReanimation: () =>
+    client.get('/analytics/reanimation/export', { responseType: 'blob' }).then((r) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const url = window.URL.createObjectURL(new Blob([r.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reanimation_${today}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }),
   getDeadProducts: (params?: { noSalesDays?: number; zeroStockDays?: number }) =>
     client
       .get<DeadProductsResponse>('/analytics/dead-products', { params })
