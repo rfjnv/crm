@@ -89,9 +89,18 @@ type ClientProductNameRow = {
   product_name: string;
 };
 
-/** Only clients inactive 30+ days (all reanimation candidates). */
+/**
+ * Only clients whose last purchase was 30+ days ago (inclusive <=).
+ * Using <= to match JS classifyStatus which uses daysSince >= 30.
+ * Strict < would exclude clients at exactly the boundary and cause off-by-one.
+ */
 const SQL_REANIMATION_CANDIDATE_HAVING = Prisma.sql`
-  HAVING MAX(ds.effective_ts) < (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')`;
+  HAVING MAX(ds.effective_ts) <= (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')`;
+
+/** Exclude test/demo clients by name pattern. */
+const SQL_EXCLUDE_TEST_CLIENTS = Prisma.sql`
+  AND c.company_name NOT ILIKE '%тест%'
+  AND c.company_name NOT ILIKE '%test%'`;
 
 type DealProductRow = {
   deal_id: string;
@@ -144,6 +153,12 @@ function daysSince(isoOrDate: string | Date | null | undefined): number | null {
   return Math.max(0, Math.floor((Date.now() - ms) / 86_400_000));
 }
 
+/**
+ * "One-time buyer" = client with <= 1 Deal (order), regardless of how many
+ * DealItems (products) were in that order. A client who bought 5 products in
+ * a single deal is still ONE_TIME_LOST if they never came back.
+ * closedDealsCount = COUNT(DISTINCT deal_id), not COUNT(deal_items).
+ */
 function classifyStatus(closedDealsCount: number, daysSinceLastPurchase: number | null): ReanimationStatus {
   const days = daysSinceLastPurchase ?? 0;
   if (closedDealsCount <= 1) {
@@ -168,18 +183,28 @@ async function loadBaseClientRows(user: AuthUser, clientId?: string) {
   const dealFilter = getDealFilter(user);
   const clientFilter = clientId ? Prisma.sql` AND c.id = ${clientId}` : Prisma.sql``;
   const candidateHaving = clientId ? Prisma.sql`` : SQL_REANIMATION_CANDIDATE_HAVING;
+  // Test clients are excluded only from the list view, not from the detail drawer
+  const testExclusion = clientId ? Prisma.sql`` : SQL_EXCLUDE_TEST_CLIENTS;
 
   return prisma.$queryRaw<BaseClientRow[]>(
+    // deal_scope uses LEFT JOIN so deals without deal_items are included.
+    // Revenue = d.amount (deal header) to match the authoritative source;
+    // SUM(line_items) misses debt-only deals and can drift from d.amount.
+    // effective_ts: MAX of item-level dates with fallback to deal dates.
     Prisma.sql`WITH deal_scope AS (
       SELECT
         d.id AS deal_id,
         d.client_id,
-        MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
-        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
-      FROM deal_items di
-      JOIN deals d ON d.id = di.deal_id
+        COALESCE(
+          MAX(COALESCE(di.deal_date, d.closed_at, d.created_at)),
+          d.closed_at,
+          d.created_at
+        ) AS effective_ts,
+        d.amount AS deal_revenue
+      FROM deals d
+      LEFT JOIN deal_items di ON di.deal_id = d.id
       WHERE ${SQL_REANIMATION_DEAL_FILTER}${dealFilter}
-      GROUP BY d.id, d.client_id
+      GROUP BY d.id, d.client_id, d.amount, d.closed_at, d.created_at
     )
     SELECT
       c.id AS client_id,
@@ -202,7 +227,7 @@ async function loadBaseClientRows(user: AuthUser, clientId?: string) {
     FROM deal_scope ds
     JOIN clients c ON c.id = ds.client_id
     LEFT JOIN users u ON u.id = c.manager_id
-    WHERE c.is_archived = false${clientFilter}
+    WHERE c.is_archived = false${clientFilter}${testExclusion}
     GROUP BY
       c.id,
       c.company_name,
@@ -231,20 +256,26 @@ async function enrichClientRows(
   const dealFilter = getDealFilter(user);
 
   const [lastDealRows, lastNoteRows, debtRows, productNameRows, productRows] = await Promise.all([
+    // Last deal per client — LEFT JOIN so deals without items are visible;
+    // revenue = d.amount (same source as loadBaseClientRows for consistency).
     prisma.$queryRaw<LastDealRow[]>(
       Prisma.sql`WITH deal_scope AS (
         SELECT
           d.id AS deal_id,
           d.client_id,
           d.title AS deal_title,
-          MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
-          MAX(d.created_at) AS created_at,
-          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
-        FROM deal_items di
-        JOIN deals d ON d.id = di.deal_id
+          d.created_at,
+          COALESCE(
+            MAX(COALESCE(di.deal_date, d.closed_at, d.created_at)),
+            d.closed_at,
+            d.created_at
+          ) AS effective_ts,
+          d.amount AS deal_revenue
+        FROM deals d
+        LEFT JOIN deal_items di ON di.deal_id = d.id
         WHERE ${SQL_REANIMATION_DEAL_FILTER}
           AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
-        GROUP BY d.id, d.client_id, d.title
+        GROUP BY d.id, d.client_id, d.title, d.amount, d.closed_at, d.created_at
       )
       SELECT DISTINCT ON (client_id)
         client_id,
@@ -268,6 +299,11 @@ async function enrichClientRows(
         AND cn.client_id IN (${Prisma.join(clientIds)})
       ORDER BY cn.client_id, cn.created_at DESC`,
     ),
+    // Debt = SUM(amount - paid_amount) across ALL non-canceled deals of the client,
+    // regardless of which manager owns the deal. Overpayments (negative per-deal
+    // balance) naturally reduce the total. dealFilter intentionally omitted here —
+    // a client's total debt must include deals from all managers, not just the
+    // current user's, otherwise multi-manager clients show wrong debt.
     prisma.$queryRaw<DebtRow[]>(
       Prisma.sql`SELECT
         d.client_id,
@@ -275,7 +311,7 @@ async function enrichClientRows(
       FROM deals d
       WHERE d.client_id IN (${Prisma.join(clientIds)})
         AND d.is_archived = false
-        AND d.status NOT IN ('CANCELED', 'REJECTED')${dealFilter}
+        AND d.status NOT IN ('CANCELED', 'REJECTED')
       GROUP BY d.client_id`,
     ),
     prisma.$queryRaw<ClientProductNameRow[]>(
@@ -641,6 +677,8 @@ router.get(
     }
 
     const [recentDeals, productStats, notes] = await Promise.all([
+      // LEFT JOIN so debt-only deals (no items) appear in history.
+      // revenue = d.amount, consistent with loadBaseClientRows.
       prisma.$queryRaw<RecentDealRow[]>(
         Prisma.sql`WITH deal_scope AS (
           SELECT
@@ -651,20 +689,23 @@ router.get(
             d.amount,
             d.paid_amount,
             d.payment_status,
-            MAX(${SQL_EFFECTIVE_ITEM_TS}) AS effective_ts,
-            COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::numeric AS deal_revenue
-          FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
+            COALESCE(
+              MAX(COALESCE(di.deal_date, d.closed_at, d.created_at)),
+              d.closed_at,
+              d.created_at
+            ) AS effective_ts
+          FROM deals d
+          LEFT JOIN deal_items di ON di.deal_id = d.id
           WHERE ${SQL_REANIMATION_DEAL_FILTER}
             AND d.client_id = ${clientId}${dealFilter}
-          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status
+          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status, d.closed_at
         )
         SELECT
           deal_id,
           deal_title,
           created_at,
           effective_ts,
-          deal_revenue::text AS deal_revenue,
+          amount::text AS deal_revenue,
           amount::text,
           paid_amount::text AS paid_amount,
           payment_status
