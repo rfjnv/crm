@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import XLSX from 'xlsx';
 import prisma from '../../lib/prisma';
 import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
@@ -251,6 +252,81 @@ router.get(
       countries,
       products,
     });
+  }),
+);
+
+const ISSUE_LABELS: Record<DeadProductIssue, string> = {
+  STAGNANT: 'Завис на складе',
+  ZERO_STOCK: 'Нулевой остаток',
+  ZERO_LONG: 'Долго на нуле',
+  NEVER_SOLD: 'Никогда не продавался',
+  NO_SALES: 'Нет продаж давно',
+};
+
+function fmtDate(v: string | null | undefined): string {
+  if (!v) return '';
+  return new Date(v).toLocaleDateString('ru-RU');
+}
+
+function fmtNum(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+router.get(
+  '/export',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const noSalesDays = parsePositiveInt(req.query.noSalesDays, DEFAULT_NO_SALES_DAYS);
+    const zeroStockDays = parsePositiveInt(req.query.zeroStockDays, DEFAULT_ZERO_STOCK_DAYS);
+
+    const rawRows = await loadProductMetrics();
+    const products = rawRows.map((r) => mapRow(r, noSalesDays, zeroStockDays));
+
+    const sheet = products.map((p) => ({
+      'Товар': p.name,
+      'Артикул': p.sku,
+      'Категория': p.category ?? '',
+      'Страна': p.countryOfOrigin ?? '',
+      'Ед. изм.': p.unit,
+      'Остаток': p.stock,
+      'Мин. остаток': p.minStock,
+      'Проблемы': p.issues.map((i) => ISSUE_LABELS[i]).join('; '),
+      'Мёртвый': p.isDead ? 'Да' : 'Нет',
+      'Активный': p.isActive ? 'Да' : 'Нет',
+      'Без продаж (дн.)': p.daysSinceLastSale ?? '',
+      'На нуле (дн.)': p.daysAtZero ?? '',
+      'Последняя продажа': fmtDate(p.lastSaleAt),
+      'Продано за 90 дн.': fmtNum(p.qtySold90d),
+      'Выручка за 90 дн. (сум)': fmtNum(p.revenue90d),
+      'Заморожено (сум)': fmtNum(p.frozenValue),
+      'Цена закупки': p.purchasePrice ?? '',
+      'Цена продажи': p.salePrice ?? '',
+      'Всего сделок': p.lifetimeDeals,
+      'Всего продано': fmtNum(p.lifetimeQty),
+      'Выручка всего (сум)': fmtNum(p.lifetimeRevenue),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(sheet, {
+      header: [
+        'Товар', 'Артикул', 'Категория', 'Страна', 'Ед. изм.',
+        'Остаток', 'Мин. остаток', 'Проблемы', 'Мёртвый', 'Активный',
+        'Без продаж (дн.)', 'На нуле (дн.)', 'Последняя продажа',
+        'Продано за 90 дн.', 'Выручка за 90 дн. (сум)', 'Заморожено (сум)',
+        'Цена закупки', 'Цена продажи',
+        'Всего сделок', 'Всего продано', 'Выручка всего (сум)',
+      ],
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Мёртвые товары');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `dead_products_${today}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
   }),
 );
 

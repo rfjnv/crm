@@ -18,7 +18,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -224,6 +224,16 @@ export default function PaymentOverduePage() {
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseParams(searchParams), [searchParams]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      await analyticsApi.exportPaymentOverdue({ dueSoonDays: listState.dueSoonDays });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [listState.dueSoonDays]);
 
   const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchState = useCallback(
@@ -476,6 +486,14 @@ export default function PaymentOverduePage() {
             ))}
             <Button size="small" icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>
               Обновить
+            </Button>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              loading={isExporting}
+              onClick={() => void handleExport()}
+            >
+              Excel
             </Button>
           </Space>
 

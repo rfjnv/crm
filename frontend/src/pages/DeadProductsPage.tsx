@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import {
   BarChartOutlined,
+  DownloadOutlined,
   ReloadOutlined,
   ShoppingOutlined,
   WarningOutlined,
@@ -285,6 +286,19 @@ export default function DeadProductsPage() {
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseDeadProductsParams(searchParams), [searchParams]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      await analyticsApi.exportDeadProducts({
+        noSalesDays: listState.noSalesDays,
+        zeroStockDays: listState.zeroStockDays,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [listState.noSalesDays, listState.zeroStockDays]);
 
   const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchListState = useCallback(
@@ -526,6 +540,14 @@ export default function DeadProductsPage() {
                 onClick={() => void refetch()}
               >
                 Обновить
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                loading={isExporting}
+                onClick={() => void handleExport()}
+              >
+                Excel
               </Button>
             </Space>
           </div>
