@@ -488,7 +488,7 @@ const STATUS_LABEL_EXPORT: Record<string, string> = {
 const CREDIT_STATUS_LABEL: Record<string, string> = {
   NORMAL: 'Нормальный',
   SATISFACTORY: 'Удовлетворительный',
-  NEGATIVE: 'Негативный',
+  NEGATIVE: 'Неактивный',
 };
 
 function fmtDate(iso: string | null | undefined): string {

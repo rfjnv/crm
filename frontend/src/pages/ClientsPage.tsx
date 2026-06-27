@@ -373,7 +373,7 @@ export default function ClientsPage() {
                   options={[
                     { value: 'NORMAL', label: 'Активный' },
                     { value: 'SATISFACTORY', label: 'Нейтральный' },
-                    { value: 'NEGATIVE', label: 'Негативный' },
+                    { value: 'NEGATIVE', label: 'Неактивный' },
                   ]}
                 />
               )}
@@ -599,7 +599,7 @@ export default function ClientsPage() {
                         options={[
                           { value: 'NORMAL', label: 'Активный' },
                           { value: 'SATISFACTORY', label: 'Нейтральный' },
-                          { value: 'NEGATIVE', label: 'Негативный' },
+                          { value: 'NEGATIVE', label: 'Неактивный' },
                         ]}
                       />
                     )}

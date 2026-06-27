@@ -1105,7 +1105,7 @@ export default function ClientDetailPage() {
               options={[
                 { value: 'NORMAL', label: 'Активный' },
                 { value: 'SATISFACTORY', label: 'Нейтральный' },
-                { value: 'NEGATIVE', label: 'Негативный' },
+                { value: 'NEGATIVE', label: 'Неактивный' },
               ]}
             />
           )}
@@ -1136,7 +1136,7 @@ export default function ClientDetailPage() {
                     <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
                     <Descriptions.Item label="Статус клиента">
                       {client.creditStatus === 'NEGATIVE'
-                        ? 'Негативный — нельзя в долг'
+                        ? 'Неактивный — нельзя в долг'
                         : client.creditStatus === 'SATISFACTORY'
                           ? 'Нейтральный — ограниченный долг'
                           : 'Активный'}

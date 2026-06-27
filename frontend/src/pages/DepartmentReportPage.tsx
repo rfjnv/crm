@@ -84,7 +84,7 @@ function PaymentStatusTag({ status }: { status: string }) {
 }
 
 function CreditStatusTag({ status }: { status: string }) {
-  if (status === 'NEGATIVE') return <Tag color="red">Негативный</Tag>;
+  if (status === 'NEGATIVE') return <Tag color="red">Неактивный</Tag>;
   if (status === 'SATISFACTORY') return <Tag color="orange">Удовл.</Tag>;
   return <Tag color="green">Нормальный</Tag>;
 }
@@ -515,7 +515,7 @@ export default function DepartmentReportPage() {
             options={[
               { value: 'NORMAL', label: 'Нормальный' },
               { value: 'SATISFACTORY', label: 'Удовлетворительный' },
-              { value: 'NEGATIVE', label: 'Негативный' },
+              { value: 'NEGATIVE', label: 'Неактивный' },
             ]}
           />
           <Select

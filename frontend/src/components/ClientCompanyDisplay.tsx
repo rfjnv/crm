@@ -24,9 +24,9 @@ type Props = {
 
 const STATUS_META = {
   NEGATIVE: {
-    label: 'Негативный',
+    label: 'Неактивный',
     color: 'red',
-    title: 'Негативный: нельзя в долг',
+    title: 'Неактивный: нельзя в долг',
   },
   SATISFACTORY: {
     label: 'Нейтральный',
