@@ -97,7 +97,11 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.cashNote?.trim()) return false;
   if (d.clickTransactionId?.trim()) return false;
   if (d.transferInn?.trim()) return false;
-  if (d.transferDocuments && d.transferDocuments.length > 0) return false;
+  // only treat documents as "filled" if they differ from the default ['Договор']
+  if (d.transferDocuments && (
+    d.transferDocuments.length !== DEFAULT_TRANSFER_DOCUMENTS.length ||
+    d.transferDocuments.some((doc) => !DEFAULT_TRANSFER_DOCUMENTS.includes(doc))
+  )) return false;
   if (d.isSessionDeal) return false;
   if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
   return true;
@@ -114,7 +118,10 @@ export default function DealCreatePage() {
   const [title, setTitle] = useState('');
   const [commentText, setCommentText] = useState('');
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ key: makeKey(), requestComment: '' }]);
-  const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
+  const [draftBanner, setDraftBanner] = useState<DraftData | null>(() => {
+    const saved = loadDraft();
+    return saved && !isDraftEmpty(saved) ? saved : null;
+  });
   const [showVat, setShowVat] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'SELF_PICKUP' | 'YANDEX' | 'DELIVERY'>('SELF_PICKUP');
   const [vehicleNumber, setVehicleNumber] = useState('');
@@ -130,17 +137,6 @@ export default function DealCreatePage() {
   const [debtPaymentType, setDebtPaymentType] = useState<'PARTIAL' | 'INSTALLMENT'>('PARTIAL');
   const [dueDate, setDueDate] = useState<Dayjs | null>(null);
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
-
-  // On mount: check for existing draft
-  const initRef = useRef(false);
-  useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
-    const saved = loadDraft();
-    if (saved && !isDraftEmpty(saved)) {
-      setDraftBanner(saved);
-    }
-  }, []);
 
   const restoreDraft = useCallback((draft: DraftData) => {
     setClientId(draft.clientId);
