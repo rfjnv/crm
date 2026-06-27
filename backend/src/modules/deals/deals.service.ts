@@ -46,7 +46,7 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   FINANCE_APPROVED: ['WAITING_WAREHOUSE_MANAGER', 'CANCELED'],
   // New workflow
   WAITING_WAREHOUSE_MANAGER: ['PENDING_ADMIN', 'CANCELED'],
-  PENDING_ADMIN: ['READY_FOR_LOADING', 'REJECTED', 'CANCELED'],
+  PENDING_ADMIN: ['CLOSED', 'READY_FOR_LOADING', 'REJECTED', 'CANCELED'],
   READY_FOR_LOADING: ['LOADING_ASSIGNED', 'CANCELED'],
   LOADING_ASSIGNED: ['CLOSED', 'READY_FOR_DELIVERY', 'CANCELED'],
   READY_FOR_DELIVERY: ['IN_DELIVERY', 'CANCELED'],
@@ -3520,24 +3520,21 @@ export class DealsService {
     void syncDealTelegramGroupMessages(dealId).catch(() => {});
   }
 
-  /** Админ: одобрить → READY_FOR_LOADING */
+  /** Админ: одобрить → CLOSED (временно без шагов отгрузки и доставки) */
   async approveByAdmin(dealId: string, user: AuthUser) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, status: 'PENDING_ADMIN', isArchived: false },
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    validateStatusTransition(deal.status, 'READY_FOR_LOADING', user.role);
+    validateStatusTransition(deal.status, 'CLOSED', user.role);
 
-    await prisma.deal.update({ where: { id: dealId }, data: { status: 'READY_FOR_LOADING' } });
+    const closedAt = resolveClosedAtForNewClose(deal, new Date());
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
 
-    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'READY_FOR_LOADING' } });
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
 
-    const whManagers = await prisma.user.findMany({ where: { role: 'WAREHOUSE_MANAGER', isActive: true }, select: { id: true } });
-    if (whManagers.length > 0) {
-      await prisma.notification.createMany({ data: whManagers.map((wm) => ({ userId: wm.id, title: 'Сделка одобрена', body: `Сделка "${deal.title}" одобрена админом — назначьте сотрудника на отгрузку`, severity: 'WARNING' as const, link: `/deals/${dealId}`, createdByUserId: user.userId })) });
-      pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], { title: 'Сделка одобрена', body: `Сделка "${deal.title}" одобрена — назначьте на отгрузку`, url: `/deals/${dealId}`, severity: 'WARNING' }).catch(() => {});
-    }
+    pushService.sendPushToUser(deal.managerId, { title: 'Сделка закрыта', body: `Сделка "${deal.title}" одобрена и закрыта`, url: `/deals/${dealId}`, severity: 'INFO' }).catch(() => {});
 
     void syncDealTelegramGroupMessages(dealId).catch(() => {});
   }
