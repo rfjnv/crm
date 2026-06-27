@@ -54,8 +54,6 @@ export const dealsApi = {
     transferInn?: string;
     transferDocuments?: string[];
     transferType?: 'ONE_TIME' | 'ANNUAL';
-    /** Только Dilnoza: AUTO | STOCK_CONFIRMATION | WAREHOUSE_MANAGER | FINANCE */
-    createRoute?: 'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE';
     isSessionDeal?: boolean;
     /** Срок оплаты (YYYY-MM-DD) */
     dueDate?: string;

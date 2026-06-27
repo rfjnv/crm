@@ -67,6 +67,7 @@ import {
   ImportOutlined,
   MergeCellsOutlined,
   RobotOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -95,7 +96,6 @@ import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
 import type { UserRole, Permission, Task } from '../types';
-import { DILNOZA_PAYMENT_METHOD_OPTIONS } from '../constants/dilnozaPayments';
 import { BASE_NOTE_STATUSES, normalizeNoteStatusField } from '../constants/noteStatuses';
 import { smartFilterOption } from '../utils/translit';
 import dayjs from 'dayjs';
@@ -104,12 +104,6 @@ const { Header, Sider, Content } = AntLayout;
 
 const SIDER_WIDTH = 220;
 const SIDER_COLLAPSED_WIDTH = 64;
-
-function isDilnozaUser(fullName?: string, login?: string): boolean {
-  const f = (fullName || '').trim().toLowerCase();
-  const l = (login || '').trim().toLowerCase();
-  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
-}
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -202,7 +196,6 @@ export default function Layout() {
   };
 
   const role = user?.role as UserRole | undefined;
-  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const hasPermission = (perm: string) => isAdmin || user?.permissions?.includes(perm as Permission);
   const canViewClients = hasPermission('view_all_clients');
@@ -339,22 +332,6 @@ export default function Layout() {
         label: <Link to="/deals">{role === 'MANAGER' ? 'Заявки' : 'Сделки'}</Link>,
       }]
       : []),
-    ...(isDilnoza && hasRole('MANAGER')
-      ? [
-        { type: 'divider' as const },
-        ...(showGroupLabels ? [{ type: 'group' as const, label: 'СДЕЛКИ (DILNOZA)' }] : []),
-        ...DILNOZA_PAYMENT_METHOD_OPTIONS.map(({ value, label }) => ({
-          key: `/deals?dilnozaPayment=${value}`,
-          icon: <WalletOutlined />,
-          label: <Link to={`/deals?dilnozaPayment=${value}`}>{label}</Link>,
-        })),
-        {
-          key: '/deals?dilnozaPayment=ACCOUNTING',
-          icon: <AuditOutlined />,
-          label: <Link to="/deals?dilnozaPayment=ACCOUNTING">Бухгалтерия</Link>,
-        },
-      ]
-      : []),
     ...((hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       || hasPermission('manage_products'))
       ? [{
@@ -419,6 +396,36 @@ export default function Layout() {
         label: <Link to="/my-vehicle">Моя машина</Link>,
       }]
       : []),
+
+    // ── АЛЬМАНАХ ──
+    { type: 'divider' as const },
+    ...(showGroupLabels ? [{ type: 'group' as const, label: 'АЛЬМАНАХ' }] : []),
+    {
+      key: 'almanac-group',
+      icon: <ReadOutlined />,
+      label: 'Альманах',
+      children: [
+        {
+          key: '/almanac/sales',
+          disabled: true,
+          label: 'Продажи',
+        },
+        {
+          key: '/almanac/clients',
+          disabled: true,
+          label: 'Клиенты',
+        },
+        {
+          key: '/almanac/products',
+          label: <Link to="/almanac/products">Товары</Link>,
+        },
+        {
+          key: '/almanac/debts',
+          disabled: true,
+          label: 'Долги',
+        },
+      ],
+    },
 
     // ── ЗАДАЧИ ──
     { type: 'divider' as const },
@@ -717,10 +724,7 @@ export default function Layout() {
         }]),
   ];
 
-  const selectedPath = '/' + location.pathname.split('/').slice(1, 3).join('/');
-  const selectedDilnoza = location.pathname === '/deals' && location.search.includes('dilnozaPayment=')
-    ? `/deals?dilnozaPayment=${new URLSearchParams(location.search).get('dilnozaPayment')}`
-    : selectedPath;
+  const selectedDilnoza = '/' + location.pathname.split('/').slice(1, 3).join('/');
 
   const menuContent = (
     <>

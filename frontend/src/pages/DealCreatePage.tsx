@@ -20,7 +20,6 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
 import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
-import { needsDilnozaTransferFields } from '../constants/dilnozaPayments';
 import dayjs from 'dayjs';
 import './DealCreatePage.css';
 
@@ -71,7 +70,6 @@ interface DraftData {
   transferInn?: string;
   transferDocuments?: string[];
   transferType?: 'ONE_TIME' | 'ANNUAL';
-  dilnozaCreateRoute?: 'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE';
   savedAt: number;
 }
 
@@ -100,16 +98,9 @@ function isDraftEmpty(d: DraftData): boolean {
   if (d.clickTransactionId?.trim()) return false;
   if (d.transferInn?.trim()) return false;
   if (d.transferDocuments && d.transferDocuments.length > 0) return false;
-  if (d.dilnozaCreateRoute && d.dilnozaCreateRoute !== 'AUTO') return false;
   if (d.isSessionDeal) return false;
   if (d.items.some((i) => i.productId || i.requestedQty || i.price || i.requestComment)) return false;
   return true;
-}
-
-function isDilnozaUser(fullName?: string, login?: string): boolean {
-  const f = (fullName || '').trim().toLowerCase();
-  const l = (login || '').trim().toLowerCase();
-  return f === 'dilnoza' || f.includes('дилноза') || l === 'dilnoza';
 }
 
 export default function DealCreatePage() {
@@ -134,13 +125,11 @@ export default function DealCreatePage() {
   const [transferInn, setTransferInn] = useState('');
   const [transferDocuments, setTransferDocuments] = useState<string[]>(() => [...DEFAULT_TRANSFER_DOCUMENTS]);
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
-  const [dilnozaCreateRoute, setDilnozaCreateRoute] = useState<'AUTO' | 'STOCK_CONFIRMATION' | 'WAREHOUSE_MANAGER' | 'FINANCE'>('AUTO');
   const [isSessionDeal, setIsSessionDeal] = useState(false);
   const [isDebt, setIsDebt] = useState(false);
   const [debtPaymentType, setDebtPaymentType] = useState<'PARTIAL' | 'INSTALLMENT'>('PARTIAL');
   const [dueDate, setDueDate] = useState<Dayjs | null>(null);
   const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
-  const isDilnoza = isDilnozaUser(user?.fullName, user?.login);
 
   // On mount: check for existing draft
   const initRef = useRef(false);
@@ -166,7 +155,6 @@ export default function DealCreatePage() {
     setTransferInn(draft.transferInn ?? '');
     setTransferDocuments(draft.transferDocuments?.length ? [...draft.transferDocuments] : [...DEFAULT_TRANSFER_DOCUMENTS]);
     setTransferType(draft.transferType ?? 'ONE_TIME');
-    setDilnozaCreateRoute(draft.dilnozaCreateRoute ?? 'AUTO');
     setIsSessionDeal(!!draft.isSessionDeal);
     setDraftItems(
       draft.items.length > 0
@@ -198,7 +186,6 @@ export default function DealCreatePage() {
       transferInn,
       transferDocuments,
       transferType,
-      dilnozaCreateRoute: isDilnoza ? dilnozaCreateRoute : undefined,
       isSessionDeal: isSessionDeal || undefined,
       savedAt: Date.now(),
     };
@@ -207,7 +194,7 @@ export default function DealCreatePage() {
     } else {
       saveDraft(data);
     }
-  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, dilnozaCreateRoute, isDilnoza, isSessionDeal]);
+  }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, isSessionDeal]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
@@ -248,20 +235,11 @@ export default function DealCreatePage() {
   }, [draftItems]);
 
   const previewStatus: DealStatus = useMemo(() => {
-    if (isDilnoza && dilnozaCreateRoute !== 'AUTO') {
-      if (dilnozaCreateRoute === 'STOCK_CONFIRMATION') return 'WAITING_STOCK_CONFIRMATION';
-      if (dilnozaCreateRoute === 'WAREHOUSE_MANAGER') return 'WAITING_WAREHOUSE_MANAGER';
-      if (dilnozaCreateRoute === 'FINANCE') return 'WAITING_FINANCE';
-    }
     const validItems = draftItems.filter((i) => i.productId);
     if (validItems.length === 0) return 'WAITING_STOCK_CONFIRMATION';
     const allHaveQty = validItems.every((i) => i.requestedQty && i.requestedQty > 0);
     if (!allHaveQty) return 'WAITING_STOCK_CONFIRMATION';
-    // Non-Dilnoza auto-route:
-    // - simple methods → always to zav.sklada
-    // - TRANSFER + INN filled → to zav.sklada
-    // - TRANSFER without INN → IN_PROGRESS (INN needed)
-    if (!isDilnoza && paymentMethod) {
+    if (paymentMethod) {
       if (paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT' && paymentMethod !== 'DEBT') {
         return 'WAITING_WAREHOUSE_MANAGER';
       }
@@ -270,7 +248,7 @@ export default function DealCreatePage() {
       }
     }
     return 'IN_PROGRESS';
-  }, [draftItems, isDilnoza, dilnozaCreateRoute, paymentMethod, transferInn]);
+  }, [draftItems, paymentMethod, transferInn]);
 
   function addItemRow() {
     setDraftItems((prev) => [...prev, { key: makeKey(), requestComment: '' }]);
@@ -308,27 +286,10 @@ export default function DealCreatePage() {
       }
     }
 
-    if (isDilnoza && needsDilnozaTransferFields(paymentMethod)) {
-      if (!transferInn.trim()) {
-        message.error('Укажите ИНН компании для перечисления');
-        return;
-      }
+    if (paymentMethod === 'TRANSFER' && transferInn.trim()) {
       if (transferDocuments.length === 0) {
-        message.error('Выберите минимум один документ');
+        message.error('Выберите минимум один документ для перечисления');
         return;
-      }
-    }
-
-    if (
-      isDilnoza
-      && (dilnozaCreateRoute === 'WAREHOUSE_MANAGER' || dilnozaCreateRoute === 'FINANCE')
-    ) {
-      for (const item of validItems) {
-        if (!item.requestedQty || item.requestedQty <= 0 || !item.price || item.price <= 0) {
-          const p = productMap.get(item.productId!);
-          message.error(`Для выбранного маршрута укажите количество и цену: «${p?.name || 'товар'}»`);
-          return;
-        }
       }
     }
 
@@ -351,20 +312,10 @@ export default function DealCreatePage() {
         requestComment: i.requestComment || undefined,
       })),
       paymentMethod,
-      ...(isDilnoza
-        ? {
-            createRoute: dilnozaCreateRoute,
-            ...(needsDilnozaTransferFields(paymentMethod)
-              ? {
-                  transferInn: transferInn.trim(),
-                  transferDocuments,
-                  transferType,
-                }
-              : { paymentNote: paymentNote.trim() || undefined }),
-          }
-        : (paymentMethod === 'TRANSFER' && transferInn.trim())
-          ? { transferInn: transferInn.trim() }
-          : {}),
+      ...(paymentNote.trim() ? { paymentNote: paymentNote.trim() } : {}),
+      ...(paymentMethod === 'TRANSFER' && transferInn.trim()
+        ? { transferInn: transferInn.trim(), transferDocuments, transferType }
+        : {}),
     });
   }
 
@@ -668,54 +619,27 @@ export default function DealCreatePage() {
               <Radio.Button value="INSTALLMENT">Рассрочка (безнал)</Radio.Button>
               <Radio.Button value="DEBT">Долг</Radio.Button>
             </Radio.Group>
-            {!isDilnoza && (
-              <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
-                Нал/безнал (кроме перечисления и долга) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — сразу к бухгалтеру. Без ИНН — сначала «В работе». «Долг» включает режим «В долг» и остаётся в работе до уточнения способа оплаты.
-              </Typography.Text>
-            )}
-            {!isDilnoza && paymentMethod === 'TRANSFER' && (
-              <div style={{ marginTop: 10 }}>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                  ИНН компании <Typography.Text type="secondary" style={{ fontSize: 12 }}>(необязательно — можно заполнить позже)</Typography.Text>
-                </Typography.Text>
-                <Input
-                  placeholder="Введите ИНН клиента"
-                  value={transferInn}
-                  onChange={(e) => setTransferInn(e.target.value)}
-                  maxLength={50}
-                  allowClear
-                />
-              </div>
-            )}
-            {isDilnoza && !needsDilnozaTransferFields(paymentMethod) && (
-              <div style={{ marginTop: 12 }}>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                  Комментарий / номер операции (необязательно)
-                </Typography.Text>
-                <Input.TextArea
-                  rows={2}
-                  placeholder="Например: ID транзакции, касса, уточнение по оплате…"
-                  value={paymentNote}
-                  onChange={(e) => setPaymentNote(e.target.value)}
-                />
-              </div>
-            )}
-            {isDilnoza && needsDilnozaTransferFields(paymentMethod) && (
-              <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+              Нал/безнал (кроме перечисления и долга) — сделка сразу перейдёт к зав. склада. Перечисление с ИНН — сразу к бухгалтеру. Без ИНН — сначала «В работе». «Долг» включает режим «В долг» и остаётся в работе до уточнения способа оплаты.
+            </Typography.Text>
+            {paymentMethod === 'TRANSFER' && (
+              <div style={{ marginTop: 10, display: 'grid', gap: 12 }}>
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    ИНН компании *
+                    ИНН компании{' '}
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>(необязательно — можно заполнить позже)</Typography.Text>
                   </Typography.Text>
                   <Input
-                    placeholder="ИНН клиента"
+                    placeholder="Введите ИНН клиента"
                     value={transferInn}
                     onChange={(e) => setTransferInn(e.target.value)}
                     maxLength={50}
+                    allowClear
                   />
                 </div>
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    Документы *
+                    Документы{transferInn.trim() ? <span style={{ color: 'red' }}> *</span> : <Typography.Text type="secondary" style={{ fontSize: 12 }}> (если есть ИНН)</Typography.Text>}
                   </Typography.Text>
                   <Checkbox.Group
                     value={transferDocuments}
@@ -731,31 +655,29 @@ export default function DealCreatePage() {
                 </div>
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                    Тип документа
+                    Тип договора{transferInn.trim() ? <span style={{ color: 'red' }}> *</span> : <Typography.Text type="secondary" style={{ fontSize: 12 }}> (если есть ИНН)</Typography.Text>}
                   </Typography.Text>
-                  <Radio.Group value={transferType} onChange={(e) => setTransferType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
+                  <Radio.Group
+                    value={transferType}
+                    onChange={(e) => setTransferType(e.target.value)}
+                    optionType="button"
+                    buttonStyle="solid"
+                  >
                     <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
                     <Radio.Button value="ANNUAL">Годовой</Radio.Button>
                   </Radio.Group>
                 </div>
-              </div>
-            )}
-            {isDilnoza && (
-              <div style={{ marginTop: 16 }}>
-                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                  Куда отправить сделку при сохранении
-                </Typography.Text>
-                <Radio.Group
-                  value={dilnozaCreateRoute}
-                  onChange={(e) => setDilnozaCreateRoute(e.target.value)}
-                  style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-                  className={isMobile ? 'deal-create-route-group' : undefined}
-                >
-                  <Radio value="AUTO">Авто (все позиции с кол-вом и ценой → к зав. склада, иначе → склад)</Radio>
-                  <Radio value="STOCK_CONFIRMATION">Сразу на подтверждение склада</Radio>
-                  <Radio value="WAREHOUSE_MANAGER">Сразу к зав. склада (нужны количество и цена по всем позициям)</Radio>
-                  <Radio value="FINANCE">Сразу к бухгалтеру (нужны количество и цена по всем позициям)</Radio>
-                </Radio.Group>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+                    Комментарий / номер операции (необязательно)
+                  </Typography.Text>
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="Например: номер платёжного поручения, уточнение…"
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value)}
+                  />
+                </div>
               </div>
             )}
           </div>
