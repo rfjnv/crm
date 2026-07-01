@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Table, Typography, Input, Tag, Space, Select, Button, DatePicker, Segmented } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -42,11 +42,17 @@ type PeriodKey = 'all' | 'today' | 'yesterday' | 'custom';
 
 export default function ClosedDealsPage() {
   const isMobile = useIsMobile();
-  const [search, setSearch] = useState('');
-  const [period, setPeriod] = useState<PeriodKey>('all');
-  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
-  const [managerId, setManagerId] = useState<string | undefined>(undefined);
+  const [params, setParams] = useSearchParams();
+
+  const period = (params.get('period') as PeriodKey) || 'all';
+  const customFrom = params.get('customFrom');
+  const customTo = params.get('customTo');
+  const paymentFilter = (params.get('payment') as PaymentStatus | 'all') || 'all';
+  const managerId = params.get('manager') || undefined;
+  const search = params.get('q') || '';
+
+  const customRange: [Dayjs, Dayjs] | null =
+    customFrom && customTo ? [dayjs(customFrom), dayjs(customTo)] : null;
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
@@ -124,13 +130,7 @@ export default function ClosedDealsPage() {
     },
   ];
 
-  const resetFilters = () => {
-    setPeriod('all');
-    setCustomRange(null);
-    setPaymentFilter('all');
-    setManagerId(undefined);
-    setSearch('');
-  };
+  const resetFilters = () => setParams(new URLSearchParams());
 
   return (
     <div>
@@ -150,8 +150,16 @@ export default function ClosedDealsPage() {
             <Segmented<PeriodKey>
               value={period}
               onChange={(v) => {
-                setPeriod(v);
-                if (v !== 'custom') setCustomRange(null);
+                setParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (v === 'all') next.delete('period');
+                  else next.set('period', v);
+                  if (v !== 'custom') {
+                    next.delete('customFrom');
+                    next.delete('customTo');
+                  }
+                  return next;
+                });
               }}
               options={[
                 { label: 'Все', value: 'all' },
@@ -163,7 +171,19 @@ export default function ClosedDealsPage() {
             {period === 'custom' && (
               <DatePicker.RangePicker
                 value={customRange}
-                onChange={(r) => setCustomRange(r as [Dayjs, Dayjs] | null)}
+                onChange={(r) => {
+                  setParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    if (r?.[0] && r[1]) {
+                      next.set('customFrom', r[0].format('YYYY-MM-DD'));
+                      next.set('customTo', r[1].format('YYYY-MM-DD'));
+                    } else {
+                      next.delete('customFrom');
+                      next.delete('customTo');
+                    }
+                    return next;
+                  });
+                }}
                 format="DD.MM.YYYY"
                 allowClear
               />
@@ -174,7 +194,14 @@ export default function ClosedDealsPage() {
         <Space wrap style={{ width: '100%' }}>
           <Select<PaymentStatus | 'all'>
             value={paymentFilter}
-            onChange={setPaymentFilter}
+            onChange={(v) => {
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (v === 'all') next.delete('payment');
+                else next.set('payment', v);
+                return next;
+              });
+            }}
             style={{ width: isMobile ? '100%' : 200 }}
             options={[
               { value: 'all', label: 'Оплата: все' },
@@ -188,7 +215,14 @@ export default function ClosedDealsPage() {
             placeholder="Менеджер"
             style={{ width: isMobile ? '100%' : 220 }}
             value={managerId}
-            onChange={setManagerId}
+            onChange={(v) => {
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (!v) next.delete('manager');
+                else next.set('manager', v);
+                return next;
+              });
+            }}
             options={managers}
           />
           <Input.Search
@@ -196,7 +230,14 @@ export default function ClosedDealsPage() {
             style={{ width: isMobile ? '100%' : 280 }}
             allowClear
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (!e.target.value) next.delete('q');
+                else next.set('q', e.target.value);
+                return next;
+              });
+            }}
           />
           <Button onClick={resetFilters}>Сбросить фильтры</Button>
         </Space>
