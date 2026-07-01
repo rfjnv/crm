@@ -660,6 +660,11 @@ export default function Layout() {
             icon: <AuditOutlined />,
             label: <Link to="/worker-audit">Аудит сотрудников</Link>,
           },
+          {
+            key: '/deals/audit-check',
+            icon: <HistoryOutlined />,
+            label: <Link to="/deals/audit-check">Аудит-проверка сделок</Link>,
+          },
         ]
       : []),
     ...(isAdmin && hasPermission('manage_users')
