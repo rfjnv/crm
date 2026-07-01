@@ -265,7 +265,7 @@ function OverrideModeView({ dealId, onBack }: { dealId: string; onBack: () => vo
     queryFn: () => dealsApi.getDealPayments(dealId),
   });
   const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
   const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
 
   return (
