@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DatePicker, Card, Typography, Tag, Spin, Empty, Button, Space,
-  Descriptions, Table, Badge, Divider, Checkbox, Progress,
+  Descriptions, Table, Badge, Divider, Checkbox, Progress, Popconfirm,
 } from 'antd';
 import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined, CheckCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -52,6 +52,23 @@ function formatQty(v: number | string | null | undefined): string {
   return Number.isInteger(n) ? n.toString() : parseFloat(n.toFixed(3)).toString();
 }
 
+/** App's top nav bar (.ant-layout-header) is itself sticky at top:0 with a higher
+ * z-index. A page-level sticky bar also pinned at top:0 would render underneath it
+ * (hidden), so we measure the real header height and stick right below it instead. */
+function useStickyTopOffset() {
+  const [top, setTop] = useState(56);
+  useEffect(() => {
+    const header = document.querySelector('.ant-layout-header');
+    if (!header) return;
+    const update = () => setTop(header.getBoundingClientRect().height);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+  return top;
+}
+
 // ─── Deal card ────────────────────────────────────────────────────────────────
 
 function DealAuditCard({ deal, onOverride, checked, onToggle }: {
@@ -96,17 +113,24 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
   return (
     <Card
       size="small"
-      style={checked ? { borderColor: '#52c41a', background: '#f6ffed', opacity: 0.85 } : undefined}
+      style={checked ? { borderColor: '#52c41a', background: '#f6ffed' } : undefined}
       title={
-        <Space wrap size={8} align="center">
+        <Space
+          wrap
+          size={8}
+          align="center"
+          style={{ cursor: 'pointer', padding: '8px 0', margin: '-8px 0' }}
+          onClick={() => onToggle(deal.id)}
+        >
           <Checkbox
             checked={checked}
             onChange={() => onToggle(deal.id)}
             onClick={(e) => e.stopPropagation()}
+            aria-label={checked ? 'Отметить сделку как непроверенную' : 'Отметить сделку как проверенную'}
           />
           <Typography.Text
             strong
-            style={{ textDecoration: checked ? 'line-through' : undefined, opacity: checked ? 0.6 : 1 }}
+            style={{ textDecoration: checked ? 'line-through' : undefined }}
           >
             {deal.title}
           </Typography.Text>
@@ -319,6 +343,7 @@ export default function AuditCheckPage() {
 
   const [overrideDealId, setOverrideDealId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const stickyTop = useStickyTopOffset();
 
   const ymd = date.format('YYYY-MM-DD');
   const { closedFrom, closedTo } = isoRangeForTashkentYmd(ymd);
@@ -361,89 +386,102 @@ export default function AuditCheckPage() {
   const allDone = deals.length > 0 && checkedCount === deals.length;
 
   return (
-    <div>
-      {/* Sticky header */}
-      <div style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 20,
-        background: 'var(--ant-color-bg-layout, #f5f5f5)',
-        paddingBottom: 12,
-        marginBottom: 10,
-        borderBottom: '2px solid var(--ant-color-border-secondary, #e8e8e8)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-          <BackButton fallback="/dashboard" />
-          <Typography.Title level={4} style={{ margin: 0 }}>Аудит-проверка сделок</Typography.Title>
-        </div>
+    <div style={{ paddingBottom: 88 }}>
+      {/* Non-sticky header: title, date, totals — scrolls away with content */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={4} style={{ margin: 0 }}>Аудит-проверка сделок</Typography.Title>
+      </div>
 
-        <Space wrap align="center" size={8} style={{ marginBottom: 10 }}>
-          <DatePicker
-            value={date}
-            onChange={(d) => {
-              setParams((prev) => {
-                const next = new URLSearchParams(prev);
-                if (d) next.set('date', d.format('YYYY-MM-DD'));
-                else next.delete('date');
-                return next;
-              });
-            }}
-            format="DD.MM.YYYY"
-            allowClear={false}
-          />
-          {!isLoading && deals.length > 0 && (
-            <Space size={6} wrap>
-              <Badge count={deals.length} style={{ backgroundColor: '#1677ff' }} />
-              <Typography.Text type="secondary">сделок</Typography.Text>
-              <Typography.Text type="secondary">·</Typography.Text>
-              <Typography.Text>Сумма: <strong>{formatUZS(totalAmount)}</strong></Typography.Text>
-              {totalPaid < totalAmount && (
-                <>
-                  <Typography.Text type="secondary">·</Typography.Text>
-                  <Typography.Text>Оплачено: <strong>{formatUZS(totalPaid)}</strong></Typography.Text>
-                  <Typography.Text type="secondary">·</Typography.Text>
-                  <Typography.Text type="danger">Долг: <strong>{formatUZS(totalAmount - totalPaid)}</strong></Typography.Text>
-                </>
-              )}
-            </Space>
-          )}
-        </Space>
-
+      <Space wrap align="center" size={8} style={{ marginBottom: 10 }}>
+        <DatePicker
+          value={date}
+          onChange={(d) => {
+            setParams((prev) => {
+              const next = new URLSearchParams(prev);
+              if (d) next.set('date', d.format('YYYY-MM-DD'));
+              else next.delete('date');
+              return next;
+            });
+          }}
+          format="DD.MM.YYYY"
+          allowClear={false}
+        />
         {!isLoading && deals.length > 0 && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Typography.Text style={{ fontSize: 13 }}>
-                Проверено:{' '}
-                <strong style={{ color: allDone ? '#52c41a' : '#1677ff', fontSize: 15 }}>
-                  {checkedCount}
-                </strong>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}> / {deals.length}</Typography.Text>
-                {allDone && <span style={{ marginLeft: 8, color: '#52c41a' }}>✓ Всё проверено!</span>}
-              </Typography.Text>
-              {checkedCount > 0 && (
-                <Button
-                  size="small"
-                  type="link"
-                  danger
-                  style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                  onClick={() => {
-                    setCheckedIds(new Set());
-                    try { localStorage.removeItem(`audit-checked-${ymd}`); } catch {}
-                  }}
-                >
-                  Сбросить
-                </Button>
-              )}
-            </div>
+          <Space size={6} wrap>
+            <Badge count={deals.length} style={{ backgroundColor: '#1677ff' }} />
+            <Typography.Text type="secondary">сделок</Typography.Text>
+            <Typography.Text type="secondary">·</Typography.Text>
+            <Typography.Text>Сумма: <strong>{formatUZS(totalAmount)}</strong></Typography.Text>
+            {totalPaid < totalAmount && (
+              <>
+                <Typography.Text type="secondary">·</Typography.Text>
+                <Typography.Text>Оплачено: <strong>{formatUZS(totalPaid)}</strong></Typography.Text>
+                <Typography.Text type="secondary">·</Typography.Text>
+                <Typography.Text type="danger">Долг: <strong>{formatUZS(totalAmount - totalPaid)}</strong></Typography.Text>
+              </>
+            )}
+          </Space>
+        )}
+      </Space>
+
+      {/* Sticky bar: kept minimal (one line) so it doesn't eat the viewport while scrolling */}
+      {!isLoading && deals.length > 0 && (
+        <div style={{
+          position: 'sticky',
+          top: stickyTop,
+          zIndex: 20,
+          background: 'var(--ant-color-bg-layout, #f5f5f5)',
+          padding: '8px 0',
+          marginBottom: 10,
+          borderBottom: '2px solid var(--ant-color-border-secondary, #e8e8e8)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+              Проверено:{' '}
+              <strong style={{ color: allDone ? '#52c41a' : '#1677ff', fontSize: 15 }}>
+                {checkedCount}
+              </strong>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}> / {deals.length}</Typography.Text>
+            </Typography.Text>
             <Progress
               percent={progressPercent}
               strokeColor={allDone ? '#52c41a' : { '0%': '#1677ff', '100%': '#52c41a' }}
               showInfo
+              size="small"
+              style={{ flex: 1, margin: 0 }}
               format={(p) => <span style={{ fontSize: 12, color: allDone ? '#52c41a' : undefined }}>{p}%</span>}
             />
+            {allDone && (
+              <Typography.Text style={{ color: '#52c41a', fontSize: 13, whiteSpace: 'nowrap' }}>
+                ✓ Готово
+              </Typography.Text>
+            )}
+            {checkedCount > 0 && (
+              <Popconfirm
+                title="Сбросить прогресс проверки?"
+                description={`Отметки о проверке для ${date.format('DD.MM.YYYY')} будут удалены.`}
+                okText="Сбросить"
+                okButtonProps={{ danger: true }}
+                cancelText="Отмена"
+                onConfirm={() => {
+                  setCheckedIds(new Set());
+                  try { localStorage.removeItem(`audit-checked-${ymd}`); } catch {}
+                }}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  danger
+                  style={{ padding: '8px 4px', height: 'auto', fontSize: 12, whiteSpace: 'nowrap' }}
+                >
+                  Сбросить
+                </Button>
+              </Popconfirm>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {isLoading && <Spin style={{ display: 'block', margin: '60px auto' }} />}
 
