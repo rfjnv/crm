@@ -358,75 +358,92 @@ export default function AuditCheckPage() {
   const checkedCount = deals.filter((d) => checkedIds.has(d.id)).length;
   const progressPercent = deals.length > 0 ? Math.round((checkedCount / deals.length) * 100) : 0;
 
+  const allDone = deals.length > 0 && checkedCount === deals.length;
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <BackButton fallback="/dashboard" />
-        <Typography.Title level={4} style={{ margin: 0 }}>Аудит-проверка сделок</Typography.Title>
-      </div>
-
-      <Space wrap style={{ marginBottom: 8 }} align="center">
-        <DatePicker
-          value={date}
-          onChange={(d) => {
-            setParams((prev) => {
-              const next = new URLSearchParams(prev);
-              if (d) next.set('date', d.format('YYYY-MM-DD'));
-              else next.delete('date');
-              return next;
-            });
-          }}
-          format="DD.MM.YYYY"
-          allowClear={false}
-        />
-        {!isLoading && deals.length > 0 && (
-          <Space size={6} wrap>
-            <Badge count={deals.length} style={{ backgroundColor: '#1677ff' }} />
-            <Typography.Text type="secondary">сделок</Typography.Text>
-            <Typography.Text type="secondary">·</Typography.Text>
-            <Typography.Text>Сумма: <strong>{formatUZS(totalAmount)}</strong></Typography.Text>
-            {totalPaid < totalAmount && (
-              <>
-                <Typography.Text type="secondary">·</Typography.Text>
-                <Typography.Text>Оплачено: <strong>{formatUZS(totalPaid)}</strong></Typography.Text>
-                <Typography.Text type="secondary">·</Typography.Text>
-                <Typography.Text type="danger">Долг: <strong>{formatUZS(totalAmount - totalPaid)}</strong></Typography.Text>
-              </>
-            )}
-          </Space>
-        )}
-      </Space>
-
-      {!isLoading && deals.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-              Проверено: <strong style={{ color: checkedCount === deals.length ? '#52c41a' : undefined }}>{checkedCount} / {deals.length}</strong>
-            </Typography.Text>
-            {checkedCount > 0 && (
-              <Button
-                size="small"
-                type="link"
-                danger
-                style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                onClick={() => {
-                  setCheckedIds(new Set());
-                  try { localStorage.removeItem(`audit-checked-${ymd}`); } catch {}
-                }}
-              >
-                Сбросить
-              </Button>
-            )}
-          </div>
-          <Progress
-            percent={progressPercent}
-            size="small"
-            strokeColor={checkedCount === deals.length ? '#52c41a' : '#1677ff'}
-            showInfo={false}
-            style={{ margin: 0 }}
-          />
+      {/* Sticky header */}
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 20,
+        background: 'var(--ant-color-bg-layout, #f5f5f5)',
+        paddingBottom: 12,
+        marginBottom: 10,
+        borderBottom: '2px solid var(--ant-color-border-secondary, #e8e8e8)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <BackButton fallback="/dashboard" />
+          <Typography.Title level={4} style={{ margin: 0 }}>Аудит-проверка сделок</Typography.Title>
         </div>
-      )}
+
+        <Space wrap align="center" size={8} style={{ marginBottom: 10 }}>
+          <DatePicker
+            value={date}
+            onChange={(d) => {
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (d) next.set('date', d.format('YYYY-MM-DD'));
+                else next.delete('date');
+                return next;
+              });
+            }}
+            format="DD.MM.YYYY"
+            allowClear={false}
+          />
+          {!isLoading && deals.length > 0 && (
+            <Space size={6} wrap>
+              <Badge count={deals.length} style={{ backgroundColor: '#1677ff' }} />
+              <Typography.Text type="secondary">сделок</Typography.Text>
+              <Typography.Text type="secondary">·</Typography.Text>
+              <Typography.Text>Сумма: <strong>{formatUZS(totalAmount)}</strong></Typography.Text>
+              {totalPaid < totalAmount && (
+                <>
+                  <Typography.Text type="secondary">·</Typography.Text>
+                  <Typography.Text>Оплачено: <strong>{formatUZS(totalPaid)}</strong></Typography.Text>
+                  <Typography.Text type="secondary">·</Typography.Text>
+                  <Typography.Text type="danger">Долг: <strong>{formatUZS(totalAmount - totalPaid)}</strong></Typography.Text>
+                </>
+              )}
+            </Space>
+          )}
+        </Space>
+
+        {!isLoading && deals.length > 0 && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Typography.Text style={{ fontSize: 13 }}>
+                Проверено:{' '}
+                <strong style={{ color: allDone ? '#52c41a' : '#1677ff', fontSize: 15 }}>
+                  {checkedCount}
+                </strong>
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}> / {deals.length}</Typography.Text>
+                {allDone && <span style={{ marginLeft: 8, color: '#52c41a' }}>✓ Всё проверено!</span>}
+              </Typography.Text>
+              {checkedCount > 0 && (
+                <Button
+                  size="small"
+                  type="link"
+                  danger
+                  style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                  onClick={() => {
+                    setCheckedIds(new Set());
+                    try { localStorage.removeItem(`audit-checked-${ymd}`); } catch {}
+                  }}
+                >
+                  Сбросить
+                </Button>
+              )}
+            </div>
+            <Progress
+              percent={progressPercent}
+              strokeColor={allDone ? '#52c41a' : { '0%': '#1677ff', '100%': '#52c41a' }}
+              showInfo
+              format={(p) => <span style={{ fontSize: 12, color: allDone ? '#52c41a' : undefined }}>{p}%</span>}
+            />
+          </div>
+        )}
+      </div>
 
       {isLoading && <Spin style={{ display: 'block', margin: '60px auto' }} />}
 
