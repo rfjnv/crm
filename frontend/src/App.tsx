@@ -78,6 +78,12 @@ import ExchangeRatesHistoryPage from './pages/ExchangeRatesHistoryPage';
 import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import VedMapPage from './pages/VedMapPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
+import AuditCheckPage from './pages/AuditCheckPage';
+import AlmanacSalesPage from './pages/AlmanacSalesPage';
+import AlmanacClientsPage from './pages/AlmanacClientsPage';
+import AlmanacProductsPage from './pages/AlmanacProductsPage';
+import AlmanacDebtsPage from './pages/AlmanacDebtsPage';
+import AlmanacProductDetailPage from './pages/AlmanacProductDetailPage';
 import DepartmentReportPage from './pages/DepartmentReportPage';
 import ChangelogPage from './pages/ChangelogPage';
 import { useThemeStore } from './store/themeStore';
@@ -181,6 +187,7 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/worker-audit" element={<WorkerAuditPage />} />
+                  <Route path="/deals/audit-check" element={<AuditCheckPage />} />
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
@@ -198,6 +205,11 @@ export default function App() {
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
                   <Route path="/finance/balance" element={<CompanyBalancePage />} />
                 </Route>
+                <Route path="/almanac/sales" element={<AlmanacSalesPage />} />
+                <Route path="/almanac/clients" element={<AlmanacClientsPage />} />
+                <Route path="/almanac/products" element={<AlmanacProductsPage />} />
+                <Route path="/almanac/products/:id" element={<AlmanacProductDetailPage />} />
+                <Route path="/almanac/debts" element={<AlmanacDebtsPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
                   <Route path="/notes-board" element={<NotesBoardPage />} />
