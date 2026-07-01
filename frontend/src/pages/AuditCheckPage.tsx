@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DatePicker, Collapse, Typography, Tag, Spin, Empty, Button, Space,
+  DatePicker, Card, Typography, Tag, Spin, Empty, Button, Space,
   Descriptions, Table, Badge, Divider,
 } from 'antd';
 import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined } from '@ant-design/icons';
@@ -55,12 +55,9 @@ function formatQty(v: number | string | null | undefined): string {
 // ─── Deal card ────────────────────────────────────────────────────────────────
 
 function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
-
   const { data: detail, isLoading } = useQuery({
     queryKey: ['deal', deal.id],
     queryFn: () => dealsApi.getById(deal.id),
-    enabled: expanded,
   });
 
   const d = detail ?? deal;
@@ -91,69 +88,59 @@ function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: stri
     },
   ];
 
-  const cardHeader = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1, minWidth: 0, paddingRight: 8 }}>
-      <Typography.Text
-        strong
-        style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-      >
-        {deal.title}
-      </Typography.Text>
-      <ClientCompanyDisplay client={deal.client} />
-      <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
-      <Tag color={PAYMENT_STATUS_COLORS[deal.paymentStatus]}>
-        {PAYMENT_STATUS_LABELS[deal.paymentStatus]}
-      </Tag>
-      {deal.closedAt && (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {dayjs(deal.closedAt).format('HH:mm')}
-        </Typography.Text>
-      )}
-    </div>
-  );
-
   return (
-    <Collapse
-      onChange={(keys) => setExpanded(Array.isArray(keys) ? keys.length > 0 : !!keys)}
-      items={[{
-        key: deal.id,
-        label: cardHeader,
-        extra: (
-          <Button
-            size="small"
-            icon={<ThunderboltOutlined />}
-            style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
-            onClick={(e) => { e.stopPropagation(); onOverride(deal.id); }}
-          >
-            Override
-          </Button>
-        ),
-        children: (
-          <>
-            {isLoading ? (
-              <Spin size="small" style={{ display: 'block', margin: '20px auto' }} />
-            ) : (
-              <>
-                <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" style={{ marginBottom: 12 }}>
-                  <Descriptions.Item label="Менеджер">{d.manager?.fullName ?? '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Способ оплаты">
-                    {d.paymentMethod
-                      ? <Tag color={d.paymentMethod === 'DEBT' ? 'red' : 'blue'}>{PAYMENT_METHOD_LABELS[d.paymentMethod] ?? d.paymentMethod}</Tag>
-                      : '—'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Тип оплаты">
-                    {d.paymentType === 'FULL' ? 'Полная' : d.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Оплачено">
-                    {formatUZS(d.paidAmount)} / {formatUZS(d.amount)}
-                  </Descriptions.Item>
-                  {debt > 0 && (
-                    <Descriptions.Item label="Долг">
-                      <Typography.Text type="danger" strong>{formatUZS(debt)}</Typography.Text>
-                    </Descriptions.Item>
-                  )}
-                  {d.discount && Number(d.discount) > 0 && (
-                    <Descriptions.Item label="Скидка">{formatUZS(d.discount)}</Descriptions.Item>
+    <Card
+      size="small"
+      title={
+        <Space wrap size={8}>
+          <Typography.Text strong>{deal.title}</Typography.Text>
+          <ClientCompanyDisplay client={deal.client} />
+          <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
+          <Tag color={PAYMENT_STATUS_COLORS[deal.paymentStatus]}>
+            {PAYMENT_STATUS_LABELS[deal.paymentStatus]}
+          </Tag>
+          {deal.closedAt && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {dayjs(deal.closedAt).format('HH:mm')}
+            </Typography.Text>
+          )}
+        </Space>
+      }
+      extra={
+        <Button
+          size="small"
+          icon={<ThunderboltOutlined />}
+          style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
+          onClick={() => onOverride(deal.id)}
+        >
+          Override
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <Spin size="small" style={{ display: 'block', margin: '16px auto' }} />
+      ) : (
+        <>
+          <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" style={{ marginBottom: 12 }}>
+            <Descriptions.Item label="Менеджер">{d.manager?.fullName ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Способ оплаты">
+              {d.paymentMethod
+                ? <Tag color={d.paymentMethod === 'DEBT' ? 'red' : 'blue'}>{PAYMENT_METHOD_LABELS[d.paymentMethod] ?? d.paymentMethod}</Tag>
+                : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Тип оплаты">
+              {d.paymentType === 'FULL' ? 'Полная' : d.paymentType === 'PARTIAL' ? 'Частичная' : 'Рассрочка'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Оплачено">
+              {formatUZS(d.paidAmount)} / {formatUZS(d.amount)}
+            </Descriptions.Item>
+            {debt > 0 && (
+              <Descriptions.Item label="Долг">
+                <Typography.Text type="danger" strong>{formatUZS(debt)}</Typography.Text>
+              </Descriptions.Item>
+            )}
+            {d.discount && Number(d.discount) > 0 && (
+              <Descriptions.Item label="Скидка">{formatUZS(d.discount)}</Descriptions.Item>
                   )}
                   {d.dueDate && (
                     <Descriptions.Item label="Срок оплаты">
@@ -237,17 +224,14 @@ function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: stri
                   </>
                 )}
 
-                <div style={{ marginTop: 14 }}>
-                  <Link to={`/deals/${deal.id}`} target="_blank">
-                    <Button size="small" icon={<ExportOutlined />}>Открыть сделку</Button>
-                  </Link>
-                </div>
-              </>
-            )}
-          </>
-        ),
-      }]}
-    />
+              <div style={{ marginTop: 14 }}>
+                <Link to={`/deals/${deal.id}`} target="_blank">
+                  <Button size="small" icon={<ExportOutlined />}>Открыть сделку</Button>
+                </Link>
+              </div>
+            </>
+          )}
+    </Card>
   );
 }
 
