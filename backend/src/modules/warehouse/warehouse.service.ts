@@ -19,7 +19,40 @@ export class WarehouseService {
     return prisma.product.findMany({
       where,
       orderBy: { name: 'asc' },
+      include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
+  }
+
+  async findProductById(id: string) {
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!product) throw new AppError(404, 'Товар не найден');
+    return product;
+  }
+
+  async addProductPhotos(productId: string, urls: string[]) {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new AppError(404, 'Товар не найден');
+
+    const last = await prisma.productPosterPhoto.findFirst({
+      where: { productId },
+      orderBy: { sortOrder: 'desc' },
+    });
+    let sortOrder = (last?.sortOrder ?? -1) + 1;
+
+    await prisma.productPosterPhoto.createMany({
+      data: urls.map((url) => ({ productId, url, sortOrder: sortOrder++ })),
+    });
+
+    return prisma.productPosterPhoto.findMany({ where: { productId }, orderBy: { sortOrder: 'asc' } });
+  }
+
+  async deleteProductPhoto(productId: string, photoId: string) {
+    const photo = await prisma.productPosterPhoto.findUnique({ where: { id: photoId } });
+    if (!photo || photo.productId !== productId) throw new AppError(404, 'Фото не найдено');
+    await prisma.productPosterPhoto.delete({ where: { id: photoId } });
   }
 
   async createProduct(dto: CreateProductDto, userId: string, companyId?: string) {

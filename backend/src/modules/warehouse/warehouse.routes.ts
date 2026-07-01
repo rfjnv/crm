@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { warehouseController } from './warehouse.controller';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize, requirePermission } from '../../middleware/authorize';
@@ -23,14 +25,60 @@ const upload = multer({
   },
 });
 
+const imageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.resolve('uploads/products');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Допустимы только изображения'));
+  },
+});
+
+const posterStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.resolve('uploads/products/posters');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+
+const posterUpload = multer({
+  storage: posterStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Допустимы только изображения'));
+  },
+});
+
 router.use(authenticate);
 
 // Products
 router.get('/products', asyncHandler(warehouseController.findAllProducts.bind(warehouseController)));
 router.post('/products', requirePermission('manage_products'), validate(createProductDto), asyncHandler(warehouseController.createProduct.bind(warehouseController)));
+router.get('/products/:id', asyncHandler(warehouseController.findProductById.bind(warehouseController)));
 router.patch('/products/:id', requirePermission('manage_products'), validate(updateProductDto), asyncHandler(warehouseController.updateProduct.bind(warehouseController)));
 router.delete('/products/:id', requirePermission('manage_products'), asyncHandler(warehouseController.deleteProduct.bind(warehouseController)));
 router.post('/products/:id/correct-stock', authorize('SUPER_ADMIN'), validate(correctStockDto), asyncHandler(warehouseController.correctStock.bind(warehouseController)));
+router.post('/products/:id/image', imageUpload.single('image'), asyncHandler(warehouseController.uploadProductImage.bind(warehouseController)));
+router.post('/products/:id/photos', requirePermission('manage_products'), posterUpload.array('images', 30), asyncHandler(warehouseController.uploadProductPhotos.bind(warehouseController)));
+router.delete('/products/:id/photos/:photoId', requirePermission('manage_products'), asyncHandler(warehouseController.deleteProductPhoto.bind(warehouseController)));
 router.get('/products/:id/movements', asyncHandler(warehouseController.getProductMovements.bind(warehouseController)));
 router.get('/products/:id/analytics', asyncHandler(warehouseController.getProductAnalytics.bind(warehouseController)));
 

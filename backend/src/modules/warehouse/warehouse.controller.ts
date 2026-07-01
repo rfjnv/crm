@@ -1,11 +1,39 @@
 import { Request, Response } from 'express';
 import { warehouseService } from './warehouse.service';
+import { AppError } from '../../lib/errors';
 
 export class WarehouseController {
   // Products
   async findAllProducts(req: Request, res: Response): Promise<void> {
     const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
     res.json(products);
+  }
+
+  async findProductById(req: Request, res: Response): Promise<void> {
+    const product = await warehouseService.findProductById(req.params.id as string);
+    res.json(product);
+  }
+
+  async uploadProductImage(req: Request, res: Response): Promise<void> {
+    if (!req.file) throw new AppError(400, 'Файл не загружен');
+    const imageUrl = `/uploads/products/${req.file.filename}`;
+    const product = await warehouseService.updateProduct(req.params.id as string, { imageUrl }, req.user!.userId as string);
+    res.json({ imageUrl: product.imageUrl });
+  }
+
+  async uploadProductPhotos(req: Request, res: Response): Promise<void> {
+    const files = (req.files as Express.Multer.File[]) || [];
+    if (!files.length) throw new AppError(400, 'Файлы не загружены');
+    const photos = await warehouseService.addProductPhotos(
+      req.params.id as string,
+      files.map((f) => `/uploads/products/posters/${f.filename}`),
+    );
+    res.status(201).json(photos);
+  }
+
+  async deleteProductPhoto(req: Request, res: Response): Promise<void> {
+    await warehouseService.deleteProductPhoto(req.params.id as string, req.params.photoId as string);
+    res.json({ success: true });
   }
 
   async createProduct(req: Request, res: Response): Promise<void> {

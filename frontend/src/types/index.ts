@@ -529,11 +529,22 @@ export interface Product {
   specifications?: Record<string, unknown> | null;
   description?: string | null;
   imageUrl?: string | null;
+  postTextRu?: string | null;
+  postTextUz?: string | null;
+  posterPhotos?: ProductPosterPhoto[];
   isActive: boolean;
   manufacturedAt?: string | null;
   expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductPosterPhoto {
+  id: string;
+  productId: string;
+  url: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface InventoryMovement {

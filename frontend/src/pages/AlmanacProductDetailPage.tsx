@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +12,8 @@ import {
   theme,
   Space,
   Upload,
+  Segmented,
+  Popconfirm,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -20,12 +22,30 @@ import {
   CheckOutlined,
   CloseOutlined,
   LoadingOutlined,
+  PlusOutlined,
+  DownloadOutlined,
+  DeleteOutlined,
+  CopyOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
 import { productsApi } from '../api/products.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { API_URL } from '../api/client';
+
+async function downloadFile(url: string, filename: string) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -40,6 +60,11 @@ export default function AlmanacProductDetailPage() {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descValue, setDescValue] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [postLang, setPostLang] = useState<'ru' | 'uz'>('ru');
+  const [editingPost, setEditingPost] = useState(false);
+  const [postValue, setPostValue] = useState('');
+  const photosInputRef = useRef<HTMLInputElement>(null);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
@@ -49,13 +74,32 @@ export default function AlmanacProductDetailPage() {
   const product = products.find((p) => p.id === id);
 
   const updateMut = useMutation({
-    mutationFn: (data: { description?: string }) =>
+    mutationFn: (data: { description?: string; postTextRu?: string; postTextUz?: string }) =>
       productsApi.update(id!, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
       message.success('Сохранено');
     },
     onError: () => message.error('Не удалось сохранить'),
+  });
+
+  const uploadPhotosMut = useMutation({
+    mutationFn: (files: File[]) => productsApi.uploadPosterPhotos(id!, files),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Фото добавлены');
+    },
+    onError: () => message.error('Не удалось загрузить фото'),
+    onSettled: () => setUploadingPhotos(false),
+  });
+
+  const deletePhotoMut = useMutation({
+    mutationFn: (photoId: string) => productsApi.deletePosterPhoto(id!, photoId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Фото удалено');
+    },
+    onError: () => message.error('Не удалось удалить фото'),
   });
 
   if (isLoading) {
@@ -263,6 +307,176 @@ export default function AlmanacProductDetailPage() {
               </Paragraph>
             )}
           </div>
+
+          {/* Post text (RU/UZ) */}
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <Text strong>Текст для поста</Text>
+              <Segmented
+                size="small"
+                value={postLang}
+                onChange={(v) => setPostLang(v as 'ru' | 'uz')}
+                options={[
+                  { label: 'RU', value: 'ru' },
+                  { label: 'UZ', value: 'uz' },
+                ]}
+              />
+              {isAdmin && !editingPost && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => {
+                    setPostValue((postLang === 'ru' ? product.postTextRu : product.postTextUz) ?? '');
+                    setEditingPost(true);
+                  }}
+                />
+              )}
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                disabled={!(postLang === 'ru' ? product.postTextRu : product.postTextUz)}
+                onClick={async () => {
+                  const text = (postLang === 'ru' ? product.postTextRu : product.postTextUz) ?? '';
+                  await navigator.clipboard.writeText(text);
+                  message.success('Текст скопирован');
+                }}
+              >
+                Копировать
+              </Button>
+            </div>
+
+            {editingPost ? (
+              <div>
+                <Input.TextArea
+                  value={postValue}
+                  onChange={(e) => setPostValue(e.target.value)}
+                  rows={5}
+                  placeholder={`Введите текст для поста (${postLang.toUpperCase()})...`}
+                  autoFocus
+                />
+                <Space style={{ marginTop: 8 }}>
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<CheckOutlined />}
+                    loading={updateMut.isPending}
+                    onClick={() => {
+                      updateMut.mutate(
+                        postLang === 'ru' ? { postTextRu: postValue } : { postTextUz: postValue },
+                      );
+                      setEditingPost(false);
+                    }}
+                  >
+                    Сохранить
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<CloseOutlined />}
+                    onClick={() => setEditingPost(false)}
+                  >
+                    Отмена
+                  </Button>
+                </Space>
+              </div>
+            ) : (
+              <Paragraph
+                style={{
+                  color: (postLang === 'ru' ? product.postTextRu : product.postTextUz) ? tk.colorText : tk.colorTextQuaternary,
+                  whiteSpace: 'pre-wrap',
+                  margin: 0,
+                }}
+              >
+                {(postLang === 'ru' ? product.postTextRu : product.postTextUz) || 'Текст для поста не добавлен'}
+              </Paragraph>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Poster photos gallery */}
+      <div style={{ marginTop: 32 }}>
+        <Text strong style={{ display: 'block', marginBottom: 12 }}>Постерные фото</Text>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {(product.posterPhotos ?? []).map((photo, idx) => (
+            <div
+              key={photo.id}
+              style={{
+                width: 160,
+                aspectRatio: '4 / 3',
+                borderRadius: tk.borderRadiusLG,
+                overflow: 'hidden',
+                position: 'relative',
+                border: `1px solid ${tk.colorBorderSecondary}`,
+              }}
+            >
+              <img
+                src={photo.url}
+                alt={`${product.name} poster ${idx + 1}`}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <Space size={4} style={{ position: 'absolute', bottom: 6, right: 6 }}>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadFile(photo.url, `${product.sku}-poster-${idx + 1}.jpg`)}
+                />
+                {isAdmin && (
+                  <Popconfirm
+                    title="Удалить фото?"
+                    onConfirm={() => deletePhotoMut.mutate(photo.id)}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} loading={deletePhotoMut.isPending} />
+                  </Popconfirm>
+                )}
+              </Space>
+            </div>
+          ))}
+
+          {isAdmin && (
+            <>
+              <input
+                ref={photosInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  if (!files.length) return;
+                  setUploadingPhotos(true);
+                  uploadPhotosMut.mutate(files);
+                }}
+              />
+              <div
+                onClick={() => !uploadingPhotos && photosInputRef.current?.click()}
+                style={{
+                  width: 160,
+                  aspectRatio: '4 / 3',
+                  borderRadius: tk.borderRadiusLG,
+                  border: `1px dashed ${tk.colorBorder}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: uploadingPhotos ? 'default' : 'pointer',
+                  color: tk.colorTextTertiary,
+                }}
+              >
+                {uploadingPhotos ? <LoadingOutlined style={{ fontSize: 24 }} /> : <PlusOutlined style={{ fontSize: 24 }} />}
+                <Text type="secondary" style={{ marginTop: 6, fontSize: 12 }}>Добавить фото</Text>
+              </div>
+            </>
+          )}
+
+          {!isAdmin && !(product.posterPhotos ?? []).length && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: tk.colorTextQuaternary }}>
+              <PictureOutlined style={{ fontSize: 20 }} />
+              <Text type="secondary">Постерные фото не добавлены</Text>
+            </div>
+          )}
         </div>
       </div>
     </div>

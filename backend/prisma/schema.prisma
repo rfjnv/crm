@@ -638,6 +638,8 @@ model Product {
   specifications  Json?
   description     String?
   imageUrl        String?  @map("image_url")
+  postTextRu      String?  @map("post_text_ru")
+  postTextUz      String?  @map("post_text_uz")
   isActive        Boolean  @default(true) @map("is_active")
   manufacturedAt  DateTime? @map("manufactured_at")
   expiresAt       DateTime? @map("expires_at")
@@ -653,11 +655,25 @@ model Product {
   clientStockPositions ClientStockPosition[]
   clientStockEvents ClientStockEvent[]
   importOrderItems ImportOrderItem[]
+  posterPhotos ProductPosterPhoto[]
 
   @@index([category])
   @@index([countryOfOrigin])
   @@index([supplierId])
   @@map("products")
+}
+
+model ProductPosterPhoto {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  url       String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_poster_photos")
 }
 
 model InventoryMovement {
