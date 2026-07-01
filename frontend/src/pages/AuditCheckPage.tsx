@@ -3,9 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DatePicker, Card, Typography, Tag, Spin, Empty, Button, Space,
-  Descriptions, Table, Badge, Divider, Checkbox, Progress, Popconfirm, theme,
+  Descriptions, Table, Badge, Divider, Checkbox, Progress, Popconfirm, theme, Input,
 } from 'antd';
-import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined, CheckCircleFilled, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { dealsApi } from '../api/deals.api';
@@ -51,6 +51,22 @@ function formatQty(v: number | string | null | undefined): string {
   const n = Number(v);
   if (isNaN(n)) return '—';
   return Number.isInteger(n) ? n.toString() : parseFloat(n.toFixed(3)).toString();
+}
+
+function dealMatchesSearch(deal: Deal, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    deal.title,
+    deal.client?.companyName,
+    deal.client?.contactName,
+    deal.manager?.fullName,
+    deal.vehicleNumber,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
 }
 
 /** App's top nav bar (.ant-layout-header) is itself sticky at top:0 with a higher
@@ -351,6 +367,7 @@ export default function AuditCheckPage() {
 
   const [overrideDealId, setOverrideDealId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const stickyTop = useStickyTopOffset();
 
   const ymd = date.format('YYYY-MM-DD');
@@ -363,6 +380,7 @@ export default function AuditCheckPage() {
     } catch {
       setCheckedIds(new Set());
     }
+    setSearch('');
   }, [ymd]);
 
   const toggleChecked = (id: string) => {
@@ -392,6 +410,8 @@ export default function AuditCheckPage() {
   const progressPercent = deals.length > 0 ? Math.round((checkedCount / deals.length) * 100) : 0;
 
   const allDone = deals.length > 0 && checkedCount === deals.length;
+
+  const filteredDeals = deals.filter((d) => dealMatchesSearch(d, search));
 
   return (
     <div style={{ paddingBottom: 88 }}>
@@ -424,6 +444,16 @@ export default function AuditCheckPage() {
             format="DD.MM.YYYY"
             allowClear={false}
           />
+          {!isLoading && deals.length > 0 && (
+            <Input
+              allowClear
+              prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
+              placeholder="Поиск по клиенту, менеджеру, машине..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: 260 }}
+            />
+          )}
           {!isLoading && deals.length > 0 && (
             <Space size={6} wrap>
               <Badge count={deals.length} style={{ backgroundColor: token.colorPrimary }} />
@@ -495,8 +525,15 @@ export default function AuditCheckPage() {
         />
       )}
 
+      {!isLoading && deals.length > 0 && filteredDeals.length === 0 && (
+        <Empty
+          description={`Ничего не найдено по запросу «${search}»`}
+          style={{ marginTop: 60 }}
+        />
+      )}
+
       <Space direction="vertical" style={{ width: '100%' }} size={6}>
-        {deals.map((deal) => (
+        {filteredDeals.map((deal) => (
           <DealAuditCard
             key={deal.id}
             deal={deal}
