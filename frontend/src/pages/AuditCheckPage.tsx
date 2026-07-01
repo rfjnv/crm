@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DatePicker, Card, Typography, Tag, Spin, Empty, Button, Space,
-  Descriptions, Table, Badge, Divider,
+  Descriptions, Table, Badge, Divider, Checkbox, Progress,
 } from 'antd';
-import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, ArrowLeftOutlined, ExportOutlined, CheckCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { dealsApi } from '../api/deals.api';
@@ -54,7 +54,12 @@ function formatQty(v: number | string | null | undefined): string {
 
 // ─── Deal card ────────────────────────────────────────────────────────────────
 
-function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: string) => void }) {
+function DealAuditCard({ deal, onOverride, checked, onToggle }: {
+  deal: Deal;
+  onOverride: (id: string) => void;
+  checked: boolean;
+  onToggle: (id: string) => void;
+}) {
   const { data: detail, isLoading } = useQuery({
     queryKey: ['deal', deal.id],
     queryFn: () => dealsApi.getById(deal.id),
@@ -91,9 +96,20 @@ function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: stri
   return (
     <Card
       size="small"
+      style={checked ? { borderColor: '#52c41a', background: '#f6ffed', opacity: 0.85 } : undefined}
       title={
-        <Space wrap size={8}>
-          <Typography.Text strong>{deal.title}</Typography.Text>
+        <Space wrap size={8} align="center">
+          <Checkbox
+            checked={checked}
+            onChange={() => onToggle(deal.id)}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <Typography.Text
+            strong
+            style={{ textDecoration: checked ? 'line-through' : undefined, opacity: checked ? 0.6 : 1 }}
+          >
+            {deal.title}
+          </Typography.Text>
           <ClientCompanyDisplay client={deal.client} />
           <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
           <Tag color={PAYMENT_STATUS_COLORS[deal.paymentStatus]}>
@@ -104,6 +120,7 @@ function DealAuditCard({ deal, onOverride }: { deal: Deal; onOverride: (id: stri
               {dayjs(deal.closedAt).format('HH:mm')}
             </Typography.Text>
           )}
+          {checked && <CheckCircleFilled style={{ color: '#52c41a', fontSize: 16 }} />}
         </Space>
       }
       extra={
@@ -301,9 +318,31 @@ export default function AuditCheckPage() {
   const date: Dayjs = dateStr ? dayjs(dateStr) : dayjs();
 
   const [overrideDealId, setOverrideDealId] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   const ymd = date.format('YYYY-MM-DD');
   const { closedFrom, closedTo } = isoRangeForTashkentYmd(ymd);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`audit-checked-${ymd}`);
+      setCheckedIds(raw ? new Set(JSON.parse(raw)) : new Set());
+    } catch {
+      setCheckedIds(new Set());
+    }
+  }, [ymd]);
+
+  const toggleChecked = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(`audit-checked-${ymd}`, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  };
 
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['audit-check-deals', ymd],
@@ -316,6 +355,8 @@ export default function AuditCheckPage() {
 
   const totalAmount = deals.reduce((s, d) => s + Number(d.amount), 0);
   const totalPaid = deals.reduce((s, d) => s + Number(d.paidAmount), 0);
+  const checkedCount = deals.filter((d) => checkedIds.has(d.id)).length;
+  const progressPercent = deals.length > 0 ? Math.round((checkedCount / deals.length) * 100) : 0;
 
   return (
     <div>
@@ -324,7 +365,7 @@ export default function AuditCheckPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>Аудит-проверка сделок</Typography.Title>
       </div>
 
-      <Space wrap style={{ marginBottom: 16 }} align="center">
+      <Space wrap style={{ marginBottom: 8 }} align="center">
         <DatePicker
           value={date}
           onChange={(d) => {
@@ -356,6 +397,37 @@ export default function AuditCheckPage() {
         )}
       </Space>
 
+      {!isLoading && deals.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              Проверено: <strong style={{ color: checkedCount === deals.length ? '#52c41a' : undefined }}>{checkedCount} / {deals.length}</strong>
+            </Typography.Text>
+            {checkedCount > 0 && (
+              <Button
+                size="small"
+                type="link"
+                danger
+                style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                onClick={() => {
+                  setCheckedIds(new Set());
+                  try { localStorage.removeItem(`audit-checked-${ymd}`); } catch {}
+                }}
+              >
+                Сбросить
+              </Button>
+            )}
+          </div>
+          <Progress
+            percent={progressPercent}
+            size="small"
+            strokeColor={checkedCount === deals.length ? '#52c41a' : '#1677ff'}
+            showInfo={false}
+            style={{ margin: 0 }}
+          />
+        </div>
+      )}
+
       {isLoading && <Spin style={{ display: 'block', margin: '60px auto' }} />}
 
       {!isLoading && deals.length === 0 && (
@@ -371,6 +443,8 @@ export default function AuditCheckPage() {
             key={deal.id}
             deal={deal}
             onOverride={canOverride ? setOverrideDealId : () => {}}
+            checked={checkedIds.has(deal.id)}
+            onToggle={toggleChecked}
           />
         ))}
       </Space>
