@@ -1,0 +1,7 @@
+/* theme-variables.css forces `.ant-card { background/border !important }` globally,
+   which silently defeats any inline style attempt to tint a checked deal card.
+   A more specific selector (still !important) is required to win the cascade. */
+.ant-card.audit-checked-card {
+  background: var(--audit-checked-bg) !important;
+  border-color: var(--audit-checked-border) !important;
+}
