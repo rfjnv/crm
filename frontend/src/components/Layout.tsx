@@ -540,6 +540,13 @@ export default function Layout() {
       : []),
     ...(isAdmin
       ? [{
+        key: '/deals/audit-check',
+        icon: <AuditOutlined />,
+        label: <Link to="/deals/audit-check">Аудит-проверка</Link>,
+      }]
+      : []),
+    ...(isAdmin
+      ? [{
         key: '/deals/archived',
         icon: <InboxOutlined />,
         label: <Link to="/deals/archived">Архив сделок</Link>,
@@ -659,11 +666,6 @@ export default function Layout() {
             key: '/worker-audit',
             icon: <AuditOutlined />,
             label: <Link to="/worker-audit">Аудит сотрудников</Link>,
-          },
-          {
-            key: '/deals/audit-check',
-            icon: <HistoryOutlined />,
-            label: <Link to="/deals/audit-check">Аудит-проверка сделок</Link>,
           },
         ]
       : []),
