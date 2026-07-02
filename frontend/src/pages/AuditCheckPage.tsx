@@ -17,7 +17,7 @@ import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
-import type { Deal, DealItem, PaymentStatus, UserRole } from '../types';
+import type { Deal, DealItem, PaymentRecord, PaymentStatus, UserRole } from '../types';
 import './AuditCheckPage.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -98,11 +98,34 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
     queryKey: ['deal', deal.id],
     queryFn: () => dealsApi.getById(deal.id),
   });
+  const { data: payments = [] } = useQuery({
+    queryKey: ['deal-payments', deal.id],
+    queryFn: () => dealsApi.getDealPayments(deal.id),
+  });
 
   const { token } = theme.useToken();
   const d = detail ?? deal;
   const items: DealItem[] = detail?.items ?? [];
   const debt = Number(d.amount) - Number(d.paidAmount);
+
+  const paymentColumns = [
+    {
+      title: 'Дата', key: 'paidAt', width: 130,
+      render: (_: unknown, r: PaymentRecord) => dayjs(r.paidAt).format('DD.MM.YYYY HH:mm'),
+    },
+    {
+      title: 'Сумма', key: 'amount', align: 'right' as const,
+      render: (_: unknown, r: PaymentRecord) => formatUZS(r.amount),
+    },
+    {
+      title: 'Способ', key: 'method', width: 110,
+      render: (_: unknown, r: PaymentRecord) => r.method ? (PAYMENT_METHOD_LABELS[r.method] ?? r.method) : '—',
+    },
+    {
+      title: 'Внёс', key: 'creator',
+      render: (_: unknown, r: PaymentRecord) => r.creator?.fullName ?? '—',
+    },
+  ];
 
   const itemColumns = [
     { title: 'Товар', dataIndex: ['product', 'name'] as string[], key: 'name' },
@@ -150,9 +173,6 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
             onClick={(e) => e.stopPropagation()}
             aria-label={checked ? 'Отметить сделку как непроверенную' : 'Отметить сделку как проверенную'}
           />
-          <Typography.Text strong>
-            {deal.title}
-          </Typography.Text>
           <ClientCompanyDisplay client={deal.client} />
           <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
           <Tag color={PAYMENT_STATUS_COLORS[deal.paymentStatus]}>
@@ -239,6 +259,22 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
                     {d.closedAt ? dayjs(d.closedAt).format('DD.MM.YYYY HH:mm') : '—'}
                   </Descriptions.Item>
                 </Descriptions>
+
+                {payments.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '8px 0 10px' }}>
+                      Платежи ({payments.length})
+                    </Divider>
+                    <Table
+                      dataSource={payments}
+                      columns={paymentColumns}
+                      rowKey="id"
+                      size="small"
+                      pagination={false}
+                      scroll={{ x: 420 }}
+                    />
+                  </>
+                )}
 
                 {items.length > 0 && (
                   <>
