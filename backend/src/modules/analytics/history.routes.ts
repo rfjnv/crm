@@ -1356,7 +1356,7 @@ router.get(
     >(
       Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
         COALESCE(di.requested_qty, 0)::text as qty, COALESCE(di.price, 0)::text as price,
-        COALESCE(di.line_total, COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
+        COALESCE(NULLIF(di.line_total, 0), COALESCE(di.requested_qty, 0) * COALESCE(di.price, 0))::text as total,
         d.title as deal_title, d.id as deal_id, d.created_at
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
@@ -1815,7 +1815,7 @@ router.get(
       { total_rows: string; total_amount: string }[]
     >(
       Prisma.sql`SELECT COUNT(*)::text as total_rows,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_amount
+        COALESCE(SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)), 0)::text as total_amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
@@ -1831,7 +1831,7 @@ router.get(
     >(
       Prisma.sql`SELECT EXTRACT(MONTH FROM (d.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
         COUNT(*)::text as count,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as amount
+        COALESCE(SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)), 0)::text as amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       WHERE di.source_op_type = 'PP'
@@ -1849,7 +1849,7 @@ router.get(
     >(
       Prisma.sql`SELECT c.id, c.company_name,
         COUNT(*)::text as pp_count,
-        COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total_amount
+        COALESCE(SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)), 0)::text as total_amount
       FROM deal_items di
       JOIN deals d ON d.id = di.deal_id
       JOIN clients c ON c.id = d.client_id
@@ -1859,7 +1859,7 @@ router.get(
         AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
         AND di.price IS NOT NULL AND di.requested_qty IS NOT NULL
       GROUP BY c.id, c.company_name
-      ORDER BY SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)) DESC
+      ORDER BY SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)) DESC
       LIMIT 20`,
     );
 

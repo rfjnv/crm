@@ -248,7 +248,7 @@ When user asks which clients buy product X most often, топ покупател
 - In EVERY ranking query include ALL of:
   COUNT(DISTINCT d.id)::int AS deals_count
   SUM(COALESCE(di.requested_qty, 0))::numeric AS total_qty
-  SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0))::numeric AS total_amount_uzs
+  SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0))::numeric AS total_amount_uzs
   Include p.unit in SELECT or GROUP BY if needed for display
 - In the Markdown answer: table columns must show **deals**, **quantity (total_qty + unit)**, **sum in UZS (total_amount_uzs)** — not only "how many times" or count of lines unless user explicitly asked only for count
 - If result is empty: run a second query — list products WHERE LOWER(name) LIKE '%<shortest_stem>%' LIMIT 30 — to see real naming in DB; widen LIKE; only then say "no sales"

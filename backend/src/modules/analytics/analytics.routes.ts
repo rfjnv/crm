@@ -196,6 +196,8 @@ router.get(
         managerName: n.user.fullName,
         clientId: n.clientId,
         companyName: n.client.companyName,
+        isSvip: n.client.isSvip,
+        creditStatus: n.client.creditStatus,
         preview: n.content.length > 160 ? `${n.content.slice(0, 160)}…` : n.content,
         createdAt: n.createdAt.toISOString(),
       }));
@@ -884,7 +886,7 @@ router.get(
       // Paper turnover (from deal items line_total)
       dealScope.managerId
         ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status = 'CLOSED' AND d.is_archived = false
@@ -892,7 +894,7 @@ router.get(
                AND d.manager_id = ${dealScope.managerId}`
           )
         : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(COALESCE(di.line_total, di.requested_qty * di.price, 0)), 0)::text as total
+            Prisma.sql`SELECT COALESCE(SUM(COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)), 0)::text as total
              FROM deal_items di
              JOIN deals d ON d.id = di.deal_id
              WHERE d.status = 'CLOSED' AND d.is_archived = false

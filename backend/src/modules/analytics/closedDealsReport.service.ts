@@ -174,7 +174,7 @@ class ClosedDealsReportService {
           COALESCE(di.requested_qty, 0)::text AS quantity,
           COALESCE(pr.unit, 'шт') AS unit,
           COALESCE(di.price, 0)::text AS price,
-          COALESCE(di.line_total, 0)::text AS line_total,
+          COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)::text AS line_total,
           COALESCE(d.payment_method::text, '') AS payment_method,
           CASE WHEN d.due_date IS NULL THEN NULL ELSE TO_CHAR(d.due_date, 'YYYY-MM-DD') END AS due_date,
           COALESCE(ct.contract_number, '') AS contract_number,

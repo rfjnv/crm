@@ -10,8 +10,13 @@ export const SQL_ANALYTICS_TZ = Prisma.sql`'Asia/Tashkent'`;
 
 /**
  * Line-level revenue amount (Excel-style: line_total or qty × price).
+ *
+ * NULLIF(di.line_total, 0): храним line_total как «истину», НО если он равен 0
+ * (импорт/цех-сделки иногда пишут line_total=0 при реальных qty/price), это ложный
+ * ноль — тогда падаем на qty × price. Иначе такая строка занижала бы выручку до 0,
+ * хотя у сделки есть корректная сумма (см. баг: «ламинация цех», line_total=0).
  */
-export const SQL_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.requested_qty * di.price, 0)`;
+export const SQL_LINE_REVENUE_DI = Prisma.sql`COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)`;
 
 /** deal_items source_op_type: строки отгрузки со склада клиента (см. clients.service sendStockPartial). */
 export const DEAL_ITEM_SOURCE_CLIENT_STOCK = 'CLIENT_STOCK';
@@ -31,7 +36,7 @@ export const DEAL_ITEM_SOURCE_CLIENT_STOCK = 'CLIENT_STOCK';
  * как выручка отдельно. Это приводило к расхождениям, если цена при ADD ≠ цене в строке отгрузки,
  * либо если ADD был, а CLIENT_STOCK сделка ещё не создана/не закрыта.
  */
-export const SQL_ANALYTICS_LINE_REVENUE_DI = Prisma.sql`COALESCE(di.line_total, di.requested_qty * di.price, 0)`;
+export const SQL_ANALYTICS_LINE_REVENUE_DI = Prisma.sql`COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0)`;
 
 /**
  * Сумма по событию «поступление на склад клиента» (ADD): line_total или qty × unit_price.
