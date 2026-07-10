@@ -190,6 +190,7 @@ export default function ClientsPage() {
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canChangeStatus = isAdmin || user?.role === 'MANAGER' || user?.role === 'OPERATOR';
   const canCreateClient = isAdmin || user?.role === 'OPERATOR' || user?.role === 'MANAGER' || user?.role === 'HR';
   const canAssignManager = isAdmin || user?.role === 'OPERATOR';
@@ -198,6 +199,12 @@ export default function ClientsPage() {
     queryKey: ['users'],
     queryFn: () => usersApi.list(),
     enabled: canAssignManager,
+  });
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: usersApi.listCompanies,
+    enabled: isSuperAdmin,
   });
 
   const filteredClients = useMemo(() => {
@@ -447,6 +454,18 @@ export default function ClientsPage() {
             placeholder={isEditMode ? undefined : 'По умолчанию — вы'}
             allowClear={!isEditMode}
             options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+          />
+        </Form.Item>
+      )}
+      {!isEditMode && isSuperAdmin && (
+        <Form.Item
+          name="companyId"
+          label="Компания"
+          rules={[{ required: true, message: 'Выберите компанию' }]}
+        >
+          <Select
+            placeholder="Выберите компанию"
+            options={companies.map((c) => ({ value: c.id, label: c.displayName }))}
           />
         </Form.Item>
       )}

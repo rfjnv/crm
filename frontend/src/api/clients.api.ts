@@ -11,6 +11,7 @@ export interface CreateClientData {
   longitude?: number;
   notes?: string;
   managerId?: string;
+  companyId?: string;
   inn?: string;
   bankName?: string;
   bankAccount?: string;

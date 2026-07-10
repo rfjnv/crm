@@ -18,6 +18,7 @@ export const createClientDto = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   notes: z.string().optional(),
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
+  companyId: z.string().uuid('Некорректный ID компании').optional(),
   inn: z.string().optional(),
   bankName: z.string().optional(),
   bankAccount: z.string().optional(),

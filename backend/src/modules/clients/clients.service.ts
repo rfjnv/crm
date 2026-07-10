@@ -247,12 +247,24 @@ export class ClientsService {
       managerId = dto.managerId;
     }
 
-    const { managerId: _ignoreManagerId, ...rest } = dto;
+    let companyId = user.companyId;
+    if (user.role === 'SUPER_ADMIN') {
+      if (!dto.companyId) {
+        throw new AppError(400, 'Выберите компанию для клиента');
+      }
+      const company = await prisma.company.findUnique({ where: { id: dto.companyId } });
+      if (!company) {
+        throw new AppError(404, 'Компания не найдена');
+      }
+      companyId = dto.companyId;
+    }
+
+    const { managerId: _ignoreManagerId, companyId: _ignoreCompanyId, ...rest } = dto;
     const client = await prisma.client.create({
       data: {
         ...rest,
         managerId,
-        ...(user.companyId ? { companyId: user.companyId } : {}),
+        ...(companyId ? { companyId } : {}),
       },
     });
 
