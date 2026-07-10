@@ -2,8 +2,11 @@
 -- Deals are scoped through client.companyId (no companyId column on Deal itself),
 -- so fixing the client is enough to make its deal(s) visible to Polygraph staff.
 
+-- NOTE: company_id here is the production companies.id for Polygraph Business
+-- (a56fddde-da93-4c2b-a5b5-0139fbc1faf7), NOT the local dev-DB id — verify with
+-- `SELECT id, name FROM companies;` before running against a different environment.
 UPDATE clients
-SET company_id = '44729528-e634-4d9a-9d7f-764902cdfea5'
+SET company_id = 'a56fddde-da93-4c2b-a5b5-0139fbc1faf7'
 WHERE id = 'b1cb859f-2b64-4a14-a357-76321d2832da'
   AND company_id IS NULL;
 
