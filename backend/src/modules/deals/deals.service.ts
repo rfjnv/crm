@@ -3506,7 +3506,7 @@ export class DealsService {
 
     validateStatusTransition(deal.status, 'CLOSED', user.role);
 
-    const closedAt = resolveClosedAtForNewClose(deal, new Date());
+    const closedAt = new Date();
     await prisma.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
@@ -3525,7 +3525,7 @@ export class DealsService {
 
     validateStatusTransition(deal.status, 'CLOSED', user.role);
 
-    const closedAt = resolveClosedAtForNewClose(deal, new Date());
+    const closedAt = new Date();
     await prisma.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
