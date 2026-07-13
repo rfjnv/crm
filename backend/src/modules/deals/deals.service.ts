@@ -45,7 +45,7 @@ const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
   WAITING_FINANCE: ['WAITING_WAREHOUSE_MANAGER', 'IN_PROGRESS', 'REJECTED', 'CANCELED'],
   FINANCE_APPROVED: ['WAITING_WAREHOUSE_MANAGER', 'CANCELED'],
   // New workflow
-  WAITING_WAREHOUSE_MANAGER: ['PENDING_ADMIN', 'CANCELED'],
+  WAITING_WAREHOUSE_MANAGER: ['CLOSED', 'PENDING_ADMIN', 'CANCELED'],
   PENDING_ADMIN: ['CLOSED', 'READY_FOR_LOADING', 'REJECTED', 'CANCELED'],
   READY_FOR_LOADING: ['LOADING_ASSIGNED', 'CANCELED'],
   LOADING_ASSIGNED: ['CLOSED', 'READY_FOR_DELIVERY', 'CANCELED'],
@@ -3497,26 +3497,22 @@ export class DealsService {
     });
   }
 
-  /** Зав.склада: «Пришли за товарами» / «Машина готова» → PENDING_ADMIN */
+  /** Зав.склада: «Пришли за товарами» / «Машина готова» → CLOSED (временно без шага одобрения админа) */
   async warehouseManagerConfirm(dealId: string, user: AuthUser) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, status: 'WAITING_WAREHOUSE_MANAGER', isArchived: false },
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    validateStatusTransition(deal.status, 'PENDING_ADMIN', user.role);
+    validateStatusTransition(deal.status, 'CLOSED', user.role);
 
-    await prisma.deal.update({ where: { id: dealId }, data: { status: 'PENDING_ADMIN' } });
+    const closedAt = resolveClosedAtForNewClose(deal, new Date());
+    await prisma.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
 
-    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'PENDING_ADMIN' } });
+    await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
 
-    const admins = await prisma.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true }, select: { id: true } });
-    if (admins.length > 0) {
-      await prisma.notification.createMany({ data: admins.map((a) => ({ userId: a.id, title: 'Сделка ожидает одобрения', body: `Сделка "${deal.title}" готова — ожидает вашего одобрения`, severity: 'WARNING' as const, link: `/deals/${dealId}`, createdByUserId: user.userId })) });
-      pushService.sendPushToRoles(['ADMIN', 'SUPER_ADMIN'], { title: 'Сделка ожидает одобрения', body: `Сделка "${deal.title}" готова`, url: `/deals/${dealId}`, severity: 'WARNING' }).catch(() => {});
-    }
+    pushService.sendPushToUser(deal.managerId, { title: 'Сделка закрыта', body: `Сделка "${deal.title}" закрыта зав. склада`, url: `/deals/${dealId}`, severity: 'INFO' }).catch(() => {});
 
-    void trySendAdminApprovalTelegram(dealId).catch(() => {});
     void syncDealTelegramGroupMessages(dealId).catch(() => {});
   }
 
