@@ -8,6 +8,7 @@ import {
   sqlMovementIncludedInProductAnalytics,
   sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
+import { REVENUE_DEAL_STATUSES } from '../../lib/analytics';
 import { auditLog } from '../../lib/logger';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 
@@ -441,7 +442,7 @@ export class WarehouseService {
           productId,
           deal: {
             ...(from ? { createdAt: { gte: from } } : {}),
-            status: 'CLOSED',
+            status: { in: REVENUE_DEAL_STATUSES },
           },
         },
         select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
