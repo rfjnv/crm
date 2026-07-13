@@ -86,7 +86,16 @@ export const REVENUE_DEAL_STATUSES: DealStatus[] = [
   'PENDING_ADMIN', 'READY_FOR_LOADING', 'LOADING_ASSIGNED', 'READY_FOR_DELIVERY', 'IN_DELIVERY', 'CLOSED',
 ];
 
-export const SQL_DEALS_REVENUE_STATUSES = Prisma.join(REVENUE_DEAL_STATUSES);
+/**
+ * ВАЖНО: литерал, а не Prisma.join(...) — d.status это Postgres enum (deal_status).
+ * Prisma.join биндит значения как параметры типа text, а Postgres не даёт неявного
+ * оператора `deal_status = text`, что валило все запросы с этим фильтром ошибкой 500
+ * (operator does not exist: deal_status = text). Значения статичны (наш enum), поэтому
+ * инлайнить их как SQL-литералы безопасно — как и в SQL_DEALS_ACTIVE_FILTER выше.
+ */
+export const SQL_DEALS_REVENUE_STATUSES = Prisma.raw(
+  REVENUE_DEAL_STATUSES.map((s) => `'${s}'`).join(', '),
+);
 
 /**
  * Revenue analytics: deals sent to admin for approval or further along (see
