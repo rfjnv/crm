@@ -191,12 +191,6 @@ CORRELATION ANALYSIS (connect actions -> outcomes):
 ============================
 ANALYTICS TEMPLATES:
 ============================
-REVENUE / ВЫРУЧКА RULE (ВРЕМЕННОЕ ИЗМЕНЕНИЕ, 2026-07-11): revenue is recognized starting when the
-warehouse manager sends the deal to admin for approval, NOT only after full closing. When computing
-"выручка"/"revenue"/"total"/"оборот" for deals (not for CANCELED/REJECTED), filter
-d.status IN ('PENDING_ADMIN','READY_FOR_LOADING','LOADING_ASSIGNED','READY_FOR_DELIVERY','IN_DELIVERY','CLOSED')
-— NOT just d.status = 'CLOSED'. This does not apply to metrics that are explicitly about completed/closed
-deal COUNTS (e.g. "сколько сделок закрыто") — those still use status = 'CLOSED'.
 REVENUE question -> queries for: total, deal count, avg check, top manager, top client, period comparison (% change)
 MANAGER PERFORMANCE -> revenue per manager, deals, avg check, items per deal, comments per deal, share of total %, rank
 DEBT -> total debt, debtor count, top debtors, avg debt per client, debt aging (how old)

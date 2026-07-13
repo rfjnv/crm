@@ -6,7 +6,6 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_ANALYTICS_TZ,
-  SQL_DEALS_REVENUE_STATUSES,
   resolveAnalyticsPeriodRange,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -91,8 +90,8 @@ router.get(
       ? await prisma.$queryRaw<ClientRow[]>(
           Prisma.sql`SELECT c.id, c.company_name, c.is_svip as is_svip,
             COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
-            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as ltv,
-            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as avg_deal,
+            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
+            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
             MAX(d.created_at) FILTER (WHERE d.status = 'CLOSED') as last_deal_date,
             COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
           FROM clients c
@@ -107,8 +106,8 @@ router.get(
       : await prisma.$queryRaw<ClientRow[]>(
           Prisma.sql`SELECT c.id, c.company_name, c.is_svip as is_svip,
             COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'CLOSED')::text as completed_deals,
-            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as ltv,
-            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as avg_deal,
+            COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as ltv,
+            COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal,
             MAX(d.created_at) FILTER (WHERE d.status = 'CLOSED') as last_deal_date,
             COALESCE(SUM(d.amount - d.paid_amount) FILTER (WHERE d.payment_status IN ('UNPAID','PARTIAL') AND d.status NOT IN ('CANCELED','REJECTED')), 0)::text as current_debt
           FROM clients c
@@ -283,8 +282,8 @@ router.get(
         d.manager_id,
         u.full_name,
         COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as completed_count,
-        COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as total_revenue,
-        COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})), 0)::text as avg_deal_amount,
+        COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as total_revenue,
+        COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal_amount,
         COUNT(*)::text as total_deals,
         COUNT(DISTINCT d.client_id)::text as unique_clients,
         (SELECT COUNT(*) FROM (
@@ -306,7 +305,7 @@ router.get(
       WHERE d.is_archived = false
         AND d.created_at >= ${start} AND d.created_at < ${end}
       GROUP BY d.manager_id, u.full_name
-      ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status IN (${SQL_DEALS_REVENUE_STATUSES})) DESC NULLS LAST`,
+      ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED') DESC NULLS LAST`,
     );
 
     const managerAvgDaysRaw = await prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
