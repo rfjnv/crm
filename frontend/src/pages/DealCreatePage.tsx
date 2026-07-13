@@ -195,6 +195,29 @@ export default function DealCreatePage() {
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
 
+  const { data: clientTransferInns } = useQuery({
+    queryKey: ['client-transfer-inns', clientId],
+    queryFn: () => clientsApi.getTransferInns(clientId!),
+    enabled: !!clientId && paymentMethod === 'TRANSFER',
+  });
+
+  const selectedClient = useMemo(() => clients?.find((c) => c.id === clientId), [clients, clientId]);
+  const selectedClientInn = (selectedClient?.inn || '').trim();
+
+  // Auto-fill transfer INN from client requisites, falling back to the client's most
+  // recently used INN when requisites are empty. Only touches the field while it still
+  // holds our own previous auto-fill (or is empty) — never overwrites a manual edit or a
+  // restored draft value.
+  const autoFilledInnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (paymentMethod !== 'TRANSFER') return;
+    if (transferInn.trim() && transferInn !== autoFilledInnRef.current) return;
+    const history = clientTransferInns || [];
+    const next = selectedClientInn || (history.length > 0 ? history[0] : '');
+    autoFilledInnRef.current = next || null;
+    if (next !== transferInn) setTransferInn(next);
+  }, [paymentMethod, clientId, selectedClientInn, clientTransferInns]);
+
   const createMut = useMutation({
     mutationFn: (data: Parameters<typeof dealsApi.create>[0]) => dealsApi.create(data),
     onSuccess: (result) => {
@@ -628,10 +651,24 @@ export default function DealCreatePage() {
                   <Input
                     placeholder="Введите ИНН клиента"
                     value={transferInn}
-                    onChange={(e) => setTransferInn(e.target.value)}
+                    onChange={(e) => { autoFilledInnRef.current = null; setTransferInn(e.target.value); }}
                     maxLength={50}
                     allowClear
                   />
+                  {!selectedClientInn && (clientTransferInns?.length || 0) > 1 && (
+                    <div style={{ marginTop: 8 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        У клиента нет ИНН в реквизитах. Ранее использовались разные ИНН — выберите нужный:
+                      </Typography.Text>
+                      <Select
+                        style={{ width: '100%', marginTop: 4 }}
+                        value={transferInn || undefined}
+                        onChange={(v) => { autoFilledInnRef.current = v; setTransferInn(v); }}
+                        options={clientTransferInns!.map((inn) => ({ value: inn, label: inn }))}
+                        placeholder="Выберите ИНН из истории"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
