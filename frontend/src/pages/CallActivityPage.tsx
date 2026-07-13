@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import {
   Card,
   Col,
@@ -27,6 +26,7 @@ import type { Dayjs } from 'dayjs';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import type { UserRole } from '../types';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 const { Title, Text } = Typography;
 
@@ -325,7 +325,10 @@ export default function CallActivityPage() {
                     <div>
                       <Text strong>{item.managerName}</Text>
                       <Text type="secondary"> → </Text>
-                      <Link to={`/clients/${item.clientId}`}>{item.companyName}</Link>
+                      <ClientCompanyDisplay
+                        client={{ id: item.clientId, companyName: item.companyName, isSvip: (item as any).isSvip, creditStatus: (item as any).creditStatus }}
+                        link
+                      />
                     </div>
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
                       {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}

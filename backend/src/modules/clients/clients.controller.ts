@@ -142,6 +142,11 @@ export class ClientsController {
     res.json(note);
   }
 
+  async getTransferInns(req: Request, res: Response): Promise<void> {
+    const inns = await clientsService.getTransferInns(req.params.id as string, getUser(req));
+    res.json(inns);
+  }
+
   async findDuplicates(req: Request, res: Response): Promise<void> {
     const result = await clientsService.findDuplicates(getUser(req));
     res.json(result);

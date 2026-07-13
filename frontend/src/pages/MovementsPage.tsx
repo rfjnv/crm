@@ -5,6 +5,7 @@ import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOu
 import { inventoryApi } from '../api/warehouse.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 
@@ -46,9 +47,15 @@ export default function MovementsPage() {
       title: 'Клиент',
       key: 'client',
       render: (_: unknown, record: any) => {
-        const clientName = record.deal?.client?.companyName || record.deal?.title;
-        if (!record.deal?.id || !clientName) return clientName || '—';
-        return <Link to={`/deals/${record.deal.id}`}>{clientName}</Link>;
+        if (!record.deal?.id) return record.deal?.title || '—';
+        if (record.deal?.client) {
+          return (
+            <Link to={`/deals/${record.deal.id}`} style={{ textDecoration: 'none' }}>
+              <ClientCompanyDisplay client={record.deal.client} />
+            </Link>
+          );
+        }
+        return <Link to={`/deals/${record.deal.id}`}>{record.deal.title || '—'}</Link>;
       },
     },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
@@ -117,7 +124,7 @@ export default function MovementsPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>Клиент</Typography.Text>
-                      <div><Typography.Text strong>{m.deal.client?.companyName || m.deal.title}</Typography.Text></div>
+                      <div><ClientCompanyDisplay client={m.deal.client} /></div>
                       <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка: {m.deal.title}</Typography.Text></div>
                     </div>
                     <RightOutlined style={{ color: '#999' }} />

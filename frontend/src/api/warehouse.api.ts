@@ -4,6 +4,8 @@ import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayRe
 export const inventoryApi = {
   listProducts: () => client.get<Product[]>('/inventory/products').then((r) => r.data),
 
+  getProductById: (id: string) => client.get<Product>(`/inventory/products/${id}`).then((r) => r.data),
+
   createProduct: (data: { name: string; sku: string; unit?: string; category?: string; countryOfOrigin?: string; minStock?: number; purchasePrice?: number; salePrice?: number; specifications?: Record<string, unknown> }) =>
     client.post<Product>('/inventory/products', data).then((r) => r.data),
 

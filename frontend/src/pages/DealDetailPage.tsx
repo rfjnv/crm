@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Descriptions, Typography, Spin, Timeline, Tag, Space, Input, Button,
@@ -23,6 +23,7 @@ import DealPipeline from '../components/DealPipeline';
 import SuperOverridePanel from '../components/SuperOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
@@ -197,9 +198,27 @@ export default function DealDetailPage() {
     enabled: !!dealData?.clientId && needsContract && canManageContract,
   });
 
+  const { data: clientTransferInns } = useQuery({
+    queryKey: ['client-transfer-inns', dealData?.clientId],
+    queryFn: () => clientsApi.getTransferInns(dealData!.clientId),
+    enabled: !!dealData?.clientId,
+  });
+
   const openTransferPaymentModal = () => {
     setSendToFinanceModal(false);
-    setTransferInn((dealData?.transferInn || dealData?.client?.inn || '').trim());
+    const savedInn = (dealData?.transferInn || '').trim();
+    const clientInn = (dealData?.client?.inn || '').trim();
+    const history = clientTransferInns || [];
+    if (savedInn) {
+      setTransferInn(savedInn);
+    } else if (clientInn) {
+      setTransferInn(clientInn);
+    } else if (history.length > 0) {
+      // No requisites on file — fall back to the last INN used, prompting a choice if there's more than one.
+      setTransferInn(history[0]);
+    } else {
+      setTransferInn('');
+    }
     setTransferDocuments(
       Array.isArray(dealData?.transferDocuments) && dealData.transferDocuments.length > 0
         ? [...dealData.transferDocuments]
@@ -952,7 +971,7 @@ export default function DealDetailPage() {
         >
           <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
             <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
-            <Descriptions.Item label="Клиент">{deal.client?.companyName}</Descriptions.Item>
+            <Descriptions.Item label="Клиент"><ClientCompanyDisplay client={deal.client} link /></Descriptions.Item>
             <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
           </Descriptions>
         </Card>
@@ -964,7 +983,7 @@ export default function DealDetailPage() {
           <Card bordered={false} size="small">
             <Descriptions column={1} size="small">
               <Descriptions.Item label="Клиент">
-                <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
+                <ClientCompanyDisplay client={deal.client} link />
               </Descriptions.Item>
               <Descriptions.Item label="Менеджер">
                 {isAdmin ? (
@@ -1403,7 +1422,7 @@ export default function DealDetailPage() {
                   <Card bordered={false}>
                     <Descriptions column={{ xs: 1, sm: 2 }} size="small">
                       <Descriptions.Item label="Клиент">
-                        <Link to={`/clients/${deal.clientId}`}>{deal.client?.companyName}</Link>
+                        <ClientCompanyDisplay client={deal.client} link />
                       </Descriptions.Item>
                       <Descriptions.Item label="Менеджер">
                         {isAdmin ? (
@@ -2142,6 +2161,20 @@ export default function DealDetailPage() {
               onChange={(e) => setTransferInn(e.target.value)}
               maxLength={50}
             />
+            {!(dealData?.client?.inn || '').trim() && (clientTransferInns?.length || 0) > 1 && (
+              <div style={{ marginTop: 8 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  У клиента нет ИНН в реквизитах. Ранее использовались разные ИНН — выберите нужный:
+                </Typography.Text>
+                <Select
+                  style={{ width: '100%', marginTop: 4 }}
+                  value={transferInn || undefined}
+                  onChange={(v) => setTransferInn(v)}
+                  options={clientTransferInns!.map((inn) => ({ value: inn, label: inn }))}
+                  placeholder="Выберите ИНН из истории"
+                />
+              </div>
+            )}
           </Form.Item>
 
           <Form.Item label="Документы" required>

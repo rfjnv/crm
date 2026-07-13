@@ -232,6 +232,30 @@ export class ClientsService {
     return client;
   }
 
+  /** Distinct ИНН, ранее указанные для перечислений по сделкам клиента, от новых к старым. */
+  async getTransferInns(id: string, user: AuthUser): Promise<string[]> {
+    const client = await prisma.client.findFirst({ where: { id, ...clientOwnerScope(user) }, select: { id: true } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+
+    const deals = await prisma.deal.findMany({
+      where: { clientId: id, transferInn: { not: null } },
+      select: { transferInn: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const deal of deals) {
+      const inn = deal.transferInn?.trim();
+      if (!inn || seen.has(inn)) continue;
+      seen.add(inn);
+      result.push(inn);
+    }
+    return result;
+  }
+
   async create(dto: CreateClientDto, user: AuthUser) {
     // Admins can assign any manager; others always get themselves
     let managerId = user.userId;

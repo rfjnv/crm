@@ -39,6 +39,7 @@ router.patch('/:id/archive', asyncHandler(clientsController.archive.bind(clients
 router.get('/:id/history', asyncHandler(clientsController.getHistory.bind(clientsController)));
 router.get('/:id/payments', asyncHandler(clientsController.getPayments.bind(clientsController)));
 router.get('/:id/analytics', asyncHandler(clientsController.getAnalytics.bind(clientsController)));
+router.get('/:id/transfer-inns', asyncHandler(clientsController.getTransferInns.bind(clientsController)));
 router.get('/:id/stock', asyncHandler(clientsController.getStock.bind(clientsController)));
 router.post('/:id/stock/add', validate(addClientStockDto), asyncHandler(clientsController.addStock.bind(clientsController)));
 router.post('/:id/stock/send-partial', validate(sendClientStockPartialDto), asyncHandler(clientsController.sendStockPartial.bind(clientsController)));

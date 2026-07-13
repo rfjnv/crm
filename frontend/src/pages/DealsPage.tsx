@@ -10,6 +10,7 @@ import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import MobileCardList from '../components/MobileCardList';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
 import dayjs from 'dayjs';
 
@@ -57,7 +58,7 @@ function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
     >
       <Link to={`/deals/${deal.id}`} style={{ textDecoration: 'none' }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>{deal.title}</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{deal.client?.companyName}</Typography.Text>
+        <ClientCompanyDisplay client={deal.client} secondary />
         <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
           <Space size={4} wrap>
@@ -156,7 +157,7 @@ export default function DealsPage() {
 
   const columns = [
     { title: oneEntityLabel, dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
-    { title: 'Клиент', dataIndex: ['client', 'companyName'] },
+    { title: 'Клиент', key: 'client', render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link /> },
     { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
