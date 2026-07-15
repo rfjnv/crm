@@ -738,6 +738,27 @@ export interface AbcXyzResponse {
   clients: AbcXyzRow[];
 }
 
+/** Точка ретеншена/LTV когорты — через N месяцев после первой покупки клиента. */
+export interface CohortPoint {
+  monthOffset: number;
+  activeClients: number;
+  retentionPercent: number;
+  revenue: number;
+  revenuePerCohortClient: number;
+}
+
+/** Когорта клиентов, сгруппированных по месяцу первой покупки (YYYY-MM). */
+export interface CohortRow {
+  cohortMonth: string;
+  cohortSize: number;
+  points: CohortPoint[];
+}
+
+export interface CohortAnalysisResponse {
+  cohorts: CohortRow[];
+  maxMonthOffset: number;
+}
+
 export interface AnalyticsData {
   sales: AnalyticsSales;
   finance: AnalyticsFinance;

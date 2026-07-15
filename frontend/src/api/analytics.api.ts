@@ -14,6 +14,7 @@ import type {
   PrepaymentData,
   HistoryCohortClientsData,
   AbcXyzResponse,
+  CohortAnalysisResponse,
   ReanimationClientDetail,
   ReanimationClientRow,
   ReanimationAiReport,
@@ -154,6 +155,8 @@ export const analyticsApi = {
 
   getAbcXyz: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
     client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: analyticsPeriodParams(query) }).then((r) => r.data),
+  getCohorts: (managerId?: string) =>
+    client.get<CohortAnalysisResponse>('/analytics/cohorts', { params: managerId ? { managerId } : undefined }).then((r) => r.data),
   getIntelligence: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
     client.get<IntelligenceData>('/analytics/intelligence', { params: analyticsPeriodParams(query) }).then((r) => r.data),
   getHistory: (year: number = new Date().getFullYear()) =>
