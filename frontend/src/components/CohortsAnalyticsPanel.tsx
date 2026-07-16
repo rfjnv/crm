@@ -15,6 +15,10 @@ import type { UserRole, CohortRow } from '../types';
 
 const COHORTS_TOUR_STORAGE_KEY = 'cohorts-tour-dismissed';
 
+/** Подсветка «линейкой» строки/столбца при наведении на ячейку удержания — как в таблицах Excel. */
+const ROW_HOVER_SHADOW = 'inset 0 0 0 9999px rgba(22, 119, 255, 0.10)';
+const COL_HOVER_SHADOW = 'inset 0 0 0 9999px rgba(22, 119, 255, 0.10)';
+
 function FormulaHint({ text }: { text: string }) {
   return (
     <Tooltip title={text}>
@@ -36,6 +40,8 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const [drillDown, setDrillDown] = useState<{ cohortMonth: string; monthOffset: number } | null>(null);
   const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
+  const [hoveredCohort, setHoveredCohort] = useState<string | null>(null);
+  const [hoveredOffset, setHoveredOffset] = useState<number | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const heatmapRef = useRef<HTMLDivElement>(null);
@@ -121,7 +127,16 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
     return rows;
   }, [cohortData]);
 
+  /** «Старт» вместо M0, «+N мес.» вместо MN — не нужно расшифровывать нотацию в уме. */
+  const offsetLabel = (offset: number) => (offset === 0 ? 'Старт' : `+${offset} мес.`);
+
   const heatmapColumns = useMemo(() => {
+    const rowHoverProps = (record: CohortRow) => ({
+      onMouseEnter: () => setHoveredCohort(record.cohortMonth),
+      onMouseLeave: () => setHoveredCohort(null),
+      style: record.cohortMonth === hoveredCohort ? { boxShadow: ROW_HOVER_SHADOW } : undefined,
+    });
+
     const base = [
       {
         title: 'Когорта',
@@ -130,49 +145,85 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
         fixed: 'left' as const,
         width: 110,
         render: (v: string) => dayjs(`${v}-01`).format('MMM YYYY'),
+        onCell: rowHoverProps,
       },
-      { title: 'Клиентов', dataIndex: 'cohortSize', key: 'cohortSize', width: 90, align: 'right' as const },
+      {
+        title: 'Клиентов',
+        dataIndex: 'cohortSize',
+        key: 'cohortSize',
+        width: 90,
+        align: 'right' as const,
+        onCell: rowHoverProps,
+      },
     ];
     const offsetCols = offsetColumns.map((offset) => ({
-      title: `M${offset}`,
+      title: offsetLabel(offset),
       key: `m${offset}`,
-      width: 64,
+      width: 72,
       align: 'center' as const,
+      onHeaderCell: () => ({
+        onMouseEnter: () => setHoveredOffset(offset),
+        onMouseLeave: () => setHoveredOffset(null),
+        style: offset === hoveredOffset ? { background: token.colorPrimaryBg, fontWeight: 700 } : undefined,
+      }),
       render: (_: unknown, record: CohortRow) => {
+        const isRowHovered = record.cohortMonth === hoveredCohort;
+        const isColHovered = offset === hoveredOffset;
+        const hoverShadow = [isRowHovered && ROW_HOVER_SHADOW, isColHovered && COL_HOVER_SHADOW]
+          .filter(Boolean)
+          .join(', ');
+        const handlers = {
+          onMouseEnter: () => {
+            setHoveredCohort(record.cohortMonth);
+            setHoveredOffset(offset);
+          },
+          onMouseLeave: () => {
+            setHoveredCohort(null);
+            setHoveredOffset(null);
+          },
+        };
         const elapsed = monthsElapsed(record.cohortMonth);
         if (offset > elapsed) {
-          return <span style={{ color: token.colorTextQuaternary }}>—</span>;
+          return (
+            <div {...handlers} style={{ color: token.colorTextQuaternary, boxShadow: hoverShadow || undefined, borderRadius: 4 }}>
+              —
+            </div>
+          );
         }
         const point = record.points.find((p) => p.monthOffset === offset);
         const percent = point?.retentionPercent ?? 0;
         const alpha = Math.min(1, Math.max(0.08, percent / 100));
+        const calendarMonth = dayjs(`${record.cohortMonth}-01`).add(offset, 'month').format('MMM');
         return (
           <Tooltip
             title={
               (point
                 ? `${point.activeClients} из ${record.cohortSize} клиентов · выручка ${formatUZS(point.revenue)}`
-                : `0 из ${record.cohortSize} клиентов`) + ' · клик — список клиентов'
+                : `0 из ${record.cohortSize} клиентов`) + ` · ${calendarMonth} · клик — список клиентов`
             }
           >
             <div
+              {...handlers}
               onClick={() => setDrillDown({ cohortMonth: record.cohortMonth, monthOffset: offset })}
               style={{
                 backgroundColor: `rgba(82, 196, 26, ${alpha})`,
                 color: alpha > 0.55 ? '#fff' : token.colorText,
                 borderRadius: 4,
-                padding: '2px 0',
+                padding: '3px 0',
                 fontWeight: 500,
                 cursor: 'pointer',
+                boxShadow: hoverShadow || undefined,
               }}
             >
-              {percent}%
+              <div>{percent}%</div>
+              <div style={{ fontSize: 10, opacity: 0.75, fontWeight: 400 }}>{calendarMonth}</div>
             </div>
           </Tooltip>
         );
       },
     }));
     return [...base, ...offsetCols];
-  }, [offsetColumns, token]);
+  }, [offsetColumns, token, hoveredCohort, hoveredOffset]);
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
@@ -214,7 +265,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
     {
       title: 'Удержание по когортам',
       description:
-        'Каждая строка — клиенты, впервые купившие в этот месяц. M0 — месяц первой покупки (всегда 100%), M1, M2… — вернулись ли они через N месяцев. Ярче цвет — выше процент, «—» значит месяц ещё не наступил. Кликните по любой ячейке — откроется список клиентов: кто купил, а кто отвалился.',
+        'Каждая строка — клиенты, впервые купившие в этот месяц. «Старт» — месяц первой покупки (всегда 100%), «+1 мес.», «+2 мес.» и т.д. — вернулись ли они через это время (под процентом виден и сам календарный месяц). Ярче цвет — выше процент, «—» значит месяц ещё не наступил. Наведите мышь — подсветится вся строка и столбец, как линейка. Кликните по любой ячейке — откроется список клиентов: кто купил, а кто отвалился.',
       target: targetOf(heatmapRef),
     },
     {
@@ -228,9 +279,10 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <Typography.Paragraph type="secondary" style={{ flex: 1 }}>
-          <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>M0</strong> — месяц первой
-          покупки, <strong>M1</strong> — следующий месяц и т.д. Retention % — доля клиентов когорты, купивших что-либо в этот месяц
-          (не обязательно каждый месяц подряд). Показаны последние 24 когорты.
+          <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>Старт</strong> — месяц
+          первой покупки, <strong>+1 мес.</strong>, <strong>+2 мес.</strong> и т.д. — сколько времени прошло с тех пор (под процентом —
+          сам календарный месяц). Retention % — доля клиентов когорты, купивших что-либо в этот месяц (не обязательно каждый месяц
+          подряд). Показаны последние 24 когорты.
         </Typography.Paragraph>
         {hasCohorts && (
           <Button icon={<QuestionCircleOutlined />} onClick={() => setTourOpen(true)}>
@@ -271,7 +323,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
                 <Statistic
                   title={
                     <span>
-                      Retention M1
+                      Retention +1 мес.
                       <FormulaHint text="Доля клиентов когорты, купивших повторно через 1 месяц после первой покупки (усреднено по когортам, где этот месяц уже наступил)" />
                     </span>
                   }
@@ -285,7 +337,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
                 <Statistic
                   title={
                     <span>
-                      Retention M3
+                      Retention +3 мес.
                       <FormulaHint text="Доля клиентов когорты, купивших повторно через 3 месяца после первой покупки (усреднено по когортам, где этот месяц уже наступил)" />
                     </span>
                   }
@@ -353,7 +405,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
       <Drawer
         title={
           drillDown
-            ? `Когорта ${dayjs(`${drillDown.cohortMonth}-01`).format('MMM YYYY')} · через ${drillDown.monthOffset} мес.`
+            ? `Когорта ${dayjs(`${drillDown.cohortMonth}-01`).format('MMM YYYY')} · ${offsetLabel(drillDown.monthOffset).toLowerCase()}`
             : ''
         }
         open={!!drillDown}
