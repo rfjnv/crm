@@ -191,13 +191,17 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
     localStorage.setItem(COHORTS_TOUR_STORAGE_KEY, '1');
   };
 
+  /** Tour типизирует target как `() => HTMLElement` (без null) — ref.current на деле бывает null
+   *  до монтирования, но шаги строятся только после hasCohorts, когда все блоки уже отрисованы. */
+  const targetOf = (ref: React.RefObject<HTMLDivElement | null>) => () => ref.current as HTMLElement;
+
   const tourSteps: TourProps['steps'] = [
     ...(!isManagerRole
       ? [
           {
             title: 'Фильтр по менеджеру',
             description: 'Можно посмотреть когорты конкретного менеджера, а можно оставить пустым — тогда покажет всю компанию.',
-            target: () => filterRef.current,
+            target: targetOf(filterRef),
           },
         ]
       : []),
@@ -205,18 +209,18 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
       title: 'Сводка',
       description:
         'Сколько всего когорт (групп клиентов по месяцу первой покупки) и какой процент из них в среднем возвращается за покупкой через 1 и через 3 месяца.',
-      target: () => statsRef.current,
+      target: targetOf(statsRef),
     },
     {
       title: 'Удержание по когортам',
       description:
         'Каждая строка — клиенты, впервые купившие в этот месяц. M0 — месяц первой покупки (всегда 100%), M1, M2… — вернулись ли они через N месяцев. Ярче цвет — выше процент, «—» значит месяц ещё не наступил. Кликните по любой ячейке — откроется список клиентов: кто купил, а кто отвалился.',
-      target: () => heatmapRef.current,
+      target: targetOf(heatmapRef),
     },
     {
       title: 'Выручка на клиента (LTV)',
       description: 'Накопленная выручка на одного клиента когорты по мере того, как проходит время с его первой покупки.',
-      target: () => chartRef.current,
+      target: targetOf(chartRef),
     },
   ];
 
