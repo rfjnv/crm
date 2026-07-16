@@ -5,11 +5,12 @@ import {
   Card, Select, Spin, Table, Tooltip, Tag, Typography, theme,
   Drawer, DatePicker, Pagination, Tabs, Input, Button, Space,
 } from 'antd';
-import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined, LineChartOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
+import CohortsAnalyticsPanel from '../components/CohortsAnalyticsPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import type { HistoryClientActivity, Product } from '../types';
@@ -23,7 +24,7 @@ const MONTH_LABELS: Record<number, string> = {
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
-type MatrixTabView = 'matrix' | 'hierarchy-clients';
+type MatrixTabView = 'matrix' | 'hierarchy-clients' | 'cohorts';
 
 // ── URL params ──────────────────────────────────────────────────────────────
 
@@ -64,7 +65,8 @@ function parseParams(sp: URLSearchParams): ListParams {
   const rawPs = parseInt(sp.get('pageSize') || String(DEFAULT_PAGE_SIZE), 10);
   const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPs) ? rawPs : DEFAULT_PAGE_SIZE;
   const tabRaw = sp.get('view');
-  const view: MatrixTabView = tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : 'matrix';
+  const view: MatrixTabView =
+    tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : tabRaw === 'cohorts' ? 'cohorts' : 'matrix';
 
   // Ensure from <= to
   const startTs = fromYear * 100 + fromMonth;
@@ -633,6 +635,11 @@ export default function ClientActivityMatrixPage() {
                 onClientSearchTermChange={(value) => patchParams({ clientSearch: value, page: 1 })}
               />
             ),
+          },
+          {
+            key: 'cohorts',
+            label: <span><LineChartOutlined /> Когорты</span>,
+            children: <CohortsAnalyticsPanel fetchEnabled={view === 'cohorts'} />,
           },
         ]}
       />

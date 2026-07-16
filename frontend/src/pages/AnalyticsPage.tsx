@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
+import CohortsAnalyticsPanel from '../components/CohortsAnalyticsPanel';
 import {
   inferTypeLabel,
   safePrice,
@@ -36,8 +37,6 @@ import {
 } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import { financeApi } from '../api/finance.api';
-import { usersApi } from '../api/users.api';
-import { useAuthStore } from '../store/authStore';
 import { statusConfig } from '../components/DealStatusTag';
 import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -58,8 +57,6 @@ import type {
   DemandStabilityRow,
   Product,
   AbcXyzRow,
-  UserRole,
-  CohortRow,
 } from '../types';
 
 function AbcXyzTableBodyCell(props: PropsWithChildren<TdHTMLAttributes<HTMLTableCellElement>>) {
@@ -312,11 +309,8 @@ export default function AnalyticsPage() {
   const [abcXyzFilterAbc, setAbcXyzFilterAbc] = useState<string | undefined>();
   const [abcXyzFilterXyz, setAbcXyzFilterXyz] = useState<string | undefined>();
   const [abcXyzFilterCombined, setAbcXyzFilterCombined] = useState<string | undefined>();
-  const [cohortManagerId, setCohortManagerId] = useState<string | undefined>();
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
-  const isManagerRole = role === 'MANAGER';
 
   const sendNowMut = useMutation({
     mutationFn: () => analyticsApi.sendClosedDealsNow(),
@@ -391,130 +385,6 @@ export default function AnalyticsPage() {
     );
     return [...filtered].sort(compareAbcXyzRowsByImportance);
   }, [abcXyz, abcXyzFilterAbc, abcXyzFilterXyz, abcXyzFilterCombined]);
-
-  const { data: cohortData, isLoading: cohortLoading } = useQuery({
-    queryKey: ['analytics-cohorts', cohortManagerId],
-    queryFn: () => analyticsApi.getCohorts(cohortManagerId),
-    staleTime: heavyAnalyticsStale,
-  });
-
-  const { data: cohortManagerUsers = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => usersApi.list(),
-    enabled: !isManagerRole,
-  });
-
-  const cohortManagerOptions = useMemo(
-    () =>
-      [...cohortManagerUsers]
-        .filter((u) => u.isActive)
-        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
-        .map((u) => ({ label: u.fullName, value: u.id })),
-    [cohortManagerUsers],
-  );
-
-  /** Сколько полных месяцев прошло с начала когорты — чтобы не путать «ещё не наступило» с «0% удержания». */
-  const cohortMonthsElapsed = (cohortMonth: string): number =>
-    dayjs().startOf('month').diff(dayjs(`${cohortMonth}-01`), 'month');
-
-  const cohortsDesc = useMemo(() => {
-    if (!cohortData?.cohorts) return [];
-    return [...cohortData.cohorts].sort((a, b) => b.cohortMonth.localeCompare(a.cohortMonth));
-  }, [cohortData]);
-
-  const cohortOffsetColumns = useMemo(
-    () => Array.from({ length: (cohortData?.maxMonthOffset ?? 11) + 1 }, (_, i) => i),
-    [cohortData],
-  );
-
-  const cohortSummary = useMemo(() => {
-    if (!cohortData?.cohorts || cohortData.cohorts.length === 0) return null;
-    const retentionAtOffset = (offset: number) => {
-      let sizeSum = 0;
-      let activeSum = 0;
-      for (const c of cohortData.cohorts) {
-        if (cohortMonthsElapsed(c.cohortMonth) < offset) continue;
-        sizeSum += c.cohortSize;
-        activeSum += c.points.find((p) => p.monthOffset === offset)?.activeClients ?? 0;
-      }
-      return sizeSum > 0 ? Math.round((activeSum / sizeSum) * 1000) / 10 : null;
-    };
-    return {
-      cohortsCount: cohortData.cohorts.length,
-      retentionM1: retentionAtOffset(1),
-      retentionM3: retentionAtOffset(3),
-    };
-  }, [cohortData]);
-
-  const cohortLtvChartData = useMemo(() => {
-    if (!cohortData?.cohorts) return [];
-    const maxOffset = cohortData.maxMonthOffset ?? 11;
-    const recentCohorts = [...cohortData.cohorts]
-      .sort((a, b) => b.cohortMonth.localeCompare(a.cohortMonth))
-      .slice(0, 8);
-    const rows: { cohortLabel: string; monthOffset: number; ltv: number }[] = [];
-    for (const c of recentCohorts) {
-      const elapsed = Math.min(maxOffset, cohortMonthsElapsed(c.cohortMonth));
-      const cohortLabel = dayjs(`${c.cohortMonth}-01`).format('MMM YYYY');
-      let cumulative = 0;
-      for (let offset = 0; offset <= elapsed; offset++) {
-        cumulative += c.points.find((p) => p.monthOffset === offset)?.revenuePerCohortClient ?? 0;
-        rows.push({ cohortLabel, monthOffset: offset, ltv: Math.round(cumulative) });
-      }
-    }
-    return rows;
-  }, [cohortData]);
-
-  const cohortHeatmapColumns = useMemo(() => {
-    const base = [
-      {
-        title: 'Когорта',
-        dataIndex: 'cohortMonth',
-        key: 'cohortMonth',
-        fixed: 'left' as const,
-        width: 110,
-        render: (v: string) => dayjs(`${v}-01`).format('MMM YYYY'),
-      },
-      { title: 'Клиентов', dataIndex: 'cohortSize', key: 'cohortSize', width: 90, align: 'right' as const },
-    ];
-    const offsetCols = cohortOffsetColumns.map((offset) => ({
-      title: `M${offset}`,
-      key: `m${offset}`,
-      width: 64,
-      align: 'center' as const,
-      render: (_: unknown, record: CohortRow) => {
-        const elapsed = cohortMonthsElapsed(record.cohortMonth);
-        if (offset > elapsed) {
-          return <span style={{ color: token.colorTextQuaternary }}>—</span>;
-        }
-        const point = record.points.find((p) => p.monthOffset === offset);
-        const percent = point?.retentionPercent ?? 0;
-        const alpha = Math.min(1, Math.max(0.08, percent / 100));
-        return (
-          <Tooltip
-            title={
-              point
-                ? `${point.activeClients} из ${record.cohortSize} клиентов · выручка ${formatUZS(point.revenue)}`
-                : `0 из ${record.cohortSize} клиентов`
-            }
-          >
-            <div
-              style={{
-                backgroundColor: `rgba(82, 196, 26, ${alpha})`,
-                color: alpha > 0.55 ? '#fff' : token.colorText,
-                borderRadius: 4,
-                padding: '2px 0',
-                fontWeight: 500,
-              }}
-            >
-              {percent}%
-            </div>
-          </Tooltip>
-        );
-      },
-    }));
-    return [...base, ...offsetCols];
-  }, [cohortOffsetColumns, token]);
 
   const { data: intel } = useQuery({
     queryKey: ['analytics-intelligence', periodQueryKey],
@@ -2377,125 +2247,7 @@ export default function AnalyticsPage() {
     </div>
   );
 
-  const cohortsTab = (
-    <div>
-      <Typography.Paragraph type="secondary">
-        <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>M0</strong> — месяц первой
-        покупки, <strong>M1</strong> — следующий месяц и т.д. Retention % — доля клиентов когорты, купивших что-либо в этот месяц
-        (не обязательно каждый месяц подряд). Показаны последние 24 когорты.
-      </Typography.Paragraph>
-      {!isManagerRole && (
-        <Card size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
-          <Space wrap align="center">
-            <Typography.Text type="secondary">Менеджер</Typography.Text>
-            <Select
-              allowClear
-              placeholder="Все менеджеры"
-              style={{ minWidth: 200 }}
-              value={cohortManagerId}
-              onChange={(v) => setCohortManagerId(v)}
-              options={cohortManagerOptions}
-            />
-          </Space>
-        </Card>
-      )}
-
-      {cohortLoading || !cohortData ? (
-        <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />
-      ) : cohortData.cohorts.length === 0 ? (
-        <Empty description="Нет данных для когортного анализа" />
-      ) : (
-        <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} sm={8}>
-              <Card bordered={false} size="small">
-                <Statistic title="Когорт" value={cohortSummary?.cohortsCount ?? 0} prefix={<TeamOutlined />} />
-              </Card>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Card bordered={false} size="small">
-                <Statistic
-                  title={
-                    <span>
-                      Retention M1
-                      <FormulaHint text="Доля клиентов когорты, купивших повторно через 1 месяц после первой покупки (усреднено по когортам, где этот месяц уже наступил)" />
-                    </span>
-                  }
-                  value={cohortSummary?.retentionM1 ?? '—'}
-                  suffix={cohortSummary?.retentionM1 != null ? '%' : ''}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Card bordered={false} size="small">
-                <Statistic
-                  title={
-                    <span>
-                      Retention M3
-                      <FormulaHint text="Доля клиентов когорты, купивших повторно через 3 месяца после первой покупки (усреднено по когортам, где этот месяц уже наступил)" />
-                    </span>
-                  }
-                  value={cohortSummary?.retentionM3 ?? '—'}
-                  suffix={cohortSummary?.retentionM3 != null ? '%' : ''}
-                />
-              </Card>
-            </Col>
-          </Row>
-
-          <Card
-            title="Удержание клиентов по когортам (Retention)"
-            bordered={false}
-            style={{ marginBottom: 16 }}
-            styles={{ body: { paddingLeft: 12, paddingRight: 24 } }}
-          >
-            <Table
-              columns={cohortHeatmapColumns}
-              dataSource={cohortsDesc}
-              rowKey="cohortMonth"
-              pagination={false}
-              size="small"
-              scroll={{ x: 900 }}
-            />
-          </Card>
-
-          <Card title="Выручка на клиента когорты (LTV), накопительно" bordered={false}>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
-              На графике — последние по времени когорты (не более 8). Значение — суммарная выручка на клиента когорты с момента
-              первой покупки.
-            </Typography.Paragraph>
-            {cohortLtvChartData.length > 0 ? (
-              <Line
-                data={cohortLtvChartData}
-                xField="monthOffset"
-                yField="ltv"
-                colorField="cohortLabel"
-                height={340}
-                shapeField="smooth"
-                axis={{
-                  y: {
-                    labelFormatter: (v: number) => formatUZS(v),
-                    labelFill: token.colorTextSecondary,
-                    grid: true,
-                    gridStroke: token.colorBorderSecondary,
-                    gridLineDash: [4, 4],
-                  },
-                  x: {
-                    title: 'Месяцев с первой покупки',
-                    labelFill: token.colorTextSecondary,
-                  },
-                }}
-                tooltip={{ items: [{ field: 'ltv', channel: 'y', valueFormatter: (v: number) => formatUZS(v) }] }}
-                legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
-                theme={chartTheme}
-              />
-            ) : (
-              <Typography.Text type="secondary">Нет данных</Typography.Text>
-            )}
-          </Card>
-        </>
-      )}
-    </div>
-  );
+  const cohortsTab = <CohortsAnalyticsPanel fetchEnabled={analyticsTab === 'cohorts'} />;
 
   const hierarchyClientsTab = (
     <HierarchyClientsAnalyticsPanel
