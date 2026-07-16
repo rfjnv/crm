@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme, Drawer, List, Tag } from 'antd';
-import { TeamOutlined, InfoCircleOutlined, PhoneOutlined, SendOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme, Drawer, List, Tag, Tour, Button } from 'antd';
+import type { TourProps } from 'antd';
+import { TeamOutlined, InfoCircleOutlined, PhoneOutlined, SendOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { Line } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
@@ -11,6 +12,8 @@ import { formatUZS } from '../utils/currency';
 import { telegramLinkFromPhone } from '../utils/phone';
 import ClientQuickViewDrawer from './ClientQuickViewDrawer';
 import type { UserRole, CohortRow } from '../types';
+
+const COHORTS_TOUR_STORAGE_KEY = 'cohorts-tour-dismissed';
 
 function FormulaHint({ text }: { text: string }) {
   return (
@@ -32,6 +35,11 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const [managerId, setManagerId] = useState<string | undefined>();
   const [drillDown, setDrillDown] = useState<{ cohortMonth: string; monthOffset: number } | null>(null);
   const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const statsRef = useRef<HTMLDivElement>(null);
+  const heatmapRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const { data: cohortData, isLoading: cohortLoading } = useQuery({
     queryKey: ['analytics-cohorts', managerId],
@@ -169,15 +177,65 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
 
+  const hasCohorts = !!cohortData && cohortData.cohorts.length > 0;
+
+  useEffect(() => {
+    if (!hasCohorts) return;
+    if (localStorage.getItem(COHORTS_TOUR_STORAGE_KEY)) return;
+    const t = setTimeout(() => setTourOpen(true), 300);
+    return () => clearTimeout(t);
+  }, [hasCohorts]);
+
+  const closeTour = () => {
+    setTourOpen(false);
+    localStorage.setItem(COHORTS_TOUR_STORAGE_KEY, '1');
+  };
+
+  const tourSteps: TourProps['steps'] = [
+    ...(!isManagerRole
+      ? [
+          {
+            title: 'Фильтр по менеджеру',
+            description: 'Можно посмотреть когорты конкретного менеджера, а можно оставить пустым — тогда покажет всю компанию.',
+            target: () => filterRef.current,
+          },
+        ]
+      : []),
+    {
+      title: 'Сводка',
+      description:
+        'Сколько всего когорт (групп клиентов по месяцу первой покупки) и какой процент из них в среднем возвращается за покупкой через 1 и через 3 месяца.',
+      target: () => statsRef.current,
+    },
+    {
+      title: 'Удержание по когортам',
+      description:
+        'Каждая строка — клиенты, впервые купившие в этот месяц. M0 — месяц первой покупки (всегда 100%), M1, M2… — вернулись ли они через N месяцев. Ярче цвет — выше процент, «—» значит месяц ещё не наступил. Кликните по любой ячейке — откроется список клиентов: кто купил, а кто отвалился.',
+      target: () => heatmapRef.current,
+    },
+    {
+      title: 'Выручка на клиента (LTV)',
+      description: 'Накопленная выручка на одного клиента когорты по мере того, как проходит время с его первой покупки.',
+      target: () => chartRef.current,
+    },
+  ];
+
   return (
     <div>
-      <Typography.Paragraph type="secondary">
-        <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>M0</strong> — месяц первой
-        покупки, <strong>M1</strong> — следующий месяц и т.д. Retention % — доля клиентов когорты, купивших что-либо в этот месяц
-        (не обязательно каждый месяц подряд). Показаны последние 24 когорты.
-      </Typography.Paragraph>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <Typography.Paragraph type="secondary" style={{ flex: 1 }}>
+          <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>M0</strong> — месяц первой
+          покупки, <strong>M1</strong> — следующий месяц и т.д. Retention % — доля клиентов когорты, купивших что-либо в этот месяц
+          (не обязательно каждый месяц подряд). Показаны последние 24 когорты.
+        </Typography.Paragraph>
+        {hasCohorts && (
+          <Button icon={<QuestionCircleOutlined />} onClick={() => setTourOpen(true)}>
+            Обучение
+          </Button>
+        )}
+      </div>
       {!isManagerRole && (
-        <Card size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
+        <Card ref={filterRef} size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
           <Space wrap align="center">
             <Typography.Text type="secondary">Менеджер</Typography.Text>
             <Select
@@ -198,7 +256,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
         <Empty description="Нет данных для когортного анализа" />
       ) : (
         <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+          <Row ref={statsRef} gutter={[16, 16]} style={{ marginBottom: 16 }}>
             <Col xs={24} sm={8}>
               <Card bordered={false} size="small">
                 <Statistic title="Когорт" value={summary?.cohortsCount ?? 0} prefix={<TeamOutlined />} />
@@ -235,6 +293,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
           </Row>
 
           <Card
+            ref={heatmapRef}
             title="Удержание клиентов по когортам (Retention)"
             bordered={false}
             style={{ marginBottom: 16 }}
@@ -250,7 +309,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
             />
           </Card>
 
-          <Card title="Выручка на клиента когорты (LTV), накопительно" bordered={false}>
+          <Card ref={chartRef} title="Выручка на клиента когорты (LTV), накопительно" bordered={false}>
             <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
               На графике — последние по времени когорты (не более 8). Значение — суммарная выручка на клиента когорты с момента
               первой покупки.
@@ -357,6 +416,17 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
       </Drawer>
 
       <ClientQuickViewDrawer clientId={quickViewClientId} onClose={() => setQuickViewClientId(null)} />
+
+      <Tour
+        open={tourOpen}
+        onClose={closeTour}
+        onFinish={closeTour}
+        steps={tourSteps}
+        type="primary"
+        mask={{
+          style: { backdropFilter: 'blur(3px)' },
+        }}
+      />
     </div>
   );
 }
