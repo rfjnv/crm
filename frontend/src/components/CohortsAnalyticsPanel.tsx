@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme, Drawer, List, Tag, Tour, Button } from 'antd';
+import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme, Drawer, List, Tag, Tour, Button, Segmented } from 'antd';
 import type { TourProps } from 'antd';
 import { TeamOutlined, InfoCircleOutlined, PhoneOutlined, SendOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { Line } from '@ant-design/charts';
@@ -11,7 +11,7 @@ import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
 import { telegramLinkFromPhone } from '../utils/phone';
 import ClientQuickViewDrawer from './ClientQuickViewDrawer';
-import type { UserRole, CohortRow } from '../types';
+import type { UserRole, CohortRow, CohortMode } from '../types';
 
 const COHORTS_TOUR_STORAGE_KEY = 'cohorts-tour-dismissed';
 
@@ -37,19 +37,21 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
   const isManagerRole = role === 'MANAGER';
   const [managerId, setManagerId] = useState<string | undefined>();
+  const [mode, setMode] = useState<CohortMode>('new');
   const [drillDown, setDrillDown] = useState<{ cohortMonth: string; monthOffset: number } | null>(null);
   const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [hoveredCohort, setHoveredCohort] = useState<string | null>(null);
   const [hoveredOffset, setHoveredOffset] = useState<number | null>(null);
+  const modeRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const heatmapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
   const { data: cohortData, isLoading: cohortLoading } = useQuery({
-    queryKey: ['analytics-cohorts', managerId],
-    queryFn: () => analyticsApi.getCohorts(managerId),
+    queryKey: ['analytics-cohorts', managerId, mode],
+    queryFn: () => analyticsApi.getCohorts(managerId, mode),
     staleTime: 120_000,
     enabled: fetchEnabled,
   });
@@ -70,8 +72,8 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   );
 
   const { data: drillDownData, isLoading: drillDownLoading } = useQuery({
-    queryKey: ['analytics-cohort-clients', drillDown?.cohortMonth, drillDown?.monthOffset, managerId],
-    queryFn: () => analyticsApi.getCohortClients(drillDown!.cohortMonth, drillDown!.monthOffset, managerId),
+    queryKey: ['analytics-cohort-clients', drillDown?.cohortMonth, drillDown?.monthOffset, managerId, mode],
+    queryFn: () => analyticsApi.getCohortClients(drillDown!.cohortMonth, drillDown!.monthOffset, managerId, mode),
     enabled: !!drillDown,
   });
 
@@ -148,7 +150,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
         onCell: rowHoverProps,
       },
       {
-        title: 'Клиентов',
+        title: mode === 'new' ? 'Новых' : 'Купили',
         dataIndex: 'cohortSize',
         key: 'cohortSize',
         width: 90,
@@ -223,7 +225,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
       },
     }));
     return [...base, ...offsetCols];
-  }, [offsetColumns, token, hoveredCohort, hoveredOffset]);
+  }, [offsetColumns, token, hoveredCohort, hoveredOffset, mode]);
 
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
@@ -247,6 +249,12 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const targetOf = (ref: React.RefObject<HTMLDivElement | null>) => () => ref.current as HTMLElement;
 
   const tourSteps: TourProps['steps'] = [
+    {
+      title: 'Кого считать',
+      description:
+        '«Новые клиенты» — строка только про тех, кто купил здесь впервые в жизни. «Все клиенты» — строка про вообще всех, кто купил в этот месяц (и новых, и давних клиентов). В обоих случаях дальше смотрим на тех же самых людей: сколько из них купило ещё раз через 1, 2, 3 месяца.',
+      target: targetOf(modeRef),
+    },
     ...(!isManagerRole
       ? [
           {
@@ -279,10 +287,20 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <Typography.Paragraph type="secondary" style={{ flex: 1 }}>
-          <strong>Когорта</strong> — клиенты, сгруппированные по месяцу первой покупки (за всё время). <strong>Старт</strong> — месяц
-          первой покупки, <strong>+1 мес.</strong>, <strong>+2 мес.</strong> и т.д. — сколько времени прошло с тех пор (под процентом —
-          сам календарный месяц). Retention % — доля клиентов когорты, купивших что-либо в этот месяц (не обязательно каждый месяц
-          подряд). Показаны последние 24 когорты.
+          {mode === 'new' ? (
+            <>
+              <strong>Режим «Новые клиенты»</strong>: строка — клиенты, для которых этот месяц был самой первой покупкой за всю
+              историю. «Клиентов» — сколько новых пришло в этот месяц.{' '}
+            </>
+          ) : (
+            <>
+              <strong>Режим «Все клиенты»</strong>: строка — вообще все, кто купил в этот месяц (и новые, и давние). «Клиентов» —
+              сколько всего купило в этот месяц.{' '}
+            </>
+          )}
+          Дальше — <strong>из тех же самых клиентов</strong> сколько купило ещё раз: <strong>Старт</strong> = сам этот месяц (100%),{' '}
+          <strong>+1 мес.</strong>, <strong>+2 мес.</strong> и т.д. — сколько вернулось через это время (под процентом — сам
+          календарный месяц). Показаны последние 24 когорты.
         </Typography.Paragraph>
         {hasCohorts && (
           <Button icon={<QuestionCircleOutlined />} onClick={() => setTourOpen(true)}>
@@ -290,6 +308,19 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
           </Button>
         )}
       </div>
+      <Card ref={modeRef} size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
+        <Space wrap align="center">
+          <Typography.Text type="secondary">Кого считать</Typography.Text>
+          <Segmented
+            value={mode}
+            onChange={(v) => setMode(v as CohortMode)}
+            options={[
+              { label: 'Новые клиенты', value: 'new' },
+              { label: 'Все клиенты', value: 'all' },
+            ]}
+          />
+        </Space>
+      </Card>
       {!isManagerRole && (
         <Card ref={filterRef} size="small" bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ paddingBottom: 12 }}>
           <Space wrap align="center">

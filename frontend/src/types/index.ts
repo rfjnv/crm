@@ -754,9 +754,16 @@ export interface CohortRow {
   points: CohortPoint[];
 }
 
+/**
+ * 'new' — когорта = клиенты, для которых этот месяц был самой первой покупкой за всю историю.
+ * 'all' — когорта = все, кто купил в этот месяц (новые и старые вперемешку).
+ */
+export type CohortMode = 'new' | 'all';
+
 export interface CohortAnalysisResponse {
   cohorts: CohortRow[];
   maxMonthOffset: number;
+  mode: CohortMode;
 }
 
 /** Клиент когорты на конкретный месяц после первой покупки — для drill-down по клику на ячейку retention. */
@@ -776,6 +783,7 @@ export interface CohortClientRow {
 export interface CohortClientsResponse {
   cohortMonth: string;
   monthOffset: number;
+  mode: CohortMode;
   clients: CohortClientRow[];
 }
 

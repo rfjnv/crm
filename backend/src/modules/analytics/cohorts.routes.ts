@@ -16,10 +16,23 @@ import { AppError } from '../../lib/errors';
 const router = Router();
 router.use(authenticate);
 
-/** Только последние N когорт (по месяцу первой покупки) — старые когорты малополезны и раздувают ответ. */
+/** Только последние N когорт — старые когорты малополезны и раздувают ответ. */
 const MAX_COHORTS = 24;
-/** Горизонт удержания — сколько месяцев после первой покупки показываем. */
+/** Горизонт удержания — сколько месяцев после старта когорты показываем. */
 const MAX_MONTH_OFFSET = 11;
+
+/**
+ * 'new' — когорта = клиенты, для которых этот месяц был САМОЙ ПЕРВОЙ покупкой за всю историю
+ *   (классический acquisition retention, узкая когорта).
+ * 'all' — когорта = ВСЕ клиенты, купившие в этот месяц (новые и старые вперемешку); дальше смотрим,
+ *   сколько из НИХ ЖЕ купило повторно через N месяцев. Один и тот же клиент может входить сразу
+ *   в несколько когорт (если покупал в разные месяцы) — это ожидаемо для этого режима.
+ */
+type CohortMode = 'new' | 'all';
+
+function parseMode(req: Request): CohortMode {
+  return req.query.mode === 'all' ? 'all' : 'new';
+}
 
 type CohortRawRow = {
   cohort_month: Date;
@@ -55,68 +68,121 @@ router.get(
     const managerId = isManager ? dealScope.managerId : managerIdFromQuery;
 
     const mgrFilter = managerId ? Prisma.sql`AND d.manager_id = ${managerId}` : Prisma.empty;
+    const mode = parseMode(req);
 
-    const [cohortSizeRaw, cohortRaw] = await Promise.all([
-      prisma.$queryRaw<CohortSizeRow[]>(
-        Prisma.sql`
-        WITH deal_scope AS (
-          SELECT d.client_id,
-            DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month
-          FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
-        ),
-        client_first AS (
-          SELECT client_id, MIN(month) as cohort_month
-          FROM deal_scope
-          GROUP BY client_id
-        )
-        SELECT cohort_month, COUNT(*)::text as cohort_size
-        FROM client_first
-        GROUP BY cohort_month
-        ORDER BY cohort_month DESC
-        LIMIT ${MAX_COHORTS}`,
-      ),
-      prisma.$queryRaw<CohortRawRow[]>(
-        Prisma.sql`
-        WITH deal_scope AS (
-          SELECT d.client_id,
-            DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
-            ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
-          FROM deal_items di
-          JOIN deals d ON d.id = di.deal_id
-          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
-        ),
-        client_first AS (
-          SELECT client_id, MIN(month) as cohort_month
-          FROM deal_scope
-          GROUP BY client_id
-        ),
-        client_month_activity AS (
-          SELECT client_id, month, SUM(rev) as revenue
-          FROM deal_scope
-          GROUP BY client_id, month
-        )
-        SELECT * FROM (
-          SELECT
-            cf.cohort_month,
-            (
-              (EXTRACT(YEAR FROM cma.month) * 12 + EXTRACT(MONTH FROM cma.month))
-              - (EXTRACT(YEAR FROM cf.cohort_month) * 12 + EXTRACT(MONTH FROM cf.cohort_month))
-            )::int as month_offset,
-            COUNT(DISTINCT cma.client_id)::text as active_clients,
-            COALESCE(SUM(cma.revenue), 0)::text as revenue
-          FROM client_first cf
-          JOIN client_month_activity cma ON cma.client_id = cf.client_id
-          WHERE cf.cohort_month >= (SELECT MIN(cohort_month) FROM (
-            SELECT cohort_month FROM client_first GROUP BY cohort_month ORDER BY cohort_month DESC LIMIT ${MAX_COHORTS}
-          ) recent_cohorts)
-          GROUP BY cf.cohort_month, month_offset
-        ) sub
-        WHERE month_offset BETWEEN 0 AND ${MAX_MONTH_OFFSET}
-        ORDER BY cohort_month, month_offset`,
-      ),
-    ]);
+    const [cohortSizeRaw, cohortRaw] = mode === 'all'
+      ? await Promise.all([
+          prisma.$queryRaw<CohortSizeRow[]>(
+            Prisma.sql`
+            WITH deal_scope AS (
+              SELECT d.client_id,
+                DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month
+              FROM deal_items di
+              JOIN deals d ON d.id = di.deal_id
+              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
+            )
+            SELECT month as cohort_month, COUNT(DISTINCT client_id)::text as cohort_size
+            FROM deal_scope
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT ${MAX_COHORTS}`,
+          ),
+          prisma.$queryRaw<CohortRawRow[]>(
+            Prisma.sql`
+            WITH deal_scope AS (
+              SELECT d.client_id,
+                DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+                ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
+              FROM deal_items di
+              JOIN deals d ON d.id = di.deal_id
+              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
+            ),
+            client_month_activity AS (
+              SELECT client_id, month, SUM(rev) as revenue
+              FROM deal_scope
+              GROUP BY client_id, month
+            )
+            SELECT * FROM (
+              SELECT
+                ma1.month as cohort_month,
+                (
+                  (EXTRACT(YEAR FROM ma2.month) * 12 + EXTRACT(MONTH FROM ma2.month))
+                  - (EXTRACT(YEAR FROM ma1.month) * 12 + EXTRACT(MONTH FROM ma1.month))
+                )::int as month_offset,
+                COUNT(DISTINCT ma2.client_id)::text as active_clients,
+                COALESCE(SUM(ma2.revenue), 0)::text as revenue
+              FROM client_month_activity ma1
+              JOIN client_month_activity ma2 ON ma2.client_id = ma1.client_id AND ma2.month >= ma1.month
+              WHERE ma1.month >= (SELECT MIN(month) FROM (
+                SELECT DISTINCT month FROM client_month_activity ORDER BY month DESC LIMIT ${MAX_COHORTS}
+              ) recent_months)
+              GROUP BY ma1.month, month_offset
+            ) sub
+            WHERE month_offset BETWEEN 0 AND ${MAX_MONTH_OFFSET}
+            ORDER BY cohort_month, month_offset`,
+          ),
+        ])
+      : await Promise.all([
+          prisma.$queryRaw<CohortSizeRow[]>(
+            Prisma.sql`
+            WITH deal_scope AS (
+              SELECT d.client_id,
+                DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month
+              FROM deal_items di
+              JOIN deals d ON d.id = di.deal_id
+              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
+            ),
+            client_first AS (
+              SELECT client_id, MIN(month) as cohort_month
+              FROM deal_scope
+              GROUP BY client_id
+            )
+            SELECT cohort_month, COUNT(*)::text as cohort_size
+            FROM client_first
+            GROUP BY cohort_month
+            ORDER BY cohort_month DESC
+            LIMIT ${MAX_COHORTS}`,
+          ),
+          prisma.$queryRaw<CohortRawRow[]>(
+            Prisma.sql`
+            WITH deal_scope AS (
+              SELECT d.client_id,
+                DATE_TRUNC('month', (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}) as month,
+                ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
+              FROM deal_items di
+              JOIN deals d ON d.id = di.deal_id
+              WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
+            ),
+            client_first AS (
+              SELECT client_id, MIN(month) as cohort_month
+              FROM deal_scope
+              GROUP BY client_id
+            ),
+            client_month_activity AS (
+              SELECT client_id, month, SUM(rev) as revenue
+              FROM deal_scope
+              GROUP BY client_id, month
+            )
+            SELECT * FROM (
+              SELECT
+                cf.cohort_month,
+                (
+                  (EXTRACT(YEAR FROM cma.month) * 12 + EXTRACT(MONTH FROM cma.month))
+                  - (EXTRACT(YEAR FROM cf.cohort_month) * 12 + EXTRACT(MONTH FROM cf.cohort_month))
+                )::int as month_offset,
+                COUNT(DISTINCT cma.client_id)::text as active_clients,
+                COALESCE(SUM(cma.revenue), 0)::text as revenue
+              FROM client_first cf
+              JOIN client_month_activity cma ON cma.client_id = cf.client_id
+              WHERE cf.cohort_month >= (SELECT MIN(cohort_month) FROM (
+                SELECT cohort_month FROM client_first GROUP BY cohort_month ORDER BY cohort_month DESC LIMIT ${MAX_COHORTS}
+              ) recent_cohorts)
+              GROUP BY cf.cohort_month, month_offset
+            ) sub
+            WHERE month_offset BETWEEN 0 AND ${MAX_MONTH_OFFSET}
+            ORDER BY cohort_month, month_offset`,
+          ),
+        ]);
 
     const cohortSizeMap = new Map(cohortSizeRaw.map((r) => [monthKey(r.cohort_month), Number(r.cohort_size)]));
 
@@ -156,6 +222,7 @@ router.get(
     res.json({
       cohorts,
       maxMonthOffset: MAX_MONTH_OFFSET,
+      mode,
     });
   }),
 );
@@ -192,6 +259,7 @@ router.get(
       typeof req.query.managerId === 'string' && req.query.managerId.length > 0 ? req.query.managerId : undefined;
     const managerId = isManager ? dealScope.managerId : managerIdFromQuery;
     const mgrFilter = managerId ? Prisma.sql`AND d.manager_id = ${managerId}` : Prisma.empty;
+    const mode = parseMode(req);
 
     const cohortMonth = req.params.cohortMonth as string;
     if (!COHORT_MONTH_RE.test(cohortMonth)) {
@@ -205,16 +273,20 @@ router.get(
     const cohortKey = cohortYear * 12 + cohortMonthNum;
     const targetKey = cohortKey + monthOffset;
 
-    const rows = await prisma.$queryRaw<CohortClientRawRow[]>(
-      Prisma.sql`
-      WITH deal_scope AS (
-        SELECT d.client_id,
-          ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as ts,
-          ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
-        FROM deal_items di
-        JOIN deals d ON d.id = di.deal_id
-        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
-      ),
+    // 'new' — клиент попадает в когорту, только если этот месяц был его самой первой покупкой.
+    // 'all' — в когорту входит любой клиент, купивший в этот месяц (новый или давний).
+    const cohortMembersCte =
+      mode === 'all'
+        ? Prisma.sql`
+      cohort_members AS (
+        SELECT DISTINCT client_id
+        FROM deal_scope
+        WHERE (
+          (EXTRACT(YEAR FROM DATE_TRUNC('month', (ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})) * 12)
+          + EXTRACT(MONTH FROM DATE_TRUNC('month', (ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}))
+        )::int = ${cohortKey}
+      ),`
+        : Prisma.sql`
       client_first AS (
         SELECT client_id, MIN(DATE_TRUNC('month', (ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})) as cohort_month
         FROM deal_scope
@@ -225,7 +297,19 @@ router.get(
         WHERE (
           (EXTRACT(YEAR FROM cohort_month) * 12 + EXTRACT(MONTH FROM cohort_month))
         )::int = ${cohortKey}
+      ),`;
+
+    const rows = await prisma.$queryRaw<CohortClientRawRow[]>(
+      Prisma.sql`
+      WITH deal_scope AS (
+        SELECT d.client_id,
+          ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as ts,
+          ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
       ),
+      ${cohortMembersCte}
       month_activity AS (
         SELECT ds.client_id,
           (
@@ -277,6 +361,7 @@ router.get(
     res.json({
       cohortMonth,
       monthOffset,
+      mode,
       clients: rows.map((r) => ({
         clientId: r.client_id,
         companyName: r.company_name,

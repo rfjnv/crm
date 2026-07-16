@@ -16,6 +16,7 @@ import type {
   AbcXyzResponse,
   CohortAnalysisResponse,
   CohortClientsResponse,
+  CohortMode,
   ReanimationClientDetail,
   ReanimationClientRow,
   ReanimationAiReport,
@@ -156,12 +157,14 @@ export const analyticsApi = {
 
   getAbcXyz: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
     client.get<AbcXyzResponse>('/analytics/abc-xyz', { params: analyticsPeriodParams(query) }).then((r) => r.data),
-  getCohorts: (managerId?: string) =>
-    client.get<CohortAnalysisResponse>('/analytics/cohorts', { params: managerId ? { managerId } : undefined }).then((r) => r.data),
-  getCohortClients: (cohortMonth: string, monthOffset: number, managerId?: string) =>
+  getCohorts: (managerId?: string, mode: CohortMode = 'new') =>
+    client
+      .get<CohortAnalysisResponse>('/analytics/cohorts', { params: { ...(managerId ? { managerId } : {}), mode } })
+      .then((r) => r.data),
+  getCohortClients: (cohortMonth: string, monthOffset: number, managerId?: string, mode: CohortMode = 'new') =>
     client
       .get<CohortClientsResponse>(`/analytics/cohorts/${cohortMonth}/${monthOffset}/clients`, {
-        params: managerId ? { managerId } : undefined,
+        params: { ...(managerId ? { managerId } : {}), mode },
       })
       .then((r) => r.data),
   getIntelligence: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
