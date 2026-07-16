@@ -11,6 +11,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
+import { AppError } from '../../lib/errors';
 
 const router = Router();
 router.use(authenticate);
@@ -155,6 +156,139 @@ router.get(
     res.json({
       cohorts,
       maxMonthOffset: MAX_MONTH_OFFSET,
+    });
+  }),
+);
+
+const COHORT_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+type CohortClientRawRow = {
+  client_id: string;
+  company_name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  revenue_this_month: string;
+  is_active: boolean;
+  last_purchase_at: Date | null;
+  last_contact_at: Date | null;
+  last_contact_by: string | null;
+};
+
+/** Клиенты когорты на конкретный месяц после первой покупки — для drill-down по клику на ячейку retention. */
+router.get(
+  '/:cohortMonth/:monthOffset/clients',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
+    };
+    const isManager = user.role === 'MANAGER';
+    const dealScope = ownerScope(user);
+    const managerIdFromQuery =
+      typeof req.query.managerId === 'string' && req.query.managerId.length > 0 ? req.query.managerId : undefined;
+    const managerId = isManager ? dealScope.managerId : managerIdFromQuery;
+    const mgrFilter = managerId ? Prisma.sql`AND d.manager_id = ${managerId}` : Prisma.empty;
+
+    const cohortMonth = req.params.cohortMonth as string;
+    if (!COHORT_MONTH_RE.test(cohortMonth)) {
+      throw new AppError(400, 'Некорректный формат месяца когорты (ожидается YYYY-MM)');
+    }
+    const monthOffset = Number(req.params.monthOffset as string);
+    if (!Number.isInteger(monthOffset) || monthOffset < 0 || monthOffset > MAX_MONTH_OFFSET) {
+      throw new AppError(400, 'Некорректный офсет месяца');
+    }
+    const [cohortYear, cohortMonthNum] = cohortMonth.split('-').map(Number);
+    const cohortKey = cohortYear * 12 + cohortMonthNum;
+    const targetKey = cohortKey + monthOffset;
+
+    const rows = await prisma.$queryRaw<CohortClientRawRow[]>(
+      Prisma.sql`
+      WITH deal_scope AS (
+        SELECT d.client_id,
+          ${SQL_EFFECTIVE_REVENUE_ITEM_TS} as ts,
+          ${SQL_ANALYTICS_LINE_REVENUE_DI} as rev
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER} ${mgrFilter}
+      ),
+      client_first AS (
+        SELECT client_id, MIN(DATE_TRUNC('month', (ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})) as cohort_month
+        FROM deal_scope
+        GROUP BY client_id
+      ),
+      cohort_members AS (
+        SELECT client_id FROM client_first
+        WHERE (
+          (EXTRACT(YEAR FROM cohort_month) * 12 + EXTRACT(MONTH FROM cohort_month))
+        )::int = ${cohortKey}
+      ),
+      month_activity AS (
+        SELECT ds.client_id,
+          (
+            (EXTRACT(YEAR FROM DATE_TRUNC('month', (ds.ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ})) * 12)
+            + EXTRACT(MONTH FROM DATE_TRUNC('month', (ds.ts AT TIME ZONE 'UTC') AT TIME ZONE ${SQL_ANALYTICS_TZ}))
+          )::int as month_key,
+          ds.rev
+        FROM deal_scope ds
+        WHERE ds.client_id IN (SELECT client_id FROM cohort_members)
+      ),
+      this_month AS (
+        SELECT client_id, SUM(rev) as revenue
+        FROM month_activity
+        WHERE month_key = ${targetKey}
+        GROUP BY client_id
+      ),
+      last_purchase AS (
+        SELECT client_id, MAX(ts) as last_ts
+        FROM deal_scope
+        WHERE client_id IN (SELECT client_id FROM cohort_members)
+        GROUP BY client_id
+      ),
+      last_note AS (
+        SELECT DISTINCT ON (cn.client_id) cn.client_id, cn.created_at, u.full_name as author_name
+        FROM client_notes cn
+        JOIN users u ON u.id = cn.user_id
+        WHERE cn.deleted_at IS NULL AND cn.client_id IN (SELECT client_id FROM cohort_members)
+        ORDER BY cn.client_id, cn.created_at DESC
+      )
+      SELECT
+        c.id as client_id,
+        c.company_name,
+        c.contact_name,
+        c.phone,
+        c.email,
+        COALESCE(tm.revenue, 0)::text as revenue_this_month,
+        (tm.client_id IS NOT NULL) as is_active,
+        lp.last_ts as last_purchase_at,
+        ln.created_at as last_contact_at,
+        ln.author_name as last_contact_by
+      FROM cohort_members cm
+      JOIN clients c ON c.id = cm.client_id
+      LEFT JOIN this_month tm ON tm.client_id = cm.client_id
+      LEFT JOIN last_purchase lp ON lp.client_id = cm.client_id
+      LEFT JOIN last_note ln ON ln.client_id = cm.client_id
+      ORDER BY (tm.client_id IS NOT NULL) DESC, COALESCE(tm.revenue, 0) DESC, c.company_name ASC`,
+    );
+
+    res.json({
+      cohortMonth,
+      monthOffset,
+      clients: rows.map((r) => ({
+        clientId: r.client_id,
+        companyName: r.company_name,
+        contactName: r.contact_name,
+        phone: r.phone,
+        email: r.email,
+        active: r.is_active,
+        revenueThisMonth: Number(r.revenue_this_month),
+        lastPurchaseAt: r.last_purchase_at ? r.last_purchase_at.toISOString() : null,
+        lastContactAt: r.last_contact_at ? r.last_contact_at.toISOString() : null,
+        lastContactByName: r.last_contact_by,
+      })),
     });
   }),
 );

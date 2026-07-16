@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme } from 'antd';
-import { TeamOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Table, Typography, Spin, Select, Space, Tooltip, Empty, theme, Drawer, List, Tag } from 'antd';
+import { TeamOutlined, InfoCircleOutlined, PhoneOutlined, SendOutlined } from '@ant-design/icons';
 import { Line } from '@ant-design/charts';
 import dayjs from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
+import { telegramLinkFromPhone } from '../utils/phone';
+import ClientQuickViewDrawer from './ClientQuickViewDrawer';
 import type { UserRole, CohortRow } from '../types';
 
 function FormulaHint({ text }: { text: string }) {
@@ -28,6 +30,8 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
   const role = useAuthStore((s) => s.user?.role) as UserRole | undefined;
   const isManagerRole = role === 'MANAGER';
   const [managerId, setManagerId] = useState<string | undefined>();
+  const [drillDown, setDrillDown] = useState<{ cohortMonth: string; monthOffset: number } | null>(null);
+  const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null);
 
   const { data: cohortData, isLoading: cohortLoading } = useQuery({
     queryKey: ['analytics-cohorts', managerId],
@@ -50,6 +54,12 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
         .map((u) => ({ label: u.fullName, value: u.id })),
     [managerUsers],
   );
+
+  const { data: drillDownData, isLoading: drillDownLoading } = useQuery({
+    queryKey: ['analytics-cohort-clients', drillDown?.cohortMonth, drillDown?.monthOffset, managerId],
+    queryFn: () => analyticsApi.getCohortClients(drillDown!.cohortMonth, drillDown!.monthOffset, managerId),
+    enabled: !!drillDown,
+  });
 
   /** Сколько полных месяцев прошло с начала когорты — чтобы не путать «ещё не наступило» с «0% удержания». */
   const monthsElapsed = (cohortMonth: string): number =>
@@ -131,18 +141,20 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
         return (
           <Tooltip
             title={
-              point
+              (point
                 ? `${point.activeClients} из ${record.cohortSize} клиентов · выручка ${formatUZS(point.revenue)}`
-                : `0 из ${record.cohortSize} клиентов`
+                : `0 из ${record.cohortSize} клиентов`) + ' · клик — список клиентов'
             }
           >
             <div
+              onClick={() => setDrillDown({ cohortMonth: record.cohortMonth, monthOffset: offset })}
               style={{
                 backgroundColor: `rgba(82, 196, 26, ${alpha})`,
                 color: alpha > 0.55 ? '#fff' : token.colorText,
                 borderRadius: 4,
                 padding: '2px 0',
                 fontWeight: 500,
+                cursor: 'pointer',
               }}
             >
               {percent}%
@@ -274,6 +286,77 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
           </Card>
         </>
       )}
+
+      <Drawer
+        title={
+          drillDown
+            ? `Когорта ${dayjs(`${drillDown.cohortMonth}-01`).format('MMM YYYY')} · через ${drillDown.monthOffset} мес.`
+            : ''
+        }
+        open={!!drillDown}
+        onClose={() => setDrillDown(null)}
+        width={480}
+      >
+        {drillDownLoading || !drillDownData ? (
+          <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />
+        ) : (
+          <List
+            dataSource={drillDownData.clients}
+            locale={{ emptyText: 'Нет клиентов в этой когорте' }}
+            renderItem={(c) => (
+              <List.Item
+                key={c.clientId}
+                onClick={() => setQuickViewClientId(c.clientId)}
+                style={{
+                  cursor: 'pointer',
+                  opacity: c.active ? 1 : 0.55,
+                  padding: '10px 8px',
+                  borderRadius: 8,
+                }}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space wrap size={6}>
+                      <span style={{ fontWeight: 600 }}>{c.companyName}</span>
+                      {c.active ? (
+                        <Tag color="green">Купил · {formatUZS(c.revenueThisMonth)}</Tag>
+                      ) : (
+                        <Tag>Не покупал в этом месяце</Tag>
+                      )}
+                    </Space>
+                  }
+                  description={
+                    <Space direction="vertical" size={2} style={{ fontSize: 12 }}>
+                      {!c.active && (
+                        <span>
+                          Последняя покупка: {c.lastPurchaseAt ? dayjs(c.lastPurchaseAt).format('DD.MM.YYYY') : '—'}
+                        </span>
+                      )}
+                      <span>
+                        {c.lastContactAt
+                          ? `Посл. контакт: ${dayjs(c.lastContactAt).format('DD.MM.YYYY')} · ${c.lastContactByName}`
+                          : 'Контакта с клиентом ещё не было'}
+                      </span>
+                    </Space>
+                  }
+                />
+                {c.phone && (
+                  <Space size={10} onClick={(e) => e.stopPropagation()}>
+                    <a href={`tel:${c.phone}`}>
+                      <PhoneOutlined /> {c.phone}
+                    </a>
+                    <a href={telegramLinkFromPhone(c.phone)} target="_blank" rel="noreferrer" title="Написать в Telegram">
+                      <SendOutlined style={{ color: '#229ED9' }} />
+                    </a>
+                  </Space>
+                )}
+              </List.Item>
+            )}
+          />
+        )}
+      </Drawer>
+
+      <ClientQuickViewDrawer clientId={quickViewClientId} onClose={() => setQuickViewClientId(null)} />
     </div>
   );
 }

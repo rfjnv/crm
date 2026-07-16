@@ -759,6 +759,26 @@ export interface CohortAnalysisResponse {
   maxMonthOffset: number;
 }
 
+/** Клиент когорты на конкретный месяц после первой покупки — для drill-down по клику на ячейку retention. */
+export interface CohortClientRow {
+  clientId: string;
+  companyName: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  active: boolean;
+  revenueThisMonth: number;
+  lastPurchaseAt: string | null;
+  lastContactAt: string | null;
+  lastContactByName: string | null;
+}
+
+export interface CohortClientsResponse {
+  cohortMonth: string;
+  monthOffset: number;
+  clients: CohortClientRow[];
+}
+
 export interface AnalyticsData {
   sales: AnalyticsSales;
   finance: AnalyticsFinance;
