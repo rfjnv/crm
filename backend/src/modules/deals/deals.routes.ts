@@ -10,6 +10,7 @@ import {
   shipmentDto, financeRejectDto, sendToFinanceDto, changePaymentMethodDto,
   createPaymentRecordDto, updatePaymentRecordDto, shipmentHoldDto,
   assignLoadingDto, assignDriverDto, startDeliveryDto,
+  warehouseOverrideDealDto, warehouseDeletePaymentDto,
 } from './deals.dto';
 
 const router = Router();
@@ -86,6 +87,10 @@ router.post('/:id/payments', validate(createPaymentRecordDto), asyncHandler(deal
 router.patch('/:id/payments/:paymentId', validate(updatePaymentRecordDto), asyncHandler(dealsController.updatePaymentRecord.bind(dealsController)));
 router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
+
+// Workflow: Warehouse Manager Override (scoped-down super-override, reason required)
+router.patch('/:id/wm-override', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(warehouseOverrideDealDto), asyncHandler(dealsController.warehouseOverrideUpdate.bind(dealsController)));
+router.delete('/:id/payments/:paymentId/override', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(warehouseDeletePaymentDto), asyncHandler(dealsController.warehouseDeletePayment.bind(dealsController)));
 
 // Payment Receipt PDF
 router.get('/:id/payment-receipt', asyncHandler(dealsController.paymentReceipt.bind(dealsController)));

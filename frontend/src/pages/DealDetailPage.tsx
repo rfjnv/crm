@@ -21,6 +21,7 @@ import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
 import DealPipeline from '../components/DealPipeline';
 import SuperOverridePanel from '../components/SuperOverridePanel';
+import WarehouseOverridePanel from '../components/WarehouseOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -90,6 +91,7 @@ export default function DealDetailPage() {
   const [sendToGroupModal, setSendToGroupModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<'warehouse' | 'production' | 'finance'>('warehouse');
   const [overrideModal, setOverrideModal] = useState(false);
+  const [wmOverrideModal, setWmOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
@@ -184,6 +186,7 @@ export default function DealDetailPage() {
 
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const canSuperOverride = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const canWarehouseOverride = role === 'WAREHOUSE_MANAGER';
   const canDeleteAnyDeal = isSuperAdmin;
 
   const { data: clients } = useQuery({
@@ -746,6 +749,19 @@ export default function DealDetailPage() {
           style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
         >
           Super Override
+        </Button>,
+      );
+    }
+
+    if (canWarehouseOverride) {
+      actions.push(
+        <Button
+          key="wm-override"
+          icon={<ThunderboltOutlined />}
+          onClick={() => setWmOverrideModal(true)}
+          style={{ background: '#fa8c16', borderColor: '#fa8c16', color: '#fff' }}
+        >
+          Оверрайд (причина обязательна)
         </Button>,
       );
     }
@@ -2426,6 +2442,31 @@ export default function DealDetailPage() {
             onCancel={() => setOverrideModal(false)}
             onSuccess={() => {
               setOverrideModal(false);
+              invalidate();
+            }}
+          />
+        </Modal>
+      )}
+
+      {/* Warehouse Manager Override Modal */}
+      {canWarehouseOverride && (
+        <Modal
+          title="Оверрайд склада"
+          open={wmOverrideModal}
+          onCancel={() => setWmOverrideModal(false)}
+          footer={null}
+          width="100vw"
+          style={{ top: 0, margin: 0, padding: 0, maxWidth: '100vw' }}
+          styles={{ body: { height: 'calc(100dvh - 57px)', overflow: 'auto' } }}
+          destroyOnClose
+        >
+          <WarehouseOverridePanel
+            deal={deal}
+            payments={dealPayments ?? []}
+            products={products ?? []}
+            onCancel={() => setWmOverrideModal(false)}
+            onSuccess={() => {
+              setWmOverrideModal(false);
               invalidate();
             }}
           />

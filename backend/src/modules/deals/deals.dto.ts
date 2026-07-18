@@ -228,6 +228,25 @@ export const superDeleteDealDto = z.object({
   reason: z.string().min(3, 'Укажите причину удаления (мин. 3 символа)'),
 });
 
+// ──── WAREHOUSE_MANAGER Override (scoped-down super-override) ────
+
+export const warehouseOverrideDealDto = z.object({
+  reason: z.string().min(3, 'Укажите причину изменения (мин. 3 символа)'),
+  createdAt: z.string().nullable().optional(),
+  paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'DEBT']).nullable().optional(),
+  items: z.array(z.object({
+    id: z.string().uuid().optional(),
+    productId: z.string().uuid(),
+    requestedQty: z.number().min(0).optional(),
+    price: z.number().min(0).optional(),
+    dealDate: z.string().nullable().optional(),
+  })).optional(),
+});
+
+export const warehouseDeletePaymentDto = z.object({
+  reason: z.string().min(3, 'Укажите причину удаления (мин. 3 символа)'),
+});
+
 // ──── Warehouse Manager: confirm deal for admin ────
 export const warehouseManagerConfirmDto = z.object({
   comment: z.string().optional(),
@@ -255,6 +274,8 @@ export const startDeliveryDto = z.object({
 
 export type SuperOverrideDealDto = z.infer<typeof superOverrideDealDto>;
 export type SuperDeleteDealDto = z.infer<typeof superDeleteDealDto>;
+export type WarehouseOverrideDealDto = z.infer<typeof warehouseOverrideDealDto>;
+export type WarehouseDeletePaymentDto = z.infer<typeof warehouseDeletePaymentDto>;
 export type WarehouseManagerConfirmDto = z.infer<typeof warehouseManagerConfirmDto>;
 export type AssignLoadingDto = z.infer<typeof assignLoadingDto>;
 export type MarkLoadedDto = z.infer<typeof markLoadedDto>;

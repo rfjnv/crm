@@ -175,6 +175,18 @@ export const dealsApi = {
   getDealPayments: (dealId: string) =>
     client.get<PaymentRecord[]>(`/deals/${dealId}/payments`).then((r) => r.data),
 
+  // Workflow: Warehouse Manager Override (scoped-down super-override, reason required)
+  warehouseOverrideDeal: (dealId: string, data: {
+    reason: string;
+    createdAt?: string | null;
+    paymentMethod?: PaymentMethod | null;
+    items?: { id?: string; productId: string; requestedQty?: number; price?: number; dealDate?: string | null }[];
+  }) =>
+    client.patch<Deal>(`/deals/${dealId}/wm-override`, data).then((r) => r.data),
+
+  warehouseDeletePayment: (dealId: string, paymentId: string, reason: string) =>
+    client.delete(`/deals/${dealId}/payments/${paymentId}/override`, { data: { reason } }).then((r) => r.data),
+
   // Workflow Queues
   financeQueue: () =>
     client.get<(Deal & { clientDebt: number })[]>('/deals/finance-queue').then((r) => r.data),

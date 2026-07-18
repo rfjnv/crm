@@ -260,6 +260,18 @@ export class DealsController {
     res.json({ ok: true });
   }
 
+  // ── WAREHOUSE_MANAGER Override (scoped-down super-override) ──
+
+  async warehouseOverrideUpdate(req: Request, res: Response): Promise<void> {
+    const result = await dealsService.warehouseOverrideUpdate(req.params.id as string, req.body, getUser(req));
+    res.json(result);
+  }
+
+  async warehouseDeletePayment(req: Request, res: Response): Promise<void> {
+    const result = await dealsService.warehouseDeletePayment(req.params.id as string, req.params.paymentId as string, req.body.reason, getUser(req));
+    res.json(result);
+  }
+
   async getDealPayments(req: Request, res: Response): Promise<void> {
     const payments = await dealsService.getDealPayments(req.params.id as string, getUser(req));
     res.json(payments);

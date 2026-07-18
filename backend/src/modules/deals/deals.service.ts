@@ -32,6 +32,7 @@ import {
   ShipmentDto, FinanceRejectDto, SendToFinanceDto, ChangePaymentMethodDto,
   CreatePaymentRecordDto, UpdatePaymentRecordDto, ShipmentHoldDto,
   SuperOverrideDealDto,
+  WarehouseOverrideDealDto,
   AssignLoadingDto, AssignDriverDto, StartDeliveryDto,
 } from './deals.dto';
 
@@ -2853,6 +2854,79 @@ export class DealsService {
 
   // ==================== SUPER_ADMIN OVERRIDE ====================
 
+  /**
+   * Сверяет уже отгруженное количество (OUT-движения) с новым набором количеств по товарам
+   * и создаёт компенсирующие IN/OUT движения, чтобы склад остался консистентным при
+   * override-редактировании позиций сделки (супер-админ или завсклад).
+   */
+  private async reconcileShippedStockForItemsInTx(
+    tx: Prisma.TransactionClient,
+    dealId: string,
+    newQtyByProduct: Map<string, number>,
+    userId: string,
+    noteSuffix: string,
+  ): Promise<void> {
+    const existingMovements = await tx.inventoryMovement.findMany({
+      where: { dealId, type: 'OUT' },
+    });
+
+    if (existingMovements.length === 0) return;
+
+    const shippedQtyMap = new Map<string, number>();
+    for (const mov of existingMovements) {
+      const prev = shippedQtyMap.get(mov.productId) ?? 0;
+      shippedQtyMap.set(mov.productId, prev + Number(mov.quantity));
+    }
+
+    const allProductIds = new Set([...shippedQtyMap.keys(), ...newQtyByProduct.keys()]);
+    for (const productId of allProductIds) {
+      const shipped = shippedQtyMap.get(productId) ?? 0;
+      const newQty = newQtyByProduct.get(productId) ?? 0;
+      const diff = shipped - newQty;
+
+      if (diff > 0) {
+        // Quantity decreased — return to stock
+        await tx.product.update({
+          where: { id: productId },
+          data: { stock: { increment: diff } },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            productId,
+            type: 'IN',
+            quantity: diff,
+            dealId,
+            note: `Возврат на склад: коррекция при изменении сделки (${noteSuffix})`,
+            createdBy: userId,
+          },
+        });
+      } else if (diff < 0) {
+        // Quantity increased — deduct from stock
+        const absDiff = Math.abs(diff);
+        const result = await tx.product.updateMany({
+          where: { id: productId, stock: { gte: absDiff } },
+          data: { stock: { decrement: absDiff } },
+        });
+        if (result.count === 0) {
+          const product = await tx.product.findUnique({ where: { id: productId } });
+          throw new AppError(400,
+            `Недостаточно товара "${product?.name}" на складе для увеличения количества`,
+          );
+        }
+        await tx.inventoryMovement.create({
+          data: {
+            productId,
+            type: 'OUT',
+            quantity: absDiff,
+            dealId,
+            note: `Доп. списание: коррекция при изменении сделки (${noteSuffix})`,
+            createdBy: userId,
+          },
+        });
+      }
+    }
+  }
+
   async overrideUpdate(id: string, dto: SuperOverrideDealDto, user: AuthUser) {
     const deal = await prisma.deal.findUnique({
       where: { id },
@@ -2960,75 +3034,13 @@ export class DealsService {
 
       // Items full replacement
       if (dto.items !== undefined) {
-        // Check if deal has been shipped (has OUT movements) — adjust stock accordingly
-        const existingMovements = await tx.inventoryMovement.findMany({
-          where: { dealId: id, type: 'OUT' },
-        });
-
-        if (existingMovements.length > 0) {
-          // Build map of how much was shipped per product
-          const shippedQtyMap = new Map<string, number>();
-          for (const mov of existingMovements) {
-            const prev = shippedQtyMap.get(mov.productId) ?? 0;
-            shippedQtyMap.set(mov.productId, prev + Number(mov.quantity));
-          }
-
-          // Build map of new quantities per product
-          const newQtyMap = new Map<string, number>();
-          for (const item of dto.items) {
-            const prev = newQtyMap.get(item.productId) ?? 0;
-            newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
-          }
-
-          // Process all products that were shipped
-          const allProductIds = new Set([...shippedQtyMap.keys(), ...newQtyMap.keys()]);
-          for (const productId of allProductIds) {
-            const shipped = shippedQtyMap.get(productId) ?? 0;
-            const newQty = newQtyMap.get(productId) ?? 0;
-            const diff = shipped - newQty;
-
-            if (diff > 0) {
-              // Quantity decreased — return to stock
-              await tx.product.update({
-                where: { id: productId },
-                data: { stock: { increment: diff } },
-              });
-              await tx.inventoryMovement.create({
-                data: {
-                  productId,
-                  type: 'IN',
-                  quantity: diff,
-                  dealId: id,
-                  note: `Возврат на склад: коррекция при изменении сделки (супер-оверрайд)`,
-                  createdBy: user.userId,
-                },
-              });
-            } else if (diff < 0) {
-              // Quantity increased — deduct from stock
-              const absDiff = Math.abs(diff);
-              const result = await tx.product.updateMany({
-                where: { id: productId, stock: { gte: absDiff } },
-                data: { stock: { decrement: absDiff } },
-              });
-              if (result.count === 0) {
-                const product = await tx.product.findUnique({ where: { id: productId } });
-                throw new AppError(400,
-                  `Недостаточно товара "${product?.name}" на складе для увеличения количества`,
-                );
-              }
-              await tx.inventoryMovement.create({
-                data: {
-                  productId,
-                  type: 'OUT',
-                  quantity: absDiff,
-                  dealId: id,
-                  note: `Доп. списание: коррекция при изменении сделки (супер-оверрайд)`,
-                  createdBy: user.userId,
-                },
-              });
-            }
-          }
+        // Build map of new quantities per product and reconcile against shipped OUT movements
+        const newQtyMap = new Map<string, number>();
+        for (const item of dto.items) {
+          const prev = newQtyMap.get(item.productId) ?? 0;
+          newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
         }
+        await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
 
         const existingItems = await tx.dealItem.findMany({ where: { dealId: id } });
         const existingItemIds = new Set(existingItems.map((item) => item.id));
@@ -3253,6 +3265,209 @@ export class DealsService {
     });
 
     return this.findById(id, user);
+  }
+
+  // ==================== WAREHOUSE_MANAGER OVERRIDE (scoped-down super-override) ====================
+
+  /**
+   * Завсклад может править дату сделки, дату/цену/кол-во позиций (с возвратом на склад
+   * при уменьшении/удалении, как в супер-оверрайде) и способ оплаты — но ничего сверх этого
+   * (статус, клиент, менеджер, договор, скидка, отгрузка и т.д. остаются недоступны).
+   * Причина обязательна и пишется в аудит вместе с полным до/после снимком.
+   */
+  async warehouseOverrideUpdate(id: string, dto: WarehouseOverrideDealDto, user: AuthUser) {
+    const allowedRoles: Role[] = ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(user.role)) {
+      throw new AppError(403, 'Недостаточно прав для оверрайда сделки');
+    }
+
+    const deal = await prisma.deal.findFirst({
+      where: { id, ...ownerScope(user) },
+      include: { items: true },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+
+    const beforeSnapshot: Record<string, unknown> = {
+      createdAt: deal.createdAt,
+      paymentMethod: deal.paymentMethod,
+      items: deal.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
+        price: i.price != null ? Number(i.price) : null,
+        dealDate: i.dealDate,
+      })),
+    };
+
+    await prisma.$transaction(async (tx) => {
+      const data: Record<string, unknown> = {};
+
+      if (dto.createdAt !== undefined && dto.createdAt !== null) data.createdAt = parseOptionalDate(dto.createdAt);
+      if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
+
+      // Items full replacement (same semantics as the SUPER_ADMIN override)
+      if (dto.items !== undefined) {
+        const newQtyMap = new Map<string, number>();
+        for (const item of dto.items) {
+          const prev = newQtyMap.get(item.productId) ?? 0;
+          newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
+        }
+        await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'оверрайд склада');
+
+        const existingItems = await tx.dealItem.findMany({ where: { dealId: id } });
+        const existingItemIds = new Set(existingItems.map((item) => item.id));
+        const incomingItemIds = new Set(dto.items.map((item) => item.id).filter((itemId): itemId is string => !!itemId));
+
+        for (const item of dto.items) {
+          const product = await tx.product.findUnique({ where: { id: item.productId } });
+          if (!product) throw new AppError(404, `Товар ${item.productId} не найден`);
+          const qty = item.requestedQty ?? 0;
+          const price = item.price ?? 0;
+          const itemData = {
+            productId: item.productId,
+            requestedQty: item.requestedQty ?? null,
+            price: item.price ?? null,
+            lineTotal: qty > 0 && price > 0 ? qty * price : null,
+            dealDate: parseOptionalDate(item.dealDate),
+          };
+
+          if (item.id) {
+            if (!existingItemIds.has(item.id)) {
+              throw new AppError(404, `Позиция ${item.id} не найдена`);
+            }
+            await tx.dealItem.update({ where: { id: item.id }, data: itemData });
+          } else {
+            await tx.dealItem.create({ data: { dealId: id, ...itemData } });
+          }
+        }
+
+        const idsToDelete = existingItems
+          .map((item) => item.id)
+          .filter((itemId) => !incomingItemIds.has(itemId));
+        if (idsToDelete.length > 0) {
+          await tx.dealItem.deleteMany({ where: { id: { in: idsToDelete } } });
+        }
+      }
+
+      if (Object.keys(data).length > 0) {
+        await tx.deal.update({ where: { id }, data });
+      }
+    });
+
+    if (dto.items !== undefined) {
+      await this.recalcAmount(id);
+
+      const freshDeal = await prisma.deal.findUnique({ where: { id } });
+      if (freshDeal) {
+        const amount = Number(freshDeal.amount);
+        const paid = Number(freshDeal.paidAmount);
+        let paymentStatus: PrismaPaymentStatus = 'UNPAID';
+        if (paid >= amount && amount > 0) paymentStatus = 'PAID';
+        else if (paid > 0) paymentStatus = 'PARTIAL';
+        await prisma.deal.update({ where: { id }, data: { paymentStatus } });
+      }
+    }
+
+    const updatedDeal = await prisma.deal.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    const afterSnapshot: Record<string, unknown> = {
+      createdAt: updatedDeal!.createdAt,
+      paymentMethod: updatedDeal!.paymentMethod,
+      items: updatedDeal!.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
+        price: i.price != null ? Number(i.price) : null,
+        dealDate: i.dealDate,
+      })),
+    };
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_UPDATE',
+      entityType: 'deal',
+      entityId: id,
+      before: beforeSnapshot,
+      after: afterSnapshot,
+      reason: dto.reason,
+    });
+
+    await syncDealTelegramGroupMessages(id, {
+      footnote: `Оверрайд склада: ${dto.reason}`,
+    }).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-override):', err);
+    });
+
+    return this.findById(id, user);
+  }
+
+  /** Удаление внесённого платежа заведующим складом — требует причины, пишется в аудит как OVERRIDE_DELETE. */
+  async warehouseDeletePayment(dealId: string, paymentId: string, reason: string, user: AuthUser) {
+    const allowedRoles: Role[] = ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(user.role)) {
+      throw new AppError(403, 'Недостаточно прав для удаления платежа');
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deal = await tx.deal.findFirst({
+        where: { id: dealId, ...ownerScope(user), isArchived: false },
+      });
+      if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+      const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
+      if (!payment) throw new AppError(404, 'Платёж не найден');
+
+      const paymentSnapshot = {
+        id: payment.id,
+        amount: Number(payment.amount),
+        method: payment.method,
+        paidAt: payment.paidAt,
+        note: payment.note,
+      };
+
+      const removedAmount = Number(payment.amount);
+      const newTotal = Number(deal.paidAmount) - removedAmount;
+
+      await tx.payment.delete({ where: { id: paymentId } });
+
+      let paymentStatus: PrismaPaymentStatus;
+      const dealAmount = Number(deal.amount);
+      if (newTotal <= 0) paymentStatus = 'UNPAID';
+      else if (newTotal >= dealAmount) paymentStatus = 'PAID';
+      else paymentStatus = 'PARTIAL';
+
+      const dealUpdated = await tx.deal.updateMany({
+        where: { id: dealId, version: deal.version },
+        data: { paidAmount: Math.max(0, newTotal), paymentStatus, version: { increment: 1 } },
+      });
+      if (dealUpdated.count === 0) throw new AppError(409, 'Данные сделки были изменены. Обновите страницу.');
+
+      return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus, paymentSnapshot };
+    });
+
+    await this.syncClosedAtFromTitleIfClosed(dealId);
+
+    await auditLog({
+      userId: user.userId,
+      action: 'OVERRIDE_DELETE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: result.paymentSnapshot,
+      after: { removedAmount: result.removedAmount, newTotal: result.newTotal, paymentStatus: result.paymentStatus },
+      reason,
+    });
+
+    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-delete-payment):', err);
+    });
+
+    return { removedAmount: result.removedAmount, newTotal: result.newTotal, paymentStatus: result.paymentStatus };
   }
 
   /**
