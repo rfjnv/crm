@@ -7,6 +7,7 @@ import { config } from './lib/config';
 import { errorHandler } from './middleware/errorHandler';
 import { authenticate } from './middleware/authenticate';
 import { authorize } from './middleware/authorize';
+import { requestContextMiddleware } from './middleware/requestContext';
 import prisma from './lib/prisma';
 
 import authRoutes from './modules/auth/auth.routes';
@@ -33,6 +34,7 @@ import { adminRoutes } from './modules/admin/admin.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import conversationsRoutes from './modules/conversations/conversations.routes';
 import presenceRoutes from './modules/conversations/presence.routes';
+import activityTrackingRoutes from './modules/activity-tracking/activity-tracking.routes';
 import expensesRoutes from './modules/expenses/expenses.routes';
 import tasksRoutes from './modules/tasks/tasks.routes';
 import settingsRoutes from './modules/settings/settings.routes';
@@ -60,6 +62,9 @@ import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
 
 const app = express();
+
+// За обратным прокси (Render): доверяем X-Forwarded-For, иначе req.ip = адрес прокси, а не клиента
+app.set('trust proxy', 1);
 
 // Security
 app.use(helmet({
@@ -89,6 +94,7 @@ app.use(cors({
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+app.use(requestContextMiddleware);
 
 // Static files (uploaded attachments)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -139,6 +145,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/conversations', conversationsRoutes);
 app.use('/api/presence', presenceRoutes);
+app.use('/api/activity', activityTrackingRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/settings', settingsRoutes);

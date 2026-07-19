@@ -6,37 +6,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from './DealStatusTag';
 import type { AuditLog, DealStatus } from '../types';
 import dayjs from 'dayjs';
-
-const actionLabels: Record<string, { label: string; color: string }> = {
-  CREATE: { label: 'Создание', color: 'green' },
-  UPDATE: { label: 'Изменение', color: 'blue' },
-  STATUS_CHANGE: { label: 'Смена статуса', color: 'blue' },
-  ARCHIVE: { label: 'Архивирование', color: 'gray' },
-  PAYMENT_CREATE: { label: 'Платёж', color: 'cyan' },
-  STOCK_WRITE_OFF: { label: 'Списание', color: 'orange' },
-  OVERRIDE_UPDATE: { label: 'OVERRIDE', color: 'red' },
-  OVERRIDE_DELETE: { label: 'УДАЛЕНИЕ', color: 'red' },
-};
-
-function renderJsonDiff(label: string, data: Record<string, unknown> | null | undefined, bgColor: string) {
-  if (!data) return null;
-  return (
-    <div style={{ marginTop: 4 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{label}:</Typography.Text>
-      <pre style={{
-        fontSize: 11,
-        background: bgColor,
-        padding: 6,
-        borderRadius: 4,
-        maxHeight: 200,
-        overflow: 'auto',
-        margin: '2px 0 0 0',
-      }}>
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </div>
-  );
-}
+import { getAuditActionLabel } from '../lib/auditActionLabels';
+import { renderJsonDiff } from '../lib/auditDiff';
 
 export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
   const { token: tk } = theme.useToken();
@@ -53,7 +24,7 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
   return (
     <Timeline
       items={auditLogs.map((entry: AuditLog) => {
-        const cfg = actionLabels[entry.action] || { label: entry.action, color: 'gray' };
+        const cfg = getAuditActionLabel(entry.action);
         const isOverride = entry.action === 'OVERRIDE_UPDATE' || entry.action === 'OVERRIDE_DELETE';
 
         return {

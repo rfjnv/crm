@@ -581,8 +581,32 @@ export interface AuditLog {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   reason?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  deviceId?: string | null;
   createdAt: string;
   user?: { id: string; fullName: string; role?: string };
+}
+
+export interface ActivitySessionEntry {
+  start: string;
+  end: string;
+  durationMinutes: number;
+}
+
+export interface ActivityPageViewEntry {
+  path: string;
+  at: string;
+}
+
+export interface ActivitySessionsReport {
+  userId: string;
+  date: string;
+  pageViews: ActivityPageViewEntry[];
+  sessions: ActivitySessionEntry[];
+  totalActiveMinutes: number;
+  firstEventAt: string | null;
+  lastEventAt: string | null;
 }
 
 export interface DashboardSummary {

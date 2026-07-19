@@ -1,5 +1,5 @@
 import client from './client';
-import type { Deal, AuditLog, ClientStockResponse } from '../types';
+import type { Deal, AuditLog, ClientStockResponse, ActivitySessionsReport } from '../types';
 
 export interface OverrideDealData {
   reason: string;
@@ -62,6 +62,24 @@ export interface CorrectClientStockAddPayload {
   reason?: string;
 }
 
+export interface AuditLogListParams {
+  userId?: string;
+  entityId?: string;
+  entityType?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export const adminApi = {
   correctClientStockAdd: (clientId: string, eventId: string, data: CorrectClientStockAddPayload) =>
     client.patch<ClientStockResponse>(`/admin/clients/${clientId}/stock/events/${eventId}`, data).then((r) => r.data),
@@ -84,4 +102,10 @@ export const adminApi = {
 
   getProductAudit: (productId?: string) =>
     client.get<AuditLog[]>('/admin/products/audit', { params: { productId } }).then((r) => r.data),
+
+  getAllAuditLogs: (params: AuditLogListParams) =>
+    client.get<AuditLogListResponse>('/admin/audit-logs', { params }).then((r) => r.data),
+
+  getActivitySessions: (params: { userId: string; date: string }) =>
+    client.get<ActivitySessionsReport>('/admin/activity/sessions', { params }).then((r) => r.data),
 };

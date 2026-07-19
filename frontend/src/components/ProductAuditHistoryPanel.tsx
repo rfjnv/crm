@@ -4,32 +4,8 @@ import { adminApi } from '../api/admin.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { AuditLog } from '../types';
 import dayjs from 'dayjs';
-
-const actionLabels: Record<string, { label: string; color: string }> = {
-  CREATE: { label: 'Создание', color: 'green' },
-  UPDATE: { label: 'Изменение', color: 'blue' },
-  DELETE: { label: 'Удаление', color: 'red' },
-};
-
-function renderJsonDiff(label: string, data: Record<string, unknown> | null | undefined, bgColor: string) {
-  if (!data) return null;
-  return (
-    <div style={{ marginTop: 4 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{label}:</Typography.Text>
-      <pre style={{
-        fontSize: 11,
-        background: bgColor,
-        padding: 6,
-        borderRadius: 4,
-        maxHeight: 200,
-        overflow: 'auto',
-        margin: '2px 0 0 0',
-      }}>
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </div>
-  );
-}
+import { getAuditActionLabel } from '../lib/auditActionLabels';
+import { renderJsonDiff } from '../lib/auditDiff';
 
 export default function ProductAuditHistoryPanel({ productId }: { productId?: string }) {
   const { token: tk } = theme.useToken();
@@ -45,7 +21,7 @@ export default function ProductAuditHistoryPanel({ productId }: { productId?: st
   return (
     <Timeline
       items={auditLogs.map((entry: AuditLog) => {
-        const cfg = actionLabels[entry.action] || { label: entry.action, color: 'gray' };
+        const cfg = getAuditActionLabel(entry.action);
 
         return {
           color: cfg.color,

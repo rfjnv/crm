@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
+import { auditLog } from '../../lib/logger';
 import { buildSearchVariants } from '../../lib/translit';
 import type {
   CreateNotesBoardDto,
@@ -224,6 +225,11 @@ export class NotesBoardService {
       },
     });
 
+    await auditLog({
+      userId: user.userId, action: 'CREATE', entityType: 'notes_board_row', entityId: row.id,
+      after: { clientId: row.clientId, callResult: row.callResult, comment: row.comment, phoneNumber: row.phoneNumber },
+    });
+
     return mapRow(row);
   }
 
@@ -239,6 +245,13 @@ export class NotesBoardService {
     if (!canEditRow(user, existing.authorId)) {
       throw new AppError(403, 'Редактировать может только автор, администратор или супер-админ');
     }
+
+    const beforeSnapshot = {
+      callResult: existing.callResult,
+      status: existing.status,
+      phoneNumber: existing.phoneNumber,
+      comment: existing.comment,
+    };
 
     const updated = await prisma.notesBoardRow.update({
       where: { id },
@@ -269,6 +282,12 @@ export class NotesBoardService {
           phoneNumber: updated.phoneNumber,
         }),
       },
+    });
+
+    await auditLog({
+      userId: user.userId, action: 'UPDATE', entityType: 'notes_board_row', entityId: id,
+      before: beforeSnapshot,
+      after: { callResult: updated.callResult, status: updated.status, phoneNumber: updated.phoneNumber, comment: updated.comment },
     });
 
     return mapRow(updated);
@@ -438,6 +457,12 @@ export class NotesBoardService {
     if (!canDeleteRow(user, existing.authorId)) throw new AppError(403, 'Удаление доступно только автору или супер-админу');
 
     await prisma.notesBoardRow.delete({ where: { id } });
+
+    await auditLog({
+      userId: user.userId, action: 'DELETE', entityType: 'notes_board_row', entityId: id,
+      before: { clientId: existing.clientId, callResult: existing.callResult, comment: existing.comment, phoneNumber: existing.phoneNumber },
+    });
+
     return { ok: true };
   }
 }

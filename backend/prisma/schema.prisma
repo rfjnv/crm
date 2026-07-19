@@ -132,6 +132,11 @@ enum NotificationSeverity {
   URGENT
 }
 
+enum ActivityEventType {
+  PAGE_VIEW
+  HEARTBEAT
+}
+
 enum ContractType {
   ANNUAL
   ONE_TIME
@@ -215,6 +220,7 @@ model User {
   archivedDeals      Deal[]             @relation("DealArchivedBy")
   comments           DealComment[]
   auditLogs          AuditLog[]
+  activityEvents     UserActivityEvent[]
   confirmedItems     DealItem[]         @relation("ItemConfirmedBy")
   shipments          Shipment[]         @relation("ShippedBy")
   notificationsReceived  Notification[]      @relation("NotificationRecipient")
@@ -755,6 +761,12 @@ model AuditLog {
   before     Json?
   after      Json?
   reason     String?
+  /** IP клиента на момент действия (из req.ip, за прокси — X-Forwarded-For) */
+  ip         String?
+  /** Сырой User-Agent запроса */
+  userAgent  String?     @map("user_agent")
+  /** Персистентный ID устройства/браузера (localStorage на фронте, переживает logout) */
+  deviceId   String?     @map("device_id")
   createdAt  DateTime    @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
@@ -763,6 +775,24 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/** Просмотры страниц и heartbeat-и активности (для отчёта "время в системе / какие страницы открывал"). Отдельно от AuditLog — тут не действия, а presence/навигация. */
+model UserActivityEvent {
+  id        String            @id @default(uuid())
+  userId    String            @map("user_id")
+  type      ActivityEventType
+  path      String
+  ip        String?
+  userAgent String?           @map("user_agent")
+  deviceId  String?           @map("device_id")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("user_activity_events")
 }
 
 // ==================== NOTIFICATIONS ====================

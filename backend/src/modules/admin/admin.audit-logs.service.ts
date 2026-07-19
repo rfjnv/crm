@@ -5,6 +5,8 @@ import { AppError } from '../../lib/errors';
 export interface AuditLogListQuery {
   userId?: string;
   entityId?: string;
+  entityType?: string;
+  action?: string;
   from?: string;
   to?: string;
   limit?: number;
@@ -45,6 +47,8 @@ export async function listAuditLogsForSuperAdmin(query: AuditLogListQuery) {
   const where: Prisma.AuditLogWhereInput = {};
   if (query.userId) where.userId = query.userId;
   if (query.entityId) where.entityId = query.entityId;
+  if (query.entityType) where.entityType = query.entityType;
+  if (query.action) where.action = query.action as Prisma.AuditLogWhereInput['action'];
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt.gte = from;
@@ -71,9 +75,12 @@ export async function listAuditLogsForSuperAdmin(query: AuditLogListQuery) {
       action: row.action,
       entityType: row.entityType,
       entityId: row.entityId,
-      oldValue: row.before,
-      newValue: row.after,
+      before: row.before,
+      after: row.after,
       reason: row.reason,
+      ip: row.ip,
+      userAgent: row.userAgent,
+      deviceId: row.deviceId,
       createdAt: row.createdAt,
       user: row.user,
     })),

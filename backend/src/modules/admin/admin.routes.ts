@@ -10,6 +10,8 @@ import { warehouseService } from '../warehouse/warehouse.service';
 import { superCorrectClientStockAddDto, superDeleteClientStockAddDto } from '../clients/clients.dto';
 import { clientsService } from '../clients/clients.service';
 import { AuthUser } from '../../lib/scope';
+import { listAuditLogsForSuperAdmin } from './admin.audit-logs.service';
+import { getDailyActivityReport } from '../activity-tracking/activity-tracking.service';
 
 const router = Router();
 
@@ -89,6 +91,41 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const productId = req.query.productId as string | undefined;
     const result = await warehouseService.getProductAuditHistory(productId);
+    res.json(result);
+  }),
+);
+
+// ──── SUPER_ADMIN: глобальный журнал действий всех пользователей (кто/что/когда/IP/устройство) ────
+router.get(
+  '/audit-logs',
+  requirePermission('view_audit_history'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await listAuditLogsForSuperAdmin({
+      userId: req.query.userId as string | undefined,
+      entityId: req.query.entityId as string | undefined,
+      entityType: req.query.entityType as string | undefined,
+      action: req.query.action as string | undefined,
+      from: req.query.from as string | undefined,
+      to: req.query.to as string | undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      offset: req.query.offset ? Number(req.query.offset) : undefined,
+    });
+    res.json(result);
+  }),
+);
+
+// ──── SUPER_ADMIN: время в системе и просмотры страниц за день ────
+router.get(
+  '/activity/sessions',
+  requirePermission('view_audit_history'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.query.userId as string | undefined;
+    const date = req.query.date as string | undefined;
+    if (!userId || !date) {
+      res.status(400).json({ error: 'userId и date обязательны' });
+      return;
+    }
+    const result = await getDailyActivityReport(userId, date);
     res.json(result);
   }),
 );

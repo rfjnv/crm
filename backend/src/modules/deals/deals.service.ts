@@ -9,7 +9,6 @@ import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
 import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
-  parseClosedDateFromDealTitle,
   resolveClosedAtForNewClose,
   tashkentDayBoundsFromYmd,
 } from '../../lib/dealClosedAt';
@@ -241,18 +240,6 @@ export class DealsService {
         },
       });
     }
-  }
-
-  /** Для CLOSED: после платежа подтягиваем closedAt к дате в названии (DD.MM.YYYY), чтобы не «плавала» из‑за updatedAt. */
-  private async syncClosedAtFromTitleIfClosed(dealId: string) {
-    const row = await prisma.deal.findUnique({
-      where: { id: dealId },
-      select: { title: true, status: true },
-    });
-    if (row?.status !== 'CLOSED') return;
-    const fromTitle = parseClosedDateFromDealTitle(row.title);
-    if (!fromTitle) return;
-    await prisma.deal.update({ where: { id: dealId }, data: { closedAt: fromTitle } });
   }
 
   async findAll(
@@ -2400,8 +2387,6 @@ export class DealsService {
       return { created, newTotal, paymentStatus };
     });
 
-    await this.syncClosedAtFromTitleIfClosed(dealId);
-
     await auditLog({
       userId: user.userId,
       action: 'PAYMENT_CREATE',
@@ -2490,8 +2475,6 @@ export class DealsService {
       return updated;
     });
 
-    await this.syncClosedAtFromTitleIfClosed(dealId);
-
     await auditLog({
       userId: user.userId, action: 'PAYMENT_UPDATE', entityType: 'deal', entityId: dealId,
       after: { paymentId, ...dto },
@@ -2514,6 +2497,14 @@ export class DealsService {
       const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
       if (!payment) throw new AppError(404, 'Платёж не найден');
 
+      const paymentSnapshot = {
+        id: payment.id,
+        amount: Number(payment.amount),
+        method: payment.method,
+        paidAt: payment.paidAt,
+        note: payment.note,
+      };
+
       const removedAmount = Number(payment.amount);
       const newTotal = Number(deal.paidAmount) - removedAmount;
 
@@ -2531,13 +2522,12 @@ export class DealsService {
       });
       if (dealUpdated.count === 0) throw new AppError(409, 'Данные сделки были изменены. Обновите страницу.');
 
-      return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus };
+      return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus, paymentSnapshot };
     });
-
-    await this.syncClosedAtFromTitleIfClosed(dealId);
 
     await auditLog({
       userId: user.userId, action: 'PAYMENT_DELETE', entityType: 'deal', entityId: dealId,
+      before: result.paymentSnapshot,
       after: { paymentId, removedAmount: result.removedAmount },
     });
 
@@ -2667,10 +2657,24 @@ export class DealsService {
       throw new AppError(404, 'Позиция не найдена');
     }
 
+    const itemSnapshot = {
+      id: item.id,
+      productId: item.productId,
+      requestedQty: item.requestedQty ? Number(item.requestedQty) : null,
+      price: item.price ? Number(item.price) : null,
+      lineTotal: item.lineTotal ? Number(item.lineTotal) : null,
+      sourceOpType: item.sourceOpType,
+    };
+
     await prisma.dealItem.delete({ where: { id: itemId } });
 
     // Recalculate deal amount
     await this.recalcAmount(dealId);
+
+    await auditLog({
+      userId: user.userId, action: 'DELETE', entityType: 'deal', entityId: dealId,
+      before: itemSnapshot,
+    });
 
     void syncDealTelegramGroupMessages(dealId).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
@@ -3450,8 +3454,6 @@ export class DealsService {
 
       return { removedAmount, newTotal: Math.max(0, newTotal), paymentStatus, paymentSnapshot };
     });
-
-    await this.syncClosedAtFromTitleIfClosed(dealId);
 
     await auditLog({
       userId: user.userId,

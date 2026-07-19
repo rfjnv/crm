@@ -1,6 +1,7 @@
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
+import { auditLog } from '../../lib/logger';
 import type { CreateClientNoteDto, UpdateClientNoteDto } from './clients.dto';
 
 async function assertClientAccess(clientId: string, user: AuthUser): Promise<void> {
@@ -55,6 +56,11 @@ export class ClientNotesService {
       include: { user: { select: { id: true, fullName: true } } },
     });
 
+    await auditLog({
+      userId: user.userId, action: 'CREATE', entityType: 'client_note', entityId: note.id,
+      after: { clientId, content: note.content },
+    });
+
     return {
       id: note.id,
       clientId: note.clientId,
@@ -87,6 +93,12 @@ export class ClientNotesService {
       where: { id: noteId },
       data: { content: dto.content.trim() },
       include: { user: { select: { id: true, fullName: true } } },
+    });
+
+    await auditLog({
+      userId: user.userId, action: 'UPDATE', entityType: 'client_note', entityId: noteId,
+      before: { content: note.content },
+      after: { content: updated.content },
     });
 
     return {
@@ -123,6 +135,11 @@ export class ClientNotesService {
       include: { user: { select: { id: true, fullName: true } } },
     });
 
+    await auditLog({
+      userId: user.userId, action: 'DELETE', entityType: 'client_note', entityId: noteId,
+      before: { clientId, content: note.content },
+    });
+
     return {
       id: updated.id,
       clientId: updated.clientId,
@@ -153,6 +170,11 @@ export class ClientNotesService {
       where: { id: noteId },
       data: { deletedAt: null },
       include: { user: { select: { id: true, fullName: true } } },
+    });
+
+    await auditLog({
+      userId: user.userId, action: 'RESTORE', entityType: 'client_note', entityId: noteId,
+      after: { clientId, content: updated.content },
     });
 
     return {

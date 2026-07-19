@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { enrichUserFromMe } from '../lib/authUser';
 import { useAuthStore } from '../store/authStore';
+import { getDeviceId } from '../lib/deviceId';
 
 export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
 
@@ -16,6 +17,7 @@ client.interceptors.request.use((config) => {
   if (token && token !== 'undefined') {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers['X-Device-Id'] = getDeviceId();
   return config;
 });
 
