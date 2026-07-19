@@ -49,3 +49,23 @@ export function parseClosedDateFromDealTitle(title: string): Date | null {
 export function resolveClosedAtForNewClose(deal: { title: string }, fallback: Date): Date {
   return parseClosedDateFromDealTitle(deal.title) ?? fallback;
 }
+
+/** Название сделки строго вида «Сделка от DD.MM.YYYY» — автогенерируется при создании, если пользователь его не менял. */
+const DEFAULT_TITLE_RE = /^Сделка от \d{2}\.\d{2}\.\d{4}$/;
+
+export function isDefaultDealTitle(title: string): boolean {
+  return DEFAULT_TITLE_RE.test((title || '').trim());
+}
+
+/** Тот же формат, что и автогенерация при создании (`Сделка от ${...toLocaleDateString('ru-RU')}`), но для даты закрытия. */
+export function formatDealTitleForDate(date: Date): string {
+  return `Сделка от ${date.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' })}`;
+}
+
+/**
+ * Если название сделки всё ещё дефолтное (не переименовано вручную), возвращает
+ * обновлённое название с датой закрытия. Иначе — исходное название без изменений.
+ */
+export function retitleOnCloseIfDefault(deal: { title: string }, closedAt: Date): string {
+  return isDefaultDealTitle(deal.title) ? formatDealTitleForDate(closedAt) : deal.title;
+}

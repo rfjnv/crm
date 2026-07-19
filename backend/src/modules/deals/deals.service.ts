@@ -10,6 +10,7 @@ import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
   resolveClosedAtForNewClose,
+  retitleOnCloseIfDefault,
   tashkentDayBoundsFromYmd,
 } from '../../lib/dealClosedAt';
 import { pushService } from '../push/push.service';
@@ -1941,9 +1942,10 @@ export class DealsService {
       });
 
       const closedAt = resolveClosedAtForNewClose(deal, new Date(dto.departureTime));
+      const title = retitleOnCloseIfDefault(deal, closedAt);
       await tx.deal.update({
         where: { id: dealId },
-        data: { status: targetStatus, closedAt },
+        data: { status: targetStatus, closedAt, title },
       });
     });
 
@@ -3724,9 +3726,10 @@ export class DealsService {
     validateStatusTransition(deal.status, 'CLOSED', user.role);
 
     const closedAt = new Date();
+    const title = retitleOnCloseIfDefault(deal, closedAt);
     await prisma.$transaction(async (tx) => {
       await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при закрытии зав. складом');
-      await tx.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
+      await tx.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt, title } });
     });
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
@@ -3746,9 +3749,10 @@ export class DealsService {
     validateStatusTransition(deal.status, 'CLOSED', user.role);
 
     const closedAt = new Date();
+    const title = retitleOnCloseIfDefault(deal, closedAt);
     await prisma.$transaction(async (tx) => {
       await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при одобрении админом');
-      await tx.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt } });
+      await tx.deal.update({ where: { id: dealId }, data: { status: 'CLOSED', closedAt, title } });
     });
 
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: dealId, before: { status: deal.status }, after: { status: 'CLOSED' } });
@@ -3851,9 +3855,10 @@ export class DealsService {
       await this.deductInventoryForDealInTx(tx, dealId, user.userId, 'Автосписание при отметке «Отгружено»');
       if (targetStatus === 'CLOSED') {
         const closedAt = resolveClosedAtForNewClose(deal, new Date());
+        const title = retitleOnCloseIfDefault(deal, closedAt);
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'CLOSED', closedAt },
+          data: { status: 'CLOSED', closedAt, title },
         });
       } else {
         await tx.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
@@ -3900,9 +3905,10 @@ export class DealsService {
     if (!deal) throw new AppError(404, 'Сделка не найдена или нет прав для завершения доставки');
 
     const closedAt = resolveClosedAtForNewClose(deal, new Date());
+    const title = retitleOnCloseIfDefault(deal, closedAt);
     await prisma.deal.update({
       where: { id: deal.id },
-      data: { status: 'CLOSED', closedAt },
+      data: { status: 'CLOSED', closedAt, title },
     });
     await auditLog({ userId: user.userId, action: 'STATUS_CHANGE', entityType: 'deal', entityId: deal.id, before: { status: deal.status }, after: { status: 'CLOSED' } });
     void syncDealTelegramGroupMessages(deal.id).catch(() => {});
