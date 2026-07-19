@@ -532,7 +532,7 @@ export default function DealDetailPage() {
   const canChangeDebtPaymentMethod =
     deal.paymentMethod === 'DEBT'
     && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
-  const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION'].includes(deal.status) && (isAdmin || role === 'MANAGER');
+  const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'WAITING_WAREHOUSE_MANAGER'].includes(deal.status) && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
@@ -617,6 +617,15 @@ export default function DealDetailPage() {
           Указать количества и цены
           */}
           Указать количества и цены
+        </Button>,
+      );
+    }
+
+    // IN_PROGRESS with quantities → Edit quantities/prices before sending to finance
+    if (deal.status === 'IN_PROGRESS' && (isAdmin || role === 'MANAGER') && hasQuantities) {
+      actions.push(
+        <Button key="edit-quantities-ip" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
+          Изменить количества и цены
         </Button>,
       );
     }
@@ -1934,23 +1943,48 @@ export default function DealDetailPage() {
             includeVat: values.includeVat ?? true,
           });
         }}>
-          <Form.List name="items">
-            {(fields) => (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-                {fields.map((field) => {
-                  const itemData = quantitiesForm.getFieldValue(['items', field.name]);
-                  return (
-                    <Card key={field.key} size="small" title={`${itemData?.productName || 'Товар'} (${itemData?.unit || 'шт'})`} bordered>
+          <Card size="small" title="Товары" bordered style={{ marginBottom: 16 }}>
+            <Form.List name="items">
+              {(fields) => (
+                <>
+                  {fields.map((field, idx) => (
+                    <div
+                      key={field.key}
+                      style={{
+                        paddingTop: idx === 0 ? 0 : 16,
+                        marginTop: idx === 0 ? 0 : 16,
+                        borderTop: idx === 0 ? 'none' : `1px solid ${tk.colorBorderSecondary}`,
+                      }}
+                    >
                       <Form.Item name={[field.name, 'dealItemId']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'productName']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'unit']} hidden><Input /></Form.Item>
-                      {itemData?.warehouseComment && (
-                        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                          Ответ склада: {itemData.warehouseComment}
-                        </Typography.Text>
-                      )}
+
+                      <Form.Item noStyle shouldUpdate>
+                        {() => {
+                          const itemData = quantitiesForm.getFieldValue(['items', field.name]);
+                          return (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: itemData?.warehouseComment ? 4 : 8 }}>
+                              <Typography.Text strong>{itemData?.productName || 'Товар'}</Typography.Text>
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{itemData?.unit || 'шт'}</Typography.Text>
+                            </div>
+                          );
+                        }}
+                      </Form.Item>
+
+                      <Form.Item noStyle shouldUpdate>
+                        {() => {
+                          const itemData = quantitiesForm.getFieldValue(['items', field.name]);
+                          return itemData?.warehouseComment ? (
+                            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                              Ответ склада: {itemData.warehouseComment}
+                            </Typography.Text>
+                          ) : null;
+                        }}
+                      </Form.Item>
+
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                        <Form.Item name={[field.name, 'requestedQty']} label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
+                        <Form.Item name={[field.name, 'requestedQty']} label="Количество" rules={[{ required: true, message: 'Обязательно' }]} style={{ marginBottom: 0 }}>
                           <InputNumber
                             style={{ width: '100%' }}
                             min={0.1}
@@ -1961,21 +1995,61 @@ export default function DealDetailPage() {
                             }}
                           />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'price']} label="Цена за единицу" rules={[{ required: true, message: 'Обязательно' }]}>
+                        <Form.Item name={[field.name, 'price']} label="Цена за единицу" rules={[{ required: true, message: 'Обязательно' }]} style={{ marginBottom: 0 }}>
                           <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
                         </Form.Item>
                       </div>
-                    </Card>
-                  );
-                })}
-                {canEditItems && (
-                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setItemModal(true)}>
-                    Добавить товар
-                  </Button>
-                )}
-              </div>
+
+                      <Form.Item noStyle shouldUpdate>
+                        {() => {
+                          const qty = Number(quantitiesForm.getFieldValue(['items', field.name, 'requestedQty'])) || 0;
+                          const price = Number(quantitiesForm.getFieldValue(['items', field.name, 'price'])) || 0;
+                          return (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Сумма:</Typography.Text>
+                              <Typography.Text strong>{formatUZS(qty * price)}</Typography.Text>
+                            </div>
+                          );
+                        }}
+                      </Form.Item>
+                    </div>
+                  ))}
+                </>
+              )}
+            </Form.List>
+            {canEditItems && (
+              <Button type="dashed" block icon={<PlusOutlined />} onClick={() => setItemModal(true)} style={{ marginTop: 16 }}>
+                Добавить товар
+              </Button>
             )}
-          </Form.List>
+          </Card>
+
+          <Form.Item noStyle shouldUpdate>
+            {() => {
+              const items: Array<{ requestedQty?: number; price?: number }> = quantitiesForm.getFieldValue('items') || [];
+              const subtotal = items.reduce((s, it) => s + (Number(it?.requestedQty) || 0) * (Number(it?.price) || 0), 0);
+              const discount = Number(quantitiesForm.getFieldValue('discount')) || 0;
+              const total = Math.max(subtotal - discount, 0);
+              return (
+                <Card size="small" bordered style={{ marginBottom: 16, background: tk.colorFillAlter }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: discount > 0 ? 4 : 0 }}>
+                    <Typography.Text type="secondary">Подытог</Typography.Text>
+                    <Typography.Text>{formatUZS(subtotal)}</Typography.Text>
+                  </div>
+                  {discount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Typography.Text type="secondary">Скидка</Typography.Text>
+                      <Typography.Text>−{formatUZS(discount)}</Typography.Text>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography.Text strong>Итого к оплате</Typography.Text>
+                    <Typography.Text strong style={{ fontSize: 16 }}>{formatUZS(total)}</Typography.Text>
+                  </div>
+                </Card>
+              );
+            }}
+          </Form.Item>
 
           <Card size="small" title="Оплата" bordered>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
