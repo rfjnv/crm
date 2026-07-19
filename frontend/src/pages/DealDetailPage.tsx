@@ -1019,7 +1019,13 @@ export default function DealDetailPage() {
                     style={{ minWidth: 120 }}
                     showSearch
                     optionFilterProp="label"
-                    options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+                    options={(() => {
+                      const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }));
+                      if (deal.managerId && !opts.some((o) => o.value === deal.managerId)) {
+                        opts.push({ label: deal.manager?.fullName ?? deal.managerId, value: deal.managerId });
+                      }
+                      return opts;
+                    })()}
                   />
                 ) : (
                   deal.manager?.fullName
@@ -1458,7 +1464,13 @@ export default function DealDetailPage() {
                             style={{ minWidth: 200 }}
                             showSearch
                             optionFilterProp="label"
-                            options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+                            options={(() => {
+                              const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }));
+                              if (deal.managerId && !opts.some((o) => o.value === deal.managerId)) {
+                                opts.push({ label: deal.manager?.fullName ?? deal.managerId, value: deal.managerId });
+                              }
+                              return opts;
+                            })()}
                           />
                         ) : (
                           deal.manager?.fullName
