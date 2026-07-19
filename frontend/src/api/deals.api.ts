@@ -102,6 +102,7 @@ export const dealsApi = {
     warehouseComment: string;
     requestedQty: number;
     price?: number;
+    rollCount?: number;
   }[]) =>
     client.post<Deal>(`/deals/${dealId}/stock-confirm`, { items }).then((r) => r.data),
 

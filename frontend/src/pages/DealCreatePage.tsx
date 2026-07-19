@@ -37,6 +37,25 @@ function makeKey() { return `ci-${nextKey++}`; }
 /** Units that are discrete (integer-only) */
 const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп', 'бабина']);
 
+/** Ламинационная пленка продаётся по весу (кг), но менеджер знает только сколько рулонов просит клиент —
+ * точный вес рулона известен только после взвешивания на складе. Поэтому «Кол-во» (кг) оставляется пустым
+ * (это уводит сделку в «Ответ склада»), а количество рулонов передаётся отдельным полем-подсказкой. */
+const LAMINATION_CATEGORY = 'Ламинационная пленка';
+/** Для этого товара нужен выбор микрона кнопкой, а не свободный текст — чтобы не путали загрузчики. */
+const SPRAY_POWDER_NAME = 'Противоотмарывающий порошок Spray Powder';
+const MICRON_OPTIONS = ['15мкр', '25мкр'];
+
+function parseRollCount(comment: string): number | undefined {
+  const m = (comment || '').match(/^(\d+)/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** Остаток товара для отображения: кг + рулоны рядом, если второй счётчик отслеживается. */
+function stockLabel(p: Pick<Product, 'stock' | 'unit' | 'rollStock'>): string {
+  const base = `${formatQty(p.stock)} ${p.unit}`;
+  return p.rollStock != null ? `${base} / ${formatQty(p.rollStock)} рул.` : base;
+}
+
 function isIntegerUnit(unit?: string): boolean {
   if (!unit) return false;
   return INTEGER_UNITS.has(unit.toLowerCase());
@@ -338,6 +357,49 @@ export default function DealCreatePage() {
     });
   }
 
+  /** Комментарий-ячейка позиции: спец-контрол для ламинации (кол-во рулонов) и Spray Powder (микрон),
+   * обычное текстовое поле для всех остальных товаров. */
+  function renderCommentControl(item: DraftItem, p: Product | null | undefined) {
+    if (p?.name === SPRAY_POWDER_NAME) {
+      return (
+        <Radio.Group
+          size="small"
+          value={item.requestComment || undefined}
+          onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+          optionType="button"
+          buttonStyle="solid"
+          options={MICRON_OPTIONS.map((m) => ({ label: m, value: m }))}
+        />
+      );
+    }
+    if (p?.category === LAMINATION_CATEGORY) {
+      return (
+        <InputNumber
+          min={1}
+          step={1}
+          precision={0}
+          placeholder="Кол-во рулонов"
+          style={{ width: '100%' }}
+          value={parseRollCount(item.requestComment)}
+          onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+        />
+      );
+    }
+    return (
+      <Input
+        placeholder="Коммент"
+        value={item.requestComment}
+        onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+      />
+    );
+  }
+
+  function commentControlLabel(p: Product | null | undefined) {
+    if (p?.name === SPRAY_POWDER_NAME) return 'Микрон';
+    if (p?.category === LAMINATION_CATEGORY) return 'Кол-во рулонов';
+    return 'Комментарий';
+  }
+
   const renderItemMobileCard = (item: DraftItem) => {
     const p = item.productId ? productMap.get(item.productId) : null;
     const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
@@ -368,14 +430,14 @@ export default function DealCreatePage() {
             value={item.productId}
             onChange={(v) => handleProductChange(item.key, v)}
             options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
-              label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
+              label: `${pr.name} (${pr.sku}) — ${stockLabel(pr)}`,
               value: pr.id,
               disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
             }))}
           />
           {p && (
             <div className="deal-create-item-card__stock">
-              Остаток: {formatQty(p.stock)} {p.unit}
+              Остаток: {stockLabel(p)}
             </div>
           )}
         </div>
@@ -417,12 +479,8 @@ export default function DealCreatePage() {
         </div>
 
         <div>
-          <Typography.Text type="secondary" className="deal-create-field-label">Комментарий</Typography.Text>
-          <Input
-            placeholder="Комментарий к позиции"
-            value={item.requestComment}
-            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
-          />
+          <Typography.Text type="secondary" className="deal-create-field-label">{commentControlLabel(p)}</Typography.Text>
+          {renderCommentControl(item, p)}
         </div>
       </Card>
     );
@@ -785,12 +843,12 @@ export default function DealCreatePage() {
                             value={item.productId}
                             onChange={(v) => handleProductChange(item.key, v)}
                             options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
-                              label: `${pr.name} (${pr.sku}) — ${pr.stock} ${pr.unit}`,
+                              label: `${pr.name} (${pr.sku}) — ${stockLabel(pr)}`,
                               value: pr.id,
                               disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
                             }))}
                           />
-                          {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {formatQty(p.stock)} {p.unit}</div>}
+                          {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {stockLabel(p)}</div>}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <InputNumber
@@ -835,9 +893,7 @@ export default function DealCreatePage() {
                           </td>
                         </>}
                         <td style={{ padding: '6px 8px' }}>
-                          <Input placeholder="Коммент" value={item.requestComment}
-                            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
-                          />
+                          {renderCommentControl(item, p)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />

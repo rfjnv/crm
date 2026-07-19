@@ -90,6 +90,8 @@ export const warehouseResponseDto = z.object({
     warehouseComment: z.string().optional().nullable(),
     requestedQty: z.number().positive('Количество должно быть положительным'),
     price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
+    /** Кол-во рулонов, фактически взятых со склада (для товаров, продаваемых по весу, но выдаваемых рулонами). */
+    rollCount: z.number().positive('Кол-во рулонов должно быть положительным').optional(),
   })),
 });
 

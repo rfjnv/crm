@@ -16,6 +16,9 @@ import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
 import './StockConfirmationPage.css';
 
+/** Ламинационная плёнка учитывается по весу (кг), но выдаётся рулонами — второй остаток отдельно от кг. */
+const LAMINATION_CATEGORY = 'Ламинационная пленка';
+
 function normalizeQtyExpression(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -72,7 +75,7 @@ export default function StockConfirmationPage() {
       items,
     }: {
       dealId: string;
-      items: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number }[];
+      items: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number; rollCount?: number }[];
     }) => dealsApi.submitWarehouseResponse(dealId, items),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-confirmation-queue'] });
@@ -97,6 +100,8 @@ export default function StockConfirmationPage() {
         productName: item.product?.name || 'Товар',
         sku: item.product?.sku || '',
         unit: item.product?.unit || 'шт',
+        category: item.product?.category || '',
+        rollStock: item.product?.rollStock ?? null,
         requestComment: item.requestComment || '',
         warehouseComment: '',
         price: hasCatalogPrice ? undefined : null,
@@ -340,13 +345,17 @@ export default function StockConfirmationPage() {
             const catalogPrice = sourceItem?.product?.salePrice != null ? Number(sourceItem.product.salePrice) : 0;
             const hasCatalogPrice = catalogPrice > 0;
             const priceVal = item.price as number | null | undefined;
-            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
+            const rollCountVal = item.rollCount as number | null | undefined;
+            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number; rollCount?: number } = {
               dealItemId: item.dealItemId as string,
               warehouseComment: String(item.warehouseComment ?? '').trim(),
               requestedQty: parsedQty ?? 0,
             };
             if (!hasCatalogPrice && priceVal != null && priceVal > 0) {
               row.price = priceVal;
+            }
+            if (sourceItem?.product?.category === LAMINATION_CATEGORY && rollCountVal != null && rollCountVal > 0) {
+              row.rollCount = rollCountVal;
             }
             return row;
           });
@@ -414,6 +423,15 @@ export default function StockConfirmationPage() {
                           onPressEnter={() => applyParsedQtyValue(field.name)}
                         />
                       </Form.Item>
+                      {itemData?.category === LAMINATION_CATEGORY && (
+                        <Form.Item
+                          name={[field.name, 'rollCount']}
+                          label="Кол-во рулонов"
+                          extra={`Сколько рулонов взяли со склада${itemData?.rollStock != null ? ` (остаток: ${itemData.rollStock} рул.)` : ''}`}
+                        >
+                          <InputNumber style={{ width: '100%' }} min={1} step={1} precision={0} placeholder="Кол-во рулонов" />
+                        </Form.Item>
+                      )}
                       {!itemData?.hasCatalogPrice && (
                         <Form.Item
                           name={[field.name, 'price']}

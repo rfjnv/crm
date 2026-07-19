@@ -569,6 +569,8 @@ model DealItem {
   isProblem        Boolean         @default(false) @map("is_problem")
   requestComment   String?         @map("request_comment")
   warehouseComment String?         @map("warehouse_comment")
+  /** Кол-во рулонов, подтверждённое зав.складом при ответе на «Ответ склада» (для товаров, продаваемых по весу, но выдаваемых рулонами — напр. ламинационная плёнка). Списывается с Product.rollStock одновременно с кг при закрытии сделки. */
+  rollCount        Decimal?        @db.Decimal(12, 3) @map("roll_count")
   confirmedBy      String?         @map("confirmed_by")
   confirmedAt      DateTime?       @map("confirmed_at")
   createdAt        DateTime        @default(now()) @map("created_at")
@@ -636,6 +638,8 @@ model Product {
   category        String?
   countryOfOrigin String?  @map("country_of_origin")
   stock           Decimal  @default(0) @db.Decimal(12, 3)
+  /** Второй, параллельный остаток в рулонах (для товаров, отпускаемых рулонами, но учитываемых по весу — напр. ламинационная плёнка). NULL для товаров, где второй счётчик не нужен. */
+  rollStock       Decimal? @db.Decimal(12, 3) @map("roll_stock")
   minStock        Decimal  @default(0) @db.Decimal(12, 3) @map("min_stock")
   purchasePrice   Decimal? @db.Decimal(12, 2) @map("purchase_price")
   salePrice       Decimal? @db.Decimal(12, 2) @map("sale_price")

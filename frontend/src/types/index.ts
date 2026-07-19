@@ -435,6 +435,8 @@ export interface DealItem {
   isProblem?: boolean;
   requestComment?: string | null;
   warehouseComment?: string | null;
+  /** Кол-во рулонов, подтверждённое зав.складом на «Ответ склада» (для товаров, продаваемых по весу, но выдаваемых рулонами). */
+  rollCount?: number | null;
   confirmedBy?: string | null;
   confirmedAt?: string | null;
   createdAt: string;
@@ -443,7 +445,7 @@ export interface DealItem {
   shippedAt?: string | null;
   /** Факт доставки позиции */
   deliveredAt?: string | null;
-  product?: { id: string; name: string; sku: string; unit: string; stock?: number; salePrice?: string | null };
+  product?: { id: string; name: string; sku: string; unit: string; category?: string | null; stock?: number; rollStock?: number | null; salePrice?: string | null };
   confirmer?: { id: string; fullName: string } | null;
 }
 
@@ -522,6 +524,8 @@ export interface Product {
   category?: string | null;
   countryOfOrigin?: string | null;
   stock: number;
+  /** Второй, параллельный остаток в рулонах (напр. ламинационная плёнка) — null если не отслеживается. */
+  rollStock?: number | null;
   minStock: number;
   purchasePrice?: string | null;
   salePrice?: string | null;
