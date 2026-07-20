@@ -366,11 +366,12 @@ export default function DealCreatePage() {
     if (p?.name === SPRAY_POWDER_NAME) {
       return (
         <Radio.Group
-          size="small"
+          size="large"
           value={item.requestComment || undefined}
           onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
           optionType="button"
           buttonStyle="solid"
+          style={{ display: 'flex' }}
           options={MICRON_OPTIONS.map((m) => ({ label: m, value: m }))}
         />
       );
