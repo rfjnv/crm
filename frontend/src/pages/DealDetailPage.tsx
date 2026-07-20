@@ -537,13 +537,12 @@ export default function DealDetailPage() {
   const canEditItems = !isDealClosed && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
   // Manager keeps price-edit access ("Изменить цены") through every post-warehouse stage
-  // (finance review, approvals, shipment) — it disappears once the deal is CLOSED/CANCELED.
+  // (finance review, approvals, shipment, delivery — any status not already covered by the
+  // STOCK_CONFIRMED/IN_PROGRESS "количества" buttons) — it disappears once the deal is CLOSED/CANCELED.
   // Accountant keeps the narrower, original scope (WAITING_FINANCE only); admin follows the manager's wider scope.
-  const FINANCE_STAGE_STATUSES = [
-    'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
-    'SHIPMENT_ON_HOLD', 'SHIPPED', 'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
-  ];
-  const canEditPrices = FINANCE_STAGE_STATUSES.includes(deal.status) && (
+  // NB: exclude-list on purpose (not an allow-list) so newly added DealStatus values default to "visible".
+  const STATUSES_WITH_OWN_QUANTITIES_BUTTON = ['NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS'];
+  const canEditPrices = !isDealClosed && !STATUSES_WITH_OWN_QUANTITIES_BUTTON.includes(deal.status) && (
     isAdmin
     || (role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE')
     || role === 'MANAGER'

@@ -1271,13 +1271,9 @@ export class DealsService {
     }
 
     // Prices/quantities can be edited at any active stage of the deal; access closes only
-    // once the deal is CLOSED or CANCELED (manager retains edit rights through finance/shipment stages).
-    const EDITABLE_PRICE_STATUSES: DealStatus[] = [
-      'IN_PROGRESS', 'STOCK_CONFIRMED', 'WAITING_FINANCE', 'FINANCE_APPROVED',
-      'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED',
-      'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
-    ];
-    if (!EDITABLE_PRICE_STATUSES.includes(deal.status)) {
+    // once the deal is CLOSED or CANCELED (manager retains edit rights through finance/shipment/
+    // delivery stages). Exclude-list on purpose so newly added DealStatus values default to editable.
+    if (deal.status === 'CLOSED' || deal.status === 'CANCELED') {
       throw new AppError(400, 'Сделка должна быть в активном статусе (не закрыта и не отменена) для изменения цен');
     }
 
