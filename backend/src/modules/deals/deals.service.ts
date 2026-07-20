@@ -243,15 +243,19 @@ export class DealsService {
 
       // Второй, параллельный остаток в рулонах (напр. ламинационная плёнка): списывается вместе с кг,
       // но не блокирует закрытие сделки при нехватке — это вспомогательный счётчик, не основной.
-      if (item.rollCount != null) {
-        const rollCount = Number(item.rollCount);
-        if (rollCount > 0) {
-          const currentRollStock = item.product.rollStock != null ? Number(item.product.rollStock) : 0;
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { rollStock: currentRollStock - rollCount },
-          });
-        }
+      // Источник кол-ва рулонов: явное поле roll_count (если склад подтвердил), иначе —
+      // подсказка менеджера в комментарии позиции («N рул.»), т.к. рулоны вводит менеджер при создании.
+      let rollCount = item.rollCount != null ? Number(item.rollCount) : NaN;
+      if (!(rollCount > 0) && item.product.category === 'Ламинационная пленка' && item.requestComment) {
+        const m = String(item.requestComment).match(/(\d+(?:[.,]\d+)?)/);
+        if (m) rollCount = parseFloat(m[1].replace(',', '.'));
+      }
+      if (rollCount > 0) {
+        const currentRollStock = item.product.rollStock != null ? Number(item.product.rollStock) : 0;
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { rollStock: currentRollStock - rollCount },
+        });
       }
     }
   }
