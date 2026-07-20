@@ -13,6 +13,14 @@ import dayjs from 'dayjs';
 type StockFilter = 'all' | 'zero' | 'low' | 'normal';
 type ActiveFilter = 'all' | 'active' | 'inactive';
 
+/** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
+function formatStockCell(stock: number, rollStock?: number | null): string {
+  const kg = Number.isInteger(stock) ? stock : parseFloat(stock.toFixed(3));
+  if (rollStock == null) return String(kg);
+  const rolls = Number.isInteger(rollStock) ? rollStock : parseFloat(rollStock.toFixed(3));
+  return `${rolls} рул. (${kg} кг)`;
+}
+
 export default function WarehousePage() {
   const [inModal, setInModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -124,7 +132,7 @@ export default function WarehousePage() {
       title: 'Остаток',
       dataIndex: 'stock',
       align: 'right' as const,
-      width: 100,
+      width: 140,
       sorter: (a: Product, b: Product) => Number(a.stock) - Number(b.stock),
       render: (v: number, r: Product) => {
         const stock = Number(v);
@@ -137,7 +145,7 @@ export default function WarehousePage() {
         }
         return (
           <span style={{ fontWeight: 600, color }}>
-            {stock}
+            {formatStockCell(stock, r.rollStock)}
           </span>
         );
       },
@@ -296,7 +304,7 @@ export default function WarehousePage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <Typography.Text type="secondary">Остаток</Typography.Text>
-                  <span style={{ fontWeight: 600, color: stockColor }}>{stock}</span>
+                  <span style={{ fontWeight: 600, color: stockColor }}>{formatStockCell(stock, record.rollStock)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <Typography.Text type="secondary">Ед.</Typography.Text>
@@ -412,7 +420,7 @@ export default function WarehousePage() {
       >
         {correctProduct && (
           <div style={{ marginBottom: 16, color: tk.colorTextSecondary }}>
-            Текущий остаток: <strong>{Number(correctProduct.stock)}</strong> {correctProduct.unit}
+            Текущий остаток: <strong>{formatStockCell(Number(correctProduct.stock), correctProduct.rollStock)}</strong>{correctProduct.rollStock == null ? ` ${correctProduct.unit}` : ''}
           </div>
         )}
         <Form form={correctForm} layout="vertical" onFinish={(v) => {

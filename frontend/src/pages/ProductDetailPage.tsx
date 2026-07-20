@@ -17,6 +17,14 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
+/** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
+function formatStockCell(stock: number, rollStock?: number | null): string {
+  const kg = Number.isInteger(stock) ? stock : parseFloat(stock.toFixed(3));
+  if (rollStock == null) return String(kg);
+  const rolls = Number.isInteger(rollStock) ? rollStock : parseFloat(rollStock.toFixed(3));
+  return `${rolls} рул. (${kg} кг)`;
+}
+
 type PeriodChoice = 30 | 90 | 365 | 'all';
 
 const PERIODS: { label: string; value: PeriodChoice }[] = [
@@ -187,7 +195,7 @@ export default function ProductDetailPage() {
             <Descriptions.Item label="Формат">{p.format || '—'}</Descriptions.Item>
             <Descriptions.Item label="Страна">{p.countryOfOrigin || '—'}</Descriptions.Item>
             <Descriptions.Item label="Остаток">
-              <Tag color={stockStatus.color}>{p.stock} {p.unit}</Tag>
+              <Tag color={stockStatus.color}>{formatStockCell(p.stock, p.rollStock)}{p.rollStock == null ? ` ${p.unit}` : ''}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Мин. остаток">{p.minStock} {p.unit}</Descriptions.Item>
             <Descriptions.Item label="Цена продажи">{p.salePrice ? formatUZS(Number(p.salePrice)) : '—'}</Descriptions.Item>

@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
+import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
 import type { Product } from '../types';
@@ -20,6 +21,15 @@ import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import ProductHierarchyPanel from '../components/ProductHierarchyPanel';
+
+/** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)»,
+ * как в исходном складском учёте — сначала физическое кол-во рулонов, вес в скобках. */
+function formatStockCell(stock: number, rollStock?: number | null): string {
+  const kg = Number.isInteger(stock) ? stock : parseFloat(stock.toFixed(3));
+  if (rollStock == null) return String(kg);
+  const rolls = Number.isInteger(rollStock) ? rollStock : parseFloat(rollStock.toFixed(3));
+  return `${rolls} рул. (${kg} кг)`;
+}
 
 export default function ProductsPage() {
   const isMobile = useIsMobile();
@@ -83,6 +93,12 @@ export default function ProductsPage() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: usersApi.listCompanies,
+    enabled: isSuperAdmin,
+  });
 
   const ALL_COLUMN_KEYS = [
     { key: 'sku', label: 'Артикул' },
@@ -279,14 +295,14 @@ export default function ProductsPage() {
       title: 'Остаток',
       dataIndex: 'stock',
       align: 'right' as const,
-      width: 90,
+      width: 130,
       sorter: (a: Product, b: Product) => Number(a.stock) - Number(b.stock),
       render: (v: number, r: Product) => {
         const stock = Number(v);
         const min = Number(r.minStock || 10);
         return (
           <span style={{ fontWeight: 600, color: stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess }}>
-            {stock}
+            {formatStockCell(stock, r.rollStock)}
           </span>
         );
       },
@@ -736,7 +752,7 @@ export default function ProductsPage() {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <Typography.Text strong style={{ fontSize: 16, color: stockColor }}>
-                      {stock}
+                      {formatStockCell(stock, p.rollStock)}
                     </Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
                       мин {min}
@@ -810,6 +826,18 @@ export default function ProductsPage() {
           <Form.Item name="sku" label="Артикул (SKU)" rules={[{ required: true, message: 'Обязательно' }]}>
             <Input />
           </Form.Item>
+          {isSuperAdmin && (
+            <Form.Item
+              name="companyId"
+              label="Компания"
+              rules={[{ required: true, message: 'Выберите компанию' }]}
+            >
+              <Select
+                placeholder="Выберите компанию"
+                options={companies.map((c) => ({ value: c.id, label: c.displayName }))}
+              />
+            </Form.Item>
+          )}
           <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="unit" label="Единица измерения" initialValue="шт" style={{ flex: 1 }}>
               <Select options={[
@@ -1132,7 +1160,7 @@ export default function ProductsPage() {
                         {formatUZS(val)}
                       </Typography.Text>
                       <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                        {p.stock} {p.unit}
+                        {formatStockCell(Number(p.stock), p.rollStock)} {p.rollStock == null ? p.unit : ''}
                       </Typography.Text>
                     </div>
                   </div>
