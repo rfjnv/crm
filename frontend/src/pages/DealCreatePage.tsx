@@ -474,8 +474,8 @@ export default function DealCreatePage() {
 
         <div className="deal-create-item-card__grid">
           <div>
-            <Typography.Text type="secondary" className="deal-create-field-label">Кол-во</Typography.Text>
-            {renderQtyControl(item, p, intUnit)}
+            <Typography.Text type="secondary" className="deal-create-field-label">{commentControlLabel(p)}</Typography.Text>
+            {renderCommentControl(item, p)}
           </div>
           <div>
             <Typography.Text type="secondary" className="deal-create-field-label">Цена</Typography.Text>
@@ -497,8 +497,7 @@ export default function DealCreatePage() {
         </div>
 
         <div>
-          <Typography.Text type="secondary" className="deal-create-field-label">{commentControlLabel(p)}</Typography.Text>
-          {renderCommentControl(item, p)}
+          {renderQtyControl(item, p, intUnit)}
         </div>
       </Card>
     );
@@ -837,7 +836,7 @@ export default function DealCreatePage() {
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                     <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }}>Кол-во</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Кол-во</th>
                     <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
                     <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
                     {showVat && <>
@@ -845,7 +844,7 @@ export default function DealCreatePage() {
                       <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Сумма НДС</th>
                       <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>С НДС</th>
                     </>}
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Коммент</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }} />
                     <th style={{ width: 40 }} />
                   </tr>
                 </thead>
@@ -869,7 +868,7 @@ export default function DealCreatePage() {
                           {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {stockLabel(p)}</div>}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
-                          {renderQtyControl(item, p, intUnit)}
+                          {renderCommentControl(item, p)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
@@ -899,7 +898,7 @@ export default function DealCreatePage() {
                           </td>
                         </>}
                         <td style={{ padding: '6px 8px' }}>
-                          {renderCommentControl(item, p)}
+                          {renderQtyControl(item, p, intUnit)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
