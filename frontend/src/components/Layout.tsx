@@ -157,7 +157,7 @@ export default function Layout() {
   // where the key already has a meaning. Esc-to-close is already native to
   // antd Modal/Drawer, so only popconfirm needs explicit Esc handling here.
   useEffect(() => {
-    const findTopVisible = (selector: string) => {
+    const findTopVisible = (selector: string): HTMLElement | null => {
       const nodes = document.querySelectorAll<HTMLElement>(selector);
       let top: HTMLElement | null = null;
       nodes.forEach((node) => {
