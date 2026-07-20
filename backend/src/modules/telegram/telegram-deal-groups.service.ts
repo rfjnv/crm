@@ -1526,8 +1526,8 @@ export async function sendDealToGroupManually(
   body = manualLine + body;
   const path = dealLinkPath(dealId);
 
-  // Если для этой группы уже есть отслеживаемое сообщение — правим его на месте
-  // (актуальное состояние сделки), а не плодим дубликаты постов.
+  // Одно сообщение = одна сделка: если для этой группы уже есть отслеживаемый пост —
+  // удаляем его и шлём свежий, а не правим старый на месте.
   const existingIdRaw =
     group === 'warehouse'
       ? deal.warehouseTelegramMessageId
@@ -1537,9 +1537,7 @@ export async function sendDealToGroupManually(
   const existingMid = parseStoredTelegramMessageId(existingIdRaw);
 
   if (existingMid != null) {
-    const edited = await telegramService.editGroupHtmlMessage(chatId, existingMid, body, path);
-    if (edited) return { ok: true };
-    // Пост мог быть удалён вручную в Telegram — отправляем новый и обновляем сохранённый id ниже.
+    await telegramService.deleteGroupMessage(chatId, existingMid);
   }
 
   const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, path);
