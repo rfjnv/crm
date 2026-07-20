@@ -6,6 +6,7 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib
 import { comparePassword, hashToken } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
+import { verifyTelegramInitData } from '../../lib/telegramWebApp';
 import { LoginDto } from './auth.dto';
 
 interface TokenPair {
@@ -40,6 +41,35 @@ export class AuthService {
       action: 'LOGIN',
       entityType: 'user',
       entityId: user.id,
+    });
+
+    return tokens;
+  }
+
+  /** Вход через Telegram Web App: пользователь должен быть заранее привязан (telegramChatId) через /api/telegram/link. */
+  async loginWithTelegram(initData: string, meta: SessionMeta): Promise<TokenPair> {
+    if (!config.telegram.botToken) {
+      throw new AppError(503, 'Telegram бот не настроен на сервере');
+    }
+
+    const tgUser = verifyTelegramInitData(initData, config.telegram.botToken);
+    if (!tgUser) {
+      throw new AppError(401, 'Недействительные данные Telegram Web App');
+    }
+
+    const user = await prisma.user.findFirst({ where: { telegramChatId: String(tgUser.id) } });
+    if (!user || !user.isActive) {
+      throw new AppError(403, 'Ваш Telegram не привязан к аккаунту CRM. Откройте CRM в браузере → Профиль → "Привязать Telegram".');
+    }
+
+    const tokens = await this.createSessionForUser(user.id, user.role, user.permissions, meta);
+
+    await auditLog({
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'user',
+      entityId: user.id,
+      after: { via: 'telegram-webapp' },
     });
 
     return tokens;

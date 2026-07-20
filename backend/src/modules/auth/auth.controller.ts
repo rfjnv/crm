@@ -39,6 +39,12 @@ export class AuthController {
     res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
   }
 
+  async telegramWebApp(req: Request, res: Response): Promise<void> {
+    const tokens = await authService.loginWithTelegram(req.body.initData, getSessionMeta(req));
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, cookieOpts);
+    res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
+  }
+
   async refresh(req: Request, res: Response): Promise<void> {
     const refreshToken = resolveRefreshToken(req);
     const tokens = await authService.refresh(refreshToken, getSessionMeta(req));

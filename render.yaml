@@ -53,9 +53,11 @@ services:
     buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
     headers:
+      # X-Frame-Options: DENY убран — CRM открывается внутри Telegram (Web App работает через iframe
+      # на Telegram Desktop/Web). Вместо него — CSP frame-ancestors с явным списком разрешённых источников.
       - path: /*
-        name: X-Frame-Options
-        value: DENY
+        name: Content-Security-Policy
+        value: "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org"
     routes:
       - type: rewrite
         source: /*

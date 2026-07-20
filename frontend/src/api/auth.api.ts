@@ -7,6 +7,9 @@ export const authApi = {
 
   me: () => client.get<User>('/auth/me').then((r) => r.data),
 
+  telegramWebApp: (initData: string) =>
+    client.post<AuthTokens>('/auth/telegram-webapp', { initData }).then((r) => r.data),
+
   // refreshToken comes from HttpOnly cookie automatically
   refresh: () =>
     client.post<AuthTokens>('/auth/refresh', {}).then((r) => r.data),

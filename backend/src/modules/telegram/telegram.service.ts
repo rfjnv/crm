@@ -46,6 +46,7 @@ class TelegramService {
       } else {
         console.log(`[Telegram] Групповые алерты: склад=${w} производство=${p} финансы=${f}`);
       }
+      this.setupWebAppMenuButton();
     }).catch((err) => {
       console.error('Telegram bot getMe failed:', err.message);
     });
@@ -107,6 +108,24 @@ class TelegramService {
     });
 
     registerTelegramAdminCallbacks(this.bot);
+  }
+
+  /** Кнопка меню бота (слева от поля ввода) открывает CRM как Telegram Web App. */
+  private async setupWebAppMenuButton(): Promise<void> {
+    if (!this.bot) return;
+    const url = config.telegram.crmUrl;
+    if (!url.startsWith('https://')) {
+      console.warn('[Telegram] Кнопка Web App не установлена: TELEGRAM_CRM_URL/CRM_PUBLIC_URL должен быть https://');
+      return;
+    }
+    try {
+      await this.bot.setChatMenuButton({
+        menu_button: { type: 'web_app', text: 'Открыть CRM', web_app: { url } },
+      });
+      console.log(`[Telegram] Web App menu button → ${url}`);
+    } catch (err) {
+      console.error('[Telegram] setChatMenuButton failed:', (err as Error).message);
+    }
   }
 
   private formatMessage(payload: PushPayload): string {

@@ -9,5 +9,10 @@ export const refreshDto = z.object({
   refreshToken: z.string().optional(),
 });
 
+export const telegramWebAppDto = z.object({
+  initData: z.string().min(1, 'initData обязателен'),
+});
+
 export type LoginDto = z.infer<typeof loginDto>;
 export type RefreshDto = z.infer<typeof refreshDto>;
+export type TelegramWebAppDto = z.infer<typeof telegramWebAppDto>;

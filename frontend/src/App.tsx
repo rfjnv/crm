@@ -1,8 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider, theme as antTheme } from 'antd';
+import { ConfigProvider, theme as antTheme, Spin } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
+import { authApi } from './api/auth.api';
+import { useAuthStore } from './store/authStore';
+import { getTelegramInitData, initTelegramWebApp } from './lib/telegramWebApp';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
@@ -79,6 +82,7 @@ import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import VedMapPage from './pages/VedMapPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
 import AuditCheckPage from './pages/AuditCheckPage';
+import ActivityLogPage from './pages/ActivityLogPage';
 import AlmanacSalesPage from './pages/AlmanacSalesPage';
 import AlmanacClientsPage from './pages/AlmanacClientsPage';
 import AlmanacProductsPage from './pages/AlmanacProductsPage';
@@ -99,10 +103,41 @@ const queryClient = new QueryClient({
 
 export default function App() {
   const mode = useThemeStore((s) => s.mode);
+  const [tgAuthChecking, setTgAuthChecking] = useState(true);
 
   useEffect(() => {
     applyDocumentTheme(mode as ThemeMode);
   }, [mode]);
+
+  // Автовход, если CRM открыта как Telegram Web App (кнопка меню бота)
+  useEffect(() => {
+    initTelegramWebApp();
+    const initData = getTelegramInitData();
+    if (!initData || useAuthStore.getState().user) {
+      setTgAuthChecking(false);
+      return;
+    }
+    (async () => {
+      try {
+        const tokens = await authApi.telegramWebApp(initData);
+        useAuthStore.getState().setTokens(tokens.accessToken, tokens.refreshToken);
+        const user = await authApi.me();
+        useAuthStore.getState().setAuth({ ...user, authSource: 'crm' }, tokens.accessToken, tokens.refreshToken);
+      } catch {
+        // Telegram-аккаунт не привязан к CRM — пользователь увидит обычный экран входа
+      } finally {
+        setTgAuthChecking(false);
+      }
+    })();
+  }, []);
+
+  if (tgAuthChecking) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   return (
     <ConfigProvider
@@ -185,6 +220,9 @@ export default function App() {
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />
                 </Route>
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN']} />}>
+                  <Route path="/admin/activity-log" element={<ActivityLogPage />} />
+                </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/worker-audit" element={<WorkerAuditPage />} />
                   <Route path="/deals/audit-check" element={<AuditCheckPage />} />
@@ -221,10 +259,12 @@ export default function App() {
                 <Route path="/pending-admin" element={<Navigate to="/deals/approval?tab=wm" replace />} />
                 <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
-                <Route path="/ai-assistant" element={<AiAssistantPage />} />
-                <Route path="/ai-assistant/training" element={<AiTrainingPage />} />
-                <Route path="/ai-assistant/transcribe" element={<AudioTranscriptionPage />} />
-                <Route path="/ai-assistant/call-audits" element={<CallAuditDashboardPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE']} />}>
+                  <Route path="/ai-assistant" element={<AiAssistantPage />} />
+                  <Route path="/ai-assistant/training" element={<AiTrainingPage />} />
+                  <Route path="/ai-assistant/transcribe" element={<AudioTranscriptionPage />} />
+                  <Route path="/ai-assistant/call-audits" element={<CallAuditDashboardPage />} />
+                </Route>
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />
