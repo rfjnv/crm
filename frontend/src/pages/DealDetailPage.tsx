@@ -529,11 +529,25 @@ export default function DealDetailPage() {
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
+  const isDealClosed = deal.status === 'CLOSED' || deal.status === 'CANCELED';
   const canChangeDebtPaymentMethod =
     deal.paymentMethod === 'DEBT'
     && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
-  const canEditItems = ['NEW', 'IN_PROGRESS', 'WAITING_STOCK_CONFIRMATION', 'WAITING_WAREHOUSE_MANAGER'].includes(deal.status) && (isAdmin || role === 'MANAGER');
+  // Manager/admin can add or remove deal items in any status until the deal is closed or canceled
+  const canEditItems = !isDealClosed && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
+  // Manager keeps price-edit access ("Изменить цены") through every post-warehouse stage
+  // (finance review, approvals, shipment) — it disappears once the deal is CLOSED/CANCELED.
+  // Accountant keeps the narrower, original scope (WAITING_FINANCE only); admin follows the manager's wider scope.
+  const FINANCE_STAGE_STATUSES = [
+    'WAITING_FINANCE', 'FINANCE_APPROVED', 'ADMIN_APPROVED', 'READY_FOR_SHIPMENT',
+    'SHIPMENT_ON_HOLD', 'SHIPPED', 'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
+  ];
+  const canEditPrices = FINANCE_STAGE_STATUSES.includes(deal.status) && (
+    isAdmin
+    || (role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE')
+    || role === 'MANAGER'
+  );
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
 
   function openSetQuantitiesEditor() {
@@ -680,13 +694,19 @@ export default function DealDetailPage() {
       );
     }
 
-    // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
-    if (canAdjustFinanceItems) {
-      const contractMissing = needsContract && !deal.contractId;
+    // Finance stage onward → Edit prices (Manager/Accountant/Admin, until deal is closed)
+    if (canEditPrices) {
       actions.push(
         <Button key="edit-finance-items" icon={<EditOutlined />} onClick={openSetQuantitiesEditor}>
           Изменить цены
         </Button>,
+      );
+    }
+
+    // WAITING_FINANCE → Finance approve/reject (Accountant/Admin)
+    if (canAdjustFinanceItems) {
+      const contractMissing = needsContract && !deal.contractId;
+      actions.push(
         contractMissing
           ? <Tooltip key="fin-approve" title="Сначала прикрепите договор">
             <Button type="primary" icon={<CheckCircleOutlined />} disabled>
@@ -1978,7 +1998,17 @@ export default function DealDetailPage() {
                           return (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: itemData?.warehouseComment ? 4 : 8 }}>
                               <Typography.Text strong>{itemData?.productName || 'Товар'}</Typography.Text>
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{itemData?.unit || 'шт'}</Typography.Text>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{itemData?.unit || 'шт'}</Typography.Text>
+                                {canEditItems && itemData?.dealItemId && (
+                                  <Popconfirm
+                                    title="Удалить позицию?"
+                                    onConfirm={() => removeItemMut.mutate(itemData.dealItemId)}
+                                  >
+                                    <Button type="text" danger icon={<DeleteOutlined />} size="small" loading={removeItemMut.isPending} />
+                                  </Popconfirm>
+                                )}
+                              </div>
                             </div>
                           );
                         }}
@@ -2068,13 +2098,7 @@ export default function DealDetailPage() {
               <Form.Item name="discount" label="Скидка">
                 <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
               </Form.Item>
-              <Form.Item name="paymentType" label="Тип оплаты">
-                <Radio.Group>
-                  <Radio.Button value="FULL">Полная</Radio.Button>
-                  <Radio.Button value="PARTIAL">Частичная</Radio.Button>
-                  <Radio.Button value="INSTALLMENT">Рассрочка</Radio.Button>
-                </Radio.Group>
-              </Form.Item>
+              <Form.Item name="paymentType" hidden><Input /></Form.Item>
               <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paymentType !== cur.paymentType}>
                 {({ getFieldValue }) => getFieldValue('paymentType') !== 'FULL' && (
                   <Form.Item name="paidAmount" label="Оплачено">
@@ -2593,29 +2617,40 @@ export default function DealDetailPage() {
         />
       </Modal>
 
-      {/* Send to Telegram Group Modal */}
+      {/* Send to Telegram Group Modal — one tap per group, no dropdown */}
       <Modal
         title={<Space><TeamOutlined /> Отправить в Telegram-группу</Space>}
         open={sendToGroupModal}
         onCancel={() => setSendToGroupModal(false)}
-        onOk={() => sendToGroupMut.mutate(selectedGroup)}
-        confirmLoading={sendToGroupMut.isPending}
-        okText="Отправить"
-        cancelText="Отмена"
+        footer={null}
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Выберите группу для отправки информации о сделке. Сообщение будет отмечено как ручная отправка.
+          Выберите группу — сообщение уйдёт сразу и будет отмечено как ручная отправка.
         </Typography.Paragraph>
-        <Select
-          value={selectedGroup}
-          onChange={(v) => setSelectedGroup(v)}
-          style={{ width: '100%' }}
-          options={[
-            { value: 'warehouse', label: '📦 Склад (Warehouse)' },
-            { value: 'production', label: '⚙️ Производство (Production)' },
-            { value: 'finance', label: '💰 Финансы (Finance)' },
-          ]}
-        />
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          {([
+            { value: 'warehouse', label: '📦 Sales - Polygraph business' },
+            { value: 'production', label: '⚙️ Накладной' },
+            { value: 'finance', label: '💰 Бухгалтер+менеджер' },
+          ] as const).map((g) => (
+            <Popconfirm
+              key={g.value}
+              title={`Отправить в группу «${g.label}»?`}
+              onConfirm={() => sendToGroupMut.mutate(g.value)}
+            >
+              <Button
+                block
+                size="large"
+                loading={sendToGroupMut.isPending && selectedGroup === g.value}
+                disabled={sendToGroupMut.isPending && selectedGroup !== g.value}
+                onClick={() => setSelectedGroup(g.value)}
+                style={{ textAlign: 'left' }}
+              >
+                {g.label}
+              </Button>
+            </Popconfirm>
+          ))}
+        </Space>
       </Modal>
     </div>
   );

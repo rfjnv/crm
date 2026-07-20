@@ -1481,10 +1481,38 @@ export async function sendDealToGroupManually(
 
   const manualLine = `📤 <b>Ручная отправка</b> — ${esc(senderName)}\n\n`;
   body = manualLine + body;
+  const path = dealLinkPath(dealId);
 
-  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  // Если для этой группы уже есть отслеживаемое сообщение — правим его на месте
+  // (актуальное состояние сделки), а не плодим дубликаты постов.
+  const existingIdRaw =
+    group === 'warehouse'
+      ? deal.warehouseTelegramMessageId
+      : group === 'production'
+        ? deal.productionTelegramMessageId
+        : deal.financeTelegramMessageId;
+  const existingMid = parseStoredTelegramMessageId(existingIdRaw);
+
+  if (existingMid != null) {
+    const edited = await telegramService.editGroupHtmlMessage(chatId, existingMid, body, path);
+    if (edited) return { ok: true };
+    // Пост мог быть удалён вручную в Telegram — отправляем новый и обновляем сохранённый id ниже.
+  }
+
+  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, path);
   if (sentId == null) {
     return { ok: false, error: 'Telegram API returned null message ID' };
   }
+
+  const fieldToUpdate =
+    group === 'warehouse'
+      ? 'warehouseTelegramMessageId'
+      : group === 'production'
+        ? 'productionTelegramMessageId'
+        : 'financeTelegramMessageId';
+  await prisma.deal
+    .update({ where: { id: dealId }, data: { [fieldToUpdate]: String(sentId) } })
+    .catch((err) => console.error('[Telegram deal groups] sendDealToGroupManually save message id:', err));
+
   return { ok: true };
 }
