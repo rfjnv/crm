@@ -10,17 +10,6 @@ import {
   Drawer,
   theme,
   Dropdown,
-  List,
-  Tag,
-  Space,
-  Divider,
-  Checkbox,
-  Modal,
-  Form,
-  Select,
-  DatePicker,
-  Input,
-  message,
 } from 'antd';
 import {
   DashboardOutlined,
@@ -55,9 +44,9 @@ import {
   PhoneOutlined,
   IdcardOutlined,
   HistoryOutlined,
+  EyeOutlined,
   UserOutlined,
   DownOutlined,
-  EditOutlined,
   SoundOutlined,
   StopOutlined,
   ClockCircleOutlined,
@@ -78,27 +67,22 @@ const OpenAiSvg = () => (
 );
 const OpenAiIcon = (props: any) => <Icon component={OpenAiSvg} {...props} />;
 import type { MenuProps } from 'antd';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
-import { tasksApi } from '../api/tasks.api';
-import { notesBoardApi } from '../api/notes-board.api';
-import { clientsApi } from '../api/clients.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
+import { useActivityTracking } from '../hooks/useActivityTracking';
 import { APP_BUTTON } from './ui/AppClassNames';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
-import type { UserRole, Permission, Task } from '../types';
-import { BASE_NOTE_STATUSES, normalizeNoteStatusField } from '../constants/noteStatuses';
-import { smartFilterOption } from '../utils/translit';
-import dayjs from 'dayjs';
+import type { UserRole, Permission } from '../types';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -109,11 +93,6 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
-  const [quickTasksOpen, setQuickTasksOpen] = useState(false);
-  const [selectedQuickTaskId, setSelectedQuickTaskId] = useState<string | null>(null);
-  const [quickNoteOpen, setQuickNoteOpen] = useState(false);
-  const [quickNoteForm] = Form.useForm();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, setUser } = useAuthStore();
@@ -172,6 +151,57 @@ export default function Layout() {
     return () => document.removeEventListener('keydown', handler, true);
   }, []);
 
+  // Hotkey: Enter confirms the topmost open modal or popconfirm (clicks its
+  // primary/OK button), Esc cancels the topmost open popconfirm (clicks its
+  // cancel button). Both are skipped while focus is in a textarea/dropdown
+  // where the key already has a meaning. Esc-to-close is already native to
+  // antd Modal/Drawer, so only popconfirm needs explicit Esc handling here.
+  useEffect(() => {
+    const findTopVisible = (selector: string) => {
+      const nodes = document.querySelectorAll<HTMLElement>(selector);
+      let top: HTMLElement | null = null;
+      nodes.forEach((node) => {
+        if (node.style.display !== 'none') top = node;
+      });
+      return top;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== 'Escape') return;
+      if (e.isComposing) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const openDropdown = document.querySelector(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden), ' +
+        '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden), ' +
+        '.ant-dropdown:not(.ant-dropdown-hidden), ' +
+        '.ant-cascader-dropdown:not(.ant-cascader-dropdown-hidden)'
+      );
+      if (openDropdown) return;
+
+      const topPopconfirm = findTopVisible('.ant-popover.ant-popconfirm');
+      if (topPopconfirm) {
+        const btn = topPopconfirm.querySelector<HTMLButtonElement>(
+          e.key === 'Enter' ? '.ant-popconfirm-buttons button.ant-btn-primary' : '.ant-popconfirm-buttons button:not(.ant-btn-primary)'
+        );
+        if (!btn || btn.disabled || btn.classList.contains('ant-btn-loading')) return;
+        e.preventDefault();
+        btn.click();
+        return;
+      }
+
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      const topModal = findTopVisible('.ant-modal-wrap');
+      if (!topModal) return;
+      const confirmBtn = topModal.querySelector<HTMLButtonElement>('.ant-modal-footer button.ant-btn-primary');
+      if (!confirmBtn || confirmBtn.disabled || confirmBtn.classList.contains('ant-btn-loading')) return;
+      e.preventDefault();
+      confirmBtn.click();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await authApi.logout();
@@ -211,7 +241,6 @@ export default function Layout() {
     || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
 
   const hasRole = (...roles: UserRole[]) => role ? roles.includes(role) : false;
-  const canQuickNote = hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR');
 
   // Presence ping
   useEffect(() => {
@@ -219,6 +248,9 @@ export default function Layout() {
     const interval = setInterval(() => conversationsApi.ping(), 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Время в системе / просмотры страниц — для «Журнала действий» (только реальная активность, не просто открытая вкладка)
+  useActivityTracking();
 
   // Unread message counts
   const { data: unreadCounts } = useQuery({
@@ -230,52 +262,6 @@ export default function Layout() {
   const totalUnread = unreadCounts
     ? Object.values(unreadCounts).reduce((sum, c) => sum + c, 0)
     : 0;
-  const { data: clients = [] } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => clientsApi.list(),
-    enabled: canQuickNote,
-  });
-  const myTasksQueryKey = ['tasks', 'quick-my', user?.id] as const;
-  const { data: myTasks = [] } = useQuery({
-    queryKey: myTasksQueryKey,
-    queryFn: () => tasksApi.list({ assigneeId: user?.id }),
-    enabled: Boolean(user?.id),
-    refetchInterval: 30_000,
-  });
-  const hasMyTasks = myTasks.length > 0;
-  const activeMyTasks = myTasks.filter((task) => task.status !== 'APPROVED');
-  const quickTaskCount = activeMyTasks.length;
-  const quickTaskList: Task[] = (activeMyTasks.length > 0 ? activeMyTasks : myTasks)
-    .slice()
-    .sort((a, b) => {
-      const aDate = a.plannedDate || a.dueDate || a.createdAt;
-      const bDate = b.plannedDate || b.dueDate || b.createdAt;
-      return new Date(aDate).getTime() - new Date(bDate).getTime();
-    })
-    .slice(0, 8);
-  const selectedQuickTask = quickTaskList.find((task) => task.id === selectedQuickTaskId) ?? quickTaskList[0] ?? null;
-  const quickTaskChecklistMut = useMutation({
-    mutationFn: ({ id, checklist }: { id: string; checklist: NonNullable<Task['checklist']> }) =>
-      tasksApi.update(id, { checklist }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: myTasksQueryKey });
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-    onError: () => message.error('Не удалось обновить чеклист'),
-  });
-  const quickNoteMut = useMutation({
-    mutationFn: notesBoardApi.create,
-    onSuccess: () => {
-      message.success('Заметка сохранена');
-      setQuickNoteOpen(false);
-      quickNoteForm.resetFields();
-      void queryClient.invalidateQueries({ queryKey: ['notes-board'] });
-      void queryClient.invalidateQueries({ queryKey: ['notes-board-stats'] });
-      void queryClient.invalidateQueries({ queryKey: ['client-notes'] });
-      void queryClient.invalidateQueries({ queryKey: ['clients'] });
-    },
-    onError: () => message.error('Не удалось сохранить заметку'),
-  });
 
   const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
   const showGroupLabels = isMobile || !collapsed;
@@ -669,6 +655,15 @@ export default function Layout() {
           },
         ]
       : []),
+    ...(hasRole('SUPER_ADMIN')
+      ? [
+          {
+            key: '/admin/activity-log',
+            icon: <EyeOutlined />,
+            label: <Link to="/admin/activity-log">Журнал действий</Link>,
+          },
+        ]
+      : []),
     ...(isAdmin && hasPermission('manage_users')
       ? [{
           key: '/settings/company',
@@ -677,7 +672,7 @@ export default function Layout() {
         }]
       : []),
     // ── AI-ассистент ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE')
       ? [
         {
           key: '/ai-assistant',
@@ -931,229 +926,6 @@ export default function Layout() {
         </Content>
         <NotificationPermissionBanner />
       </AntLayout>
-
-      {canQuickNote && (
-        <>
-          <Button
-            type="default"
-            icon={<EditOutlined />}
-            onClick={() => {
-              quickNoteForm.setFieldsValue({
-                callResult: 'ANSWERED',
-                lastCallAt: dayjs(),
-              });
-              setQuickNoteOpen(true);
-            }}
-            style={{
-              position: 'fixed',
-              right: 16,
-              bottom: (isMobile ? 92 : 24) + (hasMyTasks ? 56 : 0),
-              zIndex: 1200,
-              borderRadius: 999,
-              boxShadow: themeToken.boxShadowSecondary,
-            }}
-          >
-            Заметка
-          </Button>
-
-          <Modal
-            title="Быстрая заметка"
-            open={quickNoteOpen}
-            onCancel={() => setQuickNoteOpen(false)}
-            onOk={() => quickNoteForm.submit()}
-            confirmLoading={quickNoteMut.isPending}
-            okText="Сохранить"
-            cancelText="Отмена"
-          >
-            <Form
-              form={quickNoteForm}
-              layout="vertical"
-              onFinish={(v) => {
-                quickNoteMut.mutate({
-                  clientId: v.clientId,
-                  callResult: v.callResult,
-                  status: normalizeNoteStatusField(v.status),
-                  phoneNumber: (v.phoneNumber as string | undefined)?.trim() || null,
-                  comment: (v.comment || '').trim(),
-                  lastCallAt: v.lastCallAt.toISOString(),
-                  nextCallAt: v.nextCallAt ? v.nextCallAt.toISOString() : null,
-                });
-              }}
-            >
-              <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
-                <Select
-                  showSearch
-                  filterOption={smartFilterOption}
-                  placeholder="Выберите клиента"
-                  options={clients.map((c) => ({ value: c.id, label: c.companyName }))}
-                />
-              </Form.Item>
-              <Form.Item name="callResult" label="Дозвон" rules={[{ required: true, message: 'Выберите статус дозвона' }]}>
-                <Select
-                  options={[
-                    { value: 'ANSWERED', label: 'Взял трубку' },
-                    { value: 'NO_ANSWER', label: 'Не взял' },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item name="lastCallAt" label="Дата обзвона" rules={[{ required: true, message: 'Укажите дату' }]}>
-                <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
-              </Form.Item>
-              <Form.Item name="nextCallAt" label="Напомнить на дату">
-                <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
-              </Form.Item>
-              <Form.Item name="status" label="Статус">
-                <Select
-                  mode="tags"
-                  maxCount={1}
-                  tokenSeparators={[',']}
-                  placeholder="Выберите базовый или введите свой"
-                  options={BASE_NOTE_STATUSES.map((s) => ({ value: s, label: s }))}
-                />
-              </Form.Item>
-              <Form.Item name="phoneNumber" label="Номер телефона">
-                <Input placeholder="Необязательно" maxLength={40} allowClear />
-              </Form.Item>
-              <Form.Item name="comment" label="Комментарий" rules={[{ required: true, message: 'Введите комментарий' }]}>
-                <Input.TextArea rows={4} placeholder="Введите заметку..." />
-              </Form.Item>
-            </Form>
-          </Modal>
-        </>
-      )}
-
-      {hasMyTasks && (
-        <>
-          <Button
-            type="primary"
-            icon={<ProjectOutlined />}
-            onClick={() => {
-              setSelectedQuickTaskId(quickTaskList[0]?.id ?? null);
-              setQuickTasksOpen(true);
-            }}
-            style={{
-              position: 'fixed',
-              right: 16,
-              bottom: isMobile ? 92 : 24,
-              zIndex: 1200,
-              borderRadius: 999,
-              boxShadow: themeToken.boxShadowSecondary,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            Мои задачи
-            <Badge
-              count={quickTaskCount}
-              showZero
-              style={{ backgroundColor: '#fff', color: themeToken.colorPrimary, marginInlineStart: 4 }}
-            />
-          </Button>
-
-          <Drawer
-            title="Быстрый доступ к задачам"
-            placement="right"
-            open={quickTasksOpen}
-            onClose={() => setQuickTasksOpen(false)}
-            width={isMobile ? '100%' : 420}
-            extra={(
-              <Button
-                size="small"
-                onClick={() => {
-                  setQuickTasksOpen(false);
-                  navigate('/tasks');
-                }}
-              >
-                Все задачи
-              </Button>
-            )}
-          >
-            <List
-              dataSource={quickTaskList}
-              locale={{ emptyText: 'Задач нет' }}
-              renderItem={(task) => (
-                <List.Item
-                  style={{
-                    cursor: 'pointer',
-                    borderRadius: 10,
-                    paddingInline: 8,
-                    background: selectedQuickTask?.id === task.id ? themeToken.colorPrimaryBg : undefined,
-                  }}
-                  onClick={() => setSelectedQuickTaskId(task.id)}
-                >
-                  <List.Item.Meta
-                    title={<Typography.Text strong>{task.title}</Typography.Text>}
-                    description={(
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {task.plannedDate
-                          ? `План: ${dayjs(task.plannedDate).format('DD.MM.YYYY')}`
-                          : task.dueDate
-                            ? `Срок: ${dayjs(task.dueDate).format('DD.MM.YYYY')}`
-                            : 'Без даты'}
-                      </Typography.Text>
-                    )}
-                  />
-                </List.Item>
-              )}
-            />
-            {selectedQuickTask && (
-              <>
-                <Divider style={{ margin: '12px 0' }} />
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <Typography.Text strong style={{ fontSize: 16, lineHeight: 1.3 }}>
-                      {selectedQuickTask.title}
-                    </Typography.Text>
-                    <Tag color={selectedQuickTask.status === 'IN_PROGRESS' ? 'processing' : selectedQuickTask.status === 'DONE' ? 'warning' : 'default'}>
-                      {selectedQuickTask.status === 'TODO' ? 'К выполнению' : selectedQuickTask.status === 'IN_PROGRESS' ? 'В работе' : selectedQuickTask.status === 'DONE' ? 'Готово' : 'Утверждено'}
-                    </Tag>
-                  </div>
-                  {selectedQuickTask.description ? (
-                    <Typography.Text>{selectedQuickTask.description}</Typography.Text>
-                  ) : null}
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    Исполнитель: {selectedQuickTask.assignee?.fullName || '—'}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    Постановщик: {selectedQuickTask.createdBy?.fullName || '—'}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {selectedQuickTask.plannedDate
-                      ? `План: ${dayjs(selectedQuickTask.plannedDate).format('DD.MM.YYYY')}`
-                      : selectedQuickTask.dueDate
-                        ? `Срок: ${dayjs(selectedQuickTask.dueDate).format('DD.MM.YYYY')}`
-                        : 'Без даты'}
-                  </Typography.Text>
-                  <Divider style={{ margin: '8px 0' }}>Чеклист</Divider>
-                  {selectedQuickTask.checklist?.length ? (
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      {selectedQuickTask.checklist.map((item, idx) => (
-                        <Checkbox
-                          key={`${selectedQuickTask.id}-${idx}-${item.text}`}
-                          checked={item.checked}
-                          disabled={quickTaskChecklistMut.isPending}
-                          onChange={(e) => {
-                            const current = selectedQuickTask.checklist || [];
-                            const nextChecklist = current.map((entry, entryIdx) =>
-                              entryIdx === idx ? { ...entry, checked: e.target.checked } : entry,
-                            );
-                            quickTaskChecklistMut.mutate({ id: selectedQuickTask.id, checklist: nextChecklist });
-                          }}
-                        >
-                          {item.text}
-                        </Checkbox>
-                      ))}
-                    </Space>
-                  ) : (
-                    <Typography.Text type="secondary">Чеклист не добавлен.</Typography.Text>
-                  )}
-                </Space>
-              </>
-            )}
-          </Drawer>
-        </>
-      )}
 
       {isMobile && (
         <BottomTabBar />
