@@ -1043,6 +1043,49 @@ export async function cleanupStockWaitTelegramMessages(
     .catch(() => {});
 }
 
+/** Поля сделки, нужные, чтобы найти и удалить все её посты в Telegram-группах. */
+export type DealTelegramMessageIds = {
+  warehouseTelegramMessageId: string | null;
+  productionIntakeTelegramMessageId: string | null;
+  productionTelegramMessageId: string | null;
+  productionTelegramMessageInRfsChat: boolean;
+  financeTelegramMessageId: string | null;
+};
+
+/**
+ * Удалить ВСЕ отслеживаемые посты сделки во всех группах (склад / intake / производство /
+ * финансы). Используется при жёстком удалении сделки из CRM — принимает уже загруженные
+ * id сообщений, а не dealId, потому что к моменту вызова сама сделка может быть уже удалена.
+ */
+export async function cleanupAllDealTelegramMessages(deal: DealTelegramMessageIds): Promise<void> {
+  const chatW = config.telegram.groupWarehouseChatId;
+  const chatP = config.telegram.groupProductionChatId;
+  const chatF = config.telegram.groupFinanceChatId;
+  const chatRfs = config.telegram.groupReadyForShipmentChatId;
+
+  const tasks: Promise<unknown>[] = [];
+
+  if (chatW && deal.warehouseTelegramMessageId) {
+    const mid = parseStoredTelegramMessageId(deal.warehouseTelegramMessageId);
+    if (mid != null) tasks.push(telegramService.deleteGroupMessage(chatW, mid));
+  }
+  if (chatP && deal.productionIntakeTelegramMessageId) {
+    const mid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
+    if (mid != null) tasks.push(telegramService.deleteGroupMessage(chatP, mid));
+  }
+  if (deal.productionTelegramMessageId) {
+    const mid = parseStoredTelegramMessageId(deal.productionTelegramMessageId);
+    const chatProd = deal.productionTelegramMessageInRfsChat ? chatRfs : chatP;
+    if (mid != null && chatProd) tasks.push(telegramService.deleteGroupMessage(chatProd, mid));
+  }
+  if (chatF && deal.financeTelegramMessageId) {
+    const mid = parseStoredTelegramMessageId(deal.financeTelegramMessageId);
+    if (mid != null) tasks.push(telegramService.deleteGroupMessage(chatF, mid));
+  }
+
+  await Promise.allSettled(tasks);
+}
+
 type DealForTelegramSync = NonNullable<Awaited<ReturnType<typeof loadDealForTelegramSync>>>;
 
 async function loadDealForTelegramSync(dealId: string) {

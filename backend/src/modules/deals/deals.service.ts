@@ -25,6 +25,7 @@ import {
   appendFinanceTelegramLog,
   syncDealTelegramGroupMessages,
   cleanupStockWaitTelegramMessages,
+  cleanupAllDealTelegramMessages,
 } from '../telegram/telegram-deal-groups.service';
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
@@ -3651,6 +3652,12 @@ export class DealsService {
       await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
       await tx.payment.deleteMany({ where: { dealId: id } });
       await tx.deal.delete({ where: { id } });
+    });
+
+    // Сделки больше не существует — убираем её посты из Telegram-групп, чтобы там
+    // не оставались ссылки на несуществующую сделку.
+    await cleanupAllDealTelegramMessages(deal).catch((err) => {
+      console.error('[Telegram deal groups] hardDelete cleanup:', err);
     });
 
     await auditLog({
