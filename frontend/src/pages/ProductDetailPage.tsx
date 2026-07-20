@@ -18,10 +18,12 @@ import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
-function formatStockCell(stock: number, rollStock?: number | null): string {
-  const kg = Number.isInteger(stock) ? stock : parseFloat(stock.toFixed(3));
+function formatStockCell(stock: number | string | null | undefined, rollStock?: number | string | null): string {
+  const kgNum = Number(stock) || 0;
+  const kg = Number.isInteger(kgNum) ? kgNum : parseFloat(kgNum.toFixed(3));
   if (rollStock == null) return String(kg);
-  const rolls = Number.isInteger(rollStock) ? rollStock : parseFloat(rollStock.toFixed(3));
+  const rollNum = Number(rollStock) || 0;
+  const rolls = Number.isInteger(rollNum) ? rollNum : parseFloat(rollNum.toFixed(3));
   return `${rolls} рул. (${kg} кг)`;
 }
 
