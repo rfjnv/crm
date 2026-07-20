@@ -360,22 +360,26 @@ export default function DealCreatePage() {
     });
   }
 
-  /** Комментарий-ячейка позиции: спец-контрол для ламинации (кол-во рулонов) и Spray Powder (микрон),
-   * обычное текстовое поле для всех остальных товаров. */
-  function renderCommentControl(item: DraftItem, p: Product | null | undefined) {
-    if (p?.name === SPRAY_POWDER_NAME) {
-      return (
-        <Radio.Group
-          size="large"
-          value={item.requestComment || undefined}
-          onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
-          optionType="button"
-          buttonStyle="solid"
-          style={{ display: 'flex' }}
-          options={MICRON_OPTIONS.map((m) => ({ label: m, value: m }))}
-        />
-      );
-    }
+  function qtyInputProps(item: DraftItem, intUnit: boolean) {
+    return {
+      min: intUnit ? 1 : 0.001,
+      step: intUnit ? 1 : 0.1,
+      precision: intUnit ? 0 : 3,
+      placeholder: 'Кол-во',
+      style: { width: '100%' as const },
+      value: item.requestedQty,
+      onChange: (v: number | null) => updateItem(item.key, { requestedQty: v ?? undefined }),
+      parser: (v: string | undefined) => {
+        const s = (v || '').replace(',', '.');
+        return Number(s) as unknown as 0;
+      },
+    };
+  }
+
+  /** Первая (главная) ячейка позиции — сразу после товара:
+   * ламинация → кол-во рулонов (что реально просит клиент); Spray Powder → выбор микрона + кол-во(кг)
+   * тут же рядом; всё остальное → обычное кол-во. */
+  function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
         <InputNumber
@@ -389,24 +393,36 @@ export default function DealCreatePage() {
         />
       );
     }
-    return (
-      <Input
-        placeholder="Коммент"
-        value={item.requestComment}
-        onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
-      />
-    );
+    if (p?.name === SPRAY_POWDER_NAME) {
+      return (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Radio.Group
+            size="large"
+            value={item.requestComment || undefined}
+            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+            optionType="button"
+            buttonStyle="solid"
+            style={{ display: 'flex' }}
+            options={MICRON_OPTIONS.map((m) => ({ label: m, value: m }))}
+          />
+          <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кол-во (кг)" />
+        </Space>
+      );
+    }
+    return <InputNumber {...qtyInputProps(item, intUnit)} />;
   }
 
-  function commentControlLabel(p: Product | null | undefined) {
-    if (p?.name === SPRAY_POWDER_NAME) return 'Микрон';
+  function primaryControlLabel(p: Product | null | undefined) {
     if (p?.category === LAMINATION_CATEGORY) return 'Кол-во рулонов';
-    return 'Комментарий';
+    if (p?.name === SPRAY_POWDER_NAME) return 'Микрон / Кол-во (кг)';
+    return 'Кол-во';
   }
 
-  /** Кол-во(кг) ламинации узнаётся только при взвешивании на складе — поле скрыто и заблокировано
-   * на этапе создания, чтобы позиция гарантированно и всегда уходила на точный «Ответ склада». */
-  function renderQtyControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
+  /** Вторая (доп.) ячейка позиции — в конце строки:
+   * ламинация → заблокированный «взвесит склад» (кг узнаётся только при взвешивании);
+   * Spray Powder → ничего (микрон и кг уже введены слева, доп. коммент не нужен);
+   * всё остальное → обычный необязательный комментарий к позиции. */
+  function renderSecondaryControl(item: DraftItem, p: Product | null | undefined) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
         <Tag style={{ width: '100%', textAlign: 'center', whiteSpace: 'normal', padding: '4px 6px' }}>
@@ -414,19 +430,14 @@ export default function DealCreatePage() {
         </Tag>
       );
     }
+    if (p?.name === SPRAY_POWDER_NAME) {
+      return null;
+    }
     return (
-      <InputNumber
-        min={intUnit ? 1 : 0.001}
-        step={intUnit ? 1 : 0.1}
-        precision={intUnit ? 0 : 3}
-        placeholder="Кол-во"
-        style={{ width: '100%' }}
-        value={item.requestedQty}
-        onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-        parser={(v) => {
-          const s = (v || '').replace(',', '.');
-          return Number(s) as unknown as 0;
-        }}
+      <Input
+        placeholder="Коммент"
+        value={item.requestComment}
+        onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
       />
     );
   }
@@ -475,8 +486,8 @@ export default function DealCreatePage() {
 
         <div className="deal-create-item-card__grid">
           <div>
-            <Typography.Text type="secondary" className="deal-create-field-label">{commentControlLabel(p)}</Typography.Text>
-            {renderCommentControl(item, p)}
+            <Typography.Text type="secondary" className="deal-create-field-label">{primaryControlLabel(p)}</Typography.Text>
+            {renderPrimaryControl(item, p, intUnit)}
           </div>
           <div>
             <Typography.Text type="secondary" className="deal-create-field-label">Цена</Typography.Text>
@@ -497,9 +508,11 @@ export default function DealCreatePage() {
           <Typography.Text strong>{lineTotal > 0 ? formatUZS(lineTotal) : '—'}</Typography.Text>
         </div>
 
-        <div>
-          {renderQtyControl(item, p, intUnit)}
-        </div>
+        {renderSecondaryControl(item, p) != null && (
+          <div>
+            {renderSecondaryControl(item, p)}
+          </div>
+        )}
       </Card>
     );
   };
@@ -869,7 +882,7 @@ export default function DealCreatePage() {
                           {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {stockLabel(p)}</div>}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
-                          {renderCommentControl(item, p)}
+                          {renderPrimaryControl(item, p, intUnit)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
@@ -899,7 +912,7 @@ export default function DealCreatePage() {
                           </td>
                         </>}
                         <td style={{ padding: '6px 8px' }}>
-                          {renderQtyControl(item, p, intUnit)}
+                          {renderSecondaryControl(item, p)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
