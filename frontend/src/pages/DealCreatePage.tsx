@@ -307,7 +307,10 @@ export default function DealCreatePage() {
   function handleProductChange(key: string, productId: string) {
     const product = productMap.get(productId);
     const autoPrice = product?.salePrice ? Number(product.salePrice) : undefined;
-    updateItem(key, { productId, price: autoPrice || undefined });
+    // Ламинация: вес узнаётся только при взвешивании на складе — кол-во(кг) обязательно
+    // остаётся пустым, чтобы позиция гарантированно ушла на «Ответ склада».
+    const clearQtyForLamination = product?.category === LAMINATION_CATEGORY ? { requestedQty: undefined } : {};
+    updateItem(key, { productId, price: autoPrice || undefined, requestComment: '', ...clearQtyForLamination });
   }
 
   async function handleSubmit() {
@@ -400,6 +403,33 @@ export default function DealCreatePage() {
     return 'Комментарий';
   }
 
+  /** Кол-во(кг) ламинации узнаётся только при взвешивании на складе — поле скрыто и заблокировано
+   * на этапе создания, чтобы позиция гарантированно и всегда уходила на точный «Ответ склада». */
+  function renderQtyControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
+    if (p?.category === LAMINATION_CATEGORY) {
+      return (
+        <Tag style={{ width: '100%', textAlign: 'center', whiteSpace: 'normal', padding: '4px 6px' }}>
+          Взвесит склад
+        </Tag>
+      );
+    }
+    return (
+      <InputNumber
+        min={intUnit ? 1 : 0.001}
+        step={intUnit ? 1 : 0.1}
+        precision={intUnit ? 0 : 3}
+        placeholder="Кол-во"
+        style={{ width: '100%' }}
+        value={item.requestedQty}
+        onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+        parser={(v) => {
+          const s = (v || '').replace(',', '.');
+          return Number(s) as unknown as 0;
+        }}
+      />
+    );
+  }
+
   const renderItemMobileCard = (item: DraftItem) => {
     const p = item.productId ? productMap.get(item.productId) : null;
     const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
@@ -445,19 +475,7 @@ export default function DealCreatePage() {
         <div className="deal-create-item-card__grid">
           <div>
             <Typography.Text type="secondary" className="deal-create-field-label">Кол-во</Typography.Text>
-            <InputNumber
-              min={intUnit ? 1 : 0.001}
-              step={intUnit ? 1 : 0.1}
-              precision={intUnit ? 0 : 3}
-              placeholder="Кол-во"
-              style={{ width: '100%' }}
-              value={item.requestedQty}
-              onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-              parser={(v) => {
-                const s = (v || '').replace(',', '.');
-                return Number(s) as unknown as 0;
-              }}
-            />
+            {renderQtyControl(item, p, intUnit)}
           </div>
           <div>
             <Typography.Text type="secondary" className="deal-create-field-label">Цена</Typography.Text>
@@ -851,19 +869,7 @@ export default function DealCreatePage() {
                           {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {stockLabel(p)}</div>}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
-                          <InputNumber
-                            min={intUnit ? 1 : 0.001}
-                            step={intUnit ? 1 : 0.1}
-                            precision={intUnit ? 0 : 3}
-                            placeholder="Кол-во"
-                            style={{ width: '100%' }}
-                            value={item.requestedQty}
-                            onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-                            parser={(v) => {
-                              const s = (v || '').replace(',', '.');
-                              return Number(s) as unknown as 0;
-                            }}
-                          />
+                          {renderQtyControl(item, p, intUnit)}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
