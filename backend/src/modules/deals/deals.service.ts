@@ -107,6 +107,28 @@ function requiresFinanceReview(method: PaymentMethod): boolean {
   return FINANCE_REVIEW_METHODS.includes(method);
 }
 
+/**
+ * Once qty+price are known for every item, decide whether the deal can skip the
+ * manual "send to finance" step and go straight to its next queue, based on the
+ * already-known payment method (same rule used at deal creation and by sendToFinance):
+ * - non-transfer/installment/debt methods → прямо к завскладу (не требуют проверки);
+ * - TRANSFER with INN already on file → в финансы;
+ * - INSTALLMENT, DEBT, or unknown/missing method → null (нужен ручной шаг sendToFinance).
+ */
+function autoRouteStatusByPaymentMethod(
+  paymentMethod: PaymentMethod | null,
+  transferInn: string | null,
+): DealStatus | null {
+  if (!paymentMethod) return null;
+  if (paymentMethod !== 'TRANSFER' && paymentMethod !== 'INSTALLMENT' && paymentMethod !== 'DEBT') {
+    return 'WAITING_WAREHOUSE_MANAGER';
+  }
+  if (paymentMethod === 'TRANSFER' && transferInn?.trim()) {
+    return 'WAITING_FINANCE';
+  }
+  return null;
+}
+
 /** Позиция ждёт количество от склада (менеджер не указал или указал ≤ 0). */
 function dealItemNeedsStockQty(item: { requestedQty: unknown }): boolean {
   if (item.requestedQty == null) return true;
@@ -473,15 +495,9 @@ export class DealsService {
     // TRANSFER without INN → stay IN_PROGRESS (INN must be entered via "send to finance").
     // INSTALLMENT still requires manual sendToFinance.
     if (!canUseDilnozaCreatePayment && paymentMethodAtCreate && allHaveQty) {
-      if (
-        paymentMethodAtCreate !== 'TRANSFER'
-        && paymentMethodAtCreate !== 'INSTALLMENT'
-        && paymentMethodAtCreate !== 'DEBT'
-      ) {
-        initialStatus = 'WAITING_WAREHOUSE_MANAGER';
-        allHaveQtyForTelegram = true;
-      } else if (paymentMethodAtCreate === 'TRANSFER' && dto.transferInn?.trim()) {
-        initialStatus = 'WAITING_FINANCE';
+      const autoStatus = autoRouteStatusByPaymentMethod(paymentMethodAtCreate, dto.transferInn ?? null);
+      if (autoStatus) {
+        initialStatus = autoStatus;
         allHaveQtyForTelegram = true;
       }
     }
@@ -766,6 +782,89 @@ export class DealsService {
 
   // ==================== SEND TO FINANCE (payment method selection) ====================
 
+  /**
+   * Общие уведомления/телеграм после того, как сделка направлена в WAITING_FINANCE
+   * или WAITING_WAREHOUSE_MANAGER (вручную через sendToFinance или автоматически
+   * после ответа склада, когда способ оплаты уже был известен).
+   */
+  private async notifyRoutedTarget(
+    dealId: string,
+    dealTitle: string,
+    targetStatus: 'WAITING_FINANCE' | 'WAITING_WAREHOUSE_MANAGER',
+    createdByUserId: string,
+  ) {
+    await Promise.allSettled([
+      sendProductionPaymentSubmitTelegram(dealId),
+      ...(targetStatus === 'WAITING_FINANCE' ? [trySendFinanceTelegram(dealId)] : []),
+    ]);
+
+    if (targetStatus === 'WAITING_FINANCE') {
+      const accountants = await prisma.user.findMany({
+        where: { role: 'ACCOUNTANT', isActive: true },
+        select: { id: true },
+      });
+
+      if (accountants.length > 0) {
+        await prisma.notification.createMany({
+          data: accountants.map((acc) => ({
+            userId: acc.id,
+            title: 'Новая сделка на проверку',
+            body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId,
+          })),
+        });
+
+        pushService.sendPushToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+        telegramService.sendToRoles(['ACCOUNTANT'], {
+          title: 'Новая сделка на проверку',
+          body: `Сделка "${dealTitle}" ожидает финансовой проверки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+
+    if (targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
+      const whManagers = await prisma.user.findMany({
+        where: { role: 'WAREHOUSE_MANAGER', isActive: true },
+        select: { id: true },
+      });
+
+      if (whManagers.length > 0) {
+        await prisma.notification.createMany({
+          data: whManagers.map((wm) => ({
+            userId: wm.id,
+            title: 'Новая сделка на обработку',
+            body: `Сделка "${dealTitle}" ожидает обработки`,
+            severity: 'WARNING' as const,
+            link: `/deals/${dealId}`,
+            createdByUserId,
+          })),
+        });
+
+        pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${dealTitle}" ожидает обработки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+        telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
+          title: 'Новая сделка на обработку',
+          body: `Сделка "${dealTitle}" ожидает обработки`,
+          url: `/deals/${dealId}`,
+          severity: 'WARNING',
+        }).catch(() => {});
+      }
+    }
+  }
+
   async sendToFinance(dealId: string, dto: SendToFinanceDto, user: AuthUser) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, ...ownerScope(user), isArchived: false },
@@ -786,7 +885,9 @@ export class DealsService {
 
     // Determine target status based on payment method
     const needsFinanceReview = requiresFinanceReview(dto.paymentMethod as PaymentMethod);
-    const targetStatus: DealStatus = needsFinanceReview ? 'WAITING_FINANCE' : 'WAITING_WAREHOUSE_MANAGER';
+    const targetStatus: 'WAITING_FINANCE' | 'WAITING_WAREHOUSE_MANAGER' = needsFinanceReview
+      ? 'WAITING_FINANCE'
+      : 'WAITING_WAREHOUSE_MANAGER';
 
     validateStatusTransition(deal.status, targetStatus, user.role);
 
@@ -834,79 +935,7 @@ export class DealsService {
       after: { status: targetStatus, paymentMethod: dto.paymentMethod },
     });
 
-    await Promise.allSettled([
-      sendProductionPaymentSubmitTelegram(dealId),
-      ...(targetStatus === 'WAITING_FINANCE' ? [trySendFinanceTelegram(dealId)] : []),
-    ]);
-
-    // Notify accountants when deal needs finance review
-    if (targetStatus === 'WAITING_FINANCE') {
-      const accountants = await prisma.user.findMany({
-        where: { role: 'ACCOUNTANT', isActive: true },
-        select: { id: true },
-      });
-
-      if (accountants.length > 0) {
-        await prisma.notification.createMany({
-          data: accountants.map((acc) => ({
-            userId: acc.id,
-            title: 'Новая сделка на проверку',
-            body: `Сделка "${deal.title}" ожидает финансовой проверки`,
-            severity: 'WARNING' as const,
-            link: `/deals/${dealId}`,
-            createdByUserId: user.userId,
-          })),
-        });
-
-        // Fire-and-forget push
-        pushService.sendPushToRoles(['ACCOUNTANT'], {
-          title: 'Новая сделка на проверку',
-          body: `Сделка "${deal.title}" ожидает финансовой проверки`,
-          url: `/deals/${dealId}`,
-          severity: 'WARNING',
-        }).catch(() => {});
-        telegramService.sendToRoles(['ACCOUNTANT'], {
-          title: 'Новая сделка на проверку',
-          body: `Сделка "${deal.title}" ожидает финансовой проверки`,
-          url: `/deals/${dealId}`,
-          severity: 'WARNING',
-        }).catch(() => {});
-      }
-    }
-
-    // Notify warehouse managers when deal goes directly to them (non-finance payments)
-    if (targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
-      const whManagers = await prisma.user.findMany({
-        where: { role: 'WAREHOUSE_MANAGER', isActive: true },
-        select: { id: true },
-      });
-
-      if (whManagers.length > 0) {
-        await prisma.notification.createMany({
-          data: whManagers.map((wm) => ({
-            userId: wm.id,
-            title: 'Новая сделка на обработку',
-            body: `Сделка "${deal.title}" ожидает обработки`,
-            severity: 'WARNING' as const,
-            link: `/deals/${dealId}`,
-            createdByUserId: user.userId,
-          })),
-        });
-
-        pushService.sendPushToRoles(['WAREHOUSE_MANAGER'], {
-          title: 'Новая сделка на обработку',
-          body: `Сделка "${deal.title}" ожидает обработки`,
-          url: `/deals/${dealId}`,
-          severity: 'WARNING',
-        }).catch(() => {});
-        telegramService.sendToRoles(['WAREHOUSE_MANAGER'], {
-          title: 'Новая сделка на обработку',
-          body: `Сделка "${deal.title}" ожидает обработки`,
-          url: `/deals/${dealId}`,
-          severity: 'WARNING',
-        }).catch(() => {});
-      }
-    }
+    await this.notifyRoutedTarget(dealId, deal.title, targetStatus, user.userId);
 
     await syncDealTelegramGroupMessages(dealId).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
@@ -1103,6 +1132,14 @@ export class DealsService {
     const needsResponse = deal.items.filter((i) => dealItemNeedsStockQty(i));
     const needsIds = new Set(needsResponse.map((i) => i.id));
 
+    // Способ оплаты уже мог быть выбран менеджером при создании сделки — в этом
+    // случае, как только склад подтвердил остатки, направляем сделку сразу туда,
+    // куда она пойдёт по этому способу оплаты (минуя ручную «отправить в финансы»):
+    // не-перечисление/рассрочка/долг → сразу к завскладу, перечисление с ИНН → в финансы.
+    // Иначе — как раньше, в статус "В работе" для ручной отправки.
+    const autoStatus = autoRouteStatusByPaymentMethod(deal.paymentMethod, deal.transferInn);
+    const targetStatus: DealStatus = autoStatus ?? 'IN_PROGRESS';
+
     if (needsResponse.length === 0) {
       if (dto.items.length > 0) {
         throw new AppError(400, 'Все позиции уже имеют количество; отправьте пустой список items');
@@ -1119,7 +1156,7 @@ export class DealsService {
         await recalcDealAmountFromItemsInTx(tx, dealId);
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'IN_PROGRESS' },
+          data: { status: targetStatus },
         });
       });
     } else {
@@ -1188,7 +1225,7 @@ export class DealsService {
         await recalcDealAmountFromItemsInTx(tx, dealId);
         await tx.deal.update({
           where: { id: dealId },
-          data: { status: 'IN_PROGRESS' },
+          data: { status: targetStatus },
         });
       });
     }
@@ -1199,16 +1236,20 @@ export class DealsService {
       entityType: 'deal',
       entityId: dealId,
       before: { status: deal.status },
-      after: { status: 'IN_PROGRESS', respondedItems: dto.items.length },
+      after: { status: targetStatus, respondedItems: dto.items.length },
     });
 
-    void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', 'IN_PROGRESS').catch((err) => {
+    void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', targetStatus).catch((err) => {
       console.error('[Telegram deal groups] cleanupStockWaitTelegramMessages:', err);
     });
 
-    void onDealStatusChanged(dealId, deal.status, 'IN_PROGRESS').catch((err) => {
+    void onDealStatusChanged(dealId, deal.status, targetStatus).catch((err) => {
       console.error('[Telegram deal groups] onDealStatusChanged (stock→work):', err);
     });
+
+    if (targetStatus === 'WAITING_FINANCE' || targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
+      await this.notifyRoutedTarget(dealId, deal.title, targetStatus, user.userId);
+    }
 
     void syncDealTelegramGroupMessages(dealId).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
@@ -1229,14 +1270,21 @@ export class DealsService {
       throw new AppError(404, 'Сделка не найдена');
     }
 
-    if (deal.status !== 'IN_PROGRESS' && deal.status !== 'STOCK_CONFIRMED' && deal.status !== 'WAITING_FINANCE') {
-      throw new AppError(400, 'Сделка должна быть в статусе "В работе" для установки количеств');
+    // Prices/quantities can be edited at any active stage of the deal; access closes only
+    // once the deal is CLOSED or CANCELED (manager retains edit rights through finance/shipment stages).
+    const EDITABLE_PRICE_STATUSES: DealStatus[] = [
+      'IN_PROGRESS', 'STOCK_CONFIRMED', 'WAITING_FINANCE', 'FINANCE_APPROVED',
+      'ADMIN_APPROVED', 'READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'SHIPPED',
+      'PENDING_APPROVAL', 'REJECTED', 'REOPENED',
+    ];
+    if (!EDITABLE_PRICE_STATUSES.includes(deal.status)) {
+      throw new AppError(400, 'Сделка должна быть в активном статусе (не закрыта и не отменена) для изменения цен');
     }
 
     // Verify user is manager of this deal or admin
     const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
     const canFinanceEdit = user.role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE';
-    const canManagerEdit = deal.managerId === user.userId && deal.status !== 'WAITING_FINANCE';
+    const canManagerEdit = deal.managerId === user.userId;
     if (!isAdmin && !canFinanceEdit && !canManagerEdit) {
       throw new AppError(403, 'Только менеджер сделки или администратор может установить количества');
     }
