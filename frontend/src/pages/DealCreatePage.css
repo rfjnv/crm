@@ -117,6 +117,14 @@
   min-height: 48px;
 }
 
+.deal-create-items-table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.deal-create-items-table tbody tr:hover {
+  background-color: var(--bg-secondary);
+}
+
 @media (max-width: 768px) {
   .deal-create-page--mobile {
     padding-inline: 0 !important;

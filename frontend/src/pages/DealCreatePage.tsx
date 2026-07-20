@@ -7,7 +7,7 @@ import {
   message, Alert, Checkbox, Radio, DatePicker, Switch, Tag,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CalculatorOutlined, LockOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
@@ -395,7 +395,17 @@ export default function DealCreatePage() {
     }
     if (p?.name === SPRAY_POWDER_NAME) {
       return (
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+        <Space
+          direction="vertical"
+          size={6}
+          style={{
+            width: '100%',
+            padding: 6,
+            borderRadius: 8,
+            border: `1px dashed ${tk.colorBorder}`,
+            background: tk.colorFillQuaternary,
+          }}
+        >
           <Radio.Group
             size="large"
             value={item.requestComment || undefined}
@@ -418,6 +428,14 @@ export default function DealCreatePage() {
     return 'Кол-во';
   }
 
+  /** Цветной бейдж типа товара рядом с выбором — чтобы особая строка (ламинация/тальк) была
+   * видна с первого взгляда, не читая все ячейки ряда. */
+  function productTypeBadge(p: Product | null | undefined) {
+    if (p?.category === LAMINATION_CATEGORY) return <Tag color="blue" style={{ marginInlineEnd: 0 }}>плёнка · рулоны</Tag>;
+    if (p?.name === SPRAY_POWDER_NAME) return <Tag color="gold" style={{ marginInlineEnd: 0 }}>микрон</Tag>;
+    return null;
+  }
+
   /** Вторая (доп.) ячейка позиции — в конце строки:
    * ламинация → заблокированный «взвесит склад» (кг узнаётся только при взвешивании);
    * Spray Powder → ничего (микрон и кг уже введены слева, доп. коммент не нужен);
@@ -425,7 +443,11 @@ export default function DealCreatePage() {
   function renderSecondaryControl(item: DraftItem, p: Product | null | undefined) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
-        <Tag style={{ width: '100%', textAlign: 'center', whiteSpace: 'normal', padding: '4px 6px' }}>
+        <Tag
+          icon={<LockOutlined />}
+          color="processing"
+          style={{ width: '100%', textAlign: 'center', whiteSpace: 'normal', padding: '5px 8px', margin: 0 }}
+        >
           Взвесит склад
         </Tag>
       );
@@ -478,8 +500,9 @@ export default function DealCreatePage() {
             }))}
           />
           {p && (
-            <div className="deal-create-item-card__stock">
-              Остаток: {stockLabel(p)}
+            <div className="deal-create-item-card__stock" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span>Остаток: {stockLabel(p)}</span>
+              {productTypeBadge(p)}
             </div>
           )}
         </div>
@@ -846,19 +869,19 @@ export default function DealCreatePage() {
             </div>
           ) : (
             <>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="deal-create-items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13 }}>Товар</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Кол-во</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 150 }}>Цена (UZS)</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>Сумма</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3 }}>Товар</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130 }}>Кол-во</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150, textAlign: 'right' }}>Цена (UZS)</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>Сумма</th>
                     {showVat && <>
-                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 70 }}>НДС %</th>
-                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 120 }}>Сумма НДС</th>
-                      <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 130 }}>С НДС</th>
+                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 70 }}>НДС %</th>
+                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 120, textAlign: 'right' }}>Сумма НДС</th>
+                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>С НДС</th>
                     </>}
-                    <th style={{ padding: '6px 8px', fontWeight: 500, fontSize: 13, width: 100 }} />
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, width: 100 }} />
                     <th style={{ width: 40 }} />
                   </tr>
                 </thead>
@@ -869,7 +892,7 @@ export default function DealCreatePage() {
                     const intUnit = isIntegerUnit(p?.unit);
                     return (
                       <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           <Select showSearch filterOption={smartFilterOption} placeholder="Выберите товар" style={{ width: '100%' }}
                             value={item.productId}
                             onChange={(v) => handleProductChange(item.key, v)}
@@ -879,42 +902,47 @@ export default function DealCreatePage() {
                               disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
                             }))}
                           />
-                          {p && <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 2 }}>Ост: {stockLabel(p)}</div>}
+                          {p && (
+                            <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>Ост: {stockLabel(p)}</span>
+                              {productTypeBadge(p)}
+                            </div>
+                          )}
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           {renderPrimaryControl(item, p, intUnit)}
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
                             formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
                             value={item.price}
                             onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
                           />
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <Typography.Text style={{ whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                          <Typography.Text style={{ whiteSpace: 'nowrap' }} strong={lineTotal > 0}>
                             {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
                           </Typography.Text>
                         </td>
                         {showVat && <>
-                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                             <Typography.Text type="secondary">12%</Typography.Text>
                           </td>
-                          <td style={{ padding: '6px 8px' }}>
+                          <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                             <Typography.Text style={{ whiteSpace: 'nowrap' }}>
                               {lineTotal > 0 ? formatUZS(Math.round(lineTotal * VAT_RATE * 100) / 100) : '—'}
                             </Typography.Text>
                           </td>
-                          <td style={{ padding: '6px 8px' }}>
+                          <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                             <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
                               {lineTotal > 0 ? formatUZS(Math.round(lineTotal * (1 + VAT_RATE) * 100) / 100) : '—'}
                             </Typography.Text>
                           </td>
                         </>}
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           {renderSecondaryControl(item, p)}
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
                         </td>
                       </tr>
@@ -929,14 +957,14 @@ export default function DealCreatePage() {
                           <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text>Без НДС:</Typography.Text>
                           </td>
-                          <td style={{ padding: '8px' }}>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text>{formatUZS(totalAmount)}</Typography.Text>
                           </td>
                           <td></td>
                           <td style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text>НДС 12%:</Typography.Text>
                           </td>
-                          <td style={{ padding: '8px' }}>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text>{formatUZS(Math.round(totalAmount * VAT_RATE * 100) / 100)}</Typography.Text>
                           </td>
                           <td colSpan={2} />
@@ -945,7 +973,7 @@ export default function DealCreatePage() {
                           <td colSpan={6} style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text strong>Итого с НДС:</Typography.Text>
                           </td>
-                          <td style={{ padding: '8px' }}>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
                             <Typography.Text strong>{formatUZS(Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100)}</Typography.Text>
                           </td>
                           <td colSpan={2} />
@@ -956,7 +984,7 @@ export default function DealCreatePage() {
                         <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
                           <Typography.Text strong>Итого:</Typography.Text>
                         </td>
-                        <td style={{ padding: '8px' }}>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>
                           <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
                         </td>
                         <td colSpan={2} />
