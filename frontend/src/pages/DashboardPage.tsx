@@ -614,7 +614,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {isAdmin && (
+      {(isAdmin || role === 'MANAGER') && (
         <div className={isMobile ? 'section' : undefined}>
         <Card
           className="dashboard-goal-card"
@@ -785,8 +785,13 @@ export default function DashboardPage() {
             </div>
           </Col>
         </Row>
+        </div>
+      )}
 
-        <Row gutter={blockGutter} style={{ marginTop: 12 }}>
+      {/* ── Product of the day ── */}
+      {(isAdmin || role === 'MANAGER') && (
+        <div className={isMobile ? 'section' : undefined}>
+        <Row gutter={blockGutter} style={{ marginTop: isAdmin ? 12 : (isMobile ? 0 : 24) }}>
           <Col xs={24}>
             <Card
               bordered={false}
@@ -992,22 +997,24 @@ export default function DashboardPage() {
               title: 'Топ товаров',
               items: topProducts.map((p) => ({ label: p.name, value: formatUZS(p.revenue), href: `/inventory/products/${p.entityId}` })),
             },
-            {
-              title: 'Топ менеджеров',
-              items: topManagers.map((m) => ({ label: m.fullName, value: formatUZS(m.totalRevenue), href: `/analytics` })),
-            },
-            {
-              title: 'Топ клиентов',
-              items: topClients.map((c) => ({
-                label: (
-                  <ClientCompanyDisplay
-                    client={{ id: c.clientId, companyName: c.companyName, isSvip: c.isSvip }}
-                  />
-                ),
-                value: formatUZS(c.totalRevenue),
-                href: `/clients/${c.clientId}`,
-              })),
-            },
+            ...(isAdmin ? [
+              {
+                title: 'Топ менеджеров',
+                items: topManagers.map((m) => ({ label: m.fullName, value: formatUZS(m.totalRevenue), href: `/analytics` })),
+              },
+              {
+                title: 'Топ клиентов',
+                items: topClients.map((c) => ({
+                  label: (
+                    <ClientCompanyDisplay
+                      client={{ id: c.clientId, companyName: c.companyName, isSvip: c.isSvip }}
+                    />
+                  ),
+                  value: formatUZS(c.totalRevenue),
+                  href: `/clients/${c.clientId}`,
+                })),
+              },
+            ] : []),
           ].map((block) => (
             <Col xs={24} md={8} key={block.title}>
               <Card
