@@ -38,7 +38,7 @@ const upload = multer({
 });
 
 router.use(authenticate);
-router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER'));
+router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'FOREIGN_TRADE'));
 
 // ==================== Training Rules (SUPER_ADMIN / ADMIN only) ====================
 // Must be defined BEFORE /:chatId routes to avoid "training-rules" matching as chatId
