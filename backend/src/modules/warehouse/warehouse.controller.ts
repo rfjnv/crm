@@ -37,7 +37,7 @@ export class WarehouseController {
   }
 
   async createProduct(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId);
+    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId, req.user!.role as any);
     res.status(201).json(product);
   }
 

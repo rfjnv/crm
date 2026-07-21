@@ -55,16 +55,28 @@ export class WarehouseService {
     await prisma.productPosterPhoto.delete({ where: { id: photoId } });
   }
 
-  async createProduct(dto: CreateProductDto, userId: string, companyId?: string) {
+  async createProduct(dto: CreateProductDto, userId: string, companyId?: string, role?: Role) {
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {
       throw new AppError(409, 'Товар с таким артикулом уже существует');
     }
 
-    const { manufacturedAt, expiresAt, specifications, ...rest } = dto;
+    let resolvedCompanyId = companyId;
+    if (role === 'SUPER_ADMIN') {
+      if (!dto.companyId) {
+        throw new AppError(400, 'Выберите компанию для товара');
+      }
+      const company = await prisma.company.findUnique({ where: { id: dto.companyId } });
+      if (!company) {
+        throw new AppError(404, 'Компания не найдена');
+      }
+      resolvedCompanyId = dto.companyId;
+    }
+
+    const { manufacturedAt, expiresAt, specifications, companyId: _ignoreCompanyId, ...rest } = dto;
     const data: Prisma.ProductCreateInput = {
       ...rest,
-      ...(companyId ? { companyId } : {}),
+      ...(resolvedCompanyId ? { companyId: resolvedCompanyId } : {}),
       ...(specifications ? { specifications: specifications as Prisma.InputJsonValue } : {}),
       ...(manufacturedAt ? { manufacturedAt: new Date(manufacturedAt) } : {}),
       ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
