@@ -1305,15 +1305,26 @@ export class DealsService {
       throw new AppError(400, 'Сумма сделки не может быть отрицательной (скидка превышает подитог)');
     }
 
-    // Payment validation
-    let paidAmount = dto.paidAmount || 0;
-    if (dto.paymentType === 'FULL') {
-      paidAmount = finalAmount;
+    // Payment validation.
+    // "FULL ⇒ paidAmount = finalAmount" only applies to the very first quantity setup
+    // (STOCK_CONFIRMED → IN_PROGRESS, nothing paid yet). On every later price/qty edit — now
+    // reachable from finance/shipment stages too — we must NOT silently overwrite whatever has
+    // actually been paid, so the already-recorded paidAmount is kept (only clamped to the new
+    // amount, since a discount/qty change can make the old paidAmount exceed it).
+    const isInitialQuantitySetup = deal.status === 'STOCK_CONFIRMED';
+    let paidAmount: number;
+    if (isInitialQuantitySetup) {
+      paidAmount = dto.paidAmount || 0;
+      if (dto.paymentType === 'FULL') {
+        paidAmount = finalAmount;
+      }
+    } else {
+      paidAmount = Math.min(Number(deal.paidAmount) || 0, finalAmount);
     }
     if (paidAmount > finalAmount) {
       throw new AppError(400, 'Оплата не может превышать сумму сделки');
     }
-    if ((dto.paymentType === 'PARTIAL' || dto.paymentType === 'INSTALLMENT') && !dto.dueDate) {
+    if (isInitialQuantitySetup && (dto.paymentType === 'PARTIAL' || dto.paymentType === 'INSTALLMENT') && !dto.dueDate) {
       throw new AppError(400, 'Укажите срок оплаты для частичной оплаты или рассрочки');
     }
 

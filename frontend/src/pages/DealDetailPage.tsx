@@ -1847,12 +1847,12 @@ export default function DealDetailPage() {
         <Form
           form={itemForm}
           layout="vertical"
+          initialValues={{ requestedQty: 1, price: 0 }}
           onFinish={(v) => {
-            const selectedProduct = (products ?? []).find((p) => p.id === v.productId);
             addItemMut.mutate({
               productId: v.productId,
-              requestedQty: 1,
-              price: Number(selectedProduct?.salePrice ?? 0),
+              requestedQty: Number(v.requestedQty) || 1,
+              price: Number(v.price) || 0,
               requestComment: v.requestComment || undefined,
             });
           }}
@@ -1863,10 +1863,30 @@ export default function DealDetailPage() {
               optionFilterProp="label"
               placeholder="Выберите товар"
               options={(products ?? []).filter((p) => p.isActive).map((p) => ({ label: `${p.name} (${p.sku}) — остаток: ${p.stock}`, value: p.id }))}
+              onChange={(productId) => {
+                const p = (products ?? []).find((pp) => pp.id === productId);
+                itemForm.setFieldsValue({ price: Number(p?.salePrice ?? 0) });
+              }}
             />
           </Form.Item>
-          <Form.Item name="requestComment" label="Комментарий / запрос">
-            <Input.TextArea rows={2} placeholder="Например: нужно 50 тонн, уточнить наличие" />
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <Form.Item name="requestedQty" label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0.1}
+                step={0.1}
+                parser={(v) => {
+                  const s = (v || '').replace(',', '.');
+                  return Number(s) as unknown as 0;
+                }}
+              />
+            </Form.Item>
+            <Form.Item name="price" label="Цена за единицу" rules={[{ required: true, message: 'Обязательно' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+            </Form.Item>
+          </div>
+          <Form.Item name="requestComment" label="Комментарий (необязательно)">
+            <Input.TextArea rows={2} placeholder="Заметка для склада/себя — ни на что не влияет" />
           </Form.Item>
         </Form>
       </Modal>
