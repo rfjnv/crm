@@ -291,33 +291,34 @@ router.get(
       }
     }
 
-    // Calculate accurate net balance across ALL deals for each client, because
-    // isolated payments are marked as 'PAID' and would be ignored by the main query.
-    const allDealsGrouped = await prisma.deal.groupBy({
-      by: ['clientId'],
+    // Calculate debt and prepayment as SEPARATE pools across ALL deals for each
+    // client — they are never netted against each other. Isolated payments are
+    // marked as 'PAID' and would otherwise be ignored by the main query.
+    const allDeals = await prisma.deal.findMany({
       where: {
         ...dealScope,
         status: 'CLOSED',
         isArchived: false,
         ...(managerId ? { managerId } : {}),
       },
-      _sum: {
-        amount: true,
-        paidAmount: true,
-      }
+      select: { clientId: true, amount: true, paidAmount: true },
     });
 
-    const trueDebtMap = new Map<string, number>();
-    for (const row of allDealsGrouped) {
-      const netDebt = Number(row._sum.amount ?? 0) - Number(row._sum.paidAmount ?? 0);
-      trueDebtMap.set(row.clientId, netDebt);
+    const balanceMap = new Map<string, { debt: number; prepayment: number }>();
+    for (const d of allDeals) {
+      const balance = Number(d.amount) - Number(d.paidAmount);
+      if (balance === 0) continue;
+      const entry = balanceMap.get(d.clientId) ?? { debt: 0, prepayment: 0 };
+      if (balance > 0) entry.debt += balance;
+      else entry.prepayment += -balance;
+      balanceMap.set(d.clientId, entry);
     }
 
-    // Identify clients that have a non-zero net balance (e.g., prepayments) 
+    // Identify clients that have a non-zero balance (e.g., prepayments)
     // but were not fetched by the main query because they lack UNPAID/PARTIAL deals.
     const missingClientIds: string[] = [];
-    for (const [clientId, balance] of trueDebtMap.entries()) {
-      if (balance !== 0 && !clientMap.has(clientId)) {
+    for (const [clientId, balance] of balanceMap.entries()) {
+      if ((balance.debt > 0 || balance.prepayment > 0) && !clientMap.has(clientId)) {
         missingClientIds.push(clientId);
       }
     }
@@ -380,14 +381,15 @@ router.get(
         if (mgr.count > maxCount) { maxCount = mgr.count; primaryManager = { id: mgr.id, fullName: mgr.fullName }; }
       }
 
-      // Use the true ALL-DEALS aggregated debt
-      const effectiveDebt = trueDebtMap.get(c.clientId) ?? c.totalDebt;
+      // Use the ALL-DEALS pools: debt stays pure, prepayment is reported separately
+      const pools = balanceMap.get(c.clientId) ?? { debt: c.totalDebt, prepayment: 0 };
 
       return {
         clientId: c.clientId,
         clientName: c.clientName,
         isSvip: c.isSvip,
-        totalDebt: effectiveDebt,
+        totalDebt: pools.debt,
+        prepayment: pools.prepayment,
         totalAmount: c.totalAmount,
         totalPaid: c.totalPaid,
         dealsCount: c.dealsCount,
@@ -399,8 +401,8 @@ router.get(
       };
     });
 
-    // Remove clients with zero debt (fully settled)
-    clients = clients.filter((c) => c.totalDebt !== 0);
+    // Remove clients with neither debt nor prepayment (fully settled)
+    clients = clients.filter((c) => c.totalDebt !== 0 || c.prepayment !== 0);
 
     if (minDebt) {
       clients = clients.filter((c) => c.totalDebt >= minDebt);
@@ -408,24 +410,18 @@ router.get(
 
     const totalDealsCount = clients.reduce((s, c) => s + c.dealsCount, 0);
 
-    let totalDebtOwed = 0; // Pure positive debt pool
-    let prepayments = 0;   // Pure negative debt pool
-
-    for (const c of clients) {
-      if (c.totalDebt > 0) totalDebtOwed += c.totalDebt;
-      else if (c.totalDebt < 0) prepayments += Math.abs(c.totalDebt);
-    }
-
-    const netDebt = totalDebtOwed; // The user requested explicitly that the total debt exactly equal the sum of positive debtors' debts
+    // Debt and prepayments are two independent pools — never netted
+    const totalDebt = clients.reduce((s, c) => s + c.totalDebt, 0);
+    const prepayments = clients.reduce((s, c) => s + c.prepayment, 0);
 
     res.json({
       clients,
       totals: {
         clientCount: clients.length,
         dealsCount: totalDealsCount,
-        totalDebtGiven: totalDebtOwed,      // Общий долг (сумма всех плюсов)
-        totalDebtOwed: netDebt,             // Чистый долг (плюсы минус минусы)
-        prepayments,                        // Передоплаты
+        totalDebtGiven: totalDebt,          // Общий долг (только долг, без вычета переплат)
+        totalDebtOwed: totalDebt,           // То же значение — переплаты не вычитаются
+        prepayments,                        // Передоплаты (отдельно)
       },
     });
   }),
@@ -738,7 +734,8 @@ router.get(
 
     const totalDebt = deals.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0);
 
-    // Also compute ALL-deals net balance so overpayments on PAID deals are reflected
+    // Also compute ALL-deals balances so overpayments on PAID deals are reflected.
+    // Debt and prepayment are kept as separate pools — never netted against each other.
     const allDealsForClient = await prisma.deal.findMany({
       where: {
         clientId,
@@ -747,9 +744,13 @@ router.get(
       },
       select: { amount: true, paidAmount: true },
     });
-    const allDealsNetBalance = allDealsForClient.reduce(
-      (sum, d) => sum + (Number(d.amount) - Number(d.paidAmount)), 0,
-    );
+    let allDealsDebt = 0;
+    let allDealsPrepayment = 0;
+    for (const d of allDealsForClient) {
+      const balance = Number(d.amount) - Number(d.paidAmount);
+      if (balance > 0) allDealsDebt += balance;
+      else if (balance < 0) allDealsPrepayment += -balance;
+    }
 
     // Discipline metrics
     const allClientDeals = await prisma.deal.findMany({
@@ -793,7 +794,8 @@ router.get(
       client,
       deals,
       payments,
-      totalDebt: allDealsNetBalance,
+      totalDebt: allDealsDebt,
+      prepayment: allDealsPrepayment,
       discipline: {
         onTimeRate,
         avgPaymentDelay: Math.round(avgPaymentDelay),

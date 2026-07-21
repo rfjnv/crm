@@ -829,7 +829,8 @@ export interface ClientDebtRow {
   clientId: string;
   clientName: string;
   isSvip?: boolean;
-  totalDebt: number;
+  totalDebt: number;      // Только долг, переплаты не вычитаются
+  prepayment: number;     // Переплата — отдельным полем
   totalAmount: number;
   totalPaid: number;
   dealsCount: number;
@@ -845,9 +846,9 @@ export interface DebtsResponse {
   totals: {
     clientCount: number;
     dealsCount: number;
-    totalDebtGiven: number;      // Общий долг (К+НК+ПК+Ф)
-    totalDebtOwed: number;       // Чистый долг (К+НК+ПК+Ф+ПП)
-    prepayments: number;         // Передоплаты
+    totalDebtGiven: number;      // Общий долг (без вычета переплат)
+    totalDebtOwed: number;       // То же значение — переплаты не вычитаются
+    prepayments: number;         // Передоплаты (отдельно)
   };
 }
 

@@ -496,10 +496,17 @@ export default function CashboxPage() {
       dataIndex: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f' }}>
-          {v < 0 ? `−${formatUZS(Math.abs(v))} (переплата)` : formatUZS(v)}
-        </span>
+        <span style={{ color: v > 0 ? '#ff4d4f' : undefined }}>{formatUZS(v)}</span>
       ),
+    },
+    {
+      title: 'Переплата',
+      dataIndex: 'prepayment',
+      align: 'right' as const,
+      render: (v: number) =>
+        v > 0
+          ? <span style={{ color: '#52c41a' }}>{formatUZS(v)}</span>
+          : <Typography.Text type="secondary">{'—'}</Typography.Text>,
     },
     {
       title: 'Оплачено',
@@ -774,6 +781,9 @@ export default function CashboxPage() {
                     </Typography.Text>
                     <Typography.Text type="secondary">
                       Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      Переплаты: <span style={{ color: '#52c41a' }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
                     </Typography.Text>
                   </Space>
                 )}

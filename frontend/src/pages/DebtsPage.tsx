@@ -105,10 +105,18 @@ export default function DebtsPage() {
       key: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v < 0 ? '#52c41a' : '#ff4d4f' }}>
-          {v < 0 ? `−${formatUZS(Math.abs(v))} (переплата)` : formatUZS(v)}
-        </span>
+        <span style={{ color: v > 0 ? '#ff4d4f' : undefined }}>{formatUZS(v)}</span>
       ),
+    },
+    {
+      title: 'Переплата',
+      dataIndex: 'prepayment',
+      key: 'prepayment',
+      align: 'right' as const,
+      render: (v: number) =>
+        v > 0
+          ? <span style={{ color: '#52c41a' }}>{formatUZS(v)}</span>
+          : <Typography.Text type="secondary">{'—'}</Typography.Text>,
     },
     {
       title: 'Сумма сделок',
@@ -267,10 +275,16 @@ export default function DebtsPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Typography.Text type="secondary">Общий долг</Typography.Text>
-                <span style={{ color: record.totalDebt < 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
-                  {record.totalDebt < 0 ? `−${formatUZS(Math.abs(record.totalDebt))}` : formatUZS(record.totalDebt)}
+                <span style={{ color: record.totalDebt > 0 ? '#ff4d4f' : undefined, fontWeight: 600 }}>
+                  {formatUZS(record.totalDebt)}
                 </span>
               </div>
+              {record.prepayment > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Typography.Text type="secondary">Переплата</Typography.Text>
+                  <span style={{ color: '#52c41a', fontWeight: 600 }}>{formatUZS(record.prepayment)}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Typography.Text type="secondary">Сделок</Typography.Text>
                 <Typography.Text>{record.dealsCount}</Typography.Text>
