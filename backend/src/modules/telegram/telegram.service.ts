@@ -46,10 +46,12 @@ class TelegramService {
       } else {
         console.log(`[Telegram] Групповые алерты: склад=${w} производство=${p} финансы=${f}`);
       }
-      this.setupWebAppMenuButton();
     }).catch((err) => {
       console.error('Telegram bot getMe failed:', err.message);
     });
+    // Независимо от getMe() — на холодном старте (после редеплоя) сеть может ответить не сразу,
+    // поэтому с повторными попытками, а не один раз.
+    this.setupWebAppMenuButton();
   }
 
   private setupHandlers() {
@@ -110,8 +112,12 @@ class TelegramService {
     registerTelegramAdminCallbacks(this.bot);
   }
 
-  /** Кнопка меню бота (слева от поля ввода) открывает CRM как Telegram Web App. */
-  private async setupWebAppMenuButton(): Promise<void> {
+  /**
+   * Кнопка меню бота (слева от поля ввода) открывает CRM как Telegram Web App.
+   * На холодном старте (сразу после редеплоя на Render) исходящая сеть может ответить
+   * не сразу — поэтому несколько попыток с задержкой, а не один вызов.
+   */
+  private async setupWebAppMenuButton(attempt = 1): Promise<void> {
     if (!this.bot) return;
     const url = config.telegram.crmUrl;
     if (!url.startsWith('https://')) {
@@ -124,7 +130,12 @@ class TelegramService {
       });
       console.log(`[Telegram] Web App menu button → ${url}`);
     } catch (err) {
-      console.error('[Telegram] setChatMenuButton failed:', (err as Error).message);
+      console.error(`[Telegram] setChatMenuButton failed (попытка ${attempt}/5):`, (err as Error).message);
+      if (attempt < 5) {
+        setTimeout(() => this.setupWebAppMenuButton(attempt + 1), attempt * 5000);
+      } else {
+        console.error('[Telegram] Кнопка Web App так и не установилась после 5 попыток.');
+      }
     }
   }
 
