@@ -16,9 +16,6 @@ import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
 import './StockConfirmationPage.css';
 
-/** Ламинационная плёнка учитывается по весу (кг), но выдаётся рулонами — второй остаток отдельно от кг. */
-const LAMINATION_CATEGORY = 'Ламинационная пленка';
-
 function normalizeQtyExpression(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -100,10 +97,7 @@ export default function StockConfirmationPage() {
         productName: item.product?.name || 'Товар',
         sku: item.product?.sku || '',
         unit: item.product?.unit || 'шт',
-        category: item.product?.category || '',
-        rollStock: item.product?.rollStock ?? null,
         requestComment: item.requestComment || '',
-        warehouseComment: '',
         price: hasCatalogPrice ? undefined : null,
         hasCatalogPrice,
         catalogPrice: hasCatalogPrice ? defPrice : null,
@@ -169,7 +163,6 @@ export default function StockConfirmationPage() {
   ];
 
   const list = deals ?? [];
-  const pendingItemsTotal = list.reduce((sum, deal) => sum + getPendingItems(deal).length, 0);
   const modalPendingCount = respondModal ? getPendingItems(respondModal).length : 0;
 
   const renderMobileCard = (deal: Deal) => {
@@ -183,29 +176,23 @@ export default function StockConfirmationPage() {
           <div className="stock-confirm-mobile-card__header-main">
             <Link to={`/deals/${deal.id}`} className="stock-confirm-mobile-card__title-link">
               <Typography.Text strong className="stock-confirm-mobile-card__title">
-                {deal.title}
+                {deal.client?.companyName?.trim() || deal.title}
               </Typography.Text>
             </Link>
-            <div className="stock-confirm-mobile-card__client">
-              <ClientCompanyDisplay client={deal.client} secondary />
-            </div>
           </div>
           <Typography.Text type="secondary" className="stock-confirm-mobile-card__date">
             {dayjs(deal.createdAt).format('DD.MM.YYYY')}
           </Typography.Text>
         </div>
 
-        <Space size={6} wrap className="stock-confirm-mobile-card__chips">
-          <Tag color="green">{pendingItems.length} поз. к ответу</Tag>
-          {deal.manager?.fullName && <Tag>{deal.manager.fullName}</Tag>}
-        </Space>
+        {deal.manager?.fullName && (
+          <Space size={6} wrap className="stock-confirm-mobile-card__chips">
+            <Tag>{deal.manager.fullName}</Tag>
+          </Space>
+        )}
 
         {preview.length > 0 && (
           <div className="stock-confirm-mobile-card__items">
-            <div className="stock-confirm-mobile-card__items-header">
-              <Typography.Text strong>Что нужно подтвердить</Typography.Text>
-              <Typography.Text type="secondary">{pendingItems.length} поз.</Typography.Text>
-            </div>
             <ul className="stock-confirm-mobile-card__items-list">
               {preview.map((item) => (
                 <li key={item.id}>
@@ -244,16 +231,6 @@ export default function StockConfirmationPage() {
         Ответ склада
         {list.length > 0 && <Tag style={{ marginLeft: 8, fontSize: 14 }}>{list.length}</Tag>}
       </Typography.Title>
-
-      {isMobile && (
-        <div className="stock-confirm-summary">
-          <Card size="small" className="stock-confirm-summary__card">
-            <Typography.Text type="secondary">Сделки в очереди</Typography.Text>
-            <Typography.Title level={4}>{list.length}</Typography.Title>
-            <Typography.Text type="secondary">Позиции к подтверждению: {pendingItemsTotal}</Typography.Text>
-          </Card>
-        </div>
-      )}
 
       {isMobile ? (
         <MobileCardList
@@ -345,17 +322,13 @@ export default function StockConfirmationPage() {
             const catalogPrice = sourceItem?.product?.salePrice != null ? Number(sourceItem.product.salePrice) : 0;
             const hasCatalogPrice = catalogPrice > 0;
             const priceVal = item.price as number | null | undefined;
-            const rollCountVal = item.rollCount as number | null | undefined;
-            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number; rollCount?: number } = {
+            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
               dealItemId: item.dealItemId as string,
-              warehouseComment: String(item.warehouseComment ?? '').trim(),
+              warehouseComment: '',
               requestedQty: parsedQty ?? 0,
             };
             if (!hasCatalogPrice && priceVal != null && priceVal > 0) {
               row.price = priceVal;
-            }
-            if (sourceItem?.product?.category === LAMINATION_CATEGORY && rollCountVal != null && rollCountVal > 0) {
-              row.rollCount = rollCountVal;
             }
             return row;
           });
@@ -406,6 +379,7 @@ export default function StockConfirmationPage() {
                         name={[field.name, 'requestedQty']}
                         label={`Количество (${itemData?.unit || 'шт'})`}
                         extra="Можно вводить: 20,2 или 20,2+20,3 или 20,2 20,3"
+                        className={itemData?.hasCatalogPrice ? 'stock-confirm-form__last-field' : undefined}
                         rules={[
                           { required: true, message: 'Укажите количество' },
                           {
@@ -423,31 +397,16 @@ export default function StockConfirmationPage() {
                           onPressEnter={() => applyParsedQtyValue(field.name)}
                         />
                       </Form.Item>
-                      {itemData?.category === LAMINATION_CATEGORY && (
-                        <Form.Item
-                          name={[field.name, 'rollCount']}
-                          label="Кол-во рулонов"
-                          extra={`Сколько рулонов взяли со склада${itemData?.rollStock != null ? ` (остаток: ${itemData.rollStock} рул.)` : ''}`}
-                        >
-                          <InputNumber style={{ width: '100%' }} min={1} step={1} precision={0} placeholder="Кол-во рулонов" />
-                        </Form.Item>
-                      )}
                       {!itemData?.hasCatalogPrice && (
                         <Form.Item
                           name={[field.name, 'price']}
                           label="Цена"
                           rules={[{ required: true, message: 'Укажите цену' }]}
+                          className="stock-confirm-form__last-field"
                         >
                           <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="Цена из каталога не найдена" />
                         </Form.Item>
                       )}
-                      <Form.Item
-                        name={[field.name, 'warehouseComment']}
-                        label="Комментарий склада (необязательно)"
-                        className="stock-confirm-form__last-field"
-                      >
-                        <Input.TextArea rows={2} placeholder="По желанию: срок, замечание…" />
-                      </Form.Item>
                     </Card>
                   );
                 })}

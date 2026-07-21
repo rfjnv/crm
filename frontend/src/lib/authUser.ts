@@ -22,3 +22,10 @@ export function enrichUserFromMe(fresh: User, prev?: User | null): User {
 export function isSiteAdminUser(user: { authSource?: string; role?: string } | null | undefined): boolean {
   return user?.authSource === 'supabase' || user?.role === 'SITE_ADMIN';
 }
+
+/** Склад/грузчик — им дашборд не нужен, сразу открываем очередь "Ответ склада". */
+export function homePathForUser(user?: { authSource?: string; role?: string } | null): string {
+  if (isSiteAdminUser(user)) return '/admin';
+  if (user?.role === 'WAREHOUSE' || user?.role === 'LOADER') return '/stock-confirmation';
+  return '/dashboard';
+}

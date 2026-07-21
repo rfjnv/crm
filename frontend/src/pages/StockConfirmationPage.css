@@ -1,18 +1,3 @@
-.stock-confirm-summary {
-  margin-bottom: 12px;
-}
-
-.stock-confirm-summary__card .ant-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-}
-
-.stock-confirm-summary__card h4.ant-typography {
-  margin: 0;
-}
-
 .stock-confirm-mobile-card {
   border-radius: 16px;
 }
@@ -46,11 +31,6 @@
   line-height: 1.35;
 }
 
-.stock-confirm-mobile-card__client {
-  margin-top: 4px;
-  font-size: 13px;
-}
-
 .stock-confirm-mobile-card__date.ant-typography {
   flex-shrink: 0;
   font-size: 12px;
@@ -65,14 +45,6 @@
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-secondary);
-}
-
-.stock-confirm-mobile-card__items-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
 }
 
 .stock-confirm-mobile-card__items-list {

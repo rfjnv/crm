@@ -18,6 +18,8 @@ type Props = {
   link?: boolean;
   /** Вторичный цвет текста (как подпись под сделкой) */
   secondary?: boolean;
+  /** Скрыть бейдж статуса клиента (Неактивный/Нейтральный) — напр. для склада, кому это не нужно */
+  showStatus?: boolean;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -41,6 +43,7 @@ export function ClientCompanyDisplay({
   variant = 'compact',
   link = false,
   secondary = false,
+  showStatus = true,
   className,
   style,
 }: Props) {
@@ -77,7 +80,7 @@ export function ClientCompanyDisplay({
         />
       )}
       {nameEl}
-      {statusMeta && (
+      {showStatus && statusMeta && (
         <Tag
           color={statusMeta.color}
           title={statusMeta.title}

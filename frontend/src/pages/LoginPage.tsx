@@ -7,6 +7,7 @@ import { authApi } from '../api/auth.api';
 import { supabaseAuthApi } from '../api/supabaseAuth.api';
 import { useAuthStore } from '../store/authStore';
 import { ensureSupabaseConfig, getSupabase } from '../lib/supabase';
+import { homePathForUser } from '../lib/authUser';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 
 export default function LoginPage() {
@@ -27,8 +28,9 @@ export default function LoginPage() {
       const tokens = await authApi.login(values.login, values.password);
       useAuthStore.getState().setTokens(tokens.accessToken, tokens.refreshToken);
       const user = await authApi.me();
-      setAuth({ ...user, authSource: 'crm' }, tokens.accessToken, tokens.refreshToken);
-      navigate('/dashboard');
+      const fullUser = { ...user, authSource: 'crm' as const };
+      setAuth(fullUser, tokens.accessToken, tokens.refreshToken);
+      navigate(homePathForUser(fullUser));
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка входа';
       message.error(msg);
