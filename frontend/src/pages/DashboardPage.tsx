@@ -315,6 +315,11 @@ export default function DashboardPage() {
   const revenueMonth = data.revenueMonth || 0;
   const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
   const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const dailyGoal = companySettings?.dailyRevenueGoal || (revenueGoal / daysInMonth);
+  const revenueTodayForGoal = data.revenueToday || 0;
+  const dailyGoalPct = Math.min(100, Math.round((revenueTodayForGoal / dailyGoal) * 100));
+  const dailyGoalRemaining = Math.max(0, dailyGoal - revenueTodayForGoal);
   const hasMyGoal = !!myGoal && (
     myGoal.targets.deals != null ||
     myGoal.targets.revenue != null ||
@@ -659,6 +664,58 @@ export default function DashboardPage() {
               />
               <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                 {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
+              </Typography.Text>
+            </div>
+          )}
+        </Card>
+        </div>
+      )}
+
+      {(isAdmin || role === 'MANAGER') && (
+        <div className={isMobile ? 'section' : undefined}>
+        <Card
+          className="dashboard-goal-card"
+          bordered={false}
+          hoverable
+          style={{ ...card, marginTop: isMobile ? 0 : 16, cursor: 'pointer' }}
+          styles={{ body: isMobile ? undefined : { padding: '12px 20px' } }}
+          onClick={() => navigate('/settings/company')}
+        >
+          {isMobile ? (
+            <div className="goal-card">
+              <div className="goal-header">
+                <Typography.Text className="goal-title">Цель на сегодня</Typography.Text>
+                <span className="goal-percent">{dailyGoalPct}%</span>
+              </div>
+              <Progress
+                className="goal-progress"
+                percent={dailyGoalPct}
+                showInfo={false}
+                strokeWidth={8}
+                strokeColor={isDark ? '#1890ff' : '#096dd9'}
+                trailColor={tk.colorFillSecondary}
+              />
+              <div className="goal-remaining">
+                Осталось: {formatUZS(dailyGoalRemaining)}
+              </div>
+              <div className="goal-meta">
+                {formatUZS(revenueTodayForGoal)} / {formatUZS(dailyGoal)}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                Цель на сегодня
+              </Typography.Text>
+              <Progress
+                percent={dailyGoalPct}
+                strokeColor={isDark ? '#1890ff' : '#096dd9'}
+                trailColor={tk.colorFillSecondary}
+                style={{ flex: 1, minWidth: 120, margin: 0 }}
+                format={(p) => `${p}%`}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {formatUZS(revenueTodayForGoal)} / {formatUZS(dailyGoal)}
               </Typography.Text>
             </div>
           )}

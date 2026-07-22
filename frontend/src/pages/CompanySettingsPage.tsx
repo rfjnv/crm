@@ -228,6 +228,17 @@ export default function CompanySettingsPage() {
             />
           </Form.Item>
 
+          <Form.Item label="Цель выручки на день (сум)" name="dailyRevenueGoal">
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              step={1_000_000}
+              formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+              parser={(v) => Number((v || '').replace(/\s/g, '')) as unknown as 0}
+              placeholder="8 000 000"
+            />
+          </Form.Item>
+
           <Divider />
           <Typography.Title level={5} style={{ marginBottom: 16 }}>Баланс компании</Typography.Title>
 

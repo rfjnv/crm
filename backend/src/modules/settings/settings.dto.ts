@@ -13,6 +13,7 @@ export const updateCompanySettingsDto = z.object({
   vatRegCode: z.string().optional(),
   oked: z.string().optional(),
   monthlyRevenueGoal: z.coerce.number().min(0).optional(),
+  dailyRevenueGoal: z.coerce.number().min(0).nullable().optional(),
   balanceStartDate: z.coerce.date().nullable().optional(),
   initialBalance: z.coerce.number().min(0).optional(),
 });

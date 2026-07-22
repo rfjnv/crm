@@ -1185,6 +1185,7 @@ export interface CompanySettings {
   oked: string;
   logoPath: string | null;
   monthlyRevenueGoal: number;
+  dailyRevenueGoal: number | null;
   balanceStartDate: string | null;
   initialBalance: number;
   updatedAt: string;
