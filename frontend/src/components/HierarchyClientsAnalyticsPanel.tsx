@@ -389,9 +389,19 @@ export default function HierarchyClientsAnalyticsPanel({
     selectedClientScopeProductIds,
   ]);
 
+  const scopeUnitLabel = useMemo(() => {
+    const units = new Set<string>();
+    for (const id of selectedClientScopeProductIds) {
+      const u = productsById.get(id)?.unit?.trim();
+      if (u) units.add(u);
+    }
+    return units.size === 1 ? [...units][0] : null;
+  }, [selectedClientScopeProductIds, productsById]);
+
   const hierarchyClientRevenueChartData = useMemo(
     () =>
-      clientPurchaseSummaryRows
+      [...clientPurchaseSummaryRows]
+        .sort((a, b) => b.salesRevenue - a.salesRevenue)
         .slice(0, 12)
         .map((row) => ({ name: row.clientIsSvip ? `👑 ${row.clientName}` : row.clientName, value: row.salesRevenue })),
     [clientPurchaseSummaryRows],
@@ -399,7 +409,8 @@ export default function HierarchyClientsAnalyticsPanel({
 
   const hierarchyClientQtyChartData = useMemo(
     () =>
-      clientPurchaseSummaryRows
+      [...clientPurchaseSummaryRows]
+        .sort((a, b) => b.soldQty - a.soldQty)
         .slice(0, 12)
         .map((row) => ({ name: row.clientIsSvip ? `👑 ${row.clientName}` : row.clientName, value: row.soldQty })),
     [clientPurchaseSummaryRows],
@@ -515,12 +526,15 @@ export default function HierarchyClientsAnalyticsPanel({
         }),
     },
     {
-      title: 'Шт.',
+      title: scopeUnitLabel ?? 'Шт.',
       dataIndex: 'soldQty',
       key: 'soldQty',
       width: 72,
       align: 'right',
-      render: (v: number) => v.toLocaleString('ru-RU'),
+      render: (v: number, line) => {
+        const unit = productsById.get(line.productId)?.unit;
+        return unit ? `${v.toLocaleString('ru-RU')} ${unit}` : v.toLocaleString('ru-RU');
+      },
     },
     {
       title: 'Выручка',
@@ -551,7 +565,7 @@ export default function HierarchyClientsAnalyticsPanel({
       align: 'right',
     },
     {
-      title: 'Куплено (шт.)',
+      title: `Куплено (${scopeUnitLabel ?? 'шт.'})`,
       dataIndex: 'soldQty',
       key: 'soldQty',
       width: 120,
@@ -722,10 +736,10 @@ export default function HierarchyClientsAnalyticsPanel({
                   size="small"
                   title={
                     clientScopeLevel === 'category'
-                      ? 'Топ товаров в выбранной категории (шт.)'
+                      ? `Топ товаров в выбранной категории (${scopeUnitLabel ?? 'шт.'})`
                       : clientScopeLevel === 'type'
-                        ? 'Топ товаров в выбранном типе (шт.)'
-                        : 'Продажи выбранного товара (шт.)'
+                        ? `Топ товаров в выбранном типе (${scopeUnitLabel ?? 'шт.'})`
+                        : `Продажи выбранного товара (${scopeUnitLabel ?? 'шт.'})`
                   }
                 >
                   {categoryProductsChartData.length > 0 ? (
@@ -736,12 +750,12 @@ export default function HierarchyClientsAnalyticsPanel({
                       height={320}
                       colorField="name"
                       axis={{
-                        x: { label: false },
+                        x: { labelFill: token.colorTextSecondary },
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
                         title: 'name',
-                        items: [{ field: 'value', channel: 'y', name: 'Продано', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} шт.` }],
+                        items: [{ field: 'value', channel: 'y', name: 'Продано', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} ${scopeUnitLabel ?? 'шт.'}` }],
                       }}
                       theme={chartTheme}
                     />
@@ -760,7 +774,7 @@ export default function HierarchyClientsAnalyticsPanel({
                       height={220}
                       colorField="name"
                       axis={{
-                        x: { label: false },
+                        x: { labelFill: token.colorTextSecondary },
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
@@ -775,7 +789,7 @@ export default function HierarchyClientsAnalyticsPanel({
                 </Card>
               </Col>
               <Col xs={24} md={12}>
-                <Card size="small" title="Топ клиенты — Количество (шт.)">
+                <Card size="small" title={`Топ клиенты — Количество (${scopeUnitLabel ?? 'шт.'})`}>
                   {hierarchyClientQtyChartData.length > 0 ? (
                     <Bar
                       data={hierarchyClientQtyChartData}
@@ -784,12 +798,12 @@ export default function HierarchyClientsAnalyticsPanel({
                       height={220}
                       colorField="name"
                       axis={{
-                        x: { label: false },
+                        x: { labelFill: token.colorTextSecondary },
                         y: { labelFill: token.colorTextSecondary },
                       }}
                       tooltip={{
                         title: 'name',
-                        items: [{ field: 'value', channel: 'y', name: 'Количество', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} шт.` }],
+                        items: [{ field: 'value', channel: 'y', name: 'Количество', valueFormatter: (v: number) => `${v.toLocaleString('ru-RU')} ${scopeUnitLabel ?? 'шт.'}` }],
                       }}
                       theme={chartTheme}
                     />

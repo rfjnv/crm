@@ -509,6 +509,7 @@ router.get(
         productId: true,
         requestedQty: true,
         price: true,
+        lineTotal: true,
         deal: {
           select: {
             id: true,
@@ -525,6 +526,8 @@ router.get(
       .map((r) => {
         const qty = Number(r.requestedQty ?? 0);
         const unit = Number(r.price ?? 0);
+        const lineTotal = Number(r.lineTotal ?? 0);
+        const revenue = lineTotal || qty * unit;
         const saleAt = r.deal.closedAt ?? r.deal.createdAt;
         return {
           productId: r.productId,
@@ -535,7 +538,7 @@ router.get(
           clientIsSvip: !!r.deal.client.isSvip,
           soldQty: qty,
           unitPrice: unit,
-          salesRevenue: qty * unit,
+          salesRevenue: revenue,
           dealCreatedAt: r.deal.createdAt.toISOString(),
           saleAt: saleAt.toISOString(),
         };
