@@ -526,8 +526,6 @@ export class TelegramCustomerService {
         t(lang, 'start.hours.monFri'),
         t(lang, 'start.hours.sat'),
         t(lang, 'start.hours.sun'),
-        '',
-        t(lang, 'start.staffHint'),
       ].join('\n'),
       {
         parse_mode: 'HTML',

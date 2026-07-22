@@ -19,7 +19,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'start.hours.monFri': 'Пн-Пт: 09:00-18:00',
     'start.hours.sat': 'Сб: 10:00-18:00',
     'start.hours.sun': 'Вс: выходной',
-    'start.staffHint': 'Если вы сотрудник CRM, привязка Telegram по-прежнему работает через ссылку из CRM.',
 
     'menu.order': '🛒 Оформить заказ',
     'menu.orders': '📦 Мои заказы',
@@ -141,7 +140,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'start.hours.monFri': 'Dush-Juma: 09:00-18:00',
     'start.hours.sat': 'Shanba: 10:00-18:00',
     'start.hours.sun': 'Yakshanba: dam olish kuni',
-    'start.staffHint': "Agar siz CRM xodimi bo'lsangiz, Telegramni ulash CRM'dagi havola orqali amalga oshiriladi.",
 
     'menu.order': "🛒 Buyurtma berish",
     'menu.orders': '📦 Buyurtmalarim',
