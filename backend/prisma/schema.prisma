@@ -269,8 +269,32 @@ model User {
   noteAuditReports       NoteAuditReport[]      @relation("NoteAuditManager")
   noteAuditCorrections   NoteAuditReport[]      @relation("NoteAuditCorrectedBy")
   noteAuditMemories      NoteAuditMemory[]      @relation("NoteAuditMemoryCreator")
+  attendanceRecords      AttendanceRecord[]     @relation("AttendanceUser")
+  attendanceRecordsEntered AttendanceRecord[]   @relation("AttendanceEnteredBy")
 
   @@map("users")
+}
+
+/// Учёт рабочего времени сотрудников: приход/уход за конкретный день.
+/// Заполняется вручную HR/админом (в т.ч. импортом исторических данных из внешней системы учёта).
+model AttendanceRecord {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  /** Календарный день записи (время всегда 00:00) */
+  date        DateTime  @db.Date
+  checkIn     DateTime? @map("check_in")
+  checkOut    DateTime? @map("check_out")
+  note        String?
+  enteredById String?   @map("entered_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user      User  @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  enteredBy User? @relation("AttendanceEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("attendance_records")
 }
 
 /** Запись в истории медали пользователя (суперадмин может скрыть запись). */

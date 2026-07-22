@@ -21,6 +21,7 @@
     "db:cleanup-zero-deal-items": "tsx src/scripts/cleanup-zero-qty-price-deal-items.ts",
     "db:snapshots": "tsx src/scripts/generate-snapshots.ts",
     "import-excel": "tsx src/scripts/import-excel-to-crm.ts",
+    "import-attendance": "tsx src/scripts/import-attendance.ts",
     "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts",
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts",
     "seed:companies": "node dist/scripts/seed-companies.js"

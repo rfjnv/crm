@@ -655,6 +655,15 @@ export default function Layout() {
           },
         ]
       : []),
+    ...(isAdmin
+      ? [
+          {
+            key: '/attendance',
+            icon: <ClockCircleOutlined />,
+            label: <Link to="/attendance">Посещаемость</Link>,
+          },
+        ]
+      : []),
     ...(hasRole('SUPER_ADMIN')
       ? [
           {

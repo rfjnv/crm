@@ -46,6 +46,7 @@ import StockConfirmationPage from './pages/StockConfirmationPage';
 import MessagesPage from './pages/MessagesPage';
 import RevenueTodayPage from './pages/RevenueTodayPage';
 import ExpensesPage from './pages/ExpensesPage';
+import AttendancePage from './pages/AttendancePage';
 import TasksPage from './pages/TasksPage';
 import ContractsPage from './pages/ContractsPage';
 import ArchivedDealsPage from './pages/ArchivedDealsPage';
@@ -235,6 +236,7 @@ export default function App() {
                   <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
+                  <Route path="/attendance" element={<AttendancePage />} />
                 </Route>
                 <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />

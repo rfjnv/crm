@@ -1038,6 +1038,20 @@ export interface Expense {
   importOrder?: { id: string; number: string; currency: string } | null;
 }
 
+// ──── Attendance ────
+
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  note?: string | null;
+  enteredById?: string | null;
+  user?: { id: string; fullName: string; department?: string | null; role?: UserRole };
+  enteredBy?: { id: string; fullName: string } | null;
+}
+
 // ──── Tasks ────
 
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'APPROVED';
