@@ -1,16 +1,35 @@
-import { Client } from 'pg';
+import { Client, types as pgTypes } from 'pg';
 import { gzipSync } from 'zlib';
 import { config } from '../../lib/config';
 import { telegramService } from '../telegram/telegram.service';
+
+/**
+ * Даты забираем СЫРОЙ строкой, как они лежат в базе.
+ *
+ * По умолчанию драйвер превращает `timestamp without time zone` в JS Date, трактуя его
+ * как местное время процесса; при сериализации в JSON получается UTC-строка, сдвинутая
+ * на часовой пояс сервера (Ташкент → −5ч). При восстановлении сдвиг закреплялся бы в базе,
+ * причём величина сдвига зависела бы от машины, где запускают восстановление.
+ */
+const TIMESTAMP_OIDS = new Set([1082, 1114, 1184]); // date, timestamp, timestamptz
+const rawDateTypes = {
+  getTypeParser(oid: number, format?: unknown) {
+    if (TIMESTAMP_OIDS.has(oid)) return (value: string) => value;
+    return (pgTypes as unknown as { getTypeParser: (o: number, f?: unknown) => unknown }).getTypeParser(oid, format);
+  },
+};
 
 /**
  * Полный дамп данных (без схемы — схема уже версионируется в git через prisma/schema.prisma
  * и восстанавливается через `prisma db push`/`migrate deploy`). Каждую ночь упаковывается
  * в один gzip-JSON и отправляется в Telegram — на случай взлома/потери базы.
  *
- * Восстановление: распаковать gzip → JSON вида { tableName: rows[] }, для каждой таблицы
- * временно `SET session_replication_role = replica;` (чтобы обойти FK-порядок) и вставить
- * строки, затем вернуть `SET session_replication_role = DEFAULT;`.
+ * Восстановление: распаковать gzip → JSON вида { generatedAt, tables: { tableName: rows[] } }.
+ * Схему поднять через `prisma db push`, затем для каждой таблицы вставить строки, обернув всё в
+ * `SET session_replication_role = replica;` … `SET session_replication_role = DEFAULT;` —
+ * это отключает проверку внешних ключей, поэтому порядок таблиц не важен.
+ * Значения дат/чисел лежат строками ровно в том виде, в каком их хранит Postgres,
+ * и вставляются обратно без конвертации.
  */
 
 interface BackupResult {
@@ -26,6 +45,7 @@ async function dumpAllTables(): Promise<{ data: Record<string, unknown[]>; table
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
+    types: rawDateTypes as never,
   });
   await client.connect();
   try {
