@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image, DatePicker,
+  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image, DatePicker, Tag, Alert,
 } from 'antd';
-import { UploadOutlined, SaveOutlined } from '@ant-design/icons';
+import { UploadOutlined, SaveOutlined, SyncOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
+import { timepayApi } from '../api/timepay.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { CompanySettings } from '../types';
 import dayjs from 'dayjs';
@@ -14,12 +16,46 @@ const BACKEND_URL = import.meta.env.VITE_API_URL
 
 export default function CompanySettingsPage() {
   const [form] = Form.useForm();
+  const [timepayToken, setTimepayToken] = useState('');
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['company-settings'],
     queryFn: settingsApi.getCompanySettings,
+  });
+
+  const { data: timepayStatus } = useQuery({
+    queryKey: ['timepay-status'],
+    queryFn: timepayApi.getStatus,
+  });
+
+  const setTimepayTokenMut = useMutation({
+    mutationFn: timepayApi.setToken,
+    onSuccess: () => {
+      message.success('Токен TimePay сохранён');
+      setTimepayToken('');
+      queryClient.invalidateQueries({ queryKey: ['timepay-status'] });
+    },
+    onError: () => message.error('Не удалось сохранить токен'),
+  });
+
+  const syncTimepayMut = useMutation({
+    mutationFn: () => timepayApi.sync(),
+    onSuccess: (result) => {
+      if (result.status === 'SUCCESS') {
+        message.success(`Синхронизировано: ${result.matched}, не найдено по ФИО: ${result.unmatched}`);
+      } else if (result.status === 'AUTH_ERROR') {
+        message.error('Токен TimePay недействителен — обновите его ниже');
+      } else if (result.status === 'NOT_CONFIGURED') {
+        message.warning('Сначала укажите токен TimePay');
+      } else {
+        message.error(result.error || 'Ошибка синхронизации');
+      }
+      queryClient.invalidateQueries({ queryKey: ['timepay-status'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+    },
+    onError: () => message.error('Ошибка синхронизации'),
   });
 
   const updateMut = useMutation({
@@ -77,6 +113,66 @@ export default function CompanySettingsPage() {
               {settings?.logoPath ? 'Заменить логотип' : 'Загрузить логотип'}
             </Button>
           </Upload>
+        </Space>
+      </Card>
+
+      <Card style={{ marginBottom: 24 }}>
+        <Typography.Title level={5} style={{ marginBottom: 16 }}>Интеграция TimePay (посещаемость)</Typography.Title>
+
+        {timepayStatus?.lastSyncStatus === 'ERROR' && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Последняя синхронизация не удалась"
+            description={timepayStatus.lastSyncError || 'Неизвестная ошибка'}
+          />
+        )}
+
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div>
+            <Space wrap>
+              <Typography.Text>Токен:</Typography.Text>
+              {timepayStatus?.hasToken ? (
+                <Tag color="green">настроен ({timepayStatus.tokenPreview})</Tag>
+              ) : (
+                <Tag color="red">не настроен</Tag>
+              )}
+              {timepayStatus?.lastSyncAt && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Последний синк: {dayjs(timepayStatus.lastSyncAt).format('DD.MM.YYYY HH:mm')}
+                  {timepayStatus.lastSyncStatus === 'SUCCESS'
+                    ? ` · сопоставлено ${timepayStatus.lastSyncMatched ?? 0}, не найдено ${timepayStatus.lastSyncUnmatched ?? 0}`
+                    : ''}
+                </Typography.Text>
+              )}
+            </Space>
+          </div>
+
+          <Space.Compact style={{ width: '100%', maxWidth: 560 }}>
+            <Input.Password
+              placeholder="Вставьте access_token из TimePay"
+              value={timepayToken}
+              onChange={(e) => setTimepayToken(e.target.value)}
+            />
+            <Button
+              type="primary"
+              loading={setTimepayTokenMut.isPending}
+              disabled={!timepayToken.trim()}
+              onClick={() => setTimepayTokenMut.mutate(timepayToken.trim())}
+            >
+              Сохранить токен
+            </Button>
+          </Space.Compact>
+
+          <Button
+            icon={<SyncOutlined />}
+            loading={syncTimepayMut.isPending}
+            disabled={!timepayStatus?.hasToken}
+            onClick={() => syncTimepayMut.mutate()}
+          >
+            Синхронизировать сейчас
+          </Button>
         </Space>
       </Card>
 

@@ -1137,6 +1137,27 @@ model CompanySettings {
   @@map("company_settings")
 }
 
+// ==================== TIMEPAY INTEGRATION ====================
+
+/// Интеграция с системой учёта рабочего времени TimePay (ss-uz.time-pay.uz).
+/// Access-токен вводится вручную админом в настройках CRM (у TimePay пока нет
+/// публичного refresh-эндпоинта) и хранится только здесь — не во фронтенде, не в репозитории.
+model TimePayIntegration {
+  id               String    @id @default("singleton")
+  accessToken      String?   @map("access_token")
+  tokenUpdatedAt   DateTime? @map("token_updated_at")
+  tokenUpdatedById String?   @map("token_updated_by_id")
+  lastSyncAt       DateTime? @map("last_sync_at")
+  lastSyncStatus   String?   @map("last_sync_status")
+  lastSyncError    String?   @map("last_sync_error")
+  lastSyncMatched  Int?      @map("last_sync_matched")
+  lastSyncUnmatched Int?     @map("last_sync_unmatched")
+  lastTokenAlertAt DateTime? @map("last_token_alert_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("timepay_integration")
+}
+
 // ==================== PUSH SUBSCRIPTIONS ====================
 
 model PushSubscription {

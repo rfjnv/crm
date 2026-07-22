@@ -1190,6 +1190,27 @@ export interface CompanySettings {
   updatedAt: string;
 }
 
+// ──── TimePay integration ────
+
+export interface TimePayStatus {
+  hasToken: boolean;
+  tokenPreview: string | null;
+  tokenUpdatedAt: string | null;
+  lastSyncAt: string | null;
+  lastSyncStatus: 'SUCCESS' | 'ERROR' | null;
+  lastSyncError: string | null;
+  lastSyncMatched: number | null;
+  lastSyncUnmatched: number | null;
+}
+
+export interface TimePaySyncResult {
+  status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR' | 'ERROR';
+  matched: number;
+  unmatched: number;
+  unmatchedNames: string[];
+  error?: string;
+}
+
 // ──── Intelligence Analytics ────
 
 export interface ClientSegmentRow {

@@ -112,6 +112,12 @@ export const config = {
     anonKey: trimEnv(process.env.SUPABASE_ANON_KEY),
     serviceRoleKey: trimEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
   },
+
+  timepay: {
+    /** Токен хранится не тут, а в БД (TimePayIntegration, вводится админом в настройках) — см. modules/timepay. */
+    apiBaseUrl: trimEnv(process.env.TIMEPAY_API_BASE_URL) || 'https://ss-uz.time-pay.uz/api',
+    syncIntervalMs: 10 * 60 * 1000,
+  },
 } as const;
 
 export const isSupabaseConfigured = Boolean(
