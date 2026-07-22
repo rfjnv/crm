@@ -181,7 +181,7 @@ export const dealsApi = {
     reason: string;
     createdAt?: string | null;
     paymentMethod?: PaymentMethod | null;
-    items?: { id?: string; productId: string; requestedQty?: number; price?: number; dealDate?: string | null }[];
+    items?: { id?: string; productId: string; requestedQty?: number; price?: number; rollCount?: number | null; dealDate?: string | null }[];
   }) =>
     client.patch<Deal>(`/deals/${dealId}/wm-override`, data).then((r) => r.data),
 

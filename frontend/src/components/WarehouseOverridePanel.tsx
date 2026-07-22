@@ -29,6 +29,7 @@ interface OverrideItem {
   productId: string;
   requestedQty?: number;
   price?: number;
+  rollCount?: number;
   dealDate?: dayjs.Dayjs;
 }
 
@@ -79,6 +80,7 @@ export default function WarehouseOverridePanel({
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : undefined,
         price: i.price != null ? Number(i.price) : undefined,
+        rollCount: i.rollCount != null ? Number(i.rollCount) : undefined,
         dealDate: i.dealDate ? dayjs(i.dealDate) : undefined,
       })),
     );
@@ -150,6 +152,7 @@ export default function WarehouseOverridePanel({
           item.productId !== original.productId
           || (item.requestedQty ?? null) !== (original.requestedQty != null ? Number(original.requestedQty) : null)
           || (item.price ?? null) !== (original.price != null ? Number(original.price) : null)
+          || (item.rollCount ?? null) !== (original.rollCount != null ? Number(original.rollCount) : null)
           || (item.dealDate ? item.dealDate.toISOString() : null) !== (original.dealDate ? dayjs(original.dealDate).toISOString() : null)
         );
       });
@@ -162,6 +165,7 @@ export default function WarehouseOverridePanel({
             productId: i.productId,
             requestedQty: i.requestedQty,
             price: i.price,
+            rollCount: i.rollCount ?? null,
             dealDate: i.dealDate ? i.dealDate.toISOString() : null,
           }));
       }
@@ -235,6 +239,7 @@ export default function WarehouseOverridePanel({
             <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
               <th style={{ padding: productsCellPad, fontSize: 13, width: '32%', minWidth: 180 }}>Товар</th>
               <th style={{ padding: productsCellPad, fontSize: 13, width: 88 }}>Кол-во</th>
+              <th style={{ padding: productsCellPad, fontSize: 13, width: 88 }}>Рулоны</th>
               <th style={{ padding: productsCellPad, fontSize: 13, width: 128 }}>Цена</th>
               <th style={{ padding: productsCellPad, fontSize: 13, width: 120 }}>Сумма</th>
               <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Дата</th>
@@ -273,6 +278,15 @@ export default function WarehouseOverridePanel({
                       styles={{ root: { width: 80, minWidth: 70, maxWidth: 90 }, input: { paddingInline: 8 } }}
                       value={item.requestedQty}
                       onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+                    />
+                  </td>
+                  <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                    <InputNumber
+                      min={0}
+                      step={1}
+                      styles={{ root: { width: 80, minWidth: 70, maxWidth: 90 }, input: { paddingInline: 8 } }}
+                      value={item.rollCount}
+                      onChange={(v) => updateItem(item.key, { rollCount: v ?? undefined })}
                     />
                   </td>
                   <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>

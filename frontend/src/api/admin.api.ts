@@ -27,6 +27,7 @@ export interface OverrideDealData {
     productId: string;
     requestedQty?: number;
     price?: number;
+    rollCount?: number | null;
     requestComment?: string;
     warehouseComment?: string;
     dealDate?: string | null;

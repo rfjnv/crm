@@ -198,6 +198,7 @@ export const superOverrideDealDto = z.object({
     productId: z.string().uuid(),
     requestedQty: z.number().positive().optional(),
     price: z.number().min(0).optional(),
+    rollCount: z.number().min(0).nullable().optional(),
     requestComment: z.string().optional(),
     warehouseComment: z.string().optional(),
     dealDate: z.string().nullable().optional(),
@@ -241,6 +242,7 @@ export const warehouseOverrideDealDto = z.object({
     productId: z.string().uuid(),
     requestedQty: z.number().min(0).optional(),
     price: z.number().min(0).optional(),
+    rollCount: z.number().min(0).nullable().optional(),
     dealDate: z.string().nullable().optional(),
   })).optional(),
 });

@@ -3046,6 +3046,7 @@ export class DealsService {
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        rollCount: i.rollCount != null ? Number(i.rollCount) : null,
         dealDate: i.dealDate,
         confirmedAt: i.confirmedAt,
         createdAt: i.createdAt,
@@ -3134,6 +3135,7 @@ export class DealsService {
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
+            rollCount: item.rollCount ?? null,
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
             requestComment: item.requestComment,
             warehouseComment: item.warehouseComment,
@@ -3297,6 +3299,7 @@ export class DealsService {
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        rollCount: i.rollCount != null ? Number(i.rollCount) : null,
         dealDate: i.dealDate,
         confirmedAt: i.confirmedAt,
         createdAt: i.createdAt,
@@ -3378,6 +3381,7 @@ export class DealsService {
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        rollCount: i.rollCount != null ? Number(i.rollCount) : null,
         dealDate: i.dealDate,
       })),
     };
@@ -3410,6 +3414,7 @@ export class DealsService {
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
+            rollCount: item.rollCount ?? null,
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
             dealDate: parseOptionalDate(item.dealDate),
           };
@@ -3464,6 +3469,7 @@ export class DealsService {
         productId: i.productId,
         requestedQty: i.requestedQty != null ? Number(i.requestedQty) : null,
         price: i.price != null ? Number(i.price) : null,
+        rollCount: i.rollCount != null ? Number(i.rollCount) : null,
         dealDate: i.dealDate,
       })),
     };
