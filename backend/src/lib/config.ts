@@ -97,6 +97,10 @@ export const config = {
     groupFinanceChatId: trimEnv(process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID),
     /** Приватная группа для ежедневных бэкапов базы (см. modules/backup). */
     backupChatId: trimEnv(process.env.TELEGRAM_BACKUP_CHAT_ID),
+    /** Публичный origin бэкенда для регистрации вебхуков ботов. Render подставляет RENDER_EXTERNAL_URL сам. */
+    backendPublicUrl: trimEnv(process.env.RENDER_EXTERNAL_URL) || trimEnv(process.env.BACKEND_PUBLIC_URL),
+    /** Секрет для X-Telegram-Bot-Api-Secret-Token; без него вебхук-режим не проверяет отправителя. */
+    webhookSecret: trimEnv(process.env.TELEGRAM_WEBHOOK_SECRET),
   },
   reports: {
     internalToken: trimEnv(process.env.INTERNAL_REPORTS_TOKEN),

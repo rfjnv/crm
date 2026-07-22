@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../../lib/config';
 import { telegramCustomerService } from './telegram.customer.service';
+import { createTelegramBot, registerWebhook } from './telegram-transport';
 
 class TelegramCustomerBotService {
   private bot: TelegramBot | null = null;
@@ -12,8 +13,9 @@ class TelegramCustomerBotService {
       return;
     }
 
-    this.bot = new TelegramBot(config.telegram.clientBotToken, { polling: true });
+    this.bot = createTelegramBot(config.telegram.clientBotToken);
     this.setupHandlers();
+    registerWebhook(this.bot, '/api/telegram/webhook/customer', 'Client bot');
     this.bot.getMe().then((me) => {
       this.botUsername = me.username || null;
       console.log(`Telegram client bot @${this.botUsername} started`);
@@ -40,6 +42,10 @@ class TelegramCustomerBotService {
 
   getBotUsername(): string | null {
     return this.botUsername;
+  }
+
+  handleWebhookUpdate(update: TelegramBot.Update): void {
+    this.bot?.processUpdate(update);
   }
 }
 

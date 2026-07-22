@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import type { PushPayload } from '../push/push.service';
 import { registerTelegramAdminCallbacks } from './telegram-admin-callback.handler';
+import { createTelegramBot, registerWebhook } from './telegram-transport';
 
 const LINK_SECRET = config.jwt.accessSecret + '_tg';
 
@@ -31,8 +32,9 @@ class TelegramService {
       }
       return;
     }
-    this.bot = new TelegramBot(config.telegram.botToken, { polling: true });
+    this.bot = createTelegramBot(config.telegram.botToken);
     this.setupHandlers();
+    registerWebhook(this.bot, '/api/telegram/webhook/admin', 'Admin bot');
     this.bot.getMe().then((me) => {
       this.botUsername = me.username || null;
       console.log(`Telegram bot @${this.botUsername} started`);
@@ -485,6 +487,10 @@ class TelegramService {
 
   getBotUsername(): string | null {
     return this.botUsername;
+  }
+
+  handleWebhookUpdate(update: TelegramBot.Update): void {
+    this.bot?.processUpdate(update);
   }
 
   /**
