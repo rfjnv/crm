@@ -36,6 +36,7 @@ import conversationsRoutes from './modules/conversations/conversations.routes';
 import presenceRoutes from './modules/conversations/presence.routes';
 import activityTrackingRoutes from './modules/activity-tracking/activity-tracking.routes';
 import expensesRoutes from './modules/expenses/expenses.routes';
+import attendanceRoutes from './modules/attendance/attendance.routes';
 import tasksRoutes from './modules/tasks/tasks.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import pushRoutes from './modules/push/push.routes';
@@ -56,8 +57,10 @@ import vedMapRoutes from './modules/foreign-trade/ved-map.routes';
 import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import telephonyRoutes from './modules/telephony/telephony.routes';
 import companiesRoutes from './modules/companies/companies.routes';
+import dbBackupRoutes from './modules/backup/db-backup.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
+import './modules/backup/db-backup.scheduler';
 import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
 
@@ -114,6 +117,7 @@ app.get('/api/health', async (_req, res) => {
 
 /** Только отладочные маршруты под SUPER_ADMIN — не монтировать на весь `/api`, иначе ломаются POST /auth/login и прочее без Bearer. */
 app.use('/api/debug', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
+app.use('/api/backup', authenticate, authorize('SUPER_ADMIN'), dbBackupRoutes);
 app.use('/api/internal/reports', internalReportsRoutes);
 
 // Public routes (no auth)
@@ -147,6 +151,7 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/presence', presenceRoutes);
 app.use('/api/activity', activityTrackingRoutes);
 app.use('/api/expenses', expensesRoutes);
+app.use('/api/attendance', attendanceRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/push', pushRoutes);

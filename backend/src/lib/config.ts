@@ -95,6 +95,8 @@ export const config = {
     /** Статус «готово к отгрузке»: одно сообщение переносится сюда из группы производства (если задано). */
     groupReadyForShipmentChatId: trimEnv(process.env.TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID),
     groupFinanceChatId: trimEnv(process.env.TELEGRAM_GROUP_FINANCE_CHAT_ID),
+    /** Приватная группа для ежедневных бэкапов базы (см. modules/backup). */
+    backupChatId: trimEnv(process.env.TELEGRAM_BACKUP_CHAT_ID),
   },
   reports: {
     internalToken: trimEnv(process.env.INTERNAL_REPORTS_TOKEN),

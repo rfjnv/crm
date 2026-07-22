@@ -224,16 +224,17 @@ class TelegramService {
       return false;
     }
     if (!chatId) return false;
+    // node-telegram-bot-api принимает Buffer/Stream/путь ВТОРЫМ аргументом напрямую,
+    // а имя файла — отдельным, четвёртым (fileOptions). Форма `{ source }` — это синтаксис
+    // Telegraf: с ней буфер уезжал в URL и Telegram отвечал «414 Request-URI Too Large».
+    const sendOptions = {
+      caption: caption ? this.escapeHtml(caption) : undefined,
+      parse_mode: caption ? ('HTML' as const) : undefined,
+    };
+    const fileOptions = typeof file === 'string' ? undefined : { filename, contentType: 'application/octet-stream' };
     try {
       const target = this.toTelegramTarget(chatId);
-      await this.bot.sendDocument(
-        target,
-        typeof file === 'string' ? file : ({ source: file, filename } as any),
-        {
-          caption: caption ? this.escapeHtml(caption) : undefined,
-          parse_mode: caption ? 'HTML' : undefined,
-        },
-      );
+      await this.bot.sendDocument(target, file, sendOptions, fileOptions);
       return true;
     } catch (err: unknown) {
       const migratedChatId = this.getMigrateToChatId(err);
@@ -241,11 +242,9 @@ class TelegramService {
         try {
           await this.bot.sendDocument(
             this.toTelegramTarget(migratedChatId),
-            typeof file === 'string' ? file : ({ source: file, filename } as any),
-            {
-              caption: caption ? this.escapeHtml(caption) : undefined,
-              parse_mode: caption ? 'HTML' : undefined,
-            },
+            file,
+            sendOptions,
+            fileOptions,
           );
           console.warn(`[Telegram] sendGroupDocument: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
           return true;
