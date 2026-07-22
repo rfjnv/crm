@@ -623,9 +623,7 @@ export class TelegramCustomerService {
 
     const keyboard: TelegramBot.InlineKeyboardButton[][] = pageManagers.map((manager) => [
       {
-        text: manager.telegramChatId
-          ? `👤 ${this.truncate(manager.fullName, 28)}`
-          : `👤 ${this.truncate(manager.fullName, 28)}${t(lang, 'manager.crmSuffix')}`,
+        text: `👤 ${this.truncate(manager.fullName, 28)}`,
         callback_data: `manager:pick:${manager.id}`,
       },
     ]);
