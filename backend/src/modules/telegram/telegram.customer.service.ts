@@ -3,6 +3,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { pushService } from '../push/push.service';
+import { Lang, LANG_LABELS, t, customerStatusLabel } from './telegram.customer-i18n';
 
 const PAGE_SIZE = 6;
 const TASHKENT_TIME_ZONE = 'Asia/Tashkent';
@@ -15,6 +16,7 @@ type SessionMode =
   | 'AWAITING_NAME'
   | 'AWAITING_PHONE'
   | 'AWAITING_REVIEW_PHONE'
+  | 'AWAITING_ORDERS_PHONE'
   | 'AWAITING_REVIEW_TEXT';
 
 interface CartItem {
@@ -39,6 +41,7 @@ interface ReviewDraft {
 interface CustomerSession {
   mode: SessionMode;
   cart: CartItem[];
+  language?: Lang;
   selectedManagerId?: string;
   customerName?: string;
   phone?: string;
@@ -50,10 +53,12 @@ interface CustomerSession {
   currentCategory?: string | null;
 }
 
+type HoursReasonCode = 'sunday' | 'saturday' | 'weekday';
+
 interface BusinessHoursStatus {
   isOpen: boolean;
   currentTimeText: string;
-  reason?: string;
+  reasonCode?: HoursReasonCode;
 }
 
 export class TelegramCustomerService {
@@ -63,28 +68,17 @@ export class TelegramCustomerService {
   async handleStart(bot: TelegramBot, msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
     const firstName = msg.from?.first_name;
+    const session = this.getSession(chatId);
 
-    await bot.sendMessage(
-      chatId,
-      [
-        '<b>Polygraph Business Bot</b>',
-        '',
-        firstName
-          ? `Здравствуйте, ${this.escapeHtml(firstName)}. Через этого бота можно оформить заказ, выбрать менеджера и оставить отзыв.`
-          : 'Через этого бота можно оформить заказ, выбрать менеджера и оставить отзыв.',
-        '',
-        'Заказы принимаются:',
-        'Пн-Пт: 09:00-18:00',
-        'Сб: 10:00-18:00',
-        'Вс: выходной',
-        '',
-        'Если вы сотрудник CRM, привязка Telegram по-прежнему работает через ссылку из CRM.',
-      ].join('\n'),
-      {
-        parse_mode: 'HTML',
-        reply_markup: this.buildHomeKeyboard(),
-      },
-    );
+    const pref = await prisma.telegramCustomerPreference.findUnique({ where: { chatId: String(chatId) } });
+    if (!pref) {
+      session.language = 'ru';
+      await this.showLanguagePicker(bot, chatId);
+      return;
+    }
+
+    session.language = pref.language === 'uz' ? 'uz' : 'ru';
+    await this.sendWelcome(bot, chatId, session.language, firstName);
   }
 
   async handleMessage(bot: TelegramBot, msg: TelegramBot.Message): Promise<void> {
@@ -92,34 +86,41 @@ export class TelegramCustomerService {
 
     const chatId = msg.chat.id;
     const session = this.getSession(chatId);
+    const lang = await this.getLang(chatId, session);
 
     if (msg.text?.startsWith('/')) {
-      await this.handleCommand(bot, msg, session);
+      await this.handleCommand(bot, msg, session, lang);
       return;
     }
 
     if (msg.contact) {
       const normalized = this.normalizePhone(msg.contact.phone_number);
       if (!normalized) {
-        await bot.sendMessage(chatId, 'Не удалось распознать номер телефона. Отправьте номер в формате +998901234567.');
+        await bot.sendMessage(chatId, t(lang, 'checkout.phoneInvalidContact'));
         return;
       }
 
       session.phone = normalized;
-      await bot.sendMessage(chatId, `Номер сохранён: <b>${this.escapeHtml(normalized)}</b>`, {
+      await bot.sendMessage(chatId, t(lang, 'checkout.phoneSaved', { phone: this.escapeHtml(normalized) }), {
         parse_mode: 'HTML',
         reply_markup: { remove_keyboard: true },
       });
 
       if (session.mode === 'AWAITING_PHONE') {
         session.mode = 'IDLE';
-        await this.trySubmitOrder(bot, chatId, session);
+        await this.trySubmitOrder(bot, chatId, session, lang);
         return;
       }
 
       if (session.mode === 'AWAITING_REVIEW_PHONE') {
         session.mode = 'IDLE';
-        await this.showReviewDealPicker(bot, chatId, normalized);
+        await this.showReviewDealPicker(bot, chatId, lang, normalized);
+        return;
+      }
+
+      if (session.mode === 'AWAITING_ORDERS_PHONE') {
+        session.mode = 'IDLE';
+        await this.showOrderList(bot, chatId, session, lang);
       }
 
       return;
@@ -128,72 +129,90 @@ export class TelegramCustomerService {
     const text = msg.text?.trim();
     if (!text) return;
 
-    if (text.toLowerCase() === 'отмена') {
+    const lowerText = text.toLowerCase();
+    if (lowerText === 'отмена' || lowerText === 'bekor qilish') {
       session.mode = 'IDLE';
       session.pendingQty = undefined;
       session.reviewDraft = undefined;
       session.reviewAllowedDealIds = undefined;
-      await bot.sendMessage(chatId, 'Текущее действие отменено.', {
+      await bot.sendMessage(chatId, t(lang, 'common.cancelled'), {
         reply_markup: { remove_keyboard: true },
       });
-      await this.showHome(bot, chatId);
+      await this.showHome(bot, chatId, lang);
       return;
     }
 
     if (session.mode === 'AWAITING_QTY' && session.pendingQty) {
-      await this.handleQuantityInput(bot, chatId, session, text);
+      await this.handleQuantityInput(bot, chatId, session, lang, text);
       return;
     }
 
     if (session.mode === 'AWAITING_NAME') {
       session.customerName = text;
       session.mode = 'AWAITING_PHONE';
-      await this.askPhone(bot, chatId, 'Теперь отправьте номер телефона, чтобы менеджер мог связаться с вами.');
+      await this.askPhone(bot, chatId, lang, t(lang, 'checkout.askPhone'));
       return;
     }
 
     if (session.mode === 'AWAITING_PHONE') {
       const normalized = this.normalizePhone(text);
       if (!normalized) {
-        await bot.sendMessage(chatId, 'Не понял номер. Отправьте его в формате +998901234567 или через кнопку "Отправить номер".');
+        await bot.sendMessage(chatId, t(lang, 'checkout.phoneInvalid'));
         return;
       }
 
       session.phone = normalized;
       session.mode = 'IDLE';
-      await bot.sendMessage(chatId, `Номер сохранён: <b>${this.escapeHtml(normalized)}</b>`, {
+      await bot.sendMessage(chatId, t(lang, 'checkout.phoneSaved', { phone: this.escapeHtml(normalized) }), {
         parse_mode: 'HTML',
         reply_markup: { remove_keyboard: true },
       });
-      await this.trySubmitOrder(bot, chatId, session);
+      await this.trySubmitOrder(bot, chatId, session, lang);
       return;
     }
 
     if (session.mode === 'AWAITING_REVIEW_PHONE') {
       const normalized = this.normalizePhone(text);
       if (!normalized) {
-        await bot.sendMessage(chatId, 'Для поиска заказов нужен корректный номер телефона: +998901234567.');
+        await bot.sendMessage(chatId, t(lang, 'review.phoneInvalid'));
         return;
       }
 
       session.phone = normalized;
       session.mode = 'IDLE';
-      await bot.sendMessage(chatId, `Ищу ваши заказы по номеру <b>${this.escapeHtml(normalized)}</b>.`, {
+      await bot.sendMessage(chatId, t(lang, 'orders.searching', { phone: this.escapeHtml(normalized) }), {
         parse_mode: 'HTML',
         reply_markup: { remove_keyboard: true },
       });
-      await this.showReviewDealPicker(bot, chatId, normalized);
+      await this.showReviewDealPicker(bot, chatId, lang, normalized);
+      return;
+    }
+
+    if (session.mode === 'AWAITING_ORDERS_PHONE') {
+      const normalized = this.normalizePhone(text);
+      if (!normalized) {
+        await bot.sendMessage(chatId, t(lang, 'review.phoneInvalid'));
+        return;
+      }
+
+      session.phone = normalized;
+      session.mode = 'IDLE';
+      await bot.sendMessage(chatId, t(lang, 'orders.searching', { phone: this.escapeHtml(normalized) }), {
+        parse_mode: 'HTML',
+        reply_markup: { remove_keyboard: true },
+      });
+      await this.showOrderList(bot, chatId, session, lang);
       return;
     }
 
     if (session.mode === 'AWAITING_REVIEW_TEXT' && session.reviewDraft) {
       const reviewText = text === '-' ? '' : text;
-      await this.saveReview(bot, chatId, session, reviewText);
+      await this.saveReview(bot, chatId, session, lang, reviewText);
       return;
     }
 
-    await bot.sendMessage(chatId, 'Используйте меню ниже, чтобы оформить заказ или оставить отзыв.', {
-      reply_markup: this.buildHomeKeyboard(),
+    await bot.sendMessage(chatId, t(lang, 'common.fallback'), {
+      reply_markup: this.buildHomeKeyboard(lang),
     });
   }
 
@@ -203,25 +222,49 @@ export class TelegramCustomerService {
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
     const session = this.getSession(chatId);
+    const lang = await this.getLang(chatId, session);
 
     try {
+      if (query.data.startsWith('lang:') && query.data !== 'lang:switch') {
+        const chosen: Lang = query.data.split(':')[1] === 'uz' ? 'uz' : 'ru';
+        await prisma.telegramCustomerPreference.upsert({
+          where: { chatId: String(chatId) },
+          create: { chatId: String(chatId), language: chosen },
+          update: { language: chosen },
+        });
+        session.language = chosen;
+        await bot.answerCallbackQuery(query.id, { text: t(chosen, 'lang.saved', { lang: LANG_LABELS[chosen] }) }).catch(() => {});
+        await this.showHome(bot, chatId, chosen, messageId);
+        return;
+      }
+
+      if (query.data === 'lang:switch') {
+        await this.showLanguagePicker(bot, chatId, messageId);
+        return;
+      }
+
       if (query.data === 'menu:home') {
         session.mode = 'IDLE';
         session.pendingQty = undefined;
         session.reviewDraft = undefined;
         session.reviewAllowedDealIds = undefined;
         session.currentCategory = null;
-        await this.showHome(bot, chatId, messageId);
+        await this.showHome(bot, chatId, lang, messageId);
         return;
       }
 
       if (query.data === 'menu:hours') {
-        await this.showBusinessHours(bot, chatId, messageId);
+        await this.showBusinessHours(bot, chatId, lang, messageId);
         return;
       }
 
       if (query.data === 'menu:order') {
-        await this.showManagerPicker(bot, chatId, 0, messageId);
+        await this.showManagerPicker(bot, chatId, lang, 0, messageId);
+        return;
+      }
+
+      if (query.data === 'menu:orders') {
+        await this.showOrderList(bot, chatId, session, lang, messageId);
         return;
       }
 
@@ -229,11 +272,11 @@ export class TelegramCustomerService {
         session.reviewDraft = undefined;
         session.reviewAllowedDealIds = undefined;
         if (session.phone) {
-          await this.showReviewDealPicker(bot, chatId, session.phone, messageId);
+          await this.showReviewDealPicker(bot, chatId, lang, session.phone, messageId);
         } else {
           session.mode = 'AWAITING_REVIEW_PHONE';
-          await bot.sendMessage(chatId, 'Чтобы оставить отзыв, отправьте номер телефона, который вы указывали в заказе.', {
-            reply_markup: this.buildPhoneKeyboard(),
+          await bot.sendMessage(chatId, t(lang, 'review.askPhone'), {
+            reply_markup: this.buildPhoneKeyboard(lang),
           });
         }
         return;
@@ -241,7 +284,7 @@ export class TelegramCustomerService {
 
       if (query.data.startsWith('manager:page:')) {
         const page = this.parsePositiveInt(query.data.split(':')[2] || '0', 0);
-        await this.showManagerPicker(bot, chatId, page, messageId);
+        await this.showManagerPicker(bot, chatId, lang, page, messageId);
         return;
       }
 
@@ -249,16 +292,16 @@ export class TelegramCustomerService {
         const managerId = query.data.split(':')[2];
         session.selectedManagerId = managerId;
         if (session.cart.length === 0) {
-          await this.showCatalog(bot, chatId, 0, messageId, 'Менеджер выбран. Теперь добавьте товары в заказ.');
+          await this.showCatalog(bot, chatId, lang, 0, messageId, t(lang, 'manager.selected'));
         } else {
-          await this.showCart(bot, chatId, messageId, 'Менеджер обновлён.');
+          await this.showCart(bot, chatId, lang, messageId, t(lang, 'manager.updated'));
         }
         return;
       }
 
       if (query.data === 'catalog:cats') {
         session.currentCategory = null;
-        await this.showCatalog(bot, chatId, 0, messageId);
+        await this.showCatalog(bot, chatId, lang, 0, messageId);
         return;
       }
 
@@ -266,77 +309,84 @@ export class TelegramCustomerService {
         const catIndex = this.parsePositiveInt(query.data.split(':')[2] || '0', -1);
         if (session.categories && catIndex >= 0 && catIndex < session.categories.length) {
           session.currentCategory = session.categories[catIndex];
-          await this.showCatalog(bot, chatId, 0, messageId);
+          await this.showCatalog(bot, chatId, lang, 0, messageId);
         } else {
-          await this.showCatalog(bot, chatId, 0, messageId, 'Категория не найдена.');
+          await this.showCatalog(bot, chatId, lang, 0, messageId);
         }
         return;
       }
 
       if (query.data.startsWith('catalog:page:')) {
         const page = this.parsePositiveInt(query.data.split(':')[2] || '0', 0);
-        await this.showCatalog(bot, chatId, page, messageId);
+        await this.showCatalog(bot, chatId, lang, page, messageId);
+        return;
+      }
+
+      if (query.data.startsWith('catalog:photo:')) {
+        const [, , productId, pageToken] = query.data.split(':');
+        const page = this.parsePositiveInt(pageToken || '0', 0);
+        await this.showProductDetail(bot, chatId, lang, productId, page, messageId);
         return;
       }
 
       if (query.data.startsWith('catalog:pick:')) {
         const [, , productId, pageToken] = query.data.split(':');
         const page = this.parsePositiveInt(pageToken || '0', 0);
-        await this.askQuantity(bot, chatId, session, productId, page, messageId);
+        await this.askQuantity(bot, chatId, session, lang, productId, page, messageId);
         return;
       }
 
       if (query.data === 'cart:view') {
-        await this.showCart(bot, chatId, messageId);
+        await this.showCart(bot, chatId, lang, messageId);
         return;
       }
 
       if (query.data === 'cart:clear') {
         session.cart = [];
-        await this.showCatalog(bot, chatId, 0, messageId, 'Корзина очищена.');
+        await this.showCatalog(bot, chatId, lang, 0, messageId, t(lang, 'cart.cleared'));
         return;
       }
 
       if (query.data.startsWith('cart:remove:')) {
         const productId = query.data.split(':')[2];
         session.cart = session.cart.filter((item) => item.productId !== productId);
-        await this.showCart(bot, chatId, messageId, 'Товар удалён из корзины.');
+        await this.showCart(bot, chatId, lang, messageId, t(lang, 'cart.itemRemoved'));
         return;
       }
 
       if (query.data === 'cart:checkout') {
         if (session.submittingOrder) {
-          await bot.answerCallbackQuery(query.id, { text: 'Заказ уже отправляется, подождите несколько секунд.' }).catch(() => {});
+          await bot.answerCallbackQuery(query.id, { text: t(lang, 'checkout.inProgress') }).catch(() => {});
           return;
         }
-        await this.startCheckout(bot, chatId, session);
+        await this.startCheckout(bot, chatId, session, lang);
         return;
       }
 
       if (query.data === 'cart:addmore') {
-        await this.showCatalog(bot, chatId, 0, messageId);
+        await this.showCatalog(bot, chatId, lang, 0, messageId);
         return;
       }
 
       if (query.data.startsWith('review:deal:')) {
         const dealId = query.data.split(':')[2];
-        await this.showReviewRatingPicker(bot, chatId, dealId, messageId);
+        await this.showReviewRatingPicker(bot, chatId, session, lang, dealId, messageId);
         return;
       }
 
       if (query.data.startsWith('review:rate:')) {
         const rating = this.parsePositiveInt(query.data.split(':')[2] || '0', 0);
         if (rating < 1 || rating > 5) {
-          await bot.answerCallbackQuery(query.id, { text: 'Оценка должна быть от 1 до 5.' });
+          await bot.answerCallbackQuery(query.id, { text: '1-5' });
           return;
         }
 
         if (!session.reviewDraft?.dealId) {
-          await bot.answerCallbackQuery(query.id, { text: 'Сначала выберите заказ для отзыва.' }).catch(() => {});
+          await bot.answerCallbackQuery(query.id, { text: t(lang, 'review.notAllowed') }).catch(() => {});
           if (session.phone) {
-            await this.showReviewDealPicker(bot, chatId, session.phone, messageId);
+            await this.showReviewDealPicker(bot, chatId, lang, session.phone, messageId);
           } else {
-            await this.showHome(bot, chatId, messageId);
+            await this.showHome(bot, chatId, lang, messageId);
           }
           return;
         }
@@ -351,16 +401,15 @@ export class TelegramCustomerService {
           bot,
           chatId,
           [
-            `<b>Оценка: ${rating}/5</b>`,
+            `<b>${rating}/5</b>`,
             '',
-            'Напишите короткий отзыв одним сообщением.',
-            'Если текста нет, отправьте <code>-</code>.',
+            t(lang, 'review.askText'),
           ].join('\n'),
           {
             messageId,
             parse_mode: 'HTML',
             reply_markup: {
-              inline_keyboard: [[{ text: 'Отмена', callback_data: 'menu:home' }]],
+              inline_keyboard: [[{ text: t(lang, 'common.cancelButton'), callback_data: 'menu:home' }]],
             },
           },
         );
@@ -381,7 +430,7 @@ export class TelegramCustomerService {
     }
   }
 
-  private async handleCommand(bot: TelegramBot, msg: TelegramBot.Message, session: CustomerSession): Promise<void> {
+  private async handleCommand(bot: TelegramBot, msg: TelegramBot.Message, session: CustomerSession, lang: Lang): Promise<void> {
     const chatId = msg.chat.id;
     const text = msg.text || '';
 
@@ -391,32 +440,37 @@ export class TelegramCustomerService {
       session.reviewDraft = undefined;
       session.reviewAllowedDealIds = undefined;
       session.currentCategory = null;
-      await this.showHome(bot, chatId);
+      await this.showHome(bot, chatId, lang);
       return;
     }
 
     if (text === '/hours') {
-      await this.showBusinessHours(bot, chatId);
+      await this.showBusinessHours(bot, chatId, lang);
       return;
     }
 
     if (text === '/order') {
-      await this.showManagerPicker(bot, chatId, 0);
+      await this.showManagerPicker(bot, chatId, lang, 0);
+      return;
+    }
+
+    if (text === '/orders') {
+      await this.showOrderList(bot, chatId, session, lang);
       return;
     }
 
     if (text === '/cart') {
-      await this.showCart(bot, chatId);
+      await this.showCart(bot, chatId, lang);
       return;
     }
 
     if (text === '/review') {
       if (session.phone) {
-        await this.showReviewDealPicker(bot, chatId, session.phone);
+        await this.showReviewDealPicker(bot, chatId, lang, session.phone);
       } else {
         session.mode = 'AWAITING_REVIEW_PHONE';
-        await bot.sendMessage(chatId, 'Чтобы оставить отзыв, отправьте номер телефона, который использовали в заказе.', {
-          reply_markup: this.buildPhoneKeyboard(),
+        await bot.sendMessage(chatId, t(lang, 'review.askPhone'), {
+          reply_markup: this.buildPhoneKeyboard(lang),
         });
       }
     }
@@ -434,56 +488,99 @@ export class TelegramCustomerService {
     return created;
   }
 
-  private async showHome(bot: TelegramBot, chatId: number, messageId?: number): Promise<void> {
-    const hours = this.getBusinessHoursStatus();
-    const summary = hours.isOpen
-      ? `Сейчас заказы <b>принимаются</b>. Местное время: <b>${hours.currentTimeText}</b>.`
-      : `Сейчас заказы <b>не принимаются</b>. Местное время: <b>${hours.currentTimeText}</b>.`;
+  private async getLang(chatId: number, session: CustomerSession): Promise<Lang> {
+    if (session.language) return session.language;
+    const pref = await prisma.telegramCustomerPreference.findUnique({ where: { chatId: String(chatId) } });
+    session.language = pref?.language === 'uz' ? 'uz' : 'ru';
+    return session.language;
+  }
 
+  private async showLanguagePicker(bot: TelegramBot, chatId: number, messageId?: number): Promise<void> {
     await this.editOrSendMessage(
       bot,
       chatId,
-      [
-        '<b>Главное меню</b>',
-        '',
-        summary,
-        '',
-        'Выберите действие:',
-      ].join('\n'),
+      'Выберите язык общения с ботом / Bot bilan muloqot tilini tanlang:',
       {
         messageId,
-        parse_mode: 'HTML',
-        reply_markup: this.buildHomeKeyboard(),
+        reply_markup: {
+          inline_keyboard: [[
+            { text: LANG_LABELS.ru, callback_data: 'lang:ru' },
+            { text: LANG_LABELS.uz, callback_data: 'lang:uz' },
+          ]],
+        },
       },
     );
   }
 
-  private async showBusinessHours(bot: TelegramBot, chatId: number, messageId?: number): Promise<void> {
+  private async sendWelcome(bot: TelegramBot, chatId: number, lang: Lang, firstName?: string): Promise<void> {
+    await bot.sendMessage(
+      chatId,
+      [
+        `<b>${t(lang, 'start.title')}</b>`,
+        '',
+        firstName
+          ? t(lang, 'start.greeting.named', { name: this.escapeHtml(firstName) })
+          : t(lang, 'start.greeting.anon'),
+        '',
+        t(lang, 'start.hoursHeader'),
+        t(lang, 'start.hours.monFri'),
+        t(lang, 'start.hours.sat'),
+        t(lang, 'start.hours.sun'),
+        '',
+        t(lang, 'start.staffHint'),
+      ].join('\n'),
+      {
+        parse_mode: 'HTML',
+        reply_markup: this.buildHomeKeyboard(lang),
+      },
+    );
+  }
+
+  private async showHome(bot: TelegramBot, chatId: number, lang: Lang, messageId?: number): Promise<void> {
     const hours = this.getBusinessHoursStatus();
-    const statusLine = hours.isOpen
-      ? 'Сейчас приём заказов <b>открыт</b>.'
-      : `Сейчас приём заказов <b>закрыт</b>${hours.reason ? `: ${this.escapeHtml(hours.reason)}` : ''}.`;
+    const summary = hours.isOpen
+      ? t(lang, 'hours.open')
+      : t(lang, 'hours.closed', { reason: hours.reasonCode ? t(lang, `hours.reason.${hours.reasonCode}`) : '' });
 
     await this.editOrSendMessage(
       bot,
       chatId,
       [
-        '<b>График приёма заказов</b>',
+        summary,
+        t(lang, 'hours.currentTime', { time: hours.currentTimeText }),
+      ].join('\n'),
+      {
+        messageId,
+        parse_mode: 'HTML',
+        reply_markup: this.buildHomeKeyboard(lang),
+      },
+    );
+  }
+
+  private async showBusinessHours(bot: TelegramBot, chatId: number, lang: Lang, messageId?: number): Promise<void> {
+    const hours = this.getBusinessHoursStatus();
+    const statusLine = hours.isOpen
+      ? t(lang, 'hours.open')
+      : t(lang, 'hours.closed', { reason: hours.reasonCode ? t(lang, `hours.reason.${hours.reasonCode}`) : '' });
+
+    await this.editOrSendMessage(
+      bot,
+      chatId,
+      [
+        `<b>${t(lang, 'hours.title')}</b>`,
         '',
         statusLine,
-        `Местное время: <b>${hours.currentTimeText}</b>`,
+        t(lang, 'hours.currentTime', { time: hours.currentTimeText }),
         '',
-        'Пн-Пт: 09:00-18:00',
-        'Сб: 10:00-18:00',
-        'Вс: выходной',
-        '',
-        'Сам бот работает 24/7, но оформить заказ можно только в эти часы.',
+        t(lang, 'start.hours.monFri'),
+        t(lang, 'start.hours.sat'),
+        t(lang, 'start.hours.sun'),
       ].join('\n'),
       {
         messageId,
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+          inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
         },
       },
     );
@@ -492,11 +589,16 @@ export class TelegramCustomerService {
   private async showManagerPicker(
     bot: TelegramBot,
     chatId: number,
+    lang: Lang,
     page = 0,
     messageId?: number,
   ): Promise<void> {
     const managers = await prisma.user.findMany({
-      where: { role: 'MANAGER', isActive: true },
+      where: {
+        role: 'MANAGER',
+        isActive: true,
+        OR: [{ companyId: null }, { company: { name: { not: 'grand-astra' } } }],
+      },
       select: { id: true, fullName: true, telegramChatId: true },
       orderBy: { fullName: 'asc' },
     });
@@ -505,11 +607,11 @@ export class TelegramCustomerService {
       await this.editOrSendMessage(
         bot,
         chatId,
-        'Сейчас нет активных менеджеров для выбора. Попробуйте позже.',
+        t(lang, 'manager.empty'),
         {
           messageId,
           reply_markup: {
-            inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+            inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
           },
         },
       );
@@ -525,7 +627,7 @@ export class TelegramCustomerService {
       {
         text: manager.telegramChatId
           ? `👤 ${this.truncate(manager.fullName, 28)}`
-          : `👤 ${this.truncate(manager.fullName, 28)} (CRM)`,
+          : `👤 ${this.truncate(manager.fullName, 28)}${t(lang, 'manager.crmSuffix')}`,
         callback_data: `manager:pick:${manager.id}`,
       },
     ]);
@@ -534,15 +636,15 @@ export class TelegramCustomerService {
       keyboard.push(this.buildPaginationRow('manager', safePage, totalPages));
     }
 
-    keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+    keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
 
     await this.editOrSendMessage(
       bot,
       chatId,
       [
-        '<b>Выберите менеджера</b>',
+        `<b>${t(lang, 'manager.title')}</b>`,
         '',
-        'Заказ будет сразу закреплён за выбранным менеджером.',
+        t(lang, 'manager.subtitle'),
       ].join('\n'),
       {
         messageId,
@@ -555,6 +657,7 @@ export class TelegramCustomerService {
   private async showCatalog(
     bot: TelegramBot,
     chatId: number,
+    lang: Lang,
     page = 0,
     messageId?: number,
     notice?: string,
@@ -575,18 +678,19 @@ export class TelegramCustomerService {
         distinct: ['category'],
       });
 
-      const categories = dbCategories.map((p) => p.category || 'Без категории').sort();
+      const uncategorizedLabel = t(lang, 'catalog.uncategorized');
+      const categories = dbCategories.map((p) => p.category || uncategorizedLabel).sort();
       session.categories = categories;
 
       if (!categories.length) {
         await this.editOrSendMessage(
           bot,
           chatId,
-          'В каталоге сейчас нет доступных товаров.',
+          t(lang, 'catalog.empty'),
           {
             messageId,
             reply_markup: {
-              inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+              inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
             },
           },
         );
@@ -613,20 +717,18 @@ export class TelegramCustomerService {
       }
 
       keyboard.push([
-        { text: `🧺 Корзина (${session.cart.length})`, callback_data: 'cart:view' },
-        { text: '👤 Менеджер', callback_data: 'manager:page:0' },
+        { text: t(lang, 'menu.cart', { count: session.cart.length }), callback_data: 'cart:view' },
+        { text: t(lang, 'menu.manager'), callback_data: 'manager:page:0' },
       ]);
-      keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+      keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
 
       await this.editOrSendMessage(
         bot,
         chatId,
         [
           notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
-          '✨ <b>Каталог товаров</b>',
-          selectedManager ? `Менеджер: <b>${this.escapeHtml(selectedManager.fullName)}</b>` : 'Менеджер пока не выбран.',
-          '',
-          'Выберите категорию:',
+          `✨ <b>${t(lang, 'catalog.categoriesTitle')}</b>`,
+          selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(selectedManager.fullName) }) : t(lang, 'manager.notSelected'),
         ].filter(Boolean).join('\n'),
         {
           messageId,
@@ -637,7 +739,8 @@ export class TelegramCustomerService {
       return;
     }
 
-    const isNoCategory = session.currentCategory === 'Без категории';
+    const uncategorizedLabel = t(lang, 'catalog.uncategorized');
+    const isNoCategory = session.currentCategory === uncategorizedLabel;
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
@@ -652,13 +755,14 @@ export class TelegramCustomerService {
         unit: true,
         salePrice: true,
         stock: true,
+        imageUrl: true,
       },
       orderBy: { name: 'asc' },
     });
 
     if (!products.length) {
       session.currentCategory = null;
-      await this.showCatalog(bot, chatId, 0, messageId, 'В этой категории не осталось товаров.');
+      await this.showCatalog(bot, chatId, lang, 0, messageId, t(lang, 'catalog.categoryEmptied'));
       return;
     }
 
@@ -667,22 +771,19 @@ export class TelegramCustomerService {
     const start = safePage * PAGE_SIZE;
     const pageProducts = products.slice(start, start + PAGE_SIZE);
 
-    const productLines = pageProducts.map((p, index) => 
-      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      Цена: ${this.formatMoney(Number(p.salePrice || 0))} | В наличии`
+    const productLines = pageProducts.map((p, index) =>
+      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      ${t(lang, 'catalog.detail.price', { price: this.formatMoney(Number(p.salePrice || 0)) })} | ${t(lang, 'catalog.inStock')}`,
     );
 
-    const productButtons: TelegramBot.InlineKeyboardButton[][] = [];
-    let currentRow: TelegramBot.InlineKeyboardButton[] = [];
-    for (let i = 0; i < pageProducts.length; i++) {
-        currentRow.push({
-            text: `➕ ${i + 1}`,
-            callback_data: `catalog:pick:${pageProducts[i].id}:${safePage}`,
-        });
-        if (currentRow.length === 3 || i === pageProducts.length - 1) {
-            productButtons.push(currentRow);
-            currentRow = [];
-        }
-    }
+    const productButtons: TelegramBot.InlineKeyboardButton[][] = pageProducts.map((p, index) => {
+      const row: TelegramBot.InlineKeyboardButton[] = [
+        { text: `➕ ${index + 1}`, callback_data: `catalog:pick:${p.id}:${safePage}` },
+      ];
+      if (p.imageUrl) {
+        row.push({ text: t(lang, 'catalog.photoButton'), callback_data: `catalog:photo:${p.id}:${safePage}` });
+      }
+      return row;
+    });
 
     const keyboard: TelegramBot.InlineKeyboardButton[][] = [...productButtons];
 
@@ -690,13 +791,13 @@ export class TelegramCustomerService {
       keyboard.push(this.buildPaginationRow('catalog', safePage, totalPages));
     }
 
-    keyboard.push([{ text: '📁 Все категории', callback_data: 'catalog:cats' }]);
-    
+    keyboard.push([{ text: t(lang, 'catalog.backToCategories'), callback_data: 'catalog:cats' }]);
+
     keyboard.push([
-      { text: `🧺 Корзина (${session.cart.length})`, callback_data: 'cart:view' },
-      { text: '👤 Менеджер', callback_data: 'manager:page:0' },
+      { text: t(lang, 'menu.cart', { count: session.cart.length }), callback_data: 'cart:view' },
+      { text: t(lang, 'menu.manager'), callback_data: 'manager:page:0' },
     ]);
-    keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+    keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
 
     await this.editOrSendMessage(
       bot,
@@ -704,11 +805,11 @@ export class TelegramCustomerService {
       [
         notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
         `📁 <b>${this.escapeHtml(session.currentCategory)}</b>`,
-        selectedManager ? `Менеджер: <b>${this.escapeHtml(selectedManager.fullName)}</b>` : 'Менеджер пока не выбран.',
+        selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(selectedManager.fullName) }) : t(lang, 'manager.notSelected'),
         '',
         ...productLines,
         '',
-        'Выберите номер товара из кнопок ниже:',
+        t(lang, 'catalog.chooseButtonHint'),
       ].filter(Boolean).join('\n'),
       {
         messageId,
@@ -718,10 +819,90 @@ export class TelegramCustomerService {
     );
   }
 
+  private async showProductDetail(
+    bot: TelegramBot,
+    chatId: number,
+    lang: Lang,
+    productId: string,
+    page: number,
+    messageId?: number,
+  ): Promise<void> {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        unit: true,
+        stock: true,
+        salePrice: true,
+        isActive: true,
+        imageUrl: true,
+        description: true,
+        postTextRu: true,
+        postTextUz: true,
+      },
+    });
+
+    if (!product || !product.isActive || !product.salePrice || Number(product.stock) <= 0) {
+      await this.editOrSendMessage(
+        bot,
+        chatId,
+        t(lang, 'catalog.detail.notFound'),
+        {
+          messageId,
+          reply_markup: {
+            inline_keyboard: [[{ text: t(lang, 'catalog.detail.back'), callback_data: `catalog:page:${page}` }]],
+          },
+        },
+      );
+      return;
+    }
+
+    const descriptionText = (lang === 'uz' && product.postTextUz)
+      ? product.postTextUz
+      : (product.description || (lang === 'ru' ? product.postTextRu : null));
+
+    const caption = [
+      `<b>${this.escapeHtml(product.name)}</b>`,
+      t(lang, 'catalog.detail.price', { price: this.formatMoney(Number(product.salePrice)) }),
+      t(lang, 'catalog.detail.stock', { stock: this.formatQty(Number(product.stock)), unit: this.escapeHtml(product.unit || '') }),
+      '',
+      this.escapeHtml(descriptionText || t(lang, 'catalog.detail.noDescription')),
+    ].join('\n');
+
+    const keyboard: TelegramBot.InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [{ text: t(lang, 'catalog.detail.addToCart'), callback_data: `catalog:pick:${product.id}:${page}` }],
+        [{ text: t(lang, 'catalog.detail.back'), callback_data: `catalog:page:${page}` }],
+      ],
+    };
+
+    const absoluteImageUrl = product.imageUrl
+      ? (product.imageUrl.startsWith('http') ? product.imageUrl : `${config.telegram.crmUrl}${product.imageUrl}`)
+      : null;
+
+    if (absoluteImageUrl) {
+      try {
+        await bot.sendPhoto(chatId, absoluteImageUrl, {
+          caption,
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        });
+        return;
+      } catch (err) {
+        console.error('[Telegram customer bot] sendPhoto failed:', err);
+      }
+    }
+
+    await bot.sendMessage(chatId, caption, { parse_mode: 'HTML', reply_markup: keyboard });
+  }
+
   private async askQuantity(
     bot: TelegramBot,
     chatId: number,
     session: CustomerSession,
+    lang: Lang,
     productId: string,
     page: number,
     messageId?: number,
@@ -743,11 +924,11 @@ export class TelegramCustomerService {
       await this.editOrSendMessage(
         bot,
         chatId,
-        'Этот товар сейчас недоступен. Выберите другой.',
+        t(lang, 'qty.productUnavailable'),
         {
           messageId,
           reply_markup: {
-            inline_keyboard: [[{ text: 'Вернуться в каталог', callback_data: `catalog:page:${page}` }]],
+            inline_keyboard: [[{ text: t(lang, 'catalog.detail.back'), callback_data: `catalog:page:${page}` }]],
           },
         },
       );
@@ -762,19 +943,18 @@ export class TelegramCustomerService {
       chatId,
       [
         `<b>${this.escapeHtml(product.name)}</b>`,
-        `Артикул: <code>${this.escapeHtml(product.sku)}</code>`,
-        `Цена: <b>${this.formatMoney(Number(product.salePrice))}</b>`,
-        `Статус: <b>В наличии</b>`,
+        `<code>${this.escapeHtml(product.sku)}</code>`,
+        t(lang, 'catalog.detail.price', { price: this.formatMoney(Number(product.salePrice)) }),
         '',
-        'Отправьте количество одним сообщением. Например: <code>100</code>.',
+        t(lang, 'qty.ask', { unit: this.escapeHtml(product.unit || ''), name: this.escapeHtml(product.name), stock: this.formatQty(Number(product.stock)) }),
       ].join('\n'),
       {
         messageId,
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'Вернуться в каталог', callback_data: `catalog:page:${page}` }],
-            [{ text: 'Открыть корзину', callback_data: 'cart:view' }],
+            [{ text: t(lang, 'catalog.detail.back'), callback_data: `catalog:page:${page}` }],
+            [{ text: t(lang, 'menu.cart', { count: session.cart.length }), callback_data: 'cart:view' }],
           ],
         },
       },
@@ -785,6 +965,7 @@ export class TelegramCustomerService {
     bot: TelegramBot,
     chatId: number,
     session: CustomerSession,
+    lang: Lang,
     rawInput: string,
   ): Promise<void> {
     const pending = session.pendingQty;
@@ -795,7 +976,7 @@ export class TelegramCustomerService {
 
     const qty = this.parseQty(rawInput);
     if (!qty || qty <= 0) {
-      await bot.sendMessage(chatId, 'Количество должно быть больше нуля. Пример: 100 или 12.5');
+      await bot.sendMessage(chatId, t(lang, 'qty.invalid'));
       return;
     }
 
@@ -815,15 +996,15 @@ export class TelegramCustomerService {
     if (!product || !product.isActive || !product.salePrice || Number(product.stock) <= 0) {
       session.mode = 'IDLE';
       session.pendingQty = undefined;
-      await bot.sendMessage(chatId, 'Товар уже недоступен. Пожалуйста, выберите другой.');
-      await this.showCatalog(bot, chatId, pending.page);
+      await bot.sendMessage(chatId, t(lang, 'qty.productUnavailable'));
+      await this.showCatalog(bot, chatId, lang, pending.page);
       return;
     }
 
     if (qty > Number(product.stock)) {
       await bot.sendMessage(
         chatId,
-        `К сожалению, такого количества сейчас нет в наличии. Пожалуйста, укажите меньшее количество.`,
+        t(lang, 'qty.outOfStock', { name: this.escapeHtml(product.name), stock: this.formatQty(Number(product.stock)) }),
         { parse_mode: 'HTML' },
       );
       return;
@@ -852,20 +1033,17 @@ export class TelegramCustomerService {
 
     await bot.sendMessage(
       chatId,
-      [
-        `<b>${this.escapeHtml(product.name)}</b> добавлен в корзину.`,
-        `Количество: <b>${this.formatQty(qty)} ${this.escapeHtml(product.unit || 'шт')}</b>`,
-        `Сумма по позиции: <b>${this.formatMoney(qty * Number(product.salePrice))}</b>`,
-      ].join('\n'),
+      t(lang, 'qty.added', { name: this.escapeHtml(product.name), qty: this.formatQty(qty), unit: this.escapeHtml(product.unit || 'шт') }),
       { parse_mode: 'HTML' },
     );
 
-    await this.showCart(bot, chatId, undefined, 'Товар добавлен.');
+    await this.showCart(bot, chatId, lang, undefined, t(lang, 'cart.updated'));
   }
 
   private async showCart(
     bot: TelegramBot,
     chatId: number,
+    lang: Lang,
     messageId?: number,
     notice?: string,
   ): Promise<void> {
@@ -876,17 +1054,15 @@ export class TelegramCustomerService {
         chatId,
         [
           notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
-          '<b>Корзина пуста</b>',
-          '',
-          'Сначала добавьте товары из каталога.',
+          `<b>${t(lang, 'cart.empty')}</b>`,
         ].filter(Boolean).join('\n'),
         {
           messageId,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
-              [{ text: 'Открыть каталог', callback_data: 'catalog:page:0' }],
-              [{ text: 'Назад в меню', callback_data: 'menu:home' }],
+              [{ text: t(lang, 'menu.order'), callback_data: 'catalog:page:0' }],
+              [{ text: t(lang, 'common.back'), callback_data: 'menu:home' }],
             ],
           },
         },
@@ -902,7 +1078,13 @@ export class TelegramCustomerService {
       : null;
 
     const rows = session.cart.map((item, index) =>
-      `${index + 1}. ${this.escapeHtml(item.name)} - ${this.formatQty(item.qty)} ${this.escapeHtml(item.unit)} x ${this.formatMoney(item.price)}`,
+      `${index + 1}. ${t(lang, 'cart.itemLine', {
+        name: this.escapeHtml(item.name),
+        qty: this.formatQty(item.qty),
+        unit: this.escapeHtml(item.unit),
+        price: this.formatMoney(item.price),
+        total: this.formatMoney(item.qty * item.price),
+      })}`,
     );
     const total = session.cart.reduce((sum, item) => sum + item.qty * item.price, 0);
 
@@ -910,7 +1092,7 @@ export class TelegramCustomerService {
     let currentRow: TelegramBot.InlineKeyboardButton[] = [];
     session.cart.forEach((item, index) => {
       currentRow.push({
-        text: `❌ ${index + 1}`,
+        text: `${t(lang, 'cart.removeButton')} ${index + 1}`,
         callback_data: `cart:remove:${item.productId}`,
       });
       if (currentRow.length === 4 || index === session.cart.length - 1) {
@@ -922,26 +1104,26 @@ export class TelegramCustomerService {
     const keyboard: TelegramBot.InlineKeyboardButton[][] = [...removeButtons];
 
     keyboard.push([
-      { text: 'Добавить ещё', callback_data: 'cart:addmore' },
-      { text: 'Очистить', callback_data: 'cart:clear' },
+      { text: t(lang, 'cart.addMore'), callback_data: 'cart:addmore' },
+      { text: t(lang, 'cart.clearButton'), callback_data: 'cart:clear' },
     ]);
     keyboard.push([
-      { text: 'Сменить менеджера', callback_data: 'manager:page:0' },
-      { text: 'Оформить заказ', callback_data: 'cart:checkout' },
+      { text: t(lang, 'manager.changeButton'), callback_data: 'manager:page:0' },
+      { text: t(lang, 'cart.checkoutButton'), callback_data: 'cart:checkout' },
     ]);
-    keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+    keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
 
     await this.editOrSendMessage(
       bot,
       chatId,
       [
         notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
-        '<b>Корзина</b>',
-        manager ? `Менеджер: <b>${this.escapeHtml(manager.fullName)}</b>` : 'Менеджер пока не выбран.',
+        `<b>${t(lang, 'cart.title')}</b>`,
+        manager ? t(lang, 'manager.label', { name: this.escapeHtml(manager.fullName) }) : t(lang, 'manager.notSelected'),
         '',
         ...rows,
         '',
-        `Итого: <b>${this.formatMoney(total)}</b>`,
+        t(lang, 'cart.total', { total: this.formatMoney(total) }),
       ].filter(Boolean).join('\n'),
       {
         messageId,
@@ -951,36 +1133,36 @@ export class TelegramCustomerService {
     );
   }
 
-  private async startCheckout(bot: TelegramBot, chatId: number, session: CustomerSession): Promise<void> {
+  private async startCheckout(bot: TelegramBot, chatId: number, session: CustomerSession, lang: Lang): Promise<void> {
     if (!session.cart.length) {
-      await bot.sendMessage(chatId, 'Корзина пустая. Сначала добавьте товары.');
+      await bot.sendMessage(chatId, t(lang, 'cart.empty'));
       return;
     }
 
     if (!session.selectedManagerId) {
-      await bot.sendMessage(chatId, 'Сначала выберите менеджера.');
-      await this.showManagerPicker(bot, chatId, 0);
+      await bot.sendMessage(chatId, t(lang, 'checkout.needManager'));
+      await this.showManagerPicker(bot, chatId, lang, 0);
       return;
     }
 
     if (!session.customerName) {
       session.mode = 'AWAITING_NAME';
-      await bot.sendMessage(chatId, 'Напишите ваше имя или название компании одним сообщением.');
+      await bot.sendMessage(chatId, t(lang, 'checkout.askName'));
       return;
     }
 
     if (!session.phone) {
       session.mode = 'AWAITING_PHONE';
-      await this.askPhone(bot, chatId, 'Отправьте номер телефона, чтобы менеджер мог с вами связаться.');
+      await this.askPhone(bot, chatId, lang, t(lang, 'checkout.askPhone'));
       return;
     }
 
-    await this.trySubmitOrder(bot, chatId, session);
+    await this.trySubmitOrder(bot, chatId, session, lang);
   }
 
-  private async trySubmitOrder(bot: TelegramBot, chatId: number, session: CustomerSession): Promise<void> {
+  private async trySubmitOrder(bot: TelegramBot, chatId: number, session: CustomerSession, lang: Lang): Promise<void> {
     if (session.submittingOrder) {
-      await bot.sendMessage(chatId, 'Заказ уже отправляется, подождите несколько секунд.');
+      await bot.sendMessage(chatId, t(lang, 'checkout.inProgress'));
       return;
     }
 
@@ -991,14 +1173,13 @@ export class TelegramCustomerService {
       await bot.sendMessage(
         chatId,
         [
-          '<b>Сейчас приём заказов закрыт</b>',
-          `Местное время: <b>${hours.currentTimeText}</b>`,
-          hours.reason ? this.escapeHtml(hours.reason) : '',
+          `<b>${t(lang, 'hours.closed', { reason: '' }).trim()}</b>`,
+          t(lang, 'hours.currentTime', { time: hours.currentTimeText }),
+          hours.reasonCode ? t(lang, `hours.reason.${hours.reasonCode}`) : '',
           '',
-          'Вы можете оформить заказ позже:',
-          'Пн-Пт: 09:00-18:00',
-          'Сб: 10:00-18:00',
-          'Вс: выходной',
+          t(lang, 'start.hours.monFri'),
+          t(lang, 'start.hours.sat'),
+          t(lang, 'start.hours.sun'),
         ].filter(Boolean).join('\n'),
         { parse_mode: 'HTML' },
       );
@@ -1006,18 +1187,23 @@ export class TelegramCustomerService {
     }
 
     if (!session.selectedManagerId || !session.customerName || !session.phone || !session.cart.length) {
-      await bot.sendMessage(chatId, 'Для оформления заказа не хватает данных. Проверьте корзину, менеджера и контакты.');
+      await bot.sendMessage(chatId, t(lang, 'checkout.missingData'));
       return;
     }
 
     const manager = await prisma.user.findFirst({
-      where: { id: session.selectedManagerId, role: 'MANAGER', isActive: true },
+      where: {
+        id: session.selectedManagerId,
+        role: 'MANAGER',
+        isActive: true,
+        OR: [{ companyId: null }, { company: { name: { not: 'grand-astra' } } }],
+      },
       select: { id: true, fullName: true, telegramChatId: true },
     });
 
     if (!manager) {
-      await bot.sendMessage(chatId, 'Выбранный менеджер сейчас недоступен. Пожалуйста, выберите другого.');
-      await this.showManagerPicker(bot, chatId, 0);
+      await bot.sendMessage(chatId, t(lang, 'manager.unavailable'));
+      await this.showManagerPicker(bot, chatId, lang, 0);
       return;
     }
 
@@ -1039,19 +1225,19 @@ export class TelegramCustomerService {
     for (const item of session.cart) {
       const product = productById.get(item.productId);
       if (!product || !product.isActive || !product.salePrice || Number(product.stock) <= 0) {
-        await bot.sendMessage(chatId, `Товар "${this.escapeHtml(item.name)}" сейчас недоступен. Обновите корзину.`, {
+        await bot.sendMessage(chatId, t(lang, 'qty.productUnavailable'), {
           parse_mode: 'HTML',
         });
-        await this.showCart(bot, chatId, undefined, 'Некоторые позиции стали недоступны. Проверьте корзину.');
+        await this.showCart(bot, chatId, lang, undefined, t(lang, 'qty.productUnavailable'));
         return;
       }
       if (item.qty > Number(product.stock)) {
         await bot.sendMessage(
           chatId,
-          `Для товара "${this.escapeHtml(product.name)}" указано большее количество, чем сейчас есть в наличии.`,
+          t(lang, 'qty.outOfStock', { name: this.escapeHtml(product.name), stock: this.formatQty(Number(product.stock)) }),
           { parse_mode: 'HTML' },
         );
-        await this.showCart(bot, chatId, undefined, 'Проверьте количество в корзине и попробуйте снова.');
+        await this.showCart(bot, chatId, lang);
         return;
       }
       item.price = Number(product.salePrice);
@@ -1164,15 +1350,16 @@ export class TelegramCustomerService {
     await bot.sendMessage(
       chatId,
       [
-        '<b>Заказ принят</b>',
+        `<b>${t(lang, 'checkout.success.title')}</b>`,
         '',
-        `Менеджер: <b>${this.escapeHtml(manager.fullName)}</b>`,
-        `Сумма: <b>${this.formatMoney(totalAmount)}</b>`,
-        'Мы уже передали заказ менеджеру. Он свяжется с вами в рабочее время.',
+        t(lang, 'checkout.success.manager', { name: this.escapeHtml(manager.fullName) }),
+        t(lang, 'cart.total', { total: this.formatMoney(totalAmount) }),
+        t(lang, 'checkout.success.status', { status: customerStatusLabel(lang, 'NEW') }),
+        t(lang, 'checkout.success.note'),
       ].join('\n'),
       {
         parse_mode: 'HTML',
-        reply_markup: this.buildHomeKeyboard(),
+        reply_markup: this.buildHomeKeyboard(lang),
       },
     );
 
@@ -1282,18 +1469,117 @@ export class TelegramCustomerService {
 
     const customerChatId = Number(customerChatIdRaw);
     if (Number.isFinite(customerChatId)) {
-      await bot.sendMessage(
-        customerChatId,
-        contacted
-          ? `Менеджер ${managerUser.fullName} уже взял ваш заказ в работу и связался с вами.`
-          : `Менеджер ${managerUser.fullName} пытался связаться с вами по заказу, но пока не дозвонился.`,
-      ).catch(() => {});
+      const customerSession = this.getSession(customerChatId);
+      const customerLang = await this.getLang(customerChatId, customerSession);
+      const statusNote = contacted ? t(customerLang, 'checkout.success.note') : t(customerLang, 'manager.unavailable');
+      await bot.sendMessage(customerChatId, `${managerUser.fullName}: ${statusNote}`).catch(() => {});
     }
+  }
+
+  private async showOrderList(
+    bot: TelegramBot,
+    chatId: number,
+    session: CustomerSession,
+    lang: Lang,
+    messageId?: number,
+  ): Promise<void> {
+    if (!session.phone) {
+      session.mode = 'AWAITING_ORDERS_PHONE';
+      await bot.sendMessage(chatId, t(lang, 'orders.askPhone'), {
+        reply_markup: this.buildPhoneKeyboard(lang),
+      });
+      return;
+    }
+
+    const deals = await prisma.deal.findMany({
+      where: {
+        isArchived: false,
+        client: this.buildReviewClientFilter(session.phone, chatId),
+      },
+      select: {
+        id: true,
+        title: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    if (!deals.length) {
+      await this.editOrSendMessage(
+        bot,
+        chatId,
+        [
+          `<b>${t(lang, 'orders.title')}</b>`,
+          '',
+          t(lang, 'orders.empty', { phone: this.escapeHtml(session.phone) }),
+        ].join('\n'),
+        {
+          messageId,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
+          },
+        },
+      );
+      return;
+    }
+
+    const dateFormatter = new Intl.DateTimeFormat(lang === 'uz' ? 'uz-UZ' : 'ru-RU', {
+      timeZone: TASHKENT_TIME_ZONE,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+    const lines: string[] = [];
+    const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
+    const reviewableIds: string[] = [];
+
+    deals.forEach((deal, index) => {
+      const statusLabel = customerStatusLabel(lang, deal.status);
+      lines.push(`${index + 1}. ${this.escapeHtml(deal.title)}`);
+      lines.push(`   ${t(lang, 'orders.line', {
+        date: dateFormatter.format(deal.createdAt),
+        count: deal._count.items,
+        total: this.formatMoney(Number(deal.amount)),
+      })} — ${statusLabel}`);
+
+      if (REVIEWABLE_DEAL_STATUSES.includes(deal.status)) {
+        reviewableIds.push(deal.id);
+        keyboard.push([{
+          text: `${t(lang, 'orders.reviewButton')} — ${this.truncate(deal.title, 20)}`,
+          callback_data: `review:deal:${deal.id}`,
+        }]);
+      }
+    });
+
+    session.reviewAllowedDealIds = reviewableIds;
+    keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
+
+    await this.editOrSendMessage(
+      bot,
+      chatId,
+      [
+        `<b>${t(lang, 'orders.title')}</b>`,
+        '',
+        ...lines,
+      ].join('\n'),
+      {
+        messageId,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: keyboard },
+      },
+    );
   }
 
   private async showReviewDealPicker(
     bot: TelegramBot,
     chatId: number,
+    lang: Lang,
     phone: string,
     messageId?: number,
   ): Promise<void> {
@@ -1319,15 +1605,15 @@ export class TelegramCustomerService {
         bot,
         chatId,
         [
-          '<b>Заказы не найдены</b>',
+          `<b>${t(lang, 'review.noOrders')}</b>`,
           '',
-          `По номеру <b>${this.escapeHtml(phone)}</b> пока нет заказов в CRM.`,
+          t(lang, 'review.noOrdersBody', { phone: this.escapeHtml(phone) }),
         ].join('\n'),
         {
           messageId,
           parse_mode: 'HTML',
           reply_markup: {
-            inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+            inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
           },
         },
       );
@@ -1342,15 +1628,15 @@ export class TelegramCustomerService {
         callback_data: `review:deal:${deal.id}`,
       },
     ]);
-    keyboard.push([{ text: 'Назад в меню', callback_data: 'menu:home' }]);
+    keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]);
 
     await this.editOrSendMessage(
       bot,
       chatId,
       [
-        '<b>Выберите заказ для отзыва</b>',
+        `<b>${t(lang, 'review.pickTitle')}</b>`,
         '',
-        'Сохраним отзыв прямо в карточке сделки.',
+        t(lang, 'review.pickSubtitle'),
       ].join('\n'),
       {
         messageId,
@@ -1363,19 +1649,20 @@ export class TelegramCustomerService {
   private async showReviewRatingPicker(
     bot: TelegramBot,
     chatId: number,
+    session: CustomerSession,
+    lang: Lang,
     dealId: string,
     messageId?: number,
   ): Promise<void> {
-    const session = this.getSession(chatId);
-    if (!session.phone || !session.reviewAllowedDealIds?.includes(dealId)) {
+    if (!session.reviewAllowedDealIds?.includes(dealId)) {
       await this.editOrSendMessage(
         bot,
         chatId,
-        'Этот заказ недоступен для отзыва. Выберите заказ из списка.',
+        t(lang, 'review.notAllowed'),
         {
           messageId,
           reply_markup: {
-            inline_keyboard: [[{ text: 'Назад к заказам', callback_data: 'menu:review' }]],
+            inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:review' }]],
           },
         },
       );
@@ -1396,11 +1683,11 @@ export class TelegramCustomerService {
       await this.editOrSendMessage(
         bot,
         chatId,
-        'Сделка для отзыва не найдена.',
+        t(lang, 'review.notAllowed'),
         {
           messageId,
           reply_markup: {
-            inline_keyboard: [[{ text: 'Назад в меню', callback_data: 'menu:home' }]],
+            inline_keyboard: [[{ text: t(lang, 'common.back'), callback_data: 'menu:home' }]],
           },
         },
       );
@@ -1418,7 +1705,7 @@ export class TelegramCustomerService {
       [
         `<b>${this.escapeHtml(deal.title)}</b>`,
         '',
-        'Выберите оценку от 1 до 5.',
+        t(lang, 'review.askRating'),
       ].join('\n'),
       {
         messageId,
@@ -1429,7 +1716,7 @@ export class TelegramCustomerService {
               text: `${rating}`,
               callback_data: `review:rate:${rating}`,
             })),
-            [{ text: 'Назад', callback_data: 'menu:review' }],
+            [{ text: t(lang, 'common.back'), callback_data: 'menu:review' }],
           ],
         },
       },
@@ -1440,13 +1727,14 @@ export class TelegramCustomerService {
     bot: TelegramBot,
     chatId: number,
     session: CustomerSession,
+    lang: Lang,
     reviewText: string,
   ): Promise<void> {
     const draft = session.reviewDraft;
     if (!draft || draft.rating < 1 || draft.rating > 5) {
       session.mode = 'IDLE';
       session.reviewDraft = undefined;
-      await bot.sendMessage(chatId, 'Не удалось сохранить отзыв. Попробуйте ещё раз из меню.');
+      await bot.sendMessage(chatId, t(lang, 'review.saveFailed'));
       return;
     }
 
@@ -1463,7 +1751,7 @@ export class TelegramCustomerService {
     if (!deal) {
       session.mode = 'IDLE';
       session.reviewDraft = undefined;
-      await bot.sendMessage(chatId, 'Сделка для отзыва уже недоступна.');
+      await bot.sendMessage(chatId, t(lang, 'review.notAllowed'));
       return;
     }
 
@@ -1488,8 +1776,8 @@ export class TelegramCustomerService {
       session.reviewDraft = undefined;
       await bot.sendMessage(
         chatId,
-        'Не удалось сохранить отзыв в CRM. Попробуйте позже или обратитесь к менеджеру.',
-        { reply_markup: this.buildHomeKeyboard() },
+        t(lang, 'review.saveFailed'),
+        { reply_markup: this.buildHomeKeyboard(lang) },
       );
       return;
     }
@@ -1539,32 +1827,34 @@ export class TelegramCustomerService {
     session.mode = 'IDLE';
     session.reviewDraft = undefined;
     session.reviewAllowedDealIds = undefined;
-    await bot.sendMessage(chatId, 'Спасибо. Отзыв сохранён и передан менеджеру.', {
-      reply_markup: this.buildHomeKeyboard(),
+    await bot.sendMessage(chatId, t(lang, 'review.thanks'), {
+      reply_markup: this.buildHomeKeyboard(lang),
     });
   }
 
-  private async askPhone(bot: TelegramBot, chatId: number, text: string): Promise<void> {
+  private async askPhone(bot: TelegramBot, chatId: number, lang: Lang, text: string): Promise<void> {
     await bot.sendMessage(chatId, text, {
-      reply_markup: this.buildPhoneKeyboard(),
+      reply_markup: this.buildPhoneKeyboard(lang),
     });
   }
 
-  private buildHomeKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  private buildHomeKeyboard(lang: Lang): TelegramBot.InlineKeyboardMarkup {
     return {
       inline_keyboard: [
-        [{ text: 'Оформить заказ', callback_data: 'menu:order' }],
-        [{ text: 'Часы приёма заказов', callback_data: 'menu:hours' }],
-        [{ text: 'Оставить отзыв', callback_data: 'menu:review' }],
+        [{ text: t(lang, 'menu.order'), callback_data: 'menu:order' }],
+        [{ text: t(lang, 'menu.orders'), callback_data: 'menu:orders' }],
+        [{ text: t(lang, 'menu.hours'), callback_data: 'menu:hours' }],
+        [{ text: t(lang, 'menu.review'), callback_data: 'menu:review' }],
+        [{ text: t(lang, 'menu.language'), callback_data: 'lang:switch' }],
       ],
     };
   }
 
-  private buildPhoneKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  private buildPhoneKeyboard(lang: Lang): TelegramBot.ReplyKeyboardMarkup {
     return {
       keyboard: [
-        [{ text: 'Отправить номер', request_contact: true }],
-        [{ text: 'Отмена' }],
+        [{ text: t(lang, 'common.sendPhoneButton'), request_contact: true }],
+        [{ text: t(lang, 'common.cancelButton') }],
       ],
       resize_keyboard: true,
       one_time_keyboard: true,
@@ -1639,7 +1929,7 @@ export class TelegramCustomerService {
       return {
         isOpen: false,
         currentTimeText,
-        reason: 'воскресенье — выходной',
+        reasonCode: 'sunday',
       };
     }
 
@@ -1649,9 +1939,7 @@ export class TelegramCustomerService {
       return {
         isOpen: false,
         currentTimeText,
-        reason: weekday === 'Sat'
-          ? 'по субботам заказы принимаются с 10:00 до 18:00'
-          : 'заказы принимаются с 09:00 до 18:00',
+        reasonCode: weekday === 'Sat' ? 'saturday' : 'weekday',
       };
     }
 
@@ -1685,8 +1973,8 @@ export class TelegramCustomerService {
   }
 
   /**
-   * Клиент «свой» для отзыва: совпадение телефона (в любом из форматов) или тег Telegram-чата в notes
-   * (как при оформлении заказа через бота).
+   * Клиент «свой» для отзыва/списка заказов: совпадение телефона (в любом из форматов) или тег
+   * Telegram-чата в notes (как при оформлении заказа через бота).
    */
   private buildReviewClientFilter(phone: string | null | undefined, chatId: number): Prisma.ClientWhereInput {
     const variants = this.phoneSearchVariants(phone ?? undefined);

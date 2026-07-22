@@ -1158,6 +1158,19 @@ model TimePayIntegration {
   @@map("timepay_integration")
 }
 
+// ==================== TELEGRAM CUSTOMER BOT ====================
+
+/// Язык клиента в клиентском Telegram-боте. Ключ — chatId, т.к. чат существует
+/// до создания Client (клиент создаётся только при оформлении заказа).
+model TelegramCustomerPreference {
+  chatId    String   @id @map("chat_id")
+  language  String   @default("ru") // 'ru' | 'uz'
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("telegram_customer_preferences")
+}
+
 // ==================== PUSH SUBSCRIPTIONS ====================
 
 model PushSubscription {
