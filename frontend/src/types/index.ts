@@ -1204,14 +1204,18 @@ export interface TimePayStatus {
   lastSyncError: string | null;
   lastSyncMatched: number | null;
   lastSyncUnmatched: number | null;
+  lastSyncSample?: string | null;
 }
 
 export interface TimePaySyncResult {
   status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR' | 'ERROR';
   matched: number;
+  matchedById?: number;
+  matchedByName?: number;
   unmatched: number;
   unmatchedNames: string[];
   error?: string;
+  sampleEntry?: string | null;
 }
 
 // ──── Intelligence Analytics ────

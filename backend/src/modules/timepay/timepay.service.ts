@@ -125,6 +125,7 @@ export async function getTimePayStatus() {
     lastSyncError: row.lastSyncError,
     lastSyncMatched: row.lastSyncMatched,
     lastSyncUnmatched: row.lastSyncUnmatched,
+    lastSyncSample: row.lastSyncSample,
   };
 }
 
@@ -180,6 +181,8 @@ export interface SyncResult {
   unmatched: number;
   unmatchedNames: string[];
   error?: string;
+  /** Сырой JSON первой записи дашборда TimePay — чтобы свериться с реальными названиями полей. */
+  sampleEntry?: string | null;
 }
 
 export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayYmd()): Promise<SyncResult> {
@@ -207,6 +210,8 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
     });
     return { status: 'ERROR', matched: 0, matchedById: 0, matchedByName: 0, unmatched: 0, unmatchedNames: [], error: msg };
   }
+
+  const sampleEntry = entries.length ? JSON.stringify(entries[0], null, 2).slice(0, 4000) : null;
 
   const users = await prisma.user.findMany({
     where: { isActive: true },
@@ -261,6 +266,7 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
       lastSyncError: null,
       lastSyncMatched: matched,
       lastSyncUnmatched: unmatchedNames.length,
+      lastSyncSample: sampleEntry,
     },
   });
 
@@ -268,7 +274,7 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
     console.warn(`[timepay] ${unmatchedNames.length} employee(s) not matched by id or full name:`, unmatchedNames.slice(0, 10));
   }
 
-  return { status: 'SUCCESS', matched, matchedById, matchedByName, unmatched: unmatchedNames.length, unmatchedNames };
+  return { status: 'SUCCESS', matched, matchedById, matchedByName, unmatched: unmatchedNames.length, unmatchedNames, sampleEntry };
 }
 
 export { tashkentTodayYmd };

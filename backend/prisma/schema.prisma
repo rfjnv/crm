@@ -1155,6 +1155,8 @@ model TimePayIntegration {
   lastSyncError    String?   @map("last_sync_error")
   lastSyncMatched  Int?      @map("last_sync_matched")
   lastSyncUnmatched Int?     @map("last_sync_unmatched")
+  /** JSON первой записи из последнего ответа дашборда TimePay — для подбора реальных названий полей. */
+  lastSyncSample   String?   @map("last_sync_sample")
   lastTokenAlertAt DateTime? @map("last_token_alert_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 

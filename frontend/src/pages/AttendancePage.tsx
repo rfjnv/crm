@@ -107,7 +107,9 @@ export default function AttendancePage() {
     mutationFn: () => timepayApi.sync(dateRange[1].format('YYYY-MM-DD')),
     onSuccess: (result) => {
       if (result.status === 'SUCCESS') {
-        message.success(`Обновлено из TimePay: ${result.matched}, не найдено по ФИО: ${result.unmatched}`);
+        message.success(
+          `Обновлено из TimePay: ${result.matched} (по ID: ${result.matchedById ?? 0}, по ФИО: ${result.matchedByName ?? 0}), не найдено: ${result.unmatched}`,
+        );
       } else if (result.status === 'AUTH_ERROR') {
         message.error('Токен TimePay недействителен — обновите его в Настройках компании');
       } else if (result.status === 'NOT_CONFIGURED') {

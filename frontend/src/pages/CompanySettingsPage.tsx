@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image, DatePicker, Tag, Alert,
+  Typography, Form, Input, InputNumber, Button, Card, Upload, message, Spin, Space, Divider, Image, DatePicker, Tag, Alert, Collapse,
 } from 'antd';
 import { UploadOutlined, SaveOutlined, SyncOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
@@ -44,7 +44,9 @@ export default function CompanySettingsPage() {
     mutationFn: () => timepayApi.sync(),
     onSuccess: (result) => {
       if (result.status === 'SUCCESS') {
-        message.success(`Синхронизировано: ${result.matched}, не найдено по ФИО: ${result.unmatched}`);
+        message.success(
+          `Синхронизировано: ${result.matched} (по ID: ${result.matchedById ?? 0}, по ФИО: ${result.matchedByName ?? 0}), не найдено: ${result.unmatched}`,
+        );
       } else if (result.status === 'AUTH_ERROR') {
         message.error('Токен TimePay недействителен — обновите его ниже');
       } else if (result.status === 'NOT_CONFIGURED') {
@@ -173,6 +175,23 @@ export default function CompanySettingsPage() {
           >
             Синхронизировать сейчас
           </Button>
+
+          {timepayStatus?.lastSyncSample && (
+            <Collapse
+              size="small"
+              items={[
+                {
+                  key: 'sample',
+                  label: 'Пример ответа TimePay (для проверки полей)',
+                  children: (
+                    <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>
+                      {timepayStatus.lastSyncSample}
+                    </pre>
+                  ),
+                },
+              ]}
+            />
+          )}
         </Space>
       </Card>
 
