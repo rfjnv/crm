@@ -1111,7 +1111,7 @@ export class DealsService {
       include: {
         items: {
           include: {
-            product: { select: { id: true, salePrice: true } },
+            product: { select: { id: true, name: true, salePrice: true } },
           },
         },
       },
@@ -1140,6 +1140,14 @@ export class DealsService {
     // Иначе — как раньше, в статус "В работе" для ручной отправки.
     const autoStatus = autoRouteStatusByPaymentMethod(deal.paymentMethod, deal.transferInn);
     const targetStatus: DealStatus = autoStatus ?? 'IN_PROGRESS';
+
+    const priceLog: Array<{
+      productId: string;
+      productName: string;
+      qty: number;
+      price: number;
+      priceSource: 'warehouse' | 'manager' | 'catalog';
+    }> = [];
 
     if (needsResponse.length === 0) {
       if (dto.items.length > 0) {
@@ -1192,10 +1200,19 @@ export class DealsService {
             throw new AppError(400, `Позиция ${item.dealItemId} не найдена`);
           }
 
+          // Приоритет цены: 1) явно введена складом в этом ответе; 2) уже стояла на позиции
+          // (например, менеджер указал её при создании сделки — склад просто не тронул поле,
+          // раньше это молча перезаписывалось каталожной ценой); 3) цена из каталога.
           let price = item.price;
+          let priceSource: 'warehouse' | 'manager' | 'catalog' = 'warehouse';
+          if (price == null || price <= 0) {
+            price = row.price != null ? Number(row.price) : 0;
+            priceSource = 'manager';
+          }
           if (price == null || price <= 0) {
             const sp = row.product?.salePrice;
             price = sp != null ? Number(sp) : 0;
+            priceSource = 'catalog';
           }
           if (!price || price <= 0) {
             throw new AppError(400, 'Укажите цену или задайте цену продажи у товара в каталоге');
@@ -1214,6 +1231,14 @@ export class DealsService {
               confirmedBy: user.userId,
               confirmedAt: new Date(),
             },
+          });
+
+          priceLog.push({
+            productId: row.productId,
+            productName: row.product?.name ?? row.productId,
+            qty,
+            price,
+            priceSource,
           });
         }
 
@@ -1239,6 +1264,17 @@ export class DealsService {
       before: { status: deal.status },
       after: { status: targetStatus, respondedItems: dto.items.length },
     });
+
+    if (priceLog.length > 0) {
+      await auditLog({
+        userId: user.userId,
+        action: 'UPDATE',
+        entityType: 'deal_warehouse_prices',
+        entityId: dealId,
+        before: null,
+        after: { items: priceLog },
+      });
+    }
 
     void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', targetStatus).catch((err) => {
       console.error('[Telegram deal groups] cleanupStockWaitTelegramMessages:', err);

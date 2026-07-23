@@ -93,15 +93,18 @@ export default function StockConfirmationPage() {
     const initialValues = getPendingItems(deal).map((item) => {
       const defPrice = item.product?.salePrice ? Number(item.product.salePrice) : undefined;
       const hasCatalogPrice = defPrice != null && defPrice > 0;
+      const managerPrice = item.price != null ? Number(item.price) : undefined;
+      const hasManagerPrice = managerPrice != null && managerPrice > 0;
       return {
         dealItemId: item.id,
         productName: item.product?.name || 'Товар',
         sku: item.product?.sku || '',
         unit: item.product?.unit || 'шт',
         requestComment: item.requestComment || '',
-        price: hasCatalogPrice ? undefined : null,
+        price: hasManagerPrice ? managerPrice : (hasCatalogPrice ? defPrice : undefined),
         hasCatalogPrice,
         catalogPrice: hasCatalogPrice ? defPrice : null,
+        hasManagerPrice,
       };
     });
     respondForm.setFieldsValue({ items: initialValues });
@@ -320,16 +323,13 @@ export default function StockConfirmationPage() {
           if (!respondModal) return;
           const items = (values.items as Record<string, unknown>[]).map((item) => {
             const parsedQty = parseQtyInput(item.requestedQty);
-            const sourceItem = respondModal.items?.find((row) => row.id === item.dealItemId);
-            const catalogPrice = sourceItem?.product?.salePrice != null ? Number(sourceItem.product.salePrice) : 0;
-            const hasCatalogPrice = catalogPrice > 0;
             const priceVal = item.price as number | null | undefined;
             const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
               dealItemId: item.dealItemId as string,
               warehouseComment: '',
               requestedQty: parsedQty ?? 0,
             };
-            if (!hasCatalogPrice && priceVal != null && priceVal > 0) {
+            if (priceVal != null && priceVal > 0) {
               row.price = priceVal;
             }
             return row;
@@ -377,11 +377,17 @@ export default function StockConfirmationPage() {
                           </Typography.Text>
                         </div>
                       )}
+                      {itemData?.hasManagerPrice && (
+                        <div className="stock-confirm-form__price-warning">
+                          <Typography.Text type="secondary">
+                            Менеджер указал цену при создании сделки — проверьте перед отправкой.
+                          </Typography.Text>
+                        </div>
+                      )}
                       <Form.Item
                         name={[field.name, 'requestedQty']}
                         label={`Количество (${itemData?.unit || 'шт'})`}
                         extra="Можно вводить: 20,2 или 20,2+20,3 или 20,2 20,3"
-                        className={itemData?.hasCatalogPrice ? 'stock-confirm-form__last-field' : undefined}
                         rules={[
                           { required: true, message: 'Укажите количество' },
                           {
@@ -399,16 +405,14 @@ export default function StockConfirmationPage() {
                           onPressEnter={() => applyParsedQtyValue(field.name)}
                         />
                       </Form.Item>
-                      {!itemData?.hasCatalogPrice && (
-                        <Form.Item
-                          name={[field.name, 'price']}
-                          label="Цена"
-                          rules={[{ required: true, message: 'Укажите цену' }]}
-                          className="stock-confirm-form__last-field"
-                        >
-                          <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="Цена из каталога не найдена" />
-                        </Form.Item>
-                      )}
+                      <Form.Item
+                        name={[field.name, 'price']}
+                        label="Цена"
+                        rules={[{ required: true, message: 'Укажите цену' }]}
+                        className="stock-confirm-form__last-field"
+                      >
+                        <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} placeholder="Укажите цену" />
+                      </Form.Item>
                     </Card>
                   );
                 })}
