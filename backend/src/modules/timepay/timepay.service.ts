@@ -66,8 +66,12 @@ function normalizeName(name: string): string {
 const NAME_FIELD_CANDIDATES = ['full_name', 'fullname', 'fio', 'name', 'employee_name'];
 const CHECK_IN_FIELD_CANDIDATES = ['check_in', 'checkin', 'checkin_time', 'first_in', 'come_time', 'entry_time', 'arrived_at', 'in_time'];
 const CHECK_OUT_FIELD_CANDIDATES = ['check_out', 'checkout', 'checkout_time', 'last_out', 'leave_time', 'exit_time', 'left_at', 'out_time'];
-/** ID сотрудника (не путать с id самой записи дашборда) — обычно лежит в employee_id или во вложенном employee.id. */
-const EMPLOYEE_ID_FIELD_CANDIDATES = ['employee_id', 'employeeid', 'emp_id', 'staff_id'];
+/**
+ * ID сотрудника. У /terminals/v6/dashboard/list/ структура плоская — записи не привязка "смена
+ * сотрудника" со своим id, а сам сотрудник за день, и его TimePay id лежит прямо в "id"
+ * (подтверждено реальным ответом: {"id": 7397, "full_name": "...", "check_in": ..., ...}).
+ */
+const EMPLOYEE_ID_FIELD_CANDIDATES = ['employee_id', 'employeeid', 'emp_id', 'staff_id', 'id'];
 
 function pickField(entry: TimePayDashboardEntry, candidates: string[]): unknown {
   for (const key of candidates) {
