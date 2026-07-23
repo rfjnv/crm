@@ -217,14 +217,15 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
 
   const sampleEntry = entries.length ? JSON.stringify(entries[0], null, 2).slice(0, 4000) : null;
 
-  const users = await prisma.user.findMany({
-    where: { isActive: true },
-    select: { id: true, fullName: true, timepayEmployeeId: true },
-  });
-  const userByName = new Map(users.map((u) => [normalizeName(u.fullName), u.id]));
-  const userByTimepayId = new Map(
-    users.filter((u) => u.timepayEmployeeId).map((u) => [u.timepayEmployeeId as string, u.id]),
-  );
+  // ID-привязка — осознанное решение админа, применяем её вне зависимости от isActive
+  // (некоторые роли вроде водителей/грузчиков могут быть без доступа в CRM, но физически работают).
+  // Фоллбэк по ФИО оставляем только для активных, чтобы не плодить случайные совпадения.
+  const [activeUsers, mappedUsers] = await Promise.all([
+    prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true } }),
+    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { id: true, timepayEmployeeId: true } }),
+  ]);
+  const userByName = new Map(activeUsers.map((u) => [normalizeName(u.fullName), u.id]));
+  const userByTimepayId = new Map(mappedUsers.map((u) => [u.timepayEmployeeId as string, u.id]));
 
   const dateOnly = ymdToDateOnly(dateYmd);
   let matchedById = 0;
