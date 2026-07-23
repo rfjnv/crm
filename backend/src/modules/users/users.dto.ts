@@ -30,6 +30,7 @@ export const updateUserDto = z.object({
   badgeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
   badgeLabel: z.string().trim().max(48, 'Не более 48 символов').nullable().optional(),
   companyId: z.string().uuid().nullable().optional(),
+  timepayEmployeeId: z.string().trim().max(50).nullable().optional(),
 });
 
 export const upsertMonthlyGoalDto = z.object({

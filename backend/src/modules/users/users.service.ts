@@ -20,6 +20,7 @@ const userSelect = {
   badgeIcon: true,
   badgeColor: true,
   badgeLabel: true,
+  timepayEmployeeId: true,
   company: { select: { id: true, name: true, displayName: true } },
 };
 
@@ -155,6 +156,9 @@ export class UsersService {
     if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
     if (dto.badgeLabel !== undefined) data.badgeLabel = dto.badgeLabel;
     if (dto.companyId !== undefined) data.companyId = dto.companyId;
+    if (dto.timepayEmployeeId !== undefined) {
+      data.timepayEmployeeId = dto.timepayEmployeeId === '' ? null : dto.timepayEmployeeId;
+    }
 
     if (Object.keys(data).length === 0) {
       throw new AppError(400, 'Нет данных для обновления');

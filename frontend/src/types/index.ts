@@ -103,6 +103,8 @@ export interface User {
   /** Текст «медали» в команде (произвольный, как подпись SVIP) */
   badgeLabel?: string | null;
   company?: Company | null;
+  /** ID сотрудника в TimePay — если задан, посещаемость сопоставляется по нему, а не по ФИО */
+  timepayEmployeeId?: string | null;
 }
 
 export interface WorkerReview {

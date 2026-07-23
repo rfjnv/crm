@@ -66,6 +66,8 @@ function normalizeName(name: string): string {
 const NAME_FIELD_CANDIDATES = ['full_name', 'fullname', 'fio', 'name', 'employee_name'];
 const CHECK_IN_FIELD_CANDIDATES = ['check_in', 'checkin', 'checkin_time', 'first_in', 'come_time', 'entry_time', 'arrived_at', 'in_time'];
 const CHECK_OUT_FIELD_CANDIDATES = ['check_out', 'checkout', 'checkout_time', 'last_out', 'leave_time', 'exit_time', 'left_at', 'out_time'];
+/** ID сотрудника (не путать с id самой записи дашборда) — обычно лежит в employee_id или во вложенном employee.id. */
+const EMPLOYEE_ID_FIELD_CANDIDATES = ['employee_id', 'employeeid', 'emp_id', 'staff_id'];
 
 function pickField(entry: TimePayDashboardEntry, candidates: string[]): unknown {
   for (const key of candidates) {
@@ -87,6 +89,19 @@ function extractEmployeeName(entry: TimePayDashboardEntry): string | null {
     if (typeof first === 'string' || typeof last === 'string') {
       return [first, last].filter(Boolean).join(' ').trim() || null;
     }
+  }
+  return null;
+}
+
+/** ID сотрудника в TimePay для этой записи дашборда — приоритетный способ сопоставления (см. User.timepayEmployeeId). */
+function extractEmployeeId(entry: TimePayDashboardEntry): string | null {
+  const direct = pickField(entry, EMPLOYEE_ID_FIELD_CANDIDATES);
+  if (direct != null) return String(direct);
+
+  const nested = entry.employee;
+  if (nested && typeof nested === 'object') {
+    const nestedId = (nested as Record<string, unknown>).id;
+    if (nestedId != null) return String(nestedId);
   }
   return null;
 }
@@ -160,6 +175,8 @@ async function alertAdminsTokenExpired() {
 export interface SyncResult {
   status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR' | 'ERROR';
   matched: number;
+  matchedById: number;
+  matchedByName: number;
   unmatched: number;
   unmatchedNames: string[];
   error?: string;
@@ -168,7 +185,7 @@ export interface SyncResult {
 export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayYmd()): Promise<SyncResult> {
   const integration = await getIntegration();
   if (!integration.accessToken) {
-    return { status: 'NOT_CONFIGURED', matched: 0, unmatched: 0, unmatchedNames: [] };
+    return { status: 'NOT_CONFIGURED', matched: 0, matchedById: 0, matchedByName: 0, unmatched: 0, unmatchedNames: [] };
   }
 
   let entries: TimePayDashboardEntry[];
@@ -181,33 +198,43 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
         data: { lastSyncAt: new Date(), lastSyncStatus: 'ERROR', lastSyncError: err.message },
       });
       await alertAdminsTokenExpired();
-      return { status: 'AUTH_ERROR', matched: 0, unmatched: 0, unmatchedNames: [], error: err.message };
+      return { status: 'AUTH_ERROR', matched: 0, matchedById: 0, matchedByName: 0, unmatched: 0, unmatchedNames: [], error: err.message };
     }
     const msg = err instanceof TimePayApiError ? err.message : String(err);
     await prisma.timePayIntegration.update({
       where: { id: 'singleton' },
       data: { lastSyncAt: new Date(), lastSyncStatus: 'ERROR', lastSyncError: msg },
     });
-    return { status: 'ERROR', matched: 0, unmatched: 0, unmatchedNames: [], error: msg };
+    return { status: 'ERROR', matched: 0, matchedById: 0, matchedByName: 0, unmatched: 0, unmatchedNames: [], error: msg };
   }
 
-  const users = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true } });
+  const users = await prisma.user.findMany({
+    where: { isActive: true },
+    select: { id: true, fullName: true, timepayEmployeeId: true },
+  });
   const userByName = new Map(users.map((u) => [normalizeName(u.fullName), u.id]));
+  const userByTimepayId = new Map(
+    users.filter((u) => u.timepayEmployeeId).map((u) => [u.timepayEmployeeId as string, u.id]),
+  );
 
   const dateOnly = ymdToDateOnly(dateYmd);
-  let matched = 0;
+  let matchedById = 0;
+  let matchedByName = 0;
   const unmatchedNames: string[] = [];
 
   for (const entry of entries) {
+    const timepayId = extractEmployeeId(entry);
     const name = extractEmployeeName(entry);
-    if (!name) {
-      console.warn('[timepay] entry without a recognizable name field, sample:', JSON.stringify(entry).slice(0, 300));
-      continue;
+
+    let userId = timepayId ? userByTimepayId.get(timepayId) : undefined;
+    const byId = !!userId;
+    if (!userId && name) {
+      userId = userByName.get(normalizeName(name));
     }
 
-    const userId = userByName.get(normalizeName(name));
     if (!userId) {
-      unmatchedNames.push(name);
+      if (name) unmatchedNames.push(name);
+      else console.warn('[timepay] entry without a recognizable id/name field, sample:', JSON.stringify(entry).slice(0, 300));
       continue;
     }
 
@@ -220,8 +247,11 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
       create: { userId, date: dateOnly, checkIn, checkOut },
       update: { checkIn, checkOut },
     });
-    matched += 1;
+    if (byId) matchedById += 1;
+    else matchedByName += 1;
   }
+
+  const matched = matchedById + matchedByName;
 
   await prisma.timePayIntegration.update({
     where: { id: 'singleton' },
@@ -235,10 +265,10 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
   });
 
   if (unmatchedNames.length) {
-    console.warn(`[timepay] ${unmatchedNames.length} employee(s) not matched by full name:`, unmatchedNames.slice(0, 10));
+    console.warn(`[timepay] ${unmatchedNames.length} employee(s) not matched by id or full name:`, unmatchedNames.slice(0, 10));
   }
 
-  return { status: 'SUCCESS', matched, unmatched: unmatchedNames.length, unmatchedNames };
+  return { status: 'SUCCESS', matched, matchedById, matchedByName, unmatched: unmatchedNames.length, unmatchedNames };
 }
 
 export { tashkentTodayYmd };

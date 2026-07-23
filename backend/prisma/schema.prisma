@@ -240,6 +240,8 @@ model User {
   contractsDeleted    Contract[]           @relation("ContractDeletedBy")
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
+  /** ID сотрудника в TimePay — если задан, синк посещаемости сопоставляет по нему, а не по ФИО. */
+  timepayEmployeeId   String?          @unique @map("timepay_employee_id")
   /** Значок в списке команды (задают ADMIN / SUPER_ADMIN): ключ иконки, например star, trophy */
   badgeIcon           String?          @map("badge_icon")
   /** HEX цвет значка, например #22609A */

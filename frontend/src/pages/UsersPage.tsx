@@ -152,6 +152,8 @@ export default function UsersPage() {
         badgeIcon: string | null;
         badgeColor: string | null;
         badgeLabel: string | null;
+        companyId: string | null;
+        timepayEmployeeId: string | null;
       }>;
     }) => usersApi.update(id, data),
     onSuccess: (_, variables) => {
@@ -246,6 +248,7 @@ export default function UsersPage() {
       badgeColor: user.badgeColor || '#22609A',
       badgeLabel: user.badgeLabel ?? '',
       companyId: user.company?.id ?? undefined,
+      timepayEmployeeId: user.timepayEmployeeId ?? '',
     });
     setOpen(true);
   }
@@ -272,6 +275,9 @@ export default function UsersPage() {
         data.badgeLabel = rawLabel || null;
       }
       if (values.companyId !== undefined) data.companyId = (values.companyId as string) || null;
+      const nextTimepayId = ((values.timepayEmployeeId as string | undefined) ?? '').trim() || null;
+      const prevTimepayId = editingUser.timepayEmployeeId ?? null;
+      if (nextTimepayId !== prevTimepayId) data.timepayEmployeeId = nextTimepayId;
       updateMut.mutate({
         id: editingUser.id,
         data: data as Partial<{
@@ -285,6 +291,7 @@ export default function UsersPage() {
           badgeColor: string | null;
           badgeLabel: string | null;
           companyId: string | null;
+          timepayEmployeeId: string | null;
         }>,
       });
     } else {
@@ -466,6 +473,15 @@ export default function UsersPage() {
           <Form.Item name="department" label="Отдел">
             <Input placeholder="Например: B2B, розница, регион" maxLength={120} allowClear />
           </Form.Item>
+          {isEditing && (
+            <Form.Item
+              name="timepayEmployeeId"
+              label="TimePay ID"
+              tooltip="ID сотрудника в TimePay — если задан, посещаемость сопоставляется по нему, а не по ФИО"
+            >
+              <Input placeholder="Например: 68989" maxLength={50} allowClear />
+            </Form.Item>
+          )}
           {isSuperAdmin && (
             <Form.Item name="companyId" label="Компания">
               <Select

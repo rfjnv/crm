@@ -38,6 +38,7 @@ export const usersApi = {
       badgeColor: string | null;
       badgeLabel: string | null;
       companyId: string | null;
+      timepayEmployeeId: string | null;
     }>,
   ) =>
     client.patch<User>(`/users/${id}`, data).then((r) => r.data),
