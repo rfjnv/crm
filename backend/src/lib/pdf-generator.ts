@@ -1,6 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 import path from 'path';
+import { getFirstName } from './name-utils';
 
 // ---------- Types ----------
 
@@ -919,7 +920,7 @@ export function buildPaymentReceiptHtml(
   <div><span class="label">ИНН клиента:</span> ${data.client?.inn || '—'}</div>
   <div><span class="label">Контактное лицо:</span> ${data.client?.contactName || '—'}</div>
   <div><span class="label">Адрес:</span> ${data.client?.address || '—'}</div>
-  <div><span class="label">Менеджер:</span> ${data.manager?.fullName || '—'}</div>
+  <div><span class="label">Менеджер:</span> ${getFirstName(data.manager?.fullName) || '—'}</div>
   <div><span class="label">Дата закрытия:</span> ${data.closedAt ? formatDate(data.closedAt) : 'Не закрыта'}</div>
 </div>
 

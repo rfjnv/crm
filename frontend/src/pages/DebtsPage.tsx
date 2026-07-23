@@ -10,6 +10,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
 import type { ClientDebtRow } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
@@ -59,7 +60,7 @@ export default function DebtsPage() {
       .filter((u: { role: string; isActive: boolean }) =>
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
-      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
   }, [users]);
 
   const filtered = useMemo(() => {
@@ -158,7 +159,7 @@ export default function DebtsPage() {
       title: 'Менеджер',
       dataIndex: ['manager', 'fullName'],
       key: 'manager',
-      render: (v: string | null) => v || '\u2014',
+      render: (v: string | null) => getFirstName(v) || '\u2014',
     },
     {
       title: 'Статус',

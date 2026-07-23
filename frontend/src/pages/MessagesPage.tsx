@@ -13,6 +13,7 @@ import { API_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import type { ConversationType, Conversation, ChatMessage, MessageAttachmentInfo } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
@@ -332,7 +333,7 @@ export default function MessagesPage() {
             {/* Sender name */}
             {!isOwn && !msg.isDeleted && (
               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 3, color: tk.colorPrimary }}>
-                {msg.sender?.fullName}
+                {getFirstName(msg.sender?.fullName)}
               </div>
             )}
 
@@ -349,7 +350,7 @@ export default function MessagesPage() {
                   background: isOwn ? 'rgba(255,255,255,0.1)' : tk.colorFillQuaternary,
                 }}
               >
-                <div style={{ fontWeight: 600 }}>{msg.replyTo.sender?.fullName}</div>
+                <div style={{ fontWeight: 600 }}>{getFirstName(msg.replyTo.sender?.fullName)}</div>
                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: isMobile ? '80%' : 300 }}>
                   {msg.replyTo.isDeleted ? 'Сообщение удалено' : msg.replyTo.text}
                 </div>
@@ -456,7 +457,7 @@ export default function MessagesPage() {
                   >
                     {conv.lastMessage.isDeleted
                       ? 'Сообщение удалено'
-                      : `${conv.lastMessage.sender?.fullName}: ${conv.lastMessage.text}`}
+                      : `${getFirstName(conv.lastMessage.sender?.fullName)}: ${conv.lastMessage.text}`}
                   </Typography.Text>
                 )}
               </div>
@@ -511,7 +512,7 @@ export default function MessagesPage() {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                      <Typography.Text strong style={{ fontSize: 12 }}>{msg.sender?.fullName}</Typography.Text>
+                      <Typography.Text strong style={{ fontSize: 12 }}>{getFirstName(msg.sender?.fullName)}</Typography.Text>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <Tag style={{ fontSize: 10, margin: 0 }}>{CONVERSATION_LABELS[msg.conversationType]}</Tag>
                         <Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(msg.createdAt).format('DD.MM HH:mm')}</Typography.Text>
@@ -558,7 +559,7 @@ export default function MessagesPage() {
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: tk.colorPrimary }}>{replyingTo.sender?.fullName}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: tk.colorPrimary }}>{getFirstName(replyingTo.sender?.fullName)}</div>
                     <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replyingTo.text}</div>
                   </div>
                   <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setReplyingTo(null)} />

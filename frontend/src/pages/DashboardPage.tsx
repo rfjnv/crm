@@ -24,6 +24,7 @@ import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import type { Permission, UserRole, DealStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
 
 const DEFAULT_GOAL = 250_000_000;
@@ -1057,7 +1058,7 @@ export default function DashboardPage() {
             ...(isAdmin ? [
               {
                 title: 'Топ менеджеров',
-                items: topManagers.map((m) => ({ label: m.fullName, value: formatUZS(m.totalRevenue), href: `/analytics` })),
+                items: topManagers.map((m) => ({ label: getFirstName(m.fullName), value: formatUZS(m.totalRevenue), href: `/analytics` })),
               },
               {
                 title: 'Топ клиентов',

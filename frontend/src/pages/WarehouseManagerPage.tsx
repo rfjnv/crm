@@ -11,6 +11,7 @@ import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useAuthStore } from '../store/authStore';
 import MobileCardList from '../components/MobileCardList';
+import { getFirstName } from '../lib/name-utils';
 import './WarehouseManagerPage.css';
 
 const deliveryLabels: Record<string, string> = {
@@ -200,7 +201,7 @@ export default function WarehouseManagerPage() {
         <Space size={6} wrap className="wm-mobile-card__chips">
           <DeliveryTag type={r.deliveryType} />
           <Tag color={needsDriver ? 'red' : 'green'}>{summaryStatus}</Tag>
-          {r.deliveryDriver && <Tag color="green">{r.deliveryDriver.fullName}</Tag>}
+          {r.deliveryDriver && <Tag color="green">{getFirstName(r.deliveryDriver.fullName)}</Tag>}
         </Space>
 
         {items.length > 0 && (
@@ -332,7 +333,7 @@ export default function WarehouseManagerPage() {
             {
               title: 'Водитель', key: 'driver', width: 140,
               render: (_: unknown, r: Deal) => r.deliveryDriver
-                ? <Tag color="green">{r.deliveryDriver.fullName}</Tag>
+                ? <Tag color="green">{getFirstName(r.deliveryDriver.fullName)}</Tag>
                 : r.deliveryType === 'DELIVERY' ? <Tag color="red">Не назначен</Tag> : '—',
             },
             { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
@@ -413,8 +414,8 @@ export default function WarehouseManagerPage() {
           onChange={setSelectedUserId}
           options={
             assignModal?.type === 'loading'
-              ? staff.map((s) => ({ label: `${s.fullName} (${roleLabels[s.role] || s.role})`, value: s.id }))
-              : drivers.map((d) => ({ label: d.fullName, value: d.id }))
+              ? staff.map((s) => ({ label: `${getFirstName(s.fullName)} (${roleLabels[s.role] || s.role})`, value: s.id }))
+              : drivers.map((d) => ({ label: getFirstName(d.fullName), value: d.id }))
           }
         />
       </Modal>

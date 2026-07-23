@@ -27,6 +27,7 @@ import {
 import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import { getFirstName } from '../lib/name-utils';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
   HistoryClientActivity, HistoryClientSegment,
@@ -458,7 +459,7 @@ export default function HistoryAnalyticsPage() {
     { title: 'Покупатели', dataIndex: 'uniqueBuyers', key: 'uniqueBuyers', width: 100, sorter: (a: HistoryTopProduct, b: HistoryTopProduct) => a.uniqueBuyers - b.uniqueBuyers },
   ];
   const managerCols = [
-    { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName' },
+    { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName', render: (v: string) => getFirstName(v) || v },
     { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80, sorter: (a: HistoryManager, b: HistoryManager) => a.dealsCount - b.dealsCount },
     { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v), sorter: (a: HistoryManager, b: HistoryManager) => a.revenue - b.revenue },
     { title: 'Собрано', dataIndex: 'collected', key: 'collected', width: 120, render: (v: number) => fmtNum(v) },
@@ -929,7 +930,7 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={10}>
           <Card title="Менеджеры" size="small" style={{ height: '100%' }}>
             <Table dataSource={managers} columns={managerCols} rowKey="id" size="small" pagination={false} scroll={{ x: 450 }}
-              onRow={(record) => ({ onClick: () => setManagerDrawer({ managerId: record.id, managerName: record.fullName }), style: clickableRow })} />
+              onRow={(record) => ({ onClick: () => setManagerDrawer({ managerId: record.id, managerName: getFirstName(record.fullName) }), style: clickableRow })} />
           </Card>
         </Col>
       </Row>
@@ -1086,7 +1087,7 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Тренд менеджеров по месяцам" size="small">
             <Line
-              data={extended.managerTrend.map((r) => ({ month: r.month, revenue: r.revenue, manager: r.fullName, _managerId: r.managerId, _managerName: r.fullName }))}
+              data={extended.managerTrend.map((r) => ({ month: r.month, revenue: r.revenue, manager: getFirstName(r.fullName), _managerId: r.managerId, _managerName: getFirstName(r.fullName) }))}
               xField="month" yField="revenue" colorField="manager" height={280}
               axis={{ x: { labelFill: token.colorText, labelFormatter: (v: number) => MONTH_LABELS[v] || `${v}` }, y: { labelFill: token.colorText, labelFormatter: (v: number) => fmtNum(v) } }}
               tooltip={{ items: [{ field: 'revenue', channel: 'y', name: 'Выручка', valueFormatter: (v: number) => fmtNum(v) }] }}
@@ -1501,7 +1502,7 @@ export default function HistoryAnalyticsPage() {
               key: 'managers', label: `Менеджеры (${monthDetail.managers.length})`, children: (
                 <Table dataSource={monthDetail.managers} rowKey="id" size="small" pagination={false}
                   columns={[
-                    { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName' },
+                    { title: 'Менеджер', dataIndex: 'fullName', key: 'fullName', render: (v: string) => getFirstName(v) || v },
                     { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
                     { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 120, render: (v: number) => fmtNum(v) },
                   ]}

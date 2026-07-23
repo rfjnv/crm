@@ -10,6 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiTrainingApi, type AiTrainingRule } from '../api/ai-assistant.api';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -179,7 +180,7 @@ export default function AiTrainingPage() {
                   </Paragraph>
                   <div style={{ marginTop: 8 }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      Автор: {rule.author.fullName} · {new Date(rule.createdAt).toLocaleDateString('ru')}
+                      Автор: {getFirstName(rule.author.fullName)} · {new Date(rule.createdAt).toLocaleDateString('ru')}
                     </Text>
                   </div>
                 </div>

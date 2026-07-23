@@ -2,6 +2,7 @@ import type TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import type { AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
+import { getFirstName } from '../../lib/name-utils';
 import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX } from './telegram-admin.constants';
 
 function escPlainForHtml(s: string): string {
@@ -78,8 +79,8 @@ export function registerTelegramAdminCallbacks(bot: TelegramBot): void {
     const msg = query.message;
     if (msg && 'text' in msg && msg.text != null) {
       const statusBanner = approve
-        ? `✅ <b>ОДОБРЕНО</b> — ${escPlainForHtml(adminUser.fullName)}`
-        : `❌ <b>ОТКЛОНЕНО</b> — ${escPlainForHtml(adminUser.fullName)}`;
+        ? `✅ <b>ОДОБРЕНО</b> — ${escPlainForHtml(getFirstName(adminUser.fullName))}`
+        : `❌ <b>ОТКЛОНЕНО</b> — ${escPlainForHtml(getFirstName(adminUser.fullName))}`;
       const newText = `${statusBanner}\n\n${escPlainForHtml(msg.text)}`;
       try {
         await bot.editMessageText(newText, {

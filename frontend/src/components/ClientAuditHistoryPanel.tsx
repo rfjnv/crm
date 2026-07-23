@@ -1,5 +1,6 @@
 import { Timeline, Typography, Tag, Spin, Empty, theme, Card, Space } from 'antd';
 import type { AuditLog } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 /** Labels for client snapshot keys (backend clientAuditSnapshot). */
@@ -104,7 +105,7 @@ export default function ClientAuditHistoryPanel({ logs, isLoading }: Props) {
             >
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-                  <Typography.Text strong>{log.user?.fullName ?? 'Неизвестный пользователь'}</Typography.Text>
+                  <Typography.Text strong>{getFirstName(log.user?.fullName) || 'Неизвестный пользователь'}</Typography.Text>
                   <Tag color={cfg.color}>{cfg.label}</Tag>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {dayjs(log.createdAt).format('DD.MM.YYYY HH:mm')}

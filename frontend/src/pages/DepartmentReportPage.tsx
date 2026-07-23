@@ -44,6 +44,7 @@ import { usersApi } from '../api/users.api';
 import { formatUZS } from '../utils/currency';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { matchesSearch } from '../utils/translit';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -164,7 +165,7 @@ export default function DepartmentReportPage() {
       .filter((u: { role: string; isActive: boolean }) =>
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
-      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
   }, [users]);
 
   // Client options for multi-select — built from loaded data

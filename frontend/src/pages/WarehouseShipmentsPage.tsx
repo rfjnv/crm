@@ -16,6 +16,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, PaymentStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 import { tashkentYmd, addDaysToTashkentYmd, isoRangeForTashkentYmd } from '../utils/tashkentCalendar';
 import { printDealWaybillA5 } from '../utils/waybillPrintA5';
@@ -106,7 +107,7 @@ export default function WarehouseShipmentsPage() {
       .filter((u: { role: string; isActive: boolean }) =>
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
-      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
   }, [usersForFilters]);
 
   const { data: dealDetail, isLoading: detailLoading } = useQuery({
@@ -195,19 +196,19 @@ export default function WarehouseShipmentsPage() {
         render: (v: string | undefined) =>
           v ? <Tag color={v === 'DELIVERY' ? 'orange' : v === 'YANDEX' ? 'purple' : 'blue'}>{deliveryLabels[v] || v}</Tag> : '—',
       },
-      { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+      { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
       {
         title: 'Водитель',
         key: 'driver',
         width: 140,
-        render: (_: unknown, r: Deal) => (r.deliveryDriver ? <Tag color="green">{r.deliveryDriver.fullName}</Tag> : '—'),
+        render: (_: unknown, r: Deal) => (r.deliveryDriver ? <Tag color="green">{getFirstName(r.deliveryDriver.fullName)}</Tag> : '—'),
       },
       {
         title: 'Грузил',
         key: 'loader',
         width: 140,
         render: (_: unknown, r: Deal) =>
-          (r.loadingAssignee?.fullName ? <Tag color="cyan">{r.loadingAssignee.fullName}</Tag> : '—'),
+          (r.loadingAssignee?.fullName ? <Tag color="cyan">{getFirstName(r.loadingAssignee.fullName)}</Tag> : '—'),
       },
       {
         title: 'Товары',
@@ -476,7 +477,7 @@ export default function WarehouseShipmentsPage() {
                   {formatUZS(dealDetail.amount)}
                 </Descriptions.Item>
                 <Descriptions.Item label="Менеджер">
-                  {dealDetail.manager?.fullName}
+                  {getFirstName(dealDetail.manager?.fullName)}
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -509,7 +510,7 @@ export default function WarehouseShipmentsPage() {
                     {dayjs(dealDetail.shipment.shippedAt).format('DD.MM.YYYY HH:mm')}
                   </Descriptions.Item>
                   <Descriptions.Item label="Отгрузил">
-                    {dealDetail.shipment.user?.fullName}
+                    {getFirstName(dealDetail.shipment.user?.fullName)}
                   </Descriptions.Item>
                   {dealDetail.shipment.shipmentComment && (
                     <Descriptions.Item label="Комментарий">

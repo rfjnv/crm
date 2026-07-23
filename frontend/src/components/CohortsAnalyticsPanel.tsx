@@ -12,6 +12,7 @@ import { formatUZS } from '../utils/currency';
 import { telegramLinkFromPhone } from '../utils/phone';
 import ClientQuickViewDrawer from './ClientQuickViewDrawer';
 import type { UserRole, CohortRow, CohortMode } from '../types';
+import { getFirstName } from '../lib/name-utils';
 
 const COHORTS_TOUR_STORAGE_KEY = 'cohorts-tour-dismissed';
 
@@ -67,7 +68,7 @@ export default function CohortsAnalyticsPanel({ fetchEnabled = true }: { fetchEn
       [...managerUsers]
         .filter((u) => u.isActive)
         .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
-        .map((u) => ({ label: u.fullName, value: u.id })),
+        .map((u) => ({ label: getFirstName(u.fullName), value: u.id })),
     [managerUsers],
   );
 

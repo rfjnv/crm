@@ -31,6 +31,7 @@ import {
   type SupplierCurrency,
 } from '../types';
 import { useAuthStore } from '../store/authStore';
+import { getFirstName } from '../lib/name-utils';
 import {
   getBlockingHitsForDate,
   groupBlockingEventsByDate,
@@ -288,7 +289,7 @@ export default function ImportOrderDetailPage() {
     {
       title: 'Загрузил',
       key: 'uploader',
-      render: (_: unknown, r: ImportOrderAttachment) => r.uploader?.fullName || '—',
+      render: (_: unknown, r: ImportOrderAttachment) => getFirstName(r.uploader?.fullName) || '—',
     },
     {
       title: 'Дата',
@@ -339,7 +340,7 @@ export default function ImportOrderDetailPage() {
             </Link>
             {order.supplier.country && <span style={{ color: '#888', marginLeft: 6 }}>({order.supplier.country})</span>}
           </Descriptions.Item>
-          <Descriptions.Item label="Создал">{order.createdBy.fullName}</Descriptions.Item>
+          <Descriptions.Item label="Создал">{getFirstName(order.createdBy.fullName)}</Descriptions.Item>
           <Descriptions.Item label="Дата заказа">{dayjs(order.orderDate).format('DD.MM.YYYY')}</Descriptions.Item>
           <Descriptions.Item label="Создан">{dayjs(order.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
           <Descriptions.Item label="ETD">

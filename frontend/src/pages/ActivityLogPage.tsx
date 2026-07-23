@@ -11,6 +11,7 @@ import BackButton from '../components/BackButton';
 import { getAuditActionLabel, auditActionLabels } from '../lib/auditActionLabels';
 import { renderJsonDiff } from '../lib/auditDiff';
 import { formatUserAgent } from '../lib/formatUserAgent';
+import { getFirstName } from '../lib/name-utils';
 import type { AuditLog } from '../types';
 import { theme } from 'antd';
 
@@ -98,7 +99,7 @@ function ActionsTab() {
           value={userId}
           onChange={(v) => { setUserId(v || undefined); setPage(1); }}
           optionFilterProp="label"
-          options={(users ?? []).map((u) => ({ value: u.id, label: u.fullName }))}
+          options={(users ?? []).map((u) => ({ value: u.id, label: getFirstName(u.fullName) }))}
         />
         <Select
           allowClear
@@ -153,7 +154,7 @@ function ActionsTab() {
             title: 'Пользователь',
             render: (_: unknown, row: AuditLog) => (
               <Space size={4}>
-                <Typography.Text strong>{row.user?.fullName || '—'}</Typography.Text>
+                <Typography.Text strong>{getFirstName(row.user?.fullName) || '—'}</Typography.Text>
                 {row.user?.role && <Tag>{row.user.role}</Tag>}
               </Space>
             ),
@@ -233,7 +234,7 @@ function SessionsTab() {
           value={userId}
           onChange={setUserId}
           optionFilterProp="label"
-          options={(users ?? []).map((u) => ({ value: u.id, label: u.fullName }))}
+          options={(users ?? []).map((u) => ({ value: u.id, label: getFirstName(u.fullName) }))}
         />
         <DatePicker
           value={date}

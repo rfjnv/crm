@@ -14,6 +14,7 @@ import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
+import { getFirstName } from '../lib/name-utils';
 import './StockConfirmationPage.css';
 
 function normalizeQtyExpression(value: string): string | null {
@@ -140,6 +141,7 @@ export default function StockConfirmationPage() {
     {
       title: 'Менеджер',
       dataIndex: ['manager', 'fullName'],
+      render: (v: string) => getFirstName(v) || '—',
     },
     {
       title: 'Дата',
@@ -187,7 +189,7 @@ export default function StockConfirmationPage() {
 
         {deal.manager?.fullName && (
           <Space size={6} wrap className="stock-confirm-mobile-card__chips">
-            <Tag>{deal.manager.fullName}</Tag>
+            <Tag>{getFirstName(deal.manager.fullName)}</Tag>
           </Space>
         )}
 

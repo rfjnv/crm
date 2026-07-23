@@ -1,6 +1,7 @@
 import { DealStatus, PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { getFirstName } from '../../lib/name-utils';
 import { telegramService } from './telegram.service';
 import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX } from './telegram-admin.constants';
 
@@ -116,7 +117,7 @@ function buildDealCommentsBlock(
   const slice = comments.slice(0, maxComments);
   if (slice.length === 0) return '';
   const lines = slice.map((c) => {
-    const who = esc(c.author.fullName || '—');
+    const who = esc(getFirstName(c.author.fullName) || '—');
     const when = new Intl.DateTimeFormat('ru-RU', {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -218,7 +219,7 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     '📦 <b>Склад — новая сделка на проверку</b>',
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
     ...(paymentLine ? [`Оплата: <b>${paymentLine}</b>`] : []),
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
@@ -250,7 +251,7 @@ function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): stri
     '📥 <b>Сделка принята в CRM</b> <i>(ожидает склад — не финансы)</i>',
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
     ...(paymentLine ? [`Оплата: <b>${paymentLine}</b>`] : []),
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
@@ -428,7 +429,7 @@ export function buildProductionGroupHtml(
     ...(debtLine ? ['', debtLine] : []),
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
     ...rfsExtra,
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
@@ -852,7 +853,7 @@ export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
     '💰 <b>Финансы — сделка на проверку</b>',
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
-    `Менеджер: <b>${esc(deal.manager.fullName)}</b>`,
+    `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
     `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
     `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,

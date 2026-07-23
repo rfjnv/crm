@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -57,11 +58,11 @@ export default function ArchivedDealsPage() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
     {
       title: 'Архивировал',
       dataIndex: ['archivedBy', 'fullName'],
-      render: (v: string) => v || '—',
+      render: (v: string) => getFirstName(v) || '—',
     },
     {
       title: 'Дата архивации',

@@ -11,6 +11,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 export default function MyVehiclePage() {
   const isMobile = useIsMobile();
@@ -83,7 +84,7 @@ export default function MyVehiclePage() {
 
             {seeAll && r.deliveryDriver && (
               <div style={{ marginTop: 4 }}>
-                <Tag color="orange">{r.deliveryDriver.fullName}</Tag>
+                <Tag color="orange">{getFirstName(r.deliveryDriver.fullName)}</Tag>
               </div>
             )}
 
@@ -182,7 +183,7 @@ export default function MyVehiclePage() {
               { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
               ...(seeAll ? [{
                 title: 'Водитель', key: 'driver', width: 140,
-                render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{r.deliveryDriver.fullName}</Tag> : '—',
+                render: (_: unknown, r: Deal) => r.deliveryDriver ? <Tag color="orange">{getFirstName(r.deliveryDriver.fullName)}</Tag> : '—',
               }] : []),
               {
                 title: 'Клиент',

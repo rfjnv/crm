@@ -10,6 +10,7 @@ import localizedFormat from 'dayjs/plugin/localizedFormat';
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
 import type { ClientNote } from '../types';
+import { getFirstName } from '../lib/name-utils';
 
 dayjs.extend(localizedFormat);
 dayjs.locale('ru');
@@ -141,7 +142,7 @@ export default function ClientNotesPanel({ clientId }: { clientId: string }) {
                     >
                       <Space direction="vertical" size={4} style={{ width: '100%' }}>
                         <Space wrap size={8}>
-                          <Typography.Text strong>{n.user.fullName}</Typography.Text>
+                          <Typography.Text strong>{getFirstName(n.user.fullName)}</Typography.Text>
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                             {dayjs(n.createdAt).format('HH:mm')}
                           </Typography.Text>

@@ -26,6 +26,7 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { clientsApi } from '../api/clients.api';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text } = Typography;
 
@@ -117,7 +118,7 @@ export default function DuplicateClientsPage() {
           )}
           {record.client1.manager && (
             <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-              {record.client1.manager.fullName}
+              {getFirstName(record.client1.manager.fullName)}
             </Tag>
           )}
         </Space>
@@ -143,7 +144,7 @@ export default function DuplicateClientsPage() {
           )}
           {record.client2.manager && (
             <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>
-              {record.client2.manager.fullName}
+              {getFirstName(record.client2.manager.fullName)}
             </Tag>
           )}
         </Space>
@@ -308,7 +309,7 @@ export default function DuplicateClientsPage() {
                   <Text strong>{keepClient.companyName}</Text>
                 </Link>
                 {keepClient.phone && <Text style={{ fontSize: 12 }}>{keepClient.phone}</Text>}
-                {keepClient.manager && <Tag color="blue">{keepClient.manager.fullName}</Tag>}
+                {keepClient.manager && <Tag color="blue">{getFirstName(keepClient.manager.fullName)}</Tag>}
               </Space>
             </Card>
 
@@ -347,7 +348,7 @@ export default function DuplicateClientsPage() {
                   <Text strong>{removeClient.companyName}</Text>
                 </Link>
                 {removeClient.phone && <Text style={{ fontSize: 12 }}>{removeClient.phone}</Text>}
-                {removeClient.manager && <Tag color="blue">{removeClient.manager.fullName}</Tag>}
+                {removeClient.manager && <Tag color="blue">{getFirstName(removeClient.manager.fullName)}</Tag>}
               </Space>
             </Card>
 

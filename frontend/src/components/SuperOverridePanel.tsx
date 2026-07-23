@@ -13,6 +13,7 @@ import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import DealStatusTag from './DealStatusTag';
 import { ClientCompanyDisplay } from './ClientCompanyDisplay';
 import type { Deal, Product, DealStatus, User, PaymentRecord, DealComment } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 const ALL_STATUSES: DealStatus[] = [
@@ -572,7 +573,7 @@ export default function SuperOverridePanel({
                   </Form.Item>
                   <Form.Item name="managerId" label="Менеджер">
                     <Select showSearch filterOption={smartFilterOption}
-                      options={(users ?? []).filter((u) => u.isActive).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
+                      options={(users ?? []).filter((u) => u.isActive).map((u) => ({ label: `${getFirstName(u.fullName)} (${u.role})`, value: u.id }))}
                     />
                   </Form.Item>
                   <Form.Item name="deliveryType" label="Тип доставки">
@@ -593,12 +594,12 @@ export default function SuperOverridePanel({
                   </Form.Item>
                   <Form.Item name="loadingAssigneeId" label="Грузил (исполнитель)">
                     <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
-                      options={(users ?? []).filter((u) => u.isActive && ['WAREHOUSE', 'DRIVER', 'LOADER'].includes(u.role)).map((u) => ({ label: `${u.fullName} (${u.role})`, value: u.id }))}
+                      options={(users ?? []).filter((u) => u.isActive && ['WAREHOUSE', 'DRIVER', 'LOADER'].includes(u.role)).map((u) => ({ label: `${getFirstName(u.fullName)} (${u.role})`, value: u.id }))}
                     />
                   </Form.Item>
                   <Form.Item name="deliveryDriverId" label="Водитель доставки">
                     <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
-                      options={(users ?? []).filter((u) => u.isActive && u.role === 'DRIVER').map((u) => ({ label: u.fullName, value: u.id }))}
+                      options={(users ?? []).filter((u) => u.isActive && u.role === 'DRIVER').map((u) => ({ label: getFirstName(u.fullName), value: u.id }))}
                     />
                   </Form.Item>
                 </div>

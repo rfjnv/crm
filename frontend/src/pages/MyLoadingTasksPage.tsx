@@ -11,6 +11,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 const deliveryColors: Record<string, string> = { SELF_PICKUP: 'blue', YANDEX: 'purple', DELIVERY: 'orange' };
@@ -22,7 +23,7 @@ function DeliveryTag({ type }: { type?: string | null }) {
 
 function TargetTag({ deal }: { deal: Deal }) {
   if (deal.deliveryType !== 'DELIVERY') return <Tag color="blue">Клиенту</Tag>;
-  if (deal.deliveryDriver) return <Tag color="green">Машина: {deal.deliveryDriver.fullName}</Tag>;
+  if (deal.deliveryDriver) return <Tag color="green">Машина: {getFirstName(deal.deliveryDriver.fullName)}</Tag>;
   return <span>—</span>;
 }
 
@@ -70,12 +71,12 @@ export default function MyLoadingTasksPage() {
           </div>
           {seeAll && (r as any).loadingAssignee && (
             <div style={{ marginTop: 4 }}>
-              <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag>
+              <Tag color="cyan">{getFirstName((r as any).loadingAssignee.fullName)}</Tag>
             </div>
           )}
           {r.deliveryType === 'DELIVERY' && r.deliveryDriver && (
             <div style={{ marginTop: 4, fontSize: 12 }}>
-              <Tag color="blue">{r.deliveryDriver.fullName}</Tag>
+              <Tag color="blue">{getFirstName(r.deliveryDriver.fullName)}</Tag>
               {r.vehicleNumber && <Typography.Text type="secondary"> {r.vehicleType} {r.vehicleNumber}</Typography.Text>}
             </div>
           )}
@@ -142,7 +143,7 @@ export default function MyLoadingTasksPage() {
                   </Descriptions.Item>
                   {r.deliveryType === 'DELIVERY' && r.deliveryDriver && (
                     <Descriptions.Item label="Загрузить в машину">
-                      <Tag color="blue">{r.deliveryDriver.fullName}</Tag>
+                      <Tag color="blue">{getFirstName(r.deliveryDriver.fullName)}</Tag>
                       {r.vehicleNumber && <> — {r.vehicleType} {r.vehicleNumber}</>}
                     </Descriptions.Item>
                   )}
@@ -163,7 +164,7 @@ export default function MyLoadingTasksPage() {
               },
               ...(seeAll ? [{
                 title: 'Исполнитель', key: 'assignee', width: 140,
-                render: (_: unknown, r: Deal) => r.loadingAssignee ? <Tag color="cyan">{(r as any).loadingAssignee.fullName}</Tag> : '—',
+                render: (_: unknown, r: Deal) => r.loadingAssignee ? <Tag color="cyan">{getFirstName((r as any).loadingAssignee.fullName)}</Tag> : '—',
               }] : []),
               {
                 title: 'Куда грузить', key: 'target', width: 180,

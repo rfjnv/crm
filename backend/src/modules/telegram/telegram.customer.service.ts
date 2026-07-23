@@ -2,6 +2,7 @@ import { DealStatus, Prisma, Role } from '@prisma/client';
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { getFirstName } from '../../lib/name-utils';
 import { pushService } from '../push/push.service';
 import { Lang, LANG_LABELS, t, customerStatusLabel } from './telegram.customer-i18n';
 
@@ -623,7 +624,7 @@ export class TelegramCustomerService {
 
     const keyboard: TelegramBot.InlineKeyboardButton[][] = pageManagers.map((manager) => [
       {
-        text: `👤 ${this.truncate(manager.fullName, 28)}`,
+        text: `👤 ${this.truncate(getFirstName(manager.fullName), 28)}`,
         callback_data: `manager:pick:${manager.id}`,
       },
     ]);
@@ -724,7 +725,7 @@ export class TelegramCustomerService {
         [
           notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
           `✨ <b>${t(lang, 'catalog.categoriesTitle')}</b>`,
-          selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(selectedManager.fullName) }) : t(lang, 'manager.notSelected'),
+          selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(getFirstName(selectedManager.fullName)) }) : t(lang, 'manager.notSelected'),
         ].filter(Boolean).join('\n'),
         {
           messageId,
@@ -801,7 +802,7 @@ export class TelegramCustomerService {
       [
         notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
         `📁 <b>${this.escapeHtml(session.currentCategory)}</b>`,
-        selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(selectedManager.fullName) }) : t(lang, 'manager.notSelected'),
+        selectedManager ? t(lang, 'manager.label', { name: this.escapeHtml(getFirstName(selectedManager.fullName)) }) : t(lang, 'manager.notSelected'),
         '',
         ...productLines,
         '',
@@ -1115,7 +1116,7 @@ export class TelegramCustomerService {
       [
         notice ? `<i>${this.escapeHtml(notice)}</i>` : '',
         `<b>${t(lang, 'cart.title')}</b>`,
-        manager ? t(lang, 'manager.label', { name: this.escapeHtml(manager.fullName) }) : t(lang, 'manager.notSelected'),
+        manager ? t(lang, 'manager.label', { name: this.escapeHtml(getFirstName(manager.fullName)) }) : t(lang, 'manager.notSelected'),
         '',
         ...rows,
         '',
@@ -1348,7 +1349,7 @@ export class TelegramCustomerService {
       [
         `<b>${t(lang, 'checkout.success.title')}</b>`,
         '',
-        t(lang, 'checkout.success.manager', { name: this.escapeHtml(manager.fullName) }),
+        t(lang, 'checkout.success.manager', { name: this.escapeHtml(getFirstName(manager.fullName)) }),
         t(lang, 'cart.total', { total: this.formatMoney(totalAmount) }),
         t(lang, 'checkout.success.status', { status: customerStatusLabel(lang, 'NEW') }),
         t(lang, 'checkout.success.note'),
@@ -1468,7 +1469,7 @@ export class TelegramCustomerService {
       const customerSession = this.getSession(customerChatId);
       const customerLang = await this.getLang(customerChatId, customerSession);
       const statusNote = contacted ? t(customerLang, 'checkout.success.note') : t(customerLang, 'manager.unavailable');
-      await bot.sendMessage(customerChatId, `${managerUser.fullName}: ${statusNote}`).catch(() => {});
+      await bot.sendMessage(customerChatId, `${getFirstName(managerUser.fullName)}: ${statusNote}`).catch(() => {});
     }
   }
 

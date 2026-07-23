@@ -18,6 +18,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import type { Deal, DealItem, PaymentRecord, PaymentStatus, UserRole } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import './AuditCheckPage.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
     },
     {
       title: 'Внёс', key: 'creator',
-      render: (_: unknown, r: PaymentRecord) => r.creator?.fullName ?? '—',
+      render: (_: unknown, r: PaymentRecord) => getFirstName(r.creator?.fullName) || '—',
     },
   ];
 
@@ -206,7 +207,7 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
       ) : (
         <>
           <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" style={{ marginBottom: 12 }}>
-            <Descriptions.Item label="Менеджер">{d.manager?.fullName ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Менеджер">{getFirstName(d.manager?.fullName) || '—'}</Descriptions.Item>
             <Descriptions.Item label="Способ оплаты">
               {d.paymentMethod
                 ? <Tag color={d.paymentMethod === 'DEBT' ? 'red' : 'blue'}>{PAYMENT_METHOD_LABELS[d.paymentMethod] ?? d.paymentMethod}</Tag>

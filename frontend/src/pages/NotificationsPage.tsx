@@ -9,6 +9,7 @@ import PushNotificationToggle from '../components/PushNotificationToggle';
 import TelegramLinkButton from '../components/TelegramLinkButton';
 import SystemNotificationsToggle from '../components/SystemNotificationsToggle';
 import type { AppNotification, NotificationSeverity } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -124,7 +125,7 @@ export default function NotificationsPage() {
                     </Typography.Paragraph>
                     {item.createdBy && (
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        От: {item.createdBy.fullName}
+                        От: {getFirstName(item.createdBy.fullName)}
                       </Typography.Text>
                     )}
                   </div>

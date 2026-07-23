@@ -18,6 +18,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { VAT_RATE } from '../utils/vat';
+import { getFirstName } from '../lib/name-utils';
 import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import dayjs from 'dayjs';
@@ -587,7 +588,7 @@ export default function DealCreatePage() {
                     <Space size={6} align="center">
                       <ClientCompanyDisplay client={c} />
                       {c.manager && (
-                        <Typography.Text type="secondary">({c.manager.fullName})</Typography.Text>
+                        <Typography.Text type="secondary">({getFirstName(c.manager.fullName)})</Typography.Text>
                       )}
                     </Space>
                   ),
@@ -615,7 +616,7 @@ export default function DealCreatePage() {
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Менеджер</Typography.Text>
-              <Typography.Text>{user?.fullName}</Typography.Text>
+              <Typography.Text>{getFirstName(user?.fullName)}</Typography.Text>
             </div>
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>

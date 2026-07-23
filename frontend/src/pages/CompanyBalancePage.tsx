@@ -27,6 +27,7 @@ import { usersApi } from '../api/users.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import { getFirstName } from '../lib/name-utils';
 
 function chartAxisLabelUZS(value: unknown): string {
   return formatUZS(Number(value));
@@ -71,7 +72,7 @@ export default function CompanyBalancePage() {
     .filter((u: { role: string; isActive: boolean }) =>
       ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
     )
-    .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+    .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
 
   const { data: companySettings } = useQuery({
     queryKey: ['company-settings'],
@@ -449,7 +450,7 @@ export default function CompanyBalancePage() {
                       title: 'Принял',
                       dataIndex: 'receivedBy',
                       width: 160,
-                      render: (u: { fullName: string } | null) => u?.fullName || '—',
+                      render: (u: { fullName: string } | null) => getFirstName(u?.fullName) || '—',
                     },
                     {
                       title: 'Примечание',

@@ -26,6 +26,7 @@ import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
+import { getFirstName } from '../lib/name-utils';
 import {
   notesBoardApi,
   type NotesBoardReminderState,
@@ -407,7 +408,7 @@ export default function ClientDetailPage() {
         title: 'Кто связался',
         key: 'author',
         width: 160,
-        render: (_: unknown, r: NotesBoardRow) => r.author.fullName,
+        render: (_: unknown, r: NotesBoardRow) => getFirstName(r.author.fullName),
       },
     ],
     [],
@@ -469,7 +470,7 @@ export default function ClientDetailPage() {
         title: 'Автор',
         key: 'author',
         width: 160,
-        render: (_: unknown, r: NotesBoardRow) => r.author.fullName,
+        render: (_: unknown, r: NotesBoardRow) => getFirstName(r.author.fullName),
       },
       {
         title: 'Правки',
@@ -716,7 +717,7 @@ export default function ClientDetailPage() {
         key: 'beforeAfter',
         render: (_: unknown, r: StockEventTableRow) => `${r.qtyBefore} → ${r.qtyAfter} ${r.product?.unit ?? ''}`.trim(),
       },
-      { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => v || '—' },
+      { title: 'Кто', dataIndex: ['author', 'fullName'], render: (v: string | undefined) => getFirstName(v) || '—' },
       {
         title: 'Сделка',
         dataIndex: ['sourceDeal', 'id'],
@@ -1015,7 +1016,7 @@ export default function ClientDetailPage() {
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '—' },
     { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
-    { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => v || '—' },
+    { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => getFirstName(v) || '—' },
     { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
   ];
 
@@ -1133,7 +1134,7 @@ export default function ClientDetailPage() {
                         ? `${client.latitude.toFixed(6)}, ${client.longitude.toFixed(6)}`
                         : '—'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Менеджер">{client.manager?.fullName}</Descriptions.Item>
+                    <Descriptions.Item label="Менеджер">{getFirstName(client.manager?.fullName)}</Descriptions.Item>
                     <Descriptions.Item label="Статус клиента">
                       {client.creditStatus === 'NEGATIVE'
                         ? 'Неактивный — нельзя в долг'

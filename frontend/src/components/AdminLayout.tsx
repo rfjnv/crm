@@ -18,6 +18,7 @@ import type { MenuProps } from 'antd';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { MARKETING_SITE_URL } from '../lib/marketingSite';
+import { getFirstName } from '../lib/name-utils';
 import logo from '../assets/logo.png';
 
 const { Header, Sider, Content } = AntLayout;
@@ -109,7 +110,7 @@ export default function AdminLayout() {
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed((v) => !v)}
             />
-            <Typography.Text type="secondary">{user?.login || user?.fullName}</Typography.Text>
+            <Typography.Text type="secondary">{user?.login || getFirstName(user?.fullName)}</Typography.Text>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Button type="link" href={MARKETING_SITE_URL} target="_blank" rel="noreferrer" icon={<GlobalOutlined />}>

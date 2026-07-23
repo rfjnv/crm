@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { getFirstName } from '../../lib/name-utils';
 import type { PushPayload } from '../push/push.service';
 import { registerTelegramAdminCallbacks } from './telegram-admin-callback.handler';
 import { createTelegramBot, registerWebhook } from './telegram-transport';
@@ -83,7 +84,7 @@ class TelegramService {
         });
 
         this.bot!.sendMessage(chatId,
-          `\u2705 \u0423\u0441\u043F\u0435\u0448\u043D\u043E \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u043E!\n\n\u0412\u044B \u0431\u0443\u0434\u0435\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F CRM \u043A\u0430\u043A <b>${user.fullName}</b>.\n\n\u0414\u043B\u044F \u043E\u0442\u0432\u044F\u0437\u043A\u0438 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435 /unlink`,
+          `\u2705 \u0423\u0441\u043F\u0435\u0448\u043D\u043E \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u043E!\n\n\u0412\u044B \u0431\u0443\u0434\u0435\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F CRM \u043A\u0430\u043A <b>${getFirstName(user.fullName)}</b>.\n\n\u0414\u043B\u044F \u043E\u0442\u0432\u044F\u0437\u043A\u0438 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435 /unlink`,
           { parse_mode: 'HTML' },
         );
       } catch {

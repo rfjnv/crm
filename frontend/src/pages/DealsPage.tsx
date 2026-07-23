@@ -12,6 +12,7 @@ import BackButton from '../components/BackButton';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -172,7 +173,7 @@ export default function DealsPage() {
         </Space>
       ),
     },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
     ...(isManager
       ? [{

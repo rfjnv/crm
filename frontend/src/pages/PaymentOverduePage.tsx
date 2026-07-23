@@ -27,6 +27,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS } from '../utils/currency';
 import { matchesSearch, smartFilterOption } from '../utils/translit';
 import type { PaymentOverdueBucket, PaymentOverdueDealRow } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import './PaymentOverduePage.css';
 
 const { Title, Text } = Typography;
@@ -536,7 +537,7 @@ export default function PaymentOverduePage() {
                 maxTagCount="responsive"
                 style={{ width: '100%' }}
                 value={listState.managerIds}
-                options={(data?.managers ?? []).map((m) => ({ value: m.id, label: m.fullName }))}
+                options={(data?.managers ?? []).map((m) => ({ value: m.id, label: getFirstName(m.fullName) }))}
                 filterOption={smartFilterOption}
                 onChange={(v) => patchState({ managerIds: v })}
               />

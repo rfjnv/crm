@@ -25,6 +25,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import type { Expense } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import { Link } from 'react-router-dom';
 
 const EXPENSE_CATEGORIES = [
@@ -249,7 +250,7 @@ export default function ExpensesPage() {
       title: 'Кем создано',
       dataIndex: ['creator', 'fullName'],
       width: 180,
-      render: (v: string) => v || '—',
+      render: (v: string) => getFirstName(v) || '—',
     },
     ...(canSeeActions
       ? [

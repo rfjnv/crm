@@ -12,6 +12,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { BroadcastTargets, UserRole, Deal } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
+import { getFirstName } from '../lib/name-utils';
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Супер Админ',
@@ -199,7 +200,7 @@ export default function BroadcastPage() {
                   filterOption={smartFilterOption}
                   placeholder="Выберите пользователей"
                   options={(users ?? []).filter((u) => u.isActive).map((u) => ({
-                    label: `${u.fullName} (${roleLabels[u.role] || u.role})`,
+                    label: `${getFirstName(u.fullName)} (${roleLabels[u.role] || u.role})`,
                     value: u.id,
                   }))}
                 />
@@ -265,7 +266,7 @@ export default function BroadcastPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                     {previewData.users.map((u) => (
                       <Tag key={u.id} color="blue">
-                        {u.fullName} ({roleLabels[u.role] || u.role})
+                        {getFirstName(u.fullName)} ({roleLabels[u.role] || u.role})
                       </Tag>
                     ))}
                   </div>
@@ -275,7 +276,7 @@ export default function BroadcastPage() {
                     pagination={false}
                     size="small"
                     columns={[
-                      { title: 'Имя', dataIndex: 'fullName' },
+                      { title: 'Имя', dataIndex: 'fullName', render: (v: string) => getFirstName(v) || v },
                       {
                         title: 'Роль',
                         dataIndex: 'role',
@@ -310,7 +311,7 @@ export default function BroadcastPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {lastSendResult.recipients.map((u) => (
                       <Tag key={u.id} color="green">
-                        {u.fullName} ({roleLabels[u.role] || u.role})
+                        {getFirstName(u.fullName)} ({roleLabels[u.role] || u.role})
                       </Tag>
                     ))}
                   </div>

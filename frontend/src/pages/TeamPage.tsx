@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/authStore';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 import { USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
 import type { User } from '../types';
+import { getFirstName } from '../lib/name-utils';
 
 /**
  * Команда — ФИО и медали (активные). Админы могут задать медаль здесь же.
@@ -193,6 +194,7 @@ export default function TeamPage() {
             dataIndex: 'fullName',
             key: 'fullName',
             ellipsis: true,
+            render: (v: string) => getFirstName(v) || v,
           },
           {
             title: 'Медаль',
@@ -253,7 +255,7 @@ export default function TeamPage() {
       />
 
       <Modal
-        title={medalUser ? `Медаль — ${medalUser.fullName}` : 'Медаль'}
+        title={medalUser ? `Медаль — ${getFirstName(medalUser.fullName)}` : 'Медаль'}
         open={!!medalUser}
         onCancel={closeMedalModal}
         onOk={() => form.submit()}
@@ -286,7 +288,7 @@ export default function TeamPage() {
       </Modal>
 
       <Modal
-        title={goalUser ? `Цели — ${goalUser.fullName}` : 'Цели'}
+        title={goalUser ? `Цели — ${getFirstName(goalUser.fullName)}` : 'Цели'}
         open={!!goalUser}
         onCancel={closeGoalModal}
         onOk={() => goalForm.submit()}

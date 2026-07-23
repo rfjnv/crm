@@ -27,6 +27,7 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { analyticsApi, type CallActivityRange, type CallActivityNote } from '../api/analytics.api';
 import { usersApi } from '../api/users.api';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text } = Typography;
 
@@ -89,7 +90,7 @@ export default function ContactMatrixPage() {
       [...users]
         .filter((u) => u.isActive)
         .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
-        .map((u) => ({ label: u.fullName, value: u.id })),
+        .map((u) => ({ label: getFirstName(u.fullName), value: u.id })),
     [users],
   );
 
@@ -234,7 +235,7 @@ export default function ContactMatrixPage() {
                     background: MANAGER_COLORS[i % MANAGER_COLORS.length],
                     verticalAlign: 'middle',
                   }} />
-                  <Text style={{ fontSize: 12 }}>{s.fullName}</Text>
+                  <Text style={{ fontSize: 12 }}>{getFirstName(s.fullName)}</Text>
                 </Space>
               ))}
             </Space>
@@ -338,7 +339,7 @@ export default function ContactMatrixPage() {
                                             borderRadius: 2, flexShrink: 0,
                                             background: managerColorMap.get(m.userId) ?? '#888',
                                           }} />
-                                          {m.fullName}: {m.count}
+                                          {getFirstName(m.fullName)}: {m.count}
                                         </div>
                                       ))}
                                     </div>

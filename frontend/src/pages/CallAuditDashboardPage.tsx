@@ -10,6 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiAssistantApi, type CallAuditSummary } from '../api/ai-assistant.api';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text } = Typography;
 
@@ -81,7 +82,7 @@ export default function CallAuditDashboardPage() {
       key: 'manager',
       render: (_: any, r: CallAuditSummary) => (
         <Space direction="vertical" size={0}>
-          <Text strong style={{ fontSize: 13 }}>{r.author.fullName}</Text>
+          <Text strong style={{ fontSize: 13 }}>{getFirstName(r.author.fullName)}</Text>
           {r.managerName && r.managerName !== r.author.fullName && (
             <Text type="secondary" style={{ fontSize: 12 }}>{r.managerName}</Text>
           )}

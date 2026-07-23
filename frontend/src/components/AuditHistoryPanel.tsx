@@ -8,6 +8,7 @@ import type { AuditLog, DealStatus } from '../types';
 import dayjs from 'dayjs';
 import { getAuditActionLabel } from '../lib/auditActionLabels';
 import { renderJsonDiff } from '../lib/auditDiff';
+import { getFirstName } from '../lib/name-utils';
 
 export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
   const { token: tk } = theme.useToken();
@@ -33,7 +34,7 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
           children: (
             <div style={isOverride ? { background: tk.colorErrorBg, padding: 8, borderRadius: 6, border: `1px solid ${tk.colorErrorBorder}` } : undefined}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Typography.Text strong>{entry.user?.fullName || '—'}</Typography.Text>
+                <Typography.Text strong>{getFirstName(entry.user?.fullName) || '—'}</Typography.Text>
                 {entry.user?.role && <Tag>{entry.user.role}</Tag>}
                 <Tag color={cfg.color}>{cfg.label}</Tag>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>

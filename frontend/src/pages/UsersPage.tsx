@@ -37,6 +37,7 @@ import type { User, Permission } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 import { USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Суперадмин',
@@ -311,7 +312,7 @@ export default function UsersPage() {
         ),
       },
       { title: 'Логин', dataIndex: 'login', width: 120 },
-      { title: 'ФИО', dataIndex: 'fullName', ellipsis: true },
+      { title: 'ФИО', dataIndex: 'fullName', ellipsis: true, render: (v: string) => getFirstName(v) || v },
       {
         title: 'Компания',
         key: 'company',
@@ -642,7 +643,7 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        title={kpiUser ? `KPI — ${kpiUser.fullName}` : 'KPI'}
+        title={kpiUser ? `KPI — ${getFirstName(kpiUser.fullName)}` : 'KPI'}
         open={!!kpiUser}
         onCancel={() => setKpiUser(null)}
         footer={null}

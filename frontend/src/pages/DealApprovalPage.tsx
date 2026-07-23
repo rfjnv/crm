@@ -11,6 +11,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
 import DealStatusTag from '../components/DealStatusTag';
 import type { Deal, PaymentStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -138,6 +139,7 @@ export default function DealApprovalPage() {
     {
       title: 'Менеджер',
       dataIndex: ['manager', 'fullName'],
+      render: (v: string) => getFirstName(v) || v,
     },
     {
       title: 'Сумма сделки',

@@ -6,6 +6,7 @@ import type { AuditLog } from '../types';
 import dayjs from 'dayjs';
 import { getAuditActionLabel } from '../lib/auditActionLabels';
 import { renderJsonDiff } from '../lib/auditDiff';
+import { getFirstName } from '../lib/name-utils';
 
 export default function ProductAuditHistoryPanel({ productId }: { productId?: string }) {
   const { token: tk } = theme.useToken();
@@ -28,7 +29,7 @@ export default function ProductAuditHistoryPanel({ productId }: { productId?: st
           children: (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Typography.Text strong>{entry.user?.fullName || '—'}</Typography.Text>
+                <Typography.Text strong>{getFirstName(entry.user?.fullName) || '—'}</Typography.Text>
                 {entry.user?.role && <Tag>{entry.user.role}</Tag>}
                 <Tag color={cfg.color}>{cfg.label}</Tag>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>

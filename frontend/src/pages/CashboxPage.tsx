@@ -19,6 +19,7 @@ import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
 type DebtStatus = 'all' | 'PARTIAL' | 'UNPAID';
@@ -290,7 +291,7 @@ export default function CashboxPage() {
       .filter((u: { role: string; isActive: boolean }) =>
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
-      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
   }, [users]);
 
   const debtorClients: ClientDebtRow[] = debtsData?.clients ?? [];
@@ -459,7 +460,7 @@ export default function CashboxPage() {
     {
       title: 'Менеджер',
       dataIndex: ['manager', 'fullName'],
-      render: (_: unknown, r: ActiveDealRow) => r.manager?.fullName ?? '—',
+      render: (_: unknown, r: ActiveDealRow) => getFirstName(r.manager?.fullName) || '—',
     },
     {
       title: 'Статус',
@@ -535,7 +536,7 @@ export default function CashboxPage() {
     {
       title: 'Менеджер',
       dataIndex: ['manager', 'fullName'],
-      render: (v: string | null) => v || '—',
+      render: (v: string | null) => getFirstName(v) || '—',
     },
     {
       title: 'Статус',
@@ -922,7 +923,7 @@ export default function CashboxPage() {
                     </div>
                     <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                       Сумма: {formatUZS(Number(deal.amount))} · Оплачено: {formatUZS(Number(deal.paidAmount))}
-                      {deal.manager?.fullName && ` · ${deal.manager.fullName}`}
+                      {deal.manager?.fullName && ` · ${getFirstName(deal.manager.fullName)}`}
                     </div>
                   </div>
                 );

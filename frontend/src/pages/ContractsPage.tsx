@@ -21,6 +21,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { getFirstName } from '../lib/name-utils';
 
 function getDefaultContractEndDate(start?: dayjs.Dayjs) {
   return dayjs(start ?? dayjs()).endOf('year');
@@ -581,7 +582,7 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
                   <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                     <span>Сделка: {p.deal?.title || p.dealId}</span>
                     {p.method && <span> · {p.method}</span>}
-                    <span> · {p.creator?.fullName}</span>
+                    <span> · {getFirstName(p.creator?.fullName)}</span>
                   </div>
                   {p.note && <div style={{ fontSize: 12, color: tk.colorTextTertiary }}>{p.note}</div>}
                 </div>

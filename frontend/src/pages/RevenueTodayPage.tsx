@@ -9,6 +9,7 @@ import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import type { RevenueTodayPayment } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 export default function RevenueTodayPage() {
   const isMobile = useIsMobile();
@@ -43,6 +44,7 @@ export default function RevenueTodayPage() {
     {
       title: 'Менеджер',
       dataIndex: ['creator', 'fullName'],
+      render: (v: string) => getFirstName(v) || v,
     },
     {
       title: 'Сумма',

@@ -11,6 +11,7 @@ import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
 import type { Deal } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 const paymentTypeLabels: Record<string, string> = {
@@ -134,7 +135,7 @@ export default function FinanceReviewPage() {
       key: 'meta',
       render: (_: unknown, deal: FinanceDeal) => (
         <div style={{ minWidth: 140 }}>
-          <div>{deal.manager?.fullName || '—'}</div>
+          <div>{getFirstName(deal.manager?.fullName) || '—'}</div>
           <div style={{ marginTop: 4 }}>
             <Typography.Text type="secondary">
               {dayjs(deal.createdAt).format('DD.MM.YYYY')}
@@ -201,7 +202,7 @@ export default function FinanceReviewPage() {
                   Долг клиента: {formatUZS(deal.clientDebt)}
                 </Typography.Text>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Менеджер: {deal.manager?.fullName || '—'} • {dayjs(deal.createdAt).format('DD.MM.YYYY')}
+                  Менеджер: {getFirstName(deal.manager?.fullName) || '—'} • {dayjs(deal.createdAt).format('DD.MM.YYYY')}
                 </Typography.Text>
               </div>
 

@@ -28,6 +28,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { attendanceApi } from '../api/attendance.api';
 import { usersApi } from '../api/users.api';
+import { getFirstName } from '../lib/name-utils';
 import { timepayApi } from '../api/timepay.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
@@ -120,7 +121,7 @@ export default function AttendancePage() {
   });
 
   const userOptions = useMemo(
-    () => (users ?? []).map((u) => ({ value: u.id, label: u.fullName })),
+    () => (users ?? []).map((u) => ({ value: u.id, label: getFirstName(u.fullName) })),
     [users],
   );
 
@@ -170,7 +171,7 @@ export default function AttendancePage() {
         <Space size={10}>
           <Avatar size={28} icon={<UserOutlined />}>{initials(r.user?.fullName)}</Avatar>
           <div>
-            <div>{r.user?.fullName ?? '—'}</div>
+            <div>{getFirstName(r.user?.fullName) || '—'}</div>
             {r.user?.department && (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.user.department}</Typography.Text>
             )}
@@ -286,7 +287,7 @@ export default function AttendancePage() {
                   <Space size={10}>
                     <Avatar size={32} icon={<UserOutlined />}>{initials(item.user?.fullName)}</Avatar>
                     <div>
-                      <Typography.Text strong>{item.user?.fullName ?? '—'}</Typography.Text>
+                      <Typography.Text strong>{getFirstName(item.user?.fullName) || '—'}</Typography.Text>
                       <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.date).format('DD.MM.YYYY')}</Typography.Text></div>
                     </div>
                   </Space>

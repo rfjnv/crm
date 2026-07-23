@@ -41,6 +41,7 @@ import { statusConfig } from '../components/DealStatusTag';
 import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
+import { getFirstName } from '../lib/name-utils';
 import { LEGEND_OPERATIONAL, TOOLTIP_OPERATIONAL_REVENUE } from '../constants/analyticsRevenueTooltips';
 import {
   ABC_TAG_COLORS,
@@ -1903,7 +1904,7 @@ export default function AnalyticsPage() {
         size="middle"
         scroll={{ x: 900 }}
         columns={[
-          { title: 'Менеджер', dataIndex: 'fullName', fixed: 'left' as const, width: 160 },
+          { title: 'Менеджер', dataIndex: 'fullName', fixed: 'left' as const, width: 160, render: (v: string) => getFirstName(v) || v },
           { title: 'Завершённых', dataIndex: 'completedCount', align: 'right' as const, width: 100 },
           { title: 'Общая сумма', dataIndex: 'totalRevenue', align: 'right' as const, render: (v: number) => formatUZS(v), width: 130 },
           {

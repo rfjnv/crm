@@ -27,6 +27,7 @@ import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import type { UserRole } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text } = Typography;
 
@@ -80,7 +81,7 @@ export default function CallActivityPage() {
       [...users]
         .filter((u) => u.isActive)
         .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'))
-        .map((u) => ({ label: u.fullName, value: u.id })),
+        .map((u) => ({ label: getFirstName(u.fullName), value: u.id })),
     [users],
   );
 
@@ -145,7 +146,7 @@ export default function CallActivityPage() {
             setManagerId((prev) => (prev === r.userId ? undefined : r.userId));
           }}
         >
-          {v}
+          {getFirstName(v)}
         </Button>
       ),
     },

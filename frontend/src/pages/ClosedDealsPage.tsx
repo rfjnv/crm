@@ -12,6 +12,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
 import type { Deal, PaymentStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { getFirstName } from '../lib/name-utils';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
@@ -65,7 +66,7 @@ export default function ClosedDealsPage() {
       .filter((u: { role: string; isActive: boolean }) =>
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
-      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
   }, [users]);
 
   const listFilters = useMemo(() => {
@@ -121,7 +122,7 @@ export default function ClosedDealsPage() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
     {
       title: 'Дата закрытия',
       key: 'closedAt',

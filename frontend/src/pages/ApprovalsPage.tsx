@@ -9,6 +9,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, DealStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 export default function ApprovalsPage() {
@@ -49,7 +50,7 @@ export default function ApprovalsPage() {
     { title: 'Статус', dataIndex: 'status', render: (s: Deal['status']) => <DealStatusTag status={s} /> },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Позиций', dataIndex: ['_count', 'items'], align: 'center' as const },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
     { title: 'Дата', dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
   ];
 
@@ -82,7 +83,7 @@ export default function ApprovalsPage() {
                 </div>
               </div>
               <div style={{ marginTop: 4 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{deal.manager?.fullName} · {dayjs(deal.createdAt).format('DD.MM.YYYY')}</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{getFirstName(deal.manager?.fullName)} · {dayjs(deal.createdAt).format('DD.MM.YYYY')}</Typography.Text>
               </div>
             </Card>
           )}

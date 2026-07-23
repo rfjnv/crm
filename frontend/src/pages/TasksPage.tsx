@@ -18,6 +18,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useThemeStore } from '../store/themeStore';
 import { smartFilterOption } from '../utils/translit';
 import type { Task, TaskChecklistItem, TaskStatus } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -313,7 +314,7 @@ export default function TasksPage() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {task.assignee?.fullName}
+            {getFirstName(task.assignee?.fullName)}
           </Typography.Text>
           {task.dueDate && (
             <Typography.Text
@@ -447,7 +448,7 @@ export default function TasksPage() {
         ) : (
           <Space size={6} wrap style={{ marginBottom: 4 }}>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {task.assignee?.fullName || 'Без исполнителя'}
+              {getFirstName(task.assignee?.fullName) || 'Без исполнителя'}
             </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
               {formatTaskAnchor(task)}
@@ -1107,7 +1108,7 @@ export default function TasksPage() {
                     showSearch
                     filterOption={smartFilterOption}
                     placeholder="Выберите сотрудников"
-                    options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
+                    options={users.filter((u) => u.isActive).map((u) => ({ label: getFirstName(u.fullName), value: u.id }))}
                   />
                 </Form.Item>
               ) : (
@@ -1123,7 +1124,7 @@ export default function TasksPage() {
                   disabled={!isAdmin || assignmentMode !== 'MANUAL'}
                   filterOption={smartFilterOption}
                   placeholder={assignmentMode === 'ALL' ? 'Задача будет создана для всех активных' : 'Выберите исполнителя'}
-                  options={users.filter((u) => u.isActive).map((u) => ({ label: u.fullName, value: u.id }))}
+                  options={users.filter((u) => u.isActive).map((u) => ({ label: getFirstName(u.fullName), value: u.id }))}
                 />
               </Form.Item>
               )}
@@ -1324,13 +1325,13 @@ export default function TasksPage() {
                 <Col xs={24} sm={12}>
                   <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                     <Typography.Text type="secondary">Исполнитель</Typography.Text>
-                    <div style={{ marginTop: 6 }}><Typography.Text strong>{detailTask.assignee?.fullName}</Typography.Text></div>
+                    <div style={{ marginTop: 6 }}><Typography.Text strong>{getFirstName(detailTask.assignee?.fullName)}</Typography.Text></div>
                   </div>
                 </Col>
                 <Col xs={24} sm={12}>
                   <div style={{ borderRadius: 18, padding: 14, background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}` }}>
                     <Typography.Text type="secondary">Постановщик</Typography.Text>
-                    <div style={{ marginTop: 6 }}><Typography.Text strong>{detailTask.createdBy?.fullName}</Typography.Text></div>
+                    <div style={{ marginTop: 6 }}><Typography.Text strong>{getFirstName(detailTask.createdBy?.fullName)}</Typography.Text></div>
                   </div>
                 </Col>
                 <Col xs={24} sm={12}>
@@ -1430,7 +1431,7 @@ export default function TasksPage() {
                   <Typography.Text type="secondary">Утверждено</Typography.Text>
                   <div style={{ marginTop: 6 }}>
                     <Typography.Text>
-                      {detailTask.approvedBy.fullName} — {dayjs(detailTask.approvedAt).format('DD.MM.YYYY HH:mm')}
+                      {getFirstName(detailTask.approvedBy.fullName)} — {dayjs(detailTask.approvedAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
                   </div>
                 </div>

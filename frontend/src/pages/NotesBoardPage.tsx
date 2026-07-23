@@ -41,6 +41,7 @@ import {
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
 import { smartFilterOption } from '../utils/translit';
+import { getFirstName } from '../lib/name-utils';
 
 type CallResult = 'ANSWERED' | 'NO_ANSWER';
 type DateRangeValue = [Dayjs | null, Dayjs | null] | null;
@@ -781,7 +782,7 @@ export default function NotesBoardPage() {
             title: 'Автор',
             key: 'author',
             width: 170,
-            render: (_v, r) => r.author.fullName,
+            render: (_v, r) => getFirstName(r.author.fullName),
           },
           {
             title: 'Правка',
@@ -1031,7 +1032,7 @@ export default function NotesBoardPage() {
                 <Typography.Paragraph style={{ margin: '8px 0' }}>{item.comment}</Typography.Paragraph>
                 <Divider style={{ margin: '8px 0' }} />
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')} · Автор заметки: {item.noteAuthor.fullName}
+                  {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')} · Автор заметки: {getFirstName(item.noteAuthor.fullName)}
                 </Typography.Text>
               </Card>
             ))}

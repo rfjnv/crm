@@ -25,6 +25,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL
   ? new URL(import.meta.env.VITE_API_URL).origin
@@ -476,7 +477,7 @@ export default function ContractDetailPage() {
                   <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
                     <span>Сделка: {p.deal?.title || p.dealId}</span>
                     {p.method && <span> · {p.method}</span>}
-                    <span> · {p.creator?.fullName}</span>
+                    <span> · {getFirstName(p.creator?.fullName)}</span>
                   </div>
                   {p.note && <div style={{ fontSize: 12, color: tk.colorTextTertiary }}>{p.note}</div>}
                 </div>
@@ -528,7 +529,7 @@ export default function ContractDetailPage() {
                       )}
                     </div>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      {formatSize(att.size)} · {att.uploader?.fullName} · {dayjs(att.createdAt).format('DD.MM.YYYY HH:mm')}
+                      {formatSize(att.size)} · {getFirstName(att.uploader?.fullName)} · {dayjs(att.createdAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
                   </div>
                 </Space>

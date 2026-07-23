@@ -13,6 +13,7 @@ import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
 import { buildClientSearchHaystack, matchesSearch, smartFilterOption } from '../utils/translit';
+import { getFirstName } from '../lib/name-utils';
 
 type ClientSortMode = 'name_asc' | 'name_desc' | 'created_desc' | 'contact_desc';
 
@@ -332,7 +333,7 @@ export default function ClientsPage() {
     { title: 'Контакт', dataIndex: 'contactName' },
     { title: 'Телефон', dataIndex: 'phone' },
     { title: 'Telegram', dataIndex: 'email' },
-    { title: 'Менеджер', dataIndex: ['manager', 'fullName'] },
+    { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
     {
       title: 'Последний контакт',
       key: 'lastContact',
@@ -453,7 +454,7 @@ export default function ClientsPage() {
             filterOption={smartFilterOption}
             placeholder={isEditMode ? undefined : 'По умолчанию — вы'}
             allowClear={!isEditMode}
-            options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }))}
+            options={(users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: getFirstName(u.fullName), value: u.id }))}
           />
         </Form.Item>
       )}
@@ -533,7 +534,7 @@ export default function ClientsPage() {
               style={{ width: isMobile ? '100%' : 200 }}
               value={managerFilter}
               onChange={(v) => patchListParams({ manager: v, page: 1 })}
-              options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: u.fullName, value: u.id }))}
+              options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: getFirstName(u.fullName), value: u.id }))}
             />
           )}
           <Select<ClientSortMode>
@@ -584,7 +585,7 @@ export default function ClientsPage() {
                   )}
                   {client.manager?.fullName && (
                     <div style={{ marginTop: 2 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{client.manager.fullName}</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{getFirstName(client.manager.fullName)}</Typography.Text>
                     </div>
                   )}
                   {client.lastNote?.createdAt && (

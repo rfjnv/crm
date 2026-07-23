@@ -71,6 +71,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
+import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -811,7 +812,7 @@ export default function Layout() {
               placement="topLeft"
             >
               <Button type="text" className={APP_BUTTON} icon={<IdcardOutlined />} block style={{ justifyContent: 'flex-start' }}>
-                {user?.fullName ?? 'Профиль'}
+                {getFirstName(user?.fullName) || 'Профиль'}
                 <DownOutlined style={{ fontSize: 10, marginLeft: 'auto' }} />
               </Button>
             </Dropdown>
@@ -898,7 +899,7 @@ export default function Layout() {
               >
                 <Button type="text" className={APP_BUTTON} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 280 }}>
                   <Typography.Text strong ellipsis style={{ maxWidth: 220 }}>
-                    {user?.fullName ?? 'Профиль'}
+                    {getFirstName(user?.fullName) || 'Профиль'}
                   </Typography.Text>
                   <DownOutlined style={{ fontSize: 10 }} />
                 </Button>

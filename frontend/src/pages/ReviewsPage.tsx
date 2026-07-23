@@ -6,6 +6,7 @@ import { reviewsApi } from '../api/reviews.api';
 import type { ReviewRow } from '../api/reviews.api';
 import dayjs from 'dayjs';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title } = Typography;
 
@@ -60,7 +61,7 @@ export default function ReviewsPage() {
     {
       title: 'Менеджер',
       key: 'manager',
-      render: (_: unknown, record: ReviewRow) => record.deal.manager.fullName,
+      render: (_: unknown, record: ReviewRow) => getFirstName(record.deal.manager.fullName),
       width: 200,
     },
     {

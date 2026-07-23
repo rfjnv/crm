@@ -29,6 +29,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
+import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -924,7 +925,7 @@ export default function DealDetailPage() {
         {firstResponded?.confirmedAt && (
           <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
             Ответ: {dayjs(firstResponded.confirmedAt).format('DD.MM.YYYY HH:mm')}
-            {firstResponded?.confirmer && ` — ${firstResponded.confirmer.fullName}`}
+            {firstResponded?.confirmer && ` — ${getFirstName(firstResponded.confirmer.fullName)}`}
           </Typography.Text>
         )}
       </Card>
@@ -948,7 +949,7 @@ export default function DealDetailPage() {
         </Descriptions>
         <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
           Оформлено: {dayjs(deal.shipment.shippedAt).format('DD.MM.YYYY HH:mm')}
-          {deal.shipment.user && ` — ${deal.shipment.user.fullName}`}
+          {deal.shipment.user && ` — ${getFirstName(deal.shipment.user.fullName)}`}
         </Typography.Text>
       </Card>
     );
@@ -1039,15 +1040,15 @@ export default function DealDetailPage() {
                     showSearch
                     optionFilterProp="label"
                     options={(() => {
-                      const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }));
+                      const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: getFirstName(u.fullName), value: u.id }));
                       if (deal.managerId && !opts.some((o) => o.value === deal.managerId)) {
-                        opts.push({ label: deal.manager?.fullName ?? deal.managerId, value: deal.managerId });
+                        opts.push({ label: getFirstName(deal.manager?.fullName) || deal.managerId, value: deal.managerId });
                       }
                       return opts;
                     })()}
                   />
                 ) : (
-                  deal.manager?.fullName
+                  getFirstName(deal.manager?.fullName)
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="Сумма">
@@ -1253,7 +1254,7 @@ export default function DealDetailPage() {
                       {(p.method || p.creator?.fullName) && (
                         <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
                           {p.method && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{paymentMethodLabels[p.method] || p.method}</Typography.Text>}
-                          {p.creator?.fullName && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.creator.fullName}</Typography.Text>}
+                          {p.creator?.fullName && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{getFirstName(p.creator.fullName)}</Typography.Text>}
                         </div>
                       )}
                       {p.note && <div style={{ marginTop: 4 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.note}</Typography.Text></div>}
@@ -1385,7 +1386,7 @@ export default function DealDetailPage() {
                   <List.Item.Meta
                     title={
                       <div>
-                        <Typography.Text strong>{item.author?.fullName}</Typography.Text>
+                        <Typography.Text strong>{getFirstName(item.author?.fullName)}</Typography.Text>
                         <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
                           {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
                         </Typography.Text>
@@ -1424,7 +1425,7 @@ export default function DealDetailPage() {
                           color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
                           children: (
                             <div>
-                              <Typography.Text strong style={{ fontSize: 12 }}>{entry.user?.fullName}</Typography.Text>{' '}
+                              <Typography.Text strong style={{ fontSize: 12 }}>{getFirstName(entry.user?.fullName)}</Typography.Text>{' '}
                               <Tag style={{ fontSize: 11 }}>{entry.action}</Tag>
                               <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
                               {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
@@ -1484,15 +1485,15 @@ export default function DealDetailPage() {
                             showSearch
                             optionFilterProp="label"
                             options={(() => {
-                              const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: u.fullName, value: u.id }));
+                              const opts = (users ?? []).filter((u) => u.isActive && u.role === 'MANAGER').map((u) => ({ label: getFirstName(u.fullName), value: u.id }));
                               if (deal.managerId && !opts.some((o) => o.value === deal.managerId)) {
-                                opts.push({ label: deal.manager?.fullName ?? deal.managerId, value: deal.managerId });
+                                opts.push({ label: getFirstName(deal.manager?.fullName) || deal.managerId, value: deal.managerId });
                               }
                               return opts;
                             })()}
                           />
                         ) : (
-                          deal.manager?.fullName
+                          getFirstName(deal.manager?.fullName)
                         )}
                       </Descriptions.Item>
                       <Descriptions.Item label="Сумма">
@@ -1665,7 +1666,7 @@ export default function DealDetailPage() {
                             { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
                             { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v ? (paymentMethodLabels[v] || v) : '—' },
                             { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
-                            { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => v || '—' },
+                            { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => getFirstName(v) || '—' },
                             { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
                             ...(!isReadOnly && (isAdmin || role === 'ACCOUNTANT') ? [{
                               title: '', key: 'actions', width: 80,
@@ -1752,7 +1753,7 @@ export default function DealDetailPage() {
                           <List.Item.Meta
                             title={
                               <Space>
-                                <Typography.Text strong>{item.author?.fullName}</Typography.Text>
+                                <Typography.Text strong>{getFirstName(item.author?.fullName)}</Typography.Text>
                                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                                   {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
                                 </Typography.Text>
@@ -1790,7 +1791,7 @@ export default function DealDetailPage() {
                           color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
                           children: (
                             <div>
-                              <Typography.Text strong>{entry.user?.fullName}</Typography.Text>{' '}
+                              <Typography.Text strong>{getFirstName(entry.user?.fullName)}</Typography.Text>{' '}
                               <Tag>{entry.action}</Tag>{' '}
                               <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
                               {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (

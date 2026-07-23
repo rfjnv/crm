@@ -25,6 +25,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
+import { getFirstName } from '../lib/name-utils';
 
 const { RangePicker } = DatePicker;
 
@@ -151,7 +152,7 @@ export default function ProfilePage() {
                     </Col>
                     <Col flex="auto">
                       <Typography.Title level={4} style={{ margin: 0 }}>
-                        {user.fullName}
+                        {getFirstName(user.fullName)}
                       </Typography.Title>
                       <Typography.Text type="secondary">{user.login}</Typography.Text>
                     </Col>

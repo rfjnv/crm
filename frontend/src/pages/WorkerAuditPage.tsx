@@ -16,6 +16,7 @@ import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { workerReviewsApi } from '../api/workerReviews.api';
 import type { EnrichedWorkerSummary, WorkerReview, WorkerBadge } from '../types';
+import { getFirstName } from '../lib/name-utils';
 
 const { Title, Text, Paragraph } = Typography;
 const { useToken } = theme;
@@ -129,7 +130,7 @@ function WorkerCard({
             </div>
             <div>
               <Text strong style={{ fontSize: 13, display: 'block', lineHeight: 1.3 }}>
-                {worker.fullName}
+                {getFirstName(worker.fullName)}
               </Text>
               <Text type="secondary" style={{ fontSize: 11 }}>
                 {ROLE_LABELS[worker.role] ?? worker.role}
@@ -344,7 +345,7 @@ export default function WorkerAuditPage() {
           },
           {
             title: 'Лидер команды',
-            value: data?.topWorker?.fullName ?? '—',
+            value: getFirstName(data?.topWorker?.fullName) || '—',
             prefix: <TrophyOutlined style={{ color: '#faad14' }} />,
           },
           {
@@ -398,7 +399,7 @@ export default function WorkerAuditPage() {
                   >
                     <div style={{ fontSize: 32, lineHeight: 1 }}>{medal.emoji}</div>
                     <Text strong style={{ display: 'block', marginTop: 6, fontSize: 14 }}>
-                      {w.fullName}
+                      {getFirstName(w.fullName)}
                     </Text>
                     <div style={{ margin: '6px 0' }}>
                       <Rate disabled allowHalf value={w.avgRating ?? 0} style={{ fontSize: 13 }} />
@@ -491,7 +492,7 @@ export default function WorkerAuditPage() {
           workerInModal
             ? <Space>
                 <UserOutlined />
-                <span>{workerInModal.fullName}</span>
+                <span>{getFirstName(workerInModal.fullName)}</span>
                 {workerInModal.rank && <RankMedal rank={workerInModal.rank} />}
               </Space>
             : 'История оценок'
@@ -537,7 +538,7 @@ export default function WorkerAuditPage() {
                         <Text style={{ fontSize: 12 }}>"{review.comment}"</Text>
                       )}
                       <Text type="secondary" style={{ fontSize: 11 }}>
-                        {review.reviewer.fullName} · {dayjs(review.createdAt).format('DD.MM.YYYY HH:mm')}
+                        {getFirstName(review.reviewer.fullName)} · {dayjs(review.createdAt).format('DD.MM.YYYY HH:mm')}
                       </Text>
                     </Space>
                     <Space size={2}>
@@ -568,8 +569,8 @@ export default function WorkerAuditPage() {
         cancelText="Отмена"
         confirmLoading={createMutation.isPending || updateMutation.isPending}
         title={editingReview
-          ? `Редактировать — ${selectedWorker?.fullName}`
-          : `Новая оценка — ${selectedWorker?.fullName}`}
+          ? `Редактировать — ${getFirstName(selectedWorker?.fullName)}`
+          : `Новая оценка — ${getFirstName(selectedWorker?.fullName)}`}
         width={420}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
