@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Statistic, Row, Col, Tag, Space, Segmented,
   Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker, List, Empty,
+  Drawer, Badge,
 } from 'antd';
-import { DollarOutlined } from '@ant-design/icons';
+import { DollarOutlined, FilterOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { financeApi, type CashboxPayment, type ActiveDealRow } from '../api/finance.api';
@@ -50,6 +51,9 @@ export default function CashboxPage() {
   const [method, setMethod] = useState<string>();
   const [paymentStatus, setPaymentStatus] = useState<string>();
   const [entryType, setEntryType] = useState<'DEBT_COLLECTION' | 'SALE_PAYMENT'>();
+  const [paymentsFilterOpen, setPaymentsFilterOpen] = useState(false);
+  const [debtsFilterOpen, setDebtsFilterOpen] = useState(false);
+  const [activeFilterOpen, setActiveFilterOpen] = useState(false);
   const { token: tk } = theme.useToken();
 
   // Debtors tab state
@@ -574,19 +578,10 @@ export default function CashboxPage() {
         {
           key: 'payments',
           label: 'Платежи',
-          children: (
-            <>
-              <Space wrap style={{ marginBottom: 16 }}>
-                <Segmented
-                  value={period}
-                  onChange={(v) => setPeriod(v as string)}
-                  options={[
-                    { label: 'Вчера', value: 'yesterday' },
-                    { label: 'День', value: 'day' },
-                    { label: 'Неделя', value: 'week' },
-                    { label: 'Месяц', value: 'month' },
-                  ]}
-                />
+          children: (() => {
+            const paymentsFilterCount = [clientId, method, paymentStatus, entryType].filter(Boolean).length;
+            const paymentFilterFields = (
+              <Space direction={isMobile ? 'vertical' : 'horizontal'} wrap style={{ width: isMobile ? '100%' : undefined }}>
                 <Select
                   allowClear
                   showSearch
@@ -642,6 +637,53 @@ export default function CashboxPage() {
                     { label: 'Оплата продажи', value: 'SALE_PAYMENT' },
                   ]}
                 />
+              </Space>
+            );
+            return (
+            <>
+              <Space wrap style={{ marginBottom: 16, width: isMobile ? '100%' : undefined }}>
+                <Segmented
+                  value={period}
+                  onChange={(v) => setPeriod(v as string)}
+                  block={isMobile}
+                  style={isMobile ? { width: '100%' } : undefined}
+                  options={[
+                    { label: 'Вчера', value: 'yesterday' },
+                    { label: 'День', value: 'day' },
+                    { label: 'Неделя', value: 'week' },
+                    { label: 'Месяц', value: 'month' },
+                  ]}
+                />
+                {isMobile ? (
+                  <>
+                    <Badge count={paymentsFilterCount} size="small">
+                      <Button icon={<FilterOutlined />} onClick={() => setPaymentsFilterOpen(true)}>
+                        Фильтры
+                      </Button>
+                    </Badge>
+                    <Drawer
+                      title="Фильтры"
+                      placement="bottom"
+                      height="auto"
+                      open={paymentsFilterOpen}
+                      onClose={() => setPaymentsFilterOpen(false)}
+                    >
+                      {paymentFilterFields}
+                      <Button
+                        block
+                        style={{ marginTop: 16 }}
+                        onClick={() => {
+                          setClientId(undefined);
+                          setMethod(undefined);
+                          setPaymentStatus(undefined);
+                          setEntryType(undefined);
+                        }}
+                      >
+                        Сбросить фильтры
+                      </Button>
+                    </Drawer>
+                  </>
+                ) : paymentFilterFields}
               </Space>
 
               {/* Summary cards */}
@@ -749,25 +791,51 @@ export default function CashboxPage() {
                 />
               )}
             </>
-          ),
+            );
+          })(),
         },
         {
           key: 'active',
           label: `Активные${activeDealsData !== undefined ? ` (${activeDealsData.count})` : ''}`,
-          children: (
+          children: (() => {
+            const activeFilterCount = managerId ? 1 : 0;
+            const managerSelect = (
+              <Select
+                value={managerId}
+                onChange={(v) => setManagerId(v)}
+                allowClear
+                placeholder="Менеджер"
+                style={{ width: isMobile ? '100%' : 200 }}
+                options={managers}
+              />
+            );
+            return (
             <>
               <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                 Сделки не в статусе «Закрыта»: сумма, оплаты и остаток по каждой сделке.
               </Typography.Paragraph>
               <Space wrap style={{ marginBottom: 16 }}>
-                <Select
-                  value={managerId}
-                  onChange={(v) => setManagerId(v)}
-                  allowClear
-                  placeholder="Менеджер"
-                  style={{ width: isMobile ? '100%' : 200 }}
-                  options={managers}
-                />
+                {isMobile ? (
+                  <>
+                    <Badge count={activeFilterCount} size="small">
+                      <Button icon={<FilterOutlined />} onClick={() => setActiveFilterOpen(true)}>
+                        Фильтры
+                      </Button>
+                    </Badge>
+                    <Drawer
+                      title="Фильтры"
+                      placement="bottom"
+                      height="auto"
+                      open={activeFilterOpen}
+                      onClose={() => setActiveFilterOpen(false)}
+                    >
+                      {managerSelect}
+                      <Button block style={{ marginTop: 16 }} onClick={() => setManagerId(undefined)}>
+                        Сбросить фильтры
+                      </Button>
+                    </Drawer>
+                  </>
+                ) : managerSelect}
               </Space>
               <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
                 <Col xs={24} sm={8}>
@@ -857,46 +925,20 @@ export default function CashboxPage() {
                 />
               )}
             </>
-          ),
+            );
+          })(),
         },
         {
           key: 'debtors',
           label: `Долги${debtorClients.length > 0 ? ` (${debtorClients.length})` : ''}`,
-          children: (
-            <>
-              <div
-                style={{
-                  marginBottom: 16,
-                  display: 'flex',
-                  flexDirection: isMobile ? 'column' : 'row',
-                  justifyContent: 'space-between',
-                  alignItems: isMobile ? 'stretch' : 'center',
-                  gap: isMobile ? 12 : 0,
-                }}
-              >
-                <Input.Search
-                  placeholder="Поиск по клиенту или менеджеру..."
-                  style={{ width: isMobile ? '100%' : 300 }}
-                  allowClear
-                  value={debtSearch}
-                  onChange={(e) => setDebtSearch(e.target.value)}
-                />
-                {debtsData?.totals && (
-                  <Space size={isMobile ? 4 : 'large'} direction={isMobile ? 'vertical' : 'horizontal'}>
-                    <Typography.Text type="secondary">
-                      Клиентов: {debtsData.totals.clientCount}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      Общий долг: <span style={{ color: tk.colorError }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      Переплаты: <span style={{ color: tk.colorSuccess }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
-                    </Typography.Text>
-                  </Space>
-                )}
-              </div>
-
-              <Space wrap style={{ marginBottom: 16 }}>
+          children: (() => {
+            const debtsFilterCount =
+              (debtRange !== 'all' ? 1 : 0) +
+              (debtStatus !== 'all' ? 1 : 0) +
+              (managerId ? 1 : 0) +
+              (sortBy !== 'debt_desc' ? 1 : 0);
+            const debtsFilterFields = (
+              <Space direction={isMobile ? 'vertical' : 'horizontal'} wrap style={{ width: isMobile ? '100%' : undefined }}>
                 <Select
                   value={debtRange}
                   onChange={(v) => setDebtRange(v)}
@@ -949,6 +991,74 @@ export default function CashboxPage() {
                     { value: 'oldest_unpaid', label: 'Сортировка: старые неоплаты' },
                   ]}
                 />
+              </Space>
+            );
+            return (
+            <>
+              <div
+                style={{
+                  marginBottom: 16,
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  justifyContent: 'space-between',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? 12 : 0,
+                }}
+              >
+                <Input.Search
+                  placeholder="Поиск по клиенту или менеджеру..."
+                  style={{ width: isMobile ? '100%' : 300 }}
+                  allowClear
+                  value={debtSearch}
+                  onChange={(e) => setDebtSearch(e.target.value)}
+                />
+                {debtsData?.totals && (
+                  <Space size={isMobile ? 4 : 'large'} direction={isMobile ? 'vertical' : 'horizontal'}>
+                    <Typography.Text type="secondary">
+                      Клиентов: {debtsData.totals.clientCount}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      Общий долг: <span style={{ color: tk.colorError }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      Переплаты: <span style={{ color: tk.colorSuccess }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
+                    </Typography.Text>
+                  </Space>
+                )}
+              </div>
+
+              <Space wrap style={{ marginBottom: 16 }}>
+                {isMobile ? (
+                  <>
+                    <Badge count={debtsFilterCount} size="small">
+                      <Button icon={<FilterOutlined />} onClick={() => setDebtsFilterOpen(true)}>
+                        Фильтры
+                      </Button>
+                    </Badge>
+                    <Drawer
+                      title="Фильтры"
+                      placement="bottom"
+                      height="auto"
+                      open={debtsFilterOpen}
+                      onClose={() => setDebtsFilterOpen(false)}
+                    >
+                      {debtsFilterFields}
+                      <Button
+                        block
+                        style={{ marginTop: 16 }}
+                        onClick={() => {
+                          setDebtRange('all');
+                          setCustomMin(null);
+                          setDebtStatus('all');
+                          setManagerId(undefined);
+                          setSortBy('debt_desc');
+                        }}
+                      >
+                        Сбросить фильтры
+                      </Button>
+                    </Drawer>
+                  </>
+                ) : debtsFilterFields}
               </Space>
 
               {isMobile ? (
@@ -1018,7 +1128,8 @@ export default function CashboxPage() {
                 />
               )}
             </>
-          ),
+            );
+          })(),
         },
       ]} />
 
