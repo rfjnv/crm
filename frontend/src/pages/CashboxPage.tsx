@@ -454,7 +454,7 @@ export default function CashboxPage() {
       dataIndex: 'remaining',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v > 0 ? '#fa8c16' : tk.colorTextSecondary }}>{formatUZS(v)}</span>
+        <span style={{ color: v > 0 ? tk.colorWarning : tk.colorTextSecondary }}>{formatUZS(v)}</span>
       ),
     },
     {
@@ -474,7 +474,7 @@ export default function CashboxPage() {
       width: 130,
       fixed: 'right' as const,
       render: (_: unknown, r: ActiveDealRow) => (
-        <Button type="link" size="small" onClick={() => openActivePayModal(r)}>
+        <Button type="link" size={isMobile ? 'middle' : 'small'} onClick={() => openActivePayModal(r)}>
           Внести платёж
         </Button>
       ),
@@ -497,7 +497,7 @@ export default function CashboxPage() {
       dataIndex: 'totalDebt',
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ color: v > 0 ? '#ff4d4f' : undefined }}>{formatUZS(v)}</span>
+        <span style={{ color: v > 0 ? tk.colorError : undefined }}>{formatUZS(v)}</span>
       ),
     },
     {
@@ -506,7 +506,7 @@ export default function CashboxPage() {
       align: 'right' as const,
       render: (v: number) =>
         v > 0
-          ? <span style={{ color: '#52c41a' }}>{formatUZS(v)}</span>
+          ? <span style={{ color: tk.colorSuccess }}>{formatUZS(v)}</span>
           : <Typography.Text type="secondary">{'—'}</Typography.Text>,
     },
     {
@@ -551,7 +551,7 @@ export default function CashboxPage() {
       key: 'action',
       width: 120,
       render: (_: unknown, r: ClientDebtRow) => r.totalDebt > 0 ? (
-        <Button type="primary" size="small" icon={<DollarOutlined />} onClick={() => openPayModal(r)}>
+        <Button type="primary" size={isMobile ? 'middle' : 'small'} icon={<DollarOutlined />} onClick={() => openPayModal(r)}>
           Оплатить
         </Button>
       ) : null,
@@ -646,22 +646,22 @@ export default function CashboxPage() {
 
               {/* Summary cards */}
               <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                <Col span={6}>
+                <Col xs={12} sm={12} md={6}>
                   <Card size="small">
                     <Statistic title="Итого за период" value={data?.totals.totalAmount ?? 0} formatter={(v) => formatUZS(Number(v))} />
                   </Card>
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={12} md={6}>
                   <Card size="small">
-                    <Statistic title="Итого за сегодня" value={data?.totals.todayTotal ?? 0} formatter={(v) => formatUZS(Number(v))} valueStyle={{ color: '#52c41a' }} />
+                    <Statistic title="Итого за сегодня" value={data?.totals.todayTotal ?? 0} formatter={(v) => formatUZS(Number(v))} valueStyle={{ color: tk.colorSuccess }} />
                   </Card>
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={12} md={6}>
                   <Card size="small">
                     <Statistic title="Количество оплат" value={data?.totals.count ?? 0} />
                   </Card>
                 </Col>
-                <Col span={6}>
+                <Col xs={24} sm={24} md={6}>
                   <Card size="small">
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>По методам</Typography.Text>
                     {data?.byMethod.map((m) => (
@@ -733,7 +733,7 @@ export default function CashboxPage() {
                       title="Оплачено"
                       value={activeDealsData?.totals.totalPaid ?? 0}
                       formatter={(v) => formatUZS(Number(v))}
-                      valueStyle={{ color: '#52c41a' }}
+                      valueStyle={{ color: tk.colorSuccess }}
                     />
                   </Card>
                 </Col>
@@ -743,7 +743,7 @@ export default function CashboxPage() {
                       title="Остаток к оплате"
                       value={activeDealsData?.totals.totalRemaining ?? 0}
                       formatter={(v) => formatUZS(Number(v))}
-                      valueStyle={{ color: '#fa8c16' }}
+                      valueStyle={{ color: tk.colorWarning }}
                     />
                   </Card>
                 </Col>
@@ -781,10 +781,10 @@ export default function CashboxPage() {
                       Клиентов: {debtsData.totals.clientCount}
                     </Typography.Text>
                     <Typography.Text type="secondary">
-                      Общий долг: <span style={{ color: '#ff4d4f' }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
+                      Общий долг: <span style={{ color: tk.colorError }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
                     </Typography.Text>
                     <Typography.Text type="secondary">
-                      Переплаты: <span style={{ color: '#52c41a' }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
+                      Переплаты: <span style={{ color: tk.colorSuccess }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
                     </Typography.Text>
                   </Space>
                 )}
@@ -794,7 +794,7 @@ export default function CashboxPage() {
                 <Select
                   value={debtRange}
                   onChange={(v) => setDebtRange(v)}
-                  style={{ width: 180 }}
+                  style={{ width: isMobile ? '100%' : 180 }}
                   options={[
                     { value: 'all', label: 'Сумма долга: все' },
                     { value: '1m', label: '> 1 000 000' },
@@ -806,7 +806,7 @@ export default function CashboxPage() {
                 {debtRange === 'custom' && (
                   <InputNumber
                     placeholder="Мин. сумма"
-                    style={{ width: 160 }}
+                    style={{ width: isMobile ? '100%' : 160 }}
                     min={0}
                     step={100000}
                     value={customMin}
@@ -818,7 +818,7 @@ export default function CashboxPage() {
                 <Select
                   value={debtStatus}
                   onChange={(v) => setDebtStatus(v)}
-                  style={{ width: 180 }}
+                  style={{ width: isMobile ? '100%' : 180 }}
                   options={[
                     { value: 'all', label: 'Статус: все' },
                     { value: 'PARTIAL', label: 'Частичная оплата' },
@@ -853,6 +853,7 @@ export default function CashboxPage() {
                 pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                 size="middle"
                 bordered={false}
+                scroll={{ x: 960 }}
                 locale={{ emptyText: 'Нет задолженностей' }}
               />
             </>
@@ -895,7 +896,7 @@ export default function CashboxPage() {
               Выберите сделку для оплаты:
             </Typography.Text>
 
-            <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+            <div role="radiogroup" aria-label="Выберите сделку" style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
               {clientDeals.length === 0 && (
                 <Typography.Text type="secondary">Нет неоплаченных сделок</Typography.Text>
               )}
@@ -905,7 +906,16 @@ export default function CashboxPage() {
                 return (
                   <div
                     key={deal.id}
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={0}
                     onClick={() => setSelectedDealId(deal.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedDealId(deal.id);
+                      }
+                    }}
                     style={{
                       padding: '8px 12px',
                       border: `1px solid ${isSelected ? tk.colorPrimary : tk.colorBorderSecondary}`,
@@ -917,7 +927,7 @@ export default function CashboxPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>{deal.title || deal.id.slice(0, 8)}</span>
-                      <span style={{ color: '#ff4d4f' }}>
+                      <span style={{ color: tk.colorError }}>
                         Долг: {formatUZS(debt)}
                       </span>
                     </div>
@@ -1006,19 +1016,19 @@ export default function CashboxPage() {
               <span style={{ color: tk.colorTextSecondary }}>Уже оплачено</span>
               <span style={{ textAlign: 'right' }}>{formatUZS(activePayContext.deal.paidAmount)}</span>
               <span style={{ color: tk.colorTextSecondary }}>Остаток по сделке</span>
-              <span style={{ textAlign: 'right', color: activePayContext.deal.remaining > 0 ? '#fa8c16' : undefined }}>
+              <span style={{ textAlign: 'right', color: activePayContext.deal.remaining > 0 ? tk.colorWarning : undefined }}>
                 {formatUZS(activePayContext.deal.remaining)}
               </span>
               {activePayContext.deal.overpaymentOnThisDeal > 0 && (
                 <>
                   <span style={{ color: tk.colorTextSecondary }}>Переплата на этой сделке</span>
-                  <span style={{ textAlign: 'right', color: '#52c41a' }}>
+                  <span style={{ textAlign: 'right', color: tk.colorSuccess }}>
                     {formatUZS(activePayContext.deal.overpaymentOnThisDeal)}
                   </span>
                 </>
               )}
               <span style={{ color: tk.colorTextSecondary }}>Переплата на других сделках</span>
-              <span style={{ textAlign: 'right', color: activePayContext.creditFromOtherDeals > 0 ? '#52c41a' : undefined }}>
+              <span style={{ textAlign: 'right', color: activePayContext.creditFromOtherDeals > 0 ? tk.colorSuccess : undefined }}>
                 {activePayContext.creditFromOtherDeals > 0 ? formatUZS(activePayContext.creditFromOtherDeals) : '—'}
               </span>
             </div>
@@ -1119,7 +1129,7 @@ export default function CashboxPage() {
                   <div>{activePayPreview.label}: <strong>{formatUZS(activePayPreview.applied)}</strong></div>
                   <div>Остаток по сделке после: <strong>{formatUZS(activePayPreview.newRemaining)}</strong></div>
                   {activePayPreview.dealOverAfter > 0 && (
-                    <div style={{ color: '#52c41a' }}>
+                    <div style={{ color: tk.colorSuccess }}>
                       Переплата на сделке: <strong>{formatUZS(activePayPreview.dealOverAfter)}</strong>
                     </div>
                   )}
