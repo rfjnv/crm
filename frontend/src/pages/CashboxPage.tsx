@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Statistic, Row, Col, Tag, Space, Segmented,
-  Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker,
+  Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker, List, Empty,
 } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
@@ -677,25 +677,77 @@ export default function CashboxPage() {
                 </Col>
               </Row>
 
-              <Table
-                dataSource={data?.payments}
-                columns={paymentColumnsWithEntryType}
-                rowKey="id"
-                loading={isLoading}
-                pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
-                size="middle"
-                bordered={false}
-                scroll={{ x: 600 }}
-                summary={() => data?.payments && data.payments.length > 0 ? (
-                  <Table.Summary.Row>
-                    <Table.Summary.Cell index={0} colSpan={3}>Итого</Table.Summary.Cell>
-                    <Table.Summary.Cell index={3} align="right">
-                      {formatUZS(data.totals.totalAmount)}
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={4} colSpan={6} />
-                  </Table.Summary.Row>
-                ) : undefined}
-              />
+              {isMobile ? (
+                <List
+                  loading={isLoading}
+                  dataSource={data?.payments ?? []}
+                  locale={{ emptyText: <Empty description="Нет данных" /> }}
+                  pagination={{ pageSize: 20, size: 'small' }}
+                  renderItem={(p: CashboxPayment) => {
+                    const statusCfg = paymentStatusLabels[p.dealPaymentStatus] || { color: 'default', label: p.dealPaymentStatus };
+                    return (
+                      <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <Link to={`/deals/${p.dealId}`} style={{ fontWeight: 600 }}>
+                              {p.dealTitle || p.dealId.slice(0, 8)}
+                            </Link>
+                            <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
+                              {dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap' }}>
+                            {formatUZS(p.amount)}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <ClientCompanyDisplay
+                            client={{ id: p.clientId, companyName: p.clientName, isSvip: p.clientIsSvip }}
+                            link
+                          />
+                        </div>
+                        <Space size={4} wrap style={{ marginTop: 8 }}>
+                          {p.method && <Tag>{methodLabels[p.method] || p.method}</Tag>}
+                          <Tag color={p.entryType === 'DEBT_COLLECTION' ? 'gold' : 'blue'}>
+                            {p.entryType === 'DEBT_COLLECTION' ? 'Приход долга' : 'Оплата продажи'}
+                          </Tag>
+                          <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
+                        </Space>
+                        {(p.manager || p.receivedBy) && (
+                          <div style={{ fontSize: 12, color: tk.colorTextSecondary, marginTop: 6 }}>
+                            {p.manager && <>Менеджер: {p.manager}</>}
+                            {p.manager && p.receivedBy && ' · '}
+                            {p.receivedBy && <>Принял: {p.receivedBy}</>}
+                          </div>
+                        )}
+                        {p.note && (
+                          <div style={{ fontSize: 12, marginTop: 4 }}>{p.note}</div>
+                        )}
+                      </Card>
+                    );
+                  }}
+                />
+              ) : (
+                <Table
+                  dataSource={data?.payments}
+                  columns={paymentColumnsWithEntryType}
+                  rowKey="id"
+                  loading={isLoading}
+                  pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
+                  size="middle"
+                  bordered={false}
+                  scroll={{ x: 600 }}
+                  summary={() => data?.payments && data.payments.length > 0 ? (
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0} colSpan={3}>Итого</Table.Summary.Cell>
+                      <Table.Summary.Cell index={3} align="right">
+                        {formatUZS(data.totals.totalAmount)}
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={4} colSpan={6} />
+                    </Table.Summary.Row>
+                  ) : undefined}
+                />
+              )}
             </>
           ),
         },
@@ -748,17 +800,62 @@ export default function CashboxPage() {
                   </Card>
                 </Col>
               </Row>
-              <Table
-                dataSource={activeDealsData?.deals}
-                columns={activeDealColumns}
-                rowKey="dealId"
-                loading={activeDealsLoading}
-                pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['20', '30', '50', '100'] }}
-                size="middle"
-                bordered={false}
-                scroll={{ x: 860 }}
-                locale={{ emptyText: 'Нет активных сделок' }}
-              />
+              {isMobile ? (
+                <List
+                  loading={activeDealsLoading}
+                  dataSource={activeDealsData?.deals ?? []}
+                  locale={{ emptyText: <Empty description="Нет активных сделок" /> }}
+                  pagination={{ pageSize: 20, size: 'small' }}
+                  renderItem={(r: ActiveDealRow) => (
+                    <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <Link to={`/deals/${r.dealId}`} style={{ fontWeight: 600 }}>
+                            {r.title || r.dealId.slice(0, 8)}
+                          </Link>
+                          <div style={{ marginTop: 4 }}>
+                            <ClientCompanyDisplay
+                              client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }}
+                              link
+                            />
+                          </div>
+                        </div>
+                        <DealStatusTag status={r.status as DealStatus} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
+                        <span style={{ color: tk.colorTextSecondary }}>Сумма сделки</span>
+                        <span style={{ textAlign: 'right' }}>{formatUZS(r.amount)}</span>
+                        <span style={{ color: tk.colorTextSecondary }}>Оплачено</span>
+                        <span style={{ textAlign: 'right' }}>{formatUZS(r.paidAmount)}</span>
+                        <span style={{ color: tk.colorTextSecondary }}>Остаток</span>
+                        <span style={{ textAlign: 'right', color: r.remaining > 0 ? tk.colorWarning : tk.colorTextSecondary }}>
+                          {formatUZS(r.remaining)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {getFirstName(r.manager?.fullName) || '—'}
+                        </Typography.Text>
+                        <Button type="primary" size="middle" onClick={() => openActivePayModal(r)}>
+                          Внести платёж
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+                />
+              ) : (
+                <Table
+                  dataSource={activeDealsData?.deals}
+                  columns={activeDealColumns}
+                  rowKey="dealId"
+                  loading={activeDealsLoading}
+                  pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['20', '30', '50', '100'] }}
+                  size="middle"
+                  bordered={false}
+                  scroll={{ x: 860 }}
+                  locale={{ emptyText: 'Нет активных сделок' }}
+                />
+              )}
             </>
           ),
         },
@@ -767,7 +864,16 @@ export default function CashboxPage() {
           label: `Долги${debtorClients.length > 0 ? ` (${debtorClients.length})` : ''}`,
           children: (
             <>
-              <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{
+                  marginBottom: 16,
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  justifyContent: 'space-between',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? 12 : 0,
+                }}
+              >
                 <Input.Search
                   placeholder="Поиск по клиенту или менеджеру..."
                   style={{ width: isMobile ? '100%' : 300 }}
@@ -776,7 +882,7 @@ export default function CashboxPage() {
                   onChange={(e) => setDebtSearch(e.target.value)}
                 />
                 {debtsData?.totals && (
-                  <Space size="large">
+                  <Space size={isMobile ? 4 : 'large'} direction={isMobile ? 'vertical' : 'horizontal'}>
                     <Typography.Text type="secondary">
                       Клиентов: {debtsData.totals.clientCount}
                     </Typography.Text>
@@ -845,17 +951,72 @@ export default function CashboxPage() {
                 />
               </Space>
 
-              <Table
-                dataSource={filteredDebtors}
-                columns={debtorColumns}
-                rowKey="clientId"
-                loading={debtsLoading}
-                pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
-                size="middle"
-                bordered={false}
-                scroll={{ x: 960 }}
-                locale={{ emptyText: 'Нет задолженностей' }}
-              />
+              {isMobile ? (
+                <List
+                  loading={debtsLoading}
+                  dataSource={filteredDebtors}
+                  locale={{ emptyText: <Empty description="Нет задолженностей" /> }}
+                  pagination={{ pageSize: 20, size: 'small' }}
+                  renderItem={(r: ClientDebtRow) => {
+                    const pct = r.totalAmount > 0 ? Math.round((r.totalPaid / r.totalAmount) * 100) : 0;
+                    return (
+                      <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <ClientCompanyDisplay
+                            client={{ id: r.clientId, companyName: r.clientName, isSvip: r.isSvip }}
+                            link
+                          />
+                          {r.totalDebt > 0 && (
+                            <Button type="primary" size="middle" icon={<DollarOutlined />} onClick={() => openPayModal(r)}>
+                              Оплатить
+                            </Button>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
+                          <span style={{ color: tk.colorTextSecondary }}>Общий долг</span>
+                          <span style={{ textAlign: 'right', color: r.totalDebt > 0 ? tk.colorError : undefined }}>
+                            {formatUZS(r.totalDebt)}
+                          </span>
+                          <span style={{ color: tk.colorTextSecondary }}>Переплата</span>
+                          <span style={{ textAlign: 'right', color: r.prepayment > 0 ? tk.colorSuccess : undefined }}>
+                            {r.prepayment > 0 ? formatUZS(r.prepayment) : '—'}
+                          </span>
+                          <span style={{ color: tk.colorTextSecondary }}>Оплачено</span>
+                          <span style={{ textAlign: 'right', color: tk.colorTextSecondary }}>
+                            {formatUZS(r.totalPaid)} ({pct}%)
+                          </span>
+                          <span style={{ color: tk.colorTextSecondary }}>Сделок</span>
+                          <span style={{ textAlign: 'right' }}>{r.dealsCount}</span>
+                          <span style={{ color: tk.colorTextSecondary }}>Последний платёж</span>
+                          <span style={{ textAlign: 'right' }}>
+                            {r.lastPaymentDate ? dayjs(r.lastPaymentDate).format('DD.MM.YYYY') : '—'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {getFirstName(r.manager?.fullName) || '—'}
+                          </Typography.Text>
+                          {r.paymentStatus === 'PARTIAL'
+                            ? <Tag color="orange">Частично</Tag>
+                            : <Tag color="default">Не оплачено</Tag>}
+                        </div>
+                      </Card>
+                    );
+                  }}
+                />
+              ) : (
+                <Table
+                  dataSource={filteredDebtors}
+                  columns={debtorColumns}
+                  rowKey="clientId"
+                  loading={debtsLoading}
+                  pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
+                  size="middle"
+                  bordered={false}
+                  scroll={{ x: 960 }}
+                  locale={{ emptyText: 'Нет задолженностей' }}
+                />
+              )}
             </>
           ),
         },
