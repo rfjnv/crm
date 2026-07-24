@@ -11,6 +11,17 @@ import { telegramService } from '../telegram/telegram.service';
  * на часовой пояс сервера (Ташкент → −5ч). При восстановлении сдвиг закреплялся бы в базе,
  * причём величина сдвига зависела бы от машины, где запускают восстановление.
  */
+const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/** YYYY-MM-DD по Ташкенту, а не по UTC-часовому поясу сервера. */
+function tashkentTodayYmd(): string {
+  const t = new Date(Date.now() + TASHKENT_OFFSET_MS);
+  const y = t.getUTCFullYear();
+  const m = String(t.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(t.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 const TIMESTAMP_OIDS = new Set([1082, 1114, 1184]); // date, timestamp, timestamptz
 const rawDateTypes = {
   getTypeParser(oid: number, format?: unknown) {
@@ -74,7 +85,7 @@ export async function generateDatabaseBackup(): Promise<BackupResult> {
     const { data, tableCount, rowCount } = await dumpAllTables();
     const json = JSON.stringify({ generatedAt: new Date().toISOString(), tables: data });
     const buffer = gzipSync(Buffer.from(json, 'utf-8'));
-    const ymd = new Date().toISOString().slice(0, 10);
+    const ymd = tashkentTodayYmd();
     return { ok: true, buffer, filename: `crm-backup-${ymd}.json.gz`, tableCount, rowCount };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

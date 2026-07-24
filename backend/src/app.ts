@@ -59,7 +59,7 @@ import vedMapRoutes from './modules/foreign-trade/ved-map.routes';
 import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import telephonyRoutes from './modules/telephony/telephony.routes';
 import companiesRoutes from './modules/companies/companies.routes';
-import dbBackupRoutes from './modules/backup/db-backup.routes';
+import dbBackupRoutes, { internalBackupRoutes } from './modules/backup/db-backup.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
 import './modules/timepay/timepay.scheduler';
@@ -121,6 +121,7 @@ app.get('/api/health', async (_req, res) => {
 /** Только отладочные маршруты под SUPER_ADMIN — не монтировать на весь `/api`, иначе ломаются POST /auth/login и прочее без Bearer. */
 app.use('/api/debug', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
 app.use('/api/backup', authenticate, authorize('SUPER_ADMIN'), dbBackupRoutes);
+app.use('/api/internal/backup', internalBackupRoutes);
 app.use('/api/internal/reports', internalReportsRoutes);
 
 // Public routes (no auth)
