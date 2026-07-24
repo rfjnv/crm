@@ -87,6 +87,7 @@ class TelegramService {
           `\u2705 \u0423\u0441\u043F\u0435\u0448\u043D\u043E \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u043E!\n\n\u0412\u044B \u0431\u0443\u0434\u0435\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F CRM \u043A\u0430\u043A <b>${getFirstName(user.fullName)}</b>.\n\n\u0414\u043B\u044F \u043E\u0442\u0432\u044F\u0437\u043A\u0438 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435 /unlink`,
           { parse_mode: 'HTML' },
         );
+        void this.ensureChatMenuButton(chatId);
       } catch {
         this.bot!.sendMessage(chatId, '\u274C \u0422\u043E\u043A\u0435\u043D \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 CRM \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D \u0438\u043B\u0438 \u0438\u0441\u0442\u0451\u043A. \u041F\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u0432 CRM \u0438 \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u0441\u0441\u044B\u043B\u043A\u0443 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438.');
       }
@@ -98,6 +99,7 @@ class TelegramService {
         '\u{1F44B} \u042D\u0442\u043E \u0431\u043E\u0442 CRM Polygraph Business.\n\n\u0414\u043B\u044F \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 \u043F\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u0432 CRM \u2192 \u0423\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F \u2192 "\u041F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C Telegram".',
         { parse_mode: 'HTML' },
       );
+      void this.ensureChatMenuButton(msg.chat.id);
     });
 
     // /unlink
@@ -139,6 +141,26 @@ class TelegramService {
       } else {
         console.error('[Telegram] Кнопка Web App так и не установилась после 5 попыток.');
       }
+    }
+  }
+
+  /**
+   * Telegram позволяет переопределить кнопку меню для КОНКРЕТНОГО чата — если такое
+   * переопределение когда-то возникло (например, старое ручное вмешательство), глобальный
+   * дефолт из setupWebAppMenuButton() для этого чата просто не будет виден. Поэтому при
+   * каждом /start явно выставляем кнопку именно для чата пользователя, а не только глобально.
+   */
+  private async ensureChatMenuButton(chatId: number): Promise<void> {
+    if (!this.bot) return;
+    const url = config.telegram.crmUrl;
+    if (!url.startsWith('https://')) return;
+    try {
+      await this.bot.setChatMenuButton({
+        chat_id: chatId,
+        menu_button: { type: 'web_app', text: 'Открыть CRM', web_app: { url } },
+      });
+    } catch (err) {
+      console.error(`[Telegram] ensureChatMenuButton failed for chat ${chatId}:`, (err as Error).message);
     }
   }
 
