@@ -383,29 +383,23 @@ export default function DealCreatePage() {
   }
 
   /** Первая (главная) ячейка позиции — сразу после товара:
-   * ламинация → рулоны и кг друг под другом, каждое поле со своим заголовком; Spray Powder → выбор
-   * микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
+   * ламинация → рулоны и кг рядом в один компактный ряд (порядок фиксирован: сначала рулоны,
+   * потом кг), Spray Powder → выбор микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
   function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-          <div>
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Рулоны *</Typography.Text>
-            <InputNumber
-              min={1}
-              step={1}
-              precision={0}
-              placeholder="Кол-во рулонов"
-              style={{ width: '100%' }}
-              value={parseRollCount(item.requestComment)}
-              onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
-            />
-          </div>
-          <div>
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Кг</Typography.Text>
-            <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кол-во (кг)" />
-          </div>
-        </Space>
+        <Space.Compact style={{ width: '100%' }}>
+          <InputNumber
+            min={1}
+            step={1}
+            precision={0}
+            placeholder="Рул."
+            style={{ width: '50%' }}
+            value={parseRollCount(item.requestComment)}
+            onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+          />
+          <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кг" style={{ width: '50%' }} />
+        </Space.Compact>
       );
     }
     if (p?.name === SPRAY_POWDER_NAME) {
@@ -866,7 +860,7 @@ export default function DealCreatePage() {
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3 }}>Товар</th>
-                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130 }}>Кол-во</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150 }}>Кол-во</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150, textAlign: 'right' }}>Цена (UZS)</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>Сумма</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, width: 100 }} />
