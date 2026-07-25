@@ -316,10 +316,18 @@ export default function HistoryAnalyticsPage() {
     ).sort((a, b) => a - b);
 
     return months.map((month) => {
-      const row: Record<string, number> = {};
+      const row: Record<string, number | null> = {};
       ALL_YEARS.forEach((y, i) => {
         const rec = yearMaps[i].get(month);
         row[`y${y}`] = yoyMetric === 'revenue' ? Number(rec?.revenue ?? 0) : Number(rec?.collected ?? 0);
+      });
+      ALL_YEARS.forEach((y, i) => {
+        if (i === 0) return;
+        const prevY = ALL_YEARS[i - 1];
+        const cur = Number(row[`y${y}`] ?? 0);
+        const prev = Number(row[`y${prevY}`] ?? 0);
+        row[`d${y}`] = cur - prev;
+        row[`p${y}`] = prev > 0 ? ((cur - prev) / prev) * 100 : null;
       });
       return { key: month, month, ...row };
     });
@@ -792,7 +800,7 @@ export default function HistoryAnalyticsPage() {
             dataSource={allYearsRows}
             size="small"
             pagination={false}
-            scroll={{ x: 700 }}
+            scroll={{ x: 100 + ALL_YEARS.length * 220 }}
             columns={[
               {
                 title: 'Месяц',
@@ -801,29 +809,84 @@ export default function HistoryAnalyticsPage() {
                 width: 100,
                 render: (m: number) => MONTH_LABELS[m] || `${m}`,
               },
-              ...ALL_YEARS.map((y) => ({
-                title: String(y),
-                dataIndex: `y${y}`,
-                key: `y${y}`,
-                align: 'right' as const,
-                render: (v: number) => fmtNum(v ?? 0),
-              })),
+              ...ALL_YEARS.flatMap((y, i) => {
+                const yearCol = {
+                  title: String(y),
+                  dataIndex: `y${y}`,
+                  key: `y${y}`,
+                  align: 'right' as const,
+                  render: (v: number) => fmtNum(v ?? 0),
+                };
+                if (i === 0) return [yearCol];
+                return [
+                  yearCol,
+                  {
+                    title: 'Разница',
+                    dataIndex: `d${y}`,
+                    key: `d${y}`,
+                    align: 'right' as const,
+                    render: (v: number) => (
+                      <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                        {v >= 0 ? '+' : ''}{fmtNum(v)}
+                      </span>
+                    ),
+                  },
+                  {
+                    title: '%',
+                    dataIndex: `p${y}`,
+                    key: `p${y}`,
+                    width: 110,
+                    align: 'right' as const,
+                    render: (v: number | null) => {
+                      if (v == null) return <span style={{ color: token.colorTextSecondary }}>—</span>;
+                      return (
+                        <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                          {v >= 0 ? '+' : ''}{v.toFixed(1)}%
+                        </span>
+                      );
+                    },
+                  },
+                ];
+              }),
             ]}
-            summary={(rows) => (
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0}>
-                  <Text strong>Итого</Text>
-                </Table.Summary.Cell>
-                {ALL_YEARS.map((y, i) => {
-                  const total = rows.reduce((s, r) => s + Number((r as Record<string, number>)[`y${y}`] || 0), 0);
-                  return (
-                    <Table.Summary.Cell key={y} index={i + 1} align="right">
-                      <Text strong>{fmtNum(total)}</Text>
-                    </Table.Summary.Cell>
-                  );
-                })}
-              </Table.Summary.Row>
-            )}
+            summary={(rows) => {
+              const totals: Record<string, number> = {};
+              ALL_YEARS.forEach((y) => {
+                totals[`y${y}`] = rows.reduce((s, r) => s + Number((r as Record<string, number>)[`y${y}`] || 0), 0);
+              });
+              return (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0}>
+                    <Text strong>Итого</Text>
+                  </Table.Summary.Cell>
+                  {ALL_YEARS.flatMap((y, i) => {
+                    const cells = [
+                      <Table.Summary.Cell key={`y${y}`} index={0} align="right">
+                        <Text strong>{fmtNum(totals[`y${y}`])}</Text>
+                      </Table.Summary.Cell>,
+                    ];
+                    if (i > 0) {
+                      const prevY = ALL_YEARS[i - 1];
+                      const totalDelta = totals[`y${y}`] - totals[`y${prevY}`];
+                      const totalDeltaPct = totals[`y${prevY}`] > 0 ? (totalDelta / totals[`y${prevY}`]) * 100 : null;
+                      cells.push(
+                        <Table.Summary.Cell key={`d${y}`} index={0} align="right">
+                          <Text strong style={{ color: totalDelta >= 0 ? token.colorSuccess : token.colorError }}>
+                            {totalDelta >= 0 ? '+' : ''}{fmtNum(totalDelta)}
+                          </Text>
+                        </Table.Summary.Cell>,
+                        <Table.Summary.Cell key={`p${y}`} index={0} align="right">
+                          <Text strong style={{ color: (totalDeltaPct ?? 0) >= 0 ? token.colorSuccess : token.colorError }}>
+                            {totalDeltaPct == null ? '—' : `${totalDeltaPct >= 0 ? '+' : ''}${totalDeltaPct.toFixed(1)}%`}
+                          </Text>
+                        </Table.Summary.Cell>,
+                      );
+                    }
+                    return cells;
+                  })}
+                </Table.Summary.Row>
+              );
+            }}
           />
         ) : (
           <Table
