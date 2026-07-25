@@ -48,7 +48,7 @@ export async function sendDailyClosedDealsToWarehouse(): Promise<{
     throw new AppError(400, 'Не задан TELEGRAM_GROUP_WAREHOUSE_CHAT_ID');
   }
 
-  const { from, to } = closedDealsReportService.getYesterdayRange();
+  const { from, to } = closedDealsReportService.getTodayRange();
   const report = await closedDealsReportService.buildReport(from, to);
   const sendDate = closedDealsReportService.getTodayTashkentYmd();
   const fileName = `${formatDdMmYyyyByTashkent(sendDate)}.csv`;

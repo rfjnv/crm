@@ -247,6 +247,12 @@ class ClosedDealsReportService {
     return { from: day, to: day };
   }
 
+  /** Сегодняшний день по Ташкенту — отчёт в 20:00 показывает сделки, закрытые сегодня. */
+  getTodayRange(): { from: string; to: string } {
+    const day = this.getTodayTashkentYmd();
+    return { from: day, to: day };
+  }
+
   getTodayTashkentYmd(): string {
     const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET_MS);
     return formatYmd(nowTashkent);
