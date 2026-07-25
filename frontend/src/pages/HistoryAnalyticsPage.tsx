@@ -1,5 +1,5 @@
 import { useState, useMemo, type CSSProperties, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
@@ -130,6 +130,7 @@ export default function HistoryAnalyticsPage() {
   const [dqOpTypeFilter, setDqOpTypeFilter] = useState<string[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [yoyMetric, setYoyMetric] = useState<'revenue' | 'collected'>('revenue');
+  const [yoyMode, setYoyMode] = useState<'prevYear' | 'allYears'>('prevYear');
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
@@ -153,6 +154,19 @@ export default function HistoryAnalyticsPage() {
     queryFn: () => analyticsApi.getHistory(prevYear),
     enabled: prevYear >= 2024,
     staleTime: historyStaleMs,
+  });
+
+  const ALL_YEARS = useMemo(
+    () => Array.from({ length: new Date().getFullYear() - 2024 + 1 }, (_, i) => 2024 + i),
+    [],
+  );
+  const allYearsQueries = useQueries({
+    queries: ALL_YEARS.map((y) => ({
+      queryKey: ['analytics-history', y],
+      queryFn: () => analyticsApi.getHistory(y),
+      enabled: yoyMode === 'allYears',
+      staleTime: historyStaleMs,
+    })),
   });
 
   const needExtended = activeTab === 'analytics' || activeTab === 'segments';
@@ -290,6 +304,26 @@ export default function HistoryAnalyticsPage() {
       };
     });
   }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric]);
+
+  const allYearsRows = useMemo(() => {
+    if (yoyMode !== 'allYears') return [];
+    const yearMaps = ALL_YEARS.map((_, i) => {
+      const yData = allYearsQueries[i]?.data;
+      return new Map((yData?.monthlyTrend || []).map((m) => [m.month, m]));
+    });
+    const months = Array.from(
+      new Set<number>(yearMaps.flatMap((m) => Array.from(m.keys()))),
+    ).sort((a, b) => a - b);
+
+    return months.map((month) => {
+      const row: Record<string, number> = {};
+      ALL_YEARS.forEach((y, i) => {
+        const rec = yearMaps[i].get(month);
+        row[`y${y}`] = yoyMetric === 'revenue' ? Number(rec?.revenue ?? 0) : Number(rec?.collected ?? 0);
+      });
+      return { key: month, month, ...row };
+    });
+  }, [yoyMode, yoyMetric, allYearsQueries, ALL_YEARS]);
 
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
@@ -727,105 +761,156 @@ export default function HistoryAnalyticsPage() {
       </Card>
 
       <Card
-        title={`Сравнение с ${prevYear} годом`}
+        title={yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
         size="small"
         style={{ marginBottom: 16 }}
         extra={
-          <Segmented
-            size="small"
-            value={yoyMetric}
-            onChange={(v) => setYoyMetric(v as 'revenue' | 'collected')}
-            options={[
-              { label: 'Выручка', value: 'revenue' },
-              { label: 'Оплаты', value: 'collected' },
-            ]}
-          />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Segmented
+              size="small"
+              value={yoyMode}
+              onChange={(v) => setYoyMode(v as 'prevYear' | 'allYears')}
+              options={[
+                { label: `С ${prevYear} годом`, value: 'prevYear' },
+                { label: 'Все годы', value: 'allYears' },
+              ]}
+            />
+            <Segmented
+              size="small"
+              value={yoyMetric}
+              onChange={(v) => setYoyMetric(v as 'revenue' | 'collected')}
+              options={[
+                { label: 'Выручка', value: 'revenue' },
+                { label: 'Оплаты', value: 'collected' },
+              ]}
+            />
+          </div>
         }
       >
-        <Table
-          dataSource={yoyRows}
-          size="small"
-          pagination={false}
-          scroll={{ x: 700 }}
-          columns={[
-            {
-              title: 'Месяц',
-              dataIndex: 'month',
-              key: 'month',
-              width: 100,
-              render: (m: number) => MONTH_LABELS[m] || `${m}`,
-            },
-            {
-              title: String(prevYear),
-              dataIndex: 'prevValue',
-              key: 'prevValue',
-              align: 'right',
-              render: (v: number) => fmtNum(v),
-            },
-            {
-              title: String(year),
-              dataIndex: 'currentValue',
-              key: 'currentValue',
-              align: 'right',
-              render: (v: number) => fmtNum(v),
-            },
-            {
-              title: 'Разница',
-              dataIndex: 'delta',
-              key: 'delta',
-              align: 'right',
-              render: (v: number) => (
-                <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
-                  {v >= 0 ? '+' : ''}{fmtNum(v)}
-                </span>
-              ),
-            },
-            {
-              title: '%',
-              dataIndex: 'deltaPct',
-              key: 'deltaPct',
-              width: 120,
-              align: 'right',
-              render: (v: number | null) => {
-                if (v == null) return <span style={{ color: token.colorTextSecondary }}>—</span>;
-                return (
-                  <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
-                    {v >= 0 ? '+' : ''}{v.toFixed(1)}%
-                  </span>
-                );
+        {yoyMode === 'allYears' ? (
+          <Table
+            dataSource={allYearsRows}
+            size="small"
+            pagination={false}
+            scroll={{ x: 700 }}
+            columns={[
+              {
+                title: 'Месяц',
+                dataIndex: 'month',
+                key: 'month',
+                width: 100,
+                render: (m: number) => MONTH_LABELS[m] || `${m}`,
               },
-            },
-          ]}
-          summary={(rows) => {
-            const totalPrev = rows.reduce((s, r) => s + Number(r.prevValue || 0), 0);
-            const totalCurrent = rows.reduce((s, r) => s + Number(r.currentValue || 0), 0);
-            const totalDelta = totalCurrent - totalPrev;
-            const totalDeltaPct = totalPrev > 0 ? (totalDelta / totalPrev) * 100 : null;
-            return (
+              ...ALL_YEARS.map((y) => ({
+                title: String(y),
+                dataIndex: `y${y}`,
+                key: `y${y}`,
+                align: 'right' as const,
+                render: (v: number) => fmtNum(v ?? 0),
+              })),
+            ]}
+            summary={(rows) => (
               <Table.Summary.Row>
                 <Table.Summary.Cell index={0}>
                   <Text strong>Итого</Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right">
-                  <Text strong>{fmtNum(totalPrev)}</Text>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={2} align="right">
-                  <Text strong>{fmtNum(totalCurrent)}</Text>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={3} align="right">
-                  <Text strong style={{ color: totalDelta >= 0 ? token.colorSuccess : token.colorError }}>
-                    {totalDelta >= 0 ? '+' : ''}{fmtNum(totalDelta)}
-                  </Text>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={4} align="right">
-                  <Text strong style={{ color: (totalDeltaPct ?? 0) >= 0 ? token.colorSuccess : token.colorError }}>
-                    {totalDeltaPct == null ? '—' : `${totalDeltaPct >= 0 ? '+' : ''}${totalDeltaPct.toFixed(1)}%`}
-                  </Text>
-                </Table.Summary.Cell>
+                {ALL_YEARS.map((y, i) => {
+                  const total = rows.reduce((s, r) => s + Number((r as Record<string, number>)[`y${y}`] || 0), 0);
+                  return (
+                    <Table.Summary.Cell key={y} index={i + 1} align="right">
+                      <Text strong>{fmtNum(total)}</Text>
+                    </Table.Summary.Cell>
+                  );
+                })}
               </Table.Summary.Row>
-            );
-          }}
-        />
+            )}
+          />
+        ) : (
+          <Table
+            dataSource={yoyRows}
+            size="small"
+            pagination={false}
+            scroll={{ x: 700 }}
+            columns={[
+              {
+                title: 'Месяц',
+                dataIndex: 'month',
+                key: 'month',
+                width: 100,
+                render: (m: number) => MONTH_LABELS[m] || `${m}`,
+              },
+              {
+                title: String(prevYear),
+                dataIndex: 'prevValue',
+                key: 'prevValue',
+                align: 'right',
+                render: (v: number) => fmtNum(v),
+              },
+              {
+                title: String(year),
+                dataIndex: 'currentValue',
+                key: 'currentValue',
+                align: 'right',
+                render: (v: number) => fmtNum(v),
+              },
+              {
+                title: 'Разница',
+                dataIndex: 'delta',
+                key: 'delta',
+                align: 'right',
+                render: (v: number) => (
+                  <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                    {v >= 0 ? '+' : ''}{fmtNum(v)}
+                  </span>
+                ),
+              },
+              {
+                title: '%',
+                dataIndex: 'deltaPct',
+                key: 'deltaPct',
+                width: 120,
+                align: 'right',
+                render: (v: number | null) => {
+                  if (v == null) return <span style={{ color: token.colorTextSecondary }}>—</span>;
+                  return (
+                    <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                      {v >= 0 ? '+' : ''}{v.toFixed(1)}%
+                    </span>
+                  );
+                },
+              },
+            ]}
+            summary={(rows) => {
+              const totalPrev = rows.reduce((s, r) => s + Number(r.prevValue || 0), 0);
+              const totalCurrent = rows.reduce((s, r) => s + Number(r.currentValue || 0), 0);
+              const totalDelta = totalCurrent - totalPrev;
+              const totalDeltaPct = totalPrev > 0 ? (totalDelta / totalPrev) * 100 : null;
+              return (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0}>
+                    <Text strong>Итого</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right">
+                    <Text strong>{fmtNum(totalPrev)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right">
+                    <Text strong>{fmtNum(totalCurrent)}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right">
+                    <Text strong style={{ color: totalDelta >= 0 ? token.colorSuccess : token.colorError }}>
+                      {totalDelta >= 0 ? '+' : ''}{fmtNum(totalDelta)}
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">
+                    <Text strong style={{ color: (totalDeltaPct ?? 0) >= 0 ? token.colorSuccess : token.colorError }}>
+                      {totalDeltaPct == null ? '—' : `${totalDeltaPct >= 0 ? '+' : ''}${totalDeltaPct.toFixed(1)}%`}
+                    </Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              );
+            }}
+          />
+        )}
       </Card>
 
       <Card
