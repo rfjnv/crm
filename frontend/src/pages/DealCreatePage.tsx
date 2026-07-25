@@ -894,7 +894,7 @@ export default function DealCreatePage() {
                     const intUnit = isIntegerUnit(p?.unit);
                     return (
                       <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                        <td style={{ padding: '10px 8px' }}>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
                           <Select showSearch filterOption={smartFilterOption} placeholder="Выберите товар" style={{ width: '100%' }}
                             value={item.productId}
                             onChange={(v) => handleProductChange(item.key, v)}
@@ -913,30 +913,32 @@ export default function DealCreatePage() {
                         </td>
                         {p?.category === LAMINATION_CATEGORY ? (
                           <>
-                            <td style={{ padding: '10px 8px' }}>{renderRollInput(item)}</td>
-                            <td style={{ padding: '10px 8px' }}>{renderKgInput(item, intUnit)}</td>
+                            <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>{renderRollInput(item)}</td>
+                            <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>{renderKgInput(item, intUnit)}</td>
                           </>
                         ) : (
-                          <td style={{ padding: '10px 8px' }} colSpan={2}>
+                          <td style={{ padding: '10px 8px', verticalAlign: 'top' }} colSpan={2}>
                             {renderPrimaryControl(item, p, intUnit)}
                           </td>
                         )}
-                        <td style={{ padding: '10px 8px' }}>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
                             formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
                             value={item.price}
                             onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
                           />
                         </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                          <Typography.Text style={{ whiteSpace: 'nowrap' }} strong={lineTotal > 0}>
-                            {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
-                          </Typography.Text>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'top', textAlign: 'right' }}>
+                          <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <Typography.Text style={{ whiteSpace: 'nowrap' }} strong={lineTotal > 0}>
+                              {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
+                            </Typography.Text>
+                          </div>
                         </td>
-                        <td style={{ padding: '10px 8px' }}>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
                           {renderSecondaryControl(item, p)}
                         </td>
-                        <td style={{ padding: '10px 8px' }}>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
                         </td>
                       </tr>
