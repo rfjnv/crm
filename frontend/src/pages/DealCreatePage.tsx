@@ -7,7 +7,7 @@ import {
   message, Alert, Checkbox, Radio, DatePicker, Switch, Tag,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { PlusOutlined, DeleteOutlined, CalculatorOutlined, LockOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
@@ -38,9 +38,8 @@ function makeKey() { return `ci-${nextKey++}`; }
 /** Units that are discrete (integer-only) */
 const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп', 'бабина']);
 
-/** Ламинационная пленка продаётся по весу (кг), но менеджер знает только сколько рулонов просит клиент —
- * точный вес рулона известен только после взвешивания на складе. Поэтому «Кол-во» (кг) оставляется пустым
- * (это уводит сделку в «Ответ склада»), а количество рулонов передаётся отдельным полем-подсказкой. */
+/** Ламинационная пленка продаётся по весу (кг), но клиенты заказывают её рулонами —
+ * менеджер вводит оба числа: вес в кг (обычное поле «Кол-во») и количество рулонов рядом. */
 const LAMINATION_CATEGORY = 'Ламинационная пленка';
 /** Для этого товара нужен выбор микрона кнопкой, а не свободный текст — чтобы не путали загрузчики. */
 const SPRAY_POWDER_NAME = 'Противоотмарывающий порошок Spray Powder';
@@ -308,10 +307,7 @@ export default function DealCreatePage() {
   function handleProductChange(key: string, productId: string) {
     const product = productMap.get(productId);
     const autoPrice = product?.salePrice ? Number(product.salePrice) : undefined;
-    // Ламинация: вес узнаётся только при взвешивании на складе — кол-во(кг) обязательно
-    // остаётся пустым, чтобы позиция гарантированно ушла на «Ответ склада».
-    const clearQtyForLamination = product?.category === LAMINATION_CATEGORY ? { requestedQty: undefined } : {};
-    updateItem(key, { productId, price: autoPrice || undefined, requestComment: '', ...clearQtyForLamination });
+    updateItem(key, { productId, price: autoPrice || undefined, requestComment: '' });
   }
 
   async function handleSubmit() {
@@ -378,22 +374,9 @@ export default function DealCreatePage() {
   }
 
   /** Первая (главная) ячейка позиции — сразу после товара:
-   * ламинация → кол-во рулонов (что реально просит клиент); Spray Powder → выбор микрона + кол-во(кг)
-   * тут же рядом; всё остальное → обычное кол-во. */
+   * ламинация → кол-во (кг), рулоны указываются рядом во второй ячейке; Spray Powder → выбор
+   * микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
   function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
-    if (p?.category === LAMINATION_CATEGORY) {
-      return (
-        <InputNumber
-          min={1}
-          step={1}
-          precision={0}
-          placeholder="Кол-во рулонов"
-          style={{ width: '100%' }}
-          value={parseRollCount(item.requestComment)}
-          onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
-        />
-      );
-    }
     if (p?.name === SPRAY_POWDER_NAME) {
       return (
         <Space
@@ -424,7 +407,7 @@ export default function DealCreatePage() {
   }
 
   function primaryControlLabel(p: Product | null | undefined) {
-    if (p?.category === LAMINATION_CATEGORY) return 'Кол-во рулонов';
+    if (p?.category === LAMINATION_CATEGORY) return 'Кол-во (кг)';
     if (p?.name === SPRAY_POWDER_NAME) return 'Микрон / Кол-во (кг)';
     return 'Кол-во';
   }
@@ -438,19 +421,21 @@ export default function DealCreatePage() {
   }
 
   /** Вторая (доп.) ячейка позиции — в конце строки:
-   * ламинация → заблокированный «взвесит склад» (кг узнаётся только при взвешивании);
+   * ламинация → кол-во рулонов (менеджер указывает вместе с весом в кг слева);
    * Spray Powder → ничего (микрон и кг уже введены слева, доп. коммент не нужен);
    * всё остальное → обычный необязательный комментарий к позиции. */
   function renderSecondaryControl(item: DraftItem, p: Product | null | undefined) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
-        <Tag
-          icon={<LockOutlined />}
-          color="processing"
-          style={{ width: '100%', textAlign: 'center', whiteSpace: 'normal', padding: '5px 8px', margin: 0 }}
-        >
-          Взвесит склад
-        </Tag>
+        <InputNumber
+          min={1}
+          step={1}
+          precision={0}
+          placeholder="Кол-во рулонов"
+          style={{ width: '100%' }}
+          value={parseRollCount(item.requestComment)}
+          onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+        />
       );
     }
     if (p?.name === SPRAY_POWDER_NAME) {
