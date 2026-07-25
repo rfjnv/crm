@@ -388,18 +388,24 @@ export default function DealCreatePage() {
   function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
-        <Space.Compact style={{ width: '100%' }}>
-          <InputNumber
-            min={1}
-            step={1}
-            precision={0}
-            placeholder="Рул."
-            style={{ width: '50%' }}
-            value={parseRollCount(item.requestComment)}
-            onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
-          />
-          <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кг" style={{ width: '50%' }} />
-        </Space.Compact>
+        <div style={{ width: '100%' }}>
+          <div style={{ display: 'flex', width: '100%', fontSize: 10, lineHeight: '12px', color: tk.colorTextSecondary, marginBottom: 2 }}>
+            <span style={{ width: '50%' }}>Рулоны *</span>
+            <span style={{ width: '50%' }}>Кг</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+            <InputNumber
+              min={1}
+              step={1}
+              precision={0}
+              placeholder="Рул."
+              style={{ width: '50%' }}
+              value={parseRollCount(item.requestComment)}
+              onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+            />
+            <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кг" style={{ width: '50%' }} />
+          </div>
+        </div>
       );
     }
     if (p?.name === SPRAY_POWDER_NAME) {
