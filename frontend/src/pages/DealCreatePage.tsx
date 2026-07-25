@@ -382,9 +382,30 @@ export default function DealCreatePage() {
     };
   }
 
-  /** Первая (главная) ячейка позиции — сразу после товара:
-   * ламинация → рулоны и кг рядом в один компактный ряд (порядок фиксирован: сначала рулоны,
-   * потом кг), Spray Powder → выбор микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
+  /** Ламинация: рулоны — отдельное поле-подсказка (не единица склада, хранится в комментарии). */
+  function renderRollInput(item: DraftItem) {
+    return (
+      <InputNumber
+        min={1}
+        step={1}
+        precision={0}
+        placeholder="Рул."
+        style={{ width: '100%' }}
+        value={parseRollCount(item.requestComment)}
+        onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+      />
+    );
+  }
+
+  /** Ламинация: вес в кг — обычное поле requestedQty, как у всех товаров. */
+  function renderKgInput(item: DraftItem, intUnit: boolean) {
+    return <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кг" style={{ width: '100%' }} />;
+  }
+
+  /** Первая (главная) ячейка позиции — сразу после товара, используется в мобильной карточке
+   * (в десктопной таблице ламинация вместо этого занимает две отдельные колонки «Рулоны» / «Кг»,
+   * см. renderRollInput/renderKgInput): ламинация → рулоны и кг рядом; Spray Powder → выбор
+   * микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
   function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
     if (p?.category === LAMINATION_CATEGORY) {
       return (
@@ -394,16 +415,8 @@ export default function DealCreatePage() {
             <span style={{ width: '50%' }}>Кг</span>
           </div>
           <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-            <InputNumber
-              min={1}
-              step={1}
-              precision={0}
-              placeholder="Рул."
-              style={{ width: '50%' }}
-              value={parseRollCount(item.requestComment)}
-              onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
-            />
-            <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кг" style={{ width: '50%' }} />
+            <div style={{ width: '50%' }}>{renderRollInput(item)}</div>
+            <div style={{ width: '50%' }}>{renderKgInput(item, intUnit)}</div>
           </div>
         </div>
       );
@@ -866,7 +879,8 @@ export default function DealCreatePage() {
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3 }}>Товар</th>
-                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150 }}>Кол-во</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 75 }}>Рулоны</th>
+                    <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 75 }}>Кг</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150, textAlign: 'right' }}>Цена (UZS)</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>Сумма</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, width: 100 }} />
@@ -897,9 +911,16 @@ export default function DealCreatePage() {
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '10px 8px' }}>
-                          {renderPrimaryControl(item, p, intUnit)}
-                        </td>
+                        {p?.category === LAMINATION_CATEGORY ? (
+                          <>
+                            <td style={{ padding: '10px 8px' }}>{renderRollInput(item)}</td>
+                            <td style={{ padding: '10px 8px' }}>{renderKgInput(item, intUnit)}</td>
+                          </>
+                        ) : (
+                          <td style={{ padding: '10px 8px' }} colSpan={2}>
+                            {renderPrimaryControl(item, p, intUnit)}
+                          </td>
+                        )}
                         <td style={{ padding: '10px 8px' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
                             formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
@@ -925,7 +946,7 @@ export default function DealCreatePage() {
                 {totalAmount > 0 && (
                   <tfoot>
                     <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
-                      <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
+                      <td colSpan={4} style={{ padding: '8px', textAlign: 'right' }}>
                         <Typography.Text strong>Итого:</Typography.Text>
                       </td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>
