@@ -374,9 +374,31 @@ export default function DealCreatePage() {
   }
 
   /** Первая (главная) ячейка позиции — сразу после товара:
-   * ламинация → кол-во (кг), рулоны указываются рядом во второй ячейке; Spray Powder → выбор
+   * ламинация → рулоны и кг друг под другом, каждое поле со своим заголовком; Spray Powder → выбор
    * микрона + кол-во(кг) тут же рядом; всё остальное → обычное кол-во. */
   function renderPrimaryControl(item: DraftItem, p: Product | null | undefined, intUnit: boolean) {
+    if (p?.category === LAMINATION_CATEGORY) {
+      return (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Рулоны</Typography.Text>
+            <InputNumber
+              min={1}
+              step={1}
+              precision={0}
+              placeholder="Кол-во рулонов"
+              style={{ width: '100%' }}
+              value={parseRollCount(item.requestComment)}
+              onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+            />
+          </div>
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Кг</Typography.Text>
+            <InputNumber {...qtyInputProps(item, intUnit)} placeholder="Кол-во (кг)" />
+          </div>
+        </Space>
+      );
+    }
     if (p?.name === SPRAY_POWDER_NAME) {
       return (
         <Space
@@ -407,7 +429,7 @@ export default function DealCreatePage() {
   }
 
   function primaryControlLabel(p: Product | null | undefined) {
-    if (p?.category === LAMINATION_CATEGORY) return 'Кол-во (кг)';
+    if (p?.category === LAMINATION_CATEGORY) return '';
     if (p?.name === SPRAY_POWDER_NAME) return 'Микрон / Кол-во (кг)';
     return 'Кол-во';
   }
@@ -421,22 +443,12 @@ export default function DealCreatePage() {
   }
 
   /** Вторая (доп.) ячейка позиции — в конце строки:
-   * ламинация → кол-во рулонов (менеджер указывает вместе с весом в кг слева);
+   * ламинация → ничего (рулоны и кг уже введены слева, в первой ячейке);
    * Spray Powder → ничего (микрон и кг уже введены слева, доп. коммент не нужен);
    * всё остальное → обычный необязательный комментарий к позиции. */
   function renderSecondaryControl(item: DraftItem, p: Product | null | undefined) {
     if (p?.category === LAMINATION_CATEGORY) {
-      return (
-        <InputNumber
-          min={1}
-          step={1}
-          precision={0}
-          placeholder="Кол-во рулонов"
-          style={{ width: '100%' }}
-          value={parseRollCount(item.requestComment)}
-          onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
-        />
-      );
+      return null;
     }
     if (p?.name === SPRAY_POWDER_NAME) {
       return null;
