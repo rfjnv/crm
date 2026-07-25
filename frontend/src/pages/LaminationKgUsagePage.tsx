@@ -51,7 +51,8 @@ export default function LaminationKgUsagePage() {
         <Title level={4} style={{ margin: 0 }}>Кто вводит кг для ламинации</Title>
       </Space>
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        Показывает, какие менеджеры вручную указывают вес (кг) на позициях «Ламинационная плёнка» при создании сделки.
+        Показывает, кто вручную вводит вес (кг) на позициях «Ламинационная плёнка» — как при создании сделки менеджером,
+        так и позже, если количество указал склад через «Ответ склада».
       </Text>
 
       <Card
@@ -85,6 +86,9 @@ export default function LaminationKgUsagePage() {
             loading={isLoading}
             suffix="кг"
           />
+        </Card>
+        <Card bordered={false} style={{ minWidth: 180, flex: 1 }}>
+          <Statistic title="Из них через «Ответ склада»" value={data?.totals.viaWarehouseCount ?? 0} loading={isLoading} />
         </Card>
       </div>
 
@@ -128,6 +132,13 @@ export default function LaminationKgUsagePage() {
               dataIndex: 'dealsCount',
               key: 'dealsCount',
               align: 'right',
+            },
+            {
+              title: 'Через склад',
+              dataIndex: 'viaWarehouseCount',
+              key: 'viaWarehouseCount',
+              align: 'right',
+              render: (v: number) => (v > 0 ? v : <Text type="secondary">—</Text>),
             },
             {
               title: 'Всего кг',

@@ -1734,12 +1734,14 @@ export interface LaminationKgUsageManagerRow {
   itemsCount: number;
   dealsCount: number;
   totalKg: number;
+  /** Из itemsCount — сколько введено складом через «Ответ склада», а не при создании сделки. */
+  viaWarehouseCount: number;
 }
 
 export interface LaminationKgUsageResponse {
   from: string;
   to: string;
-  totals: { itemsCount: number; dealsCount: number; totalKg: number };
+  totals: { itemsCount: number; dealsCount: number; totalKg: number; viaWarehouseCount: number };
   byManager: LaminationKgUsageManagerRow[];
 }
 
