@@ -2,6 +2,7 @@ import axios from 'axios';
 import { enrichUserFromMe } from '../lib/authUser';
 import { useAuthStore } from '../store/authStore';
 import { getDeviceId } from '../lib/deviceId';
+import { getTelegramInitData } from '../lib/telegramWebApp';
 
 export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
 
@@ -85,6 +86,37 @@ client.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
       return client(originalRequest);
     } catch (refreshError) {
+      // Refresh cookie не пережила — вероятно, кроссдоменная cookie заблокирована
+      // встроенным WebView Telegram. Если это Telegram Mini App, тихо перелогиниваемся
+      // через initData вместо того чтобы выкидывать пользователя на экран входа.
+      const tgInitData = getTelegramInitData();
+      if (tgInitData) {
+        try {
+          const { data } = await axios.post(
+            `${API_URL}/auth/telegram-webapp`,
+            { initData: tgInitData },
+            { withCredentials: true },
+          );
+          useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
+          try {
+            const meRes = await axios.get(`${API_URL}/auth/me`, {
+              headers: { Authorization: `Bearer ${data.accessToken}` },
+            });
+            const prev = useAuthStore.getState().user;
+            useAuthStore.getState().setAuth(
+              enrichUserFromMe(meRes.data, prev),
+              data.accessToken,
+              data.refreshToken,
+            );
+          } catch { /* tokens already updated */ }
+          processQueue(null, data.accessToken);
+          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          return client(originalRequest);
+        } catch {
+          // Telegram re-auth тоже не сработал (напр. отвязан от CRM) — падаем на обычный логаут ниже
+        }
+      }
+
       processQueue(refreshError, null);
       useAuthStore.getState().logout();
       window.location.href = '/login';
