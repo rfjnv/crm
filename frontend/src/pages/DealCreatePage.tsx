@@ -7,7 +7,7 @@ import {
   message, Alert, Checkbox, Radio, DatePicker, Switch, Tag,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { PlusOutlined, DeleteOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
@@ -17,7 +17,6 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import { VAT_RATE } from '../utils/vat';
 import { getFirstName } from '../lib/name-utils';
 import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
 import type { Product, DealStatus, PaymentMethod } from '../types';
@@ -141,7 +140,6 @@ export default function DealCreatePage() {
     const saved = loadDraft();
     return saved && !isDraftEmpty(saved) ? saved : null;
   });
-  const [showVat, setShowVat] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'SELF_PICKUP' | 'YANDEX' | 'DELIVERY'>('SELF_PICKUP');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
@@ -155,7 +153,6 @@ export default function DealCreatePage() {
   const [isDebt, setIsDebt] = useState(false);
   const [debtPaymentType, setDebtPaymentType] = useState<'PARTIAL' | 'INSTALLMENT'>('PARTIAL');
   const [dueDate, setDueDate] = useState<Dayjs | null>(null);
-  const canToggleVat = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
 
   const restoreDraft = useCallback((draft: DraftData) => {
     setClientId(draft.clientId);
@@ -842,17 +839,7 @@ export default function DealCreatePage() {
           title={`Товары (${draftItems.filter((i) => i.productId).length})`}
           extra={
             <Space className={isMobile ? 'deal-create-items-extra' : undefined}>
-              {canToggleVat && (
-                <Button
-                  size="small"
-                  type={showVat ? 'primary' : 'default'}
-                  icon={<CalculatorOutlined />}
-                  onClick={() => setShowVat(!showVat)}
-                >
-                  НДС 12%
-                </Button>
-              )}
-              {totalAmount > 0 && <Typography.Text strong>Итого: {formatUZS(showVat ? totalAmount * (1 + VAT_RATE) : totalAmount)}</Typography.Text>}
+              {totalAmount > 0 && <Typography.Text strong>Итого: {formatUZS(totalAmount)}</Typography.Text>}
             </Space>
           }
           bordered={false}
@@ -865,12 +852,8 @@ export default function DealCreatePage() {
               </div>
               {totalAmount > 0 && (
                 <div className="deal-create-items-total">
-                  <Typography.Text type="secondary">
-                    {showVat ? 'Итого с НДС' : 'Итого'}
-                  </Typography.Text>
-                  <Typography.Text strong>
-                    {formatUZS(showVat ? Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100 : totalAmount)}
-                  </Typography.Text>
+                  <Typography.Text type="secondary">Итого</Typography.Text>
+                  <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
                 </div>
               )}
               <Button type="dashed" block icon={<PlusOutlined />} className="deal-create-add-btn" onClick={addItemRow}>
@@ -886,11 +869,6 @@ export default function DealCreatePage() {
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130 }}>Кол-во</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 150, textAlign: 'right' }}>Цена (UZS)</th>
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>Сумма</th>
-                    {showVat && <>
-                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 70 }}>НДС %</th>
-                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 120, textAlign: 'right' }}>Сумма НДС</th>
-                      <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, color: tk.colorTextSecondary, textTransform: 'uppercase', letterSpacing: 0.3, width: 130, textAlign: 'right' }}>С НДС</th>
-                    </>}
                     <th style={{ padding: '8px', fontWeight: 600, fontSize: 12, width: 100 }} />
                     <th style={{ width: 40 }} />
                   </tr>
@@ -934,21 +912,6 @@ export default function DealCreatePage() {
                             {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
                           </Typography.Text>
                         </td>
-                        {showVat && <>
-                          <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                            <Typography.Text type="secondary">12%</Typography.Text>
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                            <Typography.Text style={{ whiteSpace: 'nowrap' }}>
-                              {lineTotal > 0 ? formatUZS(Math.round(lineTotal * VAT_RATE * 100) / 100) : '—'}
-                            </Typography.Text>
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                            <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
-                              {lineTotal > 0 ? formatUZS(Math.round(lineTotal * (1 + VAT_RATE) * 100) / 100) : '—'}
-                            </Typography.Text>
-                          </td>
-                        </>}
                         <td style={{ padding: '10px 8px' }}>
                           {renderSecondaryControl(item, p)}
                         </td>
@@ -961,45 +924,15 @@ export default function DealCreatePage() {
                 </tbody>
                 {totalAmount > 0 && (
                   <tfoot>
-                    {showVat ? (
-                      <>
-                        <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
-                          <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text>Без НДС:</Typography.Text>
-                          </td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text>{formatUZS(totalAmount)}</Typography.Text>
-                          </td>
-                          <td></td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text>НДС 12%:</Typography.Text>
-                          </td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text>{formatUZS(Math.round(totalAmount * VAT_RATE * 100) / 100)}</Typography.Text>
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                        <tr>
-                          <td colSpan={6} style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text strong>Итого с НДС:</Typography.Text>
-                          </td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            <Typography.Text strong>{formatUZS(Math.round(totalAmount * (1 + VAT_RATE) * 100) / 100)}</Typography.Text>
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      </>
-                    ) : (
-                      <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
-                        <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
-                          <Typography.Text strong>Итого:</Typography.Text>
-                        </td>
-                        <td style={{ padding: '8px', textAlign: 'right' }}>
-                          <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
-                        </td>
-                        <td colSpan={2} />
-                      </tr>
-                    )}
+                    <tr style={{ borderTop: `2px solid ${tk.colorBorderSecondary}` }}>
+                      <td colSpan={3} style={{ padding: '8px', textAlign: 'right' }}>
+                        <Typography.Text strong>Итого:</Typography.Text>
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right' }}>
+                        <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
                   </tfoot>
                 )}
               </table>
