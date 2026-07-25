@@ -17,9 +17,14 @@ const ROLE_LABELS: Record<string, string> = {
   MANAGER: 'Менеджер',
   WAREHOUSE_MANAGER: 'Зав. склада',
   WAREHOUSE: 'Склад',
+  LOADER: 'Грузчик',
   ACCOUNTANT: 'Бухгалтер',
   HR: 'HR',
 };
+
+/** Роли, которым «доверяют» ручной ввод кг (обычно видят и взвешивают рулон вживую) — зелёный тег.
+ * Все остальные роли (в первую очередь обычный менеджер, который вводит вес со слов клиента) — красный. */
+const TRUSTED_KG_ROLES = new Set(['SUPER_ADMIN', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER']);
 
 function formatKg(v: number): string {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(v);
@@ -104,7 +109,9 @@ export default function LaminationKgUsagePage() {
               render: (name: string, row) => (
                 <Space direction="vertical" size={0}>
                   <Text strong>{name}</Text>
-                  <Tag style={{ marginInlineEnd: 0 }}>{ROLE_LABELS[row.managerRole] ?? row.managerRole}</Tag>
+                  <Tag color={TRUSTED_KG_ROLES.has(row.managerRole) ? 'green' : 'red'} style={{ marginInlineEnd: 0 }}>
+                    {ROLE_LABELS[row.managerRole] ?? row.managerRole}
+                  </Tag>
                 </Space>
               ),
             },
