@@ -324,6 +324,18 @@ export default function DealCreatePage() {
       }
     }
 
+    // Ламинация: кол-во рулонов обязательно, без него позицию не создать.
+    for (const item of validItems) {
+      const p = productMap.get(item.productId!);
+      if (p?.category === LAMINATION_CATEGORY) {
+        const rollCount = parseRollCount(item.requestComment);
+        if (!rollCount || rollCount <= 0) {
+          message.error(`Укажите кол-во рулонов для "${p.name}"`);
+          return;
+        }
+      }
+    }
+
     if (paymentMethod === 'TRANSFER' && transferInn.trim()) {
       if (transferDocuments.length === 0) {
         message.error('Выберите минимум один документ для перечисления');
@@ -381,7 +393,7 @@ export default function DealCreatePage() {
       return (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <div>
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Рулоны</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>Рулоны *</Typography.Text>
             <InputNumber
               min={1}
               step={1}
