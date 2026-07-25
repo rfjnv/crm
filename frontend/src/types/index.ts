@@ -1725,6 +1725,24 @@ export interface DeadProductsResponse {
   products: DeadProductRow[];
 }
 
+// ─── Lamination kg-input usage (кто вводит кг вручную для ламинации) ───
+
+export interface LaminationKgUsageManagerRow {
+  managerId: string;
+  managerName: string;
+  managerRole: string;
+  itemsCount: number;
+  dealsCount: number;
+  totalKg: number;
+}
+
+export interface LaminationKgUsageResponse {
+  from: string;
+  to: string;
+  totals: { itemsCount: number; dealsCount: number; totalKg: number };
+  byManager: LaminationKgUsageManagerRow[];
+}
+
 // ─── Payment overdue (manager analytics) ───
 
 export type PaymentOverdueBucket = 'OVERDUE' | 'DUE_SOON' | 'UPCOMING' | 'NO_DUE_DATE';

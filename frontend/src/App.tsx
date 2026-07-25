@@ -62,6 +62,7 @@ import ContactMatrixPage from './pages/ContactMatrixPage';
 import ClientActivityMatrixPage from './pages/ClientActivityMatrixPage';
 import ReanimationPage from './pages/ReanimationPage';
 import DeadProductsPage from './pages/DeadProductsPage';
+import LaminationKgUsagePage from './pages/LaminationKgUsagePage';
 import PaymentOverduePage from './pages/PaymentOverduePage';
 import MarketAnalysisPage from './pages/MarketAnalysisPage';
 import ReviewsPage from './pages/ReviewsPage';
@@ -217,6 +218,7 @@ export default function App() {
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
                   <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
+                  <Route path="/analytics/lamination-kg-usage" element={<LaminationKgUsagePage />} />
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />

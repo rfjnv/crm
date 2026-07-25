@@ -21,6 +21,7 @@ import type {
   ReanimationClientRow,
   ReanimationAiReport,
   DeadProductsResponse,
+  LaminationKgUsageResponse,
   PaymentOverdueResponse,
 } from '../types';
 
@@ -227,6 +228,10 @@ export const analyticsApi = {
       a.remove();
       window.URL.revokeObjectURL(url);
     }),
+  getLaminationKgUsage: (params?: { from?: string; to?: string }) =>
+    client
+      .get<LaminationKgUsageResponse>('/analytics/lamination-kg-usage', { params })
+      .then((r) => r.data),
   getPaymentOverdue: (params?: { dueSoonDays?: number }) =>
     client
       .get<PaymentOverdueResponse>('/analytics/payment-overdue', { params })

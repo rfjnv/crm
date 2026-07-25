@@ -57,6 +57,7 @@ import {
   MergeCellsOutlined,
   RobotOutlined,
   ReadOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -589,6 +590,11 @@ export default function Layout() {
               key: '/analytics/note-audit',
               icon: <RobotOutlined />,
               label: <Link to="/analytics/note-audit">AI Аудит заметок</Link>,
+            },
+            {
+              key: '/analytics/lamination-kg-usage',
+              icon: <ExperimentOutlined />,
+              label: <Link to="/analytics/lamination-kg-usage">Ввод кг (ламинация)</Link>,
             }]
           : []),
         ...(hasRole('SUPER_ADMIN', 'ADMIN')
