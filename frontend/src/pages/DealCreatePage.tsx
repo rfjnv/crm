@@ -913,32 +913,32 @@ export default function DealCreatePage() {
                         </td>
                         {p?.category === LAMINATION_CATEGORY ? (
                           <>
-                            <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>{renderRollInput(item)}</td>
-                            <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>{renderKgInput(item, intUnit)}</td>
+                            <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }}>{renderRollInput(item)}</td>
+                            <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }}>{renderKgInput(item, intUnit)}</td>
                           </>
                         ) : (
-                          <td style={{ padding: '10px 8px', verticalAlign: 'top' }} colSpan={2}>
+                          <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }} colSpan={2}>
                             {renderPrimaryControl(item, p, intUnit)}
                           </td>
                         )}
-                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }}>
                           <InputNumber min={0} placeholder="Цена" style={{ width: '100%' }}
                             formatter={moneyFormatter} parser={(v) => moneyParser(v) as unknown as number}
                             value={item.price}
                             onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
                           />
                         </td>
-                        <td style={{ padding: '10px 8px', verticalAlign: 'top', textAlign: 'right' }}>
+                        <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top', textAlign: 'right' }}>
                           <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                             <Typography.Text style={{ whiteSpace: 'nowrap' }} strong={lineTotal > 0}>
                               {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
                             </Typography.Text>
                           </div>
                         </td>
-                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }}>
                           {renderSecondaryControl(item, p)}
                         </td>
-                        <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '10px 8px', paddingTop: 36, verticalAlign: 'top' }}>
                           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItemRow(item.key)} />
                         </td>
                       </tr>
