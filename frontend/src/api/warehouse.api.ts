@@ -38,8 +38,15 @@ export const inventoryApi = {
   createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
 
-  listMovements: (productId?: string) =>
-    client.get<InventoryMovement[]>('/inventory/movements', { params: productId ? { productId } : {} }).then((r) => r.data),
+  listMovements: (filters?: {
+    productId?: string;
+    type?: 'IN' | 'OUT' | 'CORRECTION';
+    createdBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+  }) =>
+    client.get<InventoryMovement[]>('/inventory/movements', { params: filters ?? {} }).then((r) => r.data),
 
   // Approvals
   getApprovals: () => client.get<Deal[]>('/inventory/approvals').then((r) => r.data),

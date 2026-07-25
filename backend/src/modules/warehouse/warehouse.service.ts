@@ -276,9 +276,37 @@ export class WarehouseService {
     });
   }
 
-  async getMovements(productId?: string) {
+  async getMovements(filters?: {
+    productId?: string;
+    type?: 'IN' | 'OUT' | 'CORRECTION';
+    createdBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+  }) {
+    const where: Prisma.InventoryMovementWhereInput = {};
+    if (filters?.productId) where.productId = filters.productId;
+    if (filters?.type) where.type = filters.type;
+    if (filters?.createdBy) where.createdBy = filters.createdBy;
+    if (filters?.dateFrom || filters?.dateTo) {
+      where.createdAt = {
+        ...(filters.dateFrom ? { gte: new Date(`${filters.dateFrom}T00:00:00.000Z`) } : {}),
+        ...(filters.dateTo ? { lte: new Date(`${filters.dateTo}T23:59:59.999Z`) } : {}),
+      };
+    }
+    if (filters?.search?.trim()) {
+      const q = filters.search.trim();
+      where.OR = [
+        { product: { name: { contains: q, mode: 'insensitive' } } },
+        { product: { sku: { contains: q, mode: 'insensitive' } } },
+        { deal: { client: { companyName: { contains: q, mode: 'insensitive' } } } },
+        { deal: { title: { contains: q, mode: 'insensitive' } } },
+        { note: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const rows = await prisma.inventoryMovement.findMany({
-      where: productId ? { productId } : {},
+      where,
       include: {
         product: { select: { id: true, name: true, sku: true } },
         deal: {
@@ -292,9 +320,19 @@ export class WarehouseService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: 500,
     });
-    return rows.map((r) => this.attachEventDate(r));
+
+    const creatorIds = [...new Set(rows.map((r) => r.createdBy))];
+    const creators = creatorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, fullName: true } })
+      : [];
+    const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
+
+    return rows.map((r) => ({
+      ...this.attachEventDate(r),
+      creatorName: creatorMap.get(r.createdBy) ?? null,
+    }));
   }
 
   async getProductMovements(productId: string) {

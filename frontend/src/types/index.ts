@@ -556,11 +556,12 @@ export interface ProductPosterPhoto {
 export interface InventoryMovement {
   id: string;
   productId: string;
-  type: 'IN' | 'OUT';
+  type: 'IN' | 'OUT' | 'CORRECTION';
   quantity: number;
   dealId?: string | null;
   note?: string | null;
   createdBy: string;
+  creatorName?: string | null;
   /** Когда строка движения создана в БД (audit-trail; не показывается основной датой). */
   createdAt: string;
   /**

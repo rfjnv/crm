@@ -63,8 +63,14 @@ export class WarehouseController {
   }
 
   async getMovements(req: Request, res: Response): Promise<void> {
-    const productId = req.query.productId as string | undefined;
-    const movements = await warehouseService.getMovements(productId);
+    const movements = await warehouseService.getMovements({
+      productId: req.query.productId as string | undefined,
+      type: req.query.type as 'IN' | 'OUT' | 'CORRECTION' | undefined,
+      createdBy: req.query.createdBy as string | undefined,
+      dateFrom: req.query.dateFrom as string | undefined,
+      dateTo: req.query.dateTo as string | undefined,
+      search: req.query.search as string | undefined,
+    });
     res.json(movements);
   }
 
