@@ -455,6 +455,7 @@ router.get(
         status: true,
         amount: true,
         paidAmount: true,
+        isReceiptPunched: true,
         client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
       },
@@ -474,6 +475,7 @@ router.get(
         amount,
         paidAmount,
         remaining: amount - paidAmount,
+        isReceiptPunched: d.isReceiptPunched,
         manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
       };
     });

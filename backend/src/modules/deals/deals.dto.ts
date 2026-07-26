@@ -61,6 +61,7 @@ export const updateDealDto = z.object({
   terms: z.string().nullable().optional(),
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
   isSessionDeal: z.boolean().optional(),
+  isReceiptPunched: z.boolean().optional(),
 });
 
 export const paymentDto = z.object({

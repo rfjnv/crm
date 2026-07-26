@@ -523,6 +523,8 @@ model Deal {
    * по дате позиции (deal_date / created_at строки) до закрытия сделки.
    */
   isSessionDeal Boolean       @default(false) @map("is_session_deal")
+  /** Чек пробит (кассовый чек выдан клиенту) */
+  isReceiptPunched Boolean    @default(false) @map("is_receipt_punched")
   version       Int           @default(1)
   updatedAt     DateTime      @updatedAt @map("updated_at")
 

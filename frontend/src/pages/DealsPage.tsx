@@ -5,6 +5,7 @@ import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmente
 import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -159,7 +160,16 @@ export default function DealsPage() {
   const columns = [
     { title: oneEntityLabel, dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
     { title: 'Клиент', key: 'client', render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link /> },
-    { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (s: DealStatus, r: Deal) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
       title: 'Оплата',

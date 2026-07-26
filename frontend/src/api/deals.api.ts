@@ -63,7 +63,7 @@ export const dealsApi = {
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ title: string; status: DealStatus; contractId: string | null; discount: number; terms: string | null; managerId: string; isSessionDeal: boolean }>) =>
+  update: (id: string, data: Partial<{ title: string; status: DealStatus; contractId: string | null; discount: number; terms: string | null; managerId: string; isSessionDeal: boolean; isReceiptPunched: boolean }>) =>
     client.patch<Deal>(`/deals/${id}`, data).then((r) => r.data),
 
   updatePayment: (id: string, data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT'; dueDate?: string | null; terms?: string | null }) =>

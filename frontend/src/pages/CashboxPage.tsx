@@ -11,6 +11,7 @@ import { theme } from 'antd';
 import dayjs from 'dayjs';
 import { financeApi, type CashboxPayment, type ActiveDealRow } from '../api/finance.api';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
@@ -470,7 +471,12 @@ export default function CashboxPage() {
       title: 'Статус',
       dataIndex: 'status',
       width: 160,
-      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+      render: (s: string, r: ActiveDealRow) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s as DealStatus} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
     },
     {
       title: '',
@@ -888,7 +894,10 @@ export default function CashboxPage() {
                             />
                           </div>
                         </div>
-                        <DealStatusTag status={r.status as DealStatus} />
+                        <Space size={4} wrap>
+                          <DealStatusTag status={r.status as DealStatus} />
+                          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+                        </Space>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
                         <span style={{ color: tk.colorTextSecondary }}>Сумма сделки</span>

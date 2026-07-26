@@ -210,6 +210,7 @@ export class ClientsService {
             paidAmount: true,
             paymentStatus: true,
             paymentType: true,
+            isReceiptPunched: true,
             createdAt: true,
             items: {
               select: {

@@ -37,6 +37,7 @@ export interface ActiveDealRow {
   amount: number;
   paidAmount: number;
   remaining: number;
+  isReceiptPunched?: boolean;
   manager: { id: string; fullName: string } | null;
 }
 

@@ -22,6 +22,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -980,7 +981,16 @@ export default function ClientDetailPage() {
         );
       },
     },
-    { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (s: DealStatus, r: DealShort) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Оплачено', dataIndex: 'paidAmount', align: 'right' as const, render: (v: string | undefined) => formatUZS(v ?? 0) },
     {

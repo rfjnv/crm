@@ -694,6 +694,11 @@ export class DealsService {
       data.isSessionDeal = dto.isSessionDeal;
     }
 
+    if (dto.isReceiptPunched !== undefined) {
+      before.isReceiptPunched = deal.isReceiptPunched;
+      data.isReceiptPunched = dto.isReceiptPunched;
+    }
+
     // Status change handling with strict workflow enforcement
     if (dto.status !== undefined && dto.status !== deal.status) {
       validateStatusTransition(deal.status, dto.status as DealStatus, user.role);

@@ -19,6 +19,7 @@ import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import DealPipeline from '../components/DealPipeline';
 import SuperOverridePanel from '../components/SuperOverridePanel';
 import WarehouseOverridePanel from '../components/WarehouseOverridePanel';
@@ -253,6 +254,27 @@ export default function DealDetailPage() {
     },
     onSettled: () => { invalidate(); queryClient.invalidateQueries({ queryKey: ['deals'] }); },
     onSuccess: () => { message.success('Статус обновлён'); },
+  });
+
+  const receiptPunchedMut = useMutation({
+    mutationFn: (isReceiptPunched: boolean) => dealsApi.update(id!, { isReceiptPunched }),
+    onMutate: async (isReceiptPunched: boolean) => {
+      await queryClient.cancelQueries({ queryKey: ['deal', id] });
+      const prev = queryClient.getQueryData<Deal>(['deal', id]);
+      if (prev) {
+        queryClient.setQueryData<Deal>(['deal', id], { ...prev, isReceiptPunched });
+      }
+      return { prev };
+    },
+    onError: (err: unknown, _vars, context) => {
+      if (context?.prev) {
+        queryClient.setQueryData(['deal', id], context.prev);
+      }
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка обновления отметки чека';
+      message.error(msg);
+    },
+    onSettled: () => { invalidate(); queryClient.invalidateQueries({ queryKey: ['deals'] }); },
+    onSuccess: (_data, isReceiptPunched) => { message.success(isReceiptPunched ? 'Отмечено: чек пробит' : 'Отметка снята'); },
   });
 
   const commentMut = useMutation({
@@ -1106,6 +1128,25 @@ export default function DealDetailPage() {
               <Descriptions.Item label="Статус">
                 <DealStatusTag status={deal.status} />
               </Descriptions.Item>
+              <Descriptions.Item label="Чек">
+                <Space wrap>
+                  {deal.isReceiptPunched ? (
+                    <ReceiptPunchedTag isReceiptPunched />
+                  ) : (
+                    <Tag>Не пробит</Tag>
+                  )}
+                  {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                    <Button
+                      size="small"
+                      type="link"
+                      loading={receiptPunchedMut.isPending}
+                      onClick={() => receiptPunchedMut.mutate(!deal.isReceiptPunched)}
+                    >
+                      {deal.isReceiptPunched ? 'Снять отметку' : 'Отметить: чек пробит'}
+                    </Button>
+                  )}
+                </Space>
+              </Descriptions.Item>
             </Descriptions>
           </Card>
 
@@ -1529,6 +1570,25 @@ export default function DealDetailPage() {
                       )}
                       <Descriptions.Item label="Статус">
                         <DealStatusTag status={deal.status} />
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Чек">
+                        <Space wrap>
+                          {deal.isReceiptPunched ? (
+                            <ReceiptPunchedTag isReceiptPunched />
+                          ) : (
+                            <Tag>Не пробит</Tag>
+                          )}
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                            <Button
+                              size="small"
+                              type="link"
+                              loading={receiptPunchedMut.isPending}
+                              onClick={() => receiptPunchedMut.mutate(!deal.isReceiptPunched)}
+                            >
+                              {deal.isReceiptPunched ? 'Снять отметку' : 'Отметить: чек пробит'}
+                            </Button>
+                          )}
+                        </Space>
                       </Descriptions.Item>
                     </Descriptions>
                   </Card>

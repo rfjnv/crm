@@ -325,6 +325,7 @@ export interface DealShort {
   paidAmount?: string;
   paymentStatus?: PaymentStatus;
   paymentType?: PaymentType;
+  isReceiptPunched?: boolean;
   createdAt: string;
   items?: DealShortItem[];
 }
@@ -495,6 +496,8 @@ export interface Deal {
   isArchived: boolean;
   /** Сессионная: выручка по дате позиций до закрытия */
   isSessionDeal?: boolean;
+  /** Чек пробит (кассовый чек выдан клиенту) */
+  isReceiptPunched?: boolean;
   createdAt: string;
   updatedAt: string;
   /** Момент перевода в CLOSED (доставка / закрытие) */
