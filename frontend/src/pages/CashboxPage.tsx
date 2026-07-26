@@ -156,6 +156,20 @@ export default function CashboxPage() {
     },
   });
 
+  const receiptPunchedMut = useMutation({
+    mutationFn: (vals: { dealId: string; isReceiptPunched: boolean }) =>
+      dealsApi.update(vals.dealId, { isReceiptPunched: vals.isReceiptPunched }),
+    onSuccess: (_data, vars) => {
+      message.success(vars.isReceiptPunched ? 'Отмечено: чек пробит' : 'Отметка снята');
+      queryClient.invalidateQueries({ queryKey: ['finance-active-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['deal', vars.dealId] });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.error || 'Ошибка обновления отметки чека');
+    },
+  });
+
   const invalidateAfterActivePayment = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['cashbox'] });
     queryClient.invalidateQueries({ queryKey: ['finance-debts'] });
@@ -471,10 +485,23 @@ export default function CashboxPage() {
       title: 'Статус',
       dataIndex: 'status',
       width: 160,
-      render: (s: string, r: ActiveDealRow) => (
+      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+    },
+    {
+      title: 'Чек',
+      key: 'receiptPunched',
+      width: 170,
+      render: (_: unknown, r: ActiveDealRow) => (
         <Space size={4} wrap>
-          <DealStatusTag status={s as DealStatus} />
-          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+          {r.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Не пробит</Tag>}
+          <Button
+            size="small"
+            type="link"
+            loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.dealId}
+            onClick={() => receiptPunchedMut.mutate({ dealId: r.dealId, isReceiptPunched: !r.isReceiptPunched })}
+          >
+            {r.isReceiptPunched ? 'Снять' : 'Отметить'}
+          </Button>
         </Space>
       ),
     },
@@ -894,10 +921,7 @@ export default function CashboxPage() {
                             />
                           </div>
                         </div>
-                        <Space size={4} wrap>
-                          <DealStatusTag status={r.status as DealStatus} />
-                          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
-                        </Space>
+                        <DealStatusTag status={r.status as DealStatus} />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
                         <span style={{ color: tk.colorTextSecondary }}>Сумма сделки</span>
@@ -910,6 +934,17 @@ export default function CashboxPage() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                        {r.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Чек не пробит</Tag>}
+                        <Button
+                          size="small"
+                          type="link"
+                          loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.dealId}
+                          onClick={() => receiptPunchedMut.mutate({ dealId: r.dealId, isReceiptPunched: !r.isReceiptPunched })}
+                        >
+                          {r.isReceiptPunched ? 'Снять отметку' : 'Отметить чек'}
+                        </Button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           {getFirstName(r.manager?.fullName) || '—'}
                         </Typography.Text>
