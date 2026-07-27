@@ -11,7 +11,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import { dashboardApi, type DashboardPeriod } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
-import { analyticsApi } from '../api/analytics.api';
+import { analyticsApi, type AnalyticsPeriodQuery } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
 import { profileApi } from '../api/profile.api';
 import { formatUZS, formatFullNumber, formatShortNumber } from '../utils/currency';
@@ -122,6 +122,8 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard-summary', dashboardParams],
     queryFn: () => dashboardApi.summary(dashboardParams),
+    enabled: period !== 'custom' || !!customRange,
+    placeholderData: (prev) => prev,
     refetchInterval: period === 'custom' ? 30_000 : 10_000,
   });
 
@@ -157,11 +159,17 @@ export default function DashboardPage() {
     || (user?.permissions ?? []).includes('manage_import_orders' as Permission);
   const showExtras = isAdmin || role === 'MANAGER';
 
-  const analyticsPeriod = period === 'day' || period === 'custom' ? 'month' : period;
+  const analyticsPeriodQuery = useMemo((): AnalyticsPeriodQuery => {
+    if (period === 'custom' && customRange) {
+      return { from: customRange[0].format('YYYY-MM-DD'), to: customRange[1].format('YYYY-MM-DD') };
+    }
+    if (period === 'day' || period === 'custom') return { period: 'month' };
+    return { period };
+  }, [period, customRange]);
 
   const { data: monthAnalytics, isLoading: extLoading } = useQuery({
-    queryKey: ['dashboard-analytics-extras', analyticsPeriod],
-    queryFn: () => analyticsApi.getData(analyticsPeriod),
+    queryKey: ['dashboard-analytics-extras', analyticsPeriodQuery],
+    queryFn: () => analyticsApi.getData(analyticsPeriodQuery),
     enabled: !!data && showExtras,
     refetchInterval: 60_000,
   });
@@ -173,8 +181,8 @@ export default function DashboardPage() {
   });
 
   const { data: abcData } = useQuery({
-    queryKey: ['dashboard-abc', analyticsPeriod],
-    queryFn: () => analyticsApi.getAbcXyz(analyticsPeriod),
+    queryKey: ['dashboard-abc', analyticsPeriodQuery],
+    queryFn: () => analyticsApi.getAbcXyz(analyticsPeriodQuery),
     enabled: !!data && showExtras,
     refetchInterval: 120_000,
   });

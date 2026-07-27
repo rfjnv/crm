@@ -65,10 +65,9 @@ router.get(
       case 'month': {
         periodStart = startOfMonth;
         periodEnd = startOfTomorrow;
-        const prevMonthEnd = startOfMonth;
-        const prevMonthStart = new Date(Date.UTC(y, mo - 1, 1) - TASHKENT_OFFSET);
-        prevPeriodStart = prevMonthStart;
-        prevPeriodEnd = prevMonthEnd;
+        const monthLen = periodEnd.getTime() - periodStart.getTime();
+        prevPeriodStart = new Date(periodStart.getTime() - monthLen);
+        prevPeriodEnd = periodStart;
         chartDays = 31;
         break;
       }
@@ -76,10 +75,8 @@ router.get(
         const qMonth = Math.floor(mo / 3) * 3;
         periodStart = new Date(Date.UTC(y, qMonth, 1) - TASHKENT_OFFSET);
         periodEnd = startOfTomorrow;
-        const prevQMonth = qMonth - 3;
-        const prevQYear = prevQMonth < 0 ? y - 1 : y;
-        const prevQM = prevQMonth < 0 ? prevQMonth + 12 : prevQMonth;
-        prevPeriodStart = new Date(Date.UTC(prevQYear, prevQM, 1) - TASHKENT_OFFSET);
+        const quarterLen = periodEnd.getTime() - periodStart.getTime();
+        prevPeriodStart = new Date(periodStart.getTime() - quarterLen);
         prevPeriodEnd = periodStart;
         chartDays = 92;
         break;
