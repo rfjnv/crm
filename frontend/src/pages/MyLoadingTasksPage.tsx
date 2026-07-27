@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 
 const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 const deliveryColors: Record<string, string> = { SELF_PICKUP: 'blue', YANDEX: 'purple', DELIVERY: 'orange' };
@@ -67,6 +68,7 @@ export default function MyLoadingTasksPage() {
             <Space size={4} wrap>
               <DeliveryTag type={r.deliveryType} />
               <TargetTag deal={r} />
+              <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
             </Space>
           </div>
           {seeAll && (r as any).loadingAssignee && (
@@ -169,6 +171,10 @@ export default function MyLoadingTasksPage() {
               {
                 title: 'Куда грузить', key: 'target', width: 180,
                 render: (_: unknown, r: Deal) => <TargetTag deal={r} />,
+              },
+              {
+                title: 'Чек', key: 'receiptPunched', width: 110,
+                render: (_: unknown, r: Deal) => <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />,
               },
               {
                 title: '', key: 'actions', width: 200,

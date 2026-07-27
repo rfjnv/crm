@@ -20,6 +20,7 @@ import {
 import { Line, Column } from '@ant-design/charts';
 import { theme } from 'antd';
 import { Link } from 'react-router-dom';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import dayjs from 'dayjs';
 import { financeApi } from '../api/finance.api';
 import { settingsApi } from '../api/settings.api';
@@ -428,8 +429,13 @@ export default function CompanyBalancePage() {
                     {
                       title: 'Сделка',
                       dataIndex: 'deal',
-                      render: (deal: { id: string; title: string } | null) =>
-                        deal ? <Link to={`/deals/${deal.id}`}>{deal.title || deal.id.slice(0, 8)}</Link> : '—',
+                      render: (deal: { id: string; title: string; isReceiptPunched?: boolean } | null) =>
+                        deal ? (
+                          <Space size={4} wrap>
+                            <Link to={`/deals/${deal.id}`}>{deal.title || deal.id.slice(0, 8)}</Link>
+                            <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                          </Space>
+                        ) : '—',
                     },
                     {
                       title: 'Способ',

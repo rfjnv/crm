@@ -792,7 +792,7 @@ export class ClientsService {
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true } },
           author: { select: { id: true, fullName: true } },
-          sourceDeal: { select: { id: true, title: true, closedAt: true, createdAt: true } },
+          sourceDeal: { select: { id: true, title: true, closedAt: true, createdAt: true, isReceiptPunched: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: historyLimit,
@@ -833,7 +833,7 @@ export class ClientsService {
         product: e.product,
         author: e.author,
         sourceDeal: e.sourceDeal
-          ? { id: e.sourceDeal.id, title: e.sourceDeal.title }
+          ? { id: e.sourceDeal.id, title: e.sourceDeal.title, isReceiptPunched: e.sourceDeal.isReceiptPunched }
           : null,
       })),
       totals: {
@@ -1094,7 +1094,7 @@ export class ClientsService {
     return prisma.payment.findMany({
       where: { clientId: id },
       include: {
-        deal: { select: { id: true, title: true } },
+        deal: { select: { id: true, title: true, isReceiptPunched: true } },
         creator: { select: { id: true, fullName: true } },
       },
       orderBy: { paidAt: 'desc' },

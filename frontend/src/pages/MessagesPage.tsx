@@ -14,6 +14,7 @@ import { useAuthStore } from '../store/authStore';
 import type { ConversationType, Conversation, ChatMessage, MessageAttachmentInfo } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
@@ -369,13 +370,14 @@ export default function MessagesPage() {
 
             {/* Deal link */}
             {!msg.isDeleted && msg.deal && (
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 <Link
                   to={`/deals/${msg.deal.id}`}
                   style={{ color: isOwn ? '#fff' : tk.colorPrimary, textDecoration: 'underline' }}
                 >
                   {msg.deal.title}
                 </Link>
+                <ReceiptPunchedTag isReceiptPunched={msg.deal.isReceiptPunched} />
               </div>
             )}
 

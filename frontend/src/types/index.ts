@@ -298,7 +298,7 @@ export interface ClientStockEvent {
   eventDate: string;
   product?: { id: string; name: string; sku: string; unit: string };
   author?: { id: string; fullName: string };
-  sourceDeal?: { id: string; title: string } | null;
+  sourceDeal?: { id: string; title: string; isReceiptPunched?: boolean } | null;
 }
 
 export interface ClientStockResponse {
@@ -423,7 +423,7 @@ export interface ContractDetail extends Contract {
     note?: string | null;
     createdBy: string;
     createdAt: string;
-    deal?: { id: string; title: string };
+    deal?: { id: string; title: string; isReceiptPunched?: boolean };
     creator?: { id: string; fullName: string };
   }[];
 }
@@ -673,7 +673,7 @@ export interface RevenueTodayPayment {
   paidAt: string;
   method: string | null;
   /** id отсутствует для строк «Поступление на склад клиента» */
-  deal: { id: string | null; title: string };
+  deal: { id: string | null; title: string; isReceiptPunched?: boolean };
   client: { id: string; companyName: string; isSvip?: boolean };
   creator: { id: string; fullName: string };
 }
@@ -711,7 +711,7 @@ export interface AnalyticsSales {
 
 export interface AnalyticsFinance {
   totalDebt: number;
-  overdueDebts: { dealId: string; title: string; clientId: string; clientName: string; clientIsSvip?: boolean; debt: number; dueDate: string | null }[];
+  overdueDebts: { dealId: string; title: string; clientId: string; clientName: string; clientIsSvip?: boolean; debt: number; dueDate: string | null; isReceiptPunched?: boolean }[];
   topDebtors: { clientId: string; companyName: string; isSvip?: boolean; totalDebt: number }[];
   realTurnover: number;
   paperTurnover: number;
@@ -900,7 +900,7 @@ export interface PaymentRecord {
   note?: string | null;
   createdBy: string;
   createdAt: string;
-  deal?: { id: string; title: string };
+  deal?: { id: string; title: string; isReceiptPunched?: boolean };
   creator?: { id: string; fullName: string };
 }
 
@@ -989,7 +989,7 @@ export interface ChatMessage {
   isDeleted: boolean;
   createdAt: string;
   sender?: { id: string; fullName: string };
-  deal?: { id: string; title: string } | null;
+  deal?: { id: string; title: string; isReceiptPunched?: boolean } | null;
   replyTo?: {
     id: string;
     text: string;
@@ -1631,6 +1631,7 @@ export interface ReanimationClientRow {
     revenue: number;
     effectiveAt: string;
     createdAt: string;
+    isReceiptPunched?: boolean;
   } | null;
   lastContactAt?: string | null;
   lastContactByName?: string | null;
@@ -1651,6 +1652,7 @@ export interface ReanimationClientDeal {
   amount: number;
   paidAmount: number;
   paymentStatus: string;
+  isReceiptPunched?: boolean;
 }
 
 export interface ReanimationClientProductStat {
@@ -1773,6 +1775,7 @@ export interface PaymentOverdueDealRow {
   terms: string | null;
   createdAt: string;
   closedAt: string | null;
+  isReceiptPunched?: boolean;
   bucket: PaymentOverdueBucket;
   daysOverdue: number | null;
   daysUntilDue: number | null;

@@ -8,6 +8,7 @@ import {
 import type { Dayjs } from 'dayjs';
 import { TruckOutlined, UserOutlined, ClockCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { dealsApi } from '../api/deals.api';
 import { usersApi } from '../api/users.api';
 import { settingsApi } from '../api/settings.api';
@@ -219,7 +220,12 @@ export default function WarehouseShipmentsPage() {
         title: 'Статус',
         dataIndex: 'status',
         width: 100,
-        render: (s: Deal['status']) => <DealStatusTag status={s} />,
+        render: (s: Deal['status'], r: Deal) => (
+          <Space size={4} wrap>
+            <DealStatusTag status={s} />
+            <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+          </Space>
+        ),
       },
       {
         title: 'Закрыта',
@@ -468,7 +474,10 @@ export default function WarehouseShipmentsPage() {
             <Card size="small" style={{ marginBottom: 16 }}>
               <Descriptions size="small" column={2}>
                 <Descriptions.Item label="Сделка">
-                  <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
+                  <Space size={4} wrap>
+                    <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
+                    <ReceiptPunchedTag isReceiptPunched={dealDetail.isReceiptPunched} />
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Клиент">
                   <ClientCompanyDisplay client={dealDetail.client} link variant="full" />

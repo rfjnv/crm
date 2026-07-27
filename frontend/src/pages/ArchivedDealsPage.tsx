@@ -4,6 +4,7 @@ import { Table, Button, Typography, message, Popconfirm, Tag, Space, Card } from
 import { UndoOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
 import type { Deal, DealStatus, PaymentStatus } from '../types';
@@ -50,7 +51,16 @@ export default function ArchivedDealsPage() {
       key: 'client',
       render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
-    { title: 'Статус', dataIndex: 'status', render: (s: DealStatus) => <DealStatusTag status={s} /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (s: DealStatus, r: Deal) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
       title: 'Оплата', dataIndex: 'paymentStatus', render: (s: PaymentStatus) => {
@@ -105,7 +115,12 @@ export default function ArchivedDealsPage() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
-                  <div><DealStatusTag status={deal.status} /></div>
+                  <div>
+                    <Space size={4} wrap>
+                      <DealStatusTag status={deal.status} />
+                      <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                    </Space>
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>

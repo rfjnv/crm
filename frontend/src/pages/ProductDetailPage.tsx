@@ -16,6 +16,7 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
 function formatStockCell(stock: number | string | null | undefined, rollStock?: number | string | null): string {
@@ -408,7 +409,12 @@ export default function ProductDetailPage() {
                 title: 'Сделка',
                 dataIndex: ['deal', 'title'],
                 render: (_v: string | undefined, r: any) =>
-                  r.deal ? <Link to={`/deals/${r.deal.id}`}>{r.deal.title || r.deal.id.slice(0, 8)}</Link> : '—',
+                  r.deal ? (
+                    <Space size={4} wrap>
+                      <Link to={`/deals/${r.deal.id}`}>{r.deal.title || r.deal.id.slice(0, 8)}</Link>
+                      <ReceiptPunchedTag isReceiptPunched={r.deal.isReceiptPunched} />
+                    </Space>
+                  ) : '—',
               },
               {
                 title: 'Примечание',

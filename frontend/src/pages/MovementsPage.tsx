@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Select, Typography, Tag, Card, Tooltip, DatePicker, Input, Row, Col, Statistic } from 'antd';
+import { Table, Select, Typography, Tag, Card, Tooltip, DatePicker, Input, Row, Col, Statistic, Space } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { Link } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -110,12 +111,20 @@ export default function MovementsPage() {
         if (!record.deal?.id) return record.deal?.title || '—';
         if (record.deal?.client) {
           return (
-            <Link to={`/deals/${record.deal.id}`} style={{ textDecoration: 'none' }}>
-              <ClientCompanyDisplay client={record.deal.client} />
-            </Link>
+            <Space size={4} wrap>
+              <Link to={`/deals/${record.deal.id}`} style={{ textDecoration: 'none' }}>
+                <ClientCompanyDisplay client={record.deal.client} />
+              </Link>
+              <ReceiptPunchedTag isReceiptPunched={record.deal.isReceiptPunched} />
+            </Space>
           );
         }
-        return <Link to={`/deals/${record.deal.id}`}>{record.deal.title || '—'}</Link>;
+        return (
+          <Space size={4} wrap>
+            <Link to={`/deals/${record.deal.id}`}>{record.deal.title || '—'}</Link>
+            <ReceiptPunchedTag isReceiptPunched={record.deal.isReceiptPunched} />
+          </Space>
+        );
       },
     },
     { title: 'Менеджер', dataIndex: 'creatorName', render: (v: string | null) => v || '—' },
@@ -192,7 +201,11 @@ export default function MovementsPage() {
                     <div>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>Клиент</Typography.Text>
                       <div><ClientCompanyDisplay client={m.deal.client} /></div>
-                      <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка: {m.deal.title}</Typography.Text></div>
+                      <div>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>Сделка: {m.deal.title}</Typography.Text>
+                        {' '}
+                        <ReceiptPunchedTag isReceiptPunched={m.deal.isReceiptPunched} />
+                      </div>
                     </div>
                     <RightOutlined style={{ color: '#999' }} />
                   </div>

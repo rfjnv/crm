@@ -432,6 +432,7 @@ router.get(
       manager_id: string;
       manager_name: string;
       product_name: string;
+      is_receipt_punched: boolean;
     }[]>(
       Prisma.sql`
         SELECT di.id,
@@ -444,7 +445,8 @@ router.get(
                c.is_svip as is_svip,
                u.id as manager_id,
                u.full_name as manager_name,
-               p.name as product_name
+               p.name as product_name,
+               d.is_receipt_punched
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         JOIN clients c ON c.id = d.client_id
@@ -463,7 +465,7 @@ router.get(
       amount: r.line_total,
       paidAt: r.deal_date,
       method: null,
-      deal: { id: r.deal_id, title: r.deal_title },
+      deal: { id: r.deal_id, title: r.deal_title, isReceiptPunched: r.is_receipt_punched },
       client: { id: r.client_id, companyName: r.company_name, isSvip: !!r.is_svip },
       creator: { id: r.manager_id, fullName: r.manager_name },
       productName: r.product_name,

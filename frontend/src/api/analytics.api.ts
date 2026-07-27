@@ -63,6 +63,7 @@ export type HierarchyClosedItemRow = {
   productId: string;
   dealId: string;
   dealTitle: string | null;
+  isReceiptPunched?: boolean;
   clientId: string;
   clientName: string;
   clientIsSvip: boolean;
@@ -303,6 +304,7 @@ export interface DepartmentReportDeal {
   remaining: number;
   paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   paymentType: 'FULL' | 'PARTIAL' | 'INSTALLMENT' | null;
+  isReceiptPunched?: boolean;
   closedAt: string | null;
   lastPaymentDate: string | null;
   debtSettledAt: string | null;

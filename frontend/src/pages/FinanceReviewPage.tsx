@@ -10,6 +10,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import type { Deal } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
@@ -99,6 +100,7 @@ export default function FinanceReviewPage() {
           <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
             {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+            <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
           </div>
         </div>
       ),
@@ -191,6 +193,7 @@ export default function FinanceReviewPage() {
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                 {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
                 {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
+                <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
               </div>
 
               <div style={{ marginTop: 10 }}>

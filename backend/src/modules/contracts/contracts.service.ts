@@ -55,7 +55,7 @@ export class ContractsService {
         deals: {
           select: {
             id: true, title: true, status: true, amount: true,
-            paidAmount: true, paymentStatus: true, paymentType: true, createdAt: true,
+            paidAmount: true, paymentStatus: true, paymentType: true, isReceiptPunched: true, createdAt: true,
             items: {
               select: {
                 id: true,
@@ -86,7 +86,7 @@ export class ContractsService {
       ? await prisma.payment.findMany({
           where: { dealId: { in: dealIds } },
           include: {
-            deal: { select: { id: true, title: true } },
+            deal: { select: { id: true, title: true, isReceiptPunched: true } },
             creator: { select: { id: true, fullName: true } },
           },
           orderBy: { paidAt: 'desc' },

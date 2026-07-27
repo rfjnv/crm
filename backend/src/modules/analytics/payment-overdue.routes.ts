@@ -64,6 +64,7 @@ type DebtRow = {
   manager_name: string | null;
   manager_department: string | null;
   days_until_due: number | null;
+  is_receipt_punched: boolean;
 };
 
 router.get(
@@ -92,6 +93,7 @@ router.get(
         d.terms,
         d.created_at,
         d.closed_at,
+        d.is_receipt_punched,
         c.id AS client_id,
         c.company_name,
         c.is_svip,
@@ -154,6 +156,7 @@ router.get(
         terms: r.terms,
         createdAt: r.created_at.toISOString(),
         closedAt: r.closed_at ? r.closed_at.toISOString() : null,
+        isReceiptPunched: r.is_receipt_punched,
         bucket,
         daysOverdue,
         daysUntilDue: daysUntilDuePositive,
@@ -238,6 +241,7 @@ router.get(
         d.terms,
         d.created_at,
         d.closed_at,
+        d.is_receipt_punched,
         c.id AS client_id,
         c.company_name,
         c.is_svip,

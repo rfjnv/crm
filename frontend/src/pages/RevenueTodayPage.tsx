@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Table, Typography, Spin, Button, Card } from 'antd';
+import { Table, Typography, Spin, Button, Card, Space } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -9,6 +9,7 @@ import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import type { RevenueTodayPayment } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { getFirstName } from '../lib/name-utils';
 
 export default function RevenueTodayPage() {
@@ -38,8 +39,12 @@ export default function RevenueTodayPage() {
     {
       title: 'Сделка',
       dataIndex: ['deal', 'title'],
-      render: (v: string, r: RevenueTodayPayment) =>
-        r.deal.id ? <Link to={`/deals/${r.deal.id}`}>{v}</Link> : <span>{v}</span>,
+      render: (v: string, r: RevenueTodayPayment) => (
+        <Space size={4} wrap>
+          {r.deal.id ? <Link to={`/deals/${r.deal.id}`}>{v}</Link> : <span>{v}</span>}
+          <ReceiptPunchedTag isReceiptPunched={r.deal.isReceiptPunched} />
+        </Space>
+      ),
     },
     {
       title: 'Менеджер',
@@ -84,13 +89,16 @@ export default function RevenueTodayPage() {
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('HH:mm')}</Typography.Text>
                   </div>
                   <div style={{ marginTop: 4 }}>
-                    {p.deal.id ? (
-                      <Link to={`/deals/${p.deal.id}`}>
+                    <Space size={4} wrap>
+                      {p.deal.id ? (
+                        <Link to={`/deals/${p.deal.id}`}>
+                          <Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text>
+                        </Link>
+                      ) : (
                         <Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text>
-                      </Link>
-                    ) : (
-                      <Typography.Text style={{ fontSize: 12 }}>{p.deal.title}</Typography.Text>
-                    )}
+                      )}
+                      <ReceiptPunchedTag isReceiptPunched={p.deal.isReceiptPunched} />
+                    </Space>
                   </div>
                   <div style={{ fontSize: 11 }}>
                     <ClientCompanyDisplay client={p.client} secondary />

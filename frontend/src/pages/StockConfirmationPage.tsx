@@ -15,6 +15,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import './StockConfirmationPage.css';
 
 function normalizeQtyExpression(value: string): string | null {
@@ -123,7 +124,12 @@ export default function StockConfirmationPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+      render: (v: string, r: Deal) => (
+        <Space size={4} wrap>
+          <Link to={`/deals/${r.id}`}>{v}</Link>
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
     },
     {
       title: 'Клиент',
@@ -190,9 +196,10 @@ export default function StockConfirmationPage() {
           </Typography.Text>
         </div>
 
-        {deal.manager?.fullName && (
+        {(deal.manager?.fullName || deal.isReceiptPunched) && (
           <Space size={6} wrap className="stock-confirm-mobile-card__chips">
-            <Tag>{getFirstName(deal.manager.fullName)}</Tag>
+            {deal.manager?.fullName && <Tag>{getFirstName(deal.manager.fullName)}</Tag>}
+            <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
           </Space>
         )}
 

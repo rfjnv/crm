@@ -3,6 +3,7 @@ import client from './client';
 export interface ReviewDealRef {
   id: string;
   title: string;
+  isReceiptPunched?: boolean;
   client: {
     id: string;
     companyName: string;

@@ -22,6 +22,7 @@ import { poaApi } from '../api/power-of-attorney.api';
 import type { PowerOfAttorney, CreatePoaData } from '../api/power-of-attorney.api';
 import { formatUZS, moneyFormatter } from '../utils/currency';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { useAuthStore } from '../store/authStore';
 import type { ContractAttachment, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -299,7 +300,15 @@ export default function ContractDetailPage() {
           scroll={{ x: 600 }}
           columns={[
             { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link> },
-            { title: 'Статус', dataIndex: 'status', width: 140, render: (v: DealStatus) => <DealStatusTag status={v} /> },
+            {
+              title: 'Статус', dataIndex: 'status', width: 160,
+              render: (v: DealStatus, r: { isReceiptPunched?: boolean }) => (
+                <Space size={4} wrap>
+                  <DealStatusTag status={v} />
+                  <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+                </Space>
+              ),
+            },
             { title: 'Сумма', dataIndex: 'amount', width: 120, align: 'right' as const, render: (v: string) => formatUZS(v) },
             { title: 'Оплачено', dataIndex: 'paidAmount', width: 120, align: 'right' as const, render: (v: string) => formatUZS(v) },
             {
@@ -474,10 +483,11 @@ export default function ContractDetailPage() {
                       {dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}
                     </Typography.Text>
                   </div>
-                  <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
+                  <div style={{ fontSize: 12, color: tk.colorTextSecondary, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                     <span>Сделка: {p.deal?.title || p.dealId}</span>
                     {p.method && <span> · {p.method}</span>}
                     <span> · {getFirstName(p.creator?.fullName)}</span>
+                    <ReceiptPunchedTag isReceiptPunched={p.deal?.isReceiptPunched} />
                   </div>
                   {p.note && <div style={{ fontSize: 12, color: tk.colorTextTertiary }}>{p.note}</div>}
                 </div>

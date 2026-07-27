@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Table, Typography, Card } from 'antd';
+import { Table, Typography, Card, Space } from 'antd';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { formatUZS } from '../utils/currency';
 import { dealsApi } from '../api/deals.api';
 import { useAuthStore } from '../store/authStore';
@@ -47,7 +48,16 @@ export default function ApprovalsPage() {
       key: 'client',
       render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
-    { title: 'Статус', dataIndex: 'status', render: (s: Deal['status']) => <DealStatusTag status={s} /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (s: Deal['status'], r: Deal) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Позиций', dataIndex: ['_count', 'items'], align: 'center' as const },
     { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string) => getFirstName(v) || v },
@@ -79,7 +89,12 @@ export default function ApprovalsPage() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
-                  <div><DealStatusTag status={deal.status} /></div>
+                  <div>
+                    <Space size={4} wrap>
+                      <DealStatusTag status={deal.status} />
+                      <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                    </Space>
+                  </div>
                 </div>
               </div>
               <div style={{ marginTop: 4 }}>

@@ -252,7 +252,7 @@ export class WarehouseService {
         },
         include: {
           product: { select: { id: true, name: true, sku: true, stock: true } },
-          deal: { select: { id: true, title: true, client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } } } },
+          deal: { select: { id: true, title: true, isReceiptPunched: true, client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } } } },
         },
       });
 
@@ -315,6 +315,7 @@ export class WarehouseService {
             title: true,
             closedAt: true,
             createdAt: true,
+            isReceiptPunched: true,
             client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
           },
         },
@@ -350,6 +351,7 @@ export class WarehouseService {
             title: true,
             closedAt: true,
             createdAt: true,
+            isReceiptPunched: true,
             client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
           },
         },

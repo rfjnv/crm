@@ -43,6 +43,7 @@ import { analyticsApi, type DepartmentReportClient, type DepartmentReportDeal } 
 import { usersApi } from '../api/users.api';
 import { formatUZS } from '../utils/currency';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { matchesSearch } from '../utils/translit';
 import { getFirstName } from '../lib/name-utils';
 
@@ -243,13 +244,16 @@ export default function DepartmentReportPage() {
       title: 'Сделка',
       key: 'title',
       render: (_: unknown, d: DepartmentReportDeal) => (
-        <Button
-          type="link"
-          style={{ padding: 0, fontWeight: 500 }}
-          onClick={() => navigate(`/deals/${d.dealId}`)}
-        >
-          {d.title}
-        </Button>
+        <Space size={4} wrap>
+          <Button
+            type="link"
+            style={{ padding: 0, fontWeight: 500 }}
+            onClick={() => navigate(`/deals/${d.dealId}`)}
+          >
+            {d.title}
+          </Button>
+          <ReceiptPunchedTag isReceiptPunched={d.isReceiptPunched} />
+        </Space>
       ),
     },
     {
@@ -827,7 +831,10 @@ export default function DepartmentReportPage() {
                       </Button>
                     </Col>
                     <Col>
-                      <PaymentStatusTag status={deal.paymentStatus} />
+                      <Space size={4} wrap>
+                        <PaymentStatusTag status={deal.paymentStatus} />
+                        <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                      </Space>
                     </Col>
                   </Row>
                   <Row gutter={[16, 4]} style={{ marginTop: 8 }}>

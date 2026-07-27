@@ -6,6 +6,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
+import ReceiptPunchedTag from './ReceiptPunchedTag';
 import { formatUZS } from '../utils/currency';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
@@ -23,6 +24,7 @@ type PurchaseLineRow = {
   key: string;
   dealId: string;
   dealTitle: string;
+  isReceiptPunched?: boolean;
   saleAt: string;
   productId: string;
   productName: string;
@@ -335,6 +337,7 @@ export default function HierarchyClientsAnalyticsPanel({
         key: `${row.dealId}-${row.productId}-${row.saleAt}-${existing.purchaseLines.length}`,
         dealId: row.dealId,
         dealTitle: row.dealTitle,
+        isReceiptPunched: row.isReceiptPunched,
         saleAt: row.saleAt,
         productId: row.productId,
         productName,
@@ -508,9 +511,12 @@ export default function HierarchyClientsAnalyticsPanel({
       dataIndex: 'dealTitle',
       key: 'dealTitle',
       render: (title, line) => (
-        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
-          {title}
-        </Button>
+        <Space size={4} wrap>
+          <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/deals/${line.dealId}`)}>
+            {title}
+          </Button>
+          <ReceiptPunchedTag isReceiptPunched={line.isReceiptPunched} />
+        </Space>
       ),
     },
     {

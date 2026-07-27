@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Typography, Table, Rate, Card, Segmented } from 'antd';
+import { Typography, Table, Rate, Card, Segmented, Space } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { reviewsApi } from '../api/reviews.api';
 import type { ReviewRow } from '../api/reviews.api';
 import dayjs from 'dayjs';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { getFirstName } from '../lib/name-utils';
 
 const { Title } = Typography;
@@ -68,7 +69,10 @@ export default function ReviewsPage() {
       title: 'Сделка',
       key: 'deal',
       render: (_: unknown, record: ReviewRow) => (
-        <Link to={`/deals/${record.deal.id}`}>{record.deal.title}</Link>
+        <Space size={4} wrap>
+          <Link to={`/deals/${record.deal.id}`}>{record.deal.title}</Link>
+          <ReceiptPunchedTag isReceiptPunched={record.deal.isReceiptPunched} />
+        </Space>
       ),
       width: 250,
     },

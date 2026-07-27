@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import { dealsApi } from '../api/deals.api';
 import { usersApi } from '../api/users.api';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
@@ -112,7 +113,16 @@ export default function ClosedDealsPage() {
       key: 'client',
       render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
-    { title: 'Статус', dataIndex: 'status', render: () => <DealStatusTag status="CLOSED" /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (_: unknown, r: Deal) => (
+        <Space size={4} wrap>
+          <DealStatusTag status="CLOSED" />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     {
       title: 'Оплата',

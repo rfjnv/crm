@@ -12,6 +12,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useAuthStore } from '../store/authStore';
 import MobileCardList from '../components/MobileCardList';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import './WarehouseManagerPage.css';
 
 const deliveryLabels: Record<string, string> = {
@@ -133,6 +134,7 @@ export default function WarehouseManagerPage() {
           <DeliveryTag type={r.deliveryType} />
           <Tag color={isPickup ? 'geekblue' : 'cyan'}>{isPickup ? 'Ждет клиента' : 'Ждет машину'}</Tag>
           {r.vehicleNumber && <Tag>{`${r.vehicleType || ''} ${r.vehicleNumber}`.trim()}</Tag>}
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
         </Space>
 
         <Typography.Text type="secondary" className="wm-mobile-card__meta">
@@ -202,6 +204,7 @@ export default function WarehouseManagerPage() {
           <DeliveryTag type={r.deliveryType} />
           <Tag color={needsDriver ? 'red' : 'green'}>{summaryStatus}</Tag>
           {r.deliveryDriver && <Tag color="green">{getFirstName(r.deliveryDriver.fullName)}</Tag>}
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
         </Space>
 
         {items.length > 0 && (
@@ -283,6 +286,10 @@ export default function WarehouseManagerPage() {
             { title: 'Машина', key: 'vehicle', render: (_: unknown, r: Deal) => r.vehicleNumber ? `${r.vehicleType || ''} ${r.vehicleNumber}`.trim() : '—', width: 160 },
             { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
             {
+              title: 'Чек', key: 'receiptPunched', width: 110,
+              render: (_: unknown, r: Deal) => <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />,
+            },
+            {
               title: '', key: 'actions', width: 200,
               render: (_: unknown, r: Deal) => {
                 const isPickup = r.deliveryType === 'SELF_PICKUP' || r.deliveryType === 'YANDEX';
@@ -337,6 +344,10 @@ export default function WarehouseManagerPage() {
                 : r.deliveryType === 'DELIVERY' ? <Tag color="red">Не назначен</Tag> : '—',
             },
             { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+            {
+              title: 'Чек', key: 'receiptPunched', width: 110,
+              render: (_: unknown, r: Deal) => <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />,
+            },
             {
               title: '', key: 'actions', width: 250,
               render: (_: unknown, r: Deal) => {

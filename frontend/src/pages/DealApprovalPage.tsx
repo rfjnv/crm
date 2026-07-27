@@ -10,6 +10,7 @@ import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import BackButton from '../components/BackButton';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import type { Deal, PaymentStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
@@ -129,7 +130,12 @@ export default function DealApprovalPage() {
     {
       title: 'Сделка',
       dataIndex: 'title',
-      render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link>,
+      render: (v: string, r: Deal) => (
+        <Space size={4} wrap>
+          <Link to={`/deals/${r.id}`}>{v}</Link>
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
     },
     {
       title: 'Клиент',
@@ -210,7 +216,16 @@ export default function DealApprovalPage() {
       render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
     },
     { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)) },
-    { title: 'Статус', dataIndex: 'status', render: (v: Deal['status']) => <DealStatusTag status={v} /> },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      render: (v: Deal['status'], r: Deal) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={v} />
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     {
       title: 'Действия',
       key: 'actions',
@@ -287,7 +302,10 @@ export default function DealApprovalPage() {
                       <Typography.Text strong>{formatUZS(deal.amount)}</Typography.Text>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                      <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                      <Space size={4} wrap>
+                        <Tag color={paymentStatusLabels[deal.paymentStatus]?.color}>{paymentStatusLabels[deal.paymentStatus]?.label}</Tag>
+                        <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                      </Space>
                       <Space size="small">
                         <Button type="primary" icon={<CheckOutlined />} size="small" loading={approveMutation.isPending} onClick={() => approveMutation.mutate(deal.id)}>OK</Button>
                         <Button danger icon={<CloseOutlined />} size="small" onClick={() => handleRejectClick(deal.id)} />
@@ -325,7 +343,10 @@ export default function DealApprovalPage() {
                         <Link to={`/deals/${deal.id}`}><Typography.Text strong>{deal.title}</Typography.Text></Link>
                         <div style={{ fontSize: 12 }}><ClientCompanyDisplay client={deal.client} secondary /></div>
                       </div>
-                      <DealStatusTag status={deal.status} />
+                      <Space size={4} wrap>
+                        <DealStatusTag status={deal.status} />
+                        <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                      </Space>
                     </div>
                     <Typography.Text strong style={{ display: 'block', marginTop: 8 }}>{formatUZS(deal.amount)}</Typography.Text>
                     <Space style={{ marginTop: 8 }}>

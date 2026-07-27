@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 
 export default function MyVehiclePage() {
   const isMobile = useIsMobile();
@@ -87,6 +88,9 @@ export default function MyVehiclePage() {
                 <Tag color="orange">{getFirstName(r.deliveryDriver.fullName)}</Tag>
               </div>
             )}
+            <div style={{ marginTop: 4 }}>
+              <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+            </div>
 
             <div style={{ marginTop: 4, fontSize: 12 }}>
               <ClientCompanyDisplay client={r.client} secondary />
@@ -192,6 +196,10 @@ export default function MyVehiclePage() {
               },
               { title: 'Адрес', dataIndex: ['client', 'address'], render: (v: string) => v || '—' },
               { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
+              {
+                title: 'Чек', key: 'receiptPunched', width: 110,
+                render: (_: unknown, r: Deal) => <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />,
+              },
               {
                 title: 'Позиции', key: 'items',
                 render: (_: unknown, r: Deal) => (

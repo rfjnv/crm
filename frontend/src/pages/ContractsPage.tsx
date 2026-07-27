@@ -19,6 +19,7 @@ import { matchesSearch } from '../utils/translit';
 import type { Client, ContractListItem, ContractDetail, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import DealStatusTag from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { getFirstName } from '../lib/name-utils';
@@ -540,8 +541,13 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
             {
               title: 'Статус',
               dataIndex: 'status',
-              width: 140,
-              render: (v: DealStatus) => <DealStatusTag status={v} />,
+              width: 160,
+              render: (v: DealStatus, r: { isReceiptPunched?: boolean }) => (
+                <Space size={4} wrap>
+                  <DealStatusTag status={v} />
+                  <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+                </Space>
+              ),
             },
             {
               title: 'Сумма',

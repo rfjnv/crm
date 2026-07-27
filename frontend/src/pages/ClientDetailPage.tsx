@@ -724,7 +724,10 @@ export default function ClientDetailPage() {
         dataIndex: ['sourceDeal', 'id'],
         render: (_: unknown, r: StockEventTableRow) =>
           r.sourceDeal ? (
-            <Link to={`/deals/${r.sourceDeal.id}`} state={{ from: clientReturnPath }}>{r.sourceDeal.title}</Link>
+            <Space size={4} wrap>
+              <Link to={`/deals/${r.sourceDeal.id}`} state={{ from: clientReturnPath }}>{r.sourceDeal.title}</Link>
+              <ReceiptPunchedTag isReceiptPunched={r.sourceDeal.isReceiptPunched} />
+            </Space>
           ) : '—',
       },
       { title: 'Комментарий', dataIndex: 'comment', render: (v: string | null | undefined) => v || '—' },
@@ -1021,7 +1024,12 @@ export default function ClientDetailPage() {
       title: 'Сделка',
       dataIndex: ['deal', 'title'],
       render: (v: string, r: PaymentRecord) =>
-        r.deal ? <Link to={`/deals/${r.dealId}`} state={{ from: clientReturnPath }}>{v}</Link> : '—',
+        r.deal ? (
+          <Space size={4} wrap>
+            <Link to={`/deals/${r.dealId}`} state={{ from: clientReturnPath }}>{v}</Link>
+            <ReceiptPunchedTag isReceiptPunched={r.deal.isReceiptPunched} />
+          </Space>
+        ) : '—',
     },
     { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
     { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v || '—' },

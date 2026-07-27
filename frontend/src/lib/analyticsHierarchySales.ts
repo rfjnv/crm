@@ -15,6 +15,7 @@ export type ProductPurchaseRow = {
   productId: string;
   dealId: string;
   dealTitle: string;
+  isReceiptPunched?: boolean;
   clientId: string;
   clientName: string;
   clientIsSvip: boolean;
@@ -130,6 +131,7 @@ export async function loadSalesContext(periodStart: Date) {
       productId: row.productId,
       dealId: row.dealId,
       dealTitle: row.dealTitle?.trim() || `Сделка ${row.dealId.slice(0, 6)}`,
+      isReceiptPunched: row.isReceiptPunched,
       clientId: row.clientId,
       clientName: row.clientName || 'Клиент',
       clientIsSvip: row.clientIsSvip,

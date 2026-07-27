@@ -68,6 +68,7 @@ function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
             <Tag color={paymentStatusLabels[deal.paymentStatus]?.color} style={{ fontSize: 11, marginRight: 0 }}>
               {paymentStatusLabels[deal.paymentStatus]?.label}
             </Tag>
+            <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
           </Space>
         </div>
         <div style={{ marginTop: 6 }}>

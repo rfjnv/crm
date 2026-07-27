@@ -19,6 +19,7 @@ import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import type { Deal, DealItem, PaymentRecord, PaymentStatus, UserRole } from '../types';
 import { getFirstName } from '../lib/name-utils';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import './AuditCheckPage.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,6 +185,7 @@ function DealAuditCard({ deal, onOverride, checked, onToggle }: {
               {dayjs(deal.closedAt).format('HH:mm')}
             </Typography.Text>
           )}
+          <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
           {checked && (
             <Tag color="success" icon={<CheckCircleFilled />} style={{ margin: 0 }}>
               Проверено

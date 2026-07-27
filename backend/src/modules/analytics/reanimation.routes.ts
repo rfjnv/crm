@@ -60,6 +60,7 @@ type LastDealRow = {
   deal_revenue: string;
   effective_ts: Date;
   created_at: Date;
+  is_receipt_punched: boolean;
 };
 
 type LastNoteRow = {
@@ -120,6 +121,7 @@ type RecentDealRow = {
   amount: string;
   paid_amount: string;
   payment_status: string;
+  is_receipt_punched: boolean;
 };
 
 type RecentNoteRow = {
@@ -271,12 +273,13 @@ async function enrichClientRows(
             d.closed_at,
             d.created_at
           ) AS effective_ts,
-          d.amount AS deal_revenue
+          d.amount AS deal_revenue,
+          d.is_receipt_punched
         FROM deals d
         LEFT JOIN deal_items di ON di.deal_id = d.id
         WHERE ${SQL_REANIMATION_DEAL_FILTER}
           AND d.client_id IN (${Prisma.join(clientIds)})${dealFilter}
-        GROUP BY d.id, d.client_id, d.title, d.amount, d.closed_at, d.created_at
+        GROUP BY d.id, d.client_id, d.title, d.amount, d.closed_at, d.created_at, d.is_receipt_punched
       )
       SELECT DISTINCT ON (client_id)
         client_id,
@@ -284,7 +287,8 @@ async function enrichClientRows(
         deal_title,
         deal_revenue::text AS deal_revenue,
         effective_ts,
-        created_at
+        created_at,
+        is_receipt_punched
       FROM deal_scope
       ORDER BY client_id, effective_ts DESC, created_at DESC, deal_id DESC`,
     ),
@@ -440,6 +444,7 @@ async function enrichClientRows(
             revenue: Number(lastDeal.deal_revenue),
             effectiveAt: lastDeal.effective_ts.toISOString(),
             createdAt: lastDeal.created_at.toISOString(),
+            isReceiptPunched: lastDeal.is_receipt_punched,
           }
         : null,
       lastContactAt: lastNote?.created_at ? lastNote.created_at.toISOString() : null,
@@ -803,6 +808,7 @@ router.get(
             d.amount,
             d.paid_amount,
             d.payment_status,
+            d.is_receipt_punched,
             COALESCE(
               MAX(COALESCE(di.deal_date, d.closed_at, d.created_at)),
               d.closed_at,
@@ -812,7 +818,7 @@ router.get(
           LEFT JOIN deal_items di ON di.deal_id = d.id
           WHERE ${SQL_REANIMATION_DEAL_FILTER}
             AND d.client_id = ${clientId}${dealFilter}
-          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status, d.closed_at
+          GROUP BY d.id, d.client_id, d.title, d.created_at, d.amount, d.paid_amount, d.payment_status, d.closed_at, d.is_receipt_punched
         )
         SELECT
           deal_id,
@@ -822,7 +828,8 @@ router.get(
           amount::text AS deal_revenue,
           amount::text,
           paid_amount::text AS paid_amount,
-          payment_status
+          payment_status,
+          is_receipt_punched
         FROM deal_scope
         ORDER BY effective_ts DESC, created_at DESC, deal_id DESC
         LIMIT 15`,
@@ -870,6 +877,7 @@ router.get(
         amount: Number(row.amount),
         paidAmount: Number(row.paid_amount),
         paymentStatus: row.payment_status,
+        isReceiptPunched: row.is_receipt_punched,
       })),
       productStats: productStats.map((row) => ({
         productId: row.product_id,

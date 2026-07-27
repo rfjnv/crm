@@ -18,6 +18,7 @@ reviewsRoutes.get('/', async (req, res, next) => {
             select: {
               id: true,
               title: true,
+              isReceiptPunched: true,
               client: {
                 select: {
                   id: true,
@@ -48,6 +49,7 @@ reviewsRoutes.get('/', async (req, res, next) => {
             select: {
               id: true,
               title: true,
+              isReceiptPunched: true,
               client: {
                 select: {
                   id: true,

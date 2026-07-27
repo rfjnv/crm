@@ -45,12 +45,14 @@ import { matchesSearch, smartFilterOption } from '../utils/translit';
 import './ReanimationPage.css';
 import type {
   ReanimationAiReport,
+  ReanimationClientDeal,
   ReanimationClientDetail,
   ReanimationClientProductStat,
   ReanimationClientRow,
   ReanimationProductPreview,
   ReanimationStatus,
 } from '../types';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -832,7 +834,18 @@ export default function ReanimationPage() {
   ];
 
   const recentDealColumns = [
-    { title: 'Сделка', dataIndex: 'title', key: 'title', ellipsis: true },
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      key: 'title',
+      ellipsis: true,
+      render: (v: string, r: ReanimationClientDeal) => (
+        <Space size={4} wrap>
+          <span>{v}</span>
+          <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+        </Space>
+      ),
+    },
     {
       title: 'Дата',
       dataIndex: 'effectiveAt',
@@ -1345,6 +1358,7 @@ export default function ReanimationPage() {
                           {formatDate(drawerData.client.lastDeal.effectiveAt)} ·{' '}
                           {formatMoney(drawerData.client.lastDeal.revenue)} сум
                         </Text>
+                        <ReceiptPunchedTag isReceiptPunched={drawerData.client.lastDeal.isReceiptPunched} />
                       </Space>
                       {renderProductButtons(
                         drawerData.client.lastDealProducts,

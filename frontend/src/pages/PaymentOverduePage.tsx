@@ -22,6 +22,7 @@ import { ClockCircleOutlined, DownloadOutlined, ReloadOutlined } from '@ant-desi
 import dayjs from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { APP_INPUT } from '../components/ui/AppClassNames';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS } from '../utils/currency';
@@ -319,9 +320,12 @@ export default function PaymentOverduePage() {
       key: 'deal',
       width: 180,
       render: (_: unknown, row: PaymentOverdueDealRow) => (
-        <Link to={`/deals/${row.dealId}`} onClick={(e) => e.stopPropagation()}>
-          {row.title || 'Без названия'}
-        </Link>
+        <Space size={4} wrap>
+          <Link to={`/deals/${row.dealId}`} onClick={(e) => e.stopPropagation()}>
+            {row.title || 'Без названия'}
+          </Link>
+          <ReceiptPunchedTag isReceiptPunched={row.isReceiptPunched} />
+        </Space>
       ),
     },
     {

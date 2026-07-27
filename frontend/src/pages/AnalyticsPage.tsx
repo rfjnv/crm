@@ -38,6 +38,7 @@ import {
 import { productsApi } from '../api/products.api';
 import { financeApi } from '../api/finance.api';
 import { statusConfig } from '../components/DealStatusTag';
+import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { formatUZS } from '../utils/currency';
@@ -928,7 +929,16 @@ export default function AnalyticsPage() {
                 size="small"
                 onRow={(r) => ({ onClick: () => navigate(`/deals/${r.dealId}`), style: { cursor: 'pointer' } })}
                 columns={[
-                  { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.dealId}`}>{v}</Link> },
+                  {
+                    title: 'Сделка',
+                    dataIndex: 'title',
+                    render: (v: string, r: (typeof finance.overdueDebts)[number]) => (
+                      <Space size={4} wrap>
+                        <Link to={`/deals/${r.dealId}`}>{v}</Link>
+                        <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+                      </Space>
+                    ),
+                  },
                   {
                     title: 'Клиент',
                     key: 'client',

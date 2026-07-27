@@ -36,7 +36,7 @@ function verifyAccess(role: string, type: ConversationType): void {
 // Common include pattern for full message response
 const messageInclude = {
   sender: { select: { id: true, fullName: true } },
-  deal: { select: { id: true, title: true } },
+  deal: { select: { id: true, title: true, isReceiptPunched: true } },
   replyTo: {
     select: {
       id: true,
