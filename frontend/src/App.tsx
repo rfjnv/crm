@@ -84,6 +84,7 @@ import VedProcessBoardPage from './pages/VedProcessBoardPage';
 import VedMapPage from './pages/VedMapPage';
 import WorkerAuditPage from './pages/WorkerAuditPage';
 import AuditCheckPage from './pages/AuditCheckPage';
+import AuditStockPage from './pages/AuditStockPage';
 import ActivityLogPage from './pages/ActivityLogPage';
 import AlmanacSalesPage from './pages/AlmanacSalesPage';
 import AlmanacClientsPage from './pages/AlmanacClientsPage';
@@ -200,6 +201,7 @@ export default function App() {
                 <Route path="/inventory/products" element={<ProductsPage />} />
                 <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
                 <Route path="/inventory/warehouse" element={<WarehousePage />} />
+                <Route path="/inventory/audit-check" element={<AuditStockPage />} />
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/team" element={<TeamPage />} />

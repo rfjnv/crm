@@ -337,6 +337,13 @@ export default function Layout() {
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
       ? [{
+        key: '/inventory/audit-check',
+        icon: <AuditOutlined />,
+        label: <Link to="/inventory/audit-check">Аудит остатков</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+      ? [{
         key: '/shipment',
         icon: <FileTextOutlined />,
         label: <Link to="/shipment">Накладные</Link>,
