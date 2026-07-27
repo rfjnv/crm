@@ -24,7 +24,7 @@ import { formatUZS, moneyFormatter } from '../utils/currency';
 import DealStatusTag from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { useAuthStore } from '../store/authStore';
-import type { ContractAttachment, DealStatus } from '../types';
+import type { ContractAttachment, ContractDealWithItems, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { getFirstName } from '../lib/name-utils';
 
@@ -299,10 +299,10 @@ export default function ContractDetailPage() {
           style={{ marginBottom: 24 }}
           scroll={{ x: 600 }}
           columns={[
-            { title: 'Сделка', dataIndex: 'title', render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link> },
+            { title: 'Сделка', dataIndex: 'title', render: (v: string, r: ContractDealWithItems) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link> },
             {
               title: 'Статус', dataIndex: 'status', width: 160,
-              render: (v: DealStatus, r: { isReceiptPunched?: boolean }) => (
+              render: (v: DealStatus, r: ContractDealWithItems) => (
                 <Space size={4} wrap>
                   <DealStatusTag status={v} />
                   <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />

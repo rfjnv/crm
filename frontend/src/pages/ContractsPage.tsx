@@ -16,7 +16,7 @@ import { clientsApi } from '../api/clients.api';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
-import type { Client, ContractListItem, ContractDetail, DealStatus } from '../types';
+import type { Client, ContractListItem, ContractDetail, ContractDealWithItems, DealStatus } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import DealStatusTag from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
@@ -536,13 +536,13 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
             {
               title: 'Сделка',
               dataIndex: 'title',
-              render: (v: string, r) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link>,
+              render: (v: string, r: ContractDealWithItems) => <Link to={`/deals/${r.id}`}>{v || r.id.slice(0, 8)}</Link>,
             },
             {
               title: 'Статус',
               dataIndex: 'status',
               width: 160,
-              render: (v: DealStatus, r: { isReceiptPunched?: boolean }) => (
+              render: (v: DealStatus, r: ContractDealWithItems) => (
                 <Space size={4} wrap>
                   <DealStatusTag status={v} />
                   <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
@@ -559,7 +559,7 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
             {
               title: '',
               width: 100,
-              render: (_: unknown, r: { id: string }) => (
+              render: (_: unknown, r: ContractDealWithItems) => (
                 <Button type="link" size="small" icon={<DollarOutlined />} onClick={() => onPay(r.id)}>
                   Оплата
                 </Button>
