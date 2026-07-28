@@ -16,7 +16,9 @@ import {
   Row,
   Col,
   Tooltip,
+  theme,
 } from 'antd';
+import { Bar } from '@ant-design/charts';
 import {
   DeleteOutlined,
   SyncOutlined,
@@ -69,9 +71,20 @@ function initials(fullName?: string): string {
   return (parts[0]?.[0] || '') + (parts[1]?.[0] || '');
 }
 
+interface EmployeeStat {
+  userId: string;
+  fullName: string;
+  daysPresent: number;
+  lateCount: number;
+  earlyLeaveCount: number;
+}
+
 export default function AttendancePage() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
+  const { token } = theme.useToken();
+  const isDark = token.colorBgContainer !== '#ffffff';
+  const chartTheme = isDark ? 'classicDark' : 'classic';
 
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs(), dayjs()]);
   const [userFilter, setUserFilter] = useState<string | undefined>(undefined);
@@ -138,6 +151,94 @@ export default function AttendancePage() {
     const absent = Math.max(activeUsers.length - presentIds.size, 0);
     return { total: activeUsers.length, present: presentIds.size, onTime, late, absent };
   }, [isSingleDay, users, data]);
+
+  const employeeStats: EmployeeStat[] = useMemo(() => {
+    const map = new Map<string, EmployeeStat>();
+    for (const r of data) {
+      if (!r.checkIn) continue;
+      let stat = map.get(r.userId);
+      if (!stat) {
+        stat = { userId: r.userId, fullName: r.user?.fullName ?? '—', daysPresent: 0, lateCount: 0, earlyLeaveCount: 0 };
+        map.set(r.userId, stat);
+      }
+      stat.daysPresent += 1;
+      if (checkInStatus(r).kind === 'LATE') stat.lateCount += 1;
+      if (checkOutEarlyBy(r) !== null) stat.earlyLeaveCount += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.lateCount - a.lateCount || b.earlyLeaveCount - a.earlyLeaveCount);
+  }, [data]);
+
+  const periodTotals = useMemo(
+    () => ({
+      lateCount: employeeStats.reduce((s, e) => s + e.lateCount, 0),
+      earlyLeaveCount: employeeStats.reduce((s, e) => s + e.earlyLeaveCount, 0),
+    }),
+    [employeeStats],
+  );
+
+  const axisStyle = { x: { labelFill: token.colorTextSecondary, labelAutoRotate: true, labelAutoHide: true }, y: { labelFill: token.colorTextSecondary, title: false } };
+
+  const lateBarConfig = useMemo(() => {
+    const chartData = employeeStats
+      .filter((s) => s.lateCount > 0)
+      .slice(0, 10)
+      .map((s) => ({ name: getFirstName(s.fullName) || s.fullName, count: s.lateCount }));
+    if (!chartData.length) return null;
+    return {
+      data: chartData,
+      xField: 'name',
+      yField: 'count',
+      height: 260,
+      theme: chartTheme,
+      style: { fill: '#cf1322' },
+      axis: axisStyle,
+      tooltip: { items: [{ field: 'count', channel: 'y', name: 'Опозданий' }] },
+    };
+  }, [employeeStats, chartTheme, token.colorTextSecondary]);
+
+  const earlyBarConfig = useMemo(() => {
+    const chartData = employeeStats
+      .filter((s) => s.earlyLeaveCount > 0)
+      .sort((a, b) => b.earlyLeaveCount - a.earlyLeaveCount)
+      .slice(0, 10)
+      .map((s) => ({ name: getFirstName(s.fullName) || s.fullName, count: s.earlyLeaveCount }));
+    if (!chartData.length) return null;
+    return {
+      data: chartData,
+      xField: 'name',
+      yField: 'count',
+      height: 260,
+      theme: chartTheme,
+      style: { fill: '#d48806' },
+      axis: axisStyle,
+      tooltip: { items: [{ field: 'count', channel: 'y', name: 'Ранних уходов' }] },
+    };
+  }, [employeeStats, chartTheme, token.colorTextSecondary]);
+
+  const employeeStatColumns = [
+    { title: 'Сотрудник', dataIndex: 'fullName', render: (v: string) => getFirstName(v) || v },
+    { title: 'Дней с данными', dataIndex: 'daysPresent', width: 140, align: 'center' as const },
+    {
+      title: 'Опоздания',
+      key: 'late',
+      width: 140,
+      align: 'center' as const,
+      render: (_: unknown, r: EmployeeStat) => (
+        <Tag color={r.lateCount ? 'error' : 'default'}>{r.lateCount} из {r.daysPresent}</Tag>
+      ),
+      sorter: (a: EmployeeStat, b: EmployeeStat) => a.lateCount - b.lateCount,
+    },
+    {
+      title: 'Ушёл раньше',
+      key: 'early',
+      width: 140,
+      align: 'center' as const,
+      render: (_: unknown, r: EmployeeStat) => (
+        <Tag color={r.earlyLeaveCount ? 'warning' : 'default'}>{r.earlyLeaveCount} из {r.daysPresent}</Tag>
+      ),
+      sorter: (a: EmployeeStat, b: EmployeeStat) => a.earlyLeaveCount - b.earlyLeaveCount,
+    },
+  ];
 
   const StatusTag = ({ record }: { record: AttendanceRecord }) => {
     const status = checkInStatus(record);
@@ -252,6 +353,53 @@ export default function AttendancePage() {
             </Tooltip>
           </Col>
         </Row>
+      )}
+
+      {!isSingleDay && employeeStats.length > 0 && (
+        <Card bordered={false} style={{ marginBottom: 16 }}>
+          <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 16 }}>
+            Итоги за период ({dateRange[0].format('DD.MM.YYYY')} – {dateRange[1].format('DD.MM.YYYY')})
+          </Typography.Title>
+
+          <Row gutter={12} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}>
+              <Card size="small" bordered={false}>
+                <Statistic title="Всего опозданий" value={periodTotals.lateCount} valueStyle={{ color: '#cf1322' }} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card size="small" bordered={false}>
+                <Statistic title="Всего ранних уходов" value={periodTotals.earlyLeaveCount} valueStyle={{ color: '#d48806' }} />
+              </Card>
+            </Col>
+          </Row>
+
+          {(lateBarConfig || earlyBarConfig) && (
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              {lateBarConfig && (
+                <Col xs={24} md={12}>
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>Опоздания по сотрудникам</Typography.Text>
+                  <Bar {...lateBarConfig} />
+                </Col>
+              )}
+              {earlyBarConfig && (
+                <Col xs={24} md={12}>
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>Ранние уходы по сотрудникам</Typography.Text>
+                  <Bar {...earlyBarConfig} />
+                </Col>
+              )}
+            </Row>
+          )}
+
+          <Table
+            dataSource={employeeStats}
+            columns={employeeStatColumns}
+            rowKey="userId"
+            size="small"
+            pagination={false}
+            locale={{ emptyText: 'Нет данных за период' }}
+          />
+        </Card>
       )}
 
       <Card bordered={false}>
