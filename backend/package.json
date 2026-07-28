@@ -24,6 +24,7 @@
     "import-attendance": "tsx src/scripts/import-attendance.ts",
     "set-timepay-ids": "tsx src/scripts/set-timepay-employee-ids.ts",
     "diagnose-timepay": "tsx src/scripts/diagnose-timepay-match.ts",
+    "backfill-timepay": "tsx src/scripts/backfill-timepay-attendance.ts",
     "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts",
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts",
     "seed:companies": "node dist/scripts/seed-companies.js"
