@@ -65,6 +65,14 @@ function checkOutEarlyBy(record: AttendanceRecord): number | null {
 
 const formatTime = (v?: string | null) => (v ? dayjs(v).format('HH:mm') : '—');
 
+function formatMinutes(total: number): string {
+  if (total <= 0) return '0 мин';
+  if (total < 60) return `${total} мин`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
+}
+
 function initials(fullName?: string): string {
   if (!fullName) return '?';
   const parts = fullName.trim().split(/\s+/);
@@ -77,6 +85,8 @@ interface EmployeeStat {
   daysPresent: number;
   lateCount: number;
   earlyLeaveCount: number;
+  totalLateMinutes: number;
+  totalEarlyMinutes: number;
 }
 
 export default function AttendancePage() {
@@ -158,15 +168,36 @@ export default function AttendancePage() {
       if (!r.checkIn) continue;
       let stat = map.get(r.userId);
       if (!stat) {
-        stat = { userId: r.userId, fullName: r.user?.fullName ?? '—', daysPresent: 0, lateCount: 0, earlyLeaveCount: 0 };
+        stat = {
+          userId: r.userId,
+          fullName: r.user?.fullName ?? '—',
+          daysPresent: 0,
+          lateCount: 0,
+          earlyLeaveCount: 0,
+          totalLateMinutes: 0,
+          totalEarlyMinutes: 0,
+        };
         map.set(r.userId, stat);
       }
       stat.daysPresent += 1;
-      if (checkInStatus(r).kind === 'LATE') stat.lateCount += 1;
-      if (checkOutEarlyBy(r) !== null) stat.earlyLeaveCount += 1;
+      const status = checkInStatus(r);
+      if (status.kind === 'LATE') {
+        stat.lateCount += 1;
+        stat.totalLateMinutes += status.lateBy ?? 0;
+      }
+      const earlyBy = checkOutEarlyBy(r);
+      if (earlyBy !== null) {
+        stat.earlyLeaveCount += 1;
+        stat.totalEarlyMinutes += earlyBy;
+      }
     }
     return Array.from(map.values()).sort((a, b) => b.lateCount - a.lateCount || b.earlyLeaveCount - a.earlyLeaveCount);
   }, [data]);
+
+  const goToEmployeeMonth = (userId: string) => {
+    setDateRange([dayjs().startOf('month'), dayjs()]);
+    setUserFilter(userId);
+  };
 
   const periodTotals = useMemo(
     () => ({
@@ -178,63 +209,72 @@ export default function AttendancePage() {
 
   const axisStyle = { x: { labelFill: token.colorTextSecondary, labelAutoRotate: true, labelAutoHide: true }, y: { labelFill: token.colorTextSecondary, title: false } };
 
-  const lateBarConfig = useMemo(() => {
-    const chartData = employeeStats
-      .filter((s) => s.lateCount > 0)
-      .slice(0, 10)
-      .map((s) => ({ name: getFirstName(s.fullName) || s.fullName, count: s.lateCount }));
-    if (!chartData.length) return null;
+  const combinedChartConfig = useMemo(() => {
+    const top = [...employeeStats]
+      .sort((a, b) => (b.lateCount + b.earlyLeaveCount) - (a.lateCount + a.earlyLeaveCount))
+      .filter((s) => s.lateCount > 0 || s.earlyLeaveCount > 0)
+      .slice(0, 10);
+    if (!top.length) return null;
+    const chartData = top.flatMap((s) => {
+      const name = getFirstName(s.fullName) || s.fullName;
+      return [
+        { name, type: 'Опоздания', count: s.lateCount },
+        { name, type: 'Ранние уходы', count: s.earlyLeaveCount },
+      ];
+    });
     return {
       data: chartData,
       xField: 'name',
       yField: 'count',
-      height: 260,
+      colorField: 'type',
+      group: true,
+      height: 300,
       theme: chartTheme,
-      style: { fill: '#cf1322' },
+      scale: { color: { domain: ['Опоздания', 'Ранние уходы'], range: ['#cf1322', '#d48806'] } },
       axis: axisStyle,
-      tooltip: { items: [{ field: 'count', channel: 'y', name: 'Опозданий' }] },
+      legend: { color: { itemLabelFill: token.colorText } },
+      tooltip: { items: [{ field: 'count', channel: 'y' }] },
     };
-  }, [employeeStats, chartTheme, token.colorTextSecondary]);
-
-  const earlyBarConfig = useMemo(() => {
-    const chartData = employeeStats
-      .filter((s) => s.earlyLeaveCount > 0)
-      .sort((a, b) => b.earlyLeaveCount - a.earlyLeaveCount)
-      .slice(0, 10)
-      .map((s) => ({ name: getFirstName(s.fullName) || s.fullName, count: s.earlyLeaveCount }));
-    if (!chartData.length) return null;
-    return {
-      data: chartData,
-      xField: 'name',
-      yField: 'count',
-      height: 260,
-      theme: chartTheme,
-      style: { fill: '#d48806' },
-      axis: axisStyle,
-      tooltip: { items: [{ field: 'count', channel: 'y', name: 'Ранних уходов' }] },
-    };
-  }, [employeeStats, chartTheme, token.colorTextSecondary]);
+  }, [employeeStats, chartTheme, token.colorText, token.colorTextSecondary]);
 
   const employeeStatColumns = [
-    { title: 'Сотрудник', dataIndex: 'fullName', render: (v: string) => getFirstName(v) || v },
+    {
+      title: 'Сотрудник',
+      dataIndex: 'fullName',
+      render: (v: string, r: EmployeeStat) => (
+        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => goToEmployeeMonth(r.userId)}>
+          {getFirstName(v) || v}
+        </Button>
+      ),
+    },
     { title: 'Дней с данными', dataIndex: 'daysPresent', width: 140, align: 'center' as const },
     {
       title: 'Опоздания',
       key: 'late',
-      width: 140,
+      width: 160,
       align: 'center' as const,
       render: (_: unknown, r: EmployeeStat) => (
-        <Tag color={r.lateCount ? 'error' : 'default'}>{r.lateCount} из {r.daysPresent}</Tag>
+        <Space direction="vertical" size={0}>
+          <Tag color={r.lateCount ? 'error' : 'default'}>{r.lateCount} из {r.daysPresent}</Tag>
+          {r.lateCount > 0 && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{formatMinutes(r.totalLateMinutes)}</Typography.Text>
+          )}
+        </Space>
       ),
       sorter: (a: EmployeeStat, b: EmployeeStat) => a.lateCount - b.lateCount,
     },
     {
       title: 'Ушёл раньше',
       key: 'early',
-      width: 140,
+      width: 160,
       align: 'center' as const,
       render: (_: unknown, r: EmployeeStat) => (
-        <Tag color={r.earlyLeaveCount ? 'warning' : 'default'}>{r.earlyLeaveCount} из {r.daysPresent}</Tag>
+        <Space direction="vertical" size={0}>
+          <Tag color={r.earlyLeaveCount ? 'warning' : 'default'}>{r.earlyLeaveCount} из {r.daysPresent}</Tag>
+          {r.earlyLeaveCount > 0 && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{formatMinutes(r.totalEarlyMinutes)}</Typography.Text>
+          )}
+        </Space>
       ),
       sorter: (a: EmployeeStat, b: EmployeeStat) => a.earlyLeaveCount - b.earlyLeaveCount,
     },
@@ -251,10 +291,10 @@ export default function AttendancePage() {
         {status.kind === 'ON_TIME' ? (
           <Tag icon={<CheckCircleFilled />} color="success">Вовремя</Tag>
         ) : (
-          <Tag icon={<ClockCircleFilled />} color="error">Опоздание {status.lateBy} мин</Tag>
+          <Tag icon={<ClockCircleFilled />} color="error">Опоздание {formatMinutes(status.lateBy ?? 0)}</Tag>
         )}
         {earlyBy !== null && (
-          <Tag icon={<ClockCircleFilled />} color="warning">Ушёл раньше на {earlyBy} мин</Tag>
+          <Tag icon={<ClockCircleFilled />} color="warning">Ушёл раньше на {formatMinutes(earlyBy)}</Tag>
         )}
       </Space>
     );
@@ -274,7 +314,9 @@ export default function AttendancePage() {
         <Space size={10}>
           <Avatar size={28} icon={<UserOutlined />}>{initials(r.user?.fullName)}</Avatar>
           <div>
-            <div>{getFirstName(r.user?.fullName) || '—'}</div>
+            <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => goToEmployeeMonth(r.userId)}>
+              {getFirstName(r.user?.fullName) || '—'}
+            </Button>
             {r.user?.department && (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.user.department}</Typography.Text>
             )}
@@ -374,21 +416,11 @@ export default function AttendancePage() {
             </Col>
           </Row>
 
-          {(lateBarConfig || earlyBarConfig) && (
-            <Row gutter={16} style={{ marginBottom: 16 }}>
-              {lateBarConfig && (
-                <Col xs={24} md={12}>
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>Опоздания по сотрудникам</Typography.Text>
-                  <Bar {...lateBarConfig} />
-                </Col>
-              )}
-              {earlyBarConfig && (
-                <Col xs={24} md={12}>
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>Ранние уходы по сотрудникам</Typography.Text>
-                  <Bar {...earlyBarConfig} />
-                </Col>
-              )}
-            </Row>
+          {combinedChartConfig && (
+            <div style={{ marginBottom: 16 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>Опоздания и ранние уходы по сотрудникам</Typography.Text>
+              <Bar {...combinedChartConfig} />
+            </div>
           )}
 
           <Table
@@ -437,7 +469,9 @@ export default function AttendancePage() {
                   <Space size={10}>
                     <Avatar size={32} icon={<UserOutlined />}>{initials(item.user?.fullName)}</Avatar>
                     <div>
-                      <Typography.Text strong>{getFirstName(item.user?.fullName) || '—'}</Typography.Text>
+                      <Button type="link" style={{ padding: 0, height: 'auto', fontWeight: 600 }} onClick={() => goToEmployeeMonth(item.userId)}>
+                        {getFirstName(item.user?.fullName) || '—'}
+                      </Button>
                       <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.date).format('DD.MM.YYYY')}</Typography.Text></div>
                     </div>
                   </Space>
