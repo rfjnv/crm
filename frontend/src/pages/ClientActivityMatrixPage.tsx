@@ -10,7 +10,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
-import CohortsAnalyticsPanel from '../components/CohortsAnalyticsPanel';
+import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import type { HistoryClientActivity, Product } from '../types';
@@ -639,7 +639,7 @@ export default function ClientActivityMatrixPage() {
           {
             key: 'cohorts',
             label: <span><LineChartOutlined /> Когорты</span>,
-            children: <CohortsAnalyticsPanel fetchEnabled={view === 'cohorts'} />,
+            children: <HistoryCohortPanel fetchEnabled={view === 'cohorts'} />,
           },
         ]}
       />

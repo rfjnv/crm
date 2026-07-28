@@ -21,7 +21,7 @@ import {
 } from '@ant-design/icons';
 import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
-import CohortsAnalyticsPanel from '../components/CohortsAnalyticsPanel';
+import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import {
   inferTypeLabel,
   safePrice,
@@ -2258,7 +2258,7 @@ export default function AnalyticsPage() {
     </div>
   );
 
-  const cohortsTab = <CohortsAnalyticsPanel fetchEnabled={analyticsTab === 'cohorts'} />;
+  const cohortsTab = <HistoryCohortPanel fetchEnabled={analyticsTab === 'cohorts'} />;
 
   const hierarchyClientsTab = (
     <HierarchyClientsAnalyticsPanel

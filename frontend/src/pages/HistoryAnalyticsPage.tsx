@@ -27,6 +27,7 @@ import {
 import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import { getFirstName } from '../lib/name-utils';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
@@ -137,7 +138,6 @@ export default function HistoryAnalyticsPage() {
   const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
-  const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number } | null>(null);
   /** Monthly chart: compare operational vs shipped revenue, or show one metric. */
   const [historyRevMode, setHistoryRevMode] = useState<'both' | 'operational' | 'shipped'>('both');
 
@@ -222,14 +222,6 @@ export default function HistoryAnalyticsPage() {
     queryKey: ['analytics-history-drilldown-method', methodDrawer, year],
     queryFn: () => analyticsApi.getHistoryDrilldown('payments', { method: methodDrawer! }, year),
     enabled: !!methodDrawer,
-    staleTime: historyStaleMs,
-  });
-
-  // Cohort clients query
-  const { data: cohortClientsData, isLoading: cohortClientsLoading } = useQuery({
-    queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, year],
-    queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year),
-    enabled: !!cohortDrawer,
     staleTime: historyStaleMs,
   });
 
@@ -1310,38 +1302,8 @@ export default function HistoryAnalyticsPage() {
         </Col>
       </Row>
 
-      {/* Cohort heatmap table */}
-      <Card title="Когортный анализ" size="small">
-        {(() => {
-          const cohortMonths = [...new Set(extended.cohort.map((r) => r.cohortMonth))].sort((a, b) => a - b);
-          const activeMonths = [...new Set(extended.cohort.map((r) => r.activeMonth))].sort((a, b) => a - b);
-          const cohortMap = new Map<string, number>();
-          for (const r of extended.cohort) cohortMap.set(`${r.cohortMonth}-${r.activeMonth}`, r.clientCount);
-
-          const columns = [
-            { title: 'Когорта', key: 'cohort', width: 80, render: (_: unknown, record: { cohort: number }) => MONTH_LABELS[record.cohort] },
-            ...activeMonths.map((am) => ({
-              title: MONTH_LABELS[am], key: `a${am}`, width: 60, align: 'center' as const,
-              render: (_: unknown, record: { cohort: number }) => {
-                const count = cohortMap.get(`${record.cohort}-${am}`) || 0;
-                if (!count) return <span style={{ color: token.colorTextDisabled }}>—</span>;
-                const maxCount = Math.max(...Array.from(cohortMap.values()));
-                const intensity = maxCount > 0 ? count / maxCount : 0;
-                return (
-                  <Tooltip title={`${MONTH_LABELS[record.cohort]} → ${MONTH_LABELS[am]}: ${count} клиентов`}>
-                    <div
-                      style={{ backgroundColor: `rgba(22,119,255,${0.1 + intensity * 0.8})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: intensity > 0.5 ? '#fff' : token.colorText, cursor: 'pointer' }}
-                      onClick={() => setCohortDrawer({ cohortMonth: record.cohort, activeMonth: am })}
-                    >{count}</div>
-                  </Tooltip>
-                );
-              },
-            })),
-          ];
-          const dataSource = cohortMonths.map((c) => ({ cohort: c, key: c }));
-          return <Table dataSource={dataSource} columns={columns} size="small" pagination={false} scroll={{ x: 600 }} />;
-        })()}
-      </Card>
+      {/* Cohort analysis — shared component, same as Аналитика и Аналитика для менеджеров */}
+      <HistoryCohortPanel year={year} />
     </>
   ) : (
     <div style={{ textAlign: 'center', marginTop: 60 }}><Spin size="large" /></div>
@@ -1745,25 +1707,6 @@ export default function HistoryAnalyticsPage() {
         {methodDrillLoading ? <Spin /> : methodDrilldown?.payments ? (
           <Table dataSource={methodDrilldown.payments} columns={paymentDrillCols} rowKey="id" size="small"
             pagination={false} scroll={{ x: 600 }} />
-        ) : null}
-      </Drawer>
-
-      {/* Cohort Clients Drawer */}
-      <Drawer
-        title={cohortDrawer ? `Когорта ${MONTH_LABELS[cohortDrawer.cohortMonth]} → ${MONTH_LABELS[cohortDrawer.activeMonth]} ${year}` : ''}
-        open={!!cohortDrawer} onClose={() => setCohortDrawer(null)} width="100%"
-      >
-        {cohortClientsLoading ? <Spin /> : cohortClientsData?.clients ? (
-          <Table dataSource={cohortClientsData.clients} rowKey="clientId" size="small"
-            pagination={false} scroll={{ x: 500 }}
-            columns={[
-              { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
-              { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
-              { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
-              { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 140, render: (v: number) => fmtNum(v) },
-            ]}
-            onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })}
-          />
         ) : null}
       </Drawer>
     </div>
