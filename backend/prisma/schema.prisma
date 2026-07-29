@@ -70,6 +70,13 @@ enum MovementType {
   CORRECTION
 }
 
+enum ReservationStatus {
+  ACTIVE
+  CANCELLED
+  FULFILLED
+  EXPIRED
+}
+
 enum PaymentType {
   FULL
   PARTIAL
@@ -238,6 +245,7 @@ model User {
   tasksApproved      Task[]           @relation("TaskApprover")
   contractAttachments ContractAttachment[] @relation("ContractAttachmentUploader")
   contractsDeleted    Contract[]           @relation("ContractDeletedBy")
+  productReservations ProductReservation[] @relation("ReservationManager")
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
   /** ID сотрудника в TimePay — если задан, синк посещаемости сопоставляет по нему, а не по ФИО. */
@@ -401,6 +409,7 @@ model Client {
   notesBoardRows NotesBoardRow[]
   stockPositions ClientStockPosition[]
   stockEvents ClientStockEvent[]
+  reservations ProductReservation[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
@@ -694,11 +703,38 @@ model Product {
   clientStockEvents ClientStockEvent[]
   importOrderItems ImportOrderItem[]
   posterPhotos ProductPosterPhoto[]
+  reservations ProductReservation[]
 
   @@index([category])
   @@index([countryOfOrigin])
   @@index([supplierId])
   @@map("products")
+}
+
+/** Бронирование товара за клиентом на срок: блокирует часть остатка от продажи другим клиентам. */
+model ProductReservation {
+  id          String             @id @default(uuid())
+  productId   String             @map("product_id")
+  clientId    String             @map("client_id")
+  managerId   String             @map("manager_id")
+  quantity    Decimal            @db.Decimal(12, 3)
+  status      ReservationStatus  @default(ACTIVE)
+  note        String?
+  expiresAt   DateTime           @map("expires_at")
+  cancelledAt DateTime?          @map("cancelled_at")
+  fulfilledAt DateTime?          @map("fulfilled_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  manager User    @relation("ReservationManager", fields: [managerId], references: [id])
+
+  @@index([productId])
+  @@index([clientId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("product_reservations")
 }
 
 model ProductPosterPhoto {

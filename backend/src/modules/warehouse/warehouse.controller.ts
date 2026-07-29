@@ -100,6 +100,36 @@ export class WarehouseController {
     res.json(data);
   }
 
+  // Reservations
+  async createReservation(req: Request, res: Response): Promise<void> {
+    const reservation = await warehouseService.createReservation(req.body, req.user!.userId as string);
+    res.status(201).json(reservation);
+  }
+
+  async listReservations(req: Request, res: Response): Promise<void> {
+    const reservations = await warehouseService.listReservations({
+      productId: req.query.productId as string | undefined,
+      clientId: req.query.clientId as string | undefined,
+      status: req.query.status as 'ACTIVE' | 'CANCELLED' | 'FULFILLED' | 'EXPIRED' | undefined,
+    });
+    res.json(reservations);
+  }
+
+  async getProductReservations(req: Request, res: Response): Promise<void> {
+    const reservations = await warehouseService.getProductReservations(req.params.id as string);
+    res.json(reservations);
+  }
+
+  async cancelReservation(req: Request, res: Response): Promise<void> {
+    const reservation = await warehouseService.cancelReservation(req.params.id as string, req.user!.userId as string);
+    res.json(reservation);
+  }
+
+  async fulfillReservation(req: Request, res: Response): Promise<void> {
+    const reservation = await warehouseService.fulfillReservation(req.params.id as string, req.user!.userId as string);
+    res.json(reservation);
+  }
+
   async importProductsFromExcel(req: Request, res: Response): Promise<void> {
     const file = req.file;
     if (!file) {

@@ -9,18 +9,21 @@ import {
   sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
 import { auditLog } from '../../lib/logger';
-import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
+import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 
 export class WarehouseService {
   // ==================== PRODUCTS ====================
 
   async findAllProducts(role?: Role, companyId?: string) {
     const where = (role !== 'SUPER_ADMIN' && companyId) ? { companyId } : {};
-    return prisma.product.findMany({
+    const products = await prisma.product.findMany({
       where,
       orderBy: { name: 'asc' },
       include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
+
+    const reservedMap = await this.getReservedQtyMap(products.map((p) => p.id));
+    return products.map((p) => this.withAvailability(p, reservedMap.get(p.id) ?? 0));
   }
 
   async findProductById(id: string) {
@@ -29,7 +32,8 @@ export class WarehouseService {
       include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!product) throw new AppError(404, 'Товар не найден');
-    return product;
+    const reservedMap = await this.getReservedQtyMap([id]);
+    return this.withAvailability(product, reservedMap.get(id) ?? 0);
   }
 
   async addProductPhotos(productId: string, urls: string[]) {
@@ -197,6 +201,187 @@ export class WarehouseService {
       before: { stock: oldStock, name: product.name, sku: product.sku },
       after: { stock: dto.newStock, reason: dto.reason },
       reason: dto.reason,
+    });
+
+    return updated;
+  }
+
+  /** Активные (непросроченные) брони по товарам: productId -> сумма количества. */
+  private async getReservedQtyMap(productIds: string[]): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    await this.expireStaleReservations();
+    const rows = await prisma.productReservation.groupBy({
+      by: ['productId'],
+      where: { productId: { in: productIds }, status: 'ACTIVE' },
+      _sum: { quantity: true },
+    });
+    return new Map(rows.map((r) => [r.productId, Number(r._sum.quantity ?? 0)]));
+  }
+
+  private withAvailability<T extends { stock: Prisma.Decimal }>(product: T, reservedQty: number) {
+    const stock = Number(product.stock);
+    return {
+      ...product,
+      reservedQty,
+      availableStock: Math.max(0, stock - reservedQty),
+    };
+  }
+
+  /** Переводит просроченные активные брони в EXPIRED (ленивая проверка при каждом обращении к броням). */
+  private async expireStaleReservations(productId?: string) {
+    await prisma.productReservation.updateMany({
+      where: {
+        status: 'ACTIVE',
+        expiresAt: { lt: new Date() },
+        ...(productId ? { productId } : {}),
+      },
+      data: { status: 'EXPIRED' },
+    });
+  }
+
+  // ==================== RESERVATIONS ====================
+
+  async createReservation(dto: CreateReservationDto, userId: string) {
+    const product = await prisma.product.findUnique({ where: { id: dto.productId } });
+    if (!product || !product.isActive) {
+      throw new AppError(404, 'Товар не найден или неактивен');
+    }
+
+    const client = await prisma.client.findUnique({ where: { id: dto.clientId } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+
+    const expiresAt = new Date(dto.expiresAt);
+    if (expiresAt.getTime() <= Date.now()) {
+      throw new AppError(400, 'Срок брони должен быть в будущем');
+    }
+
+    await this.expireStaleReservations(dto.productId);
+
+    const reservedRow = await prisma.productReservation.aggregate({
+      where: { productId: dto.productId, status: 'ACTIVE' },
+      _sum: { quantity: true },
+    });
+    const reservedQty = Number(reservedRow._sum.quantity ?? 0);
+    const availableStock = Number(product.stock) - reservedQty;
+
+    if (dto.quantity > availableStock) {
+      throw new AppError(400, `Недостаточно свободного остатка для брони. Доступно: ${availableStock}`);
+    }
+
+    const reservation = await prisma.productReservation.create({
+      data: {
+        productId: dto.productId,
+        clientId: dto.clientId,
+        managerId: userId,
+        quantity: dto.quantity,
+        expiresAt,
+        note: dto.note,
+      },
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true } },
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    await auditLog({
+      userId,
+      action: 'CREATE',
+      entityType: 'product_reservation',
+      entityId: reservation.id,
+      after: {
+        productId: dto.productId,
+        productName: product.name,
+        clientId: dto.clientId,
+        clientName: client.companyName,
+        quantity: dto.quantity,
+        expiresAt: dto.expiresAt,
+      },
+    });
+
+    return reservation;
+  }
+
+  async listReservations(filters?: { productId?: string; clientId?: string; status?: 'ACTIVE' | 'CANCELLED' | 'FULFILLED' | 'EXPIRED' }) {
+    await this.expireStaleReservations(filters?.productId);
+
+    const where: Prisma.ProductReservationWhereInput = {};
+    if (filters?.productId) where.productId = filters.productId;
+    if (filters?.clientId) where.clientId = filters.clientId;
+    if (filters?.status) where.status = filters.status;
+
+    return prisma.productReservation.findMany({
+      where,
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true } },
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getProductReservations(productId: string) {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new AppError(404, 'Товар не найден');
+    return this.listReservations({ productId });
+  }
+
+  async cancelReservation(id: string, userId: string) {
+    const reservation = await prisma.productReservation.findUnique({ where: { id } });
+    if (!reservation) throw new AppError(404, 'Бронь не найдена');
+    if (reservation.status !== 'ACTIVE') {
+      throw new AppError(400, 'Можно отменить только активную бронь');
+    }
+
+    const updated = await prisma.productReservation.update({
+      where: { id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true } },
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    await auditLog({
+      userId,
+      action: 'UPDATE',
+      entityType: 'product_reservation',
+      entityId: id,
+      before: { status: reservation.status },
+      after: { status: 'CANCELLED' },
+    });
+
+    return updated;
+  }
+
+  async fulfillReservation(id: string, userId: string) {
+    const reservation = await prisma.productReservation.findUnique({ where: { id } });
+    if (!reservation) throw new AppError(404, 'Бронь не найдена');
+    if (reservation.status !== 'ACTIVE') {
+      throw new AppError(400, 'Можно закрыть только активную бронь');
+    }
+
+    const updated = await prisma.productReservation.update({
+      where: { id },
+      data: { status: 'FULFILLED', fulfilledAt: new Date() },
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true } },
+        client: { select: { id: true, companyName: true } },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
+
+    await auditLog({
+      userId,
+      action: 'UPDATE',
+      entityType: 'product_reservation',
+      entityId: id,
+      before: { status: reservation.status },
+      after: { status: 'FULFILLED' },
     });
 
     return updated;

@@ -51,10 +51,19 @@ export const correctStockDto = z.object({
   reason: z.string().min(1, 'Причина коррекции обязательна'),
 });
 
+export const createReservationDto = z.object({
+  productId: z.string().uuid('Некорректный ID товара'),
+  clientId: z.string().uuid('Некорректный ID клиента'),
+  quantity: z.number().positive('Количество должно быть положительным'),
+  expiresAt: z.string().datetime('Некорректная дата окончания брони'),
+  note: z.string().optional(),
+});
+
 export type CreateProductDto = z.infer<typeof createProductDto>;
 export type UpdateProductDto = z.infer<typeof updateProductDto>;
 export type CreateMovementDto = z.infer<typeof createMovementDto>;
 export type CorrectStockDto = z.infer<typeof correctStockDto>;
+export type CreateReservationDto = z.infer<typeof createReservationDto>;
 
 export interface ImportedProduct {
   name: string;

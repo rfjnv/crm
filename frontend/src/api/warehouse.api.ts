@@ -1,5 +1,5 @@
 import client from './client';
-import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayResponse, ProductAnalytics } from '../types';
+import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayResponse, ProductAnalytics, ProductReservation } from '../types';
 
 export const inventoryApi = {
   listProducts: () => client.get<Product[]>('/inventory/products').then((r) => r.data),
@@ -47,6 +47,22 @@ export const inventoryApi = {
     search?: string;
   }) =>
     client.get<InventoryMovement[]>('/inventory/movements', { params: filters ?? {} }).then((r) => r.data),
+
+  // Reservations
+  createReservation: (data: { productId: string; clientId: string; quantity: number; expiresAt: string; note?: string }) =>
+    client.post<ProductReservation>('/inventory/reservations', data).then((r) => r.data),
+
+  listReservations: (filters?: { productId?: string; clientId?: string; status?: ProductReservation['status'] }) =>
+    client.get<ProductReservation[]>('/inventory/reservations', { params: filters ?? {} }).then((r) => r.data),
+
+  getProductReservations: (id: string) =>
+    client.get<ProductReservation[]>(`/inventory/products/${id}/reservations`).then((r) => r.data),
+
+  cancelReservation: (id: string) =>
+    client.post<ProductReservation>(`/inventory/reservations/${id}/cancel`).then((r) => r.data),
+
+  fulfillReservation: (id: string) =>
+    client.post<ProductReservation>(`/inventory/reservations/${id}/fulfill`).then((r) => r.data),
 
   // Approvals
   getApprovals: () => client.get<Deal[]>('/inventory/approvals').then((r) => r.data),

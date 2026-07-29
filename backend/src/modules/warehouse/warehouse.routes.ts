@@ -7,7 +7,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize, requirePermission } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { createProductDto, updateProductDto, createMovementDto, correctStockDto } from './warehouse.dto';
+import { createProductDto, updateProductDto, createMovementDto, correctStockDto, createReservationDto } from './warehouse.dto';
 
 const router = Router();
 
@@ -81,6 +81,13 @@ router.post('/products/:id/photos', requirePermission('manage_products'), poster
 router.delete('/products/:id/photos/:photoId', requirePermission('manage_products'), asyncHandler(warehouseController.deleteProductPhoto.bind(warehouseController)));
 router.get('/products/:id/movements', asyncHandler(warehouseController.getProductMovements.bind(warehouseController)));
 router.get('/products/:id/analytics', asyncHandler(warehouseController.getProductAnalytics.bind(warehouseController)));
+
+// Reservations — managers can book stock for a client until a date
+router.post('/reservations', requirePermission('manage_inventory'), validate(createReservationDto), asyncHandler(warehouseController.createReservation.bind(warehouseController)));
+router.get('/reservations', asyncHandler(warehouseController.listReservations.bind(warehouseController)));
+router.post('/reservations/:id/cancel', requirePermission('manage_inventory'), asyncHandler(warehouseController.cancelReservation.bind(warehouseController)));
+router.post('/reservations/:id/fulfill', requirePermission('manage_inventory'), asyncHandler(warehouseController.fulfillReservation.bind(warehouseController)));
+router.get('/products/:id/reservations', asyncHandler(warehouseController.getProductReservations.bind(warehouseController)));
 
 // Movements — warehouse roles + admin
 router.post('/movements', requirePermission('create_inventory_in'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));

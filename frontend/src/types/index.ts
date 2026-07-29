@@ -546,6 +546,10 @@ export interface Product {
   expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Суммарное активное количество в бронях (вычисляется на бэкенде). */
+  reservedQty?: number;
+  /** stock - reservedQty, не может быть отрицательным (вычисляется на бэкенде). */
+  availableStock?: number;
 }
 
 export interface ProductPosterPhoto {
@@ -554,6 +558,24 @@ export interface ProductPosterPhoto {
   url: string;
   sortOrder: number;
   createdAt: string;
+}
+
+export interface ProductReservation {
+  id: string;
+  productId: string;
+  clientId: string;
+  managerId: string;
+  quantity: number;
+  status: 'ACTIVE' | 'CANCELLED' | 'FULFILLED' | 'EXPIRED';
+  note?: string | null;
+  expiresAt: string;
+  cancelledAt?: string | null;
+  fulfilledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  product?: { id: string; name: string; sku: string; unit: string };
+  client?: { id: string; companyName: string };
+  manager?: { id: string; fullName: string };
 }
 
 export interface InventoryMovement {
