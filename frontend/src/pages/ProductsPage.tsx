@@ -2,13 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
-  Tag, Space, DatePicker, theme, Segmented, Popconfirm, Card, Pagination,
+  Tag, Space, DatePicker, theme, Segmented, Card, Pagination,
   Drawer, Statistic, Row, Col, Slider, Progress, Badge, Switch, Popover, Checkbox,
+  Dropdown,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
-  FilterOutlined, ClearOutlined, TableOutlined,
+  FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -329,37 +330,38 @@ export default function ProductsPage() {
       key: '_actions',
       title: '',
       fixed: 'right' as const,
-      width: canManageProducts ? 110 : 50,
-      render: (_: unknown, r: Product) => (
-        <Space size={0}>
-          {canManageProducts && (
-            <>
-              <Button
-                type="text"
-                icon={<BarChartOutlined />}
-                size="small"
-                onClick={() => navigate(`/inventory/products/${r.id}`)}
-              />
-              <Button
-                type="text"
-                icon={<EditOutlined />}
-                size="small"
-                onClick={() => openEditForm(r)}
-              />
-              <Popconfirm
-                title="Удалить товар?"
-                description={`«${r.name}» будет удалён`}
-                onConfirm={() => deleteMut.mutate(r.id)}
-                okText="Удалить"
-                cancelText="Отмена"
-                okButtonProps={{ danger: true }}
-              >
-                <Button type="text" icon={<DeleteOutlined />} size="small" danger />
-              </Popconfirm>
-            </>
-          )}
-        </Space>
-      ),
+      width: canManageProducts ? 56 : 0,
+      render: (_: unknown, r: Product) =>
+        canManageProducts ? (
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'analytics', icon: <BarChartOutlined />, label: 'Аналитика', onClick: () => navigate(`/inventory/products/${r.id}`) },
+                { key: 'edit', icon: <EditOutlined />, label: 'Редактировать', onClick: () => openEditForm(r) },
+                { type: 'divider' },
+                {
+                  key: 'delete',
+                  icon: <DeleteOutlined />,
+                  label: 'Удалить',
+                  danger: true,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: 'Удалить товар?',
+                      content: `«${r.name}» будет удалён`,
+                      okText: 'Удалить',
+                      cancelText: 'Отмена',
+                      okButtonProps: { danger: true },
+                      onOk: () => deleteMut.mutate(r.id),
+                    });
+                  },
+                },
+              ],
+            }}
+          >
+            <Button type="text" icon={<MoreOutlined />} size="small" onClick={(e) => e.stopPropagation()} />
+          </Dropdown>
+        ) : null,
     },
   ];
 
