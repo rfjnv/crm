@@ -498,6 +498,8 @@ export interface Deal {
   isSessionDeal?: boolean;
   /** Чек пробит (кассовый чек выдан клиенту) */
   isReceiptPunched?: boolean;
+  /** Была изменена супер-админом в обход обычных ограничений */
+  isOverridden?: boolean;
   createdAt: string;
   updatedAt: string;
   /** Момент перевода в CLOSED (доставка / закрытие) */
@@ -891,6 +893,7 @@ export interface DealHistoryAudit {
   entityId?: string | null;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  reason?: string | null;
   createdAt: string;
   user?: { id: string; fullName: string };
 }

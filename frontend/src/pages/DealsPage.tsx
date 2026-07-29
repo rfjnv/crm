@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
-import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined } from '@ant-design/icons';
+import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined, WarningOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
@@ -61,6 +61,11 @@ function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
       <Link to={`/deals/${deal.id}`} style={{ textDecoration: 'none' }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>{deal.title}</Typography.Text>
         <ClientCompanyDisplay client={deal.client} secondary />
+        {deal.isOverridden && (
+          <Tag color="red" icon={<WarningOutlined />} style={{ fontSize: 11, marginTop: 4 }}>
+            Изменено супер-админом
+          </Tag>
+        )}
         <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
           <Space size={4} wrap>
@@ -168,6 +173,11 @@ export default function DealsPage() {
         <Space size={4} wrap>
           <DealStatusTag status={s} />
           <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+          {r.isOverridden && (
+            <Tag color="red" icon={<WarningOutlined />}>
+              Изменено супер-админом
+            </Tag>
+          )}
         </Space>
       ),
     },

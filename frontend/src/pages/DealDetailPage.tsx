@@ -31,6 +31,7 @@ import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import { getFirstName } from '../lib/name-utils';
+import { getAuditActionLabel } from '../lib/auditActionLabels';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -1462,13 +1463,24 @@ export default function DealDetailPage() {
                   <Timeline
                     items={(history ?? []).map((entry: DealHistoryEntry) => {
                       if (entry.kind === 'audit') {
+                        const isOverride = entry.action === 'OVERRIDE_UPDATE' || entry.action === 'OVERRIDE_DELETE';
+                        const cfg = getAuditActionLabel(entry.action);
                         return {
-                          color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
+                          color: cfg.color,
+                          dot: isOverride ? <WarningOutlined style={{ color: '#ff4d4f' }} /> : undefined,
                           children: (
-                            <div>
+                            <div style={isOverride ? { background: tk.colorErrorBg, padding: 8, borderRadius: 6, border: `1px solid ${tk.colorErrorBorder}` } : undefined}>
                               <Typography.Text strong style={{ fontSize: 12 }}>{getFirstName(entry.user?.fullName)}</Typography.Text>{' '}
-                              <Tag style={{ fontSize: 11 }}>{entry.action}</Tag>
+                              <Tag color={cfg.color} style={{ fontSize: 11 }}>{cfg.label}</Tag>
                               <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text></div>
+                              {isOverride && (
+                                <div style={{ marginTop: 4 }}>
+                                  <Typography.Text type="danger" strong style={{ fontSize: 11 }}>
+                                    Изменено супер-админом в обход обычных ограничений
+                                    {entry.reason ? `. Причина: ${entry.reason}` : ''}
+                                  </Typography.Text>
+                                </div>
+                              )}
                               {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
                                 <div style={{ marginTop: 4 }}>
                                   <DealStatusTag status={entry.before.status as DealStatus} />{' → '}

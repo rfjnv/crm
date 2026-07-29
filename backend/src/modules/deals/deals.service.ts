@@ -342,7 +342,7 @@ export class DealsService {
       ];
     }
 
-    return prisma.deal.findMany({
+    const deals = await prisma.deal.findMany({
       where,
       include: {
         client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
@@ -355,6 +355,21 @@ export class DealsService {
           ? [{ closedAt: 'desc' }, { updatedAt: 'desc' }]
           : { createdAt: 'desc' },
     });
+
+    const overriddenIds = deals.length
+      ? await prisma.auditLog.findMany({
+          where: {
+            entityType: 'deal',
+            entityId: { in: deals.map((d) => d.id) },
+            action: { in: ['OVERRIDE_UPDATE', 'OVERRIDE_DELETE'] },
+          },
+          select: { entityId: true },
+          distinct: ['entityId'],
+        })
+      : [];
+    const overriddenSet = new Set(overriddenIds.map((o) => o.entityId));
+
+    return deals.map((d) => ({ ...d, isOverridden: overriddenSet.has(d.id) }));
   }
 
   async findById(id: string, user: AuthUser) {
