@@ -4,19 +4,21 @@ import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
   Tag, Space, DatePicker, theme, Segmented, Card, Pagination,
   Drawer, Statistic, Row, Col, Slider, Progress, Badge, Switch, Popover, Checkbox,
-  Dropdown,
+  Dropdown, Popconfirm, Tooltip,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
-  FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined,
+  FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined, LockOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
+import { clientsApi } from '../api/clients.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
-import type { Product } from '../types';
+import type { Product, ProductReservation } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -41,8 +43,11 @@ export default function ProductsPage() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [reserveProduct, setReserveProduct] = useState<Product | null>(null);
+  const [reservationsProduct, setReservationsProduct] = useState<Product | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
+  const [reserveForm] = Form.useForm();
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
@@ -68,11 +73,24 @@ export default function ProductsPage() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
+  const canReserve = !!user?.permissions?.includes('manage_inventory');
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: usersApi.listCompanies,
     enabled: isSuperAdmin,
+  });
+
+  const { data: clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: clientsApi.list,
+    enabled: canReserve,
+  });
+
+  const { data: reservations } = useQuery({
+    queryKey: ['product-reservations', reservationsProduct?.id],
+    queryFn: () => inventoryApi.getProductReservations(reservationsProduct!.id),
+    enabled: !!reservationsProduct,
   });
 
   const ALL_COLUMN_KEYS = [
@@ -82,6 +100,7 @@ export default function ProductsPage() {
     { key: 'countryOfOrigin', label: 'Страна' },
     { key: 'unit', label: 'Ед. изм.' },
     { key: 'stock', label: 'Остаток' },
+    { key: 'reservedQty', label: 'Забронировано' },
     { key: 'minStock', label: 'Мин. остаток' },
     ...(isSuperAdmin ? [{ key: 'purchasePrice', label: 'Цена закупки' }] : []),
     { key: 'salePrice', label: 'Цена продажи' },
@@ -213,6 +232,48 @@ export default function ProductsPage() {
     },
   });
 
+  const reserveMut = useMutation({
+    mutationFn: (data: { productId: string; clientId: string; quantity: number; expiresAt: string; note?: string }) =>
+      inventoryApi.createReservation(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-reservations'] });
+      message.success('Товар забронирован');
+      setReserveProduct(null);
+      reserveForm.resetFields();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
+  const cancelReserveMut = useMutation({
+    mutationFn: (id: string) => inventoryApi.cancelReservation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-reservations'] });
+      message.success('Бронь отменена');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
+  const fulfillReserveMut = useMutation({
+    mutationFn: (id: string) => inventoryApi.fulfillReservation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-reservations'] });
+      message.success('Бронь закрыта как использованная');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
   function openEditForm(r: Product) {
     setEditProduct(r);
     editForm.setFieldsValue({
@@ -280,6 +341,22 @@ export default function ProductsPage() {
         );
       },
     },
+    {
+      key: 'reservedQty',
+      title: 'Забронировано',
+      dataIndex: 'reservedQty',
+      align: 'right' as const,
+      width: 130,
+      render: (v: number | undefined, r: Product) => {
+        const reserved = Number(v) || 0;
+        if (reserved <= 0) return <span style={{ color: token.colorTextTertiary }}>—</span>;
+        return (
+          <Tooltip title={`Доступно к продаже: ${Number(r.availableStock ?? 0)} ${r.unit}`}>
+            <Tag color="gold" icon={<LockOutlined />}>{reserved} {r.unit}</Tag>
+          </Tooltip>
+        );
+      },
+    },
     { key: 'minStock', title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
     ...(isSuperAdmin ? [{
       key: 'purchasePrice',
@@ -330,38 +407,54 @@ export default function ProductsPage() {
       key: '_actions',
       title: '',
       fixed: 'right' as const,
-      width: canManageProducts ? 56 : 0,
-      render: (_: unknown, r: Product) =>
-        canManageProducts ? (
-          <Dropdown
-            trigger={['click']}
-            menu={{
-              items: [
-                { key: 'analytics', icon: <BarChartOutlined />, label: 'Аналитика', onClick: () => navigate(`/inventory/products/${r.id}`) },
-                { key: 'edit', icon: <EditOutlined />, label: 'Редактировать', onClick: () => openEditForm(r) },
-                { type: 'divider' },
-                {
-                  key: 'delete',
-                  icon: <DeleteOutlined />,
-                  label: 'Удалить',
-                  danger: true,
-                  onClick: () => {
-                    Modal.confirm({
-                      title: 'Удалить товар?',
-                      content: `«${r.name}» будет удалён`,
-                      okText: 'Удалить',
-                      cancelText: 'Отмена',
-                      okButtonProps: { danger: true },
-                      onOk: () => deleteMut.mutate(r.id),
-                    });
-                  },
-                },
-              ],
-            }}
-          >
+      width: canManageProducts || canReserve ? 56 : 0,
+      render: (_: unknown, r: Product) => {
+        if (!canManageProducts && !canReserve) return null;
+        const items: NonNullable<MenuProps['items']> = [];
+        if (canManageProducts) {
+          items.push(
+            { key: 'analytics', icon: <BarChartOutlined />, label: 'Аналитика', onClick: () => navigate(`/inventory/products/${r.id}`) },
+            { key: 'edit', icon: <EditOutlined />, label: 'Редактировать', onClick: () => openEditForm(r) },
+          );
+        }
+        if (canReserve) {
+          items.push({
+            key: 'reserve',
+            icon: <LockOutlined />,
+            label: 'Забронировать',
+            onClick: () => { setReserveProduct(r); reserveForm.resetFields(); reserveForm.setFieldsValue({ productId: r.id }); },
+          });
+          if (Number(r.reservedQty) > 0) {
+            items.push({ key: 'reservations', icon: <LockOutlined />, label: 'Брони', onClick: () => setReservationsProduct(r) });
+          }
+        }
+        if (canManageProducts) {
+          items.push(
+            { type: 'divider' },
+            {
+              key: 'delete',
+              icon: <DeleteOutlined />,
+              label: 'Удалить',
+              danger: true,
+              onClick: () => {
+                Modal.confirm({
+                  title: 'Удалить товар?',
+                  content: `«${r.name}» будет удалён`,
+                  okText: 'Удалить',
+                  cancelText: 'Отмена',
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteMut.mutate(r.id),
+                });
+              },
+            },
+          );
+        }
+        return (
+          <Dropdown trigger={['click']} menu={{ items }}>
             <Button type="text" icon={<MoreOutlined />} size="small" onClick={(e) => e.stopPropagation()} />
           </Dropdown>
-        ) : null,
+        );
+      },
     },
   ];
 
@@ -1112,6 +1205,130 @@ export default function ProductsPage() {
           </>
         )}
       </Drawer>
+
+      {/* Reservation Modal */}
+      <Modal
+        title={`Бронирование: ${reserveProduct?.name ?? ''}`}
+        open={!!reserveProduct}
+        onCancel={() => { setReserveProduct(null); reserveForm.resetFields(); }}
+        onOk={() => reserveForm.submit()}
+        confirmLoading={reserveMut.isPending}
+        okText="Забронировать"
+        cancelText="Отмена"
+      >
+        {reserveProduct && (
+          <div style={{ marginBottom: 16, color: token.colorTextSecondary }}>
+            Доступно к брони: <strong>{Number(reserveProduct.availableStock ?? reserveProduct.stock)} {reserveProduct.unit}</strong>
+            {Number(reserveProduct.reservedQty) > 0 && ` (уже забронировано ${Number(reserveProduct.reservedQty)} ${reserveProduct.unit})`}
+          </div>
+        )}
+        <Form
+          form={reserveForm}
+          layout="vertical"
+          onFinish={(v) => {
+            if (!reserveProduct) return;
+            reserveMut.mutate({
+              productId: reserveProduct.id,
+              clientId: v.clientId,
+              quantity: v.quantity,
+              expiresAt: v.expiresAt.endOf('day').toISOString(),
+              note: v.note,
+            });
+          }}
+        >
+          <Form.Item name="productId" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="clientId" label="Клиент" rules={[{ required: true, message: 'Выберите клиента' }]}>
+            <Select
+              showSearch
+              placeholder="Выберите клиента"
+              optionFilterProp="label"
+              options={(clients ?? []).map((c) => ({ label: c.companyName, value: c.id }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="quantity"
+            label="Количество"
+            rules={[
+              { required: true, message: 'Обязательно' },
+              {
+                validator: (_, value) => {
+                  const max = Number(reserveProduct?.availableStock ?? reserveProduct?.stock ?? 0);
+                  if (value == null || value <= max) return Promise.resolve();
+                  return Promise.reject(new Error(`Максимум доступно: ${max}`));
+                },
+              },
+            ]}
+          >
+            <InputNumber style={{ width: '100%' }} min={0.001} precision={3} />
+          </Form.Item>
+          <Form.Item name="expiresAt" label="Забронировано до" rules={[{ required: true, message: 'Укажите срок брони' }]}>
+            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" disabledDate={(d) => d.isBefore(dayjs(), 'day')} />
+          </Form.Item>
+          <Form.Item name="note" label="Примечание">
+            <Input.TextArea rows={2} placeholder="Причина брони, договорённость с клиентом..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Reservations List Modal */}
+      <Modal
+        title={`Брони: ${reservationsProduct?.name ?? ''}`}
+        open={!!reservationsProduct}
+        onCancel={() => setReservationsProduct(null)}
+        footer={null}
+        width={isMobile ? '100%' : 700}
+      >
+        <Table
+          dataSource={reservations ?? []}
+          rowKey="id"
+          pagination={{ pageSize: 15 }}
+          size="small"
+          scroll={{ x: 600 }}
+          columns={[
+            { title: 'Клиент', dataIndex: ['client', 'companyName'], render: (v: string | undefined) => v || '—' },
+            { title: 'Кол-во', dataIndex: 'quantity', align: 'right' as const, width: 90 },
+            {
+              title: 'Статус',
+              dataIndex: 'status',
+              width: 110,
+              render: (v: ProductReservation['status']) => {
+                const map: Record<ProductReservation['status'], { color: string; text: string }> = {
+                  ACTIVE: { color: 'gold', text: 'Активна' },
+                  CANCELLED: { color: 'default', text: 'Отменена' },
+                  FULFILLED: { color: 'green', text: 'Использована' },
+                  EXPIRED: { color: 'red', text: 'Истекла' },
+                };
+                return <Tag color={map[v].color}>{map[v].text}</Tag>;
+              },
+            },
+            {
+              title: 'До',
+              dataIndex: 'expiresAt',
+              width: 110,
+              render: (v: string) => dayjs(v).format('DD.MM.YYYY'),
+            },
+            { title: 'Менеджер', dataIndex: ['manager', 'fullName'], render: (v: string | undefined) => v || '—' },
+            { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
+            {
+              title: '',
+              width: 140,
+              render: (_: unknown, r: ProductReservation) =>
+                r.status === 'ACTIVE' && canReserve ? (
+                  <Space>
+                    <Popconfirm title="Отметить бронь как использованную?" onConfirm={() => fulfillReserveMut.mutate(r.id)}>
+                      <Button size="small">Выдано</Button>
+                    </Popconfirm>
+                    <Popconfirm title="Отменить бронь?" onConfirm={() => cancelReserveMut.mutate(r.id)}>
+                      <Button size="small" danger>Отменить</Button>
+                    </Popconfirm>
+                  </Space>
+                ) : null,
+            },
+          ]}
+        />
+      </Modal>
     </div>
   );
 }
