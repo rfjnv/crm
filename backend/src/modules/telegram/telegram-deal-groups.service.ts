@@ -354,6 +354,7 @@ type DealRowForProductionTg = {
   manager: { fullName: string };
   items: Array<{
     requestedQty: unknown;
+    requestComment?: string | null;
     product: { name: string; unit: string | null };
   }>;
   comments: Array<{
@@ -403,7 +404,8 @@ export function buildProductionGroupHtml(
     .map((it) => {
       const qty = Number(it.requestedQty);
       const u = it.product.unit ? ` ${esc(it.product.unit)}` : '';
-      return `• ${esc(it.product.name)} — <b>${esc(String(qty))}</b>${u}`;
+      const comment = it.requestComment?.trim() ? ` (${esc(it.requestComment.trim())})` : '';
+      return `• ${esc(it.product.name)} — <b>${esc(String(qty))}</b>${u}${comment}`;
     });
 
   const amount = Number(deal.amount);
@@ -536,6 +538,7 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
     manager: full.manager,
     items: full.items.map((it) => ({
       requestedQty: it.requestedQty,
+      requestComment: it.requestComment,
       product: { name: it.product.name, unit: it.product.unit },
     })),
     comments: full.comments,
@@ -1131,6 +1134,7 @@ function buildProductionBoardHtmlFromDeal(deal: DealForTelegramSync, footnote?: 
     manager: deal.manager,
     items: deal.items.map((it) => ({
       requestedQty: it.requestedQty,
+      requestComment: it.requestComment,
       product: { name: it.product.name, unit: it.product.unit },
     })),
     comments: deal.comments,
