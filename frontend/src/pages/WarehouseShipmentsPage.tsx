@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Typography, Tag, Space, Drawer, Descriptions, Badge, Card,
-  Button, Input, Tabs, Pagination, Select, DatePicker,
+  Button, Input, Tabs, Pagination, Select, DatePicker, message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { TruckOutlined, UserOutlined, ClockCircleOutlined, PrinterOutlined } from '@ant-design/icons';
@@ -56,6 +56,7 @@ function expandedItemsRow(record: Deal) {
 
 export default function WarehouseShipmentsPage() {
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mainTab, setMainTab] = useState<WarehouseMainTab>('closedToday');
@@ -115,6 +116,20 @@ export default function WarehouseShipmentsPage() {
     queryKey: ['deal-detail', selectedDeal?.id],
     queryFn: () => dealsApi.getById(selectedDeal!.id),
     enabled: !!selectedDeal?.id,
+  });
+
+  const receiptPunchedMut = useMutation({
+    mutationFn: (vals: { dealId: string; isReceiptPunched: boolean }) =>
+      dealsApi.update(vals.dealId, { isReceiptPunched: vals.isReceiptPunched }),
+    onSuccess: (_data, vars) => {
+      message.success(vars.isReceiptPunched ? 'Отмечено: чек пробит' : 'Отметка снята');
+      queryClient.invalidateQueries({ queryKey: ['deal-detail', vars.dealId] });
+      queryClient.invalidateQueries({ queryKey: ['closed-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['deal', vars.dealId] });
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.error || 'Ошибка обновления отметки чека');
+    },
   });
 
   const { data: closedResult, isLoading: closedLoading } = useQuery({
@@ -477,6 +492,22 @@ export default function WarehouseShipmentsPage() {
                   <Space size={4} wrap>
                     <Link to={`/deals/${dealDetail.id}`}>{dealDetail.title}</Link>
                     <ReceiptPunchedTag isReceiptPunched={dealDetail.isReceiptPunched} />
+                  </Space>
+                </Descriptions.Item>
+                <Descriptions.Item label="Чек">
+                  <Space size={4} wrap>
+                    {!dealDetail.isReceiptPunched && <Tag>Не пробит</Tag>}
+                    <Button
+                      size="small"
+                      type="link"
+                      style={{ padding: 0 }}
+                      loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === dealDetail.id}
+                      onClick={() =>
+                        receiptPunchedMut.mutate({ dealId: dealDetail.id, isReceiptPunched: !dealDetail.isReceiptPunched })
+                      }
+                    >
+                      {dealDetail.isReceiptPunched ? 'Снять отметку' : 'Отметить: чек пробит'}
+                    </Button>
                   </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="Клиент">
