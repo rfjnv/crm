@@ -15,6 +15,7 @@ import { settingsApi } from '../api/settings.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
+import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import type { Deal, PaymentStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
@@ -23,6 +24,8 @@ import { tashkentYmd, addDaysToTashkentYmd, isoRangeForTashkentYmd } from '../ut
 import { printDealWaybillA5 } from '../utils/waybillPrintA5';
 
 type WarehouseMainTab = 'closedToday' | 'closedYesterday' | 'closedAll';
+
+const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
 
 /** Период закрытия для API «Все закрытые» (границы дня по Ташкенту). */
 function closedRangeToApiParams(range: [Dayjs, Dayjs] | null): { closedFrom?: string; closedTo?: string } {
@@ -51,6 +54,71 @@ function expandedItemsRow(record: Deal) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function ShipmentCard({
+  deal,
+  companySettings,
+  onOpen,
+}: {
+  deal: Deal;
+  companySettings: Awaited<ReturnType<typeof settingsApi.getCompanySettings>> | undefined;
+  onOpen: (deal: Deal) => void;
+}) {
+  return (
+    <Card
+      size="small"
+      hoverable
+      bordered={false}
+      style={{ borderLeft: '3px solid #1677ff' }}
+      onClick={() => onOpen(deal)}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <Link to={`/deals/${deal.id}`} onClick={(e) => e.stopPropagation()}>
+            <Typography.Text strong style={{ display: 'block' }}>{deal.title}</Typography.Text>
+          </Link>
+          <ClientCompanyDisplay client={deal.client} secondary />
+        </div>
+        <Button
+          type="text"
+          size="small"
+          icon={<PrinterOutlined />}
+          aria-label="Распечатать накладную"
+          onClick={(e) => {
+            e.stopPropagation();
+            printDealWaybillA5(deal, companySettings ?? null);
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+        <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
+        <Space size={4} wrap>
+          <DealStatusTag status={deal.status} />
+          <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+        </Space>
+      </div>
+
+      <Space size={[4, 4]} wrap style={{ marginTop: 8 }}>
+        {deal.deliveryType && (
+          <Tag color={deal.deliveryType === 'DELIVERY' ? 'orange' : deal.deliveryType === 'YANDEX' ? 'purple' : 'blue'}>
+            {deliveryLabels[deal.deliveryType] || deal.deliveryType}
+          </Tag>
+        )}
+        <Tag>{getFirstName(deal.manager?.fullName) || '—'}</Tag>
+        {deal.deliveryDriver?.fullName && <Tag color="green">{getFirstName(deal.deliveryDriver.fullName)}</Tag>}
+        {deal.loadingAssignee?.fullName && <Tag color="cyan">{getFirstName(deal.loadingAssignee.fullName)}</Tag>}
+        <Badge count={deal.items?.length ?? 0} showZero style={{ backgroundColor: '#52c41a' }} />
+      </Space>
+
+      {deal.closedAt && (
+        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+          Закрыта: {dayjs(deal.closedAt).format('DD.MM.YYYY HH:mm')}
+        </Typography.Text>
+      )}
+    </Card>
   );
 }
 
@@ -192,7 +260,6 @@ export default function WarehouseShipmentsPage() {
   };
 
   const closedColumns = useMemo(() => {
-    const deliveryLabels: Record<string, string> = { SELF_PICKUP: 'Самовывоз', YANDEX: 'Яндекс', DELIVERY: 'Доставка' };
     return [
       {
         title: 'Сделка',
@@ -321,13 +388,23 @@ export default function WarehouseShipmentsPage() {
                     onChange={(e) => setClosedSearch(e.target.value)}
                   />
                 </div>
-                <Table
-                  {...closedTableCommon}
-                  dataSource={filteredClosedToday}
-                  loading={closedTodayLoading}
-                  scroll={{ x: 960 }}
-                  locale={{ emptyText: 'Нет сделок, закрытых сегодня (Ташкент)' }}
-                />
+                {isMobile ? (
+                  <MobileCardList
+                    data={filteredClosedToday}
+                    rowKey="id"
+                    loading={closedTodayLoading}
+                    emptyText="Нет сделок, закрытых сегодня (Ташкент)"
+                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                  />
+                ) : (
+                  <Table
+                    {...closedTableCommon}
+                    dataSource={filteredClosedToday}
+                    loading={closedTodayLoading}
+                    scroll={{ x: 960 }}
+                    locale={{ emptyText: 'Нет сделок, закрытых сегодня (Ташкент)' }}
+                  />
+                )}
                 {closedTodayPagination && closedTodayPagination.pages > 1 && (
                   <div style={{ textAlign: 'center', marginTop: 12 }}>
                     <Pagination
@@ -363,13 +440,23 @@ export default function WarehouseShipmentsPage() {
                     onChange={(e) => setClosedSearch(e.target.value)}
                   />
                 </div>
-                <Table
-                  {...closedTableCommon}
-                  dataSource={filteredClosedYesterday}
-                  loading={closedYesterdayLoading}
-                  scroll={{ x: 960 }}
-                  locale={{ emptyText: 'Нет сделок, закрытых вчера (Ташкент)' }}
-                />
+                {isMobile ? (
+                  <MobileCardList
+                    data={filteredClosedYesterday}
+                    rowKey="id"
+                    loading={closedYesterdayLoading}
+                    emptyText="Нет сделок, закрытых вчера (Ташкент)"
+                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                  />
+                ) : (
+                  <Table
+                    {...closedTableCommon}
+                    dataSource={filteredClosedYesterday}
+                    loading={closedYesterdayLoading}
+                    scroll={{ x: 960 }}
+                    locale={{ emptyText: 'Нет сделок, закрытых вчера (Ташкент)' }}
+                  />
+                )}
                 {closedYesterdayPagination && closedYesterdayPagination.pages > 1 && (
                   <div style={{ textAlign: 'center', marginTop: 12 }}>
                     <Pagination
@@ -423,8 +510,9 @@ export default function WarehouseShipmentsPage() {
                       format="DD.MM.YYYY"
                       allowClear
                       placeholder={['Закрыта с', 'по']}
+                      style={{ width: isMobile ? '100%' : undefined }}
                     />
-                    <Button onClick={resetClosedAllFilters}>Сбросить фильтры</Button>
+                    <Button onClick={resetClosedAllFilters} style={{ width: isMobile ? '100%' : undefined }}>Сбросить фильтры</Button>
                   </Space>
                   <Input.Search
                     placeholder="Поиск: сделка, клиент, менеджер..."
@@ -434,13 +522,23 @@ export default function WarehouseShipmentsPage() {
                     onChange={(e) => setClosedAllSearch(e.target.value)}
                   />
                 </Space>
-                <Table
-                  {...closedTableCommon}
-                  dataSource={closedDeals}
-                  loading={closedLoading}
-                  scroll={{ x: 960 }}
-                  locale={{ emptyText: 'Нет закрытых сделок по фильтрам' }}
-                />
+                {isMobile ? (
+                  <MobileCardList
+                    data={closedDeals}
+                    rowKey="id"
+                    loading={closedLoading}
+                    emptyText="Нет закрытых сделок по фильтрам"
+                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                  />
+                ) : (
+                  <Table
+                    {...closedTableCommon}
+                    dataSource={closedDeals}
+                    loading={closedLoading}
+                    scroll={{ x: 960 }}
+                    locale={{ emptyText: 'Нет закрытых сделок по фильтрам' }}
+                  />
+                )}
                 {closedPagination && closedPagination.pages > 1 && (
                   <div style={{ textAlign: 'center', marginTop: 12 }}>
                     <Pagination
