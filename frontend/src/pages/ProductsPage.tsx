@@ -8,7 +8,7 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
-  FilterOutlined, ClearOutlined, TableOutlined, EyeInvisibleOutlined, EyeOutlined,
+  FilterOutlined, ClearOutlined, TableOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -57,34 +57,6 @@ export default function ProductsPage() {
 
   // Selection
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-
-  // Hidden rows
-  const ROW_STORAGE_KEY = 'products_hidden_rows';
-  const [hiddenRowIds, setHiddenRowIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(ROW_STORAGE_KEY) || '[]'); } catch { return []; }
-  });
-  const [showHidden, setShowHidden] = useState(false);
-
-  function hideRow(id: string) {
-    setHiddenRowIds((prev) => {
-      const next = [...prev, id];
-      localStorage.setItem(ROW_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }
-
-  function unhideRow(id: string) {
-    setHiddenRowIds((prev) => {
-      const next = prev.filter((x) => x !== id);
-      localStorage.setItem(ROW_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }
-
-  function clearHiddenRows() {
-    setHiddenRowIds([]);
-    localStorage.removeItem(ROW_STORAGE_KEY);
-  }
 
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 20;
@@ -155,29 +127,25 @@ export default function ProductsPage() {
 
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
-      if (!showHidden && hiddenRowIds.includes(p.id)) return false;
-      if (showHidden && !hiddenRowIds.includes(p.id)) return false;
       if (debouncedSearch) {
         const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? '', p.format ?? ''].join(' ');
         if (!matchesSearch(haystack, debouncedSearch)) return false;
       }
-      if (!showHidden) {
-        if (activeFilter === 'active' && !p.isActive) return false;
-        if (activeFilter === 'inactive' && p.isActive) return false;
-        if (categoryFilter && p.category !== categoryFilter) return false;
-        if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
-        if (unitFilter && p.unit !== unitFilter) return false;
-        if (formatFilter && p.format !== formatFilter) return false;
-        if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
-        if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
-        if (priceRange) {
-          const price = Number(p.salePrice || 0);
-          if (price < priceRange[0] || price > priceRange[1]) return false;
-        }
+      if (activeFilter === 'active' && !p.isActive) return false;
+      if (activeFilter === 'inactive' && p.isActive) return false;
+      if (categoryFilter && p.category !== categoryFilter) return false;
+      if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
+      if (unitFilter && p.unit !== unitFilter) return false;
+      if (formatFilter && p.format !== formatFilter) return false;
+      if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
+      if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
+      if (priceRange) {
+        const price = Number(p.salePrice || 0);
+        if (price < priceRange[0] || price > priceRange[1]) return false;
       }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange, hiddenRowIds, showHidden]);
+  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange]);
 
   const filteredMobileSlice = useMemo(() => {
     const start = (mobilePage - 1) * mobilePageSize;
@@ -280,17 +248,19 @@ export default function ProductsPage() {
       key: 'name',
       title: 'Название',
       dataIndex: 'name',
-      fixed: true,
+      fixed: 'left' as const,
+      width: 240,
+      ellipsis: true,
       render: (v: string, r: Product) => (
-        <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/inventory/products/${r.id}`)}>
+        <Button type="link" style={{ padding: 0, whiteSpace: 'normal', textAlign: 'left', height: 'auto' }} onClick={() => navigate(`/inventory/products/${r.id}`)}>
           {v}
         </Button>
       ),
     },
-    { key: 'sku', title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
-    { key: 'format', title: 'Формат', dataIndex: 'format', render: (v: string | null) => v || '—' },
-    { key: 'category', title: 'Категория', dataIndex: 'category', render: (v: string | null) => v || '—' },
-    { key: 'countryOfOrigin', title: 'Страна', dataIndex: 'countryOfOrigin', render: (v: string | null) => v || '—' },
+    { key: 'sku', title: 'Артикул', dataIndex: 'sku', width: 130, render: (v: string) => <Tag>{v}</Tag> },
+    { key: 'format', title: 'Формат', dataIndex: 'format', width: 120, render: (v: string | null) => v || '—' },
+    { key: 'category', title: 'Категория', dataIndex: 'category', width: 150, render: (v: string | null) => v || '—' },
+    { key: 'countryOfOrigin', title: 'Страна', dataIndex: 'countryOfOrigin', width: 110, render: (v: string | null) => v || '—' },
     { key: 'unit', title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
     {
       key: 'stock',
@@ -358,27 +328,11 @@ export default function ProductsPage() {
     {
       key: '_actions',
       title: '',
+      fixed: 'right' as const,
       width: canManageProducts ? 110 : 50,
       render: (_: unknown, r: Product) => (
         <Space size={0}>
-          {showHidden ? (
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              size="small"
-              title="Показать в списке"
-              onClick={() => unhideRow(r.id)}
-            />
-          ) : (
-            <Button
-              type="text"
-              icon={<EyeInvisibleOutlined />}
-              size="small"
-              title="Скрыть из списка"
-              onClick={() => hideRow(r.id)}
-            />
-          )}
-          {canManageProducts && !showHidden && (
+          {canManageProducts && (
             <>
               <Button
                 type="text"
@@ -549,22 +503,6 @@ export default function ProductsPage() {
           >
             {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
           </Button>
-          {(hiddenRowIds.length > 0 || showHidden) && (
-            <Button
-              icon={showHidden ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-              type={showHidden ? 'primary' : 'default'}
-              ghost={showHidden}
-              block={isMobile}
-              onClick={() => setShowHidden((v) => !v)}
-            >
-              {showHidden ? 'Список' : `Скрытые (${hiddenRowIds.length})`}
-            </Button>
-          )}
-          {showHidden && hiddenRowIds.length > 0 && (
-            <Button size="small" danger onClick={clearHiddenRows}>
-              Восстановить все
-            </Button>
-          )}
           {!isMobile && (
             <Popover
               trigger="click"
@@ -794,7 +732,7 @@ export default function ProductsPage() {
           pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
           size="middle"
           bordered={false}
-          scroll={{ x: 600 }}
+          scroll={{ x: 1300 }}
           rowSelection={{
             selectedRowKeys,
             onChange: setSelectedRowKeys,
