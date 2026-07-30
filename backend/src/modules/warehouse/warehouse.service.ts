@@ -404,7 +404,10 @@ export class WarehouseService {
 
     // Atomic stock update in transaction
     return prisma.$transaction(async (tx) => {
-      if (dto.type === 'IN') {
+      if (dto.affectStock === false) {
+        // Только запись в историю (напр. задним числом задокументировать приход,
+        // который уже учтён в текущем остатке) — сам остаток не трогаем.
+      } else if (dto.type === 'IN') {
         // Increment stock atomically
         await tx.product.update({
           where: { id: dto.productId },
@@ -432,7 +435,9 @@ export class WarehouseService {
           type: dto.type,
           quantity: dto.quantity,
           dealId: dto.dealId,
-          note: dto.note,
+          note: dto.affectStock === false
+            ? [dto.note, '(запись без изменения остатка)'].filter(Boolean).join(' ')
+            : dto.note,
           createdBy: userId,
         },
         include: {

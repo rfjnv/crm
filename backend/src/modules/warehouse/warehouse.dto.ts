@@ -44,6 +44,8 @@ export const createMovementDto = z.object({
   quantity: z.number().positive('Количество должно быть положительным'),
   dealId: z.string().uuid('Некорректный ID сделки').optional(),
   note: z.string().optional(),
+  /** false — записать движение только для истории, не меняя текущий остаток (напр. задним числом восстановить запись о приходе, который уже учтён в остатке). */
+  affectStock: z.boolean().optional(),
 });
 
 export const correctStockDto = z.object({

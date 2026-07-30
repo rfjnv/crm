@@ -35,7 +35,7 @@ export const inventoryApi = {
       })
       .then((r) => r.data),
 
-  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string }) =>
+  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
 
   listMovements: (filters?: {

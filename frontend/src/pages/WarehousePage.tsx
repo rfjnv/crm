@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Input, DatePicker, Typography, message, Tag, Space, Tooltip, theme, Card, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, DatePicker, Typography, message, Tag, Space, Tooltip, theme, Card, Popconfirm, Checkbox } from 'antd';
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { clientsApi } from '../api/clients.api';
@@ -69,7 +69,7 @@ export default function WarehousePage() {
   });
 
   const incomeMut = useMutation({
-    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string }) =>
+    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string; affectStock?: boolean }) =>
       inventoryApi.createMovement(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -473,7 +473,12 @@ export default function WarehousePage() {
         okText="Оформить"
         cancelText="Отмена"
       >
-        <Form form={form} layout="vertical" onFinish={(v) => incomeMut.mutate({ ...v, type: 'IN' as const })}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ skipStock: false }}
+          onFinish={({ skipStock, ...v }) => incomeMut.mutate({ ...v, type: 'IN' as const, affectStock: !skipStock })}
+        >
           <Form.Item name="productId" hidden>
             <input />
           </Form.Item>
@@ -492,6 +497,11 @@ export default function WarehousePage() {
               ]}
               onChange={(v) => form.setFieldsValue({ note: v?.[v.length - 1] })}
             />
+          </Form.Item>
+          <Form.Item name="skipStock" valuePropName="checked" extra="Включите, если этот приход уже учтён в текущем остатке (например, задним числом восстанавливаете запись в историю) — тогда сама цифра остатка не изменится, останется только запись в истории.">
+            <Checkbox>
+              <span style={{ opacity: 0.85 }}>Не менять остаток (только для истории)</span>
+            </Checkbox>
           </Form.Item>
         </Form>
       </Modal>
