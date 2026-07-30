@@ -3686,35 +3686,60 @@ export class DealsService {
     await prisma.$transaction(async (tx) => {
       await this.revertClientStockReservationsForDealInTx(tx, id);
 
-      // Reverse inventory movements: keep history, unlink from deal, create reverse entries
+      // Reverse inventory movements: keep history, unlink from deal, create reverse entries.
+      // Считаем ЧИСТЫЙ эффект по каждому товару (OUT минус уже сделанные IN-возвраты,
+      // например override-коррекцией до удаления), а не реверсируем каждое движение по
+      // отдельности — иначе для товара, который уже вернули на склад override'ом ДО
+      // удаления сделки, тут создавался бы ЕЩЁ один "Возврат на склад" (стоки в итоге были
+      // верными за счёт компенсирующего decrement, но в истории появлялась вторая запись).
       if (deal.movements.length > 0) {
         const dealLabel = deal.title || id.slice(0, 8);
+        const netByProduct = new Map<string, number>();
         for (const mov of deal.movements) {
-          if (mov.type === 'OUT') {
-            // Return stock to warehouse
+          if (mov.type !== 'OUT' && mov.type !== 'IN') continue;
+          const delta = mov.type === 'OUT' ? Number(mov.quantity) : -Number(mov.quantity);
+          netByProduct.set(mov.productId, (netByProduct.get(mov.productId) ?? 0) + delta);
+        }
+
+        for (const [productId, net] of netByProduct) {
+          if (net > 0) {
+            // Чистое количество всё ещё числится отгруженным — возвращаем на склад один раз.
             await tx.product.update({
-              where: { id: mov.productId },
-              data: { stock: { increment: Number(mov.quantity) } },
+              where: { id: productId },
+              data: { stock: { increment: net } },
             });
-            // Create reverse IN movement for audit trail
             await tx.inventoryMovement.create({
               data: {
-                productId: mov.productId,
+                productId,
                 type: 'IN',
-                quantity: Number(mov.quantity),
+                quantity: net,
                 dealId: null,
                 note: `Возврат на склад: сделка "${dealLabel}" удалена`,
                 createdBy: user.userId,
               },
             });
-          } else if (mov.type === 'IN') {
-            // Reverse previous returns
+          } else if (net < 0) {
+            // Вернули на склад больше, чем отгрузили (напр. ручная коррекция) — убираем разницу.
+            const absNet = Math.abs(net);
             await tx.product.update({
-              where: { id: mov.productId },
-              data: { stock: { decrement: Number(mov.quantity) } },
+              where: { id: productId },
+              data: { stock: { decrement: absNet } },
+            });
+            await tx.inventoryMovement.create({
+              data: {
+                productId,
+                type: 'OUT',
+                quantity: absNet,
+                dealId: null,
+                note: `Коррекция при удалении сделки "${dealLabel}": ранее возвращено больше, чем отгружено`,
+                createdBy: user.userId,
+              },
             });
           }
+          // net === 0 — товар уже полностью вернули на склад до удаления сделки,
+          // новых движений создавать не нужно.
         }
+
         // Unlink original movements from deal (keep history)
         await tx.inventoryMovement.updateMany({
           where: { dealId: id },
