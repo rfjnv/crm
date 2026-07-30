@@ -61,10 +61,14 @@ function ShipmentCard({
   deal,
   companySettings,
   onOpen,
+  onToggleReceipt,
+  receiptPending,
 }: {
   deal: Deal;
   companySettings: Awaited<ReturnType<typeof settingsApi.getCompanySettings>> | undefined;
   onOpen: (deal: Deal) => void;
+  onToggleReceipt: (deal: Deal) => void;
+  receiptPending: boolean;
 }) {
   return (
     <Card
@@ -95,10 +99,23 @@ function ShipmentCard({
 
       <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
         <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>{formatUZS(deal.amount)}</Typography.Text>
-        <Space size={4} wrap>
-          <DealStatusTag status={deal.status} />
-          <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
-        </Space>
+        <DealStatusTag status={deal.status} />
+      </div>
+
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+        {deal.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Чек не пробит</Tag>}
+        <Button
+          size="small"
+          type="link"
+          style={{ padding: 0 }}
+          loading={receiptPending}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleReceipt(deal);
+          }}
+        >
+          {deal.isReceiptPunched ? 'Снять отметку' : 'Отметить чек'}
+        </Button>
       </div>
 
       <Space size={[4, 4]} wrap style={{ marginTop: 8 }}>
@@ -302,10 +319,27 @@ export default function WarehouseShipmentsPage() {
         title: 'Статус',
         dataIndex: 'status',
         width: 100,
-        render: (s: Deal['status'], r: Deal) => (
+        render: (s: Deal['status']) => <DealStatusTag status={s} />,
+      },
+      {
+        title: 'Чек',
+        key: 'receiptPunched',
+        width: 160,
+        render: (_: unknown, r: Deal) => (
           <Space size={4} wrap>
-            <DealStatusTag status={s} />
-            <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
+            {r.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Не пробит</Tag>}
+            <Button
+              size="small"
+              type="link"
+              style={{ padding: 0 }}
+              loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                receiptPunchedMut.mutate({ dealId: r.id, isReceiptPunched: !r.isReceiptPunched });
+              }}
+            >
+              {r.isReceiptPunched ? 'Снять' : 'Отметить'}
+            </Button>
           </Space>
         ),
       },
@@ -334,7 +368,7 @@ export default function WarehouseShipmentsPage() {
         ),
       },
     ];
-  }, [companySettings]);
+  }, [companySettings, receiptPunchedMut]);
 
   const closedTableCommon = {
     columns: closedColumns,
@@ -394,7 +428,15 @@ export default function WarehouseShipmentsPage() {
                     rowKey="id"
                     loading={closedTodayLoading}
                     emptyText="Нет сделок, закрытых сегодня (Ташкент)"
-                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                    renderCard={(deal) => (
+                      <ShipmentCard
+                        deal={deal}
+                        companySettings={companySettings}
+                        onOpen={openDetail}
+                        onToggleReceipt={(d) => receiptPunchedMut.mutate({ dealId: d.id, isReceiptPunched: !d.isReceiptPunched })}
+                        receiptPending={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === deal.id}
+                      />
+                    )}
                   />
                 ) : (
                   <Table
@@ -446,7 +488,15 @@ export default function WarehouseShipmentsPage() {
                     rowKey="id"
                     loading={closedYesterdayLoading}
                     emptyText="Нет сделок, закрытых вчера (Ташкент)"
-                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                    renderCard={(deal) => (
+                      <ShipmentCard
+                        deal={deal}
+                        companySettings={companySettings}
+                        onOpen={openDetail}
+                        onToggleReceipt={(d) => receiptPunchedMut.mutate({ dealId: d.id, isReceiptPunched: !d.isReceiptPunched })}
+                        receiptPending={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === deal.id}
+                      />
+                    )}
                   />
                 ) : (
                   <Table
@@ -528,7 +578,15 @@ export default function WarehouseShipmentsPage() {
                     rowKey="id"
                     loading={closedLoading}
                     emptyText="Нет закрытых сделок по фильтрам"
-                    renderCard={(deal) => <ShipmentCard deal={deal} companySettings={companySettings} onOpen={openDetail} />}
+                    renderCard={(deal) => (
+                      <ShipmentCard
+                        deal={deal}
+                        companySettings={companySettings}
+                        onOpen={openDetail}
+                        onToggleReceipt={(d) => receiptPunchedMut.mutate({ dealId: d.id, isReceiptPunched: !d.isReceiptPunched })}
+                        receiptPending={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === deal.id}
+                      />
+                    )}
                   />
                 ) : (
                   <Table
