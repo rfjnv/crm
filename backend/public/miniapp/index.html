@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Polygraph Business — магазин</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css?v=1" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 100 78" aria-hidden="true">
+          <g fill="currentColor">
+            <path d="M44.5 0 52 12.9 15 77h-15z" />
+            <path d="M56.5 20.6 64 33.5 39.2 77h-15z" />
+            <path d="M68.5 41.2 76 54.1 63.4 77h-15z" />
+            <path d="M80.5 61.8 84.2 68.2 79.1 77h-7.4z" />
+          </g>
+        </svg>
+        <div class="brand__text">
+          <span class="brand__name">Polygraph Business</span>
+          <span class="brand__sub" data-i18n="brand.sub">Магазин материалов</span>
+        </div>
+      </div>
+      <button class="lang" id="langToggle" type="button" aria-label="Язык">
+        <span id="langLabel">UZ</span>
+      </button>
+    </header>
+
+    <div class="status-strip" id="statusStrip" hidden>
+      <span class="status-strip__dot"></span>
+      <span id="statusText"></span>
+    </div>
+
+    <main class="views">
+      <!-- ── Каталог ── -->
+      <section class="view view--catalog is-active" id="view-catalog">
+        <div class="search">
+          <svg class="search__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M9 3a6 6 0 1 1-4.2 10.3l-2.6 2.6a1 1 0 0 1-1.4-1.4l2.6-2.6A6 6 0 0 1 9 3Zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" fill="currentColor"/>
+          </svg>
+          <input id="searchInput" type="search" enterkeyhint="search" autocomplete="off"
+                 placeholder="Поиск по каталогу" data-i18n-placeholder="search.placeholder" />
+          <button class="search__clear" id="searchClear" type="button" hidden aria-label="Очистить">✕</button>
+        </div>
+
+        <div class="chips" id="categoryChips"></div>
+
+        <div class="grid" id="productGrid"></div>
+        <div class="empty" id="catalogEmpty" hidden>
+          <div class="empty__art">📦</div>
+          <p class="empty__title" data-i18n="catalog.emptyTitle">Ничего не найдено</p>
+          <p class="empty__text" data-i18n="catalog.emptyText">Попробуйте другую категорию или запрос.</p>
+        </div>
+        <button class="more" id="loadMore" type="button" hidden data-i18n="catalog.more">Показать ещё</button>
+      </section>
+
+      <!-- ── Корзина ── -->
+      <section class="view view--cart" id="view-cart">
+        <h1 class="view__title" data-i18n="cart.title">Корзина</h1>
+        <div id="cartList" class="cart-list"></div>
+
+        <div class="empty" id="cartEmpty" hidden>
+          <div class="empty__art">🧺</div>
+          <p class="empty__title" data-i18n="cart.emptyTitle">Корзина пуста</p>
+          <p class="empty__text" data-i18n="cart.emptyText">Добавьте товары из каталога.</p>
+          <button class="btn btn--ghost" data-goto="catalog" data-i18n="cart.toCatalog">В каталог</button>
+        </div>
+
+        <form class="form" id="checkoutForm" hidden>
+          <h2 class="section-title" data-i18n="checkout.title">Данные для заказа</h2>
+
+          <label class="field">
+            <span class="field__label" data-i18n="checkout.name">Ваше имя или компания</span>
+            <input id="nameInput" type="text" autocomplete="name" maxlength="120" required />
+          </label>
+
+          <label class="field">
+            <span class="field__label" data-i18n="checkout.phone">Телефон</span>
+            <input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="+998 90 123 45 67" required />
+          </label>
+
+          <div class="field">
+            <span class="field__label" data-i18n="checkout.manager">Менеджер</span>
+            <div class="managers" id="managerList"></div>
+          </div>
+
+          <label class="field">
+            <span class="field__label" data-i18n="checkout.comment">Комментарий (необязательно)</span>
+            <textarea id="commentInput" rows="2" maxlength="500"></textarea>
+          </label>
+        </form>
+      </section>
+
+      <!-- ── Заказы ── -->
+      <section class="view view--orders" id="view-orders">
+        <h1 class="view__title" data-i18n="orders.title">Мои заказы</h1>
+        <div id="ordersList" class="orders"></div>
+        <div class="empty" id="ordersEmpty" hidden>
+          <div class="empty__art">🧾</div>
+          <p class="empty__title" data-i18n="orders.emptyTitle">Заказов пока нет</p>
+          <p class="empty__text" data-i18n="orders.emptyText">Оформите первый заказ — он появится здесь.</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="actionbar" id="actionBar" hidden>
+      <div class="actionbar__info">
+        <span class="actionbar__label" id="actionLabel"></span>
+        <span class="actionbar__total" id="actionTotal"></span>
+      </div>
+      <button class="btn btn--primary" id="actionButton" type="button"></button>
+    </div>
+
+    <nav class="tabbar" id="tabbar">
+      <button class="tab is-active" data-goto="catalog" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z" fill="currentColor"/></svg>
+        <span data-i18n="tab.catalog">Каталог</span>
+      </button>
+      <button class="tab" data-goto="cart" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h14l-1.6 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.6L5.3 4.4H3V2.4h3.9l.7 3.6ZM9 20.5a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Zm8 0a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Z" fill="currentColor"/></svg>
+        <span data-i18n="tab.cart">Корзина</span>
+        <em class="tab__badge" id="cartBadge" hidden>0</em>
+      </button>
+      <button class="tab" data-goto="orders" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6zm8 1.5V7h3.5zM8 11h8v1.8H8zm0 4h8v1.8H8z" fill="currentColor"/></svg>
+        <span data-i18n="tab.orders">Заказы</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ── Карточка товара ── -->
+  <div class="sheet" id="productSheet" hidden>
+    <div class="sheet__backdrop" data-close-sheet></div>
+    <div class="sheet__panel" role="dialog" aria-modal="true">
+      <button class="sheet__grabber" data-close-sheet aria-label="Закрыть"></button>
+      <div class="sheet__scroll" id="sheetBody"></div>
+    </div>
+  </div>
+
+  <!-- ── Успех ── -->
+  <div class="done" id="doneScreen" hidden>
+    <div class="done__card">
+      <svg class="done__check" viewBox="0 0 52 52" aria-hidden="true">
+        <circle class="done__circle" cx="26" cy="26" r="24" fill="none" />
+        <path class="done__tick" fill="none" d="M14 27l8 8 16-16" />
+      </svg>
+      <h2 class="done__title" id="doneTitle"></h2>
+      <p class="done__text" id="doneText"></p>
+      <div class="done__actions">
+        <button class="btn btn--primary" id="doneClose" type="button"></button>
+        <button class="btn btn--ghost" id="doneOrders" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <div class="boot" id="boot">
+    <div class="boot__mark">
+      <svg viewBox="0 0 100 78" aria-hidden="true">
+        <g fill="currentColor">
+          <path d="M44.5 0 52 12.9 15 77h-15z" />
+          <path d="M56.5 20.6 64 33.5 39.2 77h-15z" />
+          <path d="M68.5 41.2 76 54.1 63.4 77h-15z" />
+          <path d="M80.5 61.8 84.2 68.2 79.1 77h-7.4z" />
+        </g>
+      </svg>
+    </div>
+    <p class="boot__text" id="bootText">Загружаем каталог…</p>
+  </div>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>

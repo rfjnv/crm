@@ -20,6 +20,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'start.hours.sat': 'Сб: 10:00-18:00',
     'start.hours.sun': 'Вс: выходной',
 
+    'menu.shop': '🛍 Открыть магазин',
     'menu.order': '🛒 Оформить заказ',
     'menu.orders': '📦 Мои заказы',
     'menu.review': '⭐ Оставить отзыв',
@@ -140,6 +141,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'start.hours.sat': 'Shanba: 10:00-18:00',
     'start.hours.sun': 'Yakshanba: dam olish kuni',
 
+    'menu.shop': "🛍 Do'konni ochish",
     'menu.order': "🛒 Buyurtma berish",
     'menu.orders': '📦 Buyurtmalarim',
     'menu.review': '⭐ Fikr qoldirish',

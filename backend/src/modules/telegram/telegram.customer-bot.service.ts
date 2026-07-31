@@ -16,6 +16,7 @@ class TelegramCustomerBotService {
     this.bot = createTelegramBot(config.telegram.clientBotToken);
     this.setupHandlers();
     registerWebhook(this.bot, '/api/telegram/webhook/customer', 'Client bot');
+    this.setupMenuButton();
     this.bot.getMe().then((me) => {
       this.botUsername = me.username || null;
       console.log(`Telegram client bot @${this.botUsername} started`);
@@ -40,8 +41,30 @@ class TelegramCustomerBotService {
     });
   }
 
+  /** Кнопка меню рядом с полем ввода открывает мини-апп вместо списка команд. */
+  private setupMenuButton() {
+    const url = config.telegram.miniAppUrl;
+    if (!this.bot || !url) return;
+
+    // node-telegram-bot-api шлёт form-urlencoded и не сериализует menu_button сам — отсюда JSON.stringify.
+    const menuButton = JSON.stringify({
+      type: 'web_app',
+      text: 'Магазин',
+      web_app: { url },
+    }) as unknown as TelegramBot.MenuButton;
+
+    this.bot.setChatMenuButton({ menu_button: menuButton }).catch((err: Error) => {
+      console.error('[Telegram client bot] setChatMenuButton failed:', err.message);
+    });
+  }
+
   getBotUsername(): string | null {
     return this.botUsername;
+  }
+
+  /** Нужен мини-аппе: подтверждение заказа и уведомление менеджера идут от клиентского бота. */
+  getBot(): TelegramBot | null {
+    return this.bot;
   }
 
   handleWebhookUpdate(update: TelegramBot.Update): void {

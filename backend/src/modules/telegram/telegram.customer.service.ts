@@ -1,13 +1,24 @@
-import { DealStatus, Prisma, Role } from '@prisma/client';
+import { DealStatus, Prisma } from '@prisma/client';
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { getFirstName } from '../../lib/name-utils';
 import { pushService } from '../push/push.service';
 import { Lang, LANG_LABELS, t, customerStatusLabel } from './telegram.customer-i18n';
+import {
+  BusinessHoursStatus,
+  TASHKENT_TIME_ZONE,
+  buildClientTelegramNote,
+  buildCustomerClientFilter,
+  createCustomerOrder,
+  getBusinessHoursStatus,
+  getSystemActorId,
+  mergeClientNotes,
+  normalizeCustomerPhone,
+  notifyManagerAboutOrder,
+} from './telegram-order.service';
 
 const PAGE_SIZE = 6;
-const TASHKENT_TIME_ZONE = 'Asia/Tashkent';
 /** Сделки, по которым клиенту разрешён отзыв (должны совпадать с реальным процессом у вас в CRM) */
 const REVIEWABLE_DEAL_STATUSES: DealStatus[] = ['CLOSED', 'SHIPPED', 'REOPENED'];
 
@@ -54,17 +65,8 @@ interface CustomerSession {
   currentCategory?: string | null;
 }
 
-type HoursReasonCode = 'sunday' | 'saturday' | 'weekday';
-
-interface BusinessHoursStatus {
-  isOpen: boolean;
-  currentTimeText: string;
-  reasonCode?: HoursReasonCode;
-}
-
 export class TelegramCustomerService {
   private sessions = new Map<number, CustomerSession>();
-  private systemActorId: string | null | undefined;
 
   async handleStart(bot: TelegramBot, msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
@@ -475,6 +477,11 @@ export class TelegramCustomerService {
         });
       }
     }
+  }
+
+  /** Мини-аппа сменила язык — обновляем кэш сессии, иначе бот продолжит отвечать на старом. */
+  syncSessionLanguage(chatId: number, lang: Lang): void {
+    this.getSession(chatId).language = lang;
   }
 
   private getSession(chatId: number): CustomerSession {
@@ -1165,184 +1172,74 @@ export class TelegramCustomerService {
 
     session.submittingOrder = true;
     try {
-    const hours = this.getBusinessHoursStatus();
-    if (!hours.isOpen) {
-      await bot.sendMessage(
-        chatId,
-        [
-          `<b>${t(lang, 'hours.closed', { reason: '' }).trim()}</b>`,
-          t(lang, 'hours.currentTime', { time: hours.currentTimeText }),
-          hours.reasonCode ? t(lang, `hours.reason.${hours.reasonCode}`) : '',
-          '',
-          t(lang, 'start.hours.monFri'),
-          t(lang, 'start.hours.sat'),
-          t(lang, 'start.hours.sun'),
-        ].filter(Boolean).join('\n'),
-        { parse_mode: 'HTML' },
-      );
-      return;
-    }
-
     if (!session.selectedManagerId || !session.customerName || !session.phone || !session.cart.length) {
       await bot.sendMessage(chatId, t(lang, 'checkout.missingData'));
       return;
     }
 
-    const manager = await prisma.user.findFirst({
-      where: {
-        id: session.selectedManagerId,
-        role: 'MANAGER',
-        isActive: true,
-        OR: [{ companyId: null }, { company: { name: { not: 'grand-astra' } } }],
-      },
-      select: { id: true, fullName: true, telegramChatId: true },
+    const result = await createCustomerOrder({
+      chatId,
+      customerName: session.customerName,
+      phone: session.phone,
+      managerId: session.selectedManagerId,
+      items: session.cart.map((item) => ({ productId: item.productId, qty: item.qty })),
+      source: 'bot',
     });
 
-    if (!manager) {
-      await bot.sendMessage(chatId, t(lang, 'manager.unavailable'));
-      await this.showManagerPicker(bot, chatId, lang, 0);
-      return;
-    }
-
-    const uniqueProductIds = [...new Set(session.cart.map((item) => item.productId))];
-    const products = await prisma.product.findMany({
-      where: { id: { in: uniqueProductIds } },
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        unit: true,
-        salePrice: true,
-        stock: true,
-        isActive: true,
-      },
-    });
-    const productById = new Map(products.map((product) => [product.id, product]));
-
-    for (const item of session.cart) {
-      const product = productById.get(item.productId);
-      if (!product || !product.isActive || !product.salePrice || Number(product.stock) <= 0) {
-        await bot.sendMessage(chatId, t(lang, 'qty.productUnavailable'), {
-          parse_mode: 'HTML',
-        });
-        await this.showCart(bot, chatId, lang, undefined, t(lang, 'qty.productUnavailable'));
-        return;
-      }
-      if (item.qty > Number(product.stock)) {
+    if (!result.ok) {
+      if (result.reason === 'CLOSED') {
         await bot.sendMessage(
           chatId,
-          t(lang, 'qty.outOfStock', { name: this.escapeHtml(product.name), stock: this.formatQty(Number(product.stock)) }),
+          [
+            `<b>${t(lang, 'hours.closed', { reason: '' }).trim()}</b>`,
+            t(lang, 'hours.currentTime', { time: result.hours.currentTimeText }),
+            result.hours.reasonCode ? t(lang, `hours.reason.${result.hours.reasonCode}`) : '',
+            '',
+            t(lang, 'start.hours.monFri'),
+            t(lang, 'start.hours.sat'),
+            t(lang, 'start.hours.sun'),
+          ].filter(Boolean).join('\n'),
+          { parse_mode: 'HTML' },
+        );
+        return;
+      }
+
+      if (result.reason === 'MANAGER_UNAVAILABLE') {
+        await bot.sendMessage(chatId, t(lang, 'manager.unavailable'));
+        await this.showManagerPicker(bot, chatId, lang, 0);
+        return;
+      }
+
+      if (result.reason === 'OUT_OF_STOCK') {
+        await bot.sendMessage(
+          chatId,
+          t(lang, 'qty.outOfStock', {
+            name: this.escapeHtml(result.product.name),
+            stock: this.formatQty(result.product.stock),
+          }),
           { parse_mode: 'HTML' },
         );
         await this.showCart(bot, chatId, lang);
         return;
       }
-      item.price = Number(product.salePrice);
-      item.name = product.name;
-      item.sku = product.sku;
-      item.unit = product.unit;
-    }
 
-    const totalAmount = session.cart.reduce((sum, item) => sum + item.qty * item.price, 0);
-    const systemActorId = await this.getSystemActorId(manager.id);
-    const tag = this.buildClientTelegramNote(chatId);
-
-    const result = await prisma.$transaction(async (tx) => {
-      const existingClient = await tx.client.findFirst({
-        where: {
-          isArchived: false,
-          OR: [
-            { phone: session.phone! },
-            { notes: { contains: tag } },
-          ],
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      const client = existingClient
-        ? await tx.client.update({
-          where: { id: existingClient.id },
-          data: {
-            companyName: session.customerName!,
-            contactName: session.customerName!,
-            phone: session.phone!,
-            managerId: manager.id,
-            notes: this.mergeClientNotes(existingClient.notes, chatId),
-          },
-        })
-        : await tx.client.create({
-          data: {
-            companyName: session.customerName!,
-            contactName: session.customerName!,
-            phone: session.phone!,
-            managerId: manager.id,
-            notes: this.mergeClientNotes(null, chatId),
-          },
-        });
-
-      const deal = await tx.deal.create({
-        data: {
-          title: `Telegram заказ от ${new Date().toLocaleDateString('ru-RU', { timeZone: TASHKENT_TIME_ZONE })}`,
-          status: 'NEW',
-          amount: totalAmount,
-          clientId: client.id,
-          managerId: manager.id,
-          paymentType: 'FULL',
-          paidAmount: 0,
-          paymentStatus: 'UNPAID',
-          terms: `Заказ создан через Telegram-бот. Клиент: ${session.customerName}. Телефон: ${session.phone}.`,
-        },
-      });
-
-      for (const item of session.cart) {
-        await tx.dealItem.create({
-          data: {
-            dealId: deal.id,
-            productId: item.productId,
-            requestedQty: item.qty,
-            price: item.price,
-            lineTotal: item.qty * item.price,
-            requestComment: 'Заказ из Telegram-бота',
-            dealDate: new Date(),
-          },
-        });
+      if (result.reason === 'PRODUCT_UNAVAILABLE') {
+        await bot.sendMessage(chatId, t(lang, 'qty.productUnavailable'), { parse_mode: 'HTML' });
+        await this.showCart(bot, chatId, lang, undefined, t(lang, 'qty.productUnavailable'));
+        return;
       }
 
-      await tx.dealComment.create({
-        data: {
-          dealId: deal.id,
-          authorId: systemActorId,
-          text: [
-            'Новый заказ поступил из Telegram-бота.',
-            `Клиент: ${session.customerName}`,
-            `Телефон: ${session.phone}`,
-            `Chat ID: ${chatId}`,
-          ].join('\n'),
-        },
-      });
+      await bot.sendMessage(chatId, t(lang, 'checkout.missingData'));
+      return;
+    }
 
-      await tx.notification.create({
-        data: {
-          userId: manager.id,
-          title: 'Новый заказ из Telegram-бота',
-          body: `${session.customerName} оформил заказ на ${this.formatMoney(totalAmount)}. Нужно связаться с клиентом.`,
-          severity: 'WARNING',
-          link: `/deals/${deal.id}`,
-          createdByUserId: systemActorId,
-        },
-      });
+    const { manager, totalAmount } = result;
 
-      return { dealId: deal.id };
+    await notifyManagerAboutOrder(bot, manager, result.dealId, chatId, {
+      customerName: session.customerName,
+      phone: session.phone,
+      lines: result.lines,
     });
-
-    pushService.sendPushToUser(manager.id, {
-      title: 'Новый заказ из Telegram-бота',
-      body: `${session.customerName} оформил заказ на ${this.formatMoney(totalAmount)}.`,
-      url: `/deals/${result.dealId}`,
-      severity: 'WARNING',
-    }).catch(() => {});
-
-    await this.notifyManager(bot, manager, result.dealId, chatId, session);
 
     await bot.sendMessage(
       chatId,
@@ -1366,45 +1263,6 @@ export class TelegramCustomerService {
     } finally {
       session.submittingOrder = false;
     }
-  }
-
-  private async notifyManager(
-    bot: TelegramBot,
-    manager: { id: string; fullName: string; telegramChatId: string | null },
-    dealId: string,
-    customerChatId: number,
-    session: CustomerSession,
-  ): Promise<void> {
-    if (!manager.telegramChatId) return;
-
-    const orderLines = session.cart
-      .slice(0, 6)
-      .map((item) => `• ${item.name}: ${this.formatQty(item.qty)} ${item.unit} x ${this.formatMoney(item.price)}`)
-      .join('\n');
-
-    await bot.sendMessage(
-      manager.telegramChatId,
-      [
-        '<b>Новый заказ из Telegram</b>',
-        '',
-        `Клиент: <b>${this.escapeHtml(session.customerName || '-')}</b>`,
-        `Телефон: <b>${this.escapeHtml(session.phone || '-')}</b>`,
-        '',
-        orderLines,
-        '',
-        'После контакта с клиентом нажмите кнопку подтверждения.',
-      ].join('\n'),
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'Открыть сделку в CRM', url: `${config.telegram.crmUrl}/deals/${dealId}` }],
-            [{ text: 'Связался с клиентом', callback_data: `managerack:${dealId}:${customerChatId}` }],
-            [{ text: 'Не дозвонился', callback_data: `managerretry:${dealId}:${customerChatId}` }],
-          ],
-        },
-      },
-    ).catch(() => {});
   }
 
   private async handleManagerContactConfirmation(
@@ -1836,8 +1694,11 @@ export class TelegramCustomerService {
   }
 
   private buildHomeKeyboard(lang: Lang): TelegramBot.InlineKeyboardMarkup {
+    const miniAppUrl = config.telegram.miniAppUrl;
     return {
       inline_keyboard: [
+        // Мини-апп — основной путь: витрина с фото. Текстовый сценарий остаётся запасным.
+        ...(miniAppUrl ? [[{ text: t(lang, 'menu.shop'), web_app: { url: miniAppUrl } }]] : []),
         [{ text: t(lang, 'menu.order'), callback_data: 'menu:order' }],
         [{ text: t(lang, 'menu.orders'), callback_data: 'menu:orders' }],
         [{ text: t(lang, 'menu.hours'), callback_data: 'menu:hours' }],
@@ -1901,72 +1762,11 @@ export class TelegramCustomerService {
   }
 
   private getBusinessHoursStatus(date = new Date()): BusinessHoursStatus {
-    const weekday = new Intl.DateTimeFormat('en-US', {
-      timeZone: TASHKENT_TIME_ZONE,
-      weekday: 'short',
-    }).format(date);
-    const hour = Number(new Intl.DateTimeFormat('en-US', {
-      timeZone: TASHKENT_TIME_ZONE,
-      hour: '2-digit',
-      hour12: false,
-    }).format(date));
-    const minute = Number(new Intl.DateTimeFormat('en-US', {
-      timeZone: TASHKENT_TIME_ZONE,
-      minute: '2-digit',
-    }).format(date));
-    const currentMinutes = (hour * 60) + minute;
-    const currentTimeText = new Intl.DateTimeFormat('ru-RU', {
-      timeZone: TASHKENT_TIME_ZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-      weekday: 'long',
-    }).format(date);
-
-    if (weekday === 'Sun') {
-      return {
-        isOpen: false,
-        currentTimeText,
-        reasonCode: 'sunday',
-      };
-    }
-
-    const opensAt = weekday === 'Sat' ? 10 * 60 : 9 * 60;
-    const closesAt = 18 * 60;
-    if (currentMinutes < opensAt || currentMinutes >= closesAt) {
-      return {
-        isOpen: false,
-        currentTimeText,
-        reasonCode: weekday === 'Sat' ? 'saturday' : 'weekday',
-      };
-    }
-
-    return { isOpen: true, currentTimeText };
+    return getBusinessHoursStatus(date);
   }
 
   private normalizePhone(raw: string): string | null {
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return null;
-    if (digits.length === 9) return `+998${digits}`;
-    if (digits.length === 12 && digits.startsWith('998')) return `+${digits}`;
-    if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
-    return null;
-  }
-
-  /** Варианты записи телефона в CRM, чтобы находить клиента при отзыве */
-  private phoneSearchVariants(normalizedPhone: string | null | undefined): string[] {
-    if (!normalizedPhone?.trim()) return [];
-    const raw = normalizedPhone.trim();
-    const digits = raw.replace(/\D/g, '');
-    const set = new Set<string>();
-    set.add(raw);
-    if (digits) {
-      set.add(digits);
-      set.add(`+${digits}`);
-      if (digits.startsWith('998') && digits.length === 12) {
-        set.add(digits.slice(3));
-      }
-    }
-    return [...set].filter(Boolean);
+    return normalizeCustomerPhone(raw);
   }
 
   /**
@@ -1974,13 +1774,7 @@ export class TelegramCustomerService {
    * Telegram-чата в notes (как при оформлении заказа через бота).
    */
   private buildReviewClientFilter(phone: string | null | undefined, chatId: number): Prisma.ClientWhereInput {
-    const variants = this.phoneSearchVariants(phone ?? undefined);
-    const tag = this.buildClientTelegramNote(chatId);
-    const or: Prisma.ClientWhereInput[] = [{ notes: { contains: tag } }];
-    if (variants.length > 0) {
-      or.unshift({ phone: { in: variants } });
-    }
-    return { OR: or };
+    return buildCustomerClientFilter(phone, chatId);
   }
 
   private parseQty(raw: string): number | null {
@@ -2014,35 +1808,15 @@ export class TelegramCustomerService {
   }
 
   private buildClientTelegramNote(chatId: number): string {
-    return `[TG_CHAT_ID:${chatId}]`;
+    return buildClientTelegramNote(chatId);
   }
 
   private mergeClientNotes(existingNotes: string | null, chatId: number): string {
-    const tag = this.buildClientTelegramNote(chatId);
-    if (!existingNotes) return tag;
-    if (existingNotes.includes(tag)) return existingNotes;
-    return `${existingNotes}\n${tag}`.trim();
+    return mergeClientNotes(existingNotes, chatId);
   }
 
   private async getSystemActorId(fallbackUserId: string): Promise<string> {
-    if (this.systemActorId !== undefined) {
-      return this.systemActorId || fallbackUserId;
-    }
-
-    const actor = await prisma.user.findFirst({
-      where: {
-        isActive: true,
-        role: { in: ['SUPER_ADMIN', 'ADMIN', 'OPERATOR'] as Role[] },
-      },
-      select: { id: true },
-      orderBy: [
-        { role: 'asc' },
-        { createdAt: 'asc' },
-      ],
-    });
-
-    this.systemActorId = actor?.id || null;
-    return this.systemActorId || fallbackUserId;
+    return getSystemActorId(fallbackUserId);
   }
 }
 

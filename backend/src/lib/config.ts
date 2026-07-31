@@ -101,6 +101,18 @@ export const config = {
     backendPublicUrl: trimEnv(process.env.RENDER_EXTERNAL_URL) || trimEnv(process.env.BACKEND_PUBLIC_URL),
     /** Секрет для X-Telegram-Bot-Api-Secret-Token; без него вебхук-режим не проверяет отправителя. */
     webhookSecret: trimEnv(process.env.TELEGRAM_WEBHOOK_SECRET),
+    /**
+     * Публичный HTTPS-адрес мини-аппы (магазин для клиентов). По умолчанию раздаётся самим
+     * бэкендом на /miniapp — Telegram требует https, поэтому локально кнопки не будет.
+     */
+    get miniAppUrl(): string | undefined {
+      const explicit = trimEnv(process.env.TELEGRAM_MINIAPP_URL);
+      if (explicit) return explicit.replace(/\/$/, '');
+      const base = trimEnv(process.env.RENDER_EXTERNAL_URL) || trimEnv(process.env.BACKEND_PUBLIC_URL);
+      if (!base?.startsWith('https://')) return undefined;
+      // Слэш в конце — чтобы Telegram не ходил лишний раз через 301 от express.static
+      return `${base.replace(/\/$/, '')}/miniapp/`;
+    },
   },
   reports: {
     internalToken: trimEnv(process.env.INTERNAL_REPORTS_TOKEN),

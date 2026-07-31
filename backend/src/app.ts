@@ -44,6 +44,7 @@ import settingsRoutes from './modules/settings/settings.routes';
 import pushRoutes from './modules/push/push.routes';
 import telegramRoutes from './modules/telegram/telegram.routes';
 import telegramWebhookRoutes from './modules/telegram/telegram-webhook.routes';
+import telegramMiniAppRoutes from './modules/telegram/telegram-miniapp.routes';
 import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
 import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
@@ -73,6 +74,37 @@ const app = express();
 // За обратным прокси (Render): доверяем X-Forwarded-For, иначе req.ip = адрес прокси, а не клиента
 app.set('trust proxy', 1);
 
+/**
+ * Мини-аппа клиентского бота (магазин). Отдаётся до общего helmet: Telegram открывает её в iframe,
+ * поэтому здесь нужен свой CSP (frame-ancestors telegram) и отключённый X-Frame-Options.
+ */
+app.use(
+  '/miniapp',
+  helmet({
+    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://telegram.org'],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        fontSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        frameAncestors: ['https://web.telegram.org', 'https://*.web.telegram.org', 'https://telegram.org'],
+        baseUri: ["'self'"],
+      },
+    },
+  }),
+  express.static(path.join(process.cwd(), 'public', 'miniapp'), {
+    // index.html всегда свежий, статика версионируется query-параметром в разметке
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }),
+);
+
 // Security
 app.use(helmet({
   contentSecurityPolicy: {
@@ -87,9 +119,23 @@ app.use(helmet({
     },
   },
 }));
+/** Мини-апп раздаётся самим бэкендом (или своим доменом) — эти origin'ы всегда разрешены. */
+const ownOrigins = [config.telegram.backendPublicUrl, config.telegram.miniAppUrl]
+  .filter((value): value is string => !!value)
+  .map((value) => {
+    try {
+      return new URL(value).origin;
+    } catch {
+      return null;
+    }
+  })
+  .filter((value): value is string => !!value);
+
+const allowedOrigins = [...new Set([...config.cors.origins, ...ownOrigins])];
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || config.cors.origins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -162,6 +208,7 @@ app.use('/api/timepay', timepayRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/telegram/miniapp', telegramMiniAppRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/telegram/webhook', telegramWebhookRoutes);
 app.use('/api/power-of-attorney', poaRoutes);
