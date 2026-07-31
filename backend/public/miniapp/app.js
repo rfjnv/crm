@@ -185,10 +185,8 @@
     toastTimer = setTimeout(function () { el.hidden = true; }, 2200);
   }
 
-  // Логотип-заглушка для товаров без фото
-  var MARK = '<svg viewBox="0 0 100 78" aria-hidden="true"><g fill="currentColor">'
-    + '<path d="M44.5 0 52 12.9 15 77h-15z"/><path d="M56.5 20.6 64 33.5 39.2 77h-15z"/>'
-    + '<path d="M68.5 41.2 76 54.1 63.4 77h-15z"/><path d="M80.5 61.8 84.2 68.2 79.1 77h-7.4z"/></g></svg>';
+  // Логотип-заглушка для товаров без фото — ссылка на спрайт #pb-mark из index.html
+  var MARK = '<svg aria-hidden="true"><use href="#pb-mark"></use></svg>';
 
   function mediaHtml(imageUrl, name, withLabel) {
     var placeholder = '<div class="ph" aria-hidden="true">' + MARK

@@ -9,17 +9,30 @@
   <link rel="stylesheet" href="styles.css?v=1" />
 </head>
 <body>
+  <!-- Фирменный знак (frontend/src/assets/mini-logo.svg): один раз на страницу, дальше через <use>.
+       viewBox обрезан по самому треугольнику, заливка — currentColor ради светлой/тёмной темы. -->
+  <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="pb-mark" viewBox="102 13 1074 870">
+      <mask id="pb-mark-stripes" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="-102" y="-90" width="1712" height="1799">
+        <rect x="688.77" y="-89.4141" width="93.6744" height="1520.65" transform="rotate(31.3123 688.77 -89.4141)" fill="#fff"/>
+        <rect x="761.772" y="70.7812" width="78.7434" height="1326.54" transform="rotate(31.3123 761.772 70.7812)" fill="#fff"/>
+        <rect x="878.7" y="140.789" width="74.8528" height="1326.54" transform="rotate(31.3123 878.7 140.789)" fill="#fff"/>
+        <rect x="993.232" y="195.82" width="62.9488" height="1326.54" transform="rotate(31.3123 993.232 195.82)" fill="#fff"/>
+        <rect x="1100.58" y="265.828" width="53.1552" height="1326.54" transform="rotate(31.3123 1100.58 265.828)" fill="#fff"/>
+        <rect x="1203.23" y="335.805" width="46.5067" height="1326.54" transform="rotate(31.3123 1203.23 335.805)" fill="#fff"/>
+        <rect x="1313.79" y="395.625" width="39.1174" height="1326.54" transform="rotate(31.3123 1313.79 395.625)" fill="#fff"/>
+        <rect x="1388.86" y="471.141" width="27.5439" height="1326.54" transform="rotate(31.3123 1388.86 471.141)" fill="#fff"/>
+      </mask>
+      <g mask="url(#pb-mark-stripes)">
+        <path d="M638.768 13.8398L1175.39 881.767H102.146L638.768 13.8398Z" fill="currentColor"/>
+      </g>
+    </symbol>
+  </svg>
+
   <div class="app" id="app">
     <header class="topbar">
       <div class="brand">
-        <svg class="brand__mark" viewBox="0 0 100 78" aria-hidden="true">
-          <g fill="currentColor">
-            <path d="M44.5 0 52 12.9 15 77h-15z" />
-            <path d="M56.5 20.6 64 33.5 39.2 77h-15z" />
-            <path d="M68.5 41.2 76 54.1 63.4 77h-15z" />
-            <path d="M80.5 61.8 84.2 68.2 79.1 77h-7.4z" />
-          </g>
-        </svg>
+        <svg class="brand__mark" aria-hidden="true"><use href="#pb-mark"></use></svg>
         <div class="brand__text">
           <span class="brand__name">Polygraph Business</span>
           <span class="brand__sub" data-i18n="brand.sub">Магазин материалов</span>
@@ -161,14 +174,7 @@
 
   <div class="boot" id="boot">
     <div class="boot__mark">
-      <svg viewBox="0 0 100 78" aria-hidden="true">
-        <g fill="currentColor">
-          <path d="M44.5 0 52 12.9 15 77h-15z" />
-          <path d="M56.5 20.6 64 33.5 39.2 77h-15z" />
-          <path d="M68.5 41.2 76 54.1 63.4 77h-15z" />
-          <path d="M80.5 61.8 84.2 68.2 79.1 77h-7.4z" />
-        </g>
-      </svg>
+      <svg aria-hidden="true"><use href="#pb-mark"></use></svg>
     </div>
     <p class="boot__text" id="bootText">Загружаем каталог…</p>
     <p class="boot__diag" id="bootDiag" hidden></p>
