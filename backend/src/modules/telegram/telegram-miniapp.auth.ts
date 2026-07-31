@@ -28,28 +28,58 @@ declare module 'express-serve-static-core' {
 /** initData считается протухшей через сутки — столько же живёт открытая мини-аппа. */
 const MAX_AUTH_AGE_SECONDS = 24 * 60 * 60;
 
-export function verifyTelegramInitData(initData: string, botToken: string): TelegramMiniAppUser | null {
-  if (!initData || !botToken) return null;
+/**
+ * Разбор initData вручную: URLSearchParams превращает литеральный «+» в пробел,
+ * а в строке подписи значения должны быть ровно такими, какими их посчитал Telegram.
+ */
+function parseInitData(initData: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const pair of initData.split('&')) {
+    if (!pair) continue;
+    const separator = pair.indexOf('=');
+    if (separator < 0) continue;
+    const key = decodeURIComponent(pair.slice(0, separator));
+    const value = decodeURIComponent(pair.slice(separator + 1));
+    result.set(key, value);
+  }
+  return result;
+}
 
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  if (!hash) return null;
-
-  params.delete('hash');
-  // signature приходит только в Telegram 7.10+ (third-party validation) и в подпись не входит
-  params.delete('signature');
-
-  const dataCheckString = [...params.entries()]
+function buildCheckString(params: Map<string, string>, skip: string[]): string {
+  return [...params.entries()]
+    .filter(([key]) => !skip.includes(key))
     .map(([key, value]) => `${key}=${value}`)
     .sort()
     .join('\n');
+}
 
+function hashMatches(checkString: string, botToken: string, providedHash: string): boolean {
   const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const computedHash = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  const expected = Buffer.from(createHmac('sha256', secretKey).update(checkString).digest('hex'), 'hex');
+  const provided = Buffer.from(providedHash, 'hex');
+  return expected.length === provided.length && expected.length > 0 && timingSafeEqual(expected, provided);
+}
 
-  const expected = Buffer.from(computedHash, 'hex');
-  const provided = Buffer.from(hash, 'hex');
-  if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
+export function verifyTelegramInitData(initData: string, botToken: string): TelegramMiniAppUser | null {
+  if (!initData || !botToken) return null;
+
+  const params = parseInitData(initData);
+  const hash = params.get('hash');
+  if (!hash) return null;
+
+  /**
+   * Telegram считает hash по всем полученным полям кроме hash. Поле signature (Bot API 8.0+)
+   * у разных клиентов то входит в строку подписи, то нет, поэтому принимаем оба варианта:
+   * подделать любой из них без токена бота всё равно нельзя.
+   */
+  const withSignature = buildCheckString(params, ['hash']);
+  const withoutSignature = buildCheckString(params, ['hash', 'signature']);
+
+  if (!hashMatches(withSignature, botToken, hash) && !hashMatches(withoutSignature, botToken, hash)) {
+    console.warn('[Mini app] initData signature mismatch:', {
+      fields: [...params.keys()].sort().join(','),
+      hashLength: hash.length,
+    });
     return null;
   }
 
@@ -91,9 +121,16 @@ export function requireTelegramMiniAppUser(req: Request, _res: Response, next: N
   }
 
   const initData = String(req.header('x-telegram-init-data') || '');
+  if (!initData) {
+    // Клиент Telegram не передал подписанные данные — обычно очень старая версия приложения
+    console.warn('[Mini app] request without initData header');
+    next(new AppError(401, 'INIT_DATA_MISSING'));
+    return;
+  }
+
   const user = verifyTelegramInitData(initData, token);
   if (!user) {
-    next(new AppError(401, 'Invalid Telegram init data'));
+    next(new AppError(401, 'INIT_DATA_INVALID'));
     return;
   }
 

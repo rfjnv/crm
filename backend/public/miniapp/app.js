@@ -59,6 +59,9 @@
       'boot.loading': 'Загружаем каталог…',
       'error.load': 'Не удалось загрузить данные. Потяните вниз, чтобы обновить.',
       'error.auth': 'Откройте магазин через Telegram-бота.',
+      'error.authMissing': 'Telegram не передал данные сессии. Обновите приложение Telegram до последней версии и откройте магазин заново.',
+      'error.authInvalid': 'Не удалось подтвердить сессию Telegram. Отправьте боту /start и откройте магазин снова.',
+      'error.retry': 'Повторить',
       'error.order': 'Не удалось оформить заказ. Попробуйте ещё раз.',
       'unit.default': 'шт',
     },
@@ -110,6 +113,9 @@
       'boot.loading': 'Katalog yuklanmoqda…',
       'error.load': 'Ma’lumotlarni yuklab bo‘lmadi. Yangilash uchun pastga torting.',
       'error.auth': 'Do‘konni Telegram bot orqali oching.',
+      'error.authMissing': 'Telegram sessiya ma’lumotlarini yubormadi. Telegram ilovasini yangilang va do‘konni qaytadan oching.',
+      'error.authInvalid': 'Telegram sessiyasini tasdiqlab bo‘lmadi. Botga /start yuboring va do‘konni qaytadan oching.',
+      'error.retry': 'Qayta urinish',
       'error.order': 'Buyurtma berilmadi. Yana urinib ko‘ring.',
       'unit.default': 'dona',
     },
@@ -827,6 +833,39 @@
     } catch (e) { /* старые клиенты */ }
   }
 
+  /**
+   * Ошибку старта показываем на экране загрузки, а не тостом: пользователь должен успеть
+   * прочитать причину, а строка диагностики помогает разобрать обращение в поддержку.
+   */
+  function showBootError(err) {
+    var reason = (err && err.payload && err.payload.error) || '';
+    var message = t('error.load');
+    if (err && err.status === 401) {
+      message = reason === 'INIT_DATA_MISSING' ? t('error.authMissing')
+        : reason === 'INIT_DATA_INVALID' ? t('error.authInvalid')
+          : t('error.auth');
+    }
+
+    var boot = $('boot');
+    boot.hidden = false;
+    boot.classList.remove('is-hidden');
+    boot.classList.add('is-error');
+    $('bootText').textContent = message;
+
+    $('bootDiag').textContent = [
+      tg ? (tg.platform || '?') : 'no-webapp',
+      tg && tg.version ? 'v' + tg.version : '',
+      'initData: ' + ((tg && tg.initData) ? tg.initData.length : 0),
+      err && err.status ? 'HTTP ' + err.status : '',
+    ].filter(Boolean).join(' · ');
+    $('bootDiag').hidden = false;
+
+    var retry = $('bootRetry');
+    retry.textContent = t('error.retry');
+    retry.hidden = false;
+    retry.onclick = function () { location.reload(); };
+  }
+
   function boot() {
     loadCart();
     applyStaticTexts();
@@ -866,11 +905,7 @@
     }).then(function () {
       $('boot').classList.add('is-hidden');
       setTimeout(function () { $('boot').hidden = true; }, 320);
-    }).catch(function (err) {
-      $('boot').classList.add('is-hidden');
-      setTimeout(function () { $('boot').hidden = true; }, 320);
-      toast(err && err.status === 401 ? t('error.auth') : t('error.load'));
-    });
+    }).catch(showBootError);
   }
 
   // ── Демо-режим (?demo=1): только для просмотра оформления без Telegram ──
