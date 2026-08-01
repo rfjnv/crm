@@ -989,26 +989,39 @@ router.get(
     };
 
     // ──── MANAGERS ────
-    const [managerStatsRaw, managerAvgDaysRaw] = await Promise.all([
+    // Выручка/completed_count считаются по ЭФФЕКТИВНОЙ дате строки (как и остальная
+    // аналитика — см. SQL_EFFECTIVE_REVENUE_ITEM_TS), а НЕ по дате создания сделки:
+    // иначе сделка, открытая в прошлом периоде и закрытая в текущем, никогда не попадала
+    // бы в выручку менеджера ни за один из периодов (в старом periode её create_at не
+    // попадал, а к периоду закрытия её тоже не привязывали).
+    const [managerRevenueRaw, managerTotalDealsRaw, managerAvgDaysRaw] = await Promise.all([
       prisma.$queryRaw<{
         manager_id: string; full_name: string;
         completed_count: string; total_revenue: string; avg_deal_amount: string;
-        total_deals: string;
       }[]>(
         Prisma.sql`SELECT
            d.manager_id,
            u.full_name,
-           COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as completed_count,
-           COALESCE(SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as total_revenue,
-           COALESCE(AVG(di_rev.rev) FILTER (WHERE d.status = 'CLOSED'), 0)::text as avg_deal_amount,
-           COUNT(*)::text as total_deals
-         FROM deals d
+           COUNT(DISTINCT d.id)::text as completed_count,
+           COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total_revenue,
+           COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) / NULLIF(COUNT(DISTINCT d.id), 0), 0)::text as avg_deal_amount
+         FROM deal_items di
+         JOIN deals d ON d.id = di.deal_id
          JOIN users u ON u.id = d.manager_id
-         LEFT JOIN (SELECT deal_id, SUM(COALESCE(line_total, requested_qty * price, 0)) as rev FROM deal_items GROUP BY deal_id) di_rev ON di_rev.deal_id = d.id
+         WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
+           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
+         GROUP BY d.manager_id, u.full_name
+         ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST`
+      ),
+      // Все сделки, ОТКРЫТЫЕ менеджером в периоде (для конверсии "открыл → закрыл") —
+      // отдельная метрика, намеренно на основе created_at.
+      prisma.$queryRaw<{ manager_id: string; total_deals: string }[]>(
+        Prisma.sql`SELECT d.manager_id, COUNT(*)::text as total_deals
+         FROM deals d
          WHERE d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
-         GROUP BY d.manager_id, u.full_name
-         ORDER BY SUM(di_rev.rev) FILTER (WHERE d.status = 'CLOSED') DESC NULLS LAST`
+         GROUP BY d.manager_id`
       ),
       prisma.$queryRaw<{ manager_id: string; avg_days: string }[]>(
         Prisma.sql`SELECT
@@ -1022,17 +1035,22 @@ router.get(
     ]);
 
     const avgDaysMap = new Map(managerAvgDaysRaw.map((m) => [m.manager_id, Number(m.avg_days)]));
+    const totalDealsMap = new Map(managerTotalDealsRaw.map((m) => [m.manager_id, Number(m.total_deals)]));
 
     const managers = {
-      rows: managerStatsRaw.map((m) => ({
-        managerId: m.manager_id,
-        fullName: m.full_name,
-        completedCount: Number(m.completed_count),
-        totalRevenue: Number(m.total_revenue),
-        avgDealAmount: Number(m.avg_deal_amount),
-        conversionRate: Number(m.total_deals) > 0 ? Number(m.completed_count) / Number(m.total_deals) : 0,
-        avgDealDays: avgDaysMap.get(m.manager_id) ?? 0,
-      })),
+      rows: managerRevenueRaw.map((m) => {
+        const totalDeals = totalDealsMap.get(m.manager_id) ?? 0;
+        const completedCount = Number(m.completed_count);
+        return {
+          managerId: m.manager_id,
+          fullName: m.full_name,
+          completedCount,
+          totalRevenue: Number(m.total_revenue),
+          avgDealAmount: Number(m.avg_deal_amount),
+          conversionRate: totalDeals > 0 ? completedCount / totalDeals : 0,
+          avgDealDays: avgDaysMap.get(m.manager_id) ?? 0,
+        };
+      }),
     };
 
     // ──── PROFITABILITY ────
