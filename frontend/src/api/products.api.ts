@@ -31,7 +31,10 @@ export const productsApi = {
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    if (!res.ok) throw new Error('Не удалось загрузить фото');
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.message || `Не удалось загрузить фото (HTTP ${res.status})`);
+    }
     return res.json() as Promise<ProductPosterPhoto[]>;
   },
   deletePosterPhoto: (id: string, photoId: string) =>

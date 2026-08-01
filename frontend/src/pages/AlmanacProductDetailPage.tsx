@@ -90,7 +90,7 @@ export default function AlmanacProductDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
       message.success('Фото добавлены');
     },
-    onError: () => message.error('Не удалось загрузить фото'),
+    onError: (err) => message.error(err instanceof Error ? err.message : 'Не удалось загрузить фото'),
     onSettled: () => setUploadingPhotos(false),
   });
 
@@ -183,13 +183,16 @@ export default function AlmanacProductDetailPage() {
                       headers: { Authorization: `Bearer ${token}` },
                       body: formData,
                     });
-                    if (!res.ok) throw new Error();
+                    if (!res.ok) {
+                      const body = await res.json().catch(() => null);
+                      throw new Error(body?.message || `Ошибка загрузки фото (HTTP ${res.status})`);
+                    }
                     await queryClient.invalidateQueries({ queryKey: ['products'] });
                     message.success('Фото обновлено');
                     onSuccess?.({});
-                  } catch {
-                    message.error('Ошибка загрузки фото');
-                    onError?.(new Error('upload failed'));
+                  } catch (err) {
+                    message.error(err instanceof Error ? err.message : 'Ошибка загрузки фото');
+                    onError?.(err instanceof Error ? err : new Error('upload failed'));
                   } finally {
                     setUploadingImage(false);
                   }
