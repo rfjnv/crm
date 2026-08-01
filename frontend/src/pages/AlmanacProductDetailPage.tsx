@@ -33,6 +33,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { API_URL } from '../api/client';
+import { uploadsUrl } from '../lib/uploadsUrl';
 
 async function downloadFile(url: string, filename: string) {
   const res = await fetch(url);
@@ -121,6 +122,7 @@ export default function AlmanacProductDetailPage() {
     );
   }
 
+  const imageSrc = uploadsUrl(product.imageUrl);
   const stock = Number(product.stock);
   const minStock = Number(product.minStock);
   const stockLow = stock <= minStock;
@@ -153,9 +155,9 @@ export default function AlmanacProductDetailPage() {
               justifyContent: 'center',
             }}
           >
-            {product.imageUrl ? (
+            {imageSrc ? (
               <img
-                src={product.imageUrl}
+                src={imageSrc}
                 alt={product.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
@@ -412,7 +414,7 @@ export default function AlmanacProductDetailPage() {
               }}
             >
               <img
-                src={photo.url}
+                src={uploadsUrl(photo.url) ?? ''}
                 alt={`${product.name} poster ${idx + 1}`}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
@@ -420,7 +422,7 @@ export default function AlmanacProductDetailPage() {
                 <Button
                   size="small"
                   icon={<DownloadOutlined />}
-                  onClick={() => downloadFile(photo.url, `${product.sku}-poster-${idx + 1}.jpg`)}
+                  onClick={() => downloadFile(uploadsUrl(photo.url) ?? '', `${product.sku}-poster-${idx + 1}.jpg`)}
                 />
                 {isAdmin && (
                   <Popconfirm

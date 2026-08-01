@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { warehouseController } from './warehouse.controller';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize, requirePermission } from '../../middleware/authorize';
@@ -25,20 +23,10 @@ const upload = multer({
   },
 });
 
-const imageStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.resolve('uploads/products');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
-
+// Фото товаров (главное фото + постеры) уходят в Supabase Storage, а не на диск —
+// на Render free plan локальные файлы бэкенда пропадают при каждом деплое/рестарте.
 const imageUpload = multer({
-  storage: imageStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -46,20 +34,8 @@ const imageUpload = multer({
   },
 });
 
-const posterStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.resolve('uploads/products/posters');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
-
 const posterUpload = multer({
-  storage: posterStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
