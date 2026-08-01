@@ -149,8 +149,19 @@ app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(requestContextMiddleware);
 
-// Static files (uploaded attachments)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+/**
+ * Static files (uploaded attachments).
+ *
+ * Общий helmet ставит Cross-Origin-Resource-Policy: same-origin, из-за чего браузер
+ * отказывается показывать эти картинки на других origin — а фронтенд CRM живёт на
+ * отдельном домене. Мини-апп раздаётся самим бэкендом, поэтому у неё фото грузились,
+ * а в кабинете CRM на их месте была пустота. Для загруженных файлов разрешаем cross-origin.
+ */
+app.use(
+  '/uploads',
+  helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
+  express.static(path.join(process.cwd(), 'uploads')),
+);
 
 // Health check
 app.get('/api/health', async (_req, res) => {

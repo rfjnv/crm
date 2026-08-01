@@ -9,7 +9,6 @@ import {
   sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
 import { auditLog } from '../../lib/logger';
-import { deleteImageFromStorage } from '../../lib/imageStorage';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 
 export class WarehouseService {
@@ -58,7 +57,6 @@ export class WarehouseService {
     const photo = await prisma.productPosterPhoto.findUnique({ where: { id: photoId } });
     if (!photo || photo.productId !== productId) throw new AppError(404, 'Фото не найдено');
     await prisma.productPosterPhoto.delete({ where: { id: photoId } });
-    await deleteImageFromStorage(photo.url);
   }
 
   async createProduct(dto: CreateProductDto, userId: string, companyId?: string, role?: Role) {

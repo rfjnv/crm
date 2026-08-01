@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { warehouseService } from './warehouse.service';
 import { AppError } from '../../lib/errors';
-import { uploadImageToStorage, deleteImageFromStorage } from '../../lib/imageStorage';
 
 export class WarehouseController {
   // Products
@@ -17,20 +16,18 @@ export class WarehouseController {
 
   async uploadProductImage(req: Request, res: Response): Promise<void> {
     if (!req.file) throw new AppError(400, 'Файл не загружен');
-    const previous = await warehouseService.findProductById(req.params.id as string);
-    const imageUrl = await uploadImageToStorage(req.file, 'products');
+    const imageUrl = `/uploads/products/${req.file.filename}`;
     const product = await warehouseService.updateProduct(req.params.id as string, { imageUrl }, req.user!.userId as string);
-    if (previous.imageUrl && previous.imageUrl !== imageUrl) {
-      await deleteImageFromStorage(previous.imageUrl);
-    }
     res.json({ imageUrl: product.imageUrl });
   }
 
   async uploadProductPhotos(req: Request, res: Response): Promise<void> {
     const files = (req.files as Express.Multer.File[]) || [];
     if (!files.length) throw new AppError(400, 'Файлы не загружены');
-    const urls = await Promise.all(files.map((f) => uploadImageToStorage(f, 'products/posters')));
-    const photos = await warehouseService.addProductPhotos(req.params.id as string, urls);
+    const photos = await warehouseService.addProductPhotos(
+      req.params.id as string,
+      files.map((f) => `/uploads/products/posters/${f.filename}`),
+    );
     res.status(201).json(photos);
   }
 
