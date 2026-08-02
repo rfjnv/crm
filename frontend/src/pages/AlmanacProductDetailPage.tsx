@@ -14,6 +14,8 @@ import {
   Upload,
   Segmented,
   Popconfirm,
+  Select,
+  DatePicker,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -34,6 +36,8 @@ import { formatUZS } from '../utils/currency';
 import { useAuthStore } from '../store/authStore';
 import { API_URL } from '../api/client';
 import { uploadsUrl } from '../lib/uploadsUrl';
+import { PRODUCT_BADGE_LABELS, type ProductBadge } from '../types';
+import dayjs from 'dayjs';
 
 async function downloadFile(url: string, filename: string) {
   const res = await fetch(url);
@@ -75,8 +79,13 @@ export default function AlmanacProductDetailPage() {
   const product = products.find((p) => p.id === id);
 
   const updateMut = useMutation({
-    mutationFn: (data: { description?: string; postTextRu?: string; postTextUz?: string }) =>
-      productsApi.update(id!, data),
+    mutationFn: (data: {
+      description?: string;
+      postTextRu?: string;
+      postTextUz?: string;
+      badge?: ProductBadge | null;
+      badgeUntil?: string | null;
+    }) => productsApi.update(id!, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
       message.success('Сохранено');
@@ -218,6 +227,44 @@ export default function AlmanacProductDetailPage() {
               {product.isActive ? 'Активен' : 'Неактивен'}
             </Tag>
           </Space>
+
+          {/* Ярлык витрины — виден клиентам в боте и мини-аппе */}
+          {isAdmin && (
+            <div style={{ marginTop: 20 }}>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>Ярлык в магазине</Text>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="Без ярлыка"
+                allowClear
+                value={product.badge ?? undefined}
+                onChange={(value?: ProductBadge) =>
+                  updateMut.mutate({ badge: value ?? null, ...(value ? {} : { badgeUntil: null }) })
+                }
+                options={(Object.keys(PRODUCT_BADGE_LABELS) as ProductBadge[]).map((key) => ({
+                  value: key,
+                  label: PRODUCT_BADGE_LABELS[key],
+                }))}
+              />
+              {product.badge && (
+                <>
+                  <DatePicker
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Показывать до (необязательно)"
+                    format="DD.MM.YYYY"
+                    value={product.badgeUntil ? dayjs(product.badgeUntil) : null}
+                    onChange={(date) =>
+                      updateMut.mutate({ badgeUntil: date ? date.endOf('day').toISOString() : null })
+                    }
+                  />
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+                    {product.badge === 'SOON'
+                      ? 'Товар показывается в магазине даже при нулевом остатке, но заказать его нельзя.'
+                      : 'Ярлык виден клиентам на карточке товара в боте и мини-аппе.'}
+                  </Text>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* RIGHT — Info */}

@@ -30,11 +30,24 @@ const NO_CATEGORY_KEY = '__none__';
 
 const langOf = (raw: unknown): Lang => (raw === 'uz' ? 'uz' : 'ru');
 
+/** Ярлык уже протух, если badgeUntil в прошлом — тогда товар считается без ярлыка. */
+function activeBadge(badge: string | null, badgeUntil: Date | null): string | null {
+  if (!badge) return null;
+  if (badgeUntil && badgeUntil.getTime() < Date.now()) return null;
+  return badge;
+}
+
 function productWhere(category?: string, search?: string) {
   const where: Record<string, unknown> = {
     isActive: true,
-    stock: { gt: 0 },
     salePrice: { not: null },
+    // Нулевой остаток скрывает товар, но ярлык «скоро в наличии» возвращает его в витрину
+    AND: [{
+      OR: [
+        { stock: { gt: 0 } },
+        { badge: 'SOON', OR: [{ badgeUntil: null }, { badgeUntil: { gt: new Date() } }] },
+      ],
+    }],
   };
 
   if (category) {
@@ -153,6 +166,8 @@ router.get('/products', async (req, res, next) => {
           description: true,
           postTextRu: true,
           postTextUz: true,
+          badge: true,
+          badgeUntil: true,
         },
         orderBy: [{ imageUrl: { sort: 'desc', nulls: 'last' } }, { name: 'asc' }],
         skip: offset,
@@ -173,6 +188,7 @@ router.get('/products', async (req, res, next) => {
         category: product.category,
         price: Number(product.salePrice ?? 0),
         stock: Number(product.stock),
+        badge: activeBadge(product.badge, product.badgeUntil),
         imageUrl: product.imageUrl,
         descriptionRu: product.description || product.postTextRu || null,
         descriptionUz: product.postTextUz || product.description || null,

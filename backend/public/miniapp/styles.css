@@ -313,6 +313,38 @@ body.has-actionbar .app { padding-bottom: calc(var(--tabbar-h) + var(--actionbar
 }
 .card__stock.is-low { background: rgba(217, 131, 36, .94); }
 
+/* ── Маркетинговые ярлыки ──────────────────────────────────────────────── */
+
+.badge-NEW     { background: rgba(23, 160, 106, .94); }
+.badge-RESTOCK { background: rgba(31, 97, 168, .94); }
+.badge-SOON    { background: rgba(85, 98, 117, .94); }
+.badge-HIT     { background: rgba(198, 82, 24, .94); }
+.badge-SALE    { background: rgba(198, 45, 66, .94); }
+body.dark .badge-RESTOCK { background: rgba(44, 120, 196, .96); }
+
+/* Товар в пути: приглушаем фото и вместо «+» показываем, что заказать нельзя */
+.card.is-soon .card__media img,
+.card.is-soon .ph { opacity: .55; }
+/* Двойной класс — иначе базовый .add ниже по файлу перебивает фон */
+.add.add--soon {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 15px;
+  box-shadow: none;
+  cursor: default;
+}
+
+.detail__badge {
+  align-self: flex-start;
+  padding: 5px 11px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+
 .card__body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .card__name {
   font-size: 13.5px;

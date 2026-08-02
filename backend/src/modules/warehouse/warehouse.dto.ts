@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+/** Ярлыки витрины клиентского бота. SOON показывает товар даже при нулевом остатке. */
+export const PRODUCT_BADGES = ['NEW', 'RESTOCK', 'SOON', 'HIT', 'SALE'] as const;
+
+const badgeField = z.preprocess(
+  (v) => (v === '' || v === undefined ? null : v),
+  z.enum(PRODUCT_BADGES).nullable().optional(),
+);
+
+const badgeUntilField = z.preprocess(
+  (v) => (v === '' || v === undefined ? null : v),
+  z.string().nullable().optional(),
+);
+
 export const createProductDto = z.object({
   name: z.string().min(1, 'Название товара обязательно'),
   sku: z.string().min(1, 'Артикул обязателен'),
@@ -34,6 +47,8 @@ export const updateProductDto = z.object({
   postTextRu: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   postTextUz: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   isActive: z.boolean().optional(),
+  badge: badgeField,
+  badgeUntil: badgeUntilField,
   manufacturedAt: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   expiresAt: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
 });

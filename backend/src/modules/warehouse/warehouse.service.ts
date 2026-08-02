@@ -114,7 +114,7 @@ export class WarehouseService {
 
     const before = { name: product.name, sku: product.sku, unit: product.unit, isActive: product.isActive };
 
-    const { manufacturedAt, expiresAt, specifications, ...rest } = dto;
+    const { manufacturedAt, expiresAt, badgeUntil, specifications, ...rest } = dto;
     const data: Prisma.ProductUpdateInput = {
       ...rest,
       ...(specifications !== undefined
@@ -122,6 +122,7 @@ export class WarehouseService {
         : {}),
       ...(manufacturedAt !== undefined ? { manufacturedAt: manufacturedAt ? new Date(manufacturedAt) : null } : {}),
       ...(expiresAt !== undefined ? { expiresAt: expiresAt ? new Date(expiresAt) : null } : {}),
+      ...(badgeUntil !== undefined ? { badgeUntil: badgeUntil ? new Date(badgeUntil) : null } : {}),
     };
 
     const updated = await prisma.product.update({ where: { id }, data });

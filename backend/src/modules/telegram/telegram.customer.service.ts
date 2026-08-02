@@ -760,6 +760,8 @@ export class TelegramCustomerService {
         salePrice: true,
         stock: true,
         imageUrl: true,
+        badge: true,
+        badgeUntil: true,
       },
       orderBy: { name: 'asc' },
     });
@@ -775,9 +777,11 @@ export class TelegramCustomerService {
     const start = safePage * PAGE_SIZE;
     const pageProducts = products.slice(start, start + PAGE_SIZE);
 
-    const productLines = pageProducts.map((p, index) =>
-      `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      ${t(lang, 'catalog.detail.price', { price: this.formatMoney(Number(p.salePrice || 0)) })} | ${t(lang, 'catalog.inStock')}`,
-    );
+    const productLines = pageProducts.map((p, index) => {
+      const badge = this.activeBadge(p.badge, p.badgeUntil);
+      const badgeLabel = badge ? ` | ${t(lang, `badge.${badge}`)}` : '';
+      return `${index + 1}. <b>${this.escapeHtml(p.name)}</b>\n      ${t(lang, 'catalog.detail.price', { price: this.formatMoney(Number(p.salePrice || 0)) })} | ${t(lang, 'catalog.inStock')}${badgeLabel}`;
+    });
 
     const productButtons: TelegramBot.InlineKeyboardButton[][] = pageProducts.map((p, index) => {
       const row: TelegramBot.InlineKeyboardButton[] = [
@@ -1805,6 +1809,13 @@ export class TelegramCustomerService {
 
   private escapeHtml(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /** Ярлык считается снятым, если срок показа истёк. */
+  private activeBadge(badge: string | null, badgeUntil: Date | null): string | null {
+    if (!badge) return null;
+    if (badgeUntil && badgeUntil.getTime() < Date.now()) return null;
+    return badge;
   }
 
   private buildClientTelegramNote(chatId: number): string {

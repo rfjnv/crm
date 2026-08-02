@@ -522,6 +522,17 @@ export interface DealComment {
   author?: { id: string; fullName: string };
 }
 
+/** Ярлыки товара для витрины клиентского бота. */
+export type ProductBadge = 'NEW' | 'RESTOCK' | 'SOON' | 'HIT' | 'SALE';
+
+export const PRODUCT_BADGE_LABELS: Record<ProductBadge, string> = {
+  NEW: 'Новинка',
+  RESTOCK: 'Новое поступление',
+  SOON: 'Скоро в наличии',
+  HIT: 'Хит продаж',
+  SALE: 'Акция',
+};
+
 export interface Product {
   id: string;
   name: string;
@@ -544,6 +555,10 @@ export interface Product {
   postTextUz?: string | null;
   posterPhotos?: ProductPosterPhoto[];
   isActive: boolean;
+  /** Ярлык витрины клиентского бота. SOON показывает товар даже при нулевом остатке. */
+  badge?: ProductBadge | null;
+  /** Дата, после которой ярлык перестаёт показываться клиентам. */
+  badgeUntil?: string | null;
   manufacturedAt?: string | null;
   expiresAt?: string | null;
   createdAt: string;

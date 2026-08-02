@@ -46,6 +46,13 @@
       'product.stock': 'В наличии: {qty} {unit}',
       'product.inStock': 'В наличии',
       'product.low': 'Осталось мало',
+      'badge.NEW': 'Новинка',
+      'badge.RESTOCK': 'Новое поступление',
+      'badge.SOON': 'Скоро в наличии',
+      'badge.HIT': 'Хит продаж',
+      'badge.SALE': 'Акция',
+      'product.soonHint': 'Товар в пути — заказать пока нельзя.',
+      'product.soonButton': 'Скоро в наличии',
       'product.add': 'В корзину',
       'product.noDescription': 'Описание пока не добавлено.',
       'product.perUnit': '/ {unit}',
@@ -100,6 +107,13 @@
       'product.stock': 'Mavjud: {qty} {unit}',
       'product.inStock': 'Mavjud',
       'product.low': 'Kam qoldi',
+      'badge.NEW': 'Yangi',
+      'badge.RESTOCK': 'Yangi keldi',
+      'badge.SOON': 'Tez orada',
+      'badge.HIT': 'Xit savdo',
+      'badge.SALE': 'Aksiya',
+      'product.soonHint': 'Mahsulot yo‘lda — hozircha buyurtma qilib bo‘lmaydi.',
+      'product.soonButton': 'Tez orada',
       'product.add': 'Savatga',
       'product.noDescription': 'Tavsif hozircha qo‘shilmagan.',
       'product.perUnit': '/ {unit}',
@@ -316,21 +330,42 @@
     return new Array(count).fill(one).join('');
   }
 
+  /** Товар «скоро в наличии» показываем, но заказать нельзя — остатка физически нет. */
+  function isSoon(product) {
+    return product.badge === 'SOON' || product.stock <= 0;
+  }
+
+  /**
+   * На карточке максимум одна плашка: маркетинговый ярлык важнее служебного
+   * «осталось мало», иначе они дерутся за один угол.
+   */
+  function badgeHtml(product) {
+    if (product.badge) {
+      return '<span class="card__stock badge-' + esc(product.badge) + '">'
+        + esc(t('badge.' + product.badge)) + '</span>';
+    }
+    if (product.stock <= 5) {
+      return '<span class="card__stock is-low">' + esc(t('product.low')) + '</span>';
+    }
+    return '';
+  }
+
   function productCard(product) {
     var inCart = cartQty(product.id);
-    var low = product.stock <= 5;
-    return '<article class="card" data-product="' + esc(product.id) + '">'
+    var soon = isSoon(product);
+    return '<article class="card' + (soon ? ' is-soon' : '') + '" data-product="' + esc(product.id) + '">'
       + '<div class="card__media">' + mediaHtml(product.imageUrl, product.name)
-      // Плашка только когда остаток на исходе — иначе она у каждого товара и превращается в шум
-      + (low ? '<span class="card__stock is-low">' + esc(t('product.low')) + '</span>' : '')
+      + badgeHtml(product)
       + '</div>'
       + '<div class="card__body">'
       + '<h3 class="card__name">' + esc(product.name) + '</h3>'
       + '<div class="card__foot">'
       + '<span class="price"><span class="price__value">' + esc(money(product.price)) + '</span>'
       + '<span class="price__unit">' + esc(t('product.perUnit', { unit: product.unit || t('unit.default') })) + '</span></span>'
-      + '<button class="add' + (inCart ? ' is-in-cart' : '') + '" data-add="' + esc(product.id) + '" '
-      + 'aria-label="' + esc(t('product.add')) + '">' + (inCart ? '✓' : '+') + '</button>'
+      + (soon
+        ? '<span class="add add--soon" aria-hidden="true">⏳</span>'
+        : '<button class="add' + (inCart ? ' is-in-cart' : '') + '" data-add="' + esc(product.id) + '" '
+          + 'aria-label="' + esc(t('product.add')) + '">' + (inCart ? '✓' : '+') + '</button>')
       + '</div></div></article>';
   }
 
@@ -381,26 +416,35 @@
     var current = cartQty(product.id) || 1;
     var description = (state.lang === 'uz' ? product.descriptionUz : product.descriptionRu) || t('product.noDescription');
 
+    var soon = isSoon(product);
+
     $('sheetBody').innerHTML =
       '<div class="detail__media">' + mediaHtml(product.imageUrl, product.name, true) + '</div>'
       + '<div class="detail__body">'
+      + (product.badge
+        ? '<span class="detail__badge badge-' + esc(product.badge) + '">' + esc(t('badge.' + product.badge)) + '</span>'
+        : '')
       + '<h2 class="detail__name">' + esc(product.name) + '</h2>'
       + '<div class="detail__meta">'
-      + '<span class="tag">' + esc(t('product.stock', { qty: qtyFmt(product.stock), unit: product.unit || t('unit.default') })) + '</span>'
+      + (soon
+        ? ''
+        : '<span class="tag">' + esc(t('product.stock', { qty: qtyFmt(product.stock), unit: product.unit || t('unit.default') })) + '</span>')
       + (product.sku ? '<span class="tag">' + esc(t('product.article', { sku: product.sku })) + '</span>' : '')
       + (product.category ? '<span class="tag">' + esc(product.category) + '</span>' : '')
       + '</div>'
       + '<div class="detail__price"><b>' + esc(money(product.price)) + '</b>'
       + '<span>' + esc(t('product.perUnit', { unit: product.unit || t('unit.default') })) + '</span></div>'
-      + '<p class="detail__text">' + esc(description) + '</p>'
+      + '<p class="detail__text">' + esc(soon ? t('product.soonHint') : description) + '</p>'
       + '</div>'
       + '<div class="detail__actions">'
-      + '<div class="stepper">'
-      + '<button type="button" data-sheet-step="-1">−</button>'
-      + '<input id="sheetQty" type="text" inputmode="decimal" value="' + qtyFmt(current) + '" />'
-      + '<button type="button" data-sheet-step="1">+</button>'
-      + '</div>'
-      + '<button class="btn btn--primary" id="sheetAdd">' + esc(t('product.add')) + '</button>'
+      + (soon
+        ? '<button class="btn btn--primary" disabled>' + esc(t('product.soonButton')) + '</button>'
+        : '<div class="stepper">'
+          + '<button type="button" data-sheet-step="-1">−</button>'
+          + '<input id="sheetQty" type="text" inputmode="decimal" value="' + qtyFmt(current) + '" />'
+          + '<button type="button" data-sheet-step="1">+</button>'
+          + '</div>'
+          + '<button class="btn btn--primary" id="sheetAdd">' + esc(t('product.add')) + '</button>')
       + '</div>';
 
     $('productSheet').hidden = false;
@@ -927,19 +971,19 @@
 
   function demoProducts() {
     var names = [
-      ['Плёнка ламинационная 62 Gold', 'Ламинация', 'кг', 2500, 340],
-      ['Плёнка глянцевая 30 мкм', 'Плёнка', 'рулон', 185000, 4],
-      ['Бумага мелованная 150 г/м²', 'Бумага', 'пачка', 92000, 60],
-      ['Плёнка матовая 35 мкм', 'Плёнка', 'рулон', 210000, 12],
-      ['Картон переплётный 2 мм', 'Бумага', 'лист', 7400, 800],
-      ['Клей-расплав для КБС', 'Ламинация', 'кг', 46000, 25],
+      ['Плёнка ламинационная 62 Gold', 'Ламинация', 'кг', 2500, 340, 'HIT'],
+      ['Плёнка глянцевая 30 мкм', 'Плёнка', 'рулон', 185000, 4, null],
+      ['Бумага мелованная 150 г/м²', 'Бумага', 'пачка', 92000, 60, 'NEW'],
+      ['Плёнка матовая 35 мкм', 'Плёнка', 'рулон', 210000, 0, 'SOON'],
+      ['Картон переплётный 2 мм', 'Бумага', 'лист', 7400, 800, 'RESTOCK'],
+      ['Клей-расплав для КБС', 'Ламинация', 'кг', 46000, 25, 'SALE'],
     ];
     return Promise.resolve({
       total: names.length,
       items: names.map(function (row, index) {
         return {
           id: 'p' + index, name: row[0], sku: 'SKU-' + (1000 + index), unit: row[2],
-          category: row[1], price: row[3], stock: row[4], imageUrl: null,
+          category: row[1], price: row[3], stock: row[4], badge: row[5], imageUrl: null,
           descriptionRu: 'Товар со склада в Ташкенте. Отгрузка в день заказа при наличии.',
           descriptionUz: 'Toshkentdagi ombordan. Mavjud bo‘lsa, buyurtma kuni jo‘natiladi.',
         };

@@ -688,6 +688,10 @@ model Product {
   postTextRu      String?  @map("post_text_ru")
   postTextUz      String?  @map("post_text_uz")
   isActive        Boolean  @default(true) @map("is_active")
+  /** Ярлык для витрины клиентского бота: NEW | RESTOCK | SOON | HIT | SALE. NULL — без ярлыка. */
+  badge           String?  @map("badge")
+  /** Дата, после которой ярлык перестаёт показываться. NULL — показывать бессрочно. */
+  badgeUntil      DateTime? @map("badge_until")
   manufacturedAt  DateTime? @map("manufactured_at")
   expiresAt       DateTime? @map("expires_at")
   supplierId      String?  @map("supplier_id")
