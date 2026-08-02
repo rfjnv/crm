@@ -322,12 +322,12 @@ export default function DashboardPage() {
   const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
-  const goalPct = Math.min(100, Math.round((revenueMonth / revenueGoal) * 100));
+  const goalPct = revenueMonth >= revenueGoal ? 100 : Math.floor((revenueMonth / revenueGoal) * 100);
   const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const dailyGoal = companySettings?.dailyRevenueGoal || (revenueGoal / daysInMonth);
   const revenueTodayForGoal = data.revenueToday || 0;
-  const dailyGoalPct = Math.min(100, Math.round((revenueTodayForGoal / dailyGoal) * 100));
+  const dailyGoalPct = revenueTodayForGoal >= dailyGoal ? 100 : Math.floor((revenueTodayForGoal / dailyGoal) * 100);
   const dailyGoalRemaining = Math.max(0, dailyGoal - revenueTodayForGoal);
   const hasMyGoal = !!myGoal && (
     myGoal.targets.deals != null ||
