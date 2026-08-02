@@ -70,7 +70,7 @@ export default function WarehousePage() {
   });
 
   const incomeMut = useMutation({
-    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string; affectStock?: boolean }) =>
+    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string; affectStock?: boolean; rollQuantity?: number }) =>
       inventoryApi.createMovement(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -87,8 +87,8 @@ export default function WarehousePage() {
   });
 
   const correctMut = useMutation({
-    mutationFn: (data: { id: string; newStock: number; reason: string }) =>
-      inventoryApi.correctStock(data.id, { newStock: data.newStock, reason: data.reason }),
+    mutationFn: (data: { id: string; newStock: number; reason: string; newRollStock?: number }) =>
+      inventoryApi.correctStock(data.id, { newStock: data.newStock, reason: data.reason, newRollStock: data.newRollStock }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       message.success('Остаток скорректирован');
@@ -203,7 +203,7 @@ export default function WarehousePage() {
         key: 'correct',
         icon: <EditOutlined />,
         label: 'Коррекция',
-        onClick: () => { setCorrectProduct(r); correctForm.setFieldsValue({ newStock: Number(r.stock) }); },
+        onClick: () => { setCorrectProduct(r); correctForm.setFieldsValue({ newStock: Number(r.stock), newRollStock: r.rollStock != null ? Number(r.rollStock) : undefined }); },
       });
     }
     items.push({
@@ -503,9 +503,14 @@ export default function WarehousePage() {
           <Form.Item name="productId" hidden>
             <input />
           </Form.Item>
-          <Form.Item name="quantity" label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>
+          <Form.Item name="quantity" label={`Количество${selectedProduct?.rollStock != null ? `, ${selectedProduct.unit}` : ''}`} rules={[{ required: true, message: 'Обязательно' }]}>
             <InputNumber style={{ width: '100%' }} min={1} />
           </Form.Item>
+          {selectedProduct?.rollStock != null && (
+            <Form.Item name="rollQuantity" label="Количество рулонов" rules={[{ required: true, message: 'Обязательно' }]}>
+              <InputNumber style={{ width: '100%' }} min={1} precision={0} />
+            </Form.Item>
+          )}
           <Form.Item name="note" label="Примечание">
             <Select
               allowClear
@@ -562,11 +567,16 @@ export default function WarehousePage() {
         )}
         <Form form={correctForm} layout="vertical" onFinish={(v) => {
           if (!correctProduct) return;
-          correctMut.mutate({ id: correctProduct.id, newStock: v.newStock, reason: v.reason });
+          correctMut.mutate({ id: correctProduct.id, newStock: v.newStock, reason: v.reason, newRollStock: v.newRollStock });
         }}>
-          <Form.Item name="newStock" label="Новый остаток" rules={[{ required: true, message: 'Обязательно' }]}>
+          <Form.Item name="newStock" label={`Новый остаток${correctProduct?.rollStock != null ? `, ${correctProduct.unit}` : ''}`} rules={[{ required: true, message: 'Обязательно' }]}>
             <InputNumber style={{ width: '100%' }} min={0} precision={3} />
           </Form.Item>
+          {correctProduct?.rollStock != null && (
+            <Form.Item name="newRollStock" label="Новый остаток, рулоны" rules={[{ required: true, message: 'Обязательно' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+            </Form.Item>
+          )}
           <Form.Item name="reason" label="Причина коррекции" rules={[{ required: true, message: 'Укажите причину' }]}>
             <Input.TextArea rows={2} placeholder="Инвентаризация, ошибка учёта, брак..." />
           </Form.Item>

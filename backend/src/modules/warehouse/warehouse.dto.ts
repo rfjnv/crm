@@ -46,11 +46,15 @@ export const createMovementDto = z.object({
   note: z.string().optional(),
   /** false — записать движение только для истории, не меняя текущий остаток (напр. задним числом восстановить запись о приходе, который уже учтён в остатке). */
   affectStock: z.boolean().optional(),
+  /** Кол-во рулонов для товаров с параллельным учётом в рулонах (напр. ламинационная плёнка). Прибавляется к Product.rollStock при типе IN. */
+  rollQuantity: z.number().positive('Количество рулонов должно быть положительным').optional(),
 });
 
 export const correctStockDto = z.object({
   newStock: z.number().min(0, 'Остаток не может быть отрицательным'),
   reason: z.string().min(1, 'Причина коррекции обязательна'),
+  /** Новый остаток в рулонах — только для товаров с параллельным учётом (Product.rollStock не NULL). */
+  newRollStock: z.number().min(0, 'Остаток в рулонах не может быть отрицательным').optional(),
 });
 
 export const createReservationDto = z.object({

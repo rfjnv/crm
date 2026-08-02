@@ -15,7 +15,7 @@ export const inventoryApi = {
   deleteProduct: (id: string) =>
     client.delete(`/inventory/products/${id}`).then((r) => r.data),
 
-  correctStock: (id: string, data: { newStock: number; reason: string }) =>
+  correctStock: (id: string, data: { newStock: number; reason: string; newRollStock?: number }) =>
     client.post<Product>(`/inventory/products/${id}/correct-stock`, data).then((r) => r.data),
 
   getProductMovements: (id: string) =>
@@ -35,7 +35,7 @@ export const inventoryApi = {
       })
       .then((r) => r.data),
 
-  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean }) =>
+  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean; rollQuantity?: number }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
 
   listMovements: (filters?: {

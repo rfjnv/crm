@@ -171,12 +171,17 @@ export class WarehouseService {
 
     const oldStock = Number(product.stock);
     const diff = dto.newStock - oldStock;
+    const oldRollStock = product.rollStock != null ? Number(product.rollStock) : null;
+    const applyRollStock = dto.newRollStock !== undefined && oldRollStock !== null;
 
-    // Transactional: update stock + create CORRECTION movement
+    // Transactional: update stock (+ rollStock, if tracked) + create CORRECTION movement
     const updated = await prisma.$transaction(async (tx) => {
       const updatedProduct = await tx.product.update({
         where: { id },
-        data: { stock: dto.newStock },
+        data: {
+          stock: dto.newStock,
+          ...(applyRollStock ? { rollStock: dto.newRollStock } : {}),
+        },
       });
 
       // Create CORRECTION movement for history
@@ -185,7 +190,9 @@ export class WarehouseService {
           productId: id,
           type: 'CORRECTION',
           quantity: Math.abs(diff),
-          note: `Коррекция: ${dto.reason} (было ${oldStock}, стало ${dto.newStock})`,
+          note: applyRollStock
+            ? `Коррекция: ${dto.reason} (было ${oldStock} кг / ${oldRollStock} рул., стало ${dto.newStock} кг / ${dto.newRollStock} рул.)`
+            : `Коррекция: ${dto.reason} (было ${oldStock}, стало ${dto.newStock})`,
           createdBy: userId,
         },
       });
@@ -198,8 +205,8 @@ export class WarehouseService {
       action: 'UPDATE',
       entityType: 'stock_correction',
       entityId: id,
-      before: { stock: oldStock, name: product.name, sku: product.sku },
-      after: { stock: dto.newStock, reason: dto.reason },
+      before: { stock: oldStock, rollStock: oldRollStock, name: product.name, sku: product.sku },
+      after: { stock: dto.newStock, rollStock: applyRollStock ? dto.newRollStock : oldRollStock, reason: dto.reason },
       reason: dto.reason,
     });
 
@@ -408,10 +415,15 @@ export class WarehouseService {
         // Только запись в историю (напр. задним числом задокументировать приход,
         // который уже учтён в текущем остатке) — сам остаток не трогаем.
       } else if (dto.type === 'IN') {
-        // Increment stock atomically
+        // Increment stock (+ rollStock, for products tracked in parallel rolls) atomically
         await tx.product.update({
           where: { id: dto.productId },
-          data: { stock: { increment: dto.quantity } },
+          data: {
+            stock: { increment: dto.quantity },
+            ...(dto.rollQuantity != null && product.rollStock != null
+              ? { rollStock: { increment: dto.rollQuantity } }
+              : {}),
+          },
         });
       } else {
         // Decrement stock with guard: only if stock >= quantity
@@ -428,6 +440,8 @@ export class WarehouseService {
         }
       }
 
+      const rollNoteApplied = dto.affectStock !== false && dto.type === 'IN' && dto.rollQuantity != null && product.rollStock != null;
+
       // Create movement record
       const movement = await tx.inventoryMovement.create({
         data: {
@@ -435,9 +449,11 @@ export class WarehouseService {
           type: dto.type,
           quantity: dto.quantity,
           dealId: dto.dealId,
-          note: dto.affectStock === false
-            ? [dto.note, '(запись без изменения остатка)'].filter(Boolean).join(' ')
-            : dto.note,
+          note: [
+            dto.note,
+            dto.affectStock === false ? '(запись без изменения остатка)' : null,
+            rollNoteApplied ? `(+${dto.rollQuantity} рул.)` : null,
+          ].filter(Boolean).join(' ') || undefined,
           createdBy: userId,
         },
         include: {

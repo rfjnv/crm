@@ -184,8 +184,8 @@ export default function AuditStockPage() {
   });
 
   const correctMut = useMutation({
-    mutationFn: (data: { id: string; newStock: number; reason: string }) =>
-      inventoryApi.correctStock(data.id, { newStock: data.newStock, reason: data.reason }),
+    mutationFn: (data: { id: string; newStock: number; reason: string; newRollStock?: number }) =>
+      inventoryApi.correctStock(data.id, { newStock: data.newStock, reason: data.reason, newRollStock: data.newRollStock }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['audit-stock-products'] });
       message.success('Остаток скорректирован');
@@ -334,7 +334,7 @@ export default function AuditStockPage() {
             product={product}
             checked={checkedIds.has(product.id)}
             onToggle={toggleChecked}
-            onCorrect={(p) => { setCorrectProduct(p); correctForm.setFieldsValue({ newStock: Number(p.stock) }); }}
+            onCorrect={(p) => { setCorrectProduct(p); correctForm.setFieldsValue({ newStock: Number(p.stock), newRollStock: p.rollStock != null ? Number(p.rollStock) : undefined }); }}
             canCorrect={canCorrect}
           />
         ))}
@@ -357,11 +357,16 @@ export default function AuditStockPage() {
         )}
         <Form form={correctForm} layout="vertical" onFinish={(v) => {
           if (!correctProduct) return;
-          correctMut.mutate({ id: correctProduct.id, newStock: v.newStock, reason: v.reason });
+          correctMut.mutate({ id: correctProduct.id, newStock: v.newStock, reason: v.reason, newRollStock: v.newRollStock });
         }}>
-          <Form.Item name="newStock" label="Новый остаток" rules={[{ required: true, message: 'Обязательно' }]}>
+          <Form.Item name="newStock" label={`Новый остаток${correctProduct?.rollStock != null ? `, ${correctProduct.unit}` : ''}`} rules={[{ required: true, message: 'Обязательно' }]}>
             <InputNumber style={{ width: '100%' }} min={0} precision={3} />
           </Form.Item>
+          {correctProduct?.rollStock != null && (
+            <Form.Item name="newRollStock" label="Новый остаток, рулоны" rules={[{ required: true, message: 'Обязательно' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+            </Form.Item>
+          )}
           <Form.Item name="reason" label="Причина коррекции" rules={[{ required: true, message: 'Укажите причину' }]}>
             <Input.TextArea rows={2} placeholder="Инвентаризация, ошибка учёта, брак..." />
           </Form.Item>
