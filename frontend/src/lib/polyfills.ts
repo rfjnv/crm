@@ -79,24 +79,38 @@ for (const proto of [Array.prototype, String.prototype] as { at?: unknown }[]) {
   }
 }
 
-// Array.prototype.findLast / findLastIndex — Chrome 97 / Safari 15.4
-if (typeof Array.prototype.findLastIndex !== 'function') {
+// Array.prototype.findLast / findLastIndex — Chrome 97 / Safari 15.4.
+// Методы из ES2023, а lib здесь намеренно ES2022: подняв lib, мы разрешили бы
+// остальному коду звать toSorted/toReversed и прочий ES2023, который никто не
+// полифиллит. Поэтому до прототипа добираемся через локальный тип.
+type FindLastCapable = {
+  findLast?: unknown;
+  findLastIndex?: unknown;
+};
+
+type FindLastPredicate = (value: unknown, index: number, array: unknown[]) => boolean;
+
+function findLastIndexImpl(this: unknown[], predicate: FindLastPredicate, thisArg?: unknown): number {
+  for (let i = this.length - 1; i >= 0; i -= 1) {
+    if (predicate.call(thisArg, this[i], i, this)) return i;
+  }
+  return -1;
+}
+
+const arrayProto = Array.prototype as FindLastCapable;
+
+if (typeof arrayProto.findLastIndex !== 'function') {
   Object.defineProperty(Array.prototype, 'findLastIndex', {
-    value: function findLastIndex(this: unknown[], predicate: (v: unknown, i: number, a: unknown[]) => boolean, thisArg?: unknown) {
-      for (let i = this.length - 1; i >= 0; i -= 1) {
-        if (predicate.call(thisArg, this[i], i, this)) return i;
-      }
-      return -1;
-    },
+    value: findLastIndexImpl,
     configurable: true,
     writable: true,
   });
 }
 
-if (typeof Array.prototype.findLast !== 'function') {
+if (typeof arrayProto.findLast !== 'function') {
   Object.defineProperty(Array.prototype, 'findLast', {
-    value: function findLast(this: unknown[], predicate: (v: unknown, i: number, a: unknown[]) => boolean, thisArg?: unknown) {
-      const index = this.findLastIndex(predicate, thisArg);
+    value: function findLast(this: unknown[], predicate: FindLastPredicate, thisArg?: unknown) {
+      const index = findLastIndexImpl.call(this, predicate, thisArg);
       return index === -1 ? undefined : this[index];
     },
     configurable: true,
