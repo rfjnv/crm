@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { safeStorage } from '../lib/safeStorage';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -8,11 +9,11 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  mode: (localStorage.getItem('theme') as ThemeMode) || 'light',
+  mode: (safeStorage.getItem('theme') as ThemeMode) || 'light',
   toggle: () =>
     set((state) => {
       const next = state.mode === 'light' ? 'dark' : 'light';
-      localStorage.setItem('theme', next);
+      safeStorage.setItem('theme', next);
       return { mode: next };
     }),
 }));
