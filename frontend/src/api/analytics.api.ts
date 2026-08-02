@@ -237,18 +237,33 @@ export const analyticsApi = {
     client
       .get<PaymentOverdueResponse>('/analytics/payment-overdue', { params })
       .then((r) => r.data),
-  exportPaymentOverdue: (params?: { dueSoonDays?: number }) =>
-    client.get('/analytics/payment-overdue/export', { params, responseType: 'blob' }).then((r) => {
-      const today = new Date().toISOString().slice(0, 10);
-      const url = window.URL.createObjectURL(new Blob([r.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `payment_overdue_${today}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    }),
+  /** Проставить/снять срок оплаты списку сделок. `dueDate: null` — убрать срок. */
+  setPaymentOverdueDueDate: (payload: { dealIds: string[]; dueDate: string | null }) =>
+    client
+      .patch<{ updated: number; skipped: number; dueDate: string | null }>(
+        '/analytics/payment-overdue/due-date',
+        payload,
+      )
+      .then((r) => r.data),
+  /** `dealIds` — сделки, видимые на экране после фильтров, в текущем порядке сортировки. */
+  exportPaymentOverdue: (params?: { dueSoonDays?: number; dealIds?: string[] }) =>
+    client
+      .post(
+        '/analytics/payment-overdue/export',
+        { dealIds: params?.dealIds },
+        { params: { dueSoonDays: params?.dueSoonDays }, responseType: 'blob' },
+      )
+      .then((r) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const url = window.URL.createObjectURL(new Blob([r.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `payment_overdue_${today}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      }),
   exportDebtBreakdown: (year: number = new Date().getFullYear()) =>
     client.get('/analytics/history/export/debt-breakdown', {
       params: { year },

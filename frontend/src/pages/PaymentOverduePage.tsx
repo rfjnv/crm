@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
   Card,
   Col,
+  DatePicker,
   Empty,
   Input,
   InputNumber,
+  Modal,
   Pagination,
   Row,
   Select,
@@ -16,11 +18,19 @@ import {
   Statistic,
   Table,
   Tag,
+  Tooltip,
   Typography,
+  message,
 } from 'antd';
-import { ClockCircleOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  DownloadOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
+import { useAuthStore } from '../store/authStore';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { APP_INPUT } from '../components/ui/AppClassNames';
@@ -51,12 +61,32 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
 /** По умолчанию: просрочка + скоро срок + долги без даты (без далёких сроков). */
 const ATTENTION_BUCKETS: PaymentOverdueBucket[] = ['OVERDUE', 'DUE_SOON', 'NO_DUE_DATE'];
 
-type PresetKey = 'attention' | 'overdue' | 'due_soon' | 'all' | 'no_due';
+/** 'custom' — произвольный набор бакетов из селекта, ни одна кнопка-пресет не активна. */
+type PresetKey = 'attention' | 'overdue' | 'due_soon' | 'no_due' | 'all' | 'custom';
+
+const PRESET_KEYS: PresetKey[] = ['attention', 'overdue', 'due_soon', 'no_due', 'all', 'custom'];
 
 type SortBy = 'overdue_desc' | 'due_asc' | 'remaining_desc' | 'client_asc';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 20;
+
+/** Кто может проставлять срок оплаты (совпадает с authorize на бэкенде). */
+const DUE_DATE_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT'];
+
+const DUE_DATE_PRESETS: { label: string; get: () => Dayjs }[] = [
+  { label: 'Сегодня', get: () => dayjs() },
+  { label: '+3 дня', get: () => dayjs().add(3, 'day') },
+  { label: '+7 дней', get: () => dayjs().add(7, 'day') },
+  { label: '+14 дней', get: () => dayjs().add(14, 'day') },
+  { label: '+30 дней', get: () => dayjs().add(30, 'day') },
+  { label: 'Конец месяца', get: () => dayjs().endOf('month') },
+];
+
+/** Что редактируем: одну сделку из строки или все выделенные. */
+type DueDateEditor =
+  | { mode: 'single'; row: PaymentOverdueDealRow }
+  | { mode: 'bulk'; rows: PaymentOverdueDealRow[] };
 
 interface UrlState {
   q: string;
@@ -85,9 +115,28 @@ const FILTER_PATCH_KEYS: (keyof UrlState)[] = [
 function bucketsFromPreset(preset: PresetKey): PaymentOverdueBucket[] | null {
   if (preset === 'attention') return [...ATTENTION_BUCKETS];
   if (preset === 'overdue') return ['OVERDUE'];
-  if (preset === 'due_soon') return ['DUE_SOON', 'OVERDUE'];
+  if (preset === 'due_soon') return ['DUE_SOON'];
   if (preset === 'no_due') return ['NO_DUE_DATE'];
+  if (preset === 'all') return [...ALL_BUCKETS];
   return null;
+}
+
+function sameBuckets(a: PaymentOverdueBucket[], b: PaymentOverdueBucket[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((x) => set.has(x));
+}
+
+/**
+ * Набор бакетов — единственный источник истины; пресет из него выводится.
+ * Так кнопка-пресет и селект «Статус срока» физически не могут разойтись.
+ */
+function presetForBuckets(buckets: PaymentOverdueBucket[]): PresetKey {
+  for (const key of PRESET_KEYS) {
+    const pb = bucketsFromPreset(key);
+    if (pb && sameBuckets(pb, buckets)) return key;
+  }
+  return 'custom';
 }
 
 function parseBuckets(raw: string | null): PaymentOverdueBucket[] {
@@ -100,17 +149,16 @@ function parseBuckets(raw: string | null): PaymentOverdueBucket[] {
 }
 
 function parseParams(sp: URLSearchParams): UrlState {
+  // `bucket` главнее: `preset` остаётся только для старых сохранённых ссылок.
+  const bucketRaw = sp.get('bucket');
   const presetRaw = sp.get('preset');
-  const preset: PresetKey =
-    presetRaw === 'overdue' ||
-    presetRaw === 'due_soon' ||
-    presetRaw === 'all' ||
-    presetRaw === 'no_due'
-      ? presetRaw
-      : 'attention';
+  const legacyPreset: PresetKey =
+    presetRaw && (PRESET_KEYS as string[]).includes(presetRaw) ? (presetRaw as PresetKey) : 'attention';
 
-  const presetBuckets = bucketsFromPreset(preset);
-  const buckets = presetBuckets ?? parseBuckets(sp.get('bucket'));
+  const buckets = bucketRaw
+    ? parseBuckets(bucketRaw)
+    : bucketsFromPreset(legacyPreset) ?? [...ATTENTION_BUCKETS];
+  const preset = presetForBuckets(buckets);
 
   const mgrRaw = sp.get('mgr');
   const managerIds = mgrRaw ? mgrRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -152,8 +200,8 @@ function parseParams(sp: URLSearchParams): UrlState {
 function serializeState(s: UrlState): URLSearchParams {
   const n = new URLSearchParams();
   if (s.q.trim()) n.set('q', s.q.trim());
-  if (s.preset !== 'attention') n.set('preset', s.preset);
-  else if (s.buckets.length > 0 && s.buckets.length < ALL_BUCKETS.length) {
+  // Пишем только бакеты; пресет вычисляется при разборе (иначе выбор в селекте терялся).
+  if (!sameBuckets(s.buckets, ATTENTION_BUCKETS)) {
     n.set('bucket', [...new Set(s.buckets)].sort().join(','));
   }
   if (s.managerIds.length > 0) n.set('mgr', s.managerIds.join(','));
@@ -185,6 +233,8 @@ function mergeParams(prev: URLSearchParams, patch: Partial<UrlState>): URLSearch
     const pb = bucketsFromPreset(patch.preset);
     if (pb) next.buckets = pb;
   }
+  if (next.buckets.length === 0) next.buckets = [...ALL_BUCKETS];
+  next.preset = presetForBuckets(next.buckets);
   return serializeState(next);
 }
 
@@ -208,11 +258,12 @@ function sortRows(rows: PaymentOverdueDealRow[], sortBy: SortBy): PaymentOverdue
         return a.clientName.localeCompare(b.clientName, 'ru');
       case 'overdue_desc':
       default: {
+        // Просрочка → горящий срок → долг без даты → всё остальное по близости срока.
         const score = (r: PaymentOverdueDealRow) => {
-          if (r.bucket === 'OVERDUE') return 100_000 + (r.daysOverdue ?? 0);
-          if (r.bucket === 'NO_DUE_DATE') return 50_000;
-          if (r.bucket === 'DUE_SOON') return 10_000 - (r.daysUntilDue ?? 0);
-          return (r.daysUntilDue ?? 999);
+          if (r.bucket === 'OVERDUE') return 300_000 + (r.daysOverdue ?? 0);
+          if (r.bucket === 'DUE_SOON') return 200_000 - (r.daysUntilDue ?? 0);
+          if (r.bucket === 'NO_DUE_DATE') return 100_000;
+          return 50_000 - (r.daysUntilDue ?? 999);
         };
         return score(b) - score(a);
       }
@@ -224,18 +275,15 @@ function sortRows(rows: PaymentOverdueDealRow[], sortBy: SortBy): PaymentOverdue
 export default function PaymentOverduePage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canEditDueDate = !!userRole && DUE_DATE_ROLES.includes(userRole);
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseParams(searchParams), [searchParams]);
   const [isExporting, setIsExporting] = useState(false);
-
-  const handleExport = useCallback(async () => {
-    setIsExporting(true);
-    try {
-      await analyticsApi.exportPaymentOverdue({ dueSoonDays: listState.dueSoonDays });
-    } finally {
-      setIsExporting(false);
-    }
-  }, [listState.dueSoonDays]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [editor, setEditor] = useState<DueDateEditor | null>(null);
+  const [editorDate, setEditorDate] = useState<Dayjs | null>(null);
 
   const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchState = useCallback(
@@ -302,6 +350,74 @@ export default function PaymentOverduePage() {
     return sorted.slice(start, start + listState.pageSize);
   }, [sorted, listState.page, listState.pageSize]);
 
+  const filteredRemaining = useMemo(
+    () => sorted.reduce((sum, r) => sum + r.remaining, 0),
+    [sorted],
+  );
+
+  /** Выделение живёт только среди видимых строк: сменили фильтр — снимаем лишнее. */
+  const selectedRows = useMemo(() => {
+    const ids = new Set(selectedIds);
+    return sorted.filter((r) => ids.has(r.dealId));
+  }, [sorted, selectedIds]);
+  const selectedRemaining = useMemo(
+    () => selectedRows.reduce((sum, r) => sum + r.remaining, 0),
+    [selectedRows],
+  );
+
+  const openDueDateEditor = useCallback((next: DueDateEditor) => {
+    const current =
+      next.mode === 'single' && next.row.dueDate ? dayjs(next.row.dueDate) : null;
+    setEditorDate(current);
+    setEditor(next);
+  }, []);
+
+  const dueDateMutation = useMutation({
+    mutationFn: (payload: { dealIds: string[]; dueDate: string | null }) =>
+      analyticsApi.setPaymentOverdueDueDate(payload),
+    onSuccess: (res) => {
+      message.success(
+        res.dueDate === null
+          ? `Срок снят: ${res.updated} сдел.`
+          : `Срок проставлен: ${res.updated} сдел.`,
+      );
+      if (res.skipped > 0) message.warning(`Пропущено (нет доступа): ${res.skipped}`);
+      setEditor(null);
+      setSelectedIds([]);
+      void queryClient.invalidateQueries({ queryKey: ['payment-overdue'] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      message.error(msg || 'Не удалось изменить срок оплаты');
+    },
+  });
+
+  const submitDueDate = useCallback(
+    (dueDate: string | null) => {
+      if (!editor) return;
+      const dealIds =
+        editor.mode === 'single' ? [editor.row.dealId] : editor.rows.map((r) => r.dealId);
+      dueDateMutation.mutate({ dealIds, dueDate });
+    },
+    [editor, dueDateMutation],
+  );
+
+  /** Выгружаем ровно то, что отфильтровано на экране (все страницы), в текущем порядке. */
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      await analyticsApi.exportPaymentOverdue({
+        dueSoonDays: listState.dueSoonDays,
+        dealIds: sorted.map((r) => r.dealId),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [listState.dueSoonDays, sorted]);
+
   const columns = [
     {
       title: 'Клиент',
@@ -309,10 +425,13 @@ export default function PaymentOverduePage() {
       fixed: isMobile ? undefined : ('left' as const),
       width: 200,
       render: (_: unknown, row: PaymentOverdueDealRow) => (
-        <ClientCompanyDisplay
-          client={{ id: row.clientId, companyName: row.clientName, isSvip: row.clientIsSvip }}
-          link
-        />
+        // Без stopPropagation клик по клиенту перебивался переходом строки на сделку.
+        <span onClick={(e) => e.stopPropagation()}>
+          <ClientCompanyDisplay
+            client={{ id: row.clientId, companyName: row.clientName, isSvip: row.clientIsSvip }}
+            link
+          />
+        </span>
       ),
     },
     {
@@ -339,21 +458,36 @@ export default function PaymentOverduePage() {
     {
       title: 'Срок оплаты',
       key: 'dueDate',
-      width: 130,
+      width: canEditDueDate ? 170 : 130,
       render: (_: unknown, row: PaymentOverdueDealRow) => (
-        <div>
-          <div>{formatDate(row.dueDate)}</div>
-          {row.bucket === 'OVERDUE' && row.daysOverdue != null && (
-            <Text type="danger" style={{ fontSize: 12 }}>
-              +{row.daysOverdue} дн.
-            </Text>
+        <Space size={4} align="start">
+          <div>
+            <div>{formatDate(row.dueDate)}</div>
+            {row.bucket === 'OVERDUE' && row.daysOverdue != null && (
+              <Text type="danger" style={{ fontSize: 12 }}>
+                +{row.daysOverdue} дн.
+              </Text>
+            )}
+            {row.bucket === 'DUE_SOON' && row.daysUntilDue != null && (
+              <Text type="warning" style={{ fontSize: 12 }}>
+                через {row.daysUntilDue} дн.
+              </Text>
+            )}
+          </div>
+          {canEditDueDate && (
+            <Tooltip title={row.dueDate ? 'Изменить срок оплаты' : 'Поставить срок оплаты'}>
+              <Button
+                size="small"
+                type={row.dueDate ? 'text' : 'link'}
+                icon={<CalendarOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDueDateEditor({ mode: 'single', row });
+                }}
+              />
+            </Tooltip>
           )}
-          {row.bucket === 'DUE_SOON' && row.daysUntilDue != null && (
-            <Text type="warning" style={{ fontSize: 12 }}>
-              через {row.daysUntilDue} дн.
-            </Text>
-          )}
-        </div>
+        </Space>
       ),
     },
     {
@@ -391,16 +525,20 @@ export default function PaymentOverduePage() {
     },
   ];
 
+  // Счётчик на кнопке = сумма её же бакетов, иначе цифра расходится с таблицей.
+  const bucketCounts = data?.summary.bucketCounts;
+  const presetCount = (key: PresetKey): string => {
+    if (!bucketCounts) return '…';
+    const pb = bucketsFromPreset(key);
+    if (!pb) return '…';
+    return String(pb.reduce((sum, b) => sum + (bucketCounts[b] ?? 0), 0));
+  };
+
   const presetOptions = [
-    {
-      key: 'attention' as const,
-      label: data
-        ? `Нужно внимание (${data.summary.overdueCount + data.summary.noDueDateCount})`
-        : 'Нужно внимание',
-    },
-    { key: 'overdue' as const, label: `Просрочка (${data?.summary.overdueCount ?? '…'})` },
-    { key: 'due_soon' as const, label: 'Скоро срок' },
-    { key: 'no_due' as const, label: `Без даты (${data?.summary.noDueDateCount ?? '…'})` },
+    { key: 'attention' as const, label: `Нужно внимание (${presetCount('attention')})` },
+    { key: 'overdue' as const, label: `Просрочка (${presetCount('overdue')})` },
+    { key: 'due_soon' as const, label: `Скоро срок (${presetCount('due_soon')})` },
+    { key: 'no_due' as const, label: `Без даты (${presetCount('no_due')})` },
     { key: 'all' as const, label: `Все в долг (${data?.summary.dealsCount ?? '…'})` },
   ];
 
@@ -439,12 +577,12 @@ export default function PaymentOverduePage() {
 
         {data?.summary && (
           <Row gutter={[12, 12]}>
-            <Col xs={12} sm={8} md={6}>
+            <Col xs={12} sm={8} md={4}>
               <Card size="small">
                 <Statistic title="Просрочено" value={data.summary.overdueCount} loading={isLoading} />
               </Card>
             </Col>
-            <Col xs={12} sm={8} md={6}>
+            <Col xs={12} sm={8} md={4}>
               <Card size="small">
                 <Statistic
                   title="Сумма просрочки"
@@ -454,17 +592,26 @@ export default function PaymentOverduePage() {
                 />
               </Card>
             </Col>
-            <Col xs={12} sm={8} md={6}>
+            <Col xs={12} sm={8} md={4}>
+              <Card size="small">
+                <Statistic
+                  title={`Скоро срок (${listState.dueSoonDays} дн.)`}
+                  value={data.summary.bucketCounts.DUE_SOON}
+                  loading={isLoading}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={4}>
               <Card size="small">
                 <Statistic title="Без даты срока" value={data.summary.noDueDateCount} loading={isLoading} />
               </Card>
             </Col>
-            <Col xs={12} sm={8} md={6}>
+            <Col xs={12} sm={8} md={4}>
               <Card size="small">
                 <Statistic title="Всего в долг" value={data.summary.dealsCount} loading={isLoading} />
               </Card>
             </Col>
-            <Col xs={12} sm={8} md={6}>
+            <Col xs={12} sm={8} md={4}>
               <Card size="small">
                 <Statistic
                   title="Общий остаток"
@@ -496,9 +643,11 @@ export default function PaymentOverduePage() {
               size="small"
               icon={<DownloadOutlined />}
               loading={isExporting}
+              disabled={sorted.length === 0}
+              title={`Выгрузить ${sorted.length} строк по текущим фильтрам`}
               onClick={() => void handleExport()}
             >
-              Excel
+              Excel ({sorted.length})
             </Button>
           </Space>
 
@@ -526,8 +675,13 @@ export default function PaymentOverduePage() {
                 maxTagCount="responsive"
                 style={{ width: '100%' }}
                 value={listState.buckets}
-                options={ALL_BUCKETS.map((b) => ({ value: b, label: BUCKET_META[b].label }))}
-                onChange={(v) => patchState({ buckets: v as PaymentOverdueBucket[], preset: 'all' })}
+                options={ALL_BUCKETS.map((b) => ({
+                  value: b,
+                  label: bucketCounts
+                    ? `${BUCKET_META[b].label} (${bucketCounts[b] ?? 0})`
+                    : BUCKET_META[b].label,
+                }))}
+                onChange={(v) => patchState({ buckets: v as PaymentOverdueBucket[] })}
               />
             </div>
             <div className="payment-overdue-filter-item">
@@ -559,6 +713,7 @@ export default function PaymentOverduePage() {
                 options={[
                   { value: 'PARTIAL', label: 'В долг' },
                   { value: 'INSTALLMENT', label: 'Рассрочка' },
+                  { value: 'FULL', label: 'Полная (остаток)' },
                 ]}
                 onChange={(v) => patchState({ paymentTypes: v })}
               />
@@ -611,10 +766,35 @@ export default function PaymentOverduePage() {
             </div>
           </div>
           <Text type="secondary" style={{ display: 'block', marginTop: 10 }}>
-            Показано {sorted.length} · сегодня {data?.today ?? '—'}
+            Показано {sorted.length} · остаток по фильтру {formatUZS(filteredRemaining)} · сегодня{' '}
+            {data?.today ?? '—'}
             {isFetching ? ' · обновление…' : ''}
           </Text>
         </Card>
+
+        {canEditDueDate && selectedRows.length > 0 && (
+          <Alert
+            type="info"
+            showIcon={false}
+            message={
+              <Space wrap>
+                <Text strong>Выбрано {selectedRows.length}</Text>
+                <Text type="secondary">остаток {formatUZS(selectedRemaining)}</Text>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<CalendarOutlined />}
+                  onClick={() => openDueDateEditor({ mode: 'bulk', rows: selectedRows })}
+                >
+                  Поставить срок
+                </Button>
+                <Button size="small" onClick={() => setSelectedIds([])}>
+                  Снять выделение
+                </Button>
+              </Space>
+            }
+          />
+        )}
 
         <Card size="small" styles={{ body: { padding: isMobile ? 8 : 16 } }}>
           <Table<PaymentOverdueDealRow>
@@ -623,7 +803,17 @@ export default function PaymentOverduePage() {
             loading={isLoading}
             columns={columns}
             dataSource={pageRows}
-            scroll={{ x: isMobile ? 960 : undefined }}
+            rowSelection={
+              canEditDueDate
+                ? {
+                    selectedRowKeys: selectedIds,
+                    preserveSelectedRowKeys: true,
+                    onChange: (keys) => setSelectedIds(keys as string[]),
+                    columnWidth: 40,
+                  }
+                : undefined
+            }
+            scroll={{ x: isMobile ? 1060 : undefined }}
             pagination={false}
             onRow={(row) => ({
               style: { cursor: 'pointer' },
@@ -660,6 +850,65 @@ export default function PaymentOverduePage() {
           )}
         </Card>
       </Space>
+
+      <Modal
+        open={editor !== null}
+        title={editor?.mode === 'bulk' ? `Срок оплаты для ${editor.rows.length} сдел.` : 'Срок оплаты'}
+        onCancel={() => setEditor(null)}
+        destroyOnHidden
+        footer={[
+          <Button key="cancel" onClick={() => setEditor(null)}>
+            Отмена
+          </Button>,
+          <Button
+            key="clear"
+            danger
+            loading={dueDateMutation.isPending}
+            onClick={() => submitDueDate(null)}
+          >
+            Убрать срок
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            disabled={!editorDate}
+            loading={dueDateMutation.isPending}
+            onClick={() => editorDate && submitDueDate(editorDate.format('YYYY-MM-DD'))}
+          >
+            Сохранить
+          </Button>,
+        ]}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {editor?.mode === 'single' && (
+            <Text type="secondary">
+              {editor.row.clientName} · {editor.row.title || 'Без названия'} ·{' '}
+              остаток {formatUZS(editor.row.remaining)}
+            </Text>
+          )}
+          {editor?.mode === 'bulk' && (
+            <Text type="secondary">
+              Один срок будет проставлен всем выделенным сделкам · остаток{' '}
+              {formatUZS(editor.rows.reduce((s, r) => s + r.remaining, 0))}
+            </Text>
+          )}
+          <DatePicker
+            className={APP_INPUT}
+            style={{ width: '100%' }}
+            format="DD.MM.YYYY"
+            placeholder="Выберите дату"
+            value={editorDate}
+            onChange={(d) => setEditorDate(d)}
+          />
+          <Space wrap>
+            {DUE_DATE_PRESETS.map((p) => (
+              <Button key={p.label} size="small" onClick={() => setEditorDate(p.get())}>
+                {p.label}
+              </Button>
+            ))}
+          </Space>
+        </Space>
+      </Modal>
     </div>
   );
 }
