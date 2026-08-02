@@ -1,3 +1,5 @@
+// Первым импортом: полифилы должны встать до вычисления остальных модулей.
+import './lib/polyfills';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -8,6 +10,10 @@ import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import type { ThemeMode } from './theme/tokens';
 import './theme/theme-variables.css';
 import './mobile.css';
+
+// Сообщаем сторожу из index.html, что бандл дожил до выполнения: это отличает
+// «движок не понял код» от «код отработал, но экран остался пустым».
+window.__crmBooted = true;
 
 installBlankScreenReporter();
 

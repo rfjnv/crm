@@ -40,6 +40,60 @@
 
 <body>
   <div id="root"></div>
+
+  <!--
+    Сторож загрузки. Намеренно на ES5 и без модулей: если основной бандл окажется
+    новее движка (старый System WebView на Android-панелях, встроенный браузер
+    Telegram), он не выполнится целиком — и любая диагностика внутри него молчит.
+    Этот скрипт переживает такой отказ и показывает причину вместо пустого экрана.
+  -->
+  <script>
+    (function () {
+      var TIMEOUT_MS = 15000;
+
+      window.__crmBooted = false;
+
+      function report(reason) {
+        var root = document.getElementById('root');
+        // Что-то отрисовано — приложение живо, вмешиваться не нужно.
+        if (!root || root.childElementCount > 0) return;
+        if (document.getElementById('crm-boot-error')) return;
+
+        var box = document.createElement('div');
+        box.id = 'crm-boot-error';
+        box.style.cssText = 'padding:20px 16px;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#1f1f1f';
+        box.innerHTML =
+          '<h2 style="margin:0 0 8px;font-size:17px;color:#cf1322">Приложение не загрузилось</h2>'
+          + '<p style="margin:0 0 12px;color:#595959">Похоже, браузер на этом устройстве слишком старый. Покажите этот текст разработчику.</p>'
+          + '<pre id="crm-boot-detail" style="margin:0 0 16px;padding:12px;background:#f5f5f5;border-radius:8px;'
+          + 'white-space:pre-wrap;word-break:break-word;font-size:12px"></pre>'
+          + '<button type="button" style="padding:10px 18px;border:0;border-radius:8px;background:#22609A;color:#fff;font-size:15px"'
+          + ' onclick="window.location.reload()">Обновить страницу</button>';
+        root.appendChild(box);
+
+        document.getElementById('crm-boot-detail').textContent =
+          'Причина: ' + reason + '\n'
+          // Ключевое различие: код приложения не запустился вовсе (движок не понял
+          // бандл) или запустился, но не отрисовал ни одного элемента.
+          + 'Код приложения выполнился: ' + (window.__crmBooted ? 'да' : 'НЕТ') + '\n'
+          + 'Адрес: ' + window.location.href + '\n'
+          + 'Telegram Web App: ' + (window.Telegram && window.Telegram.WebApp ? 'да' : 'нет') + '\n'
+          + 'Браузер: ' + navigator.userAgent;
+      }
+
+      // Не удалось даже загрузить/разобрать бандл — самый частый случай на старых WebView.
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target.tagName === 'SCRIPT') {
+          report('скрипт приложения не загрузился');
+        } else if (event.message) {
+          report(event.message);
+        }
+      }, true);
+
+      setTimeout(function () { report('за ' + (TIMEOUT_MS / 1000) + ' с приложение не отрисовалось'); }, TIMEOUT_MS);
+    })();
+  </script>
+
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

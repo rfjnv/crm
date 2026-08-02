@@ -1,18 +1,22 @@
 /**
  * Диагностика пустого экрана там, где нет консоли — прежде всего Telegram Web App.
  *
- * ErrorBoundary ловит только падения при рендере React. Мимо него проходят:
- *  - ошибки в промисах и обработчиках событий (unhandledrejection / onerror);
- *  - случай, когда исключения нет вообще, а экран всё равно пустой
- *    (упавшая вёрстка, бесконечный редирект, не отработавший бутстрап).
+ * ErrorBoundary ловит только падения при рендере React — ошибки в промисах и
+ * обработчиках событий проходят мимо него и в Telegram остаются полностью
+ * невидимыми, потому что консоли там нет.
  *
- * Первый случай показываем баннером, второй — сторожевым таймером, который
- * проверяет, отрисовал ли React хоть что-нибудь.
+ * Случай «экран пустой, но исключения не было» держит сторож в index.html:
+ * он на ES5 и переживает даже отказ этого бандла.
  */
 
+declare global {
+  interface Window {
+    /** Ставится в main.tsx; сторож в index.html по нему отличает отказ движка от пустого рендера. */
+    __crmBooted?: boolean;
+  }
+}
+
 const BANNER_ID = 'crm-error-banner';
-/** Столько ждём первую отрисовку, прежде чем счесть экран пустым. */
-const BLANK_SCREEN_TIMEOUT_MS = 10_000;
 
 function shorten(text: string, max = 600): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -74,19 +78,4 @@ export function installBlankScreenReporter(): void {
       : String(reason);
     showBanner('Необработанная ошибка запроса', shorten(text));
   });
-
-  // Сторожевой таймер: если React за это время ничего не отрисовал, экран пуст
-  // без единого исключения — а значит иначе об этом никто бы не узнал.
-  window.setTimeout(() => {
-    const root = document.getElementById('root');
-    if (root && root.childElementCount === 0) {
-      showBanner(
-        'Приложение не загрузилось',
-        `Экран остался пустым за ${BLANK_SCREEN_TIMEOUT_MS / 1000} с, ошибок при этом не было.\n`
-        + `URL: ${window.location.href}\n`
-        + `Telegram Web App: ${window.Telegram?.WebApp ? 'да' : 'нет'}\n`
-        + `User-Agent: ${navigator.userAgent}`,
-      );
-    }
-  }, BLANK_SCREEN_TIMEOUT_MS);
 }
