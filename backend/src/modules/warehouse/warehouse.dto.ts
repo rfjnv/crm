@@ -3,15 +3,29 @@ import { z } from 'zod';
 /** Ярлыки витрины клиентского бота. SOON показывает товар даже при нулевом остатке. */
 export const PRODUCT_BADGES = ['NEW', 'RESTOCK', 'SOON', 'HIT', 'SALE'] as const;
 
-const badgeField = z.preprocess(
-  (v) => (v === '' || v === undefined ? null : v),
-  z.enum(PRODUCT_BADGES).nullable().optional(),
-);
+/**
+ * PATCH-семантика: ключ, которого нет в теле запроса, обязан остаться `undefined`.
+ * Если превратить его в `null`, Prisma запишет NULL — и частичное обновление
+ * (переключатель «Активен», установка ярлыка, правка описания) молча сотрёт поле,
+ * которого пользователь вообще не касался. Пустая строка — это осознанная очистка.
+ */
+function optionalNullable<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (v) => (v === undefined ? undefined : v === '' ? null : v),
+    schema.nullable().optional(),
+  );
+}
 
-const badgeUntilField = z.preprocess(
-  (v) => (v === '' || v === undefined ? null : v),
-  z.string().nullable().optional(),
-);
+function optionalPrice() {
+  return z.preprocess(
+    (v) => (v === undefined ? undefined : v === '' || v === null ? null : Number(v)),
+    z.number().min(0).nullable().optional(),
+  );
+}
+
+const badgeField = optionalNullable(z.enum(PRODUCT_BADGES));
+
+const badgeUntilField = optionalNullable(z.string());
 
 export const createProductDto = z.object({
   name: z.string().min(1, 'Название товара обязательно'),
@@ -21,9 +35,9 @@ export const createProductDto = z.object({
   category: z.string().optional(),
   countryOfOrigin: z.string().optional(),
   minStock: z.number().min(0).default(0),
-  purchasePrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
-  salePrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
-  installmentPrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
+  purchasePrice: optionalPrice(),
+  salePrice: optionalPrice(),
+  installmentPrice: optionalPrice(),
   specifications: z.record(z.unknown()).optional(),
   manufacturedAt: z.string().datetime().optional(),
   expiresAt: z.string().datetime().optional(),
@@ -38,9 +52,9 @@ export const updateProductDto = z.object({
   category: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   countryOfOrigin: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   minStock: z.coerce.number().min(0).optional(),
-  purchasePrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
-  salePrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
-  installmentPrice: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : Number(v)), z.number().min(0).nullable().optional()),
+  purchasePrice: optionalPrice(),
+  salePrice: optionalPrice(),
+  installmentPrice: optionalPrice(),
   specifications: z.record(z.unknown()).nullable().optional(),
   description: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
   imageUrl: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),

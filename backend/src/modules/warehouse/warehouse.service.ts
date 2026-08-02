@@ -112,7 +112,17 @@ export class WarehouseService {
       }
     }
 
-    const before = { name: product.name, sku: product.sku, unit: product.unit, isActive: product.isActive };
+    // Цены пишем в аудит: без них исчезновение цены невозможно расследовать постфактум.
+    const priceFields = (p: { purchasePrice: unknown; salePrice: unknown; installmentPrice: unknown }) => ({
+      purchasePrice: p.purchasePrice != null ? Number(p.purchasePrice) : null,
+      salePrice: p.salePrice != null ? Number(p.salePrice) : null,
+      installmentPrice: p.installmentPrice != null ? Number(p.installmentPrice) : null,
+    });
+
+    const before = {
+      name: product.name, sku: product.sku, unit: product.unit, isActive: product.isActive,
+      ...priceFields(product),
+    };
 
     const { manufacturedAt, expiresAt, badgeUntil, specifications, ...rest } = dto;
     const data: Prisma.ProductUpdateInput = {
@@ -133,7 +143,10 @@ export class WarehouseService {
       entityType: 'product',
       entityId: id,
       before,
-      after: { name: updated.name, sku: updated.sku, unit: updated.unit, isActive: updated.isActive },
+      after: {
+        name: updated.name, sku: updated.sku, unit: updated.unit, isActive: updated.isActive,
+        ...priceFields(updated),
+      },
     });
 
     return updated;

@@ -27,6 +27,7 @@
     "backfill-timepay": "tsx src/scripts/backfill-timepay-attendance.ts",
     "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts",
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts",
+    "restore:product-prices": "tsx src/scripts/restore-wiped-product-prices.ts",
     "seed:companies": "node dist/scripts/seed-companies.js"
   },
   "dependencies": {
