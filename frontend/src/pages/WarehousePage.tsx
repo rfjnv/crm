@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Modal, Form, InputNumber, Select, Input, DatePicker, Typography, message, Tag, Space, Tooltip, theme, Card, Popconfirm, Checkbox } from 'antd';
-import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, InputNumber, Select, Input, DatePicker, Typography, message, Tag, Space, Tooltip, theme, Card, Popconfirm, Checkbox, Dropdown } from 'antd';
+import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LockOutlined, MoreOutlined, HistoryOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 import { inventoryApi } from '../api/warehouse.api';
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
@@ -184,6 +185,44 @@ export default function WarehousePage() {
     return list;
   }, [products, searchText, stockFilter, unitFilter, activeFilter]);
 
+  const canAddIncome = ['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'].includes(user?.role ?? '');
+
+  /** Второстепенные действия строки — прячем в «...», чтобы колонка не расползалась. */
+  const buildRowActions = (r: Product): MenuProps['items'] => {
+    const items: MenuProps['items'] = [];
+    if (canReserve) {
+      items.push({
+        key: 'reserve',
+        icon: <LockOutlined />,
+        label: 'Бронь',
+        onClick: () => { setReserveProduct(r); reserveForm.resetFields(); reserveForm.setFieldsValue({ productId: r.id }); },
+      });
+    }
+    if (canCorrectStock) {
+      items.push({
+        key: 'correct',
+        icon: <EditOutlined />,
+        label: 'Коррекция',
+        onClick: () => { setCorrectProduct(r); correctForm.setFieldsValue({ newStock: Number(r.stock) }); },
+      });
+    }
+    items.push({
+      key: 'history',
+      icon: <HistoryOutlined />,
+      label: 'История',
+      onClick: () => setMovementsProduct(r),
+    });
+    if (Number(r.reservedQty) > 0) {
+      items.push({
+        key: 'reservations',
+        icon: <UnorderedListOutlined />,
+        label: 'Брони',
+        onClick: () => setReservationsProduct(r),
+      });
+    }
+    return items;
+  };
+
   const columns = [
     { title: 'Название', dataIndex: 'name', sorter: (a: Product, b: Product) => a.name.localeCompare(b.name) },
     { title: 'Артикул', dataIndex: 'sku', render: (v: string) => <Tag>{v}</Tag> },
@@ -246,10 +285,11 @@ export default function WarehousePage() {
     },
     {
       title: '',
-      width: canCorrectStock ? 260 : 160,
+      width: 130,
+      align: 'right' as const,
       render: (_: unknown, r: Product) => (
-        <Space wrap>
-          {['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER'].includes(user?.role ?? '') && (
+        <Space size={4}>
+          {canAddIncome && (
             <Button
               size="small"
               type="primary"
@@ -259,28 +299,9 @@ export default function WarehousePage() {
               Приход
             </Button>
           )}
-          {canReserve && (
-            <Button
-              size="small"
-              icon={<LockOutlined />}
-              onClick={() => { setReserveProduct(r); reserveForm.resetFields(); reserveForm.setFieldsValue({ productId: r.id }); }}
-            >
-              Бронь
-            </Button>
-          )}
-          {canCorrectStock && (
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => { setCorrectProduct(r); correctForm.setFieldsValue({ newStock: Number(r.stock) }); }}
-            >
-              Коррекция
-            </Button>
-          )}
-          <Button size="small" onClick={() => setMovementsProduct(r)}>История</Button>
-          {Number(r.reservedQty) > 0 && (
-            <Button size="small" onClick={() => setReservationsProduct(r)}>Брони</Button>
-          )}
+          <Dropdown menu={{ items: buildRowActions(r) }} trigger={['click']} placement="bottomRight">
+            <Button size="small" icon={<MoreOutlined />} />
+          </Dropdown>
         </Space>
       ),
     },
