@@ -12,6 +12,7 @@ import AdminLayout from './components/AdminLayout';
 import DefaultHomeRedirect from './components/DefaultHomeRedirect';
 import LoginPage from './pages/LoginPage';
 import RatePage from './pages/RatePage';
+import ViewportInfoPage from './pages/ViewportInfoPage';
 import DashboardPage from './pages/DashboardPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
@@ -167,6 +168,8 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/rate/:token" element={<RatePage />} />
+            {/* Без авторизации: цифры нужны с панели и WebView, где нет консоли */}
+            <Route path="/viewport" element={<ViewportInfoPage />} />
             <Route element={<PrivateRoute />}>
               <Route element={<PrivateRoute supabaseAuthOnly />}>
                 <Route element={<AdminLayout />}>

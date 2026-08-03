@@ -15,7 +15,9 @@
   --mobile-inline-pad: var(--space-3);
   --mobile-section-gap: var(--space-4);
   --mobile-element-gap: var(--space-2);
-  --app-vh: 100vh;
+  /* Делим на масштаб интерфейса: при zoom < 1 единицы vh считаются от неотмасштабированного
+     окна, поэтому без деления высота не достаёт до низа экрана. --ui-scale ставит uiScaleStore. */
+  --app-vh: calc(100vh / var(--ui-scale, 1));
 }
 
 *,
@@ -26,7 +28,7 @@
 
 @supports (height: 100dvh) {
   :root {
-    --app-vh: 100dvh;
+    --app-vh: calc(100dvh / var(--ui-scale, 1));
   }
 }
 

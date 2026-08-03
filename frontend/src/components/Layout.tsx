@@ -81,6 +81,7 @@ import { useActivityTracking } from '../hooks/useActivityTracking';
 import { APP_BUTTON } from './ui/AppClassNames';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
+import UiScaleControl from './UiScaleControl';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
@@ -896,6 +897,8 @@ export default function Layout() {
             />
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
+            {/* Панель и киоск-режим не дают браузерного зума — заменяем его своим */}
+            {!isMobile && <UiScaleControl />}
             <NotificationBell />
             <Switch
               checkedChildren={<BulbOutlined />}
