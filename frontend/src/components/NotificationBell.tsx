@@ -10,6 +10,7 @@ import { notificationsApi } from '../api/notifications.api';
 import { APP_BUTTON } from './ui/AppClassNames';
 import type { AppNotification, NotificationSeverity } from '../types';
 import { getFirstName } from '../lib/name-utils';
+import { canShowNotifications } from '../lib/notifications';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -60,8 +61,9 @@ export default function NotificationBell() {
       // Emoji based on severity
       const severityEmoji = latest.severity === 'URGENT' ? '🚨' : latest.severity === 'WARNING' ? '⚠️' : '🔔';
 
-      // Always attempt system notification when browser permission is granted.
-      if (Notification.permission === 'granted') {
+      // Колокольчик живёт в шапке на каждой странице, а Android WebView не знает
+      // про Notification: прямое обращение роняло здесь весь интерфейс.
+      if (canShowNotifications()) {
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.ready
             .then((reg) => {

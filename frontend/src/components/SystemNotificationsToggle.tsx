@@ -6,6 +6,12 @@ import {
   CheckOutlined,
   BellOutlined
 } from '@ant-design/icons';
+import {
+  canShowNotifications,
+  getNotificationPermission,
+  isNotificationSupported,
+  requestNotificationPermission,
+} from '../lib/notifications';
 
 export default function SystemNotificationsToggle() {
   const [permission, setPermission] = useState<string>('unknown');
@@ -15,15 +21,11 @@ export default function SystemNotificationsToggle() {
   const [swStatus, setSwStatus] = useState('checking...');
   const { token: tk } = theme.useToken();
 
-  const isSupported = typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator;
+  const isSupported = isNotificationSupported() && 'serviceWorker' in navigator;
 
   useEffect(() => {
     // Диагностика
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPermission(Notification.permission);
-    } else {
-      setPermission('not-supported');
-    }
+    setPermission(isNotificationSupported() ? getNotificationPermission() : 'not-supported');
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then((reg) => {
@@ -44,7 +46,7 @@ export default function SystemNotificationsToggle() {
     }
 
     const savedSetting = localStorage.getItem('system-notifications-enabled');
-    if (savedSetting === 'true' && 'Notification' in window && Notification.permission === 'granted') {
+    if (savedSetting === 'true' && canShowNotifications()) {
       setIsEnabled(true);
     }
   }, []);
@@ -52,7 +54,7 @@ export default function SystemNotificationsToggle() {
   // Запрос разрешения - большая заметная кнопка
   const handleRequestPermission = async () => {
     try {
-      const result = await Notification.requestPermission();
+      const result = await requestNotificationPermission();
       setPermission(result);
       if (result === 'granted') {
         message.success('Разрешение получено! Теперь нажмите "Тест"');
@@ -72,11 +74,10 @@ export default function SystemNotificationsToggle() {
   // Тест уведомления через Service Worker
   const handleTest = async () => {
     // Если нет разрешения - сначала запросить
-    const perm = Notification.permission;
-    if (perm !== 'granted') {
+    if (!canShowNotifications()) {
       await handleRequestPermission();
       // Перечитываем после запроса
-      if (Notification.permission as string !== 'granted') return;
+      if (!canShowNotifications()) return;
     }
 
     if (!swReady) {
@@ -111,10 +112,9 @@ export default function SystemNotificationsToggle() {
 
   const handleToggle = async (checked: boolean) => {
     if (checked) {
-      const perm = Notification.permission;
-      if (perm !== 'granted') {
+      if (!canShowNotifications()) {
         await handleRequestPermission();
-        if (Notification.permission as string !== 'granted') return;
+        if (!canShowNotifications()) return;
       }
       setIsEnabled(true);
       localStorage.setItem('system-notifications-enabled', 'true');

@@ -3,6 +3,7 @@ import { Switch, Button, Space, Typography, Alert, message, theme } from 'antd';
 import { BellOutlined, ExperimentOutlined } from '@ant-design/icons';
 import { pushApi } from '../api/push.api';
 import { useAuthStore } from '../store/authStore';
+import { requestNotificationPermission } from '../lib/notifications';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -47,9 +48,13 @@ export default function PushNotificationToggle() {
     try {
       if (checked) {
         // Request permission
-        const permission = await Notification.requestPermission();
+        const permission = await requestNotificationPermission();
         if (permission !== 'granted') {
-          message.warning('Разрешение на уведомления отклонено');
+          message.warning(
+            permission === 'unsupported'
+              ? 'Этот браузер не поддерживает уведомления'
+              : 'Разрешение на уведомления отклонено',
+          );
           setLoading(false);
           return;
         }
