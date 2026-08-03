@@ -21,6 +21,30 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
 
+/**
+ * Восстанавливать всё подряд опасно: среди старых сделок попадаются опечатки
+ * (лист мелованной бумаги за 14 000 при соседних 1 400), а цены 2024 года давно
+ * не актуальны. Фильтры позволяют вернуть сначала то, что реально нужно витрине.
+ *
+ *   --only-active        только активные товары
+ *   --since=2026-01-01   только продажи не старше даты
+ *   --skip=sku1,sku2     пропустить конкретные артикулы (заведомо битые цены)
+ */
+const ONLY_ACTIVE = process.argv.includes('--only-active');
+
+const SINCE = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--since='));
+  if (!arg) return null;
+  const date = new Date(arg.slice('--since='.length));
+  return Number.isNaN(date.getTime()) ? null : date;
+})();
+
+const SKIP_SKUS = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--skip='));
+  if (!arg) return new Set<string>();
+  return new Set(arg.slice('--skip='.length).split(',').map((s) => s.trim()).filter(Boolean));
+})();
+
 type Candidate = {
   id: string;
   name: string;
@@ -85,11 +109,30 @@ async function main(): Promise<void> {
     });
   }
 
-  const restorableSale = candidates.filter((c) => c.salePrice == null && c.lastSoldPrice != null);
-  const restorablePurchase = candidates.filter((c) => c.purchasePrice == null && c.lastPurchasePrice != null);
+  /** Товар проходит фильтры и его цену можно записывать. */
+  const passesFilters = (c: Candidate): boolean => {
+    if (SKIP_SKUS.has(c.sku)) return false;
+    if (ONLY_ACTIVE && !c.isActive) return false;
+    if (SINCE && (!c.lastSoldAt || c.lastSoldAt < SINCE)) return false;
+    return true;
+  };
+
+  const restorableSale = candidates
+    .filter((c) => c.salePrice == null && c.lastSoldPrice != null)
+    .filter(passesFilters);
+  const restorablePurchase = candidates
+    .filter((c) => c.purchasePrice == null && c.lastPurchasePrice != null)
+    .filter(passesFilters);
   const hopeless = candidates.filter(
     (c) => c.salePrice == null && c.lastSoldPrice == null,
   );
+
+  const filters = [
+    ONLY_ACTIVE ? 'только активные' : null,
+    SINCE ? `продажи с ${SINCE.toISOString().slice(0, 10)}` : null,
+    SKIP_SKUS.size ? `пропущено артикулов: ${SKIP_SKUS.size}` : null,
+  ].filter(Boolean);
+  if (filters.length) console.log(`Фильтры: ${filters.join(', ')}\n`);
 
   console.log(`Товаров с пустой ценой: ${candidates.length}`);
   console.log(`  можно восстановить цену продажи: ${restorableSale.length}`);
@@ -130,6 +173,9 @@ async function main(): Promise<void> {
 
   let updated = 0;
   for (const c of candidates) {
+    // Пишем ровно то, что показали в предпросмотре, — фильтры те же
+    if (!passesFilters(c)) continue;
+
     const data: { salePrice?: number; purchasePrice?: number } = {};
     if (c.salePrice == null && c.lastSoldPrice != null) data.salePrice = c.lastSoldPrice;
     if (c.purchasePrice == null && c.lastPurchasePrice != null) data.purchasePrice = c.lastPurchasePrice;
