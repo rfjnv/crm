@@ -905,6 +905,8 @@ export class ClientsService {
             productId: item.productId,
             type: 'OUT',
             quantity: qty,
+            stockBefore: warehouseStock,
+            stockAfter: warehouseStock - qty,
             clientStockEventId: ev.id,
             note: `Перенос в товары клиента: ${client.companyName}${item.comment?.trim() ? ` (${item.comment.trim()})` : ''}`,
             createdBy: user.userId,

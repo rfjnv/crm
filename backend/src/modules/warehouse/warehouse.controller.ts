@@ -10,6 +10,11 @@ export class WarehouseController {
     res.json(products);
   }
 
+  async getStockAsOf(req: Request, res: Response): Promise<void> {
+    const rows = await warehouseService.getStockAsOf(String(req.query.date || ''));
+    res.json(rows);
+  }
+
   async findProductById(req: Request, res: Response): Promise<void> {
     const product = await warehouseService.findProductById(req.params.id as string);
     res.json(product);

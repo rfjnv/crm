@@ -94,6 +94,8 @@ export async function importProductsIfNeeded(): Promise<void> {
               productId: created.id,
               type: 'IN',
               quantity: product.stock,
+              stockBefore: 0,
+              stockAfter: product.stock,
               note: 'Начальный остаток при импорте из Excel',
               createdBy: adminUserId,
             },

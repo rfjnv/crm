@@ -206,6 +206,10 @@ export class WarehouseService {
           productId: id,
           type: 'CORRECTION',
           quantity: Math.abs(diff),
+          stockBefore: oldStock,
+          stockAfter: dto.newStock,
+          rollStockBefore: oldRollStock,
+          rollStockAfter: applyRollStock ? dto.newRollStock : oldRollStock,
           note: applyRollStock
             ? `Коррекция: ${dto.reason} (было ${oldStock} кг / ${oldRollStock} рул., стало ${dto.newStock} кг / ${dto.newRollStock} рул.)`
             : `Коррекция: ${dto.reason} (было ${oldStock}, стало ${dto.newStock})`,
@@ -425,9 +429,22 @@ export class WarehouseService {
       }
     }
 
+    // Рулоны пишем отдельной колонкой (а не только в текст примечания) — так они
+    // видны как самостоятельная величина в истории движений и деталях товара.
+    const rollQuantity = dto.rollQuantity != null && product.rollStock != null ? dto.rollQuantity : null;
+
+    const stockBefore = Number(product.stock);
+    const rollBefore = product.rollStock != null ? Number(product.rollStock) : null;
+    const skipStock = dto.affectStock === false;
+    const sign = dto.type === 'IN' ? 1 : -1;
+    const stockAfter = skipStock ? stockBefore : stockBefore + sign * dto.quantity;
+    const rollAfter = rollBefore == null || skipStock || rollQuantity == null
+      ? rollBefore
+      : rollBefore + sign * rollQuantity;
+
     // Atomic stock update in transaction
     return prisma.$transaction(async (tx) => {
-      if (dto.affectStock === false) {
+      if (skipStock) {
         // Только запись в историю (напр. задним числом задокументировать приход,
         // который уже учтён в текущем остатке) — сам остаток не трогаем.
       } else if (dto.type === 'IN') {
@@ -436,9 +453,7 @@ export class WarehouseService {
           where: { id: dto.productId },
           data: {
             stock: { increment: dto.quantity },
-            ...(dto.rollQuantity != null && product.rollStock != null
-              ? { rollStock: { increment: dto.rollQuantity } }
-              : {}),
+            ...(rollQuantity != null ? { rollStock: { increment: rollQuantity } } : {}),
           },
         });
       } else {
@@ -454,11 +469,13 @@ export class WarehouseService {
         if (result.count === 0) {
           throw new AppError(400, `Недостаточно товара на складе. Текущий остаток: ${product.stock}`);
         }
+        if (rollQuantity != null) {
+          await tx.product.update({
+            where: { id: dto.productId },
+            data: { rollStock: { decrement: rollQuantity } },
+          });
+        }
       }
-
-      // Рулоны пишем отдельной колонкой (а не только в текст примечания) — так они
-      // видны как самостоятельная величина в истории движений и деталях товара.
-      const rollQuantity = dto.rollQuantity != null && product.rollStock != null ? dto.rollQuantity : null;
 
       // Create movement record
       const movement = await tx.inventoryMovement.create({
@@ -467,10 +484,14 @@ export class WarehouseService {
           type: dto.type,
           quantity: dto.quantity,
           rollQuantity,
+          stockBefore,
+          stockAfter,
+          rollStockBefore: rollBefore,
+          rollStockAfter: rollAfter,
           dealId: dto.dealId,
           note: [
             dto.note,
-            dto.affectStock === false ? '(запись без изменения остатка)' : null,
+            skipStock ? '(запись без изменения остатка)' : null,
           ].filter(Boolean).join(' ') || undefined,
           createdBy: userId,
         },
@@ -557,6 +578,58 @@ export class WarehouseService {
     return rows.map((r) => ({
       ...this.attachEventDate(r),
       creatorName: creatorMap.get(r.createdBy) ?? null,
+    }));
+  }
+
+  /**
+   * Остаток каждого товара на конец указанного дня (Ташкент).
+   *
+   * Источник — снимок `stock_after`, записанный в само движение. Порядок разбора:
+   *  1) после этого дня движений не было → остаток не менялся, берём текущий;
+   *  2) иначе берём снимок последнего движения на этот день включительно;
+   *  3) снимка нет (движение записано до появления поля) → `null`, показываем «н/д»,
+   *     а не выдуманное число.
+   */
+  async getStockAsOf(dateYmd: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) {
+      throw new AppError(400, 'Дата обязательна в формате YYYY-MM-DD');
+    }
+    // Конец дня по Ташкенту (UTC+5) в UTC.
+    const [y, m, d] = dateYmd.split('-').map(Number);
+    const endExclusiveUtc = new Date(Date.UTC(y, m - 1, d + 1) - 5 * 60 * 60 * 1000);
+
+    const rows = await prisma.$queryRaw<{
+      id: string;
+      stock_as_of: string | null;
+      roll_stock_as_of: string | null;
+      known: boolean;
+    }[]>(Prisma.sql`
+      SELECT
+        p.id,
+        CASE WHEN after_cnt.cnt = 0 THEN p.stock ELSE snap.stock_after END AS stock_as_of,
+        CASE WHEN after_cnt.cnt = 0 THEN p.roll_stock ELSE snap.roll_stock_after END AS roll_stock_as_of,
+        (after_cnt.cnt = 0 OR snap.stock_after IS NOT NULL) AS known
+      FROM products p
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS cnt
+        FROM inventory_movements m
+        WHERE m.product_id = p.id AND m.created_at >= ${endExclusiveUtc}
+      ) after_cnt ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT m.stock_after, m.roll_stock_after
+        FROM inventory_movements m
+        WHERE m.product_id = p.id AND m.created_at < ${endExclusiveUtc}
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) snap ON TRUE
+      WHERE p.is_active = true
+    `);
+
+    return rows.map((r) => ({
+      id: r.id,
+      stockAsOf: r.known && r.stock_as_of != null ? Number(r.stock_as_of) : null,
+      rollStockAsOf: r.known && r.roll_stock_as_of != null ? Number(r.roll_stock_as_of) : null,
+      known: r.known,
     }));
   }
 
@@ -928,6 +1001,8 @@ export class WarehouseService {
                 productId: product.id,
                 type: 'IN',
                 quantity: stock,
+                stockBefore: 0,
+                stockAfter: stock,
                 note: `Начальный остаток при импорте из Excel`,
                 createdBy: userId,
               },

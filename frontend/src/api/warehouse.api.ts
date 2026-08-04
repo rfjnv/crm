@@ -35,6 +35,15 @@ export const inventoryApi = {
       })
       .then((r) => r.data),
 
+  /** Остаток каждого товара на конец указанного дня; known=false — снимка за тот день нет. */
+  getStockAsOf: (date: string) =>
+    client
+      .get<{ id: string; stockAsOf: number | null; rollStockAsOf: number | null; known: boolean }[]>(
+        '/inventory/products/stock-as-of',
+        { params: { date } },
+      )
+      .then((r) => r.data),
+
   createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean; rollQuantity?: number }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
 

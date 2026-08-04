@@ -51,12 +51,21 @@ function useStickyTopOffset() {
 
 // ─── Product card ─────────────────────────────────────────────────────────────
 
-function ProductAuditCard({ product, checked, onToggle, onCorrect, canCorrect }: {
+interface StockAsOf {
+  stockAsOf: number | null;
+  rollStockAsOf: number | null;
+  known: boolean;
+}
+
+function ProductAuditCard({ product, checked, onToggle, onCorrect, canCorrect, asOf, asOfLabel }: {
   product: Product;
   checked: boolean;
   onToggle: (id: string) => void;
   onCorrect: (p: Product) => void;
   canCorrect: boolean;
+  /** Остаток на выбранный прошедший день; undefined — выбран сегодняшний день. */
+  asOf?: StockAsOf;
+  asOfLabel?: string;
 }) {
   const { token } = theme.useToken();
   const stock = Number(product.stock);
@@ -110,8 +119,27 @@ function ProductAuditCard({ product, checked, onToggle, onCorrect, canCorrect }:
       }
     >
       <Space size={24} wrap>
+        {asOfLabel && (
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Остаток на {asOfLabel}</Typography.Text>
+            <div>
+              {asOf?.known && asOf.stockAsOf != null ? (
+                <>
+                  <Typography.Text strong style={{ fontSize: 16 }}>
+                    {formatStockCell(asOf.stockAsOf, asOf.rollStockAsOf != null ? String(asOf.rollStockAsOf) : null)}
+                  </Typography.Text>
+                  {asOf.rollStockAsOf == null && <Typography.Text type="secondary"> {product.unit}</Typography.Text>}
+                </>
+              ) : (
+                <Typography.Text type="secondary" style={{ fontSize: 16 }}>н/д</Typography.Text>
+              )}
+            </div>
+          </div>
+        )}
         <div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Остаток</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {asOfLabel ? 'Остаток сейчас' : 'Остаток'}
+          </Typography.Text>
           <div>
             <Typography.Text strong style={{ fontSize: 16, color: isNegative ? token.colorError : isBelowMin ? token.colorWarning : undefined }}>
               {formatStockCell(product.stock, product.rollStock)}
@@ -182,6 +210,23 @@ export default function AuditStockPage() {
     queryKey: ['audit-stock-products'],
     queryFn: inventoryApi.listProducts,
   });
+
+  // Для прошедшей даты показываем остаток, каким он был на конец того дня.
+  // Для сегодняшней это и есть текущий остаток — второй запрос не нужен.
+  const isToday = date.isSame(dayjs(), 'day');
+  const { data: asOfRows } = useQuery({
+    queryKey: ['audit-stock-as-of', ymd],
+    queryFn: () => inventoryApi.getStockAsOf(ymd),
+    enabled: !isToday,
+  });
+
+  const asOfById = useMemo(() => {
+    const map = new Map<string, StockAsOf>();
+    for (const r of asOfRows ?? []) {
+      map.set(r.id, { stockAsOf: r.stockAsOf, rollStockAsOf: r.rollStockAsOf, known: r.known });
+    }
+    return map;
+  }, [asOfRows]);
 
   const correctMut = useMutation({
     mutationFn: (data: { id: string; newStock: number; reason: string; newRollStock?: number }) =>
@@ -336,6 +381,8 @@ export default function AuditStockPage() {
             onToggle={toggleChecked}
             onCorrect={(p) => { setCorrectProduct(p); correctForm.setFieldsValue({ newStock: Number(p.stock), newRollStock: p.rollStock != null ? Number(p.rollStock) : undefined }); }}
             canCorrect={canCorrect}
+            asOf={isToday ? undefined : asOfById.get(product.id)}
+            asOfLabel={isToday ? undefined : date.format('DD.MM.YYYY')}
           />
         ))}
       </Space>

@@ -602,6 +602,11 @@ export interface InventoryMovement {
   quantity: number;
   /** Параллельное кол-во в рулонах (товары с двойным учётом кг+рулоны). null — товар без рулонного учёта. */
   rollQuantity?: string | number | null;
+  /** Остаток до/после операции. null — движение записано до появления этих полей. */
+  stockBefore?: string | number | null;
+  stockAfter?: string | number | null;
+  rollStockBefore?: string | number | null;
+  rollStockAfter?: string | number | null;
   dealId?: string | null;
   note?: string | null;
   createdBy: string;

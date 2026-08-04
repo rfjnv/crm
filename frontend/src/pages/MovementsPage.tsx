@@ -8,6 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
+import StockBalanceCell from '../components/StockBalanceCell';
 import { Link } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -113,6 +114,13 @@ export default function MovementsPage() {
         const n = v == null ? null : Number(v);
         return n != null && Number.isFinite(n) && n > 0 ? n : '—';
       },
+    },
+    {
+      title: 'Было → Стало',
+      key: 'balance',
+      width: 150,
+      align: 'right' as const,
+      render: (_: unknown, r: any) => <StockBalanceCell movement={r} />,
     },
     {
       title: 'Клиент',

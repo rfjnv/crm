@@ -263,24 +263,32 @@ export class DealsService {
         if (m) rollCount = parseFloat(m[1].replace(',', '.'));
       }
 
+      const stockBefore = Number(item.product.stock);
+      const rollBefore = item.product.rollStock != null ? Number(item.product.rollStock) : null;
+      const rollsOut = rollCount > 0 ? rollCount : null;
+
       await tx.inventoryMovement.create({
         data: {
           productId: item.productId,
           type: 'OUT',
           quantity: qty,
           // Пишем рулоны в само движение — иначе в истории склада видны только кг.
-          rollQuantity: rollCount > 0 ? rollCount : null,
+          rollQuantity: rollsOut,
+          stockBefore,
+          stockAfter: stockBefore - qty,
+          rollStockBefore: rollBefore,
+          rollStockAfter: rollBefore != null && rollsOut != null ? rollBefore - rollsOut : rollBefore,
           dealId,
           note: movementNote,
           createdBy: userId,
         },
       });
 
-      if (rollCount > 0) {
-        const currentRollStock = item.product.rollStock != null ? Number(item.product.rollStock) : 0;
+      if (rollsOut != null) {
+        const currentRollStock = rollBefore ?? 0;
         await tx.product.update({
           where: { id: item.productId },
-          data: { rollStock: currentRollStock - rollCount },
+          data: { rollStock: currentRollStock - rollsOut },
         });
       }
     }
@@ -3024,19 +3032,26 @@ export class DealsService {
 
     const allProductIds = [...new Set([...shippedMap.keys(), ...newByProduct.keys()])];
     // rollStock === null — товар без рулонного учёта, его рулоны не трогаем вообще.
-    const rollStockById = new Map(
+    const stateById = new Map(
       (await tx.product.findMany({
         where: { id: { in: allProductIds } },
-        select: { id: true, rollStock: true },
-      })).map((p) => [p.id, p.rollStock != null ? Number(p.rollStock) : null]),
+        select: { id: true, name: true, stock: true, rollStock: true },
+      })).map((p) => [p.id, {
+        name: p.name,
+        stock: Number(p.stock),
+        rolls: p.rollStock != null ? Number(p.rollStock) : null,
+      }]),
     );
 
     for (const productId of allProductIds) {
       const shipped = shippedMap.get(productId) ?? { qty: 0, rolls: 0 };
       const next = newByProduct.get(productId) ?? { qty: 0, rolls: 0 };
       const diff = shipped.qty - next.qty;
-      const currentRolls = rollStockById.get(productId) ?? null;
+      const state = stateById.get(productId);
+      const stockBefore = state?.stock ?? 0;
+      const currentRolls = state?.rolls ?? null;
       const rollDiff = currentRolls != null ? shipped.rolls - next.rolls : 0;
+      const rollsAfter = currentRolls != null ? currentRolls + rollDiff : null;
 
       if (diff > 0) {
         // Quantity decreased — return to stock
@@ -3044,7 +3059,7 @@ export class DealsService {
           where: { id: productId },
           data: {
             stock: { increment: diff },
-            ...(rollDiff !== 0 ? { rollStock: currentRolls! + rollDiff } : {}),
+            ...(rollDiff !== 0 ? { rollStock: rollsAfter! } : {}),
           },
         });
         await tx.inventoryMovement.create({
@@ -3053,6 +3068,10 @@ export class DealsService {
             type: 'IN',
             quantity: diff,
             rollQuantity: rollDiff > 0 ? rollDiff : null,
+            stockBefore,
+            stockAfter: stockBefore + diff,
+            rollStockBefore: currentRolls,
+            rollStockAfter: rollsAfter,
             dealId,
             note: `Возврат на склад: коррекция при изменении сделки (${noteSuffix})`,
             createdBy: userId,
@@ -3066,15 +3085,14 @@ export class DealsService {
           data: { stock: { decrement: absDiff } },
         });
         if (result.count === 0) {
-          const product = await tx.product.findUnique({ where: { id: productId } });
           throw new AppError(400,
-            `Недостаточно товара "${product?.name}" на складе для увеличения количества`,
+            `Недостаточно товара "${state?.name}" на складе для увеличения количества`,
           );
         }
         if (rollDiff !== 0) {
           await tx.product.update({
             where: { id: productId },
-            data: { rollStock: currentRolls! + rollDiff },
+            data: { rollStock: rollsAfter! },
           });
         }
         await tx.inventoryMovement.create({
@@ -3083,6 +3101,10 @@ export class DealsService {
             type: 'OUT',
             quantity: absDiff,
             rollQuantity: rollDiff < 0 ? Math.abs(rollDiff) : null,
+            stockBefore,
+            stockAfter: stockBefore - absDiff,
+            rollStockBefore: currentRolls,
+            rollStockAfter: rollsAfter,
             dealId,
             note: `Доп. списание: коррекция при изменении сделки (${noteSuffix})`,
             createdBy: userId,
@@ -3092,7 +3114,7 @@ export class DealsService {
         // Кг не изменились, а рулоны — да (напр. склад уточнил только кол-во рулонов).
         await tx.product.update({
           where: { id: productId },
-          data: { rollStock: currentRolls! + rollDiff },
+          data: { rollStock: rollsAfter! },
         });
         await tx.inventoryMovement.create({
           data: {
@@ -3100,6 +3122,10 @@ export class DealsService {
             type: rollDiff > 0 ? 'IN' : 'OUT',
             quantity: 0,
             rollQuantity: Math.abs(rollDiff),
+            stockBefore,
+            stockAfter: stockBefore,
+            rollStockBefore: currentRolls,
+            rollStockAfter: rollsAfter,
             dealId,
             note: `Коррекция рулонов при изменении сделки (${noteSuffix})`,
             createdBy: userId,
@@ -3755,16 +3781,22 @@ export class DealsService {
         }
 
         // rollStock === null — товар без рулонного учёта, рулоны не трогаем.
-        const rollStockById = new Map(
+        const stateById = new Map(
           (await tx.product.findMany({
             where: { id: { in: [...netByProduct.keys()] } },
-            select: { id: true, rollStock: true },
-          })).map((p) => [p.id, p.rollStock != null ? Number(p.rollStock) : null]),
+            select: { id: true, stock: true, rollStock: true },
+          })).map((p) => [p.id, {
+            stock: Number(p.stock),
+            rolls: p.rollStock != null ? Number(p.rollStock) : null,
+          }]),
         );
 
         for (const [productId, net] of netByProduct) {
-          const currentRolls = rollStockById.get(productId) ?? null;
+          const state = stateById.get(productId);
+          const stockBefore = state?.stock ?? 0;
+          const currentRolls = state?.rolls ?? null;
           const netRolls = currentRolls != null ? net.rolls : 0;
+          const rollsAfter = currentRolls != null ? currentRolls + netRolls : null;
 
           if (net.qty > 0) {
             // Чистое количество всё ещё числится отгруженным — возвращаем на склад один раз.
@@ -3772,7 +3804,7 @@ export class DealsService {
               where: { id: productId },
               data: {
                 stock: { increment: net.qty },
-                ...(netRolls !== 0 ? { rollStock: currentRolls! + netRolls } : {}),
+                ...(netRolls !== 0 ? { rollStock: rollsAfter! } : {}),
               },
             });
             await tx.inventoryMovement.create({
@@ -3781,6 +3813,10 @@ export class DealsService {
                 type: 'IN',
                 quantity: net.qty,
                 rollQuantity: netRolls > 0 ? netRolls : null,
+                stockBefore,
+                stockAfter: stockBefore + net.qty,
+                rollStockBefore: currentRolls,
+                rollStockAfter: rollsAfter,
                 dealId: null,
                 note: `Возврат на склад: сделка "${dealLabel}" удалена`,
                 createdBy: user.userId,
@@ -3793,7 +3829,7 @@ export class DealsService {
               where: { id: productId },
               data: {
                 stock: { decrement: absNet },
-                ...(netRolls !== 0 ? { rollStock: currentRolls! + netRolls } : {}),
+                ...(netRolls !== 0 ? { rollStock: rollsAfter! } : {}),
               },
             });
             await tx.inventoryMovement.create({
@@ -3802,6 +3838,10 @@ export class DealsService {
                 type: 'OUT',
                 quantity: absNet,
                 rollQuantity: netRolls < 0 ? Math.abs(netRolls) : null,
+                stockBefore,
+                stockAfter: stockBefore - absNet,
+                rollStockBefore: currentRolls,
+                rollStockAfter: rollsAfter,
                 dealId: null,
                 note: `Коррекция при удалении сделки "${dealLabel}": ранее возвращено больше, чем отгружено`,
                 createdBy: user.userId,
@@ -3811,7 +3851,7 @@ export class DealsService {
             // Кг уже вернули до удаления, а рулоны — нет: возвращаем только их.
             await tx.product.update({
               where: { id: productId },
-              data: { rollStock: currentRolls! + netRolls },
+              data: { rollStock: rollsAfter! },
             });
             await tx.inventoryMovement.create({
               data: {
@@ -3819,6 +3859,10 @@ export class DealsService {
                 type: netRolls > 0 ? 'IN' : 'OUT',
                 quantity: 0,
                 rollQuantity: Math.abs(netRolls),
+                stockBefore,
+                stockAfter: stockBefore,
+                rollStockBefore: currentRolls,
+                rollStockAfter: rollsAfter,
                 dealId: null,
                 note: `Возврат рулонов на склад: сделка "${dealLabel}" удалена`,
                 createdBy: user.userId,

@@ -17,6 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
+import StockBalanceCell from '../components/StockBalanceCell';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
 function formatStockCell(stock: number | string | null | undefined, rollStock?: number | string | null): string {
@@ -414,6 +415,13 @@ export default function ProductDetailPage() {
                   const n = v == null ? null : Number(v);
                   return n != null && Number.isFinite(n) && n > 0 ? n : '—';
                 },
+              },
+              {
+                title: 'Было → Стало',
+                key: 'balance',
+                width: 150,
+                align: 'right' as const,
+                render: (_v: unknown, r: any) => <StockBalanceCell movement={r} />,
               },
               {
                 title: 'Клиент',
