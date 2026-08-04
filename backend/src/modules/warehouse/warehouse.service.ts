@@ -456,7 +456,9 @@ export class WarehouseService {
         }
       }
 
-      const rollNoteApplied = dto.affectStock !== false && dto.type === 'IN' && dto.rollQuantity != null && product.rollStock != null;
+      // Рулоны пишем отдельной колонкой (а не только в текст примечания) — так они
+      // видны как самостоятельная величина в истории движений и деталях товара.
+      const rollQuantity = dto.rollQuantity != null && product.rollStock != null ? dto.rollQuantity : null;
 
       // Create movement record
       const movement = await tx.inventoryMovement.create({
@@ -464,11 +466,11 @@ export class WarehouseService {
           productId: dto.productId,
           type: dto.type,
           quantity: dto.quantity,
+          rollQuantity,
           dealId: dto.dealId,
           note: [
             dto.note,
             dto.affectStock === false ? '(запись без изменения остатка)' : null,
-            rollNoteApplied ? `(+${dto.rollQuantity} рул.)` : null,
           ].filter(Boolean).join(' ') || undefined,
           createdBy: userId,
         },

@@ -253,17 +253,6 @@ export class DealsService {
         );
       }
 
-      await tx.inventoryMovement.create({
-        data: {
-          productId: item.productId,
-          type: 'OUT',
-          quantity: qty,
-          dealId,
-          note: movementNote,
-          createdBy: userId,
-        },
-      });
-
       // Второй, параллельный остаток в рулонах (напр. ламинационная плёнка): списывается вместе с кг,
       // но не блокирует закрытие сделки при нехватке — это вспомогательный счётчик, не основной.
       // Источник кол-ва рулонов: явное поле roll_count (если склад подтвердил), иначе —
@@ -273,6 +262,20 @@ export class DealsService {
         const m = String(item.requestComment).match(/(\d+(?:[.,]\d+)?)/);
         if (m) rollCount = parseFloat(m[1].replace(',', '.'));
       }
+
+      await tx.inventoryMovement.create({
+        data: {
+          productId: item.productId,
+          type: 'OUT',
+          quantity: qty,
+          // Пишем рулоны в само движение — иначе в истории склада видны только кг.
+          rollQuantity: rollCount > 0 ? rollCount : null,
+          dealId,
+          note: movementNote,
+          createdBy: userId,
+        },
+      });
+
       if (rollCount > 0) {
         const currentRollStock = item.product.rollStock != null ? Number(item.product.rollStock) : 0;
         await tx.product.update({

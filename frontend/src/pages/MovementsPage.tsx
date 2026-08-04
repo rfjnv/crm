@@ -105,6 +105,16 @@ export default function MovementsPage() {
     { title: 'Артикул', dataIndex: ['product', 'sku'], render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Кол-во', dataIndex: 'quantity', align: 'right' as const, width: 80 },
     {
+      title: 'Рулоны',
+      dataIndex: 'rollQuantity',
+      align: 'right' as const,
+      width: 80,
+      render: (v: string | number | null | undefined) => {
+        const n = v == null ? null : Number(v);
+        return n != null && Number.isFinite(n) && n > 0 ? n : '—';
+      },
+    },
+    {
       title: 'Клиент',
       key: 'client',
       render: (_: unknown, record: any) => {

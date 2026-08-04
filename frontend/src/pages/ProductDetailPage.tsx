@@ -406,15 +406,31 @@ export default function ProductDetailPage() {
                 align: 'right' as const,
               },
               {
-                title: 'Сделка',
-                dataIndex: ['deal', 'title'],
-                render: (_v: string | undefined, r: any) =>
-                  r.deal ? (
+                title: 'Рулоны',
+                dataIndex: 'rollQuantity',
+                width: 90,
+                align: 'right' as const,
+                render: (v: string | number | null | undefined) => {
+                  const n = v == null ? null : Number(v);
+                  return n != null && Number.isFinite(n) && n > 0 ? n : '—';
+                },
+              },
+              {
+                title: 'Клиент',
+                key: 'client',
+                render: (_v: unknown, r: any) => {
+                  if (!r.deal) return '—';
+                  return (
                     <Space size={4} wrap>
-                      <Link to={`/deals/${r.deal.id}`}>{r.deal.title || r.deal.id.slice(0, 8)}</Link>
+                      <Link to={`/deals/${r.deal.id}`} style={{ textDecoration: 'none' }}>
+                        {r.deal.client
+                          ? <ClientCompanyDisplay client={r.deal.client} />
+                          : (r.deal.title || r.deal.id.slice(0, 8))}
+                      </Link>
                       <ReceiptPunchedTag isReceiptPunched={r.deal.isReceiptPunched} />
                     </Space>
-                  ) : '—',
+                  );
+                },
               },
               {
                 title: 'Примечание',
