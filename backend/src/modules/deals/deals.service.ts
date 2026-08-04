@@ -2997,11 +2997,14 @@ export class DealsService {
    * Сверяет уже отгруженное количество (OUT-движения) с новым набором количеств по товарам
    * и создаёт компенсирующие IN/OUT движения, чтобы склад остался консистентным при
    * override-редактировании позиций сделки (супер-админ или завсклад).
+   *
+   * Рулоны (второй, параллельный остаток) сверяются наравне с кг: раньше они не
+   * возвращались вовсе, и после уменьшения/удаления позиции rollStock оставался заниженным.
    */
   private async reconcileShippedStockForItemsInTx(
     tx: Prisma.TransactionClient,
     dealId: string,
-    newQtyByProduct: Map<string, number>,
+    newByProduct: Map<string, { qty: number; rolls: number }>,
     userId: string,
     noteSuffix: string,
   ): Promise<void> {
@@ -3011,29 +3014,45 @@ export class DealsService {
 
     if (existingMovements.length === 0) return;
 
-    const shippedQtyMap = new Map<string, number>();
+    const shippedMap = new Map<string, { qty: number; rolls: number }>();
     for (const mov of existingMovements) {
-      const prev = shippedQtyMap.get(mov.productId) ?? 0;
-      shippedQtyMap.set(mov.productId, prev + Number(mov.quantity));
+      const prev = shippedMap.get(mov.productId) ?? { qty: 0, rolls: 0 };
+      prev.qty += Number(mov.quantity);
+      prev.rolls += mov.rollQuantity != null ? Number(mov.rollQuantity) : 0;
+      shippedMap.set(mov.productId, prev);
     }
 
-    const allProductIds = new Set([...shippedQtyMap.keys(), ...newQtyByProduct.keys()]);
+    const allProductIds = [...new Set([...shippedMap.keys(), ...newByProduct.keys()])];
+    // rollStock === null — товар без рулонного учёта, его рулоны не трогаем вообще.
+    const rollStockById = new Map(
+      (await tx.product.findMany({
+        where: { id: { in: allProductIds } },
+        select: { id: true, rollStock: true },
+      })).map((p) => [p.id, p.rollStock != null ? Number(p.rollStock) : null]),
+    );
+
     for (const productId of allProductIds) {
-      const shipped = shippedQtyMap.get(productId) ?? 0;
-      const newQty = newQtyByProduct.get(productId) ?? 0;
-      const diff = shipped - newQty;
+      const shipped = shippedMap.get(productId) ?? { qty: 0, rolls: 0 };
+      const next = newByProduct.get(productId) ?? { qty: 0, rolls: 0 };
+      const diff = shipped.qty - next.qty;
+      const currentRolls = rollStockById.get(productId) ?? null;
+      const rollDiff = currentRolls != null ? shipped.rolls - next.rolls : 0;
 
       if (diff > 0) {
         // Quantity decreased — return to stock
         await tx.product.update({
           where: { id: productId },
-          data: { stock: { increment: diff } },
+          data: {
+            stock: { increment: diff },
+            ...(rollDiff !== 0 ? { rollStock: currentRolls! + rollDiff } : {}),
+          },
         });
         await tx.inventoryMovement.create({
           data: {
             productId,
             type: 'IN',
             quantity: diff,
+            rollQuantity: rollDiff > 0 ? rollDiff : null,
             dealId,
             note: `Возврат на склад: коррекция при изменении сделки (${noteSuffix})`,
             createdBy: userId,
@@ -3052,13 +3071,37 @@ export class DealsService {
             `Недостаточно товара "${product?.name}" на складе для увеличения количества`,
           );
         }
+        if (rollDiff !== 0) {
+          await tx.product.update({
+            where: { id: productId },
+            data: { rollStock: currentRolls! + rollDiff },
+          });
+        }
         await tx.inventoryMovement.create({
           data: {
             productId,
             type: 'OUT',
             quantity: absDiff,
+            rollQuantity: rollDiff < 0 ? Math.abs(rollDiff) : null,
             dealId,
             note: `Доп. списание: коррекция при изменении сделки (${noteSuffix})`,
+            createdBy: userId,
+          },
+        });
+      } else if (rollDiff !== 0) {
+        // Кг не изменились, а рулоны — да (напр. склад уточнил только кол-во рулонов).
+        await tx.product.update({
+          where: { id: productId },
+          data: { rollStock: currentRolls! + rollDiff },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            productId,
+            type: rollDiff > 0 ? 'IN' : 'OUT',
+            quantity: 0,
+            rollQuantity: Math.abs(rollDiff),
+            dealId,
+            note: `Коррекция рулонов при изменении сделки (${noteSuffix})`,
             createdBy: userId,
           },
         });
@@ -3175,10 +3218,12 @@ export class DealsService {
       // Items full replacement
       if (dto.items !== undefined) {
         // Build map of new quantities per product and reconcile against shipped OUT movements
-        const newQtyMap = new Map<string, number>();
+        const newQtyMap = new Map<string, { qty: number; rolls: number }>();
         for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? 0;
-          newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
+          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0 };
+          prev.qty += item.requestedQty ?? 0;
+          prev.rolls += item.rollCount ?? 0;
+          newQtyMap.set(item.productId, prev);
         }
         await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
 
@@ -3453,10 +3498,12 @@ export class DealsService {
 
       // Items full replacement (same semantics as the SUPER_ADMIN override)
       if (dto.items !== undefined) {
-        const newQtyMap = new Map<string, number>();
+        const newQtyMap = new Map<string, { qty: number; rolls: number }>();
         for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? 0;
-          newQtyMap.set(item.productId, prev + (item.requestedQty ?? 0));
+          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0 };
+          prev.qty += item.requestedQty ?? 0;
+          prev.rolls += item.rollCount ?? 0;
+          newQtyMap.set(item.productId, prev);
         }
         await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'оверрайд склада');
 
@@ -3697,50 +3744,89 @@ export class DealsService {
       // верными за счёт компенсирующего decrement, но в истории появлялась вторая запись).
       if (deal.movements.length > 0) {
         const dealLabel = deal.title || id.slice(0, 8);
-        const netByProduct = new Map<string, number>();
+        const netByProduct = new Map<string, { qty: number; rolls: number }>();
         for (const mov of deal.movements) {
           if (mov.type !== 'OUT' && mov.type !== 'IN') continue;
-          const delta = mov.type === 'OUT' ? Number(mov.quantity) : -Number(mov.quantity);
-          netByProduct.set(mov.productId, (netByProduct.get(mov.productId) ?? 0) + delta);
+          const sign = mov.type === 'OUT' ? 1 : -1;
+          const prev = netByProduct.get(mov.productId) ?? { qty: 0, rolls: 0 };
+          prev.qty += sign * Number(mov.quantity);
+          prev.rolls += sign * (mov.rollQuantity != null ? Number(mov.rollQuantity) : 0);
+          netByProduct.set(mov.productId, prev);
         }
 
+        // rollStock === null — товар без рулонного учёта, рулоны не трогаем.
+        const rollStockById = new Map(
+          (await tx.product.findMany({
+            where: { id: { in: [...netByProduct.keys()] } },
+            select: { id: true, rollStock: true },
+          })).map((p) => [p.id, p.rollStock != null ? Number(p.rollStock) : null]),
+        );
+
         for (const [productId, net] of netByProduct) {
-          if (net > 0) {
+          const currentRolls = rollStockById.get(productId) ?? null;
+          const netRolls = currentRolls != null ? net.rolls : 0;
+
+          if (net.qty > 0) {
             // Чистое количество всё ещё числится отгруженным — возвращаем на склад один раз.
             await tx.product.update({
               where: { id: productId },
-              data: { stock: { increment: net } },
+              data: {
+                stock: { increment: net.qty },
+                ...(netRolls !== 0 ? { rollStock: currentRolls! + netRolls } : {}),
+              },
             });
             await tx.inventoryMovement.create({
               data: {
                 productId,
                 type: 'IN',
-                quantity: net,
+                quantity: net.qty,
+                rollQuantity: netRolls > 0 ? netRolls : null,
                 dealId: null,
                 note: `Возврат на склад: сделка "${dealLabel}" удалена`,
                 createdBy: user.userId,
               },
             });
-          } else if (net < 0) {
+          } else if (net.qty < 0) {
             // Вернули на склад больше, чем отгрузили (напр. ручная коррекция) — убираем разницу.
-            const absNet = Math.abs(net);
+            const absNet = Math.abs(net.qty);
             await tx.product.update({
               where: { id: productId },
-              data: { stock: { decrement: absNet } },
+              data: {
+                stock: { decrement: absNet },
+                ...(netRolls !== 0 ? { rollStock: currentRolls! + netRolls } : {}),
+              },
             });
             await tx.inventoryMovement.create({
               data: {
                 productId,
                 type: 'OUT',
                 quantity: absNet,
+                rollQuantity: netRolls < 0 ? Math.abs(netRolls) : null,
                 dealId: null,
                 note: `Коррекция при удалении сделки "${dealLabel}": ранее возвращено больше, чем отгружено`,
                 createdBy: user.userId,
               },
             });
+          } else if (netRolls !== 0) {
+            // Кг уже вернули до удаления, а рулоны — нет: возвращаем только их.
+            await tx.product.update({
+              where: { id: productId },
+              data: { rollStock: currentRolls! + netRolls },
+            });
+            await tx.inventoryMovement.create({
+              data: {
+                productId,
+                type: netRolls > 0 ? 'IN' : 'OUT',
+                quantity: 0,
+                rollQuantity: Math.abs(netRolls),
+                dealId: null,
+                note: `Возврат рулонов на склад: сделка "${dealLabel}" удалена`,
+                createdBy: user.userId,
+              },
+            });
           }
-          // net === 0 — товар уже полностью вернули на склад до удаления сделки,
-          // новых движений создавать не нужно.
+          // net.qty === 0 и netRolls === 0 — товар уже полностью вернули на склад
+          // до удаления сделки, новых движений создавать не нужно.
         }
 
         // Unlink original movements from deal (keep history)
