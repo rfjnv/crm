@@ -220,7 +220,16 @@ function parseOptionalDate(value?: string | null): Date | null | undefined {
 
 export class DealsService {
   /**
-   * Списание товара при закрытии. Если уже есть OUT по сделке (накладная submitShipment) — не дублируем.
+   * Списание товара при закрытии. Списывает только НЕДОСТАЮЩЕЕ количество —
+   * т.е. requestedQty минус уже отгруженное по сделке (OUT минус IN по этому товару),
+   * а не пропускает списание целиком при виде любого прошлого OUT.
+   *
+   * Раньше это была бинарная проверка «есть OUT по сделке → выходим» — задумывалась
+   * как защита от двойного списания (напр. накладная submitShipment уже создала OUT
+   * до закрытия). Но та же проверка ломала цикл переоткрытие→правка→повторное закрытие:
+   * после того как переоткрытие возвращает товар на склад (см.
+   * returnShippedStockForDealInTx), в сделке всё ещё остаётся её ПЕРВЫЙ OUT в истории —
+   * и функция считала товар уже списанным, хотя чистый эффект уже был нулевым.
    */
   private async deductInventoryForDealInTx(
     tx: Prisma.TransactionClient,
@@ -228,10 +237,17 @@ export class DealsService {
     userId: string,
     movementNote = 'Автосписание при закрытии сделки',
   ) {
-    const existing = await tx.inventoryMovement.findFirst({
-      where: { dealId, type: 'OUT' },
+    const existingMovements = await tx.inventoryMovement.findMany({
+      where: { dealId, type: { in: ['OUT', 'IN'] } },
     });
-    if (existing) return;
+    const shippedByProduct = new Map<string, { qty: number; rolls: number }>();
+    for (const mov of existingMovements) {
+      const sign = mov.type === 'OUT' ? 1 : -1;
+      const prev = shippedByProduct.get(mov.productId) ?? { qty: 0, rolls: 0 };
+      prev.qty += sign * Number(mov.quantity);
+      prev.rolls += sign * (mov.rollQuantity != null ? Number(mov.rollQuantity) : 0);
+      shippedByProduct.set(mov.productId, prev);
+    }
 
     const dealItems = await tx.dealItem.findMany({
       where: { dealId },
@@ -239,8 +255,12 @@ export class DealsService {
     });
 
     for (const item of dealItems) {
-      const qty = Number(item.requestedQty ?? 0);
-      if (qty <= 0) continue;
+      const requestedQty = Number(item.requestedQty ?? 0);
+      if (requestedQty <= 0) continue;
+
+      const shipped = shippedByProduct.get(item.productId) ?? { qty: 0, rolls: 0 };
+      const qty = requestedQty - shipped.qty;
+      if (qty <= 0) continue; // уже списано достаточно (или больше) — новое списание не нужно
 
       const result = await tx.product.updateMany({
         where: { id: item.productId, stock: { gte: qty } },
@@ -257,11 +277,12 @@ export class DealsService {
       // но не блокирует закрытие сделки при нехватке — это вспомогательный счётчик, не основной.
       // Источник кол-ва рулонов: явное поле roll_count (если склад подтвердил), иначе —
       // подсказка менеджера в комментарии позиции («N рул.»), т.к. рулоны вводит менеджер при создании.
-      let rollCount = item.rollCount != null ? Number(item.rollCount) : NaN;
-      if (!(rollCount > 0) && item.product.category === 'Ламинационная пленка' && item.requestComment) {
+      let requestedRollCount = item.rollCount != null ? Number(item.rollCount) : NaN;
+      if (!(requestedRollCount > 0) && item.product.category === 'Ламинационная пленка' && item.requestComment) {
         const m = String(item.requestComment).match(/(\d+(?:[.,]\d+)?)/);
-        if (m) rollCount = parseFloat(m[1].replace(',', '.'));
+        if (m) requestedRollCount = parseFloat(m[1].replace(',', '.'));
       }
+      const rollCount = Number.isFinite(requestedRollCount) ? requestedRollCount - shipped.rolls : NaN;
 
       const stockBefore = Number(item.product.stock);
       const rollBefore = item.product.rollStock != null ? Number(item.product.rollStock) : null;
@@ -3143,6 +3164,80 @@ export class DealsService {
     }
   }
 
+  /**
+   * Возвращает на склад товар, который сделка уже списала (закрытие/автосписание),
+   * когда её уводят из статуса CLOSED БЕЗ одновременной правки позиций. Без этого
+   * (баг) переоткрытие закрытой сделки оставляло остаток списанным навсегда — товар
+   * считался проданным, хотя сделка обратно «в работе».
+   *
+   * Считает чистый эффект по каждому товару (OUT минус уже сделанные IN-возвраты),
+   * как при удалении сделки, но НЕ трогает исходные движения — сделка не удаляется,
+   * история должна остаться как есть, добавляется только компенсирующая запись.
+   */
+  private async returnShippedStockForDealInTx(
+    tx: Prisma.TransactionClient,
+    dealId: string,
+    userId: string,
+    dealLabel: string,
+  ): Promise<void> {
+    const movements = await tx.inventoryMovement.findMany({
+      where: { dealId, type: { in: ['OUT', 'IN'] } },
+    });
+    if (movements.length === 0) return;
+
+    const netByProduct = new Map<string, { qty: number; rolls: number }>();
+    for (const mov of movements) {
+      const sign = mov.type === 'OUT' ? 1 : -1;
+      const prev = netByProduct.get(mov.productId) ?? { qty: 0, rolls: 0 };
+      prev.qty += sign * Number(mov.quantity);
+      prev.rolls += sign * (mov.rollQuantity != null ? Number(mov.rollQuantity) : 0);
+      netByProduct.set(mov.productId, prev);
+    }
+
+    const stateById = new Map(
+      (await tx.product.findMany({
+        where: { id: { in: [...netByProduct.keys()] } },
+        select: { id: true, stock: true, rollStock: true },
+      })).map((p) => [p.id, {
+        stock: Number(p.stock),
+        rolls: p.rollStock != null ? Number(p.rollStock) : null,
+      }]),
+    );
+
+    for (const [productId, net] of netByProduct) {
+      if (net.qty <= 0) continue; // уже возвращено (или изначально было IN без OUT) — трогать нечего
+
+      const state = stateById.get(productId);
+      const stockBefore = state?.stock ?? 0;
+      const currentRolls = state?.rolls ?? null;
+      const netRolls = currentRolls != null ? net.rolls : 0;
+      const rollsAfter = currentRolls != null ? currentRolls + netRolls : null;
+
+      await tx.product.update({
+        where: { id: productId },
+        data: {
+          stock: { increment: net.qty },
+          ...(netRolls !== 0 ? { rollStock: rollsAfter! } : {}),
+        },
+      });
+      await tx.inventoryMovement.create({
+        data: {
+          productId,
+          type: 'IN',
+          quantity: net.qty,
+          rollQuantity: netRolls > 0 ? netRolls : null,
+          stockBefore,
+          stockAfter: stockBefore + net.qty,
+          rollStockBefore: currentRolls,
+          rollStockAfter: rollsAfter,
+          dealId,
+          note: `Возврат на склад: сделка "${dealLabel}" переоткрыта`,
+          createdBy: userId,
+        },
+      });
+    }
+  }
+
   async overrideUpdate(id: string, dto: SuperOverrideDealDto, user: AuthUser) {
     const deal = await prisma.deal.findUnique({
       where: { id },
@@ -3208,6 +3303,13 @@ export class DealsService {
       } : null,
     };
 
+    // Сделку уводят из CLOSED этим же вызовом — товар, списанный при закрытии,
+    // возвращаем целиком (см. returnShippedStockForDealInTx), даже если items
+    // пришли в том же запросе: правки цены/кол-ва тут — это правки состояния
+    // уже НЕ закрытой сделки, а не новая отгрузка, поэтому сверку через
+    // reconcileShippedStockForItemsInTx в этом случае не запускаем.
+    const leavingClosed = dto.status !== undefined && dto.status !== 'CLOSED' && deal.status === 'CLOSED';
+
     await prisma.$transaction(async (tx) => {
       const data: Record<string, unknown> = {};
 
@@ -3263,7 +3365,9 @@ export class DealsService {
           }
           newQtyMap.set(item.productId, prev);
         }
-        await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
+        if (!leavingClosed) {
+          await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
+        }
 
         const existingItems = await tx.dealItem.findMany({ where: { dealId: id } });
         const existingItemIds = new Set(existingItems.map((item) => item.id));
@@ -3391,6 +3495,11 @@ export class DealsService {
       }
       if (dto.closedAt === undefined && dto.status !== undefined && dto.status === 'CLOSED' && deal.status !== 'CLOSED') {
         data.closedAt = resolveClosedAtForNewClose(deal, new Date());
+      }
+      // Уводят из CLOSED (независимо от того, пришли ли заодно новые items) — то, что
+      // списалось при закрытии, товаром больше не считается, возвращаем на склад целиком.
+      if (leavingClosed) {
+        await this.returnShippedStockForDealInTx(tx, id, user.userId, deal.title || id.slice(0, 8));
       }
 
       if (Object.keys(data).length > 0) {
