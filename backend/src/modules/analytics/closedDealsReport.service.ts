@@ -44,11 +44,29 @@ type ClosedDealsExcelRow = {
   'Число оплаты': number;
 };
 
+export type ManagerBreakdown = {
+  managerName: string;
+  dealsCount: number;
+  clientsCount: number;
+  totalAmount: number;
+  debtAmount: number;
+};
+
+export type PaymentMethodBreakdown = {
+  method: string;
+  count: number;
+  totalAmount: number;
+};
+
 export type ClosedDealsReportResult = {
   from: string;
   to: string;
   rowCount: number;
   totalLineAmount: number;
+  totalDebtAmount: number;
+  clientsCount: number;
+  managerBreakdown: ManagerBreakdown[];
+  paymentMethodBreakdown: PaymentMethodBreakdown[];
   xlsxBuffer: Buffer;
   csvBuffer: Buffer;
 };
@@ -84,53 +102,108 @@ function normalizeDateCell(v: string | null): string {
   return v.length >= 10 ? v.slice(0, 10) : v;
 }
 
-function buildWorkbook(rows: ClosedDealsExcelRow[]): Buffer {
-  const ws = XLSX.utils.json_to_sheet(rows, {
-    header: [
-      'Дата закрытия',
-      'Клиент',
-      'Менеджер',
-      'Товар',
-      'Кол-во',
-      'Ед. изм.',
-      'Цена',
-      'Сумма',
-      'Способ оплаты',
-      'Срок оплаты',
-      'Номер договора',
-      'Сумма оплаты',
-      'Каким способом оплатил',
-      'Остаток долга',
-      'Число оплаты',
-    ],
+const REPORT_HEADER = [
+  'Дата закрытия',
+  'Клиент',
+  'Менеджер',
+  'Товар',
+  'Кол-во',
+  'Ед. изм.',
+  'Цена',
+  'Сумма',
+  'Способ оплаты',
+  'Срок оплаты',
+  'Номер договора',
+  'Сумма оплаты',
+  'Каким способом оплатил',
+  'Остаток долга',
+  'Число оплаты',
+];
+
+const REPORT_COLUMN_WIDTHS: Array<{ wch: number }> = [
+  { wch: 13 }, // Дата закрытия
+  { wch: 26 }, // Клиент
+  { wch: 20 }, // Менеджер
+  { wch: 38 }, // Товар
+  { wch: 10 }, // Кол-во
+  { wch: 9 }, // Ед. изм.
+  { wch: 12 }, // Цена
+  { wch: 14 }, // Сумма
+  { wch: 13 }, // Способ оплаты
+  { wch: 13 }, // Срок оплаты
+  { wch: 16 }, // Номер договора
+  { wch: 14 }, // Сумма оплаты
+  { wch: 22 }, // Каким способом оплатил
+  { wch: 14 }, // Остаток долга
+  { wch: 12 }, // Число оплаты
+];
+
+const MONEY_COLUMNS = new Set(['Цена', 'Сумма', 'Сумма оплаты', 'Остаток долга']);
+
+function applyMoneyFormat(ws: XLSX.WorkSheet, rows: ClosedDealsExcelRow[]): void {
+  REPORT_HEADER.forEach((header, colIdx) => {
+    if (!MONEY_COLUMNS.has(header)) return;
+    for (let r = 0; r < rows.length; r += 1) {
+      const cellRef = XLSX.utils.encode_cell({ r: r + 1, c: colIdx });
+      const cell = ws[cellRef];
+      if (cell && cell.t === 'n') {
+        cell.z = '#,##0';
+      }
+    }
   });
+}
+
+function buildWorkbook(rows: ClosedDealsExcelRow[]): Buffer {
+  const ws = XLSX.utils.json_to_sheet(rows, { header: REPORT_HEADER });
+  ws['!cols'] = REPORT_COLUMN_WIDTHS;
+  const lastCol = XLSX.utils.encode_col(REPORT_HEADER.length - 1);
+  ws['!autofilter'] = { ref: `A1:${lastCol}${rows.length + 1}` };
+  applyMoneyFormat(ws, rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'ClosedDeals');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
 function buildCsv(rows: ClosedDealsExcelRow[]): Buffer {
-  const ws = XLSX.utils.json_to_sheet(rows, {
-    header: [
-      'Дата закрытия',
-      'Клиент',
-      'Менеджер',
-      'Товар',
-      'Кол-во',
-      'Ед. изм.',
-      'Цена',
-      'Сумма',
-      'Способ оплаты',
-      'Срок оплаты',
-      'Номер договора',
-      'Сумма оплаты',
-      'Каким способом оплатил',
-      'Остаток долга',
-      'Число оплаты',
-    ],
-  });
+  const ws = XLSX.utils.json_to_sheet(rows, { header: REPORT_HEADER });
   const csv = XLSX.utils.sheet_to_csv(ws, { FS: ',', RS: '\n' });
   return Buffer.from(`\uFEFF${csv}`, 'utf8');
+}
+
+function buildManagerBreakdown(excelRows: ClosedDealsExcelRow[]): ManagerBreakdown[] {
+  const byManager = new Map<string, { deals: Set<string>; clients: Set<string>; total: number; debt: number }>();
+  for (const row of excelRows) {
+    const manager = row['\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440'] || '\u0411\u0435\u0437 \u043C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0430';
+    const entry = byManager.get(manager) || { deals: new Set(), clients: new Set(), total: 0, debt: 0 };
+    entry.deals.add(`${row['\u041A\u043B\u0438\u0435\u043D\u0442']}|${row['\u0414\u0430\u0442\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u044F']}|${row['\u041D\u043E\u043C\u0435\u0440 \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0430']}`);
+    entry.clients.add(row['\u041A\u043B\u0438\u0435\u043D\u0442']);
+    entry.total += row['\u0421\u0443\u043C\u043C\u0430'];
+    entry.debt += row['\u041E\u0441\u0442\u0430\u0442\u043E\u043A \u0434\u043E\u043B\u0433\u0430'];
+    byManager.set(manager, entry);
+  }
+  return Array.from(byManager.entries())
+    .map(([managerName, v]) => ({
+      managerName,
+      dealsCount: v.deals.size,
+      clientsCount: v.clients.size,
+      totalAmount: v.total,
+      debtAmount: v.debt,
+    }))
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+}
+
+function buildPaymentMethodBreakdown(excelRows: ClosedDealsExcelRow[]): PaymentMethodBreakdown[] {
+  const byMethod = new Map<string, { count: number; total: number }>();
+  for (const row of excelRows) {
+    const method = row['\u0421\u043F\u043E\u0441\u043E\u0431 \u043E\u043F\u043B\u0430\u0442\u044B'] || '\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D';
+    const entry = byMethod.get(method) || { count: 0, total: 0 };
+    entry.count += 1;
+    entry.total += row['\u0421\u0443\u043C\u043C\u0430'];
+    byMethod.set(method, entry);
+  }
+  return Array.from(byMethod.entries())
+    .map(([method, v]) => ({ method, count: v.count, totalAmount: v.total }))
+    .sort((a, b) => b.totalAmount - a.totalAmount);
 }
 
 class ClosedDealsReportService {
@@ -223,6 +296,10 @@ class ClosedDealsReportService {
     });
 
     const totalLineAmount = excelRows.reduce((acc, row) => acc + row['Сумма'], 0);
+    const totalDebtAmount = excelRows.reduce((acc, row) => acc + row['Остаток долга'], 0);
+    const clientsCount = new Set(excelRows.map((row) => row['Клиент'])).size;
+    const managerBreakdown = buildManagerBreakdown(excelRows);
+    const paymentMethodBreakdown = buildPaymentMethodBreakdown(excelRows);
     const xlsxBuffer = buildWorkbook(excelRows);
     const csvBuffer = buildCsv(excelRows);
 
@@ -231,6 +308,10 @@ class ClosedDealsReportService {
       to,
       rowCount: excelRows.length,
       totalLineAmount,
+      totalDebtAmount,
+      clientsCount,
+      managerBreakdown,
+      paymentMethodBreakdown,
       xlsxBuffer,
       csvBuffer,
     };

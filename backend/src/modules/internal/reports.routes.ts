@@ -37,6 +37,54 @@ function getTashkentNowHour(): number {
   return nowTashkent.getUTCHours();
 }
 
+function formatSum(n: number): string {
+  return Math.round(n).toLocaleString('ru-RU');
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildReportHtml(
+  sendDateDisplay: string,
+  report: Awaited<ReturnType<typeof closedDealsReportService.buildReport>>,
+): string {
+  const lines: string[] = [];
+  lines.push('📊 <b>Ежедневный отчёт закрытых сделок</b>');
+  lines.push(`🗓 Дата: ${escapeHtml(sendDateDisplay)}`);
+  lines.push('');
+  lines.push('<b>Итого за день:</b>');
+  lines.push(`• Позиций: ${report.rowCount}`);
+  lines.push(`• Клиентов: ${report.clientsCount}`);
+  lines.push(`• Сумма продаж: ${formatSum(report.totalLineAmount)} сум`);
+  if (report.totalDebtAmount > 0) {
+    lines.push(`• Остаток долга: ${formatSum(report.totalDebtAmount)} сум`);
+  }
+
+  if (report.managerBreakdown.length > 0) {
+    lines.push('');
+    lines.push('<b>По менеджерам:</b>');
+    for (const m of report.managerBreakdown) {
+      lines.push(
+        `• ${escapeHtml(m.managerName)} — ${m.dealsCount} сдел., ${m.clientsCount} клиент(ов), ${formatSum(m.totalAmount)} сум`,
+      );
+    }
+  }
+
+  if (report.paymentMethodBreakdown.length > 0) {
+    lines.push('');
+    lines.push('<b>По способу оплаты:</b>');
+    for (const p of report.paymentMethodBreakdown) {
+      lines.push(`• ${escapeHtml(p.method)}: ${p.count} шт., ${formatSum(p.totalAmount)} сум`);
+    }
+  }
+
+  lines.push('');
+  lines.push('📎 Полная таблица — во вложении');
+
+  return lines.join('\n');
+}
+
 export async function sendDailyClosedDealsToWarehouse(): Promise<{
   ok: boolean;
   period: { from: string; to: string };
@@ -51,16 +99,20 @@ export async function sendDailyClosedDealsToWarehouse(): Promise<{
   const { from, to } = closedDealsReportService.getTodayRange();
   const report = await closedDealsReportService.buildReport(from, to);
   const sendDate = closedDealsReportService.getTodayTashkentYmd();
-  const fileName = `${formatDdMmYyyyByTashkent(sendDate)}.csv`;
-  const caption = [
-    '📊 Ежедневный отчёт закрытых сделок',
-    `Период: ${from}`,
-    `Строк: ${report.rowCount}`,
-    `Сумма: ${Math.round(report.totalLineAmount).toLocaleString('ru-RU')}`,
-  ].join('\n');
+  const sendDateDisplay = formatDdMmYyyyByTashkent(sendDate);
+  const fileName = `${sendDateDisplay}.xlsx`;
 
-  const sent = await telegramService.sendGroupDocument(chatId, report.csvBuffer, fileName, caption);
-  const fileSize = report.csvBuffer.length;
+  let sent = false;
+  if (report.rowCount > 0) {
+    const html = buildReportHtml(sendDateDisplay, report);
+    const messageSent = await telegramService.sendGroupHtmlMessage(chatId, html);
+    const docSent = await telegramService.sendGroupDocument(chatId, report.xlsxBuffer, fileName);
+    sent = messageSent !== null && docSent;
+  } else {
+    const html = `📊 <b>Ежедневный отчёт закрытых сделок</b>\n🗓 Дата: ${sendDateDisplay}\n\nСегодня закрытых сделок нет.`;
+    sent = (await telegramService.sendGroupHtmlMessage(chatId, html)) !== null;
+  }
+  const fileSize = report.xlsxBuffer.length;
 
   console.log(
     `[daily-closed-deals] period=${from} rows=${report.rowCount} bytes=${fileSize} hour_tashkent=${getTashkentNowHour()} telegramSent=${sent}`,
