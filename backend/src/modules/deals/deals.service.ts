@@ -3012,21 +3012,25 @@ export class DealsService {
   private async reconcileShippedStockForItemsInTx(
     tx: Prisma.TransactionClient,
     dealId: string,
-    newByProduct: Map<string, { qty: number; rolls: number }>,
+    newByProduct: Map<string, { qty: number; rolls: number; rollsProvided: boolean }>,
     userId: string,
     noteSuffix: string,
   ): Promise<void> {
     const existingMovements = await tx.inventoryMovement.findMany({
-      where: { dealId, type: 'OUT' },
+      where: { dealId, type: { in: ['OUT', 'IN'] } },
     });
 
-    if (existingMovements.length === 0) return;
+    if (!existingMovements.some((m) => m.type === 'OUT')) return;
 
+    // «Отгружено» = OUT МИНУС уже сделанные возвраты (IN). Если считать только OUT,
+    // то каждое повторное сохранение сделки сравнивало бы новое количество с исходной
+    // отгрузкой и возвращало одну и ту же разницу снова и снова.
     const shippedMap = new Map<string, { qty: number; rolls: number }>();
     for (const mov of existingMovements) {
+      const sign = mov.type === 'OUT' ? 1 : -1;
       const prev = shippedMap.get(mov.productId) ?? { qty: 0, rolls: 0 };
-      prev.qty += Number(mov.quantity);
-      prev.rolls += mov.rollQuantity != null ? Number(mov.rollQuantity) : 0;
+      prev.qty += sign * Number(mov.quantity);
+      prev.rolls += sign * (mov.rollQuantity != null ? Number(mov.rollQuantity) : 0);
       shippedMap.set(mov.productId, prev);
     }
 
@@ -3045,12 +3049,16 @@ export class DealsService {
 
     for (const productId of allProductIds) {
       const shipped = shippedMap.get(productId) ?? { qty: 0, rolls: 0 };
-      const next = newByProduct.get(productId) ?? { qty: 0, rolls: 0 };
+      // Товара нет в новом списке — позицию удалили из сделки: возвращаем и кг, и рулоны.
+      const next = newByProduct.get(productId) ?? { qty: 0, rolls: 0, rollsProvided: true };
       const diff = shipped.qty - next.qty;
       const state = stateById.get(productId);
       const stockBefore = state?.stock ?? 0;
       const currentRolls = state?.rolls ?? null;
-      const rollDiff = currentRolls != null ? shipped.rolls - next.rolls : 0;
+      // Форма редактирования сделки может не передавать рулоны вовсе. Отсутствие поля
+      // означает «рулоны не меняли», а не «стало 0» — иначе правка одних лишь килограммов
+      // возвращала бы на склад все рулоны позиции.
+      const rollDiff = currentRolls != null && next.rollsProvided ? shipped.rolls - next.rolls : 0;
       const rollsAfter = currentRolls != null ? currentRolls + rollDiff : null;
 
       if (diff > 0) {
@@ -3243,12 +3251,16 @@ export class DealsService {
 
       // Items full replacement
       if (dto.items !== undefined) {
-        // Build map of new quantities per product and reconcile against shipped OUT movements
-        const newQtyMap = new Map<string, { qty: number; rolls: number }>();
+        // Build map of new quantities per product and reconcile against shipped movements.
+        // rollsProvided — рулоны реально пришли в запросе; иначе их не трогаем.
+        const newQtyMap = new Map<string, { qty: number; rolls: number; rollsProvided: boolean }>();
         for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0 };
+          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0, rollsProvided: false };
           prev.qty += item.requestedQty ?? 0;
-          prev.rolls += item.rollCount ?? 0;
+          if (item.rollCount != null) {
+            prev.rolls += item.rollCount;
+            prev.rollsProvided = true;
+          }
           newQtyMap.set(item.productId, prev);
         }
         await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
@@ -3265,7 +3277,8 @@ export class DealsService {
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
-            rollCount: item.rollCount ?? null,
+            // Рулоны трогаем только если их прислали — иначе правка кг стирала бы их в null.
+            ...(item.rollCount !== undefined ? { rollCount: item.rollCount } : {}),
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
             requestComment: item.requestComment,
             warehouseComment: item.warehouseComment,
@@ -3524,11 +3537,14 @@ export class DealsService {
 
       // Items full replacement (same semantics as the SUPER_ADMIN override)
       if (dto.items !== undefined) {
-        const newQtyMap = new Map<string, { qty: number; rolls: number }>();
+        const newQtyMap = new Map<string, { qty: number; rolls: number; rollsProvided: boolean }>();
         for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0 };
+          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0, rollsProvided: false };
           prev.qty += item.requestedQty ?? 0;
-          prev.rolls += item.rollCount ?? 0;
+          if (item.rollCount != null) {
+            prev.rolls += item.rollCount;
+            prev.rollsProvided = true;
+          }
           newQtyMap.set(item.productId, prev);
         }
         await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'оверрайд склада');
@@ -3546,7 +3562,8 @@ export class DealsService {
             productId: item.productId,
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
-            rollCount: item.rollCount ?? null,
+            // Рулоны трогаем только если их прислали — иначе правка кг стирала бы их в null.
+            ...(item.rollCount !== undefined ? { rollCount: item.rollCount } : {}),
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
             dealDate: parseOptionalDate(item.dealDate),
           };
