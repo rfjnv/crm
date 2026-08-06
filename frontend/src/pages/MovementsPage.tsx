@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Select, Typography, Tag, Card, Tooltip, DatePicker, Input, Row, Col, Statistic, Space } from 'antd';
-import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Select, Typography, Tag, Card, Tooltip, DatePicker, Input, Row, Col, Statistic, Space, Button, message } from 'antd';
+import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOutlined, SearchOutlined, DownloadOutlined } from '@ant-design/icons';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuthStore } from '../store/authStore';
+import { exportProductsStock } from '../utils/exportStock';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
@@ -58,6 +60,19 @@ export default function MovementsPage() {
     queryKey: ['users', 'active'],
     queryFn: () => usersApi.list(),
   });
+
+  const isSuperAdmin = useAuthStore((s) => s.user?.role) === 'SUPER_ADMIN';
+
+  /** Выгружает текущий остаток по товарам; фильтр «Товар» учитывается, остальные — про движения. */
+  function exportStock() {
+    const items = (products ?? []).filter((p) => !productFilter || p.id === productFilter);
+    if (!items.length) {
+      message.warning('Нечего выгружать: список товаров пуст');
+      return;
+    }
+    exportProductsStock(items, { includePurchasePrice: isSuperAdmin });
+    message.success(`Выгружено товаров: ${items.length}`);
+  }
 
   const summary = useMemo(() => {
     const rows = movements ?? [];
@@ -246,6 +261,9 @@ export default function MovementsPage() {
     <div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Движение склада</Typography.Title>
+        <Button icon={<DownloadOutlined />} onClick={exportStock} block={isMobile}>
+          Скачать остаток
+        </Button>
       </div>
 
       <div

@@ -19,7 +19,7 @@ import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
-import { downloadCsv } from '../utils/csv';
+import { exportProductsStock } from '../utils/exportStock';
 import type { Product, ProductReservation } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
@@ -532,44 +532,13 @@ export default function ProductsPage() {
     return { totalCount, zeroStock, lowStock, okStock, totalStockValueSale, totalStockValuePurchase, totalUnits, byCategory, topByValue };
   }, [analyticsTarget]);
 
-  /** Excel в русской локали читает запятую как десятичный разделитель. */
-  function csvNumber(value: number | string | null | undefined): string {
-    if (value === null || value === undefined || value === '') return '';
-    const n = Number(value);
-    if (!Number.isFinite(n)) return '';
-    const s = Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
-    return s.replace('.', ',');
-  }
-
   function exportStock() {
     const items = analyticsTarget;
     if (!items.length) {
       message.warning('Нечего выгружать: список пуст');
       return;
     }
-    const headers = [
-      'Артикул', 'Название', 'Категория', 'Формат', 'Страна', 'Ед. изм.',
-      'Остаток (рулоны)', 'Остаток (кг/ед.)', 'Забронировано', 'Мин. остаток',
-      ...(isSuperAdmin ? ['Цена закупки'] : []),
-      'Цена продажи', 'Статус',
-    ];
-    const rows = items.map((p) => [
-      p.sku ?? '',
-      p.name,
-      p.category ?? '',
-      p.format ?? '',
-      p.countryOfOrigin ?? '',
-      p.unit,
-      // Рулоны отдельной колонкой — только у товаров с параллельным учётом (ламинационная плёнка).
-      p.rollStock == null ? '' : csvNumber(p.rollStock),
-      csvNumber(p.stock),
-      csvNumber(p.reservedQty ?? 0),
-      csvNumber(p.minStock),
-      ...(isSuperAdmin ? [csvNumber(p.purchasePrice)] : []),
-      csvNumber(p.salePrice),
-      p.isActive ? 'Активен' : 'Неактивен',
-    ]);
-    downloadCsv(`Остаток_${dayjs().format('YYYY-MM-DD')}.csv`, headers, rows);
+    exportProductsStock(items, { includePurchasePrice: isSuperAdmin });
     message.success(`Выгружено товаров: ${items.length}`);
   }
 
