@@ -83,9 +83,16 @@ router.post('/:id/shipment-hold', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER
 router.post('/:id/shipment-release', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.releaseShipmentHold.bind(dealsController)));
 
 // Payment Records
-router.post('/:id/payments', validate(createPaymentRecordDto), asyncHandler(dealsController.createPaymentRecord.bind(dealsController)));
-router.patch('/:id/payments/:paymentId', validate(updatePaymentRecordDto), asyncHandler(dealsController.updatePaymentRecord.bind(dealsController)));
-router.delete('/:id/payments/:paymentId', asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
+// Проводка денег — операция кассы, а не общий доступ: раньше эти три маршрута были
+// открыты любому аутентифицированному пользователю в пределах ownerScope, включая
+// водителей и грузчиков (см. FULL_ACCESS_ROLES в lib/scope.ts).
+// Создавать платёж может и менеджер — но только по своим сделкам (ограничивает ownerScope).
+const PAYMENT_CREATE_ROLES = ['MANAGER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'OPERATOR'] as const;
+// Изменять и удалять уже проведённые деньги — только финансы и руководство.
+const PAYMENT_EDIT_ROLES = ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER'] as const;
+router.post('/:id/payments', authorize(...PAYMENT_CREATE_ROLES), validate(createPaymentRecordDto), asyncHandler(dealsController.createPaymentRecord.bind(dealsController)));
+router.patch('/:id/payments/:paymentId', authorize(...PAYMENT_EDIT_ROLES), validate(updatePaymentRecordDto), asyncHandler(dealsController.updatePaymentRecord.bind(dealsController)));
+router.delete('/:id/payments/:paymentId', authorize(...PAYMENT_EDIT_ROLES), asyncHandler(dealsController.deletePaymentRecord.bind(dealsController)));
 router.get('/:id/payments', asyncHandler(dealsController.getDealPayments.bind(dealsController)));
 
 // Workflow: Warehouse Manager Override (scoped-down super-override, reason required)

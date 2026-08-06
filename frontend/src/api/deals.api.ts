@@ -164,7 +164,7 @@ export const dealsApi = {
     client.get<Shipment>(`/deals/${dealId}/shipment`).then((r) => r.data),
 
   // Payment Records
-  createPayment: (dealId: string, data: { amount: number; method?: string; note?: string; paidAt?: string }) =>
+  createPayment: (dealId: string, data: { amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string }) =>
     client.post<PaymentRecord>(`/deals/${dealId}/payments`, data).then((r) => r.data),
 
   updatePayment_record: (dealId: string, paymentId: string, data: { amount?: number; method?: string | null; note?: string | null; paidAt?: string }) =>

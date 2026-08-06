@@ -1,4 +1,4 @@
-import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, Role } from '@prisma/client';
+import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, PaymentKind, Role } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import prisma from '../../lib/prisma';
@@ -6,6 +6,7 @@ import { AppError } from '../../lib/errors';
 import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
+import { isClientCreditTransfer } from '../../lib/payment-kind';
 import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
@@ -214,6 +215,36 @@ function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Ro
 function parseOptionalDate(value?: string | null): Date | null | undefined {
   if (value === undefined) return undefined;
   return value ? new Date(value) : null;
+}
+
+/**
+ * Проверяет, что платёж вообще можно удалить.
+ *
+ * Два случая, когда удаление молча портит учёт:
+ *  1. Зачёт переплаты — двусторонняя проводка. Сумма была списана со сделок-источников,
+ *     и удаление записи у цели не вернёт её обратно: деньги исчезнут без следа.
+ *  2. `paidAmount` сделки меньше суммы платежа — значит оплата уже расходится с журналом
+ *     проводок (правка мимо кассы). Обрезать результат до нуля нельзя, это скрывает потерю.
+ */
+function assertPaymentDeletable(
+  payment: { amount: Prisma.Decimal | number; note: string | null; kind?: PaymentKind },
+  dealPaidAmount: number,
+): void {
+  if (isClientCreditTransfer(payment)) {
+    throw new AppError(
+      400,
+      'Это проводка зачёта переплаты, а не поступление денег в кассу. Её удаление не вернёт '
+      + 'сумму сделкам-источникам. Нужно сторнирование — обратитесь к администратору.',
+    );
+  }
+
+  if (dealPaidAmount - Number(payment.amount) < -0.01) {
+    throw new AppError(
+      409,
+      'Оплаченная сумма по сделке меньше суммы этого платежа — данные расходятся с журналом '
+      + 'проводок. Удаление заблокировано, требуется проверка бухгалтерией.',
+    );
+  }
 }
 
 // ==================== SERVICE ====================
@@ -2446,15 +2477,39 @@ export class DealsService {
       data.terms = dto.terms;
     }
 
-    // Optimistic locking: update only if version matches
-    const result = await prisma.deal.updateMany({
-      where: { id, version: deal.version },
-      data,
-    });
+    // Прямая правка paidAmount — единственный путь, менявший деньги в обход журнала
+    // проводок: долг клиента уменьшался, а в «Кассе» и «Балансе компании» не появлялось
+    // ничего. Инвариант SUM(payments) == paidAmount ломался молча и навсегда.
+    // Теперь разница оформляется выравнивающей проводкой ADJUSTMENT — она не считается
+    // деньгами в кассовых итогах, но держит журнал сходящимся.
+    const delta = dto.paidAmount - Number(deal.paidAmount);
 
-    if (result.count === 0) {
-      throw new AppError(409, 'Данные сделки были изменены другим пользователем. Обновите страницу.');
-    }
+    await prisma.$transaction(async (tx) => {
+      // Optimistic locking: update only if version matches
+      const result = await tx.deal.updateMany({
+        where: { id, version: deal.version },
+        data,
+      });
+
+      if (result.count === 0) {
+        throw new AppError(409, 'Данные сделки были изменены другим пользователем. Обновите страницу.');
+      }
+
+      if (Math.abs(delta) > 0.01) {
+        await tx.payment.create({
+          data: {
+            dealId: id,
+            clientId: deal.clientId,
+            amount: delta,
+            paidAt: new Date(),
+            kind: 'ADJUSTMENT',
+            note: `Выравнивание оплаты по сделке: ${Number(deal.paidAmount).toLocaleString('ru-RU')}`
+              + ` → ${dto.paidAmount.toLocaleString('ru-RU')}`,
+            createdBy: user.userId,
+          },
+        });
+      }
+    });
 
     const updated = await prisma.deal.findUnique({
       where: { id },
@@ -2523,6 +2578,19 @@ export class DealsService {
         throw new AppError(400, 'Дата оплаты не может быть в будущем');
       }
 
+      // Кто фактически принял деньги. Поле существовало в схеме и читалось «Кассой»,
+      // но никогда не записывалось — колонка «Принял» всегда дублировала автора записи.
+      // Типичный случай: наличные принял кассир, а проводит бухгалтер.
+      let receivedById = user.userId;
+      if (dto.receivedById && dto.receivedById !== user.userId) {
+        const receiver = await tx.user.findFirst({
+          where: { id: dto.receivedById, isActive: true },
+          select: { id: true },
+        });
+        if (!receiver) throw new AppError(404, 'Сотрудник, принявший оплату, не найден');
+        receivedById = receiver.id;
+      }
+
       const created = await tx.payment.create({
         data: {
           dealId,
@@ -2531,10 +2599,13 @@ export class DealsService {
           paidAt: paymentDate,
           method: dto.method,
           note: dto.note,
+          kind: 'CASH_IN',
           createdBy: user.userId,
+          receivedById,
         },
         include: {
           creator: { select: { id: true, fullName: true } },
+          receivedBy: { select: { id: true, fullName: true } },
         },
       });
 
@@ -2660,6 +2731,8 @@ export class DealsService {
 
       const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
       if (!payment) throw new AppError(404, 'Платёж не найден');
+
+      assertPaymentDeletable(payment, Number(deal.paidAmount));
 
       const paymentSnapshot = {
         id: payment.id,
@@ -3767,6 +3840,8 @@ export class DealsService {
       const payment = await tx.payment.findFirst({ where: { id: paymentId, dealId } });
       if (!payment) throw new AppError(404, 'Платёж не найден');
 
+      assertPaymentDeletable(payment, Number(deal.paidAmount));
+
       const paymentSnapshot = {
         id: payment.id,
         amount: Number(payment.amount),
@@ -3866,6 +3941,18 @@ export class DealsService {
 
     if (!deal) {
       throw new AppError(404, 'Сделка не найдена');
+    }
+
+    // Кассовый журнал неизменяем: платежи нельзя стирать задним числом, иначе
+    // отчёт «Касса» за уже закрытые дни начинает показывать другие суммы.
+    if (deal.payments.length > 0) {
+      const total = deal.payments.reduce((s, p) => s + Number(p.amount), 0);
+      throw new AppError(
+        400,
+        `Нельзя удалить сделку: по ней проведено платежей — ${deal.payments.length} `
+        + `на сумму ${total.toLocaleString('ru-RU')} сум. Удаление изменило бы кассовые `
+        + `отчёты за прошедшие дни. Архивируйте сделку или сначала сторнируйте платежи.`,
+      );
     }
 
     const snapshot: Record<string, unknown> = {
@@ -4007,7 +4094,7 @@ export class DealsService {
       }
 
       await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
-      await tx.payment.deleteMany({ where: { dealId: id } });
+      // Платежей здесь заведомо нет — сделки с платежами отсеиваются выше.
       await tx.deal.delete({ where: { id } });
     });
 

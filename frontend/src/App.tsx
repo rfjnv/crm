@@ -38,7 +38,6 @@ import AdminSiteBlogPage from './pages/site-admin/AdminSiteBlogPage';
 import TeamPage from './pages/TeamPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalyticsPage from './pages/AnalyticsPage';
-import DebtsPage from './pages/DebtsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import BroadcastPage from './pages/BroadcastPage';
 import FinanceReviewPage from './pages/FinanceReviewPage';
@@ -245,10 +244,16 @@ export default function App() {
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                   <Route path="/attendance" element={<AttendancePage />} />
                 </Route>
-                <Route path="/finance/debts" element={<DebtsPage />} />
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<ExpensesPage />} />
-                <Route path="/finance/cashbox" element={<CashboxPage />} />
+                {/* Роли совпадают с FINANCE_ROLES на бэкенде и с условием показа пункта меню:
+                    иначе по прямой ссылке страница открывалась, а API отвечал 403. */}
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR']} />}>
+                  {/* Отдельная страница долгов дублировала вкладку в Кассе и уже разошлась
+                      с ней по поведению. Ссылки продолжают работать через редирект. */}
+                  <Route path="/finance/debts" element={<Navigate to="/finance/cashbox?tab=debtors" replace />} />
+                  <Route path="/finance/cashbox" element={<CashboxPage />} />
+                </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
                   <Route path="/finance/balance" element={<CompanyBalancePage />} />
                 </Route>

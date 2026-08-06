@@ -100,6 +100,20 @@ enum PaymentStatus {
   PAID
 }
 
+/// Тип проводки в журнале платежей.
+/// Только CASH_IN — реальное поступление денег; остальное движение внутри учёта
+/// и не должно попадать в кассовые и балансовые итоги.
+enum PaymentKind {
+  /// Поступление денег от клиента.
+  CASH_IN
+  /// Зачёт переплаты с других сделок клиента. Денег в кассу не приходит.
+  CREDIT_TRANSFER
+  /// Выравнивание paidAmount, изменённого мимо кассы. Может быть отрицательным.
+  ADJUSTMENT
+  /// Сторно ранее проведённого платежа.
+  REVERSAL
+}
+
 enum ClientCreditStatus {
   NORMAL
   SATISFACTORY
@@ -932,6 +946,8 @@ model Payment {
   note      String?
   createdBy String   @map("created_by")
   receivedById String? @map("received_by_id")
+  /// Денежная это проводка или служебная — см. enum PaymentKind.
+  kind      PaymentKind @default(CASH_IN)
   createdAt DateTime @default(now()) @map("created_at")
 
   deal       Deal   @relation(fields: [dealId], references: [id])
@@ -942,6 +958,8 @@ model Payment {
   @@index([dealId])
   @@index([clientId, paidAt])
   @@index([paidAt])
+  /// Кассовые отчёты всегда фильтруют по kind в пределах периода.
+  @@index([kind, paidAt])
   @@map("payments")
 }
 

@@ -11,18 +11,25 @@ export interface CashboxPayment {
   paidAt: string;
   method: string | null;
   note: string | null;
-  createdBy: string;
   receivedBy: string;
   manager: string;
   dealPaymentStatus: string;
   entryType: 'DEBT_COLLECTION' | 'SALE_PAYMENT';
+  /** Денежная проводка или служебная — в итоги входит только CASH_IN / REVERSAL. */
+  kind: 'CASH_IN' | 'CREDIT_TRANSFER' | 'ADJUSTMENT' | 'REVERSAL';
 }
 
 export interface CashboxResponse {
   payments: CashboxPayment[];
-  totals: { totalAmount: number; todayTotal: number; count: number };
+  totals: {
+    totalAmount: number;
+    todayTotal: number;
+    count: number;
+    /** Сумма служебных проводок в периоде — показывается отдельно, в деньги не входит. */
+    nonCashAmount: number;
+    nonCashCount: number;
+  };
   byMethod: { method: string; total: number }[];
-  byDay: { day: string; total: number }[];
   period: string;
   fromDate: string;
 }
@@ -38,6 +45,8 @@ export interface ActiveDealRow {
   paidAmount: number;
   remaining: number;
   isReceiptPunched?: boolean;
+  /** Сделка закрыта сегодня — остаётся в «Активных» до конца дня, чтобы принять по ней оплату. */
+  closedToday?: boolean;
   manager: { id: string; fullName: string } | null;
 }
 
@@ -45,6 +54,23 @@ export interface ActiveDealsResponse {
   deals: ActiveDealRow[];
   totals: { totalAmount: number; totalPaid: number; totalRemaining: number };
   count: number;
+  closedTodayCount: number;
+}
+
+/** Сделка, найденная поиском для приёма оплаты — любого статуса, кроме отменённых. */
+export interface PayableDealRow {
+  dealId: string;
+  title: string;
+  status: string;
+  clientId: string;
+  clientName: string;
+  clientIsSvip?: boolean;
+  contractNumber: string | null;
+  amount: number;
+  paidAmount: number;
+  remaining: number;
+  manager: { id: string; fullName: string } | null;
+  createdAt: string;
 }
 
 export interface DealPaymentContextDeal {
@@ -63,6 +89,18 @@ export interface DealPaymentContextDeal {
 export interface DealPaymentContextResponse {
   deal: DealPaymentContextDeal;
   creditFromOtherDeals: number;
+}
+
+/**
+ * Ответ на зачёт переплаты. Доступный пул может быть меньше запрошенной суммы —
+ * тогда бэкенд списывает сколько есть и сообщает об этом здесь.
+ */
+export interface ApplyCreditResult {
+  id: string;
+  appliedAmount: number;
+  requestedAmount: number;
+  partiallyApplied: boolean;
+  sources: { id: string; title: string | null; amount: number }[];
 }
 
 export interface CompanyBalanceChartPoint {
@@ -138,7 +176,11 @@ export interface CompanyBalanceResponse {
 export const financeApi = {
   cashbox: (params?: {
     period?: string;
+    /** Для period='custom' — границы диапазона в ISO. */
+    from?: string;
+    to?: string;
     managerId?: string;
+    receivedById?: string;
     clientId?: string;
     method?: string;
     paymentStatus?: string;
@@ -158,11 +200,18 @@ export const financeApi = {
   getActiveDeals: (params?: { managerId?: string }) =>
     client.get<ActiveDealsResponse>('/finance/active-deals', { params }).then((r) => r.data),
 
+  searchPayableDeals: (q: string) =>
+    client
+      .get<{ deals: PayableDealRow[]; query: string }>('/finance/payable-deals', { params: { q } })
+      .then((r) => r.data),
+
   getDealPaymentContext: (dealId: string) =>
     client.get<DealPaymentContextResponse>(`/finance/deals/${dealId}/payment-context`).then((r) => r.data),
 
   applyClientCreditToDeal: (dealId: string, body: { amount: number; note?: string; paidAt?: string }) =>
-    client.post(`/finance/deals/${dealId}/apply-client-credit`, body).then((r) => r.data),
+    client
+      .post<ApplyCreditResult>(`/finance/deals/${dealId}/apply-client-credit`, body)
+      .then((r) => r.data),
 
   clientDebtDetail: (clientId: string) =>
     client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),

@@ -1,4 +1,5 @@
 import { Role } from '@prisma/client';
+import { AppError } from './errors';
 
 export interface AuthUser {
   userId: string;
@@ -20,6 +21,24 @@ export function ownerScope(user: AuthUser): { managerId?: string; client?: { com
     return { ...clientCompany };
   }
   return { managerId: user.userId, ...clientCompany };
+}
+
+/**
+ * Требует, чтобы пользователь был привязан к компании.
+ *
+ * `ownerScope` при отсутствии `companyId` возвращает пустой фильтр — то есть отдаёт
+ * данные всех компаний. Для справочников это терпимо, для финансовых реестров (долги,
+ * активные сделки, карточка долга клиента) — утечка. Поэтому финансовые маршруты
+ * проверяют привязку явно.
+ *
+ * Намеренно не встроено в сам `ownerScope`: глобальная смена поведения затронула бы
+ * всё приложение, включая учётки без компании, созданные импортом.
+ */
+export function assertCompanyScoped(user: AuthUser): void {
+  if (user.role === 'SUPER_ADMIN') return;
+  if (!user.companyId) {
+    throw new AppError(403, 'Учётная запись не привязана к компании — доступ к финансовым данным закрыт');
+  }
 }
 
 /** Prisma.sql clause for filtering deals by company in raw SQL queries */

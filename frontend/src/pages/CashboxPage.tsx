@@ -1,15 +1,21 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Statistic, Row, Col, Tag, Space, Segmented,
   Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker, List, Empty,
-  Drawer, Badge,
+  Drawer, Badge, Alert, Divider,
 } from 'antd';
-import { DollarOutlined, FilterOutlined } from '@ant-design/icons';
+import { DollarOutlined, FilterOutlined, DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
-import { financeApi, type CashboxPayment, type ActiveDealRow } from '../api/finance.api';
+import {
+  financeApi,
+  type CashboxPayment,
+  type ActiveDealRow,
+  type ApplyCreditResult,
+  type PayableDealRow,
+} from '../api/finance.api';
 import DealStatusTag from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { dealsApi } from '../api/deals.api';
@@ -17,8 +23,10 @@ import { clientsApi } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { matchesSearch } from '../utils/translit';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { downloadCsv } from '../utils/csv';
 import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { getFirstName } from '../lib/name-utils';
@@ -38,6 +46,31 @@ const methodLabels: Record<string, string> = {
   DEBT: 'Долг',
 };
 
+/**
+ * Служебные проводки — движение внутри учёта, а не поступление денег.
+ * Показываются в журнале (кассиру важно видеть, откуда взялась оплата),
+ * но в кассовые итоги не входят.
+ */
+const nonCashHint: Record<string, string> = {
+  CREDIT_TRANSFER: 'Зачёт переплаты с других сделок — деньги в кассу не поступали',
+  ADJUSTMENT: 'Выравнивание оплаты, проведённой мимо кассы',
+};
+
+const nonCashTag: Record<string, { color: string; label: string }> = {
+  CREDIT_TRANSFER: { color: 'purple', label: 'Зачёт переплаты' },
+  ADJUSTMENT: { color: 'default', label: 'Выравнивание' },
+  REVERSAL: { color: 'red', label: 'Сторно' },
+};
+
+/**
+ * Вертикальный ритм страницы.
+ *
+ * Было десять разрозненных `marginBottom: 16` — все блоки шли с одинаковым шагом,
+ * поэтому смысловые группы (фильтры / показатели / данные) не читались как группы.
+ * SECTION крупнее BLOCK: им разделяются разделы, внутри раздела — обычный шаг.
+ */
+const GAP = { BLOCK: 16, SECTION: 24 } as const;
+
 const paymentStatusLabels: Record<string, { color: string; label: string }> = {
   UNPAID: { color: 'default', label: 'Не оплачено' },
   PARTIAL: { color: 'orange', label: 'Частично' },
@@ -46,8 +79,25 @@ const paymentStatusLabels: Record<string, { color: string; label: string }> = {
 
 export default function CashboxPage() {
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState('payments');
+  // Вкладка живёт в URL: F5 при разборе долгов больше не отбрасывает в начало,
+  // и на конкретный срез можно дать ссылку коллеге.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'payments';
+  const setActiveTab = useCallback(
+    (key: string) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (key === 'payments') next.delete('tab');
+        else next.set('tab', key);
+        return next;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
   const [period, setPeriod] = useState<string>('day');
+  /** Границы произвольного диапазона в ISO — нужны для закрытия месяца и любых сверок. */
+  const [customRange, setCustomRange] = useState<[string, string] | null>(null);
+  const [receivedById, setReceivedById] = useState<string>();
   const [clientId, setClientId] = useState<string>();
   const [method, setMethod] = useState<string>();
   const [paymentStatus, setPaymentStatus] = useState<string>();
@@ -62,8 +112,14 @@ export default function CashboxPage() {
   const [debtRange, setDebtRange] = useState<DebtRange>('all');
   const [customMin, setCustomMin] = useState<number | null>(null);
   const [debtStatus, setDebtStatus] = useState<DebtStatus>('all');
-  const [managerId, setManagerId] = useState<string | undefined>(undefined);
+  // Отдельные фильтры для «Активных» и «Долгов»: раньше состояние было общим, и
+  // выбор менеджера в одной вкладке незаметно фильтровал другую.
+  const [debtsManagerId, setDebtsManagerId] = useState<string | undefined>(undefined);
+  const [activeManagerId, setActiveManagerId] = useState<string | undefined>(undefined);
   const [sortBy, setSortBy] = useState<SortOption>('debt_desc');
+  // Единая точка приёма оплаты: поиск сделки по клиенту / названию / номеру договора.
+  const [payerModalOpen, setPayerModalOpen] = useState(false);
+  const [payerSearch, setPayerSearch] = useState('');
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string; isSvip?: boolean } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
@@ -74,10 +130,22 @@ export default function CashboxPage() {
   const [activePayForm] = Form.useForm();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['cashbox', period, clientId, method, paymentStatus, entryType],
-    queryFn: () => financeApi.cashbox({ period, clientId, method, paymentStatus, entryType }),
-    refetchInterval: 15_000,
+  const { data, isLoading, error: cashboxError } = useQuery({
+    queryKey: ['cashbox', period, customRange, clientId, method, paymentStatus, entryType, receivedById],
+    queryFn: () => financeApi.cashbox({
+      period,
+      from: period === 'custom' ? customRange?.[0] : undefined,
+      to: period === 'custom' ? customRange?.[1] : undefined,
+      clientId,
+      method,
+      paymentStatus,
+      entryType,
+      receivedById,
+    }),
+    // Диапазон без выбранных дат запрашивать бессмысленно.
+    enabled: period !== 'custom' || !!customRange,
+    // Реже, чем раньше: при 15 секундах таблица перескакивала прямо под руками.
+    refetchInterval: 60_000,
   });
 
   const { data: clients } = useQuery({
@@ -92,7 +160,7 @@ export default function CashboxPage() {
 
   const debtParams = useMemo(() => {
     const p: { minDebt?: number; managerId?: string; paymentStatus?: string } = {};
-    if (managerId) p.managerId = managerId;
+    if (debtsManagerId) p.managerId = debtsManagerId;
     if (debtStatus !== 'all') p.paymentStatus = debtStatus;
 
     let minDebt = 0;
@@ -103,24 +171,24 @@ export default function CashboxPage() {
     if (minDebt > 0) p.minDebt = minDebt;
 
     return p;
-  }, [managerId, debtStatus, debtRange, customMin]);
+  }, [debtsManagerId, debtStatus, debtRange, customMin]);
 
-  const { data: debtsData, isLoading: debtsLoading } = useQuery({
+  const { data: debtsData, isLoading: debtsLoading, error: debtsError } = useQuery({
     queryKey: ['finance-debts', debtParams],
     queryFn: () => financeApi.getDebts(debtParams),
-    enabled: activeTab === 'debtors',
+    // Раньше запрос ждал открытия вкладки, поэтому счётчик в её заголовке
+    // появлялся только после клика — окинуть взглядом объём работы было нельзя.
   });
 
   const activeDealsParams = useMemo(
-    () => (managerId ? { managerId } : undefined),
-    [managerId],
+    () => (activeManagerId ? { managerId: activeManagerId } : undefined),
+    [activeManagerId],
   );
 
-  const { data: activeDealsData, isLoading: activeDealsLoading } = useQuery({
+  const { data: activeDealsData, isLoading: activeDealsLoading, error: activeDealsError } = useQuery({
     queryKey: ['finance-active-deals', activeDealsParams],
     queryFn: () => financeApi.getActiveDeals(activeDealsParams),
-    enabled: activeTab === 'active',
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 
   const { data: activePayContext, isLoading: activePayContextLoading } = useQuery({
@@ -130,6 +198,54 @@ export default function CashboxPage() {
   });
 
   const activePayAmountWatch = Form.useWatch('amount', activePayForm);
+
+  const [receiptDownloading, setReceiptDownloading] = useState<string | null>(null);
+
+  const downloadReceipt = useCallback(async (dealId: string) => {
+    setReceiptDownloading(dealId);
+    try {
+      await dealsApi.downloadPaymentReceipt(dealId);
+    } catch {
+      message.error('Не удалось сформировать квитанцию');
+    } finally {
+      setReceiptDownloading(null);
+    }
+  }, []);
+
+  const exportPayments = useCallback(() => {
+    const rows = data?.payments ?? [];
+    if (rows.length === 0) {
+      message.info('Нечего выгружать за выбранный период');
+      return;
+    }
+    downloadCsv(
+      `kassa-${dayjs().format('YYYY-MM-DD-HHmm')}`,
+      ['Дата', 'Время', 'Сделка', 'Клиент', 'Сумма', 'Метод', 'Тип', 'Менеджер', 'Принял', 'Примечание'],
+      rows.map((p) => [
+        dayjs(p.paidAt).format('DD.MM.YYYY'),
+        dayjs(p.paidAt).format('HH:mm'),
+        p.dealTitle || p.dealId.slice(0, 8),
+        p.clientName,
+        // Число без пробелов — иначе Excel примет его за текст.
+        Math.round(p.amount),
+        p.method ? methodLabels[p.method] || p.method : '',
+        nonCashTag[p.kind]?.label
+          ?? (p.entryType === 'DEBT_COLLECTION' ? 'Приход долга' : 'Оплата продажи'),
+        p.manager || '',
+        p.receivedBy || '',
+        p.note || '',
+      ]),
+    );
+    message.success(`Выгружено строк: ${rows.length}`);
+  }, [data]);
+
+  const debouncedPayerSearch = useDebouncedValue(payerSearch, 300);
+
+  const { data: payerResults, isFetching: payerSearching } = useQuery({
+    queryKey: ['payable-deals', debouncedPayerSearch],
+    queryFn: () => financeApi.searchPayableDeals(debouncedPayerSearch),
+    enabled: payerModalOpen && debouncedPayerSearch.trim().length >= 2,
+  });
 
   const { data: clientDetail, isLoading: clientDetailLoading } = useQuery({
     queryKey: ['client-debt-detail', selectedClient?.clientId],
@@ -179,12 +295,13 @@ export default function CashboxPage() {
   }, [queryClient]);
 
   const activeCashPaymentMut = useMutation({
-    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string; paidAt?: string }) =>
+    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string }) =>
       dealsApi.createPayment(vals.dealId, {
         amount: vals.amount,
         method: vals.method,
         note: vals.note,
         paidAt: vals.paidAt,
+        receivedById: vals.receivedById,
       }),
     onSuccess: () => {
       message.success('Платёж добавлен');
@@ -206,8 +323,18 @@ export default function CashboxPage() {
         note: vals.note,
         paidAt: vals.paidAt,
       }),
-    onSuccess: () => {
-      message.success('Переплата зачтена');
+    onSuccess: (res: ApplyCreditResult) => {
+      // Пул переплаты мог оказаться меньше запрошенного (например, его успел
+      // израсходовать другой кассир) — молча рапортовать об успехе нельзя.
+      if (res?.partiallyApplied) {
+        message.warning(
+          `Зачтено ${formatUZS(res.appliedAmount)} из запрошенных ${formatUZS(res.requestedAmount)} — `
+          + 'на других сделках клиента больше переплаты нет',
+          6,
+        );
+      } else {
+        message.success('Переплата зачтена');
+      }
       activePayForm.resetFields();
       setActivePayModalOpen(false);
       setActivePayDeal(null);
@@ -233,6 +360,31 @@ export default function CashboxPage() {
       setActivePayModalOpen(true);
     },
     [activePayForm],
+  );
+
+  /**
+   * Открывает обычную форму платежа для сделки, найденной поиском.
+   * Форма одна и та же — независимо от того, активна сделка, закрыта сегодня или
+   * висит в долгах несколько месяцев.
+   */
+  const openActivePayModalFromSearch = useCallback(
+    (d: PayableDealRow) => {
+      setPayerModalOpen(false);
+      setPayerSearch('');
+      openActivePayModal({
+        dealId: d.dealId,
+        title: d.title,
+        status: d.status,
+        clientId: d.clientId,
+        clientName: d.clientName,
+        clientIsSvip: d.clientIsSvip,
+        amount: d.amount,
+        paidAmount: d.paidAmount,
+        remaining: d.remaining,
+        manager: d.manager,
+      });
+    },
+    [openActivePayModal],
   );
 
   const activePayPreview = useMemo(() => {
@@ -270,24 +422,62 @@ export default function CashboxPage() {
 
   const submitActivePay = async () => {
     if (!activePayDeal) return;
-    const vals = await activePayForm.validateFields();
+    let vals;
+    try {
+      vals = await activePayForm.validateFields();
+    } catch {
+      return; // подсветку невалидных полей рисует сама форма
+    }
     const paidAtStr = vals.paidAt ? dayjs(vals.paidAt).toISOString() : undefined;
     const amt = Number(vals.amount);
-    if (activePayMode === 'credit') {
-      await applyCreditMut.mutateAsync({
-        dealId: activePayDeal.dealId,
-        amount: amt,
-        note: vals.note,
-        paidAt: paidAtStr,
+
+    // Сумма выше остатка не запрещена (бывает предоплата вперёд), но раньше проходила
+    // молча — опечатка в лишний ноль оседала «переплатой» и всплывала недели спустя.
+    const remaining = activePayContext?.deal.remaining ?? 0;
+    if (activePayMode === 'cash' && remaining > 0 && amt > remaining) {
+      const excess = amt - remaining;
+      const ok = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: 'Сумма больше остатка по сделке',
+          content: (
+            <div>
+              <div>Остаток: <strong>{formatUZS(remaining)}</strong></div>
+              <div>Вносится: <strong>{formatUZS(amt)}</strong></div>
+              <div style={{ marginTop: 8 }}>
+                Лишние <strong>{formatUZS(excess)}</strong> останутся переплатой на этой сделке.
+              </div>
+            </div>
+          ),
+          okText: 'Всё верно, провести',
+          cancelText: 'Исправить сумму',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
       });
-    } else {
-      await activeCashPaymentMut.mutateAsync({
-        dealId: activePayDeal.dealId,
-        amount: amt,
-        method: vals.method,
-        note: vals.note,
-        paidAt: paidAtStr,
-      });
+      if (!ok) return;
+    }
+
+    try {
+      if (activePayMode === 'credit') {
+        await applyCreditMut.mutateAsync({
+          dealId: activePayDeal.dealId,
+          amount: amt,
+          note: vals.note,
+          paidAt: paidAtStr,
+        });
+      } else {
+        await activeCashPaymentMut.mutateAsync({
+          dealId: activePayDeal.dealId,
+          amount: amt,
+          method: vals.method,
+          note: vals.note,
+          paidAt: paidAtStr,
+          receivedById: vals.receivedById,
+        });
+      }
+    } catch {
+      // сообщение об ошибке показывает onError мутации; здесь гасим reject,
+      // чтобы он не всплывал необработанным из onOk модалки
     }
   };
 
@@ -311,6 +501,14 @@ export default function CashboxPage() {
         ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive,
       )
       .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) }));
+  }, [users]);
+
+  /** Кто может значиться принявшим деньги — все активные сотрудники, не только менеджеры. */
+  const staff = useMemo(() => {
+    if (!users) return [];
+    return users
+      .filter((u: { isActive: boolean }) => u.isActive)
+      .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName }));
   }, [users]);
 
   const debtorClients: ClientDebtRow[] = debtsData?.clients ?? [];
@@ -388,7 +586,15 @@ export default function CashboxPage() {
       title: 'Сумма',
       dataIndex: 'amount',
       align: 'right' as const,
-      render: (v: number) => formatUZS(v),
+      render: (v: number, r: CashboxPayment) =>
+        r.kind === 'CASH_IN' || r.kind === 'REVERSAL' ? (
+          formatUZS(v)
+        ) : (
+          // Служебная проводка: денег в кассу не поступало, в итоги не входит.
+          <Typography.Text type="secondary" title={nonCashHint[r.kind]}>
+            {formatUZS(v)}
+          </Typography.Text>
+        ),
     },
     {
       title: 'Метод',
@@ -408,18 +614,47 @@ export default function CashboxPage() {
       },
     },
     {
-      title: 'Менеджер',
-      dataIndex: 'manager',
-    },
-    {
+      // Две отдельные колонки дублировали друг друга: пока receivedById не заполнялся,
+      // «Принял» был копией автора записи. Теперь принявший — главный, менеджер — контекст.
       title: 'Принял',
       dataIndex: 'receivedBy',
+      width: 150,
+      render: (v: string | null, r: CashboxPayment) => (
+        <div style={{ lineHeight: 1.3 }}>
+          <div>{getFirstName(v) || '—'}</div>
+          {r.manager && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              менеджер: {getFirstName(r.manager)}
+            </Typography.Text>
+          )}
+        </div>
+      ),
     },
     {
-      title: 'Примечание',
+      // Примечание заполнено у единиц строк — целая колонка ради этого держала
+      // на весь экран столбец прочерков.
+      title: '',
       dataIndex: 'note',
-      ellipsis: true,
-      render: (v: string | null) => v || '—',
+      width: 40,
+      render: (v: string | null) => v
+        ? <Typography.Text type="secondary" title={v}>💬</Typography.Text>
+        : null,
+    },
+    {
+      title: '',
+      key: 'receipt',
+      width: 60,
+      render: (_: unknown, r: CashboxPayment) => (
+        // Генератор квитанции существовал в API, но выдать её клиенту из кассы было нельзя.
+        <Button
+          type="link"
+          size="small"
+          icon={<PrinterOutlined />}
+          title="Квитанция об оплате"
+          loading={receiptDownloading === r.dealId}
+          onClick={() => downloadReceipt(r.dealId)}
+        />
+      ),
     },
   ];
 
@@ -429,11 +664,13 @@ export default function CashboxPage() {
       title: 'Тип прихода',
       dataIndex: 'entryType',
       width: 150,
-      render: (v: CashboxPayment['entryType']) => (
-        v === 'DEBT_COLLECTION'
+      render: (v: CashboxPayment['entryType'], r: CashboxPayment) => {
+        const svc = nonCashTag[r.kind];
+        if (svc) return <Tag color={svc.color}>{svc.label}</Tag>;
+        return v === 'DEBT_COLLECTION'
           ? <Tag color="gold">Приход долга</Tag>
-          : <Tag color="blue">Оплата продажи</Tag>
-      ),
+          : <Tag color="blue">Оплата продажи</Tag>;
+      },
     },
     ...paymentColumns.slice(5),
   ];
@@ -484,8 +721,13 @@ export default function CashboxPage() {
     {
       title: 'Статус',
       dataIndex: 'status',
-      width: 160,
-      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+      width: 190,
+      render: (s: string, r: ActiveDealRow) => (
+        <Space size={4} wrap>
+          <DealStatusTag status={s as DealStatus} />
+          {r.closedToday && <Tag color="cyan">Закрыта сегодня</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'Чек',
@@ -600,11 +842,36 @@ export default function CashboxPage() {
   const clientDeals = clientDetail?.deals ?? [];
   const selectedDeal = clientDeals.find((d: any) => d.id === selectedDealId);
 
+  /** Единый баннер ошибки — вместо пустой таблицы, которую путали с «нет данных». */
+  const renderError = (err: unknown, title: string) => err ? (
+    <Alert
+      type="error"
+      showIcon
+      style={{ marginBottom: GAP.BLOCK }}
+      message={title}
+      description={
+        (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
+        || (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || 'Проверьте соединение и попробуйте обновить страницу.'
+      }
+    />
+  ) : null;
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <BackButton fallback="/dashboard" />
         <Typography.Title level={4} style={{ margin: 0 }}>Касса</Typography.Title>
+        {/* Точка входа кассира — «пришёл человек с деньгами». Работает с любой вкладки
+            и находит сделку независимо от статуса, чтобы не искать её по вкладкам вручную. */}
+        <Button
+          type="primary"
+          icon={<DollarOutlined />}
+          onClick={() => { setPayerSearch(''); setPayerModalOpen(true); }}
+          style={{ marginLeft: 'auto' }}
+        >
+          Принять оплату
+        </Button>
       </div>
 
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
@@ -612,7 +879,7 @@ export default function CashboxPage() {
           key: 'payments',
           label: 'Платежи',
           children: (() => {
-            const paymentsFilterCount = [clientId, method, paymentStatus, entryType].filter(Boolean).length;
+            const paymentsFilterCount = [clientId, method, paymentStatus, entryType, receivedById].filter(Boolean).length;
             const paymentFilterFields = (
               <Space direction={isMobile ? 'vertical' : 'horizontal'} wrap style={{ width: isMobile ? '100%' : undefined }}>
                 <Select
@@ -670,11 +937,22 @@ export default function CashboxPage() {
                     { label: 'Оплата продажи', value: 'SALE_PAYMENT' },
                   ]}
                 />
+                {/* Для кассы «кто принял деньги» — более частый вопрос, чем менеджер сделки. */}
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Принял"
+                  style={{ width: isMobile ? '100%' : 180 }}
+                  value={receivedById}
+                  onChange={setReceivedById}
+                  options={staff}
+                  filterOption={(input, option) => matchesSearch(String(option?.label ?? ''), input)}
+                />
               </Space>
             );
             return (
             <>
-              <Space wrap style={{ marginBottom: 16, width: isMobile ? '100%' : undefined }}>
+              <Space wrap style={{ marginBottom: GAP.BLOCK, width: isMobile ? '100%' : undefined }}>
                 <Segmented
                   value={period}
                   onChange={(v) => setPeriod(v as string)}
@@ -682,11 +960,28 @@ export default function CashboxPage() {
                   style={isMobile ? { width: '100%' } : undefined}
                   options={[
                     { label: 'Вчера', value: 'yesterday' },
-                    { label: 'День', value: 'day' },
-                    { label: 'Неделя', value: 'week' },
-                    { label: 'Месяц', value: 'month' },
+                    { label: 'Сегодня', value: 'day' },
+                    // Скользящие периоды, а не календарные — подписи это отражают.
+                    { label: '7 дней', value: 'week' },
+                    { label: '30 дней', value: 'month' },
+                    { label: 'Период', value: 'custom' },
                   ]}
                 />
+                {period === 'custom' && (
+                  <DatePicker.RangePicker
+                    format="DD.MM.YYYY"
+                    style={{ width: isMobile ? '100%' : undefined }}
+                    value={customRange ? [dayjs(customRange[0]), dayjs(customRange[1])] : null}
+                    disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))}
+                    onChange={(range) => {
+                      if (!range || !range[0] || !range[1]) { setCustomRange(null); return; }
+                      setCustomRange([
+                        range[0].startOf('day').toISOString(),
+                        range[1].endOf('day').toISOString(),
+                      ]);
+                    }}
+                  />
+                )}
                 {isMobile ? (
                   <>
                     <Badge count={paymentsFilterCount} size="small">
@@ -710,6 +1005,7 @@ export default function CashboxPage() {
                           setMethod(undefined);
                           setPaymentStatus(undefined);
                           setEntryType(undefined);
+                          setReceivedById(undefined);
                         }}
                       >
                         Сбросить фильтры
@@ -717,26 +1013,48 @@ export default function CashboxPage() {
                     </Drawer>
                   </>
                 ) : paymentFilterFields}
+                <Button icon={<DownloadOutlined />} onClick={exportPayments}>
+                  Экспорт
+                </Button>
               </Space>
 
+              {/* Молчаливая пустая таблица вместо ошибки скрывала и падение API, и 403 —
+                  кассир не отличал «не было платежей» от «система недоступна». */}
+              {renderError(cashboxError, 'Не удалось загрузить платежи')}
+
+              {period === 'custom' && !customRange && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: GAP.BLOCK }}
+                  message="Выберите даты начала и конца периода"
+                />
+              )}
+
               {/* Summary cards */}
-              <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                <Col xs={12} sm={12} md={6}>
+              <Row gutter={[16, 16]} style={{ marginBottom: GAP.SECTION }}>
+                <Col xs={24} sm={12} lg={6}>
                   <Card size="small">
                     <Statistic title="Итого за период" value={data?.totals.totalAmount ?? 0} formatter={(v) => formatUZS(Number(v))} />
                   </Card>
                 </Col>
-                <Col xs={12} sm={12} md={6}>
+                <Col xs={24} sm={12} lg={6}>
                   <Card size="small">
                     <Statistic title="Итого за сегодня" value={data?.totals.todayTotal ?? 0} formatter={(v) => formatUZS(Number(v))} valueStyle={{ color: tk.colorSuccess }} />
                   </Card>
                 </Col>
-                <Col xs={12} sm={12} md={6}>
+                <Col xs={24} sm={12} lg={6}>
                   <Card size="small">
                     <Statistic title="Количество оплат" value={data?.totals.count ?? 0} />
+                    {!!data?.totals.nonCashCount && (
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        + {data.totals.nonCashCount} служебных на {formatUZS(data.totals.nonCashAmount)}
+                        {' '}(не деньги)
+                      </Typography.Text>
+                    )}
                   </Card>
                 </Col>
-                <Col xs={24} sm={24} md={6}>
+                <Col xs={24} sm={12} lg={6}>
                   <Card size="small">
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>По методам</Typography.Text>
                     {data?.byMethod.map((m) => (
@@ -783,9 +1101,13 @@ export default function CashboxPage() {
                         </div>
                         <Space size={4} wrap style={{ marginTop: 8 }}>
                           {p.method && <Tag>{methodLabels[p.method] || p.method}</Tag>}
-                          <Tag color={p.entryType === 'DEBT_COLLECTION' ? 'gold' : 'blue'}>
-                            {p.entryType === 'DEBT_COLLECTION' ? 'Приход долга' : 'Оплата продажи'}
-                          </Tag>
+                          {nonCashTag[p.kind] ? (
+                            <Tag color={nonCashTag[p.kind].color}>{nonCashTag[p.kind].label}</Tag>
+                          ) : (
+                            <Tag color={p.entryType === 'DEBT_COLLECTION' ? 'gold' : 'blue'}>
+                              {p.entryType === 'DEBT_COLLECTION' ? 'Приход долга' : 'Оплата продажи'}
+                            </Tag>
+                          )}
                           <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
                         </Space>
                         {(p.manager || p.receivedBy) && (
@@ -811,13 +1133,23 @@ export default function CashboxPage() {
                   pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
                   size="middle"
                   bordered={false}
-                  scroll={{ x: 600 }}
+                  // 600 было вдвое меньше реальной ширины — вместо прокрутки колонки
+                  // сжимались и текст переносился в 2–3 строки.
+                  scroll={{ x: 1150 }}
                   summary={() => data?.payments && data.payments.length > 0 ? (
                     <Table.Summary.Row>
-                      <Table.Summary.Cell index={0} colSpan={3}>Итого</Table.Summary.Cell>
+                      <Table.Summary.Cell index={0} colSpan={3}>
+                        Итого денег
+                        {!!data.totals.nonCashCount && (
+                          <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                            (без {data.totals.nonCashCount} служебных)
+                          </Typography.Text>
+                        )}
+                      </Table.Summary.Cell>
                       <Table.Summary.Cell index={3} align="right">
                         {formatUZS(data.totals.totalAmount)}
                       </Table.Summary.Cell>
+                      {/* 10 колонок: 3 + 1 + 6 */}
                       <Table.Summary.Cell index={4} colSpan={6} />
                     </Table.Summary.Row>
                   ) : undefined}
@@ -831,11 +1163,11 @@ export default function CashboxPage() {
           key: 'active',
           label: `Активные${activeDealsData !== undefined ? ` (${activeDealsData.count})` : ''}`,
           children: (() => {
-            const activeFilterCount = managerId ? 1 : 0;
+            const activeFilterCount = activeManagerId ? 1 : 0;
             const managerSelect = (
               <Select
-                value={managerId}
-                onChange={(v) => setManagerId(v)}
+                value={activeManagerId}
+                onChange={(v) => setActiveManagerId(v)}
                 allowClear
                 placeholder="Менеджер"
                 style={{ width: isMobile ? '100%' : 200 }}
@@ -845,9 +1177,13 @@ export default function CashboxPage() {
             return (
             <>
               <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                Сделки не в статусе «Закрыта»: сумма, оплаты и остаток по каждой сделке.
+                Сделки в работе и закрытые сегодня — чтобы принять оплату по свежей сделке,
+                не разыскивая её среди должников.
+                {!!activeDealsData?.closedTodayCount && (
+                  <> Закрыто сегодня: <strong>{activeDealsData.closedTodayCount}</strong>.</>
+                )}
               </Typography.Paragraph>
-              <Space wrap style={{ marginBottom: 16 }}>
+              <Space wrap style={{ marginBottom: GAP.SECTION }}>
                 {isMobile ? (
                   <>
                     <Badge count={activeFilterCount} size="small">
@@ -863,14 +1199,15 @@ export default function CashboxPage() {
                       onClose={() => setActiveFilterOpen(false)}
                     >
                       {managerSelect}
-                      <Button block style={{ marginTop: 16 }} onClick={() => setManagerId(undefined)}>
+                      <Button block style={{ marginTop: 16 }} onClick={() => setActiveManagerId(undefined)}>
                         Сбросить фильтры
                       </Button>
                     </Drawer>
                   </>
                 ) : managerSelect}
               </Space>
-              <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              {renderError(activeDealsError, 'Не удалось загрузить активные сделки')}
+              <Row gutter={[16, 16]} style={{ marginBottom: GAP.SECTION }}>
                 <Col xs={24} sm={8}>
                   <Card size="small">
                     <Statistic
@@ -964,7 +1301,7 @@ export default function CashboxPage() {
                   pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['20', '30', '50', '100'] }}
                   size="middle"
                   bordered={false}
-                  scroll={{ x: 860 }}
+                  scroll={{ x: 1120 }}
                   locale={{ emptyText: 'Нет активных сделок' }}
                 />
               )}
@@ -979,7 +1316,7 @@ export default function CashboxPage() {
             const debtsFilterCount =
               (debtRange !== 'all' ? 1 : 0) +
               (debtStatus !== 'all' ? 1 : 0) +
-              (managerId ? 1 : 0) +
+              (debtsManagerId ? 1 : 0) +
               (sortBy !== 'debt_desc' ? 1 : 0);
             const debtsFilterFields = (
               <Space direction={isMobile ? 'vertical' : 'horizontal'} wrap style={{ width: isMobile ? '100%' : undefined }}>
@@ -1018,8 +1355,8 @@ export default function CashboxPage() {
                   ]}
                 />
                 <Select
-                  value={managerId}
-                  onChange={(v) => setManagerId(v)}
+                  value={debtsManagerId}
+                  onChange={(v) => setDebtsManagerId(v)}
                   allowClear
                   placeholder="Менеджер"
                   style={{ width: isMobile ? '100%' : 200 }}
@@ -1041,7 +1378,7 @@ export default function CashboxPage() {
             <>
               <div
                 style={{
-                  marginBottom: 16,
+                  marginBottom: GAP.BLOCK,
                   display: 'flex',
                   flexDirection: isMobile ? 'column' : 'row',
                   justifyContent: 'space-between',
@@ -1056,22 +1393,42 @@ export default function CashboxPage() {
                   value={debtSearch}
                   onChange={(e) => setDebtSearch(e.target.value)}
                 />
-                {debtsData?.totals && (
-                  <Space size={isMobile ? 4 : 'large'} direction={isMobile ? 'vertical' : 'horizontal'}>
-                    <Typography.Text type="secondary">
-                      Клиентов: {debtsData.totals.clientCount}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      Общий долг: <span style={{ color: tk.colorError }}>{formatUZS(debtsData.totals.totalDebtOwed)}</span>
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      Переплаты: <span style={{ color: tk.colorSuccess }}>{formatUZS(debtsData.totals.prepayments ?? 0)}</span>
-                    </Typography.Text>
-                  </Space>
-                )}
               </div>
 
-              <Space wrap style={{ marginBottom: 16 }}>
+              {renderError(debtsError, 'Не удалось загрузить долги')}
+
+              {/* Главные цифры вкладки подавались серым вторичным текстом — слабее,
+                  чем placeholder в поиске рядом. Тот же визуальный язык, что и на
+                  соседних вкладках: карточки со Statistic. */}
+              <Row gutter={[16, 16]} style={{ marginBottom: GAP.SECTION }}>
+                <Col xs={24} sm={8}>
+                  <Card size="small" loading={debtsLoading}>
+                    <Statistic title="Клиентов с долгом" value={debtsData?.totals?.clientCount ?? 0} />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card size="small" loading={debtsLoading}>
+                    <Statistic
+                      title="Общий долг"
+                      value={debtsData?.totals?.totalDebtOwed ?? 0}
+                      formatter={(v) => formatUZS(Number(v))}
+                      valueStyle={{ color: tk.colorError }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card size="small" loading={debtsLoading}>
+                    <Statistic
+                      title="Переплаты"
+                      value={debtsData?.totals?.prepayments ?? 0}
+                      formatter={(v) => formatUZS(Number(v))}
+                      valueStyle={{ color: tk.colorSuccess }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+
+              <Space wrap style={{ marginBottom: GAP.SECTION }}>
                 {isMobile ? (
                   <>
                     <Badge count={debtsFilterCount} size="small">
@@ -1094,7 +1451,7 @@ export default function CashboxPage() {
                           setDebtRange('all');
                           setCustomMin(null);
                           setDebtStatus('all');
-                          setManagerId(undefined);
+                          setDebtsManagerId(undefined);
                           setSortBy('debt_desc');
                         }}
                       >
@@ -1115,17 +1472,12 @@ export default function CashboxPage() {
                     const pct = r.totalAmount > 0 ? Math.round((r.totalPaid / r.totalAmount) * 100) : 0;
                     return (
                       <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <ClientCompanyDisplay
-                            client={{ id: r.clientId, companyName: r.clientName, isSvip: r.isSvip }}
-                            link
-                          />
-                          {r.totalDebt > 0 && (
-                            <Button type="primary" size="middle" icon={<DollarOutlined />} onClick={() => openPayModal(r)}>
-                              Оплатить
-                            </Button>
-                          )}
-                        </div>
+                        {/* Кнопка оплаты намеренно НЕ в шапке карточки: там она попадала
+                            в зону случайного касания при прокрутке списка. */}
+                        <ClientCompanyDisplay
+                          client={{ id: r.clientId, companyName: r.clientName, isSvip: r.isSvip }}
+                          link
+                        />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
                           <span style={{ color: tk.colorTextSecondary }}>Общий долг</span>
                           <span style={{ textAlign: 'right', color: r.totalDebt > 0 ? tk.colorError : undefined }}>
@@ -1154,6 +1506,17 @@ export default function CashboxPage() {
                             ? <Tag color="orange">Частично</Tag>
                             : <Tag color="default">Не оплачено</Tag>}
                         </div>
+                        {r.totalDebt > 0 && (
+                          <Button
+                            block
+                            type="primary"
+                            icon={<DollarOutlined />}
+                            style={{ marginTop: 12 }}
+                            onClick={() => openPayModal(r)}
+                          >
+                            Оплатить
+                          </Button>
+                        )}
                       </Card>
                     );
                   }}
@@ -1167,7 +1530,7 @@ export default function CashboxPage() {
                   pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                   size="middle"
                   bordered={false}
-                  scroll={{ x: 960 }}
+                  scroll={{ x: 1150 }}
                   locale={{ emptyText: 'Нет задолженностей' }}
                 />
               )}
@@ -1176,6 +1539,77 @@ export default function CashboxPage() {
           })(),
         },
       ]} />
+
+      {/* Единая точка приёма оплаты: находим сделку и передаём её в обычную форму платежа */}
+      <Modal
+        title="Принять оплату"
+        open={payerModalOpen}
+        onCancel={() => { setPayerModalOpen(false); setPayerSearch(''); }}
+        footer={null}
+        width={isMobile ? 'calc(100vw - 24px)' : 640}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          Найдите сделку по клиенту, названию или номеру договора — статус не важен.
+        </Typography.Paragraph>
+        <Input.Search
+          autoFocus
+          allowClear
+          placeholder="Клиент, название сделки или № договора..."
+          value={payerSearch}
+          onChange={(e) => setPayerSearch(e.target.value)}
+          loading={payerSearching}
+        />
+
+        <div style={{ maxHeight: 380, overflowY: 'auto', marginTop: 16 }}>
+          {payerSearch.trim().length < 2 && (
+            <Typography.Text type="secondary">Введите минимум 2 символа</Typography.Text>
+          )}
+          {payerSearch.trim().length >= 2 && !payerSearching && !payerResults?.deals.length && (
+            <Empty description="Сделки не найдены" />
+          )}
+          {payerResults?.deals.map((d) => (
+            <div
+              key={d.dealId}
+              role="button"
+              tabIndex={0}
+              onClick={() => openActivePayModalFromSearch(d)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openActivePayModalFromSearch(d); }
+              }}
+              style={{
+                padding: '10px 12px',
+                border: `1px solid ${tk.colorBorderSecondary}`,
+                borderRadius: 8,
+                marginBottom: 8,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{d.title || d.dealId.slice(0, 8)}</div>
+                  <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
+                    {d.clientName}
+                    {d.contractNumber && ` · договор №${d.contractNumber}`}
+                    {d.manager?.fullName && ` · ${getFirstName(d.manager.fullName)}`}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <div style={{ color: d.remaining > 0 ? tk.colorWarning : tk.colorSuccess, fontWeight: 600 }}>
+                    {d.remaining > 0 ? formatUZS(d.remaining) : 'Оплачена'}
+                  </div>
+                  <div style={{ fontSize: 12, color: tk.colorTextSecondary }}>
+                    из {formatUZS(d.amount)}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <DealStatusTag status={d.status as DealStatus} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       {/* Quick payment modal */}
       <Modal
@@ -1201,7 +1635,7 @@ export default function CashboxPage() {
         onOk={handlePay}
         okText="Оплатить"
         confirmLoading={paymentMut.isPending}
-        width={isMobile ? '100%' : 600}
+        width={isMobile ? 'calc(100vw - 24px)' : 600}
         okButtonProps={{ disabled: !selectedDealId }}
       >
         {clientDetailLoading ? (
@@ -1212,7 +1646,7 @@ export default function CashboxPage() {
               Выберите сделку для оплаты:
             </Typography.Text>
 
-            <div role="radiogroup" aria-label="Выберите сделку" style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16 }}>
+            <div role="radiogroup" aria-label="Выберите сделку" style={{ maxHeight: 200, overflowY: 'auto', marginBottom: GAP.BLOCK }}>
               {clientDeals.length === 0 && (
                 <Typography.Text type="secondary">Нет неоплаченных сделок</Typography.Text>
               )}
@@ -1257,7 +1691,9 @@ export default function CashboxPage() {
             </div>
 
             {selectedDealId && selectedDeal && (
-              <Form form={payForm} layout="vertical">
+              // key обязателен: без него при переключении сделки форма не перемонтируется,
+              // initialValue не применяется повторно и в поле остаётся сумма прошлой сделки.
+              <Form key={selectedDealId} form={payForm} layout="vertical">
                 <Form.Item
                   name="amount"
                   label="Сумма"
@@ -1307,7 +1743,7 @@ export default function CashboxPage() {
         onOk={submitActivePay}
         okText={activePayMode === 'credit' ? 'Зачесть переплату' : 'Сохранить платёж'}
         confirmLoading={activeCashPaymentMut.isPending || applyCreditMut.isPending}
-        width={isMobile ? '100%' : 520}
+        width={isMobile ? 'calc(100vw - 24px)' : 520}
         destroyOnClose
       >
         {activePayContextLoading || !activePayContext ? (
@@ -1348,6 +1784,8 @@ export default function CashboxPage() {
                 {activePayContext.creditFromOtherDeals > 0 ? formatUZS(activePayContext.creditFromOtherDeals) : '—'}
               </span>
             </div>
+
+            <Divider style={{ margin: '4px 0 12px' }} />
 
             <Space wrap size="small" style={{ marginBottom: 12 }}>
               <Button
@@ -1415,21 +1853,37 @@ export default function CashboxPage() {
                 <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))} />
               </Form.Item>
               {activePayMode === 'cash' && (
-                <Form.Item name="method" label="Способ оплаты">
-                  <Select
-                    allowClear
-                    placeholder="Выберите способ"
-                    options={[
-                      { label: 'Наличные', value: 'CASH' },
-                      { label: 'Перечисление', value: 'TRANSFER' },
-                      { label: 'Payme', value: 'PAYME' },
-                      { label: 'QR', value: 'QR' },
-                      { label: 'Click', value: 'CLICK' },
-                      { label: 'Терминал', value: 'TERMINAL' },
-                      { label: 'Рассрочка', value: 'INSTALLMENT' },
-                    ]}
-                  />
-                </Form.Item>
+                <>
+                  <Form.Item name="method" label="Способ оплаты">
+                    <Select
+                      allowClear
+                      placeholder="Выберите способ"
+                      options={[
+                        { label: 'Наличные', value: 'CASH' },
+                        { label: 'Перечисление', value: 'TRANSFER' },
+                        { label: 'Payme', value: 'PAYME' },
+                        { label: 'QR', value: 'QR' },
+                        { label: 'Click', value: 'CLICK' },
+                        { label: 'Терминал', value: 'TERMINAL' },
+                        { label: 'Рассрочка', value: 'INSTALLMENT' },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="receivedById"
+                    label="Принял"
+                    tooltip="Кто фактически принял деньги. По умолчанию — вы."
+                  >
+                    <Select
+                      allowClear
+                      showSearch
+                      placeholder="Вы"
+                      options={staff}
+                      filterOption={(input, option) =>
+                        matchesSearch(String(option?.label ?? ''), input)}
+                    />
+                  </Form.Item>
+                </>
               )}
               <Form.Item name="note" label="Комментарий">
                 <Input.TextArea rows={2} placeholder="Необязательно" />
@@ -1437,7 +1891,16 @@ export default function CashboxPage() {
             </Form>
 
             {activePayPreview && (
-              <Card size="small" style={{ marginTop: 8, background: tk.colorFillAlter }}>
+              // Финальная проверка перед проводкой — акцентная рамка, а не серая заливка,
+              // которая делала самый важный блок модалки визуально самым слабым.
+              <Card
+                size="small"
+                style={{
+                  marginTop: 12,
+                  background: tk.colorPrimaryBg,
+                  borderColor: tk.colorPrimaryBorder,
+                }}
+              >
                 <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
                   Итого до сохранения
                 </Typography.Text>

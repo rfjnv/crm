@@ -1174,13 +1174,7 @@ export interface ClientDebtDetail {
   deals: Deal[];
   payments: PaymentRecord[];
   totalDebt: number;
-  discipline: {
-    onTimeRate: number;
-    avgPaymentDelay: number;
-    tag: 'good' | 'pays_late' | 'chronic';
-    totalClosedDeals: number;
-    dealsWithDueDate: number;
-  };
+  prepayment: number;
 }
 
 // ──── User KPI ────

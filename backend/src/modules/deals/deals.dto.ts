@@ -141,15 +141,31 @@ export const shipmentHoldDto = z.object({
   reason: z.string().min(1, 'Укажите причину приостановки'),
 });
 
+/**
+ * Верхняя граница суммы одного платежа.
+ *
+ * Колонка `Decimal(12,2)` физически вмещает 9 999 999 999.99 — при попытке записать
+ * больше Prisma падает с невнятной ошибкой. Кроме того, никакой защиты от опечатки
+ * (лишний ноль) не было вовсе: сумма проходила молча и оседала «переплатой».
+ */
+export const MAX_PAYMENT_AMOUNT = 9_999_999_999;
+
 export const createPaymentRecordDto = z.object({
-  amount: z.number().positive('Сумма должна быть положительной'),
+  amount: z.number()
+    .positive('Сумма должна быть положительной')
+    .max(MAX_PAYMENT_AMOUNT, 'Сумма слишком большая — проверьте, не лишний ли ноль'),
   method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).optional(),
   note: z.string().max(500).optional(),
   paidAt: z.string().datetime().optional(),
+  /** Кто фактически принял деньги. По умолчанию — тот, кто вносит запись. */
+  receivedById: z.string().uuid().optional(),
 });
 
 export const updatePaymentRecordDto = z.object({
-  amount: z.number().positive('Сумма должна быть положительной').optional(),
+  amount: z.number()
+    .positive('Сумма должна быть положительной')
+    .max(MAX_PAYMENT_AMOUNT, 'Сумма слишком большая — проверьте, не лишний ли ноль')
+    .optional(),
   method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
   paidAt: z.string().datetime().optional(),

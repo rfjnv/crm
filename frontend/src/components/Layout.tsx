@@ -450,9 +450,10 @@ export default function Layout() {
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
       ? [
         {
-          key: '/finance/debts',
+          // Ведёт на вкладку в Кассе: отдельная страница долгов была её дубликатом.
+          key: '/finance/cashbox?tab=debtors',
           icon: <DollarOutlined />,
-          label: <Link to="/finance/debts">Долги</Link>,
+          label: <Link to="/finance/cashbox?tab=debtors">Долги</Link>,
         },
         {
           key: '/finance/review',

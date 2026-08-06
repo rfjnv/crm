@@ -4,9 +4,12 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope, type AuthUser } from '../../lib/scope';
+import { ownerScope, assertCompanyScoped, type AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
+import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/payment-kind';
+import { tashkentDayKey, tashkentStartOfToday } from '../../lib/tz';
+import { buildSearchVariants } from '../../lib/translit';
 
 function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
   if (paid <= 0) return 'UNPAID';
@@ -17,6 +20,14 @@ function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPayme
 const router = Router();
 
 router.use(authenticate);
+
+/**
+ * Роли, допущенные к финансовым реестрам (касса, долги, активные сделки).
+ * До этого у `/debts` и `/active-deals` не было проверки вовсе, а `ownerScope`
+ * считает полноправными в том числе DRIVER, LOADER, HR и WAREHOUSE — то есть весь
+ * долговой реестр компании был доступен водителям и грузчикам.
+ */
+const FINANCE_ROLES = ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'OPERATOR'] as const;
 
 // ──── КАССА (Payments Report) ────
 router.get(
@@ -29,23 +40,30 @@ router.get(
     const method = req.query.method as string | undefined;
     const paymentStatus = req.query.paymentStatus as string | undefined;
     const entryType = req.query.entryType as string | undefined;
+    // Кто принял деньги — для кассы это более важный разрез, чем менеджер сделки.
+    const receivedById = req.query.receivedById as string | undefined;
 
-    const getTashkentDayKey = (date: Date) => {
-      const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
-      return new Date(date.getTime() + TASHKENT_OFFSET).toISOString().slice(0, 10);
-    };
-
-    // Calculate date range (Tashkent = UTC+5)
-    const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
-    const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
-    const y = nowTashkent.getUTCFullYear();
-    const m = nowTashkent.getUTCMonth();
-    const d = nowTashkent.getUTCDate();
-    const startOfDay = new Date(Date.UTC(y, m, d) - TASHKENT_OFFSET);
+    const getTashkentDayKey = tashkentDayKey;
+    const startOfDay = tashkentStartOfToday();
     let fromDate: Date;
     let toDate: Date | undefined;
 
-    if (period === 'yesterday') {
+    // Произвольный диапазон — без него нельзя закрыть месяц или свести любой период,
+    // не совпадающий с четырьмя предустановками.
+    const rawFrom = req.query.from as string | undefined;
+    const rawTo = req.query.to as string | undefined;
+
+    if (period === 'custom' && rawFrom) {
+      const parsedFrom = new Date(rawFrom);
+      if (Number.isNaN(parsedFrom.getTime())) throw new AppError(400, 'Некорректная дата начала периода');
+      fromDate = parsedFrom;
+      if (rawTo) {
+        const parsedTo = new Date(rawTo);
+        if (Number.isNaN(parsedTo.getTime())) throw new AppError(400, 'Некорректная дата конца периода');
+        if (parsedTo < parsedFrom) throw new AppError(400, 'Конец периода раньше начала');
+        toDate = parsedTo;
+      }
+    } else if (period === 'yesterday') {
       fromDate = new Date(startOfDay);
       fromDate.setDate(fromDate.getDate() - 1);
       toDate = new Date(startOfDay);
@@ -79,6 +97,10 @@ router.get(
     }
     if (method) {
       where.method = method;
+    }
+    if (receivedById) {
+      // Старые записи не имеют receivedById — для них принявшим считается автор.
+      where.OR = [{ receivedById }, { receivedById: null, createdBy: receivedById }];
     }
 
     const payments = await prisma.payment.findMany({
@@ -120,27 +142,35 @@ router.get(
       filteredPayments = filteredPayments.filter((p) => p.entryType === entryType);
     }
 
-    // Calculate totals
-    const totalAmount = filteredPayments.reduce((s, p) => s + Number(p.amount), 0);
+    // Денежные итоги считаются ТОЛЬКО по поступлениям. Зачёт переплаты и прочие
+    // служебные проводки остаются в списке (кассиру важно их видеть), но в суммы
+    // не входят — иначе одни и те же деньги считаются дважды.
+    const cashPayments = filteredPayments.filter((p) => !isNonCashKind(p.kind));
+    const nonCashAmount = filteredPayments
+      .filter((p) => isNonCashKind(p.kind))
+      .reduce((s, p) => s + Number(p.amount), 0);
+
+    const totalAmount = cashPayments.reduce((s, p) => s + Number(p.amount), 0);
 
     // Breakdown by method
     const byMethod: Record<string, number> = {};
-    for (const p of filteredPayments) {
+    for (const p of cashPayments) {
       const key = p.method || 'Не указан';
       byMethod[key] = (byMethod[key] || 0) + Number(p.amount);
     }
 
-    // Breakdown by day (Tashkent timezone)
-    const byDay: Record<string, number> = {};
-    for (const p of filteredPayments) {
-      const tashkentDate = new Date(p.paidAt.getTime() + TASHKENT_OFFSET);
-      const day = tashkentDate.toISOString().slice(0, 10);
-      byDay[day] = (byDay[day] || 0) + Number(p.amount);
-    }
-
-    // Daily total (today in Tashkent)
-    const todayStr = nowTashkent.toISOString().slice(0, 10);
-    const todayTotal = byDay[todayStr] || 0;
+    // «Итого за сегодня» не зависит от выбранного периода и фильтров — иначе при
+    // периоде «Вчера» карточка всегда показывала 0, а при фильтре по клиенту —
+    // сегодняшний приход одного клиента под заголовком «за сегодня».
+    const todayAgg = await prisma.payment.aggregate({
+      where: {
+        paidAt: { gte: startOfDay },
+        ...(companyId ? { client: { companyId } } : {}),
+        ...cashOnlyFilter,
+      },
+      _sum: { amount: true },
+    });
+    const todayTotal = Number(todayAgg._sum.amount || 0);
 
     res.json({
       payments: filteredPayments.map((p) => ({
@@ -154,21 +184,21 @@ router.get(
         paidAt: p.paidAt,
         method: p.method,
         note: p.note,
-        createdBy: p.creator?.fullName,
         receivedBy: p.receivedBy?.fullName || p.creator?.fullName,
         manager: p.deal?.manager?.fullName,
         dealPaymentStatus: p.deal?.paymentStatus,
         entryType: p.entryType,
+        kind: p.kind,
       })),
       totals: {
         totalAmount,
         todayTotal,
-        count: filteredPayments.length,
+        // Считаем только денежные проводки — служебные видны в списке, но не в итогах.
+        count: cashPayments.length,
+        nonCashAmount,
+        nonCashCount: filteredPayments.length - cashPayments.length,
       },
       byMethod: Object.entries(byMethod).map(([m, total]) => ({ method: m, total })),
-      byDay: Object.entries(byDay)
-        .map(([day, total]) => ({ day, total }))
-        .sort((a, b) => a.day.localeCompare(b.day)),
       period,
       fromDate: fromDate.toISOString(),
     });
@@ -178,6 +208,7 @@ router.get(
 // ──── DEBTS ────
 router.get(
   '/debts',
+  authorize(...FINANCE_ROLES),
   asyncHandler(async (req: Request, res: Response) => {
     const user = {
       userId: req.user!.userId,
@@ -185,6 +216,7 @@ router.get(
       permissions: req.user!.permissions || [],
       companyId: req.user!.companyId,
     };
+    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const minDebt = req.query.minDebt ? Number(req.query.minDebt) : undefined;
@@ -430,6 +462,7 @@ router.get(
 // ──── ACTIVE (NON-CLOSED) DEALS — суммы по сделкам в работе ────
 router.get(
   '/active-deals',
+  authorize(...FINANCE_ROLES),
   asyncHandler(async (req: Request, res: Response) => {
     const user = {
       userId: req.user!.userId,
@@ -437,13 +470,21 @@ router.get(
       permissions: req.user!.permissions || [],
       companyId: req.user!.companyId,
     };
+    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
     const managerId = req.query.managerId as string | undefined;
+    // Сделка, закрытая сегодня, мгновенно уходила из «Активных» в «Долги» — и чтобы
+    // принять по ней деньги, кассиру приходилось искать клиента среди всех должников.
+    // Теперь такие сделки остаются здесь до конца дня.
+    const startOfToday = tashkentStartOfToday();
 
     const where: Prisma.DealWhereInput = {
       ...dealScope,
-      status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
       isArchived: false,
+      OR: [
+        { status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] } },
+        { status: 'CLOSED', closedAt: { gte: startOfToday } },
+      ],
     };
     if (managerId) where.managerId = managerId;
 
@@ -456,6 +497,7 @@ router.get(
         amount: true,
         paidAmount: true,
         isReceiptPunched: true,
+        closedAt: true,
         client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
       },
@@ -476,6 +518,7 @@ router.get(
         paidAmount,
         remaining: amount - paidAmount,
         isReceiptPunched: d.isReceiptPunched,
+        closedToday: d.status === 'CLOSED',
         manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
       };
     });
@@ -490,13 +533,108 @@ router.get(
       { totalAmount: 0, totalPaid: 0, totalRemaining: 0 },
     );
 
-    res.json({ deals, totals, count: deals.length });
+    res.json({
+      deals,
+      totals,
+      count: deals.length,
+      closedTodayCount: deals.filter((d) => d.closedToday).length,
+    });
+  }),
+);
+
+// ──── ПОИСК СДЕЛКИ ДЛЯ ПРИЁМА ОПЛАТЫ ────
+/**
+ * Единая точка входа кассира: «пришёл человек с деньгами».
+ *
+ * Раньше приём оплаты был привязан к состоянию сделки — активные лежали в одной
+ * вкладке, закрытые долги в другой, агрегированные по клиенту и без поиска по сделке.
+ * Здесь ищем по названию сделки, клиенту и номеру договора сразу, независимо от статуса.
+ */
+router.get(
+  '/payable-deals',
+  authorize(...FINANCE_ROLES),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user: AuthUser = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
+    };
+    assertCompanyScoped(user);
+    const dealScope = ownerScope(user);
+
+    const q = ((req.query.q as string) || '').trim();
+    if (q.length < 2) {
+      res.json({ deals: [], query: q });
+      return;
+    }
+
+    const variants = buildSearchVariants(q);
+    const textMatch: Prisma.DealWhereInput[] = variants.flatMap((v) => [
+      { title: { contains: v, mode: 'insensitive' as const } },
+      { client: { companyName: { contains: v, mode: 'insensitive' as const } } },
+      { client: { contactName: { contains: v, mode: 'insensitive' as const } } },
+      { contract: { contractNumber: { contains: v, mode: 'insensitive' as const } } },
+    ]);
+
+    const rows = await prisma.deal.findMany({
+      where: {
+        ...dealScope,
+        isArchived: false,
+        status: { notIn: ['CANCELED', 'REJECTED'] },
+        OR: textMatch,
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        amount: true,
+        paidAmount: true,
+        closedAt: true,
+        createdAt: true,
+        client: { select: { id: true, companyName: true, isSvip: true } },
+        manager: { select: { id: true, fullName: true } },
+        contract: { select: { contractNumber: true } },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 40,
+    });
+
+    const deals = rows.map((d) => {
+      const amount = Number(d.amount);
+      const paidAmount = Number(d.paidAmount);
+      return {
+        dealId: d.id,
+        title: d.title,
+        status: d.status,
+        clientId: d.client.id,
+        clientName: d.client.companyName,
+        clientIsSvip: !!d.client.isSvip,
+        contractNumber: d.contract?.contractNumber ?? null,
+        amount,
+        paidAmount,
+        remaining: amount - paidAmount,
+        manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
+        createdAt: d.createdAt,
+      };
+    });
+
+    // Сначала те, по которым реально есть что принять.
+    deals.sort((a, b) => {
+      if ((b.remaining > 0 ? 1 : 0) !== (a.remaining > 0 ? 1 : 0)) {
+        return (b.remaining > 0 ? 1 : 0) - (a.remaining > 0 ? 1 : 0);
+      }
+      return b.remaining - a.remaining;
+    });
+
+    res.json({ deals, query: q });
   }),
 );
 
 // ──── ACTIVE DEAL PAYMENT CONTEXT (касса / «Активные») ────
 router.get(
   '/deals/:dealId/payment-context',
+  authorize(...FINANCE_ROLES),
   asyncHandler(async (req: Request, res: Response) => {
     const dealId = req.params.dealId as string;
     const user: AuthUser = {
@@ -505,6 +643,7 @@ router.get(
       permissions: req.user!.permissions || [],
       companyId: req.user!.companyId,
     };
+    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const deal = await prisma.deal.findFirst({
@@ -555,6 +694,7 @@ router.get(
 /** Зачёт переплаты с других сделок клиента (в пределах ownerScope) на выбранную сделку */
 router.post(
   '/deals/:dealId/apply-client-credit',
+  authorize(...FINANCE_ROLES),
   asyncHandler(async (req: Request, res: Response) => {
     const dealId = req.params.dealId as string;
     const user: AuthUser = {
@@ -563,6 +703,7 @@ router.post(
       permissions: req.user!.permissions || [],
       companyId: req.user!.companyId,
     };
+    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const rawAmount = req.body?.amount;
@@ -622,10 +763,12 @@ router.post(
         .filter((d) => d.surplus > 0)
         .sort((a, b) => b.surplus - a.surplus);
 
+      const usedSources: { id: string; title: string | null; amount: number }[] = [];
       let left = applyTotal;
       for (const src of sourcesSorted) {
         if (left <= 0) break;
         const take = Math.min(src.surplus, left);
+        usedSources.push({ id: src.id, title: src.title, amount: take });
         const newPaid = Number(src.paidAmount) - take;
         const amt = Number(src.amount);
         const ps = paymentStatusFromAmounts(amt, newPaid);
@@ -671,7 +814,10 @@ router.post(
           amount: applyTotal,
           paidAt,
           method: 'TRANSFER',
-          note: note || 'Зачёт переплаты с других сделок клиента',
+          // Денег в кассу не поступает — это перенос уже полученной оплаты между
+          // сделками клиента. Тип исключает проводку из кассовых и балансовых итогов.
+          kind: 'CREDIT_TRANSFER',
+          note: buildClientCreditNote(usedSources, note),
           createdBy: user.userId,
         },
         include: {
@@ -679,7 +825,13 @@ router.post(
         },
       });
 
-      return { created, applyTotal, newTargetPaid: newTgtPaid };
+      return {
+        created,
+        applyTotal,
+        newTargetPaid: newTgtPaid,
+        requestedAmount: amount,
+        usedSources,
+      };
     });
 
     await auditLog({
@@ -691,22 +843,46 @@ router.post(
         paymentId: result.created.id,
         kind: 'CLIENT_CREDIT_APPLY',
         amount: result.applyTotal,
+        requestedAmount: result.requestedAmount,
         newPaidAmount: result.newTargetPaid,
+        // Без перечня источников зачёт нельзя ни отменить, ни разобрать постфактум.
+        sources: result.usedSources,
       },
     });
 
-    res.status(201).json(result.created);
+    res.status(201).json({
+      ...result.created,
+      // Пул мог быть меньше запрошенного — фронт обязан показать, сколько зачлось на самом деле.
+      appliedAmount: result.applyTotal,
+      requestedAmount: result.requestedAmount,
+      partiallyApplied: result.applyTotal + 0.01 < result.requestedAmount,
+      sources: result.usedSources,
+    });
   }),
 );
 
 // ──── CLIENT DEBT DETAIL ────
 router.get(
   '/debts/client/:clientId',
+  authorize(...FINANCE_ROLES),
   asyncHandler(async (req: Request, res: Response) => {
     const clientId = req.params.clientId as string;
+    const user: AuthUser = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
+    };
+    assertCompanyScoped(user);
+    const dealScope = ownerScope(user);
 
-    const client = await prisma.client.findUnique({
-      where: { id: clientId },
+    // Клиент ищется в пределах компании пользователя: иначе по чужому clientId
+    // отдавались сделки и платежи любой организации в базе.
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        ...(user.role !== 'SUPER_ADMIN' && user.companyId ? { companyId: user.companyId } : {}),
+      },
       select: { id: true, companyName: true, contactName: true, phone: true, isSvip: true, creditStatus: true },
     });
     if (!client) throw new AppError(404, 'Клиент не найден');
@@ -714,6 +890,7 @@ router.get(
     const deals = await prisma.deal.findMany({
       where: {
         clientId,
+        ...dealScope,
         status: 'CLOSED',
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         isArchived: false,
@@ -725,7 +902,7 @@ router.get(
     });
 
     const payments = await prisma.payment.findMany({
-      where: { clientId },
+      where: { clientId, deal: dealScope },
       include: {
         deal: { select: { id: true, title: true } },
         creator: { select: { id: true, fullName: true } },
@@ -741,6 +918,7 @@ router.get(
     const allDealsForClient = await prisma.deal.findMany({
       where: {
         clientId,
+        ...dealScope,
         isArchived: false,
         status: { notIn: ['CANCELED', 'REJECTED'] },
       },
@@ -754,57 +932,15 @@ router.get(
       else if (balance < 0) allDealsPrepayment += -balance;
     }
 
-    // Discipline metrics
-    const allClientDeals = await prisma.deal.findMany({
-      where: { clientId, status: 'CLOSED', isArchived: false },
-      select: { id: true, dueDate: true, paidAmount: true, amount: true },
-    });
-
-    let onTimeCount = 0;
-    let totalDelayDays = 0;
-    let dealsWithDueDate = 0;
-
-    for (const d of allClientDeals) {
-      if (!d.dueDate) continue;
-      dealsWithDueDate++;
-      const lastPayment = await prisma.payment.findFirst({
-        where: { dealId: d.id },
-        orderBy: { paidAt: 'desc' },
-        select: { paidAt: true },
-      });
-      if (lastPayment) {
-        const delayMs = lastPayment.paidAt.getTime() - d.dueDate.getTime();
-        const delayDays = delayMs / 86400000;
-        if (delayDays <= 0) {
-          onTimeCount++;
-        } else {
-          totalDelayDays += delayDays;
-        }
-      }
-    }
-
-    const onTimeRate = dealsWithDueDate > 0 ? onTimeCount / dealsWithDueDate : 1;
-    const avgPaymentDelay = dealsWithDueDate > onTimeCount
-      ? totalDelayDays / (dealsWithDueDate - onTimeCount)
-      : 0;
-
-    let tag: 'good' | 'pays_late' | 'chronic' = 'good';
-    if (onTimeRate < 0.5) tag = 'chronic';
-    else if (onTimeRate < 0.8) tag = 'pays_late';
-
+    // Метрики платёжной дисциплины отсюда убраны: они считались запросом на каждую
+    // закрытую сделку клиента (N+1) и не отображались ни в одном интерфейсе.
+    // Если понадобятся — считать одним groupBy, а не циклом.
     res.json({
       client,
       deals,
       payments,
       totalDebt: allDealsDebt,
       prepayment: allDealsPrepayment,
-      discipline: {
-        onTimeRate,
-        avgPaymentDelay: Math.round(avgPaymentDelay),
-        tag,
-        totalClosedDeals: allClientDeals.length,
-        dealsWithDueDate,
-      },
     });
   }),
 );
@@ -838,8 +974,12 @@ router.get(
       return d < startDate ? startDate : d;
     })();
 
+    // Реальный остаток кассы складывается только из поступлений денег. Служебные
+    // проводки (зачёт переплаты) деньгами не являются и раньше завышали и баланс,
+    // и KPI «банк», потому что зачёт записывался методом TRANSFER.
     const paymentWhere: Prisma.PaymentWhereInput = {
       paidAt: { gte: startDate, lte: now },
+      ...cashOnlyFilter,
       ...(method ? { method } : {}),
       ...(managerId ? { deal: { managerId } } : {}),
     };
@@ -851,12 +991,14 @@ router.get(
 
     const paymentRangeWhere: Prisma.PaymentWhereInput = {
       paidAt: { gte: rangeStart, lte: now },
+      ...cashOnlyFilter,
       ...(method ? { method } : {}),
       ...(managerId ? { deal: { managerId } } : {}),
     };
 
     const paymentBeforeRangeWhere: Prisma.PaymentWhereInput = {
       paidAt: { gte: startDate, lt: rangeStart },
+      ...cashOnlyFilter,
       ...(method ? { method } : {}),
       ...(managerId ? { deal: { managerId } } : {}),
     };
@@ -975,10 +1117,12 @@ router.get(
       0,
     );
 
+    // Дни считаются по Ташкенту — так же, как в «Кассе». Раньше здесь был UTC,
+    // и вечерние платежи попадали в разные сутки в двух отчётах.
     const incomingByDay = new Map<string, number>();
     const incomingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const p of incomingRows) {
-      const day = p.paidAt.toISOString().slice(0, 10);
+      const day = tashkentDayKey(p.paidAt);
       const amt = Number(p.amount);
       incomingByDay.set(day, (incomingByDay.get(day) || 0) + amt);
       const key = p.method || 'UNKNOWN';
@@ -990,7 +1134,7 @@ router.get(
     const outgoingByDay = new Map<string, number>();
     const outgoingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const e of expenseRows) {
-      const day = e.date.toISOString().slice(0, 10);
+      const day = tashkentDayKey(e.date);
       const amt = Number(e.amount);
       outgoingByDay.set(day, (outgoingByDay.get(day) || 0) + amt);
       const key = e.method || 'UNKNOWN';
@@ -1001,7 +1145,7 @@ router.get(
 
     const days: string[] = [];
     for (let d = new Date(rangeStart); d <= now; d.setDate(d.getDate() + 1)) {
-      days.push(new Date(d).toISOString().slice(0, 10));
+      days.push(tashkentDayKey(new Date(d)));
     }
 
     let runningBalance = initialBalance + incomingBeforeRange - expensesBeforeRange;
