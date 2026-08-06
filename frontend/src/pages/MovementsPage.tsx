@@ -5,8 +5,6 @@ import { ArrowUpOutlined, ArrowDownOutlined, EditOutlined, LeftOutlined, RightOu
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { useAuthStore } from '../store/authStore';
-import { exportProductsStock } from '../utils/exportStock';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
@@ -61,17 +59,18 @@ export default function MovementsPage() {
     queryFn: () => usersApi.list(),
   });
 
-  const isSuperAdmin = useAuthStore((s) => s.user?.role) === 'SUPER_ADMIN';
+  const [exporting, setExporting] = useState(false);
 
-  /** Выгружает текущий остаток по товарам; фильтр «Товар» учитывается, остальные — про движения. */
-  function exportStock() {
-    const items = (products ?? []).filter((p) => !productFilter || p.id === productFilter);
-    if (!items.length) {
-      message.warning('Нечего выгружать: список товаров пуст');
-      return;
+  /** Выгружает текущий остаток; фильтр «Товар» учитывается, остальные относятся к движениям. */
+  async function exportStock() {
+    setExporting(true);
+    try {
+      await inventoryApi.exportStock({ ids: productFilter ? [productFilter] : undefined });
+    } catch {
+      message.error('Не удалось выгрузить остаток');
+    } finally {
+      setExporting(false);
     }
-    exportProductsStock(items, { includePurchasePrice: isSuperAdmin });
-    message.success(`Выгружено товаров: ${items.length}`);
   }
 
   const summary = useMemo(() => {
@@ -261,7 +260,7 @@ export default function MovementsPage() {
     <div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Движение склада</Typography.Title>
-        <Button icon={<DownloadOutlined />} onClick={exportStock} block={isMobile}>
+        <Button icon={<DownloadOutlined />} onClick={exportStock} loading={exporting} block={isMobile}>
           Скачать остаток
         </Button>
       </div>

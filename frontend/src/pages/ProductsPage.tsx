@@ -19,7 +19,6 @@ import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
-import { exportProductsStock } from '../utils/exportStock';
 import type { Product, ProductReservation } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
@@ -532,14 +531,19 @@ export default function ProductsPage() {
     return { totalCount, zeroStock, lowStock, okStock, totalStockValueSale, totalStockValuePurchase, totalUnits, byCategory, topByValue };
   }, [analyticsTarget]);
 
-  function exportStock() {
-    const items = analyticsTarget;
-    if (!items.length) {
-      message.warning('Нечего выгружать: список пуст');
-      return;
+  const [exporting, setExporting] = useState(false);
+
+  async function exportStock() {
+    setExporting(true);
+    try {
+      // Отмеченные строки выгружаем как есть; без выделения — весь активный остаток.
+      const ids = selectedRowKeys.length > 0 ? selectedRowKeys.map(String) : undefined;
+      await inventoryApi.exportStock({ ids });
+    } catch {
+      message.error('Не удалось выгрузить остаток');
+    } finally {
+      setExporting(false);
     }
-    exportProductsStock(items, { includePurchasePrice: isSuperAdmin });
-    message.success(`Выгружено товаров: ${items.length}`);
   }
 
   const analyticsLabel = selectedRowKeys.length > 0
@@ -649,6 +653,7 @@ export default function ProductsPage() {
           <Button
             icon={<DownloadOutlined />}
             onClick={exportStock}
+            loading={exporting}
             block={isMobile}
           >
             {selectedRowKeys.length > 0 ? `Скачать остаток (${selectedRowKeys.length})` : 'Скачать остаток'}

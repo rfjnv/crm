@@ -6,6 +6,28 @@ export const inventoryApi = {
 
   getProductById: (id: string) => client.get<Product>(`/inventory/products/${id}`).then((r) => r.data),
 
+  /** Остаток склада в .xlsx: лист «Остаток» + отдельный лист по ламинационной плёнке (рулоны/кг). */
+  exportStock: (params?: { includeZero?: boolean; ids?: string[] }) =>
+    client
+      .get('/inventory/products/stock-export', {
+        params: {
+          ...(params?.includeZero ? { includeZero: '1' } : {}),
+          ...(params?.ids?.length ? { ids: params.ids.join(',') } : {}),
+        },
+        responseType: 'blob',
+      })
+      .then((r) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const url = window.URL.createObjectURL(new Blob([r.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Остаток_${today}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      }),
+
   createProduct: (data: { name: string; sku: string; unit?: string; category?: string; countryOfOrigin?: string; minStock?: number; purchasePrice?: number; salePrice?: number; specifications?: Record<string, unknown>; companyId?: string }) =>
     client.post<Product>('/inventory/products', data).then((r) => r.data),
 

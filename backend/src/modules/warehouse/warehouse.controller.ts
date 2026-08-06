@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import XLSX from 'xlsx';
 import { warehouseService } from './warehouse.service';
 import { AppError } from '../../lib/errors';
 import { uploadImageToStorage, deleteImageFromStorage } from '../../lib/imageStorage';
@@ -8,6 +9,78 @@ export class WarehouseController {
   async findAllProducts(req: Request, res: Response): Promise<void> {
     const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
     res.json(products);
+  }
+
+  /**
+   * Остаток склада в .xlsx. CSV тут не годится: Excel в русской локали не делит
+   * строку по «;» и портит артикулы вида «0,3*1,3», превращая их в числа и даты.
+   *
+   * Плёнка идёт отдельным листом: у неё два параллельных остатка (рулоны и кг),
+   * и в одной таблице с поштучными товарами колонки читаются как мусор.
+   */
+  async exportStock(req: Request, res: Response): Promise<void> {
+    // Выбранные на экране строки: их выгружаем как есть, включая нулевые остатки.
+    const ids = String(req.query.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const includeZero = req.query.includeZero === '1' || ids.length > 0;
+    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
+
+    const num = (v: unknown): number => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const idSet = new Set(ids);
+    const active = ids.length > 0
+      ? products.filter((p: any) => idSet.has(p.id))
+      : products.filter((p: any) => p.isActive);
+    const rollItems = active.filter((p: any) => p.rollStock != null);
+    const plainItems = active.filter((p: any) => p.rollStock == null);
+
+    const plainRows = plainItems
+      .filter((p: any) => includeZero || num(p.stock) !== 0)
+      .map((p: any) => ({
+        'Артикул': p.sku,
+        'Название': p.name,
+        'Категория': p.category ?? '',
+        'Формат': p.format ?? '',
+        'Страна': p.countryOfOrigin ?? '',
+        'Ед. изм.': p.unit,
+        'Остаток': num(p.stock),
+        'Мин. остаток': num(p.minStock),
+        'Цена продажи': p.salePrice == null ? '' : num(p.salePrice),
+      }));
+
+    const rollRows = rollItems
+      .filter((p: any) => includeZero || num(p.stock) !== 0 || num(p.rollStock) !== 0)
+      .map((p: any) => ({
+        'Артикул': p.sku,
+        'Название': p.name,
+        'Формат': p.format ?? '',
+        'Страна': p.countryOfOrigin ?? '',
+        'Рулоны': num(p.rollStock),
+        'Кг': num(p.stock),
+        'Цена продажи': p.salePrice == null ? '' : num(p.salePrice),
+      }));
+
+    const wb = XLSX.utils.book_new();
+
+    const plainHeader = ['Артикул', 'Название', 'Категория', 'Формат', 'Страна', 'Ед. изм.', 'Остаток', 'Мин. остаток', 'Цена продажи'];
+    const wsPlain = XLSX.utils.json_to_sheet(plainRows, { header: plainHeader });
+    wsPlain['!cols'] = [{ wch: 22 }, { wch: 46 }, { wch: 24 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsPlain, 'Остаток');
+
+    const rollHeader = ['Артикул', 'Название', 'Формат', 'Страна', 'Рулоны', 'Кг', 'Цена продажи'];
+    const wsRoll = XLSX.utils.json_to_sheet(rollRows, { header: rollHeader });
+    wsRoll['!cols'] = [{ wch: 22 }, { wch: 46 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsRoll, 'Ламинационная пленка');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `Остаток_${today}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
   }
 
   async getStockAsOf(req: Request, res: Response): Promise<void> {
