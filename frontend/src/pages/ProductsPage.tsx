@@ -11,6 +11,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
   FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined, LockOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -18,6 +19,7 @@ import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
+import { downloadCsv } from '../utils/csv';
 import type { Product, ProductReservation } from '../types';
 import { useAuthStore } from '../store/authStore';
 import dayjs from 'dayjs';
@@ -63,6 +65,38 @@ export default function ProductsPage() {
 
   // Selection
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  // Hidden rows
+  const ROW_STORAGE_KEY = 'products_hidden_rows';
+  const [hiddenRowIds, setHiddenRowIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(ROW_STORAGE_KEY) || '[]'); } catch { return []; }
+  });
+  const [showHidden, setShowHidden] = useState(false);
+
+  function hideSelected() {
+    const ids = selectedRowKeys.map(String);
+    setHiddenRowIds((prev) => {
+      const next = [...new Set([...prev, ...ids])];
+      localStorage.setItem(ROW_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSelectedRowKeys([]);
+  }
+
+  function unhideSelected() {
+    const ids = new Set(selectedRowKeys.map(String));
+    setHiddenRowIds((prev) => {
+      const next = prev.filter((id) => !ids.has(id));
+      localStorage.setItem(ROW_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSelectedRowKeys([]);
+  }
+
+  function clearHiddenRows() {
+    setHiddenRowIds([]);
+    localStorage.removeItem(ROW_STORAGE_KEY);
+  }
 
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 20;
@@ -147,25 +181,29 @@ export default function ProductsPage() {
 
   const filtered = useMemo(() => {
     return (products ?? []).filter((p) => {
+      if (!showHidden && hiddenRowIds.includes(p.id)) return false;
+      if (showHidden && !hiddenRowIds.includes(p.id)) return false;
       if (debouncedSearch) {
         const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? '', p.format ?? ''].join(' ');
         if (!matchesSearch(haystack, debouncedSearch)) return false;
       }
-      if (activeFilter === 'active' && !p.isActive) return false;
-      if (activeFilter === 'inactive' && p.isActive) return false;
-      if (categoryFilter && p.category !== categoryFilter) return false;
-      if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
-      if (unitFilter && p.unit !== unitFilter) return false;
-      if (formatFilter && p.format !== formatFilter) return false;
-      if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
-      if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
-      if (priceRange) {
-        const price = Number(p.salePrice || 0);
-        if (price < priceRange[0] || price > priceRange[1]) return false;
+      if (!showHidden) {
+        if (activeFilter === 'active' && !p.isActive) return false;
+        if (activeFilter === 'inactive' && p.isActive) return false;
+        if (categoryFilter && p.category !== categoryFilter) return false;
+        if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
+        if (unitFilter && p.unit !== unitFilter) return false;
+        if (formatFilter && p.format !== formatFilter) return false;
+        if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
+        if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
+        if (priceRange) {
+          const price = Number(p.salePrice || 0);
+          if (price < priceRange[0] || price > priceRange[1]) return false;
+        }
       }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange]);
+  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange, hiddenRowIds, showHidden]);
 
   const filteredMobileSlice = useMemo(() => {
     const start = (mobilePage - 1) * mobilePageSize;
@@ -494,6 +532,47 @@ export default function ProductsPage() {
     return { totalCount, zeroStock, lowStock, okStock, totalStockValueSale, totalStockValuePurchase, totalUnits, byCategory, topByValue };
   }, [analyticsTarget]);
 
+  /** Excel в русской локали читает запятую как десятичный разделитель. */
+  function csvNumber(value: number | string | null | undefined): string {
+    if (value === null || value === undefined || value === '') return '';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '';
+    const s = Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
+    return s.replace('.', ',');
+  }
+
+  function exportStock() {
+    const items = analyticsTarget;
+    if (!items.length) {
+      message.warning('Нечего выгружать: список пуст');
+      return;
+    }
+    const headers = [
+      'Артикул', 'Название', 'Категория', 'Формат', 'Страна', 'Ед. изм.',
+      'Остаток (рулоны)', 'Остаток (кг/ед.)', 'Забронировано', 'Мин. остаток',
+      ...(isSuperAdmin ? ['Цена закупки'] : []),
+      'Цена продажи', 'Статус',
+    ];
+    const rows = items.map((p) => [
+      p.sku ?? '',
+      p.name,
+      p.category ?? '',
+      p.format ?? '',
+      p.countryOfOrigin ?? '',
+      p.unit,
+      // Рулоны отдельной колонкой — только у товаров с параллельным учётом (ламинационная плёнка).
+      p.rollStock == null ? '' : csvNumber(p.rollStock),
+      csvNumber(p.stock),
+      csvNumber(p.reservedQty ?? 0),
+      csvNumber(p.minStock),
+      ...(isSuperAdmin ? [csvNumber(p.purchasePrice)] : []),
+      csvNumber(p.salePrice),
+      p.isActive ? 'Активен' : 'Неактивен',
+    ]);
+    downloadCsv(`Остаток_${dayjs().format('YYYY-MM-DD')}.csv`, headers, rows);
+    message.success(`Выгружено товаров: ${items.length}`);
+  }
+
   const analyticsLabel = selectedRowKeys.length > 0
     ? `Аналитика (${selectedRowKeys.length} выбрано)`
     : `Аналитика (${filtered.length} товаров)`;
@@ -598,6 +677,28 @@ export default function ProductsPage() {
           >
             {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
           </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={exportStock}
+            block={isMobile}
+          >
+            {selectedRowKeys.length > 0 ? `Скачать остаток (${selectedRowKeys.length})` : 'Скачать остаток'}
+          </Button>
+          {(hiddenRowIds.length > 0 || showHidden) && (
+            <Button
+              type={showHidden ? 'primary' : 'default'}
+              ghost={showHidden}
+              block={isMobile}
+              onClick={() => { setShowHidden((v) => !v); setSelectedRowKeys([]); }}
+            >
+              {showHidden ? 'Список' : `Скрытые (${hiddenRowIds.length})`}
+            </Button>
+          )}
+          {showHidden && hiddenRowIds.length > 0 && (
+            <Button size="small" danger onClick={clearHiddenRows}>
+              Восстановить все
+            </Button>
+          )}
           {!isMobile && (
             <Popover
               trigger="click"
@@ -731,9 +832,20 @@ export default function ProductsPage() {
           <Typography.Text strong style={{ color: token.colorPrimary }}>
             Выбрано: {selectedRowKeys.length} из {filtered.length}
           </Typography.Text>
-          <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={() => setAnalyticsOpen(true)}>
-            Аналитика по выбранным
-          </Button>
+          {showHidden ? (
+            <Button size="small" onClick={unhideSelected}>
+              Показать отмеченные
+            </Button>
+          ) : (
+            <>
+              <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={() => setAnalyticsOpen(true)}>
+                Аналитика по выбранным
+              </Button>
+              <Button size="small" onClick={hideSelected}>
+                Скрыть отмеченные
+              </Button>
+            </>
+          )}
           <Button size="small" onClick={() => setSelectedRowKeys([])}>
             Снять выбор
           </Button>
