@@ -13,6 +13,20 @@ import type {
   PaymentStatus,
 } from '../types';
 
+export interface Paginated<T> {
+  data: T[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+}
+
+export interface DealListFilters {
+  paymentStatus?: PaymentStatus;
+  managerId?: string;
+  closedFrom?: string;
+  closedTo?: string;
+  /** Поиск по названию сделки, клиенту и менеджеру — считается на сервере. */
+  search?: string;
+}
+
 export const dealsApi = {
   list: (
     status?: DealStatus,
@@ -36,6 +50,37 @@ export const dealsApi = {
         },
       })
       .then((r) => r.data),
+
+  /**
+   * Постраничный вариант `list`. Для длинных списков (история закрытых сделок)
+   * — иначе на клиент приезжает вся таблица целиком.
+   */
+  listPaged: (
+    page: number,
+    limit: number,
+    status?: DealStatus,
+    includeClosed?: boolean,
+    filters?: DealListFilters,
+  ) =>
+    client
+      .get<Paginated<Deal>>('/deals', {
+        params: {
+          page,
+          limit,
+          ...(status ? { status } : {}),
+          ...(includeClosed ? { includeClosed: 'true' } : {}),
+          ...(filters?.paymentStatus ? { paymentStatus: filters.paymentStatus } : {}),
+          ...(filters?.managerId ? { managerId: filters.managerId } : {}),
+          ...(filters?.closedFrom ? { closedFrom: filters.closedFrom } : {}),
+          ...(filters?.closedTo ? { closedTo: filters.closedTo } : {}),
+          ...(filters?.search ? { search: filters.search } : {}),
+        },
+      })
+      .then((r) => r.data),
+
+  /** Число сделок по статусам — канбану этого хватает вместо полного списка. */
+  statusCounts: () =>
+    client.get<Record<DealStatus, number>>('/deals/status-counts').then((r) => r.data),
 
   getById: (id: string) => client.get<Deal>(`/deals/${id}`).then((r) => r.data),
 

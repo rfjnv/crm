@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Table, Typography, Input, Tag, Space, Select, Button, DatePicker, Segmented } from 'antd';
 import type { Dayjs } from 'dayjs';
@@ -95,16 +95,39 @@ export default function ClosedDealsPage() {
     };
   }, [period, customRange, paymentFilter, managerId]);
 
-  const { data: deals, isLoading } = useQuery({
-    queryKey: ['deals', 'CLOSED', 'history', listFilters],
-    queryFn: () => dealsApi.list('CLOSED', true, listFilters),
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Поиск уходит на сервер, поэтому не на каждое нажатие клавиши.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
+
+  // Сменились условия — список другой, и текущая страница к нему не относится.
+  // Правка прямо в рендере, а не в эффекте: иначе первый запрос уйдёт со старым
+  // номером страницы и вернёт данные, которые тут же будут выброшены.
+  const filtersKey = JSON.stringify([listFilters, debouncedSearch]);
+  const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey);
+    setPage(1);
+  }
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['deals', 'CLOSED', 'history', listFilters, debouncedSearch, page, pageSize],
+    queryFn: () =>
+      dealsApi.listPaged(page, pageSize, 'CLOSED', true, {
+        ...listFilters,
+        search: debouncedSearch || undefined,
+      }),
+    // Без этого таблица моргает пустотой при каждом переходе по страницам.
+    placeholderData: keepPreviousData,
   });
 
-  const filtered = (deals ?? []).filter((d) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return d.title.toLowerCase().includes(q) || (d.client?.companyName ?? '').toLowerCase().includes(q);
-  });
+  const rows = data?.data ?? [];
+  const total = data?.pagination.total ?? 0;
 
   const columns = [
     { title: 'Сделка', dataIndex: 'title', render: (v: string, r: Deal) => <Link to={`/deals/${r.id}`}>{v}</Link> },
@@ -255,11 +278,21 @@ export default function ClosedDealsPage() {
       </Space>
 
       <Table
-        dataSource={filtered}
+        dataSource={rows}
         columns={columns}
         rowKey="id"
         loading={isLoading}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          onChange: (nextPage, nextSize) => {
+            setPage(nextPage);
+            setPageSize(nextSize);
+          },
+        }}
         size="middle"
         bordered={false}
         locale={{ emptyText: 'Нет закрытых сделок по выбранным условиям' }}
