@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosError } from 'axios';
 import { enrichUserFromMe } from '../lib/authUser';
 import { useAuthStore } from '../store/authStore';
 import { getDeviceId } from '../lib/deviceId';
@@ -12,6 +13,26 @@ const client = axios.create({
   withCredentials: true,
 });
 
+/**
+ * Потолок ожидания для читающих запросов. Без него зависший ответ висит до
+ * упора: бэкенд после простоя просыпается почти минуту, и всё это время
+ * страница выглядит намертво загружающейся.
+ *
+ * Только GET: загрузка файлов и импорт легально идут дольше, обрывать их нельзя.
+ */
+const GET_TIMEOUT_MS = 60_000;
+/** Сколько раз повторить GET, если ответа не было вовсе. */
+const MAX_NETWORK_RETRIES = 2;
+
+function isGet(config: { method?: string }): boolean {
+  return (config.method ?? 'get').toLowerCase() === 'get';
+}
+
+/** Ответа не пришло: обрыв связи или наш таймаут. Отменённый запрос сюда не попадает. */
+function isRetriableNetworkError(error: AxiosError): boolean {
+  return !error.response && (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED');
+}
+
 // Request interceptor: attach access token
 client.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
@@ -19,6 +40,10 @@ client.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   config.headers['X-Device-Id'] = getDeviceId();
+  // 0 — это «без ограничения» из умолчаний axios, то есть значение не задавали.
+  if (!config.timeout && isGet(config)) {
+    config.timeout = GET_TIMEOUT_MS;
+  }
   return config;
 });
 
@@ -41,6 +66,17 @@ client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Сеть моргнула или бэкенд просыпался — повторяем сами. Только GET: он
+    // безопасен для повтора, в отличие от создания сделки или платежа.
+    if (originalRequest && isRetriableNetworkError(error) && isGet(originalRequest)) {
+      const attempt = (originalRequest._netRetry ?? 0) + 1;
+      if (attempt <= MAX_NETWORK_RETRIES) {
+        originalRequest._netRetry = attempt;
+        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+        return client(originalRequest);
+      }
+    }
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);

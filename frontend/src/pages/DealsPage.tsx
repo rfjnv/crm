@@ -136,15 +136,20 @@ export default function DealsPage() {
     refetchInterval: 10_000,
   });
 
-  // Fetch all deals (unfiltered) to know which statuses have deals
-  const { data: allDeals } = useQuery({
-    queryKey: ['deals', undefined],
-    queryFn: () => dealsApi.list(undefined),
+  // Какие колонки непустые. Раньше ради этого выкачивался весь список сделок
+  // вторым запросом каждые 10 секунд — теперь сервер отдаёт только счётчики.
+  const { data: statusCounts } = useQuery({
+    queryKey: ['deals', 'status-counts'],
+    queryFn: () => dealsApi.statusCounts(),
     refetchInterval: 10_000,
   });
 
   const hideIfEmpty: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED'];
-  const statusesWithDeals = new Set((allDeals ?? []).map((d) => d.status));
+  const statusesWithDeals = new Set(
+    Object.entries(statusCounts ?? {})
+      .filter(([, count]) => count > 0)
+      .map(([status]) => status as DealStatus),
+  );
 
   const archiveMut = useMutation({
     mutationFn: (id: string) => dealsApi.archive(id),

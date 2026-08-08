@@ -38,6 +38,7 @@ router.get('/my-loading-tasks', authorize('WAREHOUSE', 'DRIVER', 'LOADER', 'WARE
 router.get('/my-vehicle', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findMyVehicle.bind(dealsController)));
 router.post('/start-delivery', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), validate(startDeliveryDto), asyncHandler(dealsController.startDelivery.bind(dealsController)));
 
+router.get('/status-counts', asyncHandler(dealsController.countByStatus.bind(dealsController)));
 router.get('/', asyncHandler(dealsController.findAll.bind(dealsController)));
 router.get('/:id', asyncHandler(dealsController.findById.bind(dealsController)));
 router.post('/', validate(createDealDto), asyncHandler(dealsController.create.bind(dealsController)));

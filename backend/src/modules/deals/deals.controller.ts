@@ -24,6 +24,13 @@ export class DealsController {
       typeof req.query.closedFrom === 'string' && req.query.closedFrom ? new Date(req.query.closedFrom) : undefined;
     const closedTo =
       typeof req.query.closedTo === 'string' && req.query.closedTo ? new Date(req.query.closedTo) : undefined;
+    const search = typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined;
+    // Пагинация включается только явным `page`: без него ответ остаётся массивом,
+    // как ждут канбан и остальные страницы.
+    const pageRaw = Number(req.query.page);
+    const limitRaw = Number(req.query.limit);
+    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : undefined;
+    const limit = Number.isFinite(limitRaw) && limitRaw >= 1 ? Math.floor(limitRaw) : undefined;
     const deals = await dealsService.findAll(getUser(req), {
       status,
       includeClosed,
@@ -31,8 +38,15 @@ export class DealsController {
       managerId,
       closedFrom: closedFrom && !Number.isNaN(closedFrom.getTime()) ? closedFrom : undefined,
       closedTo: closedTo && !Number.isNaN(closedTo.getTime()) ? closedTo : undefined,
+      search,
+      page,
+      limit,
     });
     res.json(deals);
+  }
+
+  async countByStatus(req: Request, res: Response): Promise<void> {
+    res.json(await dealsService.countByStatus(getUser(req)));
   }
 
   async findById(req: Request, res: Response): Promise<void> {

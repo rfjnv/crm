@@ -38,6 +38,10 @@ import {
   AssignLoadingDto, AssignDriverDto, StartDeliveryDto,
 } from './deals.dto';
 
+/** Размер страницы списка сделок. Потолок — чтобы `limit=100000` не обходил пагинацию. */
+const DEFAULT_DEALS_PAGE_SIZE = 20;
+const MAX_DEALS_PAGE_SIZE = 100;
+
 // ==================== STATUS WORKFLOW ====================
 
 const STATUS_TRANSITIONS: Record<DealStatus, DealStatus[]> = {
@@ -346,6 +350,14 @@ export class DealsService {
     }
   }
 
+  /**
+   * Список сделок.
+   *
+   * Без `page` отдаёт массив целиком — так исторически работают канбан и
+   * страницы, которым нужен весь срез сразу. С `page` возвращает страницу и
+   * счётчики: история закрытых сделок растёт без предела, и выгружать её
+   * полностью — верный способ упереться в память инстанса.
+   */
   async findAll(
     user: AuthUser,
     filters?: {
@@ -355,6 +367,9 @@ export class DealsService {
       managerId?: string;
       closedFrom?: Date;
       closedTo?: Date;
+      search?: string;
+      page?: number;
+      limit?: number;
     },
   ) {
     if (filters?.status === 'CLOSED') {
@@ -387,6 +402,8 @@ export class DealsService {
       where.managerId = filters.managerId;
     }
 
+    const andClauses: Prisma.DealWhereInput[] = [];
+
     if (filters?.closedFrom || filters?.closedTo) {
       const dt: Prisma.DateTimeFilter = {};
       if (filters.closedFrom) dt.gte = filters.closedFrom;
@@ -398,41 +415,90 @@ export class DealsService {
           : {
               OR: [{ closedAt: dt }, { AND: [{ closedAt: null }, { updatedAt: dt }] }],
             };
-      const existingAnd = where.AND;
-      where.AND = [
-        ...(existingAnd === undefined ? [] : Array.isArray(existingAnd) ? existingAnd : [existingAnd]),
-        dateClause,
-      ];
+      andClauses.push(dateClause);
     }
 
-    const deals = await prisma.deal.findMany({
-      where,
-      include: {
-        client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
-        manager: { select: { id: true, fullName: true } },
-        contract: { select: { id: true, contractNumber: true } },
-        _count: { select: { comments: true, items: true } },
+    // Поиск на сервере: страницу нельзя фильтровать в браузере — за её
+    // пределами остальные совпадения просто не будут загружены.
+    const q = filters?.search?.trim();
+    const variants = q ? buildSearchVariants(q) : [];
+    if (variants.length > 0) {
+      andClauses.push({
+        OR: variants.flatMap((v) => [
+          { title: { contains: v, mode: 'insensitive' as const } },
+          { client: { companyName: { contains: v, mode: 'insensitive' as const } } },
+          { client: { contactName: { contains: v, mode: 'insensitive' as const } } },
+          { manager: { fullName: { contains: v, mode: 'insensitive' as const } } },
+        ]),
+      });
+    }
+
+    if (andClauses.length > 0) {
+      where.AND = andClauses;
+    }
+
+    const include = {
+      client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
+      manager: { select: { id: true, fullName: true } },
+      contract: { select: { id: true, contractNumber: true } },
+      _count: { select: { comments: true, items: true } },
+    } satisfies Prisma.DealInclude;
+
+    const orderBy: Prisma.DealOrderByWithRelationInput[] =
+      filters?.status === 'CLOSED'
+        ? [{ closedAt: 'desc' }, { updatedAt: 'desc' }]
+        : [{ createdAt: 'desc' }];
+
+    /** Пометка «правил супер-админ» — отдельным запросом только по выданным сделкам. */
+    const withOverrideFlag = async <T extends { id: string }>(rows: T[]) => {
+      const overriddenIds = rows.length
+        ? await prisma.auditLog.findMany({
+            where: {
+              entityType: 'deal',
+              entityId: { in: rows.map((d) => d.id) },
+              action: { in: ['OVERRIDE_UPDATE', 'OVERRIDE_DELETE'] },
+            },
+            select: { entityId: true },
+            distinct: ['entityId'],
+          })
+        : [];
+      const overriddenSet = new Set(overriddenIds.map((o) => o.entityId));
+      return rows.map((d) => ({ ...d, isOverridden: overriddenSet.has(d.id) }));
+    };
+
+    if (filters?.page) {
+      const page = Math.max(1, filters.page);
+      const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_DEALS_PAGE_SIZE), MAX_DEALS_PAGE_SIZE);
+      const [rows, total] = await Promise.all([
+        prisma.deal.findMany({ where, include, orderBy, skip: (page - 1) * limit, take: limit }),
+        prisma.deal.count({ where }),
+      ]);
+      return {
+        data: await withOverrideFlag(rows),
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      };
+    }
+
+    const deals = await prisma.deal.findMany({ where, include, orderBy });
+    return withOverrideFlag(deals);
+  }
+
+  /**
+   * Сколько сделок в каждом статусе. Канбану нужно лишь знать, какие колонки
+   * непустые — ради этого он раньше выкачивал вторым запросом весь список.
+   */
+  async countByStatus(user: AuthUser): Promise<Record<string, number>> {
+    const cs = companyScope(user);
+    const rows = await prisma.deal.groupBy({
+      by: ['status'],
+      where: {
+        ...ownerScope(user),
+        isArchived: false,
+        ...(cs.companyId ? { client: { companyId: cs.companyId } } : {}),
       },
-      orderBy:
-        filters?.status === 'CLOSED'
-          ? [{ closedAt: 'desc' }, { updatedAt: 'desc' }]
-          : { createdAt: 'desc' },
+      _count: { _all: true },
     });
-
-    const overriddenIds = deals.length
-      ? await prisma.auditLog.findMany({
-          where: {
-            entityType: 'deal',
-            entityId: { in: deals.map((d) => d.id) },
-            action: { in: ['OVERRIDE_UPDATE', 'OVERRIDE_DELETE'] },
-          },
-          select: { entityId: true },
-          distinct: ['entityId'],
-        })
-      : [];
-    const overriddenSet = new Set(overriddenIds.map((o) => o.entityId));
-
-    return deals.map((d) => ({ ...d, isOverridden: overriddenSet.has(d.id) }));
+    return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
   }
 
   async findById(id: string, user: AuthUser) {
