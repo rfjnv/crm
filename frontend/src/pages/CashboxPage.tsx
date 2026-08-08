@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Statistic, Row, Col, Tag, Space, Segmented,
   Tabs, Input, Button, Modal, Form, InputNumber, message, Spin, DatePicker, List, Empty,
-  Drawer, Badge, Alert, Divider,
+  Drawer, Badge, Alert,
 } from 'antd';
 import { DollarOutlined, FilterOutlined, DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
