@@ -122,8 +122,6 @@ export default function CashboxPage() {
   const [payerSearch, setPayerSearch] = useState('');
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string; isSvip?: boolean } | null>(null);
-  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
-  const [payForm] = Form.useForm();
   const [activePayModalOpen, setActivePayModalOpen] = useState(false);
   const [activePayDeal, setActivePayDeal] = useState<ActiveDealRow | null>(null);
   const [activePayMode, setActivePayMode] = useState<'cash' | 'credit'>('cash');
@@ -253,25 +251,6 @@ export default function CashboxPage() {
     enabled: !!selectedClient?.clientId && payModalOpen,
   });
 
-  const paymentMut = useMutation({
-    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string }) =>
-      dealsApi.createPayment(vals.dealId, { amount: vals.amount, method: vals.method, note: vals.note }),
-    onSuccess: () => {
-      message.success('Платёж добавлен');
-      payForm.resetFields();
-      setSelectedDealId(null);
-      setPayModalOpen(false);
-      setSelectedClient(null);
-      queryClient.invalidateQueries({ queryKey: ['cashbox'] });
-      queryClient.invalidateQueries({ queryKey: ['finance-debts'] });
-      queryClient.invalidateQueries({ queryKey: ['finance-active-deals'] });
-      queryClient.invalidateQueries({ queryKey: ['client-debt-detail'] });
-    },
-    onError: (err: any) => {
-      message.error(err?.response?.data?.message || 'Ошибка при добавлении платежа');
-    },
-  });
-
   const receiptPunchedMut = useMutation({
     mutationFn: (vals: { dealId: string; isReceiptPunched: boolean }) =>
       dealsApi.update(vals.dealId, { isReceiptPunched: vals.isReceiptPunched }),
@@ -385,6 +364,29 @@ export default function CashboxPage() {
       });
     },
     [openActivePayModal],
+  );
+
+  /** Сделка выбрана в «Долгах» — открываем ту же полную форму платежа. */
+  const openActivePayModalFromClientDeal = useCallback(
+    (deal: { id: string; title: string; status: string; amount: number | string; paidAmount: number | string; manager?: { id: string; fullName: string } | null }) => {
+      if (!selectedClient) return;
+      const amount = Number(deal.amount);
+      const paidAmount = Number(deal.paidAmount);
+      setPayModalOpen(false);
+      openActivePayModal({
+        dealId: deal.id,
+        title: deal.title,
+        status: deal.status,
+        clientId: selectedClient.clientId,
+        clientName: selectedClient.clientName,
+        clientIsSvip: selectedClient.isSvip,
+        amount,
+        paidAmount,
+        remaining: amount - paidAmount,
+        manager: deal.manager ?? null,
+      });
+    },
+    [openActivePayModal, selectedClient],
   );
 
   const activePayPreview = useMemo(() => {
@@ -541,19 +543,7 @@ export default function CashboxPage() {
 
   const openPayModal = (row: ClientDebtRow) => {
     setSelectedClient({ clientId: row.clientId, clientName: row.clientName, isSvip: row.isSvip });
-    setSelectedDealId(null);
-    payForm.resetFields();
     setPayModalOpen(true);
-  };
-
-  const handlePay = () => {
-    if (!selectedDealId) {
-      message.warning('Выберите сделку');
-      return;
-    }
-    payForm.validateFields().then((vals) => {
-      paymentMut.mutate({ dealId: selectedDealId, amount: vals.amount, method: vals.method, note: vals.note });
-    });
   };
 
   // ──── Columns ────
@@ -840,7 +830,6 @@ export default function CashboxPage() {
   // ──── Deal selection for payment modal ────
 
   const clientDeals = clientDetail?.deals ?? [];
-  const selectedDeal = clientDeals.find((d: any) => d.id === selectedDealId);
 
   /** Единый баннер ошибки — вместо пустой таблицы, которую путали с «нет данных». */
   const renderError = (err: unknown, title: string) => err ? (
@@ -1611,7 +1600,10 @@ export default function CashboxPage() {
         </div>
       </Modal>
 
-      {/* Quick payment modal */}
+      {/* Выбор сделки клиента из «Долгов». Собственной формы платежа здесь больше нет:
+          она была урезанной копией модалки «Активных» — без зачёта переплаты, даты
+          и предпросмотра, — и именно на ней ловился баг с чужой суммой. Теперь после
+          выбора сделки открывается та же полная форма. */}
       <Modal
         title={
           selectedClient ? (
@@ -1631,53 +1623,49 @@ export default function CashboxPage() {
           )
         }
         open={payModalOpen}
-        onCancel={() => { setPayModalOpen(false); setSelectedClient(null); setSelectedDealId(null); payForm.resetFields(); }}
-        onOk={handlePay}
-        okText="Оплатить"
-        confirmLoading={paymentMut.isPending}
+        onCancel={() => { setPayModalOpen(false); setSelectedClient(null); }}
+        footer={null}
         width={isMobile ? 'calc(100vw - 24px)' : 600}
-        okButtonProps={{ disabled: !selectedDealId }}
+        destroyOnClose
       >
         {clientDetailLoading ? (
           <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
         ) : (
           <>
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              Выберите сделку для оплаты:
+              Выберите сделку — дальше откроется форма платежа с зачётом переплаты,
+              датой и проверкой перед сохранением.
             </Typography.Text>
 
-            <div role="radiogroup" aria-label="Выберите сделку" style={{ maxHeight: 200, overflowY: 'auto', marginBottom: GAP.BLOCK }}>
+            <div role="list" aria-label="Сделки клиента" style={{ maxHeight: 340, overflowY: 'auto' }}>
               {clientDeals.length === 0 && (
                 <Typography.Text type="secondary">Нет неоплаченных сделок</Typography.Text>
               )}
               {clientDeals.map((deal: any) => {
                 const debt = Number(deal.amount) - Number(deal.paidAmount);
-                const isSelected = selectedDealId === deal.id;
                 return (
                   <div
                     key={deal.id}
-                    role="radio"
-                    aria-checked={isSelected}
+                    role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedDealId(deal.id)}
+                    onClick={() => openActivePayModalFromClientDeal(deal)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setSelectedDealId(deal.id);
+                        openActivePayModalFromClientDeal(deal);
                       }
                     }}
                     style={{
-                      padding: '8px 12px',
-                      border: `1px solid ${isSelected ? tk.colorPrimary : tk.colorBorderSecondary}`,
-                      borderRadius: 6,
+                      padding: '10px 12px',
+                      border: `1px solid ${tk.colorBorderSecondary}`,
+                      borderRadius: 8,
                       marginBottom: 8,
                       cursor: 'pointer',
-                      background: isSelected ? tk.colorPrimaryBg : tk.colorBgContainer,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{deal.title || deal.id.slice(0, 8)}</span>
-                      <span style={{ color: tk.colorError }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontWeight: 600 }}>{deal.title || deal.id.slice(0, 8)}</span>
+                      <span style={{ color: tk.colorError, whiteSpace: 'nowrap' }}>
                         Долг: {formatUZS(debt)}
                       </span>
                     </div>
@@ -1689,43 +1677,6 @@ export default function CashboxPage() {
                 );
               })}
             </div>
-
-            {selectedDealId && selectedDeal && (
-              // key обязателен: без него при переключении сделки форма не перемонтируется,
-              // initialValue не применяется повторно и в поле остаётся сумма прошлой сделки.
-              <Form key={selectedDealId} form={payForm} layout="vertical">
-                <Form.Item
-                  name="amount"
-                  label="Сумма"
-                  rules={[{ required: true, message: 'Введите сумму' }]}
-                  initialValue={Number(selectedDeal.amount) - Number(selectedDeal.paidAmount)}
-                >
-                  <InputNumber
-                    style={{ width: '100%' }}
-                    min={1}
-                    formatter={moneyFormatter}
-                    parser={(v) => Number(moneyParser(v))}
-                  />
-                </Form.Item>
-                <Form.Item name="method" label="Способ оплаты">
-                  <Select
-                    allowClear
-                    placeholder="Выберите способ"
-                    options={[
-                      { label: 'Наличные', value: 'CASH' },
-                      { label: 'Перечисление', value: 'TRANSFER' },
-                      { label: 'Payme', value: 'PAYME' },
-                      { label: 'QR', value: 'QR' },
-                      { label: 'Click', value: 'CLICK' },
-                      { label: 'Терминал', value: 'TERMINAL' },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="note" label="Примечание">
-                  <Input.TextArea rows={2} />
-                </Form.Item>
-              </Form>
-            )}
           </>
         )}
       </Modal>
