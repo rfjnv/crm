@@ -660,13 +660,24 @@ router.get(
         isArchived: false,
         status: { notIn: ['CANCELED', 'REJECTED'] },
       },
-      select: { amount: true, paidAmount: true },
+      select: { id: true, title: true, status: true, amount: true, paidAmount: true },
     });
 
-    const creditFromOtherDeals = siblings.reduce(
-      (s, d) => s + Math.max(0, Number(d.paidAmount) - Number(d.amount)),
-      0,
-    );
+    // Переплата клиента почти всегда собрана из нескольких сделок. Отдаём не только
+    // общую сумму, но и разбивку: кассир должен видеть, откуда спишутся деньги,
+    // ДО проведения зачёта, а не узнавать это из примечания после.
+    // Порядок совпадает с порядком списания в apply-client-credit (от большей переплаты).
+    const creditSources = siblings
+      .map((d) => ({
+        dealId: d.id,
+        title: d.title,
+        status: d.status,
+        surplus: Math.max(0, Number(d.paidAmount) - Number(d.amount)),
+      }))
+      .filter((d) => d.surplus > 0)
+      .sort((a, b) => b.surplus - a.surplus);
+
+    const creditFromOtherDeals = creditSources.reduce((s, d) => s + d.surplus, 0);
 
     const amount = Number(deal.amount);
     const paidAmount = Number(deal.paidAmount);
@@ -687,6 +698,7 @@ router.get(
         overpaymentOnThisDeal,
       },
       creditFromOtherDeals,
+      creditSources,
     });
   }),
 );

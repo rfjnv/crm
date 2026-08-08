@@ -124,7 +124,13 @@ export default function CashboxPage() {
   const [selectedClient, setSelectedClient] = useState<{ clientId: string; clientName: string; isSvip?: boolean } | null>(null);
   const [activePayModalOpen, setActivePayModalOpen] = useState(false);
   const [activePayDeal, setActivePayDeal] = useState<ActiveDealRow | null>(null);
-  const [activePayMode, setActivePayMode] = useState<'cash' | 'credit'>('cash');
+  /**
+   * Пресет оплаты. Раньше это были два состояния ('cash' | 'credit') и три кнопки,
+   * из которых третья просто стирала сумму и никак не подсвечивалась — тристейт
+   * читался как случайный набор чипов. Теперь один явный переключатель.
+   */
+  const [activePayPreset, setActivePayPreset] = useState<'full' | 'partial' | 'credit'>('full');
+  const activePayMode: 'cash' | 'credit' = activePayPreset === 'credit' ? 'credit' : 'cash';
   const [activePayForm] = Form.useForm();
   const queryClient = useQueryClient();
 
@@ -287,7 +293,7 @@ export default function CashboxPage() {
       activePayForm.resetFields();
       setActivePayModalOpen(false);
       setActivePayDeal(null);
-      setActivePayMode('cash');
+      setActivePayPreset('full');
       invalidateAfterActivePayment();
     },
     onError: (err: any) => {
@@ -317,7 +323,7 @@ export default function CashboxPage() {
       activePayForm.resetFields();
       setActivePayModalOpen(false);
       setActivePayDeal(null);
-      setActivePayMode('cash');
+      setActivePayPreset('full');
       invalidateAfterActivePayment();
     },
     onError: (err: any) => {
@@ -328,7 +334,7 @@ export default function CashboxPage() {
   const openActivePayModal = useCallback(
     (row: ActiveDealRow) => {
       setActivePayDeal(row);
-      setActivePayMode('cash');
+      setActivePayPreset('full');
       activePayForm.resetFields();
       activePayForm.setFieldsValue({
         paidAt: dayjs(),
@@ -403,11 +409,26 @@ export default function CashboxPage() {
       const newPaid = paidAmount + applied;
       const newRemaining = dealAmt - newPaid;
       const dealOverAfter = newRemaining < 0 ? -newRemaining : 0;
+
+      // Повторяем порядок списания бэкенда (от большей переплаты), чтобы кассир
+      // видел заранее, с каких именно сделок уйдут деньги. Переплата клиента почти
+      // всегда собрана из нескольких сделок, и «общая сумма» этого не объясняет.
+      const drain: { dealId: string; title: string; amount: number }[] = [];
+      let left = applied;
+      for (const src of activePayContext.creditSources) {
+        if (left <= 0) break;
+        const take = Math.min(src.surplus, left);
+        drain.push({ dealId: src.dealId, title: src.title, amount: take });
+        left -= take;
+      }
+
       return {
         applied,
         newRemaining: Math.max(0, newRemaining),
         dealOverAfter,
         label: 'Зачёт переплаты',
+        drain,
+        shortfall: pay > creditCap ? pay - creditCap : 0,
       };
     }
 
@@ -419,6 +440,8 @@ export default function CashboxPage() {
       newRemaining: Math.max(0, newRemaining),
       dealOverAfter,
       label: 'Внесение средств',
+      drain: [] as { dealId: string; title: string; amount: number }[],
+      shortfall: 0,
     };
   }, [activePayContext, activePayAmountWatch, activePayMode]);
 
@@ -1688,7 +1711,7 @@ export default function CashboxPage() {
         onCancel={() => {
           setActivePayModalOpen(false);
           setActivePayDeal(null);
-          setActivePayMode('cash');
+          setActivePayPreset('full');
           activePayForm.resetFields();
         }}
         onOk={submitActivePay}
@@ -1701,7 +1724,8 @@ export default function CashboxPage() {
           <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
         ) : (
           <>
-            <Typography.Paragraph style={{ marginBottom: 8 }} type="secondary">
+            {/* Кто и по какой сделке — одной строкой, без отдельного абзаца */}
+            <div style={{ marginBottom: 14, fontSize: 13 }}>
               <ClientCompanyDisplay
                 client={{
                   id: activePayContext.deal.clientId,
@@ -1712,130 +1736,203 @@ export default function CashboxPage() {
               />
               {' · '}
               <Link to={`/deals/${activePayContext.deal.dealId}`}>открыть сделку</Link>
-            </Typography.Paragraph>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 12 }}>
-              <span style={{ color: tk.colorTextSecondary }}>Сумма сделки</span>
-              <span style={{ textAlign: 'right' }}>{formatUZS(activePayContext.deal.amount)}</span>
-              <span style={{ color: tk.colorTextSecondary }}>Уже оплачено</span>
-              <span style={{ textAlign: 'right' }}>{formatUZS(activePayContext.deal.paidAmount)}</span>
-              <span style={{ color: tk.colorTextSecondary }}>Остаток по сделке</span>
-              <span style={{ textAlign: 'right', color: activePayContext.deal.remaining > 0 ? tk.colorWarning : undefined }}>
-                {formatUZS(activePayContext.deal.remaining)}
-              </span>
-              {activePayContext.deal.overpaymentOnThisDeal > 0 && (
-                <>
-                  <span style={{ color: tk.colorTextSecondary }}>Переплата на этой сделке</span>
-                  <span style={{ textAlign: 'right', color: tk.colorSuccess }}>
-                    {formatUZS(activePayContext.deal.overpaymentOnThisDeal)}
-                  </span>
-                </>
-              )}
-              <span style={{ color: tk.colorTextSecondary }}>Переплата на других сделках</span>
-              <span style={{ textAlign: 'right', color: activePayContext.creditFromOtherDeals > 0 ? tk.colorSuccess : undefined }}>
-                {activePayContext.creditFromOtherDeals > 0 ? formatUZS(activePayContext.creditFromOtherDeals) : '—'}
-              </span>
             </div>
 
-            <Divider style={{ margin: '4px 0 12px' }} />
+            {/* Остаток — главное число экрана, поэтому он крупный, а не одна из
+                четырёх одинаковых строк мелкой сетки. */}
+            <Card size="small" style={{ marginBottom: 14 }} styles={{ body: { padding: '10px 14px' } }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Остаток по сделке</Typography.Text>
+                <Typography.Text
+                  strong
+                  style={{
+                    fontSize: 20,
+                    whiteSpace: 'nowrap',
+                    color: activePayContext.deal.remaining > 0 ? tk.colorWarning : tk.colorSuccess,
+                  }}
+                >
+                  {activePayContext.deal.remaining > 0
+                    ? formatUZS(activePayContext.deal.remaining)
+                    : 'Оплачена'}
+                </Typography.Text>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '2px 14px',
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: tk.colorTextSecondary,
+                }}
+              >
+                <span>Сумма: {formatUZS(activePayContext.deal.amount)}</span>
+                <span>Оплачено: {formatUZS(activePayContext.deal.paidAmount)}</span>
+                {activePayContext.deal.overpaymentOnThisDeal > 0 && (
+                  <span style={{ color: tk.colorSuccess }}>
+                    Переплата здесь: {formatUZS(activePayContext.deal.overpaymentOnThisDeal)}
+                  </span>
+                )}
+              </div>
+            </Card>
 
-            <Space wrap size="small" style={{ marginBottom: 12 }}>
-              <Button
-                size="small"
-                type={activePayMode === 'cash' && activePayContext.deal.remaining > 0 ? 'primary' : 'default'}
-                onClick={() => {
-                  setActivePayMode('cash');
-                  activePayForm.setFieldsValue({
-                    amount: Math.max(0, activePayContext.deal.remaining),
-                  });
-                }}
-                disabled={activePayContext.deal.remaining <= 0}
-              >
-                Погасить весь остаток
-              </Button>
-              <Button
-                size="small"
-                type={activePayMode === 'credit' ? 'primary' : 'default'}
-                onClick={() => {
-                  const credit = activePayContext.creditFromOtherDeals;
-                  if (credit <= 0) {
-                    message.info('Нет переплаты на других сделках клиента (в вашей зоне видимости)');
-                    return;
-                  }
-                  setActivePayMode('credit');
-                  const rem = activePayContext.deal.remaining;
-                  const amt = rem > 0 ? Math.min(rem, credit) : credit;
-                  activePayForm.setFieldsValue({ amount: amt });
-                }}
-                disabled={activePayContext.creditFromOtherDeals <= 0}
-              >
-                Использовать переплату
-              </Button>
-              <Button
-                size="small"
-                onClick={() => {
-                  setActivePayMode('cash');
+            {/* Три кнопки-чипа заменены одним переключателем: режим виден всегда,
+                а не угадывается по тому, какая кнопка подсветилась. */}
+            <Segmented
+              block
+              value={activePayPreset}
+              onChange={(v) => {
+                const preset = v as 'full' | 'partial' | 'credit';
+                setActivePayPreset(preset);
+                const rem = activePayContext.deal.remaining;
+                const credit = activePayContext.creditFromOtherDeals;
+                if (preset === 'full') {
+                  activePayForm.setFieldsValue({ amount: Math.max(0, rem) || undefined });
+                } else if (preset === 'partial') {
                   activePayForm.setFieldsValue({ amount: undefined });
+                } else {
+                  activePayForm.setFieldsValue({ amount: rem > 0 ? Math.min(rem, credit) : credit });
+                }
+              }}
+              options={[
+                {
+                  label: 'Весь остаток',
+                  value: 'full',
+                  disabled: activePayContext.deal.remaining <= 0,
+                },
+                { label: 'Частично', value: 'partial' },
+                {
+                  label: 'Зачёт переплаты',
+                  value: 'credit',
+                  disabled: activePayContext.creditFromOtherDeals <= 0,
+                },
+              ]}
+              style={{ marginBottom: 14 }}
+            />
+
+            {/* Переплата у клиента почти всегда набрана из нескольких сделок —
+                показываем, откуда именно спишутся деньги, до проведения зачёта. */}
+            {activePayContext.creditSources.length > 0 && (
+              <Card
+                size="small"
+                style={{
+                  marginBottom: 14,
+                  borderColor: activePayPreset === 'credit' ? tk.colorSuccessBorder : undefined,
                 }}
+                styles={{ body: { padding: '10px 14px' } }}
               >
-                Частичная оплата
-              </Button>
-            </Space>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <Typography.Text style={{ fontSize: 12 }} type="secondary">
+                    Переплата на других сделках
+                    {activePayContext.creditSources.length > 1
+                      && ` · ${activePayContext.creditSources.length} шт.`}
+                  </Typography.Text>
+                  <Typography.Text strong style={{ color: tk.colorSuccess, whiteSpace: 'nowrap' }}>
+                    {formatUZS(activePayContext.creditFromOtherDeals)}
+                  </Typography.Text>
+                </div>
+                <div style={{ maxHeight: 96, overflowY: 'auto' }}>
+                  {activePayContext.creditSources.map((src, i) => (
+                    <div
+                      key={src.dealId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        fontSize: 12,
+                        padding: '2px 0',
+                      }}
+                    >
+                      <Link
+                        to={`/deals/${src.dealId}`}
+                        style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {i + 1}. {src.title || src.dealId.slice(0, 8)}
+                      </Link>
+                      <span style={{ whiteSpace: 'nowrap', color: tk.colorTextSecondary }}>
+                        {formatUZS(src.surplus)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {activePayPreset === 'credit' && activePayContext.creditSources.length > 1 && (
+                  <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+                    Списание идёт сверху вниз — начиная с наибольшей переплаты.
+                  </Typography.Text>
+                )}
+              </Card>
+            )}
 
-            <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-              {activePayMode === 'credit'
-                ? 'Сумма спишется с переплаты на других сделках (проводка «Перечисление» в истории).'
-                : 'Сумма выше остатка не блокируется — лишнее останется как переплата на этой сделке.'}
-            </Typography.Text>
-
-            <Form form={activePayForm} layout="vertical" size="small">
+            <Form form={activePayForm} layout="vertical" size="middle" requiredMark={false}>
               <Form.Item
                 name="amount"
                 label="Сумма"
                 rules={[{ required: true, message: 'Введите сумму' }]}
+                extra={activePayMode === 'credit'
+                  ? 'Спишется с переплаты на других сделках — деньги в кассу не поступают.'
+                  : 'Сумма выше остатка допустима — лишнее станет переплатой на этой сделке.'}
               >
                 <InputNumber
-                  style={{ width: '100%' }}
+                  autoFocus
+                  style={{ width: '100%', fontSize: 18, fontWeight: 600 }}
                   min={1}
+                  max={activePayMode === 'credit' ? activePayContext.creditFromOtherDeals : undefined}
                   formatter={moneyFormatter}
                   parser={(v) => Number(moneyParser(v))}
                 />
               </Form.Item>
-              <Form.Item name="paidAt" label="Дата оплаты" initialValue={dayjs()}>
-                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))} />
-              </Form.Item>
+
+              {/* Второстепенные поля — в две колонки, иначе модалка вырастает
+                  в вертикальную простыню из пяти одинаковых полей. */}
+              <Row gutter={12}>
+                <Col xs={24} sm={12}>
+                  <Form.Item name="paidAt" label="Дата оплаты" initialValue={dayjs()}>
+                    <DatePicker
+                      style={{ width: '100%' }}
+                      format="DD.MM.YYYY"
+                      allowClear={false}
+                      disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))}
+                    />
+                  </Form.Item>
+                </Col>
+                {activePayMode === 'cash' && (
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="method" label="Способ оплаты">
+                      <Select
+                        allowClear
+                        placeholder="Выберите"
+                        options={[
+                          { label: 'Наличные', value: 'CASH' },
+                          { label: 'Перечисление', value: 'TRANSFER' },
+                          { label: 'Payme', value: 'PAYME' },
+                          { label: 'QR', value: 'QR' },
+                          { label: 'Click', value: 'CLICK' },
+                          { label: 'Терминал', value: 'TERMINAL' },
+                          { label: 'Рассрочка', value: 'INSTALLMENT' },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+
               {activePayMode === 'cash' && (
-                <>
-                  <Form.Item name="method" label="Способ оплаты">
-                    <Select
-                      allowClear
-                      placeholder="Выберите способ"
-                      options={[
-                        { label: 'Наличные', value: 'CASH' },
-                        { label: 'Перечисление', value: 'TRANSFER' },
-                        { label: 'Payme', value: 'PAYME' },
-                        { label: 'QR', value: 'QR' },
-                        { label: 'Click', value: 'CLICK' },
-                        { label: 'Терминал', value: 'TERMINAL' },
-                        { label: 'Рассрочка', value: 'INSTALLMENT' },
-                      ]}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="receivedById"
-                    label="Принял"
-                    tooltip="Кто фактически принял деньги. По умолчанию — вы."
-                  >
-                    <Select
-                      allowClear
-                      showSearch
-                      placeholder="Вы"
-                      options={staff}
-                      filterOption={(input, option) =>
-                        matchesSearch(String(option?.label ?? ''), input)}
-                    />
-                  </Form.Item>
-                </>
+                <Form.Item
+                  name="receivedById"
+                  label="Принял"
+                  tooltip="Кто фактически принял деньги. По умолчанию — вы."
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Вы"
+                    options={staff}
+                    filterOption={(input, option) =>
+                      matchesSearch(String(option?.label ?? ''), input)}
+                  />
+                </Form.Item>
               )}
+
               <Form.Item name="note" label="Комментарий">
                 <Input.TextArea rows={2} placeholder="Необязательно" />
               </Form.Item>
@@ -1861,6 +1958,30 @@ export default function CashboxPage() {
                   {activePayPreview.dealOverAfter > 0 && (
                     <div style={{ color: tk.colorSuccess }}>
                       Переплата на сделке: <strong>{formatUZS(activePayPreview.dealOverAfter)}</strong>
+                    </div>
+                  )}
+                  {activePayPreview.shortfall > 0 && (
+                    <div style={{ color: tk.colorWarning, marginTop: 4 }}>
+                      Переплаты не хватает на {formatUZS(activePayPreview.shortfall)} — зачтётся только
+                      доступное.
+                    </div>
+                  )}
+                  {activePayPreview.drain.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        Спишется со сделок:
+                      </Typography.Text>
+                      {activePayPreview.drain.map((d) => (
+                        <div
+                          key={d.dealId}
+                          style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12 }}
+                        >
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {d.title || d.dealId.slice(0, 8)}
+                          </span>
+                          <span style={{ whiteSpace: 'nowrap' }}>−{formatUZS(d.amount)}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

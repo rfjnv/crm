@@ -86,9 +86,19 @@ export interface DealPaymentContextDeal {
   overpaymentOnThisDeal: number;
 }
 
+/** Сделка, с которой будет списана переплата при зачёте. */
+export interface CreditSource {
+  dealId: string;
+  title: string;
+  status: string;
+  surplus: number;
+}
+
 export interface DealPaymentContextResponse {
   deal: DealPaymentContextDeal;
   creditFromOtherDeals: number;
+  /** Разбивка переплаты по сделкам, в порядке списания (от большей суммы). */
+  creditSources: CreditSource[];
 }
 
 /**
