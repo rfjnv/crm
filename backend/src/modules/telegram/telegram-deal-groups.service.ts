@@ -139,6 +139,12 @@ function itemsHavePositiveQty(items: { requestedQty: unknown }[]): boolean {
 export type SyncDealTelegramOpts = {
   /** Строка внизу поста (super override) — меняет текст и гарантирует доставку в группу. */
   footnote?: string;
+  /**
+   * Не править старый пост на месте, а удалить его и отправить свежую версию заново.
+   * Нужно для изменений, которые меняют суть сделки (оверрайды, позиции, количества, оплаты):
+   * правка «в истории» никого не уведомляет, перепост — поднимает сделку в низ чата.
+   */
+  repost?: boolean;
 };
 
 function appendSyncFootnote(html: string, footnote?: string): string {
@@ -162,6 +168,28 @@ async function tryEditGroupHtmlInChats(
     }
   }
   return null;
+}
+
+/**
+ * Перепост: сначала отправляем свежую версию, и только после успеха удаляем старый пост
+ * (если отправка упала — в группе останется хотя бы старое сообщение, а не пустота).
+ * Старый пост ищем и в альтернативных чатах: он мог быть перенесён (производство ↔ отгрузка).
+ */
+async function repostGroupHtmlMessage(
+  chatId: string,
+  oldMessageId: number,
+  html: string,
+  path: string,
+  alternateChatIds: string[] = [],
+): Promise<number | null> {
+  const newId = await telegramService.sendGroupHtmlMessage(chatId, html, path);
+  if (newId == null) return null;
+
+  const chats = [...new Set([chatId, ...alternateChatIds].filter((c) => c?.trim()))];
+  for (const c of chats) {
+    if (await telegramService.deleteGroupMessage(c, oldMessageId)) break;
+  }
+  return newId;
 }
 
 function parseStoredTelegramMessageId(raw: string | null | undefined): number | null {
@@ -1154,6 +1182,7 @@ async function syncProductionBoardMessage(
   dealId: string,
   deal: DealForTelegramSync,
   footnote?: string,
+  repost = false,
 ): Promise<void> {
   const prodChat = config.telegram.groupProductionChatId?.trim();
   const rfsChat = config.telegram.groupReadyForShipmentChatId?.trim();
@@ -1181,6 +1210,24 @@ async function syncProductionBoardMessage(
         },
       })
       .catch((err) => console.error('[Telegram deal groups] sync: save productionTelegramMessageId:', err));
+    return;
+  }
+
+  if (repost) {
+    const newId = await repostGroupHtmlMessage(chatProd, mid, body, path, alternates);
+    if (newId == null) {
+      console.warn('[Telegram deal groups] sync: production repost failed dealId=', dealId);
+      return;
+    }
+    await prisma.deal
+      .update({
+        where: { id: dealId },
+        data: {
+          productionTelegramMessageId: String(newId),
+          productionTelegramMessageInRfsChat: !!(rfsChat && chatProd === rfsChat),
+        },
+      })
+      .catch((err) => console.error('[Telegram deal groups] sync: save reposted production message:', err));
     return;
   }
 
@@ -1214,15 +1261,39 @@ export async function syncDealTelegramGroupMessages(
 
   const path = dealLinkPath(dealId);
 
+  const repost = opts?.repost === true;
+
+  /** Правка на месте либо перепост (удалить старый + отправить новый) с сохранением message_id. */
+  const refreshGroupMessage = async (
+    chatId: string,
+    mid: number,
+    html: string,
+    field: 'warehouseTelegramMessageId' | 'productionIntakeTelegramMessageId' | 'financeTelegramMessageId',
+    label: string,
+  ): Promise<void> => {
+    if (repost) {
+      const newId = await repostGroupHtmlMessage(chatId, mid, html, path);
+      if (newId == null) {
+        console.warn(`[Telegram deal groups] sync: ${label} repost failed dealId=`, dealId);
+        return;
+      }
+      await prisma.deal
+        .update({ where: { id: dealId }, data: { [field]: String(newId) } })
+        .catch((err) => console.error(`[Telegram deal groups] sync: save ${field}:`, err));
+      return;
+    }
+    const ok = await telegramService.editGroupHtmlMessage(chatId, mid, html, path);
+    if (!ok) {
+      console.warn(`[Telegram deal groups] sync: ${label} edit failed dealId=`, dealId);
+    }
+  };
+
   const chatWh = config.telegram.groupWarehouseChatId;
   if (chatWh && deal.warehouseTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.warehouseTelegramMessageId);
     if (mid != null) {
-      const html = buildWarehouseQueueTelegramHtml(deal);
-      const ok = await telegramService.editGroupHtmlMessage(chatWh, mid, html, path);
-      if (!ok) {
-        console.warn('[Telegram deal groups] sync: warehouse edit failed dealId=', dealId);
-      }
+      const html = appendSyncFootnote(buildWarehouseQueueTelegramHtml(deal), opts?.footnote);
+      await refreshGroupMessage(chatWh, mid, html, 'warehouseTelegramMessageId', 'warehouse');
     }
   }
 
@@ -1230,11 +1301,14 @@ export async function syncDealTelegramGroupMessages(
   if (chatPr && deal.productionIntakeTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
     if (mid != null) {
-      const html = buildProductionIntakeTelegramHtml(deal);
-      const ok = await telegramService.editGroupHtmlMessage(chatPr, mid, html, path);
-      if (!ok) {
-        console.warn('[Telegram deal groups] sync: production intake edit failed dealId=', dealId);
-      }
+      const html = appendSyncFootnote(buildProductionIntakeTelegramHtml(deal), opts?.footnote);
+      await refreshGroupMessage(
+        chatPr,
+        mid,
+        html,
+        'productionIntakeTelegramMessageId',
+        'production intake',
+      );
     }
   }
 
@@ -1242,11 +1316,8 @@ export async function syncDealTelegramGroupMessages(
   if (chatFi && deal.financeTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.financeTelegramMessageId);
     if (mid != null) {
-      const html = buildFinanceHtmlWithAppendix(deal);
-      const ok = await telegramService.editGroupHtmlMessage(chatFi, mid, html, path);
-      if (!ok) {
-        console.warn('[Telegram deal groups] sync: finance edit failed dealId=', dealId);
-      }
+      const html = appendSyncFootnote(buildFinanceHtmlWithAppendix(deal), opts?.footnote);
+      await refreshGroupMessage(chatFi, mid, html, 'financeTelegramMessageId', 'finance');
     }
   }
 
@@ -1274,7 +1345,7 @@ export async function syncDealTelegramGroupMessages(
     chatProd &&
     (dealForProduction.productionTelegramMessageId?.trim() || opts?.footnote?.trim())
   ) {
-    await syncProductionBoardMessage(dealId, dealForProduction, opts?.footnote);
+    await syncProductionBoardMessage(dealId, dealForProduction, opts?.footnote, repost);
   }
 }
 
