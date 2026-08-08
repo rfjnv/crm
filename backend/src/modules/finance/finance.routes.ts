@@ -873,6 +873,121 @@ router.post(
   }),
 );
 
+// ──── СТОРНИРОВАНИЕ ЗАЧЁТА ПЕРЕПЛАТЫ ────
+//
+// deletePaymentRecord (deals.service.ts) намеренно блокирует прямое удаление
+// CREDIT_TRANSFER-платежей — простое удаление уменьшило бы paidAmount целевой сделки,
+// но не вернуло бы деньги сделкам-источникам. Правильный откат восстанавливает paidAmount
+// у каждого источника — а узнать, кто источники и сколько у кого забрали, можно только
+// из audit-лога создания этого платежа (сам Payment хранит источники лишь в свободном
+// тексте note, а названия сделок не уникальны — по нему source-сделку не найти надёжно).
+router.post(
+  '/payments/:paymentId/reverse-client-credit',
+  authorize('SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const paymentId = req.params.paymentId as string;
+    const user: AuthUser = {
+      userId: req.user!.userId,
+      role: req.user!.role as Role,
+      permissions: req.user!.permissions || [],
+      companyId: req.user!.companyId,
+    };
+
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (reason.length < 3) {
+      throw new AppError(400, 'Укажите причину сторнирования (мин. 3 символа)');
+    }
+
+    const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) throw new AppError(404, 'Платёж не найден');
+    if (payment.kind !== 'CREDIT_TRANSFER') {
+      throw new AppError(400, 'Это не проводка зачёта переплаты — для обычного платежа используйте удаление платежа');
+    }
+
+    // Среди PAYMENT_CREATE-записей этой сделки ищем ту, что породила именно этот платёж.
+    const candidateLogs = await prisma.auditLog.findMany({
+      where: { action: 'PAYMENT_CREATE', entityType: 'deal', entityId: payment.dealId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const creationLog = candidateLogs.find((l) => (l.after as { paymentId?: string } | null)?.paymentId === paymentId);
+    const sources = (creationLog?.after as { sources?: { id: string; title: string | null; amount: number }[] } | null)?.sources;
+    if (!creationLog || !sources || sources.length === 0) {
+      throw new AppError(
+        400,
+        'Не найдена запись о создании этого зачёта (слишком старый платёж или логи повреждены) — '
+        + 'источники переплаты восстановить автоматически нельзя. Обратитесь к разработчику.',
+      );
+    }
+
+    const paymentSnapshot = {
+      id: payment.id, amount: Number(payment.amount), dealId: payment.dealId,
+      note: payment.note, paidAt: payment.paidAt,
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const target = await tx.deal.findUnique({ where: { id: payment.dealId } });
+      if (!target) throw new AppError(404, 'Сделка не найдена');
+
+      const targetNewPaid = Number(target.paidAmount) - Number(payment.amount);
+      const targetUpd = await tx.deal.updateMany({
+        where: { id: target.id, version: target.version },
+        data: {
+          paidAmount: Math.max(0, targetNewPaid),
+          paymentStatus: paymentStatusFromAmounts(Number(target.amount), targetNewPaid),
+          version: { increment: 1 },
+        },
+      });
+      if (targetUpd.count === 0) {
+        throw new AppError(409, 'Сделка была изменена с момента зачёта. Обновите страницу и повторите.');
+      }
+
+      const restored: { id: string; title: string | null; amount: number }[] = [];
+      for (const src of sources) {
+        const srcDeal = await tx.deal.findUnique({ where: { id: src.id } });
+        if (!srcDeal) {
+          // Сделка-источник могла быть с тех пор удалена — восстанавливать некуда,
+          // но остальные источники всё равно нужно вернуть, не срываем всю операцию.
+          continue;
+        }
+        const srcNewPaid = Number(srcDeal.paidAmount) + src.amount;
+        const srcUpd = await tx.deal.updateMany({
+          where: { id: srcDeal.id, version: srcDeal.version },
+          data: {
+            paidAmount: srcNewPaid,
+            paymentStatus: paymentStatusFromAmounts(Number(srcDeal.amount), srcNewPaid),
+            version: { increment: 1 },
+          },
+        });
+        if (srcUpd.count === 0) {
+          throw new AppError(409, `Сделка-источник "${srcDeal.title || srcDeal.id}" была изменена с момента зачёта. Обновите страницу и повторите.`);
+        }
+        restored.push({ id: srcDeal.id, title: srcDeal.title, amount: src.amount });
+      }
+
+      await tx.payment.delete({ where: { id: paymentId } });
+
+      return { targetNewPaid: Math.max(0, targetNewPaid), restored };
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'PAYMENT_DELETE',
+      entityType: 'deal',
+      entityId: payment.dealId,
+      before: { ...paymentSnapshot, sources },
+      after: { reversedTargetPaid: result.targetNewPaid, restoredSources: result.restored },
+      reason,
+    });
+
+    res.json({
+      success: true,
+      targetDealId: payment.dealId,
+      targetNewPaid: result.targetNewPaid,
+      restoredSources: result.restored,
+    });
+  }),
+);
+
 // ──── CLIENT DEBT DETAIL ────
 router.get(
   '/debts/client/:clientId',

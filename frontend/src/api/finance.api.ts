@@ -223,6 +223,15 @@ export const financeApi = {
       .post<ApplyCreditResult>(`/finance/deals/${dealId}/apply-client-credit`, body)
       .then((r) => r.data),
 
+  /** SUPER_ADMIN-only: откатить проводку зачёта переплаты — возвращает paidAmount сделкам-источникам. */
+  reverseClientCredit: (paymentId: string, reason: string) =>
+    client
+      .post<{ success: boolean; targetDealId: string; targetNewPaid: number; restoredSources: { id: string; title: string | null; amount: number }[] }>(
+        `/finance/payments/${paymentId}/reverse-client-credit`,
+        { reason },
+      )
+      .then((r) => r.data),
+
   clientDebtDetail: (clientId: string) =>
     client.get(`/finance/debts/client/${clientId}`).then((r) => r.data),
 

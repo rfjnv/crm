@@ -947,6 +947,8 @@ export interface PaymentRecord {
   note?: string | null;
   createdBy: string;
   createdAt: string;
+  /** CASH_IN — обычное поступление; CREDIT_TRANSFER — служебная проводка зачёта переплаты (нельзя удалить обычным способом). */
+  kind?: 'CASH_IN' | 'CREDIT_TRANSFER' | 'REVERSAL';
   deal?: { id: string; title: string; isReceiptPunched?: boolean };
   creator?: { id: string; fullName: string };
 }

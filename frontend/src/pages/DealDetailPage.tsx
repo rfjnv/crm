@@ -18,6 +18,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { contractsApi } from '../api/contracts.api';
+import { financeApi } from '../api/finance.api';
 import DealStatusTag from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import DealPipeline from '../components/DealPipeline';
@@ -462,6 +463,24 @@ export default function DealDetailPage() {
     onSuccess: () => { invalidate(); message.success('Платёж удалён'); },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка удаления платежа';
+      message.error(msg);
+    },
+  });
+
+  // SUPER_ADMIN: сторнирование проводки зачёта переплаты (обычное удаление платежа
+  // для CREDIT_TRANSFER заблокировано на бэке — деньги не вернулись бы сделкам-источникам)
+  const [reverseCreditPayment, setReverseCreditPayment] = useState<PaymentRecord | null>(null);
+  const [reverseCreditReason, setReverseCreditReason] = useState('');
+  const reverseCreditMut = useMutation({
+    mutationFn: (paymentId: string) => financeApi.reverseClientCredit(paymentId, reverseCreditReason.trim()),
+    onSuccess: (res) => {
+      invalidate();
+      message.success(`Зачёт отменён: возвращено на ${res.restoredSources.length} сделку(и)-источник`);
+      setReverseCreditPayment(null);
+      setReverseCreditReason('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сторнирования';
       message.error(msg);
     },
   });
@@ -1280,7 +1299,13 @@ export default function DealDetailPage() {
                         <Typography.Text strong>{formatUZS(p.amount)}</Typography.Text>
                         <Space size={4}>
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                          {!isReadOnly && (isAdmin || role === 'ACCOUNTANT') && (
+                          {p.kind === 'CREDIT_TRANSFER' ? (
+                            isSuperAdmin && !isReadOnly && (
+                              <Button type="text" size="small" danger onClick={() => setReverseCreditPayment(p)}>
+                                Сторнировать
+                              </Button>
+                            )
+                          ) : !isReadOnly && (isAdmin || role === 'ACCOUNTANT') && (
                             <>
                               <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
                                 setEditingPayment({ id: p.id });
@@ -1294,6 +1319,9 @@ export default function DealDetailPage() {
                           )}
                         </Space>
                       </div>
+                      {p.kind === 'CREDIT_TRANSFER' && (
+                        <Tag color="purple" style={{ marginTop: 4 }}>Зачёт переплаты</Tag>
+                      )}
                       {(p.method || p.creator?.fullName) && (
                         <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
                           {p.method && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{paymentMethodLabels[p.method] || p.method}</Typography.Text>}
@@ -1737,23 +1765,36 @@ export default function DealDetailPage() {
                           scroll={{ x: 500 }}
                           columns={[
                             { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
-                            { title: 'Способ', dataIndex: 'method', render: (v: string | null) => v ? (paymentMethodLabels[v] || v) : '—' },
+                            {
+                              title: 'Способ', dataIndex: 'method',
+                              render: (v: string | null, record: PaymentRecord) => record.kind === 'CREDIT_TRANSFER'
+                                ? <Tag color="purple">Зачёт переплаты</Tag>
+                                : (v ? (paymentMethodLabels[v] || v) : '—'),
+                            },
                             { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
                             { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => getFirstName(v) || '—' },
                             { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
-                            ...(!isReadOnly && (isAdmin || role === 'ACCOUNTANT') ? [{
-                              title: '', key: 'actions', width: 80,
+                            ...(!isReadOnly && (isAdmin || role === 'ACCOUNTANT' || isSuperAdmin) ? [{
+                              title: '', key: 'actions', width: 100,
                               render: (_: unknown, record: PaymentRecord) => (
-                                <Space size={0}>
-                                  <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
-                                    setEditingPayment({ id: record.id });
-                                    paymentRecordForm.setFieldsValue({ amount: Number(record.amount), method: record.method || undefined, paidAt: dayjs(record.paidAt), note: record.note || '' });
-                                    setPaymentRecordModal(true);
-                                  }} />
-                                  <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(record.id)}>
-                                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                                  </Popconfirm>
-                                </Space>
+                                record.kind === 'CREDIT_TRANSFER' ? (
+                                  isSuperAdmin && (
+                                    <Button type="text" size="small" danger onClick={() => setReverseCreditPayment(record)}>
+                                      Сторнировать
+                                    </Button>
+                                  )
+                                ) : (isAdmin || role === 'ACCOUNTANT') && (
+                                  <Space size={0}>
+                                    <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
+                                      setEditingPayment({ id: record.id });
+                                      paymentRecordForm.setFieldsValue({ amount: Number(record.amount), method: record.method || undefined, paidAt: dayjs(record.paidAt), note: record.note || '' });
+                                      setPaymentRecordModal(true);
+                                    }} />
+                                    <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(record.id)}>
+                                      <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                                    </Popconfirm>
+                                  </Space>
+                                )
                               ),
                             }] : []),
                           ]}
@@ -2734,6 +2775,40 @@ export default function DealDetailPage() {
           onChange={(e) => setDeleteReason(e.target.value)}
           placeholder="Укажите причину удаления (мин. 3 символа)..."
           status={deleteReason.length > 0 && deleteReason.length < 3 ? 'error' : undefined}
+        />
+      </Modal>
+
+      {/* SUPER_ADMIN: Reverse client-credit payment */}
+      <Modal
+        title={<Typography.Text type="danger" strong>Сторнировать зачёт переплаты</Typography.Text>}
+        open={!!reverseCreditPayment}
+        onCancel={() => { setReverseCreditPayment(null); setReverseCreditReason(''); }}
+        onOk={() => {
+          if (reverseCreditReason.trim().length < 3) {
+            message.error('Укажите причину сторнирования (мин. 3 символа)');
+            return;
+          }
+          reverseCreditMut.mutate(reverseCreditPayment!.id);
+        }}
+        confirmLoading={reverseCreditMut.isPending}
+        okText="Сторнировать"
+        okButtonProps={{ danger: true }}
+        cancelText="Отмена"
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="Это уберёт зачёт с этой сделки и вернёт сумму сделкам-источникам"
+          description={`Сумма: ${reverseCreditPayment ? formatUZS(reverseCreditPayment.amount) : ''}. Откат необратим — источники восстанавливаются по данным журнала аудита на момент создания зачёта.`}
+          style={{ marginBottom: 16 }}
+        />
+        <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>Причина сторнирования *</Typography.Text>
+        <Input.TextArea
+          rows={3}
+          value={reverseCreditReason}
+          onChange={(e) => setReverseCreditReason(e.target.value)}
+          placeholder="Укажите причину (мин. 3 символа)..."
+          status={reverseCreditReason.length > 0 && reverseCreditReason.length < 3 ? 'error' : undefined}
         />
       </Modal>
 
