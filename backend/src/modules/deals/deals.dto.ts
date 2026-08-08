@@ -246,6 +246,9 @@ export const superOverrideDealDto = z.object({
 
 export const superDeleteDealDto = z.object({
   reason: z.string().min(3, 'Укажите причину удаления (мин. 3 символа)'),
+  /** Явное согласие удалить сделку ВМЕСТЕ с её платежами (SUPER_ADMIN-only) — платежи
+   * тогда стираются безвозвратно, что меняет отчёт «Касса» за прошедшие дни. */
+  confirmPaymentDeletion: z.boolean().optional(),
 });
 
 // ──── WAREHOUSE_MANAGER Override (scoped-down super-override) ────

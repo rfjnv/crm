@@ -97,6 +97,7 @@ export default function DealDetailPage() {
   const [wmOverrideModal, setWmOverrideModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [confirmDeletePayments, setConfirmDeletePayments] = useState(false);
   const [includeVat, setIncludeVat] = useState<boolean>(true);
   const [dueDatePopover, setDueDatePopover] = useState(false);
   const [dueDateEdit, setDueDateEdit] = useState<import('dayjs').Dayjs | null>(null);
@@ -514,7 +515,7 @@ export default function DealDetailPage() {
 
   // SUPER_ADMIN: Hard delete deal
   const deleteDealMut = useMutation({
-    mutationFn: (reason: string) => adminApi.deleteDeal(id!, reason),
+    mutationFn: (reason: string) => adminApi.deleteDeal(id!, reason, confirmDeletePayments),
     onSuccess: () => {
       message.success('Сделка удалена');
       queryClient.invalidateQueries({ queryKey: ['deals'] });
@@ -2679,10 +2680,14 @@ export default function DealDetailPage() {
       <Modal
         title={<Typography.Text type="danger" strong>Удалить сделку</Typography.Text>}
         open={deleteConfirmModal}
-        onCancel={() => { setDeleteConfirmModal(false); setDeleteReason(''); }}
+        onCancel={() => { setDeleteConfirmModal(false); setDeleteReason(''); setConfirmDeletePayments(false); }}
         onOk={() => {
           if (deleteReason.trim().length < 3) {
             message.error('Укажите причину удаления (мин. 3 символа)');
+            return;
+          }
+          if ((dealPayments?.length ?? 0) > 0 && !confirmDeletePayments) {
+            message.error('Подтвердите удаление платежей — отметьте чекбокс ниже');
             return;
           }
           deleteDealMut.mutate(deleteReason.trim());
@@ -2699,6 +2704,29 @@ export default function DealDetailPage() {
           description="Сделка и все связанные данные (товары, комментарии, платежи) будут удалены. Складские движения блокируют удаление."
           style={{ marginBottom: 16 }}
         />
+        {(dealPayments?.length ?? 0) > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message="У сделки есть платежи"
+            description={(
+              <>
+                <div style={{ marginBottom: 8 }}>
+                  {dealPayments!.length} платёж(ей) на сумму{' '}
+                  <strong>{formatUZS(dealPayments!.reduce((s, p) => s + Number(p.amount), 0))}</strong>.
+                  Их удаление задним числом изменит отчёт «Касса» за прошедшие дни.
+                </div>
+                <Checkbox
+                  checked={confirmDeletePayments}
+                  onChange={(e) => setConfirmDeletePayments(e.target.checked)}
+                >
+                  Подтверждаю: удалить сделку вместе с этими платежами
+                </Checkbox>
+              </>
+            )}
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>Причина удаления *</Typography.Text>
         <Input.TextArea
           rows={3}

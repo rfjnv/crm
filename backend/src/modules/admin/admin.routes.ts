@@ -38,7 +38,12 @@ router.delete(
   requirePermission('delete_any_deal'),
   validate(superDeleteDealDto),
   asyncHandler(async (req: Request, res: Response) => {
-    const result = await dealsService.hardDelete(req.params.id as string, req.body.reason, getUser(req));
+    const result = await dealsService.hardDelete(
+      req.params.id as string,
+      req.body.reason,
+      getUser(req),
+      req.body.confirmPaymentDeletion === true,
+    );
     res.json(result);
   }),
 );

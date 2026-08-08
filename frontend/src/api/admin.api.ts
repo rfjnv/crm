@@ -95,8 +95,10 @@ export const adminApi = {
   overrideDeal: (id: string, data: OverrideDealData) =>
     client.patch<Deal>(`/admin/deals/${id}/override`, data).then((r) => r.data),
 
-  deleteDeal: (id: string, reason: string) =>
-    client.delete<{ success: boolean; deletedDealId: string }>(`/admin/deals/${id}`, { data: { reason } }).then((r) => r.data),
+  deleteDeal: (id: string, reason: string, confirmPaymentDeletion?: boolean) =>
+    client
+      .delete<{ success: boolean; deletedDealId: string }>(`/admin/deals/${id}`, { data: { reason, confirmPaymentDeletion } })
+      .then((r) => r.data),
 
   getDealAudit: (id: string) =>
     client.get<AuditLog[]>(`/admin/deals/${id}/audit`).then((r) => r.data),

@@ -4018,7 +4018,7 @@ export class DealsService {
     });
   }
 
-  async hardDelete(id: string, reason: string, user: AuthUser) {
+  async hardDelete(id: string, reason: string, user: AuthUser, confirmPaymentDeletion = false) {
     const deal = await prisma.deal.findUnique({
       where: { id },
       include: {
@@ -4037,15 +4037,44 @@ export class DealsService {
     }
 
     // Кассовый журнал неизменяем: платежи нельзя стирать задним числом, иначе
-    // отчёт «Касса» за уже закрытые дни начинает показывать другие суммы.
+    // отчёт «Касса» за уже закрытые дни начинает показывать другие суммы. Ниже ролей
+    // SUPER_ADMIN это жёсткий запрет без исключений.
     if (deal.payments.length > 0) {
       const total = deal.payments.reduce((s, p) => s + Number(p.amount), 0);
-      throw new AppError(
-        400,
-        `Нельзя удалить сделку: по ней проведено платежей — ${deal.payments.length} `
-        + `на сумму ${total.toLocaleString('ru-RU')} сум. Удаление изменило бы кассовые `
-        + `отчёты за прошедшие дни. Архивируйте сделку или сначала сторнируйте платежи.`,
-      );
+
+      if (user.role !== 'SUPER_ADMIN') {
+        throw new AppError(
+          400,
+          `Нельзя удалить сделку: по ней проведено платежей — ${deal.payments.length} `
+          + `на сумму ${total.toLocaleString('ru-RU')} сум. Удаление изменило бы кассовые `
+          + `отчёты за прошедшие дни. Архивируйте сделку или сначала сторнируйте платежи.`,
+        );
+      }
+
+      // Зачёт переплаты между сделками — его удаление не возвращает сумму сделке-источнику
+      // (см. assertPaymentDeletable), поэтому его нельзя стереть просто «заодно» со сделкой
+      // даже с подтверждением: сначала нужно явное сторнирование именно этого платежа.
+      const hasCreditTransfer = deal.payments.some((p) => isClientCreditTransfer(p));
+      if (hasCreditTransfer) {
+        throw new AppError(
+          400,
+          'Среди платежей есть проводка зачёта переплаты — её удаление не вернёт сумму '
+          + 'сделке-источнику. Сначала сторнируйте именно этот платёж через карточку сделки, '
+          + 'затем повторите удаление.',
+        );
+      }
+
+      // SUPER_ADMIN может удалить сделку вместе с платежами, но только с явным
+      // отдельным подтверждением — это необратимо меняет кассовые отчёты задним числом.
+      if (!confirmPaymentDeletion) {
+        throw new AppError(
+          409,
+          `По сделке проведено платежей — ${deal.payments.length} на сумму `
+          + `${total.toLocaleString('ru-RU')} сум. Удаление сотрёт их безвозвратно и изменит `
+          + `отчёт «Касса» за прошедшие дни. Подтвердите удаление вместе с платежами ещё раз, `
+          + `если это действительно нужно.`,
+        );
+      }
     }
 
     const snapshot: Record<string, unknown> = {
@@ -4060,6 +4089,9 @@ export class DealsService {
       itemsCount: deal.items.length,
       commentsCount: deal.comments.length,
       paymentsCount: deal.payments.length,
+      payments: deal.payments.map((p) => ({
+        id: p.id, amount: Number(p.amount), method: p.method, paidAt: p.paidAt, note: p.note,
+      })),
       movementsCount: deal.movements.length,
       totalPaid: Number(deal.paidAmount),
       createdAt: deal.createdAt,
@@ -4187,7 +4219,11 @@ export class DealsService {
       }
 
       await tx.message.updateMany({ where: { dealId: id }, data: { dealId: null } });
-      // Платежей здесь заведомо нет — сделки с платежами отсеиваются выше.
+      // Платежи либо отсутствуют, либо SUPER_ADMIN явно подтвердил удаление вместе с ними
+      // (см. проверки выше) — тогда стираем их здесь, иначе FK на deal_id заблокирует delete.
+      if (deal.payments.length > 0) {
+        await tx.payment.deleteMany({ where: { dealId: id } });
+      }
       await tx.deal.delete({ where: { id } });
     });
 
