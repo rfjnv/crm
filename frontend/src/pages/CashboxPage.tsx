@@ -1817,7 +1817,11 @@ export default function CashboxPage() {
                 size="small"
                 style={{
                   marginBottom: 14,
-                  borderColor: activePayPreset === 'credit' ? tk.colorSuccessBorder : undefined,
+                  // colorSuccessBorder — тёмно-оливковый #274916, на холодном фоне
+                  // выглядит болотным. Чистая линия colorSuccess слева вместо него.
+                  ...(activePayPreset === 'credit'
+                    ? { borderLeft: `3px solid ${tk.colorSuccess}` }
+                    : {}),
                 }}
                 styles={{ body: { padding: '10px 14px' } }}
               >
@@ -1945,8 +1949,13 @@ export default function CashboxPage() {
                 size="small"
                 style={{
                   marginTop: 12,
-                  background: tk.colorPrimaryBg,
-                  borderColor: tk.colorPrimaryBorder,
+                  // Ни colorPrimaryBg, ни colorPrimaryBorder: при этом primary они дают
+                  // один и тот же #182b3c — выходило мутное синее пятно без границы.
+                  // Нейтральная полупрозрачная подложка + акцентная полоса слева
+                  // не конфликтуют ни с тёмной, ни со светлой темой.
+                  background: tk.colorFillQuaternary,
+                  borderColor: tk.colorBorderSecondary,
+                  borderLeft: `3px solid ${tk.colorPrimary}`,
                 }}
               >
                 <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>

@@ -37,6 +37,16 @@ export const antDesignTokens: Record<
   {
     colorBgLayout: string;
     colorBgContainer: string;
+    /**
+     * Поверхности «над» страницей: модалки, выпадающие списки, поповеры, уведомления.
+     *
+     * Без этого переопределения antd в тёмной теме подставляет свой дефолт `#1f1f1f` —
+     * нейтрально-серый. Рядом с холодным `#0B0F14` фоном и `#11161C` карточками он
+     * читается грязно-бурым, из-за чего модалки выглядели инородно. Здесь тот же
+     * холодный оттенок, что у контейнеров, но на шаг светлее — чтобы поверхность
+     * читалась приподнятой.
+     */
+    colorBgElevated: string;
     colorBorderSecondary: string;
     colorSplit: string;
   }
@@ -44,12 +54,14 @@ export const antDesignTokens: Record<
   light: {
     colorBgLayout: '#f5f7fa',
     colorBgContainer: '#ffffff',
+    colorBgElevated: '#ffffff',
     colorBorderSecondary: 'rgba(0, 0, 0, 0.06)',
     colorSplit: 'rgba(0, 0, 0, 0.04)',
   },
   dark: {
     colorBgLayout: '#0B0F14',
     colorBgContainer: '#11161C',
+    colorBgElevated: '#1A212A',
     colorBorderSecondary: 'rgba(255, 255, 255, 0.06)',
     colorSplit: 'rgba(255, 255, 255, 0.06)',
   },
