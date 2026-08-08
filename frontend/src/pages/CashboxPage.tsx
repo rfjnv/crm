@@ -27,6 +27,7 @@ import { downloadCsv } from '../utils/csv';
 import type { ClientDebtRow, DealStatus } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { getFirstName } from '../lib/name-utils';
@@ -106,6 +107,19 @@ export default function CashboxPage() {
   const [debtsFilterOpen, setDebtsFilterOpen] = useState(false);
   const [activeFilterOpen, setActiveFilterOpen] = useState(false);
   const { token: tk } = theme.useToken();
+
+  /**
+   * Отметку чека по ЗАКРЫТОЙ сделке бэкенд разрешает админам, зав. складу и тем,
+   * у кого есть edit_closed_deal. Раньше закрытые сделки сюда не попадали, поэтому
+   * вопрос не возникал; теперь «закрытые сегодня» видны, и кнопку надо гасить
+   * заранее — иначе остальные роли получают 403 уже после нажатия.
+   */
+  const authUser = useAuthStore((s) => s.user);
+  const mayPunchClosedReceipt = useMemo(() => {
+    const role = authUser?.role;
+    if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'WAREHOUSE_MANAGER') return true;
+    return !!authUser?.permissions?.includes('edit_closed_deal');
+  }, [authUser]);
 
   // Debtors tab state
   const [debtSearch, setDebtSearch] = useState('');
@@ -746,19 +760,24 @@ export default function CashboxPage() {
       title: 'Чек',
       key: 'receiptPunched',
       width: 170,
-      render: (_: unknown, r: ActiveDealRow) => (
-        <Space size={4} wrap>
-          {r.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Не пробит</Tag>}
-          <Button
-            size="small"
-            type="link"
-            loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.dealId}
-            onClick={() => receiptPunchedMut.mutate({ dealId: r.dealId, isReceiptPunched: !r.isReceiptPunched })}
-          >
-            {r.isReceiptPunched ? 'Снять' : 'Отметить'}
-          </Button>
-        </Space>
-      ),
+      render: (_: unknown, r: ActiveDealRow) => {
+        const blocked = !!r.closedToday && !mayPunchClosedReceipt;
+        return (
+          <Space size={4} wrap>
+            {r.isReceiptPunched ? <ReceiptPunchedTag isReceiptPunched /> : <Tag>Не пробит</Tag>}
+            <Button
+              size="small"
+              type="link"
+              disabled={blocked}
+              title={blocked ? 'Сделка закрыта — отметку чека может поставить зав. складом или админ' : undefined}
+              loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.dealId}
+              onClick={() => receiptPunchedMut.mutate({ dealId: r.dealId, isReceiptPunched: !r.isReceiptPunched })}
+            >
+              {r.isReceiptPunched ? 'Снять' : 'Отметить'}
+            </Button>
+          </Space>
+        );
+      },
     },
     {
       title: '',
@@ -1287,6 +1306,7 @@ export default function CashboxPage() {
                         <Button
                           size="small"
                           type="link"
+                          disabled={!!r.closedToday && !mayPunchClosedReceipt}
                           loading={receiptPunchedMut.isPending && receiptPunchedMut.variables?.dealId === r.dealId}
                           onClick={() => receiptPunchedMut.mutate({ dealId: r.dealId, isReceiptPunched: !r.isReceiptPunched })}
                         >

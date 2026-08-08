@@ -222,6 +222,19 @@ function parseOptionalDate(value?: string | null): Date | null | undefined {
 }
 
 /**
+ * Правка затрагивает только отметку «чек пробит» и ничего больше.
+ *
+ * Нужно, чтобы отличить кассовую операцию от настоящего редактирования условий
+ * сделки: первая допустима и после закрытия, второе — нет.
+ */
+function isReceiptPunchedOnlyUpdate(dto: UpdateDealDto): boolean {
+  const touched = Object.keys(dto).filter(
+    (k) => (dto as Record<string, unknown>)[k] !== undefined,
+  );
+  return touched.length === 1 && touched[0] === 'isReceiptPunched';
+}
+
+/**
  * Проверяет, что платёж вообще можно удалить.
  *
  * Два случая, когда удаление молча портит учёт:
@@ -786,8 +799,20 @@ export class DealsService {
     if (deal.status === 'CLOSED') {
       const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
       const hasPermission = user.permissions.includes('edit_closed_deal');
-      if (!isAdmin && !hasPermission) {
-        throw new AppError(403, 'Недостаточно прав для редактирования закрытых сделок');
+
+      // Отметка «чек пробит» — работа кассы, а не правка условий сделки: чек пробивают
+      // как раз после её закрытия. Подводить её под запрет на редактирование закрытых
+      // сделок неверно, поэтому для зав. склада такая — и только такая — правка разрешена.
+      const receiptOnly = isReceiptPunchedOnlyUpdate(dto);
+      const mayPunchReceipt = isAdmin || user.role === 'WAREHOUSE_MANAGER';
+
+      if (!isAdmin && !hasPermission && !(receiptOnly && mayPunchReceipt)) {
+        throw new AppError(
+          403,
+          receiptOnly
+            ? 'Недостаточно прав, чтобы отметить чек по закрытой сделке'
+            : 'Недостаточно прав для редактирования закрытых сделок',
+        );
       }
     }
 
@@ -923,7 +948,7 @@ export class DealsService {
       });
     }
 
-    void syncDealTelegramGroupMessages(id).catch((err) => {
+    void syncDealTelegramGroupMessages(id, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -1154,7 +1179,7 @@ export class DealsService {
       after: { paymentMethod: dto.paymentMethod },
     });
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -1569,7 +1594,7 @@ export class DealsService {
       });
     }
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -2600,7 +2625,7 @@ export class DealsService {
       },
     });
 
-    void syncDealTelegramGroupMessages(id).catch((err) => {
+    void syncDealTelegramGroupMessages(id, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -2717,12 +2742,12 @@ export class DealsService {
       const notePart = dto.note?.trim() ? ` Примечание: ${dto.note.trim()}` : '';
       const payLine = `${actor?.fullName?.trim() || '—'} добавил(а) платёж ${sumStr} сум.${notePart} Договор: №${contractNo}`;
       void appendFinanceTelegramLog(dealId, payLine)
-        .then(() => syncDealTelegramGroupMessages(dealId))
+        .then(() => syncDealTelegramGroupMessages(dealId, { repost: true }))
         .catch((err) => {
           console.error('[Telegram deal groups] appendFinanceTelegramLog / sync (payment):', err);
         });
     } else {
-      void syncDealTelegramGroupMessages(dealId).catch((err) => {
+      void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
         console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
       });
     }
@@ -2781,7 +2806,7 @@ export class DealsService {
       after: { paymentId, ...dto },
     });
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -2834,7 +2859,7 @@ export class DealsService {
       after: { paymentId, removedAmount: result.removedAmount },
     });
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -2934,7 +2959,7 @@ export class DealsService {
 
     await this.recalcAmount(dealId);
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -2979,7 +3004,7 @@ export class DealsService {
       before: itemSnapshot,
     });
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
     });
 
@@ -3734,6 +3759,7 @@ export class DealsService {
 
     await syncDealTelegramGroupMessages(id, {
       footnote: `Супер-оверрайд: ${dto.reason}`,
+      repost: true,
     }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages (override):', err);
     });
@@ -3883,6 +3909,7 @@ export class DealsService {
 
     await syncDealTelegramGroupMessages(id, {
       footnote: `Оверрайд склада: ${dto.reason}`,
+      repost: true,
     }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-override):', err);
     });
@@ -3946,7 +3973,7 @@ export class DealsService {
       reason,
     });
 
-    void syncDealTelegramGroupMessages(dealId).catch((err) => {
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-delete-payment):', err);
     });
 
