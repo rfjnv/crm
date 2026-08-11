@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input } from 'antd';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
@@ -12,7 +13,7 @@ import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   inferTypeLabel,
   safePrice,
-  getStartDateByPreset,
+  getPeriodBoundsByPreset,
   loadSalesContext,
   type HierarchyPeriodPreset,
 } from '../lib/analyticsHierarchySales';
@@ -107,13 +108,25 @@ export default function HierarchyClientsAnalyticsPanel({
   const [clientScopeType, setClientScopeType] = useState<string | null>(readPersist('type'));
   const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(readPersist('product'));
   const [hierarchyPeriodPreset, setHierarchyPeriodPreset] = useState<HierarchyPeriodPreset>(
-    persistedPreset === 'week' || persistedPreset === 'month' || persistedPreset === 'quarter' || persistedPreset === 'year' || persistedPreset === 'custom'
+    persistedPreset === 'week' || persistedPreset === 'month' || persistedPreset === 'quarter' || persistedPreset === 'year'
+      || persistedPreset === 'custom' || persistedPreset === 'range'
       ? persistedPreset
       : 'month',
   );
   const [hierarchyCustomDays, setHierarchyCustomDays] = useState<number>(
     Number.isFinite(persistedDays) && persistedDays > 0 ? persistedDays : 30,
   );
+  const [hierarchyRange, setHierarchyRange] = useState<[Dayjs, Dayjs]>(() => {
+    const isDate = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const rawFrom = readPersist('from');
+    const rawTo = readPersist('to');
+    if (isDate(rawFrom) && isDate(rawTo)) {
+      const from = dayjs(rawFrom);
+      const to = dayjs(rawTo);
+      if (from.isValid() && to.isValid() && !from.isAfter(to)) return [from, to];
+    }
+    return [dayjs().subtract(29, 'day'), dayjs()];
+  });
   const [clientViewMode, setClientViewMode] = useState<ClientViewMode>(
     persistedView === 'matrix' ? 'matrix' : 'table',
   );
@@ -136,6 +149,24 @@ export default function HierarchyClientsAnalyticsPanel({
     if (!value) next.delete(key);
     else next.set(key, value);
     setSearchParams(next, { replace: true });
+  }, [persistPrefix, searchParams, setSearchParams]);
+
+  /** Пишет несколько параметров одной записью — последовательные writePersist затирали бы друг друга */
+  const writePersistMany = useCallback((entries: Record<string, string | null>) => {
+    if (!persistPrefix) return;
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+    for (const [name, value] of Object.entries(entries)) {
+      const key = qp(name);
+      if (!key) continue;
+      const current = searchParams.get(key);
+      if (!value && current === null) continue;
+      if (value && current === value) continue;
+      if (!value) next.delete(key);
+      else next.set(key, value);
+      changed = true;
+    }
+    if (changed) setSearchParams(next, { replace: true });
   }, [persistPrefix, searchParams, setSearchParams]);
 
   const visibleProducts = useMemo(
@@ -265,6 +296,13 @@ export default function HierarchyClientsAnalyticsPanel({
     writePersist('days', hierarchyPeriodPreset === 'custom' ? String(hierarchyCustomDays) : null);
   }, [hierarchyCustomDays, hierarchyPeriodPreset, writePersist]);
   useEffect(() => {
+    const isRange = hierarchyPeriodPreset === 'range';
+    writePersistMany({
+      from: isRange ? hierarchyRange[0].format('YYYY-MM-DD') : null,
+      to: isRange ? hierarchyRange[1].format('YYYY-MM-DD') : null,
+    });
+  }, [hierarchyPeriodPreset, hierarchyRange, writePersistMany]);
+  useEffect(() => {
     writePersist('view', clientViewMode);
   }, [clientViewMode, writePersist]);
   useEffect(() => {
@@ -275,8 +313,22 @@ export default function HierarchyClientsAnalyticsPanel({
   const hierarchyStale = 120_000;
 
   const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
-    queryKey: ['analytics-hierarchy-clients-context', hierarchyPeriodPreset, hierarchyCustomDays],
-    queryFn: () => loadSalesContext(getStartDateByPreset(hierarchyPeriodPreset, hierarchyCustomDays)),
+    queryKey: [
+      'analytics-hierarchy-clients-context',
+      hierarchyPeriodPreset,
+      hierarchyCustomDays,
+      hierarchyPeriodPreset === 'range' ? hierarchyRange[0].format('YYYY-MM-DD') : null,
+      hierarchyPeriodPreset === 'range' ? hierarchyRange[1].format('YYYY-MM-DD') : null,
+    ],
+    queryFn: () => {
+      const bounds = getPeriodBoundsByPreset(
+        hierarchyPeriodPreset,
+        hierarchyCustomDays,
+        hierarchyRange[0].format('YYYY-MM-DD'),
+        hierarchyRange[1].format('YYYY-MM-DD'),
+      );
+      return loadSalesContext(bounds.start, bounds.end);
+    },
     enabled: fetchEnabled,
     staleTime: hierarchyStale,
   });
@@ -655,6 +707,7 @@ export default function HierarchyClientsAnalyticsPanel({
               { label: 'Квартал', value: 'quarter' },
               { label: 'Год', value: 'year' },
               { label: 'Дни', value: 'custom' },
+              { label: 'Свой период', value: 'range' },
             ]}
           />
           {hierarchyPeriodPreset === 'custom' && (
@@ -664,6 +717,18 @@ export default function HierarchyClientsAnalyticsPanel({
               value={hierarchyCustomDays}
               onChange={(v) => setHierarchyCustomDays(Number(v) || 30)}
               addonAfter="дн."
+            />
+          )}
+          {hierarchyPeriodPreset === 'range' && (
+            <DatePicker.RangePicker
+              value={hierarchyRange}
+              allowClear={false}
+              format="DD.MM.YYYY"
+              placeholder={['Дата от', 'Дата до']}
+              onChange={(range) => {
+                if (!range?.[0] || !range?.[1]) return;
+                setHierarchyRange([range[0].startOf('day'), range[1].startOf('day')]);
+              }}
             />
           )}
         </Space>

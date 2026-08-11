@@ -25,7 +25,10 @@ export type ProductPurchaseRow = {
   saleAt: string;
 };
 
-export type HierarchyPeriodPreset = AnalyticsPeriod | 'custom';
+/** `custom` — последние N дней, `range` — произвольный период «от-до» */
+export type HierarchyPeriodPreset = AnalyticsPeriod | 'custom' | 'range';
+
+export type PeriodBounds = { start: Date; end: Date | null };
 
 export function safePrice(value?: string | null): number {
   const num = Number(value ?? 0);
@@ -78,13 +81,33 @@ export function getPeriodStartDate(period: AnalyticsPeriod): Date {
 }
 
 export function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: number): Date {
-  if (preset === 'custom') {
+  if (preset === 'custom' || preset === 'range') {
     const safeDays = Number.isFinite(customDays) ? Math.max(1, Math.floor(customDays)) : 30;
     const start = new Date();
     start.setDate(start.getDate() - safeDays);
     return start;
   }
   return getPeriodStartDate(preset);
+}
+
+/**
+ * Границы периода: для пресета `range` — выбранные даты «от-до» (конец включительно),
+ * для остальных — начало по пресету и открытый конец.
+ */
+export function getPeriodBoundsByPreset(
+  preset: HierarchyPeriodPreset,
+  customDays: number,
+  rangeStart?: string | null,
+  rangeEnd?: string | null,
+): PeriodBounds {
+  if (preset === 'range' && rangeStart && rangeEnd) {
+    const start = new Date(`${rangeStart}T00:00:00`);
+    const end = new Date(`${rangeEnd}T23:59:59.999`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end) {
+      return { start, end };
+    }
+  }
+  return { start: getStartDateByPreset(preset, customDays), end: null };
 }
 
 export async function loadHierarchyMerchandiseStats(periodStart: Date) {
@@ -99,15 +122,20 @@ type AggBuilder = {
   lastSaleAt: string | null;
 };
 
-export async function loadSalesContext(periodStart: Date) {
+export async function loadSalesContext(periodStart: Date, periodEnd?: Date | null) {
   const { rows } = await analyticsApi.getHierarchyClosedItems(periodStart.toISOString());
 
   const building: Record<string, AggBuilder> = {};
   const purchaseRows: ProductPurchaseRow[] = [];
+  const endTs = periodEnd ? periodEnd.getTime() : null;
 
   for (const row of rows) {
     const qty = row.soldQty;
     if (qty <= 0) continue;
+    if (endTs !== null) {
+      const saleTs = new Date(row.saleAt).getTime();
+      if (Number.isFinite(saleTs) && saleTs > endTs) continue;
+    }
 
     if (!building[row.productId]) {
       building[row.productId] = {
