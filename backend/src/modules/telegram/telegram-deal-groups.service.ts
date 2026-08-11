@@ -936,13 +936,22 @@ function mergeFinanceAppendix(prev: string | null | undefined, line: string): st
 }
 
 /**
- * Добавить строку в низ сообщения группы «финансы» и пересобрать текст (актуальные суммы из БД).
+ * Сохранить строку в приложение к сообщению группы «финансы» — без обращения к Telegram.
+ * Строка попадёт в текст поста при следующей пересборке (правка позиций, смена статуса и т.п.).
  */
-export async function appendFinanceTelegramLog(dealId: string, plainLine: string): Promise<void> {
-  const chatId = config.telegram.groupFinanceChatId;
-  if (!chatId || !plainLine.trim()) return;
+export async function storeFinanceTelegramLog(dealId: string, plainLine: string): Promise<void> {
+  await appendFinanceLogLine(dealId, plainLine);
+}
 
-  const updated = await prisma.$transaction(async (tx) => {
+/** Записать строку в БД; вернуть id сообщения финансовой группы, если пост уже существует. */
+async function appendFinanceLogLine(
+  dealId: string,
+  plainLine: string,
+): Promise<{ messageIdStr: string } | null> {
+  const chatId = config.telegram.groupFinanceChatId;
+  if (!chatId || !plainLine.trim()) return null;
+
+  return prisma.$transaction(async (tx) => {
     const row = await tx.deal.findUnique({
       where: { id: dealId },
       select: { financeTelegramMessageId: true, financeTelegramAppendix: true },
@@ -952,6 +961,16 @@ export async function appendFinanceTelegramLog(dealId: string, plainLine: string
     await tx.deal.update({ where: { id: dealId }, data: { financeTelegramAppendix: next } });
     return { messageIdStr: row.financeTelegramMessageId };
   });
+}
+
+/**
+ * Добавить строку в низ сообщения группы «финансы» и пересобрать текст (актуальные суммы из БД).
+ */
+export async function appendFinanceTelegramLog(dealId: string, plainLine: string): Promise<void> {
+  const chatId = config.telegram.groupFinanceChatId;
+  if (!chatId) return;
+
+  const updated = await appendFinanceLogLine(dealId, plainLine);
 
   if (!updated) return;
   const msgId = parseStoredTelegramMessageId(updated.messageIdStr);

@@ -24,6 +24,7 @@ import {
   sendProductionPaymentSubmitTelegram,
   trySendAdminApprovalTelegram,
   appendFinanceTelegramLog,
+  storeFinanceTelegramLog,
   syncDealTelegramGroupMessages,
   cleanupStockWaitTelegramMessages,
   cleanupAllDealTelegramMessages,
@@ -1180,9 +1181,7 @@ export class DealsService {
       after: { paymentMethod: dto.paymentMethod },
     });
 
-    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
-    });
+    // Смена способа оплаты в группы не отправляется — только в CRM/аудит.
 
     return this.findById(dealId, user);
   }
@@ -2626,9 +2625,7 @@ export class DealsService {
       },
     });
 
-    void syncDealTelegramGroupMessages(id, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
-    });
+    // Оплата в группы не отправляется — только в CRM/аудит.
 
     return updated;
   }
@@ -2742,14 +2739,10 @@ export class DealsService {
       }).format(dto.amount);
       const notePart = dto.note?.trim() ? ` Примечание: ${dto.note.trim()}` : '';
       const payLine = `${actor?.fullName?.trim() || '—'} добавил(а) платёж ${sumStr} сум.${notePart} Договор: №${contractNo}`;
-      void appendFinanceTelegramLog(dealId, payLine)
-        .then(() => syncDealTelegramGroupMessages(dealId, { repost: true }))
-        .catch((err) => {
-          console.error('[Telegram deal groups] appendFinanceTelegramLog / sync (payment):', err);
-        });
-    } else {
-      void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-        console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+      // Оплата в Telegram не уходит: строку только сохраняем, она попадёт в пост
+      // при следующей пересборке (правка позиций, смена статуса и т.п.).
+      void storeFinanceTelegramLog(dealId, payLine).catch((err) => {
+        console.error('[Telegram deal groups] storeFinanceTelegramLog (payment):', err);
       });
     }
 
@@ -2807,9 +2800,7 @@ export class DealsService {
       after: { paymentId, ...dto },
     });
 
-    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
-    });
+    // Оплата в группы не отправляется — только в CRM/аудит.
 
     return result;
   }
@@ -2860,9 +2851,7 @@ export class DealsService {
       after: { paymentId, removedAmount: result.removedAmount },
     });
 
-    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
-    });
+    // Оплата в группы не отправляется — только в CRM/аудит.
 
     return result;
   }
@@ -3974,9 +3963,7 @@ export class DealsService {
       reason,
     });
 
-    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-delete-payment):', err);
-    });
+    // Удаление платежа складом в группы не отправляется — только в CRM/аудит.
 
     return { removedAmount: result.removedAmount, newTotal: result.newTotal, paymentStatus: result.paymentStatus };
   }
