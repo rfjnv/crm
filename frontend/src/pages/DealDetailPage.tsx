@@ -574,9 +574,12 @@ export default function DealDetailPage() {
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const isReadOnly = (deal.status === 'CLOSED' && !isAdmin) || deal.status === 'CANCELED';
   const isDealClosed = deal.status === 'CLOSED' || deal.status === 'CANCELED';
-  const canChangeDebtPaymentMethod =
-    deal.paymentMethod === 'DEBT'
-    && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
+  // Способ оплаты правят менеджер, зав. склада, бухгалтер и админ — для любой сделки,
+  // не только оформленной в долг (после сохранения пост перепостится в группы Telegram).
+  const canChangePaymentMethod =
+    isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER';
+  const changePaymentMethodLabel =
+    deal.paymentMethod === 'DEBT' ? 'Уточнить способ оплаты' : 'Изменить способ оплаты';
   // Manager/admin can add or remove deal items in any status until the deal is closed or canceled
   const canEditItems = !isDealClosed && (isAdmin || role === 'MANAGER');
   const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
@@ -1110,16 +1113,18 @@ export default function DealDetailPage() {
                     <Tag color={deal.paymentMethod === 'DEBT' ? 'red' : 'blue'}>
                       {paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}
                     </Tag>
-                    {canChangeDebtPaymentMethod && (
+                    {canChangePaymentMethod && (
                       <Button
                         size="small"
                         type="link"
                         onClick={() => {
-                          setSelectedPaymentMethod(null);
+                          setSelectedPaymentMethod(
+                            deal.paymentMethod && deal.paymentMethod !== 'DEBT' ? deal.paymentMethod : null,
+                          );
                           setChangeDebtPaymentModal(true);
                         }}
                       >
-                        Уточнить способ оплаты
+                        {changePaymentMethodLabel}
                       </Button>
                     )}
                   </Space>
@@ -1594,16 +1599,18 @@ export default function DealDetailPage() {
                             <Tag color={deal.paymentMethod === 'DEBT' ? 'red' : 'blue'}>
                               {paymentMethodLabels[deal.paymentMethod] || deal.paymentMethod}
                             </Tag>
-                            {canChangeDebtPaymentMethod && (
+                            {canChangePaymentMethod && (
                               <Button
                                 size="small"
                                 type="link"
                                 onClick={() => {
-                                  setSelectedPaymentMethod(null);
+                                  setSelectedPaymentMethod(
+                                    deal.paymentMethod && deal.paymentMethod !== 'DEBT' ? deal.paymentMethod : null,
+                                  );
                                   setChangeDebtPaymentModal(true);
                                 }}
                               >
-                                Уточнить способ оплаты
+                                {changePaymentMethodLabel}
                               </Button>
                             )}
                           </Space>
@@ -2263,7 +2270,7 @@ export default function DealDetailPage() {
 
       {/* Change payment method from DEBT (including closed deals) */}
       <Modal
-        title="Уточнить способ оплаты"
+        title={changePaymentMethodLabel}
         open={changeDebtPaymentModal}
         onCancel={() => {
           setChangeDebtPaymentModal(false);
@@ -2290,7 +2297,9 @@ export default function DealDetailPage() {
         cancelText="Отмена"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Сделка оформлена в долг. Укажите фактический способ оплаты — можно изменить и после закрытия сделки.
+          {deal.paymentMethod === 'DEBT'
+            ? 'Сделка оформлена в долг. Укажите фактический способ оплаты — можно изменить и после закрытия сделки.'
+            : 'Укажите фактический способ оплаты — можно изменить и после закрытия сделки. Обновлённая сделка будет заново отправлена в группы Telegram.'}
         </Typography.Paragraph>
         <Radio.Group
           value={selectedPaymentMethod}

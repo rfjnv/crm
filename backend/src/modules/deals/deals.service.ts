@@ -1121,7 +1121,7 @@ export class DealsService {
     return this.findById(dealId, user);
   }
 
-  /** Смена способа оплаты с «Долг» на фактический (в т.ч. после закрытия сделки). */
+  /** Смена способа оплаты сделки (в т.ч. уточнение «Долга» и после закрытия сделки). */
   async changePaymentMethod(dealId: string, dto: ChangePaymentMethodDto, user: AuthUser) {
     const allowedRoles: Role[] = ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
     if (!allowedRoles.includes(user.role)) {
@@ -1134,10 +1134,6 @@ export class DealsService {
 
     if (!deal) {
       throw new AppError(404, 'Сделка не найдена');
-    }
-
-    if (deal.paymentMethod !== 'DEBT') {
-      throw new AppError(400, 'Изменить способ оплаты можно только для сделок со способом «Долг»');
     }
 
     const updateData: Record<string, unknown> = {
@@ -1181,7 +1177,11 @@ export class DealsService {
       after: { paymentMethod: dto.paymentMethod },
     });
 
-    // Смена способа оплаты в группы не отправляется — только в CRM/аудит.
+    // Способ оплаты — часть сути сделки: перепостим её в те группы, где она уже публиковалась,
+    // чтобы правка не осталась незамеченной в истории чата.
+    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
+      console.error('[Telegram deal groups] changePaymentMethod sync:', err);
+    });
 
     return this.findById(dealId, user);
   }
