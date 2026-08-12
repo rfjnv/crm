@@ -950,9 +950,13 @@ export class DealsService {
       });
     }
 
-    void syncDealTelegramGroupMessages(id, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
-    });
+    // Отметка «чек пробит» — работа кассы, в постах групп её вообще нет: перепост по ней
+    // только засоряет чат, поэтому такие правки в Telegram не уходят.
+    if (!isReceiptPunchedOnlyUpdate(dto)) {
+      void syncDealTelegramGroupMessages(id, { repost: true }).catch((err) => {
+        console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+      });
+    }
 
     return updated;
   }
