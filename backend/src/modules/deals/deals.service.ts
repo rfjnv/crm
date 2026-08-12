@@ -1177,11 +1177,7 @@ export class DealsService {
       after: { paymentMethod: dto.paymentMethod },
     });
 
-    // Способ оплаты — часть сути сделки: перепостим её в те группы, где она уже публиковалась,
-    // чтобы правка не осталась незамеченной в истории чата.
-    void syncDealTelegramGroupMessages(dealId, { repost: true }).catch((err) => {
-      console.error('[Telegram deal groups] changePaymentMethod sync:', err);
-    });
+    // Смена способа оплаты в группы не отправляется — только в CRM/аудит.
 
     return this.findById(dealId, user);
   }
