@@ -362,3 +362,79 @@ body {
 .svip-row td {
   background: rgba(250, 173, 20, 0.07) !important;
 }
+
+/* Login screen: dedicated polish so fields don't inherit the flat default antd look. */
+.login-page {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(34, 96, 154, 0.16), transparent 55%),
+    var(--app-body-bg, var(--bg-secondary));
+}
+
+.login-page .ant-card {
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--border-color);
+}
+
+.login-page .login-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #22609A, #2E7FC7);
+  box-shadow: 0 8px 20px rgba(34, 96, 154, 0.35);
+  color: #fff;
+  font-size: 24px;
+}
+
+.login-page .ant-form-item-label > label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.login-page .app-input.ant-input-affix-wrapper,
+.login-page .ant-input-affix-wrapper {
+  border-radius: 12px;
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+  padding: 10px 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.login-page .app-input.ant-input-affix-wrapper:hover,
+.login-page .ant-input-affix-wrapper:hover {
+  border-color: #22609A;
+  background: var(--card-bg);
+}
+
+.login-page .app-input.ant-input-affix-wrapper-focused,
+.login-page .ant-input-affix-wrapper-focused {
+  border-color: #22609A !important;
+  background: var(--card-bg);
+  box-shadow: 0 0 0 3px rgba(34, 96, 154, 0.14) !important;
+}
+
+.login-page .ant-input-prefix {
+  color: var(--text-secondary);
+  margin-inline-end: 10px;
+}
+
+.login-page .ant-input {
+  background: transparent;
+}
+
+.login-page .app-button.ant-btn-primary {
+  border-radius: 12px;
+  height: 48px;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 8px 18px rgba(34, 96, 154, 0.3);
+  border: none;
+}
+
+.login-page .app-button.ant-btn-primary:not(:disabled):hover {
+  box-shadow: 0 10px 22px rgba(34, 96, 154, 0.38);
+}
