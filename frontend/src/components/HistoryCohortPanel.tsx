@@ -100,9 +100,33 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
             ? Math.round((retentionRates.reduce((a, b) => a + b, 0) / retentionRates.length) * 100)
             : null;
 
+          const monthTotals = activeMonths.map((am) =>
+            cohortMonths.reduce((sum, c) => sum + (cohortMap.get(`${c}-${am}`) || 0), 0)
+          );
+
           return (
             <>
-              <Table dataSource={dataSource} columns={columns} size="small" pagination={false} scroll={{ x: 600 }} />
+              <Table
+                dataSource={dataSource}
+                columns={columns}
+                size="small"
+                pagination={false}
+                scroll={{ x: 600 }}
+                summary={() => (
+                  <Table.Summary fixed>
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0}>
+                        <Typography.Text strong>Итого</Typography.Text>
+                      </Table.Summary.Cell>
+                      {activeMonths.map((am, i) => (
+                        <Table.Summary.Cell key={am} index={i + 1} align="center">
+                          <Typography.Text strong>{monthTotals[i] ? fmtNum(monthTotals[i]) : '—'}</Typography.Text>
+                        </Table.Summary.Cell>
+                      ))}
+                    </Table.Summary.Row>
+                  </Table.Summary>
+                )}
+              />
               <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
                 Итого: новых клиентов за год — {fmtNum(totalClients)}, суммарная выручка когорт — {fmtNum(totalRevenue)}
                 {avgRetention !== null ? `, среднее удержание на месяц+1 — ${avgRetention}%` : ''}.
