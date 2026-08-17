@@ -87,7 +87,28 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
             })),
           ];
           const dataSource = cohortMonths.map((c) => ({ cohort: c, key: c }));
-          return <Table dataSource={dataSource} columns={columns} size="small" pagination={false} scroll={{ x: 600 }} />;
+
+          const totalClients = cohortMonths.reduce((sum, c) => sum + (cohortMap.get(`${c}-${c}`) || 0), 0);
+          const totalRevenue = extended.cohort.reduce((sum, r) => sum + r.revenueTotal, 0);
+          const retentionRates: number[] = [];
+          for (const c of cohortMonths) {
+            const initial = cohortMap.get(`${c}-${c}`) || 0;
+            const next = cohortMap.get(`${c}-${c + 1}`);
+            if (initial > 0 && next !== undefined) retentionRates.push(next / initial);
+          }
+          const avgRetention = retentionRates.length
+            ? Math.round((retentionRates.reduce((a, b) => a + b, 0) / retentionRates.length) * 100)
+            : null;
+
+          return (
+            <>
+              <Table dataSource={dataSource} columns={columns} size="small" pagination={false} scroll={{ x: 600 }} />
+              <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+                Итого: новых клиентов за год — {fmtNum(totalClients)}, суммарная выручка когорт — {fmtNum(totalRevenue)}
+                {avgRetention !== null ? `, среднее удержание на месяц+1 — ${avgRetention}%` : ''}.
+              </Typography.Paragraph>
+            </>
+          );
         })()
       )}
 
