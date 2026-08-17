@@ -322,12 +322,14 @@ export default function DashboardPage() {
   const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
-  const goalPct = revenueMonth >= revenueGoal ? 100 : Math.floor((revenueMonth / revenueGoal) * 100);
+  const goalPct = revenueGoal > 0 ? Math.floor((revenueMonth / revenueGoal) * 100) : 0;
+  const goalBarPct = Math.min(100, goalPct);
   const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const dailyGoal = companySettings?.dailyRevenueGoal || (revenueGoal / daysInMonth);
   const revenueTodayForGoal = data.revenueToday || 0;
-  const dailyGoalPct = revenueTodayForGoal >= dailyGoal ? 100 : Math.floor((revenueTodayForGoal / dailyGoal) * 100);
+  const dailyGoalPct = dailyGoal > 0 ? Math.floor((revenueTodayForGoal / dailyGoal) * 100) : 0;
+  const dailyGoalBarPct = Math.min(100, dailyGoalPct);
   const dailyGoalRemaining = Math.max(0, dailyGoal - revenueTodayForGoal);
   const hasMyGoal = !!myGoal && (
     myGoal.targets.deals != null ||
@@ -646,7 +648,7 @@ export default function DashboardPage() {
               </div>
               <Progress
                 className="goal-progress"
-                percent={goalPct}
+                percent={goalBarPct}
                 showInfo={false}
                 strokeWidth={8}
                 strokeColor={isDark ? '#52c41a' : '#389e0d'}
@@ -665,11 +667,11 @@ export default function DashboardPage() {
                 Цель месяца
               </Typography.Text>
               <Progress
-                percent={goalPct}
+                percent={goalBarPct}
                 strokeColor={isDark ? '#52c41a' : '#389e0d'}
                 trailColor={tk.colorFillSecondary}
                 style={{ flex: 1, minWidth: 120, margin: 0 }}
-                format={(p) => `${p}%`}
+                format={() => `${goalPct}%`}
               />
               <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                 {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
@@ -698,7 +700,7 @@ export default function DashboardPage() {
               </div>
               <Progress
                 className="goal-progress"
-                percent={dailyGoalPct}
+                percent={dailyGoalBarPct}
                 showInfo={false}
                 strokeWidth={8}
                 strokeColor={isDark ? '#1890ff' : '#096dd9'}
@@ -717,11 +719,11 @@ export default function DashboardPage() {
                 Цель на сегодня
               </Typography.Text>
               <Progress
-                percent={dailyGoalPct}
+                percent={dailyGoalBarPct}
                 strokeColor={isDark ? '#1890ff' : '#096dd9'}
                 trailColor={tk.colorFillSecondary}
                 style={{ flex: 1, minWidth: 120, margin: 0 }}
-                format={(p) => `${p}%`}
+                format={() => `${dailyGoalPct}%`}
               />
               <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                 {formatUZS(revenueTodayForGoal)} / {formatUZS(dailyGoal)}
