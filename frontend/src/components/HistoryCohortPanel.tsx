@@ -113,7 +113,7 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
                 pagination={false}
                 scroll={{ x: 600 }}
                 summary={() => (
-                  <Table.Summary fixed>
+                  <Table.Summary>
                     <Table.Summary.Row>
                       <Table.Summary.Cell index={0}>
                         <Typography.Text strong>Итого</Typography.Text>
