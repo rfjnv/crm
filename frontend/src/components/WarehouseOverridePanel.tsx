@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { dealsApi } from '../api/deals.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
 import { smartFilterOption } from '../utils/translit';
+import { findItemMissingRollCount } from '../utils/lamination';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import type { Deal, Product, PaymentRecord, PaymentMethod } from '../types';
@@ -158,6 +159,14 @@ export default function WarehouseOverridePanel({
       });
 
       if (hasItemChanges) {
+        // Замена товара на рулонный без указания рулонов пересчитывала килограммы, но не рулоны —
+        // остаток на складе молча расходился с фактом. Бэкенд страхует тем же правилом.
+        const missingRolls = findItemMissingRollCount(items, productMap);
+        if (missingRolls) {
+          message.error(`Укажите кол-во рулонов для "${missingRolls.productName}"`);
+          return;
+        }
+
         data.items = items
           .filter((i) => i.productId)
           .map((i) => ({

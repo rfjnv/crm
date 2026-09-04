@@ -19,6 +19,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import { smartFilterOption, matchesSearch, buildClientSearchHaystack } from '../utils/translit';
+import { LAMINATION_CATEGORY } from '../utils/lamination';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import dayjs from 'dayjs';
 import './DealCreatePage.css';
@@ -28,6 +29,8 @@ interface DraftItem {
   productId?: string;
   requestedQty?: number;
   price?: number;
+  /** Ламинация: кол-во рулонов — отдельное число, а не цифра в начале комментария. */
+  rollCount?: number;
   requestComment: string;
 }
 
@@ -38,16 +41,11 @@ function makeKey() { return `ci-${nextKey++}`; }
 const INTEGER_UNITS = new Set(['шт', 'шт.', 'pcs', 'рулон', 'рул', 'упак', 'уп', 'бабина']);
 
 /** Ламинационная пленка продаётся по весу (кг), но клиенты заказывают её рулонами —
- * менеджер вводит оба числа: вес в кг (обычное поле «Кол-во») и количество рулонов рядом. */
-const LAMINATION_CATEGORY = 'Ламинационная пленка';
+ * менеджер вводит оба числа: вес в кг (обычное поле «Кол-во») и количество рулонов рядом.
+ * Категория и разбор легаси-комментариев — в utils/lamination (зеркало бэкенда). */
 /** Для этого товара нужен выбор микрона кнопкой, а не свободный текст — чтобы не путали загрузчики. */
 const SPRAY_POWDER_NAME = 'Противоотмарывающий порошок Spray Powder';
 const MICRON_OPTIONS = ['15мкр', '25мкр'];
-
-function parseRollCount(comment: string): number | undefined {
-  const m = (comment || '').match(/^(\d+)/);
-  return m ? Number(m[1]) : undefined;
-}
 
 /** Остаток товара для отображения: кг + рулоны рядом, если второй счётчик отслеживается. */
 function stockLabel(p: Pick<Product, 'stock' | 'unit' | 'rollStock'>): string {
@@ -304,7 +302,7 @@ export default function DealCreatePage() {
   function handleProductChange(key: string, productId: string) {
     const product = productMap.get(productId);
     const autoPrice = product?.salePrice ? Number(product.salePrice) : undefined;
-    updateItem(key, { productId, price: autoPrice || undefined, requestComment: '' });
+    updateItem(key, { productId, price: autoPrice || undefined, rollCount: undefined, requestComment: '' });
   }
 
   async function handleSubmit() {
@@ -321,15 +319,23 @@ export default function DealCreatePage() {
       }
     }
 
+    // Склад: нельзя заказать больше, чем есть на остатке.
+    for (const item of validItems) {
+      const p = productMap.get(item.productId!);
+      if (p && item.requestedQty && item.requestedQty > Number(p.stock)) {
+        message.error(
+          `Недостаточно «${p.name}» на складе: остаток ${formatQty(p.stock)} ${p.unit}, запрошено ${formatQty(item.requestedQty)} ${p.unit}`,
+        );
+        return;
+      }
+    }
+
     // Ламинация: кол-во рулонов обязательно, без него позицию не создать.
     for (const item of validItems) {
       const p = productMap.get(item.productId!);
-      if (p?.category === LAMINATION_CATEGORY) {
-        const rollCount = parseRollCount(item.requestComment);
-        if (!rollCount || rollCount <= 0) {
-          message.error(`Укажите кол-во рулонов для "${p.name}"`);
-          return;
-        }
+      if (p?.category === LAMINATION_CATEGORY && !(item.rollCount && item.rollCount > 0)) {
+        message.error(`Укажите кол-во рулонов для "${p.name}"`);
+        return;
       }
     }
 
@@ -356,6 +362,7 @@ export default function DealCreatePage() {
         productId: i.productId!,
         requestedQty: i.requestedQty || undefined,
         price: i.price || undefined,
+        rollCount: i.rollCount || undefined,
         requestComment: i.requestComment || undefined,
       })),
       paymentMethod,
@@ -382,7 +389,9 @@ export default function DealCreatePage() {
     };
   }
 
-  /** Ламинация: рулоны — отдельное поле-подсказка (не единица склада, хранится в комментарии). */
+  /** Ламинация: рулоны — отдельное числовое поле позиции (уходит на бэкенд как rollCount).
+   * Раньше значение писалось строкой «N рул.» в комментарий, и комментарий был единственным
+   * носителем складского учёта — из-за чего пояснение без цифр обнуляло списание рулонов. */
   function renderRollInput(item: DraftItem) {
     return (
       <InputNumber
@@ -391,8 +400,8 @@ export default function DealCreatePage() {
         precision={0}
         placeholder="Рул."
         style={{ width: '100%' }}
-        value={parseRollCount(item.requestComment)}
-        onChange={(v) => updateItem(item.key, { requestComment: v ? `${v} рул.` : '' })}
+        value={item.rollCount}
+        onChange={(v) => updateItem(item.key, { rollCount: v ?? undefined })}
       />
     );
   }
@@ -465,13 +474,11 @@ export default function DealCreatePage() {
   }
 
   /** Вторая (доп.) ячейка позиции — в конце строки:
-   * ламинация → ничего (рулоны и кг уже введены слева, в первой ячейке);
    * Spray Powder → ничего (микрон и кг уже введены слева, доп. коммент не нужен);
-   * всё остальное → обычный необязательный комментарий к позиции. */
+   * всё остальное (включая ламинацию) → обычный необязательный комментарий к позиции.
+   * У ламинации он раньше был скрыт, потому что то же поле служило носителем кол-ва
+   * рулонов; теперь рулоны — отдельное число, и комментарий снова просто комментарий. */
   function renderSecondaryControl(item: DraftItem, p: Product | null | undefined) {
-    if (p?.category === LAMINATION_CATEGORY) {
-      return null;
-    }
     if (p?.name === SPRAY_POWDER_NAME) {
       return null;
     }
@@ -523,6 +530,9 @@ export default function DealCreatePage() {
             <div className="deal-create-item-card__stock" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span>Остаток: {stockLabel(p)}</span>
               {productTypeBadge(p)}
+              {item.requestedQty && item.requestedQty > Number(p.stock) && (
+                <Tag color="red" style={{ margin: 0 }}>Не хватает на складе</Tag>
+              )}
             </div>
           )}
         </div>
@@ -908,6 +918,9 @@ export default function DealCreatePage() {
                             <div style={{ fontSize: 11, color: tk.colorTextSecondary, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               <span>Ост: {stockLabel(p)}</span>
                               {productTypeBadge(p)}
+                              {item.requestedQty && item.requestedQty > Number(p.stock) && (
+                                <Tag color="red" style={{ margin: 0 }}>Не хватает на складе</Tag>
+                              )}
                             </div>
                           )}
                         </td>

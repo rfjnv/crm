@@ -42,6 +42,9 @@ export const createDealDto = z.object({
     productId: z.string().uuid('Некорректный ID товара'),
     requestedQty: z.number().positive('Количество должно быть положительным').optional(),
     price: z.number().min(0, 'Цена не может быть отрицательной').optional(),
+    /** Кол-во рулонов для товаров с рулонным учётом (ламинационная плёнка): продаются по кг,
+     * выдаются рулонами. Раньше менеджер вводил его текстом в requestComment — теперь число. */
+    rollCount: z.number().positive('Кол-во рулонов должно быть положительным').optional(),
     requestComment: z.string().optional(),
   })).min(1, 'Добавьте хотя бы один товар'),
 }).refine((data) => {
@@ -80,6 +83,9 @@ export const addDealItemDto = z.object({
   /** Полноценная позиция: количество и цена (не «запрос на склад» без суммы). */
   requestedQty: z.number().positive('Укажите количество больше 0'),
   price: z.number().min(0, 'Цена не может быть отрицательной'),
+  /** Кол-во рулонов — см. createDealDto.items.rollCount. Обязательно для рулонных товаров:
+   * позиция, добавленная в сделку позже, раньше не имела способа его передать вовсе. */
+  rollCount: z.number().positive('Кол-во рулонов должно быть положительным').optional(),
   requestComment: z.string().optional(),
 });
 

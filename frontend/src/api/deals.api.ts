@@ -104,7 +104,7 @@ export const dealsApi = {
     dueDate?: string;
     /** Тип оплаты (для признака «в долг» при создании) */
     paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT';
-    items: { productId: string; requestedQty?: number; price?: number; requestComment?: string }[];
+    items: { productId: string; requestedQty?: number; price?: number; rollCount?: number; requestComment?: string }[];
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
 
@@ -132,7 +132,7 @@ export const dealsApi = {
   getItems: (dealId: string) =>
     client.get<DealItem[]>(`/deals/${dealId}/items`).then((r) => r.data),
 
-  addItem: (dealId: string, data: { productId: string; requestedQty: number; price: number; requestComment?: string }) =>
+  addItem: (dealId: string, data: { productId: string; requestedQty: number; price: number; rollCount?: number; requestComment?: string }) =>
     client.post<DealItem>(`/deals/${dealId}/items`, data).then((r) => r.data),
 
   removeItem: (dealId: string, itemId: string) =>

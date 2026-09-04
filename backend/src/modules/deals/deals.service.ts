@@ -7,6 +7,7 @@ import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
 import { isClientCreditTransfer } from '../../lib/payment-kind';
+import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
 import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
@@ -195,6 +196,114 @@ async function recalcDealAmountFromItemsInTx(tx: Prisma.TransactionClient, dealI
   });
 }
 
+/**
+ * Приводит кол-во рулонов позиции к числу — единому месту хранения (`DealItem.rollCount`).
+ *
+ * Приоритет: явный `rollCount` из запроса → легаси-строка «N рул.» в начале комментария
+ * (позиции и старые клиенты, созданные до появления поля). Для рулонного товара без обоих
+ * бросает 400: раньше такая позиция создавалась молча, а при закрытии списывались только
+ * килограммы — рулонный остаток на складе тихо расходился с фактом.
+ *
+ * Для НЕ рулонного товара всегда null: цифра в начале комментария к обычной позиции
+ * количеством рулонов не является.
+ */
+function resolveItemRollCount(
+  item: { rollCount?: number | null; requestComment?: string | null },
+  product: { name: string; category: string | null; rollStock?: unknown },
+): number | null {
+  if (!isRollTrackedProduct(product)) return null;
+
+  if (item.rollCount != null && item.rollCount > 0) return item.rollCount;
+
+  const legacy = parseRollCountFromComment(item.requestComment);
+  if (legacy != null) return legacy;
+
+  throw new AppError(400, `Укажите кол-во рулонов для "${product.name}"`);
+}
+
+/**
+ * Строит карту «товар → новые кол-ва» для оверрайдов (супер и складского), попутно требуя
+ * кол-во рулонов у рулонных товаров.
+ *
+ * `rollsProvided` = рулоны реально пришли в запросе; без него `reconcileShippedStockForItemsInTx`
+ * рулоны не трогает вовсе. Именно на этом ломалась ЗАМЕНА товара: оверрайд подставлял новую
+ * плёнку без rollCount, флаг оставался false, килограммы пересчитывались, а рулоны — нет.
+ * Молча, и это единственный сценарий, который в августе 2026 сработал дважды.
+ */
+async function buildOverrideQtyMap(
+  tx: Prisma.TransactionClient,
+  items: Array<{ productId: string; requestedQty?: number | null; rollCount?: number | null }>,
+): Promise<Map<string, { qty: number; rolls: number; rollsProvided: boolean }>> {
+  const products = await tx.product.findMany({
+    where: { id: { in: items.map((i) => i.productId) } },
+    select: { id: true, name: true, category: true, rollStock: true },
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  const map = new Map<string, { qty: number; rolls: number; rollsProvided: boolean }>();
+  for (const item of items) {
+    const product = productMap.get(item.productId);
+    const qty = item.requestedQty ?? 0;
+
+    if (qty > 0 && isRollTrackedProduct(product) && item.rollCount == null) {
+      throw new AppError(400,
+        `Укажите кол-во рулонов для "${product!.name}" — иначе рулонный остаток на складе `
+        + 'останется прежним, хотя килограммы спишутся.',
+      );
+    }
+
+    const prev = map.get(item.productId) ?? { qty: 0, rolls: 0, rollsProvided: false };
+    prev.qty += qty;
+    if (item.rollCount != null) {
+      prev.rolls += item.rollCount;
+      prev.rollsProvided = true;
+    }
+    map.set(item.productId, prev);
+  }
+  return map;
+}
+
+/**
+ * Блокирует создание/добавление позиции, если запрошенное менеджером количество
+ * превышает складской остаток. Раньше сделка создавалась молча даже при явной
+ * нехватке, хотя остаток виден в форме создания — склад узнавал о проблеме только
+ * при закрытии.
+ *
+ * Проверяется только положительное requestedQty (позиции «на уточнение складу»
+ * без количества не трогаем). Количества по одному товару суммируются.
+ */
+function assertStockSufficientForItems(
+  items: Array<{ productId: string; requestedQty?: number | null }>,
+  productMap: Map<string, { name: string; stock: unknown; unit?: string | null }>,
+): void {
+  const wantByProduct = new Map<string, number>();
+  for (const item of items) {
+    const qty = Number(item.requestedQty ?? 0);
+    if (qty > 0) {
+      wantByProduct.set(item.productId, (wantByProduct.get(item.productId) ?? 0) + qty);
+    }
+  }
+
+  const shortages: string[] = [];
+  for (const [productId, want] of wantByProduct) {
+    const product = productMap.get(productId);
+    if (!product) continue;
+    const stock = Number(product.stock ?? 0);
+    if (want > stock) {
+      const unit = product.unit ? ` ${product.unit}` : '';
+      shortages.push(`«${product.name}» — на складе ${stock}${unit}, требуется ${want}${unit}`);
+    }
+  }
+
+  if (shortages.length > 0) {
+    throw new AppError(
+      400,
+      `Недостаточно товара на складе: ${shortages.join('; ')}. `
+      + 'Уменьшите количество или дождитесь поступления.',
+    );
+  }
+}
+
 function requiresContract(method: PaymentMethod | null): boolean {
   return !!method && CONTRACT_REQUIRED_METHODS.includes(method);
 }
@@ -323,14 +432,22 @@ export class DealsService {
         );
       }
 
-      // Второй, параллельный остаток в рулонах (напр. ламинационная плёнка): списывается вместе с кг,
-      // но не блокирует закрытие сделки при нехватке — это вспомогательный счётчик, не основной.
-      // Источник кол-ва рулонов: явное поле roll_count (если склад подтвердил), иначе —
-      // подсказка менеджера в комментарии позиции («N рул.»), т.к. рулоны вводит менеджер при создании.
+      // Второй, параллельный остаток в рулонах (напр. ламинационная плёнка): списывается вместе с кг.
+      // Нехватка рулонов на складе закрытие по-прежнему не блокирует — это вспомогательный
+      // счётчик. А вот НЕИЗВЕСТНОЕ количество рулонов блокирует: раньше такая позиция закрывалась
+      // молча, списывая только килограммы, и рулонный остаток тихо расходился с фактом.
+      // Источник: поле roll_count, иначе — легаси-строка «N рул.» в начале комментария позиции.
       let requestedRollCount = item.rollCount != null ? Number(item.rollCount) : NaN;
-      if (!(requestedRollCount > 0) && item.product.category === 'Ламинационная пленка' && item.requestComment) {
-        const m = String(item.requestComment).match(/(\d+(?:[.,]\d+)?)/);
-        if (m) requestedRollCount = parseFloat(m[1].replace(',', '.'));
+      if (!(requestedRollCount > 0) && isRollTrackedProduct(item.product)) {
+        const parsed = parseRollCountFromComment(item.requestComment);
+        if (parsed != null) {
+          requestedRollCount = parsed;
+        } else {
+          throw new AppError(400,
+            `У позиции "${item.product.name}" не указано кол-во рулонов — без него рулонный остаток `
+            + 'на складе разойдётся с фактом. Проставьте рулоны в карточке сделки и повторите.',
+          );
+        }
       }
       const rollCount = Number.isFinite(requestedRollCount) ? requestedRollCount - shipped.rolls : NaN;
 
@@ -562,6 +679,22 @@ export class DealsService {
       throw new AppError(404, 'Клиент не найден');
     }
 
+    // Кол-во рулонов резолвим ДО транзакции: для рулонного товара его отсутствие — ошибка ввода,
+    // и сообщить о ней надо до того, как что-либо создано.
+    const itemProducts = await prisma.product.findMany({
+      where: { id: { in: dto.items.map((i) => i.productId) } },
+      select: { id: true, name: true, category: true, rollStock: true, stock: true, unit: true },
+    });
+    const itemProductMap = new Map(itemProducts.map((p) => [p.id, p]));
+    const rollCountByItemIndex = dto.items.map((item) => {
+      const product = itemProductMap.get(item.productId);
+      if (!product) throw new AppError(404, 'Товар не найден');
+      return resolveItemRollCount(item, product);
+    });
+
+    // Нехватка на складе — ошибка ввода: сообщаем до создания сделки.
+    assertStockSufficientForItems(dto.items, itemProductMap);
+
     // Auto-generate title (use Tashkent timezone for date consistency with analytics)
     const title = dto.title || `Сделка от ${new Date().toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' })}`;
 
@@ -703,7 +836,7 @@ export class DealsService {
         },
       });
 
-      for (const item of dto.items) {
+      for (const [index, item] of dto.items.entries()) {
         const qty = item.requestedQty ?? 0;
         const price = item.price ?? 0;
         await tx.dealItem.create({
@@ -713,6 +846,7 @@ export class DealsService {
             requestedQty: item.requestedQty ?? null,
             price: item.price ?? null,
             lineTotal: qty > 0 && price > 0 ? qty * price : null,
+            rollCount: rollCountByItemIndex[index],
             requestComment: item.requestComment,
             ...(sessionDealDayStart ? { dealDate: sessionDealDayStart } : {}),
           },
@@ -1285,7 +1419,7 @@ export class DealsService {
       include: {
         items: {
           include: {
-            product: { select: { id: true, name: true, salePrice: true } },
+            product: { select: { id: true, name: true, salePrice: true, category: true, rollStock: true } },
           },
         },
       },
@@ -1394,6 +1528,17 @@ export class DealsService {
 
           const qty = item.requestedQty;
           const whComment = item.warehouseComment?.trim() || null;
+
+          // Рулоны: склад уточняет фактически взятое, но если поле не тронуто — сохраняем
+          // то, что уже стоит на позиции (менеджер мог указать рулоны при создании, даже
+          // не зная веса). Раньше здесь стоял безусловный `?? null`, который такое значение
+          // затирал, и позиция уходила на закрытие без рулонного количества.
+          const existingRollCount = row.rollCount != null ? Number(row.rollCount) : null;
+          const rollCount = resolveItemRollCount(
+            { rollCount: item.rollCount ?? existingRollCount, requestComment: row.requestComment },
+            { name: row.product?.name ?? 'товар', category: row.product?.category ?? null },
+          );
+
           await tx.dealItem.update({
             where: { id: item.dealItemId },
             data: {
@@ -1401,7 +1546,7 @@ export class DealsService {
               requestedQty: qty,
               price,
               lineTotal: qty * price,
-              rollCount: item.rollCount ?? null,
+              rollCount,
               confirmedBy: user.userId,
               confirmedAt: new Date(),
             },
@@ -2931,6 +3076,8 @@ export class DealsService {
 
     const qty = Number(dto.requestedQty);
     const price = Number(dto.price);
+    assertStockSufficientForItems([{ productId: product.id, requestedQty: qty }], new Map([[product.id, product]]));
+    const rollCount = resolveItemRollCount(dto, product);
     const sessionDealDayStart = deal.isSessionDeal
       ? tashkentDayBoundsFromYmd(currentTashkentYmd()).start
       : undefined;
@@ -2941,6 +3088,7 @@ export class DealsService {
         requestedQty: qty,
         price,
         lineTotal: qty > 0 && price >= 0 ? qty * price : null,
+        rollCount,
         requestComment: dto.requestComment,
         ...(sessionDealDayStart ? { dealDate: sessionDealDayStart } : {}),
       },
@@ -3508,17 +3656,7 @@ export class DealsService {
       // Items full replacement
       if (dto.items !== undefined) {
         // Build map of new quantities per product and reconcile against shipped movements.
-        // rollsProvided — рулоны реально пришли в запросе; иначе их не трогаем.
-        const newQtyMap = new Map<string, { qty: number; rolls: number; rollsProvided: boolean }>();
-        for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0, rollsProvided: false };
-          prev.qty += item.requestedQty ?? 0;
-          if (item.rollCount != null) {
-            prev.rolls += item.rollCount;
-            prev.rollsProvided = true;
-          }
-          newQtyMap.set(item.productId, prev);
-        }
+        const newQtyMap = await buildOverrideQtyMap(tx, dto.items);
         if (!leavingClosed) {
           await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'супер-оверрайд');
         }
@@ -3801,16 +3939,7 @@ export class DealsService {
 
       // Items full replacement (same semantics as the SUPER_ADMIN override)
       if (dto.items !== undefined) {
-        const newQtyMap = new Map<string, { qty: number; rolls: number; rollsProvided: boolean }>();
-        for (const item of dto.items) {
-          const prev = newQtyMap.get(item.productId) ?? { qty: 0, rolls: 0, rollsProvided: false };
-          prev.qty += item.requestedQty ?? 0;
-          if (item.rollCount != null) {
-            prev.rolls += item.rollCount;
-            prev.rollsProvided = true;
-          }
-          newQtyMap.set(item.productId, prev);
-        }
+        const newQtyMap = await buildOverrideQtyMap(tx, dto.items);
         await this.reconcileShippedStockForItemsInTx(tx, id, newQtyMap, user.userId, 'оверрайд склада');
 
         const existingItems = await tx.dealItem.findMany({ where: { dealId: id } });

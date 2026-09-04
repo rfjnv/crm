@@ -11,6 +11,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { Deal, DealItem } from '../types';
 import { moneyFormatter, moneyParser } from '../utils/currency';
 import { dealItemNeedsWarehouseStock } from '../utils/dealStock';
+import { isLaminationProduct, resolveRollCount } from '../utils/lamination';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import MobileCardList from '../components/MobileCardList';
 import dayjs from 'dayjs';
@@ -106,6 +107,11 @@ export default function StockConfirmationPage() {
         hasCatalogPrice,
         catalogPrice: hasCatalogPrice ? defPrice : null,
         hasManagerPrice,
+        // Рулоны: поле обещано схемой как «подтверждает зав. складом», но инпута здесь не было —
+        // значение не отправлялось никогда, и списание при закрытии держалось на разборе
+        // комментария. Подставляем то, что уже указал менеджер, склад правит по факту.
+        isLamination: isLaminationProduct(item.product),
+        rollCount: resolveRollCount(item),
       };
     });
     respondForm.setFieldsValue({ items: initialValues });
@@ -331,13 +337,17 @@ export default function StockConfirmationPage() {
           const items = (values.items as Record<string, unknown>[]).map((item) => {
             const parsedQty = parseQtyInput(item.requestedQty);
             const priceVal = item.price as number | null | undefined;
-            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number } = {
+            const rollVal = item.rollCount as number | null | undefined;
+            const row: { dealItemId: string; warehouseComment: string; requestedQty: number; price?: number; rollCount?: number } = {
               dealItemId: item.dealItemId as string,
               warehouseComment: '',
               requestedQty: parsedQty ?? 0,
             };
             if (priceVal != null && priceVal > 0) {
               row.price = priceVal;
+            }
+            if (rollVal != null && rollVal > 0) {
+              row.rollCount = rollVal;
             }
             return row;
           });
@@ -370,6 +380,7 @@ export default function StockConfirmationPage() {
                       <Form.Item name={[field.name, 'productName']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'sku']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'unit']} hidden><Input /></Form.Item>
+                      <Form.Item name={[field.name, 'isLamination']} hidden><Input /></Form.Item>
                       {itemData?.requestComment && (
                         <div className="stock-confirm-form__request-note">
                           <Typography.Text type="secondary">
@@ -412,6 +423,16 @@ export default function StockConfirmationPage() {
                           onPressEnter={() => applyParsedQtyValue(field.name)}
                         />
                       </Form.Item>
+                      {itemData?.isLamination && (
+                        <Form.Item
+                          name={[field.name, 'rollCount']}
+                          label="Кол-во рулонов"
+                          extra="Списывается со второго остатка товара вместе с килограммами"
+                          rules={[{ required: true, message: 'Укажите кол-во рулонов' }]}
+                        >
+                          <InputNumber style={{ width: '100%' }} min={1} step={1} precision={0} placeholder="Рул." />
+                        </Form.Item>
+                      )}
                       <Form.Item
                         name={[field.name, 'price']}
                         label="Цена"

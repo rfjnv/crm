@@ -30,6 +30,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { isLaminationProduct } from '../utils/lamination';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import { getAuditActionLabel } from '../lib/auditActionLabels';
@@ -1975,6 +1976,7 @@ export default function DealDetailPage() {
               productId: v.productId,
               requestedQty: Number(v.requestedQty) || 1,
               price: Number(v.price) || 0,
+              rollCount: Number(v.rollCount) || undefined,
               requestComment: v.requestComment || undefined,
             });
           }}
@@ -1987,9 +1989,28 @@ export default function DealDetailPage() {
               options={(products ?? []).filter((p) => p.isActive).map((p) => ({ label: `${p.name} (${p.sku}) — остаток: ${p.stock}`, value: p.id }))}
               onChange={(productId) => {
                 const p = (products ?? []).find((pp) => pp.id === productId);
-                itemForm.setFieldsValue({ price: Number(p?.salePrice ?? 0) });
+                itemForm.setFieldsValue({ price: Number(p?.salePrice ?? 0), rollCount: undefined });
               }}
             />
+          </Form.Item>
+          {/* Ламинация: рулоны обязательны — при закрытии они списываются со второго остатка
+              товара. Раньше этого поля здесь не было вовсе, и позиция, добавленная в сделку
+              после её создания, физически не могла принести кол-во рулонов. */}
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.productId !== cur.productId}>
+            {({ getFieldValue }) => {
+              const p = (products ?? []).find((pp) => pp.id === getFieldValue('productId'));
+              if (!isLaminationProduct(p)) return null;
+              return (
+                <Form.Item
+                  name="rollCount"
+                  label="Кол-во рулонов"
+                  rules={[{ required: true, message: 'Укажите кол-во рулонов' }]}
+                  extra="Плёнка продаётся по весу, но списывается со склада рулонами"
+                >
+                  <InputNumber style={{ width: '100%' }} min={1} step={1} precision={0} placeholder="Рул." />
+                </Form.Item>
+              );
+            }}
           </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="requestedQty" label="Количество" rules={[{ required: true, message: 'Обязательно' }]}>

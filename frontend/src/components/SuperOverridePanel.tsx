@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type OverrideDealData } from '../api/admin.api';
 import { moneyFormatter, moneyParser, formatUZS } from '../utils/currency';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
+import { findItemMissingRollCount } from '../utils/lamination';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { mobileMainContentBottomPadding } from '../config/mobileBottomNav';
 import DealStatusTag from './DealStatusTag';
@@ -251,6 +252,16 @@ export default function SuperOverridePanel({
       });
 
       if (editItems || hasItemDateChanges) {
+        // Замена товара на рулонный без указания рулонов пересчитывала килограммы, но не рулоны —
+        // остаток на складе молча расходился с фактом. Проверяем только когда позиции реально
+        // уходят в запрос: у сделки правкой одних дат легаси-позиция без рулонов блокироваться
+        // не должна. Бэкенд страхует тем же правилом.
+        const missingRolls = findItemMissingRollCount(items, productMap);
+        if (missingRolls) {
+          message.error(`Укажите кол-во рулонов для "${missingRolls.productName}"`);
+          return;
+        }
+
         data.items = items
           .filter((i) => i.productId)
           .map((i) => ({
