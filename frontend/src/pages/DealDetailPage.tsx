@@ -287,7 +287,7 @@ export default function DealDetailPage() {
   });
 
   const addItemMut = useMutation({
-    mutationFn: (data: { productId: string; requestedQty: number; price: number; requestComment?: string }) => dealsApi.addItem(id!, data),
+    mutationFn: (data: { productId: string; requestedQty: number; price: number; rollCount?: number; requestComment?: string }) => dealsApi.addItem(id!, data),
     onSuccess: () => {
       invalidate();
       // If setting quantities modal is open, don't close item modal
