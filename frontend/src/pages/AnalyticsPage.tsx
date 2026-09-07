@@ -189,7 +189,10 @@ function buildRevenueChartData(
   const filled: { day: string; total: number }[] = [];
   for (let dt = new Date(startDate); dt <= endDate; dt.setUTCDate(dt.getUTCDate() + 1)) {
     const key = dt.toISOString().slice(0, 10);
-    filled.push({ day: key, total: map.get(key) ?? 0 });
+    const total = map.get(key) ?? 0;
+    // Exclude Sundays and days with no revenue
+    if (dt.getUTCDay() === 0 || total === 0) continue;
+    filled.push({ day: key, total });
   }
   return filled.map((d) => {
     const parts = d.day.split('-');
