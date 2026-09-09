@@ -27,6 +27,12 @@ const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
 /** Перерыв, после которого покупка считается возвратом клиента (как пороги «Реанимации»). */
 const RETURN_GAP_DAYS = 30;
 
+/**
+ * Внутренняя компания: её сотрудники не участвуют в KPI отдела продаж.
+ * Тот же фильтр уже применяется к списку менеджеров для клиента в Telegram-сервисе.
+ */
+const INTERNAL_COMPANY = 'grand-astra';
+
 /** Без продаж столько дней — товар считается мёртвым (как на странице «Мёртвые товары»). */
 const DEAD_NO_SALES_DAYS = 90;
 
@@ -85,6 +91,7 @@ router.get(
       where: {
         isActive: true,
         ...(onlyUserId ? { id: onlyUserId } : { role: { in: ['MANAGER', 'ADMIN'] } }),
+        OR: [{ companyId: null }, { company: { name: { not: INTERNAL_COMPANY } } }],
       },
       select: { id: true, fullName: true, department: true },
       orderBy: { fullName: 'asc' },
