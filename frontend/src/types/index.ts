@@ -785,7 +785,8 @@ export interface AnalyticsManagers {
 }
 
 /** KPI менеджера за месяц — блоки «План», «Ассортимент», «Контакты», «Клиенты», «Посещаемость». */
-export type BonusCriterionKey = 'plan' | 'assortment' | 'contacts' | 'clients' | 'leads' | 'attendance';
+/** План продаж сюда не входит: он задаёт базу ставкой, а не вес среди критериев. */
+export type BonusCriterionKey = 'assortment' | 'contacts' | 'clients' | 'leads' | 'attendance';
 
 /** «От fromPercent процентов плана — ставка rate процентов от фактической выручки». */
 export interface BonusTier {
@@ -817,6 +818,8 @@ export interface ManagerBonusCriterion {
 }
 
 export interface ManagerBonus {
+  /** Выручка, от которой берётся ставка. */
+  revenueFact: number;
   planPercent: number | null;
   /** Ставка из ступеней, в процентах от фактической выручки. */
   rate: number;

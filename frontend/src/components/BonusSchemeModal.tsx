@@ -9,8 +9,8 @@ import type { BonusCriterionKey, BonusScheme } from '../types';
 
 const { Text } = Typography;
 
+// Пять критериев без плана продаж: план уже определил ставку и базу бонуса.
 const CRITERIA: { key: BonusCriterionKey; label: string; hint: string }[] = [
-  { key: 'plan', label: 'План продаж', hint: 'выручка за месяц / личный план' },
   { key: 'assortment', label: 'Ассортимент', hint: 'сколько разных позиций продал' },
   { key: 'contacts', label: 'Звонки и контакты', hint: 'заметки клиента + доска звонков' },
   { key: 'clients', label: 'Привлечение клиентов', hint: 'новые + вернувшиеся' },

@@ -179,7 +179,7 @@ export default function ManagerBonusCard({ bonus, tiers }: { bonus: ManagerBonus
       {/* Строка формулы: те же числа, что в статистиках, но подряд — так проверяют счёт вручную. */}
       <div style={{ margin: '10px 0 12px' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {formatUZS(bonus.criteria.find((c) => c.key === 'plan')?.fact ?? 0)}
+          {formatUZS(bonus.revenueFact)}
           {` × ${fmtRate(bonus.rate)} = `}
           <Text strong style={{ fontSize: 12 }}>{formatUZS(bonus.base)}</Text>
           {` → × ${fmtPercent(bonus.score)} = `}

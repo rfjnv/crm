@@ -12,13 +12,16 @@
  *     средневзвешенное выполнение критериев: у каждого критерия свой вес
  *     (в сумме 100%) и своё выполнение «факт / цель», не выше 100%.
  *
+ *     Плана продаж среди критериев НЕТ: он уже отработал на первом шаге, выбрав
+ *     ставку. Если бы он стоял и здесь, слабое выполнение плана резало бы премию
+ *     дважды.
+ *
  * Всё, что можно настроить (веса, ступени, цели по умолчанию), лежит в таблице
  * bonus_scheme и правится админом — в коде только значения по умолчанию.
  */
 import { AppError } from './errors';
 
 export const BONUS_CRITERIA = [
-  'plan',
   'assortment',
   'contacts',
   'clients',
@@ -29,7 +32,6 @@ export const BONUS_CRITERIA = [
 export type BonusCriterionKey = (typeof BONUS_CRITERIA)[number];
 
 export const BONUS_CRITERION_LABELS: Record<BonusCriterionKey, string> = {
-  plan: 'План продаж',
   assortment: 'Ассортимент',
   contacts: 'Звонки и контакты',
   clients: 'Привлечение клиентов',
@@ -39,7 +41,6 @@ export const BONUS_CRITERION_LABELS: Record<BonusCriterionKey, string> = {
 
 /** Как показывать факт и цель критерия на фронте. */
 export const BONUS_CRITERION_UNITS: Record<BonusCriterionKey, 'money' | 'count'> = {
-  plan: 'money',
   assortment: 'count',
   contacts: 'count',
   clients: 'count',
@@ -68,7 +69,7 @@ export interface BonusScheme {
 }
 
 export const DEFAULT_BONUS_SCHEME: BonusScheme = {
-  weights: { plan: 40, assortment: 15, contacts: 15, clients: 10, leads: 10, attendance: 10 },
+  weights: { assortment: 25, contacts: 25, clients: 20, leads: 15, attendance: 15 },
   tiers: [
     { fromPercent: 0, rate: 0 },
     { fromPercent: 50, rate: 0.5 },
@@ -208,6 +209,8 @@ export interface BonusCriterionResult {
 }
 
 export interface BonusResult {
+  /** Выручка, от которой считается ставка — нужна фронту для строки расчёта. */
+  revenueFact: number;
   planPercent: number | null;
   rate: number;
   /** Ставка × фактическая выручка — 100% возможного бонуса. */
@@ -227,7 +230,6 @@ export function calculateBonus(scheme: BonusScheme, facts: BonusFacts): BonusRes
   const base = Math.floor((facts.revenueFact * rate) / 100);
 
   const rawCriteria: { key: BonusCriterionKey; fact: number; target: number | null }[] = [
-    { key: 'plan', fact: facts.revenueFact, target: facts.revenueTarget },
     { key: 'assortment', fact: facts.assortmentPositions, target: scheme.targets.assortment || null },
     {
       key: 'contacts',
@@ -267,6 +269,7 @@ export function calculateBonus(scheme: BonusScheme, facts: BonusFacts): BonusRes
   const score = criteria.reduce((s, c) => s + c.contribution, 0);
 
   return {
+    revenueFact: facts.revenueFact,
     planPercent,
     rate,
     base,
