@@ -587,26 +587,6 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
           );
 
-    const revenueTotalShipped = () =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-               AND d.manager_id = ${dealScope.managerId}`,
-          )
-        : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
-          );
-
     /** Avg line revenue per deal among deals with ≥1 line in period (operational). */
     const avgDealOperational = () =>
       dealScope.managerId
@@ -662,32 +642,6 @@ router.get(
              ORDER BY day ASC`,
           );
 
-    const revenueByDayShipped = () =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-               AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          );
-
     const topClientsByOperationalRevenue = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{
@@ -695,11 +649,9 @@ router.get(
             company_name: string;
             is_svip: boolean;
             operational_revenue: string;
-            shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -716,11 +668,9 @@ router.get(
             company_name: string;
             is_svip: boolean;
             operational_revenue: string;
-            shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -737,19 +687,16 @@ router.get(
     // в момент закрытия сделки. ADD-события на склад клиента не дублируются как выручка.
     const [
       salesRevenueOperationalRaw,
-      salesRevenueShippedRaw,
       salesAvgAgg,
       completedCount,
       totalDealsCount,
       canceledCount,
       revenueByDayOperationalRaw,
-      revenueByDayShippedRaw,
       dealsByStatus,
       topClientsRaw,
       topProductsRaw,
     ] = await Promise.all([
       revenueTotalOperational(),
-      revenueTotalShipped(),
       avgDealOperational(),
       // COMPLETED + CLOSED count (for conversion)
       prisma.deal.count({
@@ -764,7 +711,6 @@ router.get(
         where: { ...dealScope, isArchived: false, status: 'CANCELED', createdAt: { gte: start, lt: end } },
       }),
       revenueByDayOperational(),
-      revenueByDayShipped(),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -792,26 +738,19 @@ router.get(
       r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
 
     const opByDay = new Map(revenueByDayOperationalRaw.map((r) => [dayKey(r), Number(r.total)]));
-    const shByDay = new Map(revenueByDayShippedRaw.map((r) => [dayKey(r), Number(r.total)]));
-    const allDayKeys = new Set([...opByDay.keys(), ...shByDay.keys()]);
-    const revenueByDay = [...allDayKeys]
+    const revenueByDay = [...opByDay.keys()]
       .sort()
       .map((day) => ({
         day,
-        /** Operational line revenue (default / primary). */
+        /** Line revenue for the day (Tashkent business day). */
         total: opByDay.get(day) ?? 0,
-        /** SHIPPED/CLOSED line revenue (same date logic). */
-        shippedTotal: shByDay.get(day) ?? 0,
       }));
 
     const operationalTotal = salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0;
-    const shippedTotal = salesRevenueShippedRaw[0] ? Number(salesRevenueShippedRaw[0].total) : 0;
 
     const sales = {
-      /** Operational revenue (active deals, line totals, effective item date). */
+      /** Revenue by deal lines (active deals, effective item date). */
       totalRevenue: operationalTotal,
-      /** SHIPPED/CLOSED revenue (same line + date rules). Former default for totalRevenue. */
-      shippedRevenue: shippedTotal,
       avgDealAmount: salesAvgAgg[0] ? Number(salesAvgAgg[0].avg_amount) : 0,
       conversionNewToCompleted: totalDealsCount > 0 ? completedCount / totalDealsCount : null,
       cancellationRate: totalDealsCount > 0 ? canceledCount / totalDealsCount : null,
@@ -825,7 +764,6 @@ router.get(
         companyName: c.company_name,
         isSvip: !!c.is_svip,
         totalRevenue: Number(c.operational_revenue),
-        shippedRevenue: Number(c.shipped_revenue),
       })),
       topProducts: topProductsRaw.map((p) => ({
         productId: p.product_id,

@@ -179,7 +179,7 @@ function compareKey(level: CompareLevel, id: string): string {
 }
 
 function buildRevenueChartData(
-  raw: { day: string; total: number; shippedTotal?: number }[],
+  raw: { day: string; total: number }[],
 ): { day: string; total: number }[] {
   if (raw.length === 0) return [];
   const map = new Map(raw.map((d) => [d.day, d.total]));

@@ -243,21 +243,6 @@ router.get(
     );
     const balanceMap = new Map(balanceRaw.map((r) => [r.month, { opening: Number(r.opening_balance), closing: Number(r.closing_balance) }]));
 
-    // Line revenue by month for SHIPPED/CLOSED (effective item date) — «отгруженная выручка по дате строки»
-    const shippedRevenueByMonthRaw = await prisma.$queryRaw<
-      { month: number; shipped_revenue: string }[]
-    >(
-      Prisma.sql`SELECT
-        EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as month,
-        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
-      FROM deal_items di
-      JOIN deals d ON d.id = di.deal_id
-      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}
-        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}
-      GROUP BY EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
-      ORDER BY month`,
-    );
     // Sum deal revenue by calendar month of first OUT inventory movement — avoids dependency on `shipments` table
     const shippedAtByMonthRaw = await prisma.$queryRaw<
       { month: number; shipped: string }[]
@@ -280,7 +265,6 @@ router.get(
       GROUP BY EXTRACT(MONTH FROM (out_dates.out_date AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
       ORDER BY month`,
     );
-    const shippedRevenueMap = new Map(shippedRevenueByMonthRaw.map((r) => [r.month, Number(r.shipped_revenue)]));
     const shippedMap = new Map(shippedAtByMonthRaw.map((r) => [r.month, Number(r.shipped)]));
     const revenueMap = new Map<number, { revenue: number; activeClients: number }>();
     for (const r of revenueByMonthRaw) {
@@ -290,20 +274,18 @@ router.get(
     // Build trend for all months 1–currentMonth (always include zero-data months for correct charts)
     const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12;
     const monthlyTrend: {
-      month: number; revenue: number; collected: number; shipped: number; shippedRevenue: number;
+      month: number; revenue: number; collected: number; shipped: number;
       activeClients: number; openingBalance: number; closingBalance: number;
     }[] = [];
     for (let m = 1; m <= currentMonth; m++) {
       const rev = revenueMap.get(m);
       const collected = collectedMap.get(m) ?? 0;
       const shipped = shippedMap.get(m) ?? 0;
-      const shippedRevenue = shippedRevenueMap.get(m) ?? 0;
       monthlyTrend.push({
         month: m,
         revenue: rev?.revenue ?? 0,
         collected,
         shipped,
-        shippedRevenue,
         activeClients: rev?.activeClients ?? 0,
         openingBalance: balanceMap.get(m)?.opening ?? 0,
         closingBalance: balanceMap.get(m)?.closing ?? 0,

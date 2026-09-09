@@ -16,12 +16,9 @@ import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
-  LEGEND_OPERATIONAL,
-  LEGEND_SHIPPED_REVENUE,
   LEGEND_PAID,
   LEGEND_SHIPPED_AT,
   TOOLTIP_OPERATIONAL_REVENUE,
-  TOOLTIP_SHIPPED_REVENUE,
   TOOLTIP_SHIPPED_AT_MONTHLY,
 } from '../constants/analyticsRevenueTooltips';
 import { useThemeStore } from '../store/themeStore';
@@ -138,8 +135,6 @@ export default function HistoryAnalyticsPage() {
   const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
-  /** Monthly chart: compare operational vs shipped revenue, or show one metric. */
-  const [historyRevMode, setHistoryRevMode] = useState<'both' | 'operational' | 'shipped'>('both');
 
   const historyStaleMs = 120_000;
 
@@ -350,19 +345,11 @@ export default function HistoryAnalyticsPage() {
   const clickableRow = { cursor: 'pointer' };
 
   // ── Chart data ──
-  const totalShippedRevenueYear = monthlyTrend.reduce((s, m) => s + (m.shippedRevenue ?? 0), 0);
-
-  const revenueLineData = monthlyTrend.flatMap((m) => {
-    const label = MONTH_LABELS[m.month] || `${m.month}`;
-    const rows: { month: string; value: number; series: string; _month: number }[] = [];
-    if (historyRevMode === 'both' || historyRevMode === 'operational') {
-      rows.push({ month: label, value: m.revenue, series: LEGEND_OPERATIONAL, _month: m.month });
-    }
-    if (historyRevMode === 'both' || historyRevMode === 'shipped') {
-      rows.push({ month: label, value: m.shippedRevenue ?? 0, series: LEGEND_SHIPPED_REVENUE, _month: m.month });
-    }
-    return rows;
-  });
+  const revenueLineData = monthlyTrend.map((m) => ({
+    month: MONTH_LABELS[m.month] || `${m.month}`,
+    value: m.revenue,
+    _month: m.month,
+  }));
 
   const paymentsWarehouseAreaData = monthlyTrend.flatMap((m) => [
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: LEGEND_PAID, _month: m.month },
@@ -402,7 +389,7 @@ export default function HistoryAnalyticsPage() {
       key: 'revenue',
       title: (
         <span>
-          Операционная выручка
+          Выручка
           <Tooltip title={TOOLTIP_OPERATIONAL_REVENUE}>
             <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
           </Tooltip>
@@ -412,22 +399,6 @@ export default function HistoryAnalyticsPage() {
       prefix: <DollarOutlined />,
       style: { color: token.colorPrimary },
       fmt: true,
-    },
-    {
-      key: 'shippedRevenueY',
-      title: (
-        <span>
-          Отгруженная выручка
-          <Tooltip title={TOOLTIP_SHIPPED_REVENUE}>
-            <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
-          </Tooltip>
-        </span>
-      ),
-      value: totalShippedRevenueYear,
-      prefix: <DollarOutlined />,
-      style: { color: '#237804' },
-      fmt: true,
-      noDrawer: true,
     },
     { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
@@ -699,54 +670,27 @@ export default function HistoryAnalyticsPage() {
         title={
           <span>
             Выручка по месяцам
-            <Tooltip
-              title={
-                <div style={{ maxWidth: 360 }}>
-                  <div style={{ marginBottom: 8 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>
-                  <div>{TOOLTIP_SHIPPED_REVENUE}</div>
-                </div>
-              }
-            >
+            <Tooltip title={<div style={{ maxWidth: 360 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>}>
               <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.55 }} />
             </Tooltip>
           </span>
-        }
-        extra={
-          <Segmented
-            size="small"
-            value={historyRevMode}
-            onChange={(v) => setHistoryRevMode(v as 'both' | 'operational' | 'shipped')}
-            options={[
-              { label: 'Обе линии', value: 'both' },
-              { label: 'Операционная', value: 'operational' },
-              { label: 'Отгружено', value: 'shipped' },
-            ]}
-          />
         }
         size="small"
         style={{ marginBottom: 16 }}
       >
         <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
-          Сравнение двух показателей выручки (не путать с графиком ниже: там оплаты и склад).
+          Сумма строк сделок по дате строки (не путать с графиком ниже: там оплаты и склад).
         </Paragraph>
         {revenueLineData.length > 0 ? (
           <Line
             data={revenueLineData}
             xField="month"
             yField="value"
-            seriesField="series"
             height={300}
             shapeField="smooth"
-            style={{ lineWidth: 2.5 }}
-            scale={{
-              color: {
-                domain: [LEGEND_OPERATIONAL, LEGEND_SHIPPED_REVENUE],
-                range: ['#1677ff', '#389e0d'],
-              },
-            }}
+            style={{ lineWidth: 2.5, stroke: '#1677ff' }}
             axis={axisStyle}
             tooltip={{ items: [{ field: 'value', channel: 'y', valueFormatter: (v: number) => fmtNum(v) }] }}
-            legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
             theme={chartTheme}
             onReady={({ chart }) => {
               chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
