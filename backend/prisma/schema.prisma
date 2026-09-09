@@ -362,6 +362,22 @@ model UserMonthlyGoal {
   @@map("user_monthly_goals")
 }
 
+/// Схема расчёта бонуса менеджеров: веса критериев, ступени ставки и цели по умолчанию.
+/// Одна строка на компанию — правят ADMIN и SUPER_ADMIN, читают все, кто видит KPI.
+model BonusScheme {
+  id          String   @id @default("singleton")
+  /** Веса критериев в процентах; в сумме ровно 100. */
+  weights     Json
+  /** Ступени ставки: [{ fromPercent, rate }] — от какого % плана какая доля от факта. */
+  tiers       Json
+  /** Цели по критериям, когда у сотрудника не задана личная. */
+  targets     Json
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  @@map("bonus_scheme")
+}
+
 model Session {
   id                   String    @id @default(uuid())
   userId               String    @map("user_id")

@@ -785,6 +785,51 @@ export interface AnalyticsManagers {
 }
 
 /** KPI менеджера за месяц — блоки «План», «Ассортимент», «Контакты», «Клиенты», «Посещаемость». */
+export type BonusCriterionKey = 'plan' | 'assortment' | 'contacts' | 'clients' | 'leads' | 'attendance';
+
+/** «От fromPercent процентов плана — ставка rate процентов от фактической выручки». */
+export interface BonusTier {
+  fromPercent: number;
+  rate: number;
+}
+
+/** Настройки расчёта бонуса: веса критериев, ступени ставки, цели по умолчанию. */
+export interface BonusScheme {
+  weights: Record<BonusCriterionKey, number>;
+  tiers: BonusTier[];
+  targets: { assortment: number; contacts: number; clients: number; leads: number };
+}
+
+export interface ManagerBonusCriterion {
+  key: BonusCriterionKey;
+  label: string;
+  unit: 'money' | 'count';
+  weight: number;
+  fact: number;
+  /** null — цель не задана, критерий выпадает из расчёта. */
+  target: number | null;
+  /** Выполнение без ограничения сверху — видно перевыполнение. */
+  rawPercent: number | null;
+  /** Выполнение в расчёте: не больше 100%. */
+  percent: number | null;
+  /** Вклад в итоговый процент, уже с учётом перераспределения весов. */
+  contribution: number;
+}
+
+export interface ManagerBonus {
+  planPercent: number | null;
+  /** Ставка из ступеней, в процентах от фактической выручки. */
+  rate: number;
+  /** Ставка × факт — 100% возможного бонуса. */
+  base: number;
+  criteria: ManagerBonusCriterion[];
+  /** Сумма весов критериев, у которых задана цель. */
+  weightUsed: number;
+  /** Средневзвешенное выполнение критериев, 0..1. */
+  score: number;
+  amount: number;
+}
+
 export interface ManagerKpiRow {
   managerId: string;
   fullName: string;
@@ -828,6 +873,7 @@ export interface ManagerKpiRow {
     lastContactAt: string | null;
   };
   clients: { served: number; new: number; returned: number; regular: number };
+  bonus: ManagerBonus;
   /** Контакт → покупка. `contacted` уже очищен от накрутки, см. эндпоинт. */
   leads: { contacted: number; converted: number; windowDays: number };
   attendance: {
@@ -843,6 +889,7 @@ export interface ManagerKpiRow {
 
 export interface ManagerKpiResponse {
   period: { year: number; month: number };
+  scheme: BonusScheme;
   rows: ManagerKpiRow[];
 }
 export interface AnalyticsProfitability {

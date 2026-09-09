@@ -24,6 +24,7 @@ import type {
   LaminationKgUsageResponse,
   PaymentOverdueResponse,
   ManagerKpiResponse,
+  BonusScheme,
 } from '../types';
 
 export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year';
@@ -128,6 +129,12 @@ export type CallActivityResponse = {
 export const analyticsApi = {
   getManagerKpi: (year: number, month: number) =>
     client.get<ManagerKpiResponse>('/analytics/manager-kpi', { params: { year, month } }).then((r) => r.data),
+
+  getBonusScheme: () =>
+    client.get<BonusScheme>('/analytics/manager-kpi/bonus-scheme').then((r) => r.data),
+
+  saveBonusScheme: (scheme: BonusScheme) =>
+    client.put<BonusScheme>('/analytics/manager-kpi/bonus-scheme', scheme).then((r) => r.data),
 
   getData: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
     client.get<AnalyticsData>('/analytics', { params: analyticsPeriodParams(query) }).then((r) => r.data),

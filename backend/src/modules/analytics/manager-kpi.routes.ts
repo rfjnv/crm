@@ -9,9 +9,22 @@ import {
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
+import {
+  calculateBonus,
+  parseBonusScheme,
+  validateBonusScheme,
+  DEFAULT_BONUS_SCHEME,
+  type BonusScheme,
+} from '../../lib/bonus';
 
 const router = Router();
 router.use(authenticate);
+
+/** Схема бонуса — одна строка на компанию; нет строки, значит действуют значения по умолчанию. */
+async function loadBonusScheme(): Promise<BonusScheme> {
+  const row = await prisma.bonusScheme.findUnique({ where: { id: 'singleton' } });
+  return row ? parseBonusScheme(row) : DEFAULT_BONUS_SCHEME;
+}
 
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
 
@@ -131,6 +144,7 @@ router.get(
 
     const { year, month } = parsePeriod(req);
     const { start, end } = monthBounds(year, month);
+    const scheme = await loadBonusScheme();
 
     /** Менеджер видит только себя; админ может сузить выборку до одного человека. */
     const onlyUserId = isManager
@@ -149,7 +163,7 @@ router.get(
     });
     const ids = managers.map((m) => m.id);
     if (ids.length === 0) {
-      res.json({ period: { year, month }, rows: [] });
+      res.json({ period: { year, month }, scheme, rows: [] });
       return;
     }
 
@@ -373,6 +387,7 @@ router.get(
       const dead = deadByManager.get(m.id) ?? [];
 
       const notes = notesMap.get(m.id);
+      const leads = leadsMap.get(m.id);
       const board = boardMap.get(m.id);
       const clientNotes = notes ? Number(notes.total) : 0;
       const boardCalls = board ? Number(board.total) : 0;
@@ -407,10 +422,23 @@ router.get(
         }
       }
 
+      const bonus = calculateBonus(scheme, {
+        revenueFact,
+        revenueTarget,
+        contactsTarget: goal?.callNotesTarget ?? null,
+        assortmentPositions: items.length,
+        contactsTotal: clientNotes + boardCalls,
+        clientsAcquired: newClients + returned,
+        leadsConverted: leads ? Number(leads.converted) : 0,
+        attendanceOnTime: onTime,
+        workdays,
+      });
+
       return {
         managerId: m.id,
         fullName: m.fullName,
         department: m.department ?? null,
+        bonus,
         plan: {
           revenueTarget,
           dealsTarget: goal?.dealsTarget ?? null,
@@ -481,8 +509,8 @@ router.get(
         clients: { served, new: newClients, returned, regular },
         leads: {
           /** Уникальные клиенты, с которыми связались и которые до этого не покупали ≥30 дней. */
-          contacted: leadsMap.get(m.id) ? Number(leadsMap.get(m.id)!.leads) : 0,
-          converted: leadsMap.get(m.id) ? Number(leadsMap.get(m.id)!.converted) : 0,
+          contacted: leads ? Number(leads.leads) : 0,
+          converted: leads ? Number(leads.converted) : 0,
           windowDays: LEAD_WINDOW_DAYS,
         },
         attendance: {
@@ -497,7 +525,45 @@ router.get(
       };
     });
 
-    res.json({ period: { year, month }, rows });
+    res.json({ period: { year, month }, scheme, rows });
+  }),
+);
+
+/**
+ * Схема бонуса: читают все, кто видит KPI (менеджер должен понимать, из чего
+ * складывается его премия), правят только админы.
+ */
+router.get(
+  '/bonus-scheme',
+  asyncHandler(async (req: Request, res: Response) => {
+    const role = req.user!.role as Role;
+    if (role !== 'MANAGER' && role !== 'ADMIN' && role !== 'SUPER_ADMIN' && role !== 'HR') {
+      throw new AppError(403, 'Недостаточно прав');
+    }
+    res.json(await loadBonusScheme());
+  }),
+);
+
+router.put(
+  '/bonus-scheme',
+  asyncHandler(async (req: Request, res: Response) => {
+    const role = req.user!.role as Role;
+    if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Недостаточно прав');
+    }
+    const scheme = validateBonusScheme(req.body);
+    const data = {
+      weights: scheme.weights as unknown as Prisma.InputJsonValue,
+      tiers: scheme.tiers as unknown as Prisma.InputJsonValue,
+      targets: scheme.targets as unknown as Prisma.InputJsonValue,
+      updatedById: req.user!.userId,
+    };
+    await prisma.bonusScheme.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', ...data },
+      update: data,
+    });
+    res.json(scheme);
   }),
 );
 

@@ -5,7 +5,7 @@ import {
   DatePicker, Button, Modal, Form, InputNumber, message, Tooltip, Empty, Space,
   Segmented,
 } from 'antd';
-import { EditOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { EditOutlined, InfoCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { usersApi } from '../api/users.api';
@@ -13,6 +13,8 @@ import { useAuthStore } from '../store/authStore';
 import { formatUZS } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import type { ManagerKpiRow } from '../types';
+import ManagerBonusCard from './ManagerBonusCard';
+import BonusSchemeModal from './BonusSchemeModal';
 
 const { Text } = Typography;
 
@@ -52,6 +54,7 @@ export default function ManagerKpiPanel() {
   const [unit, setUnit] = useState<'abs' | 'pct'>('abs');
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showAllGroups, setShowAllGroups] = useState(false);
+  const [schemeOpen, setSchemeOpen] = useState(false);
   const [planForm] = Form.useForm();
 
   const year = month.year();
@@ -93,6 +96,7 @@ export default function ManagerKpiPanel() {
       fact,
       percent: target > 0 ? fact / target : null,
       withoutPlan: rows.filter((r) => r.plan.revenueTarget === null).length,
+      bonus: rows.reduce((s, r) => s + r.bonus.amount, 0),
     };
   }, [rows]);
 
@@ -155,6 +159,26 @@ export default function ManagerKpiPanel() {
         ),
       sorter: (a: ManagerKpiRow, b: ManagerKpiRow) =>
         (a.plan.revenuePercent ?? -1) - (b.plan.revenuePercent ?? -1),
+    },
+    {
+      title: 'Бонус',
+      key: 'bonus',
+      width: 150,
+      align: 'right' as const,
+      render: (_: unknown, r: ManagerKpiRow) =>
+        r.bonus.amount > 0 ? (
+          <Tooltip title={`База ${formatUZS(r.bonus.base)} (ставка ${r.bonus.rate}% от факта) × критерии ${Math.round(r.bonus.score * 100)}%`}>
+            <div>
+              <div>{formatUZS(r.bonus.amount)}</div>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {`${String(r.bonus.rate).replace('.', ',')}% · ${Math.round(r.bonus.score * 100)}%`}
+              </Text>
+            </div>
+          </Tooltip>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+      sorter: (a: ManagerKpiRow, b: ManagerKpiRow) => a.bonus.amount - b.bonus.amount,
     },
     {
       title: 'Клиенты',
@@ -257,35 +281,50 @@ export default function ManagerKpiPanel() {
           </span>
         )}
         extra={(
-          <DatePicker
-            picker="month"
-            value={month}
-            onChange={(v) => v && setMonth(v.startOf('month'))}
-            allowClear={false}
-            format="MMMM YYYY"
-          />
+          <Space size={8}>
+            <DatePicker
+              picker="month"
+              value={month}
+              onChange={(v) => v && setMonth(v.startOf('month'))}
+              allowClear={false}
+              format="MMMM YYYY"
+            />
+            {canEditPlan && (
+              <Tooltip title="Настроить расчёт бонуса: веса критериев, ступени ставки, цели">
+                <Button icon={<SettingOutlined />} onClick={() => setSchemeOpen(true)} />
+              </Tooltip>
+            )}
+          </Space>
         )}
       >
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-          <Col xs={12} md={6}>
-            <Statistic title="План отдела" value={totals.target} formatter={(v) => formatUZS(Number(v))} />
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="План отдела" value={totals.target} formatter={(v) => formatUZS(Number(v))} valueStyle={{ fontSize: 18 }} />
           </Col>
-          <Col xs={12} md={6}>
-            <Statistic title="Факт" value={totals.fact} formatter={(v) => formatUZS(Number(v))} valueStyle={{ color: '#1677ff' }} />
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="Факт" value={totals.fact} formatter={(v) => formatUZS(Number(v))} valueStyle={{ fontSize: 18, color: '#1677ff' }} />
           </Col>
-          <Col xs={12} md={6}>
+          <Col xs={12} md={8} lg={4}>
             <Statistic
               title="Выполнение"
               value={totals.percent === null ? '—' : `${Math.round(totals.percent * 100)}%`}
-              valueStyle={{ color: planColor(totals.percent) }}
+              valueStyle={{ fontSize: 18, color: planColor(totals.percent) }}
             />
           </Col>
-          <Col xs={12} md={6}>
+          <Col xs={12} md={8} lg={4}>
             <Statistic
               title="Без плана"
               value={totals.withoutPlan}
               suffix={`из ${rows.length}`}
-              valueStyle={{ color: totals.withoutPlan > 0 ? '#faad14' : undefined }}
+              valueStyle={{ fontSize: 18, color: totals.withoutPlan > 0 ? '#faad14' : undefined }}
+            />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic
+              title="Бонусы к выплате"
+              value={totals.bonus}
+              formatter={(v) => formatUZS(Number(v))}
+              valueStyle={{ fontSize: 18, color: '#52c41a' }}
             />
           </Col>
         </Row>
@@ -299,7 +338,7 @@ export default function ManagerKpiPanel() {
             rowKey="managerId"
             size="small"
             pagination={false}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1260 }}
             onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
             locale={{ emptyText: 'Нет менеджеров за этот месяц' }}
           />
@@ -328,6 +367,8 @@ export default function ManagerKpiPanel() {
       >
         {detail && (
           <>
+            <ManagerBonusCard bonus={detail.bonus} tiers={data?.scheme.tiers ?? []} />
+
             <Card size="small" title="1. План продаж" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
                 <Col span={8}><Statistic title="План" value={detail.plan.revenueTarget ?? 0} formatter={(v) => detail.plan.revenueTarget === null ? '—' : formatUZS(Number(v))} /></Col>
@@ -657,6 +698,8 @@ export default function ManagerKpiPanel() {
           </Text>
         </Form>
       </Modal>
+
+      <BonusSchemeModal open={schemeOpen} onClose={() => setSchemeOpen(false)} />
     </>
   );
 }
