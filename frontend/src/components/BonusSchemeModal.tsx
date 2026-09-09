@@ -108,7 +108,7 @@ export default function BonusSchemeModal({ open, onClose }: { open: boolean; onC
             message={sumOk ? 'Сумма весов 100%' : `Сумма весов ${Math.round(sum * 10) / 10}% — должно быть ровно 100%`}
           />
 
-          <Divider orientation="left" style={{ marginTop: 20 }}>Ступени ставки</Divider>
+          <Divider titlePlacement="start" style={{ marginTop: 20 }}>Ступени ставки</Divider>
           <Text type="secondary" style={{ fontSize: 12 }}>
             От какого процента выполнения плана какая доля от фактической выручки идёт в базу бонуса.
             Например: от 50% — 0,5%, от 80% — 0,6%.
@@ -140,7 +140,7 @@ export default function BonusSchemeModal({ open, onClose }: { open: boolean; onC
             )}
           </Form.List>
 
-          <Divider orientation="left" style={{ marginTop: 20 }}>Цели по умолчанию</Divider>
+          <Divider titlePlacement="start" style={{ marginTop: 20 }}>Цели по умолчанию</Divider>
           <Text type="secondary" style={{ fontSize: 12 }}>
             Применяются, когда сотруднику не задана личная цель. План по выручке и по контактам
             задаётся каждому отдельно в «Изменить план», посещаемость считается от рабочих дней месяца.
