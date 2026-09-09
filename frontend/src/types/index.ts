@@ -815,7 +815,7 @@ export interface ManagerKpiRow {
       count: number;
       qty: number;
       revenue: number;
-      products: { productId: string; name: string; qty: number }[];
+      products: { productId: string; name: string; unit: string; qty: number; revenue: number }[];
     };
   };
   contacts: {

@@ -14,7 +14,7 @@ import { formatUZS } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import type { ManagerKpiRow } from '../types';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /** Те же числа, что на странице «Посещаемость»: начало 09:00, допуск 15 минут. */
 const WORK_START_LABEL = '09:00';
@@ -50,6 +50,8 @@ export default function ManagerKpiPanel() {
   const [planFor, setPlanFor] = useState<ManagerKpiRow | null>(null);
   /** Числа или доли — переключатель в шапке карточки деталей. */
   const [unit, setUnit] = useState<'abs' | 'pct'>('abs');
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllGroups, setShowAllGroups] = useState(false);
   const [planForm] = Form.useForm();
 
   const year = month.year();
@@ -368,7 +370,9 @@ export default function ManagerKpiPanel() {
                 <Table
                   size="small"
                   pagination={false}
-                  dataSource={detail.assortment.topGroups}
+                  dataSource={showAllGroups
+                    ? detail.assortment.topGroups
+                    : detail.assortment.topGroups.slice(0, 5)}
                   rowKey="family"
                   expandable={{
                     rowExpandable: (g) => g.products.length > 1,
@@ -412,30 +416,98 @@ export default function ManagerKpiPanel() {
                   ]}
                 />
               )}
-              <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 10, marginBottom: 6 }}>
-                По категориям: {detail.assortment.byCategory.length === 0 ? '—' : detail.assortment.byCategory
-                  .map((c) => `${c.category} — ${formatUZS(c.revenue)}`).join(' · ')}
-              </Paragraph>
-              <div style={{ marginTop: 8 }}>
-                <Text strong>Оживил мёртвые товары: </Text>
-                {detail.assortment.deadSold.count === 0 ? (
-                  <Text type="secondary">нет</Text>
-                ) : (
-                  <>
-                    <Tag color="green">{detail.assortment.deadSold.count} поз.</Tag>
-                    <Text type="secondary">
-                      {detail.assortment.deadSold.qty.toLocaleString('ru-RU')} ед. на {formatUZS(detail.assortment.deadSold.revenue)}
-                    </Text>
-                    <div style={{ marginTop: 4 }}>
-                      {detail.assortment.deadSold.products.map((p) => (
-                        <Tag key={p.productId} style={{ marginBottom: 4 }}>{p.name} — {p.qty.toLocaleString('ru-RU')}</Tag>
-                      ))}
-                    </div>
-                  </>
+              {detail.assortment.topGroups.length > 5 && (
+                <Button type="link" size="small" style={{ paddingLeft: 0 }}
+                  onClick={() => setShowAllGroups((v) => !v)}>
+                  {showAllGroups
+                    ? 'Свернуть'
+                    : `Показать все (${detail.assortment.topGroups.length})`}
+                </Button>
+              )}
+              {/* Категорий бывает полтора десятка — таблицей с долей, а не строкой через точки. */}
+              {detail.assortment.byCategory.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text strong style={{ fontSize: 13 }}>По категориям</Text>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    showHeader={false}
+                    style={{ marginTop: 6 }}
+                    dataSource={showAllCategories
+                      ? detail.assortment.byCategory
+                      : detail.assortment.byCategory.slice(0, 5)}
+                    rowKey="category"
+                    columns={[
+                      { title: 'Категория', dataIndex: 'category', ellipsis: true },
+                      {
+                        title: 'Доля', key: 'share', width: 120,
+                        render: (_: unknown, c: { revenue: number }) => (
+                          <Progress
+                            percent={detail.plan.revenueFact
+                              ? Math.round((c.revenue / detail.plan.revenueFact) * 100)
+                              : 0}
+                            size="small"
+                            strokeColor="#1677ff"
+                          />
+                        ),
+                      },
+                      {
+                        title: 'Выручка', dataIndex: 'revenue', width: 130, align: 'right' as const,
+                        render: (v: number) => (unit === 'pct' ? pct(v, detail.plan.revenueFact) : formatUZS(v)),
+                      },
+                    ]}
+                  />
+                  {detail.assortment.byCategory.length > 5 && (
+                    <Button type="link" size="small" style={{ paddingLeft: 0 }}
+                      onClick={() => setShowAllCategories((v) => !v)}>
+                      {showAllCategories
+                        ? 'Свернуть'
+                        : `Показать все (${detail.assortment.byCategory.length})`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginTop: 14 }}>
+                <Space size={8} align="center" wrap>
+                  <Text strong style={{ fontSize: 13 }}>Оживил мёртвые товары</Text>
+                  <Tooltip title="Позиции, которые до начала этого месяца не продавались 90+ дней.">
+                    <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.5 }} />
+                  </Tooltip>
+                  {detail.assortment.deadSold.count === 0
+                    ? <Text type="secondary">нет</Text>
+                    : (
+                      <>
+                        <Tag color="green" style={{ margin: 0 }}>
+                          {detail.assortment.deadSold.count} поз.
+                        </Tag>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          на {formatUZS(detail.assortment.deadSold.revenue)}
+                        </Text>
+                      </>
+                    )}
+                </Space>
+                {detail.assortment.deadSold.count > 0 && (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    showHeader={false}
+                    style={{ marginTop: 6 }}
+                    dataSource={detail.assortment.deadSold.products}
+                    rowKey="productId"
+                    columns={[
+                      { title: 'Товар', dataIndex: 'name', ellipsis: true },
+                      {
+                        title: 'Кол-во', dataIndex: 'qty', width: 130, align: 'right' as const,
+                        render: (v: number, r: { unit: string }) => `${v.toLocaleString('ru-RU')} ${r.unit}`,
+                      },
+                      {
+                        title: 'Выручка', dataIndex: 'revenue', width: 130, align: 'right' as const,
+                        render: (v: number) => (unit === 'pct' ? pct(v, detail.plan.revenueFact) : formatUZS(v)),
+                      },
+                    ]}
+                  />
                 )}
-                <Tooltip title="Товары, которые до начала этого месяца не продавались 90+ дней.">
-                  <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.5 }} />
-                </Tooltip>
               </div>
             </Card>
 

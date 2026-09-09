@@ -99,8 +99,15 @@ function productFamily(name: string): string {
     .replace(/[-–—/:(),."]+/g, ' ')
     .replace(/s+/g, ' ')
     .trim();
-  const first = cleaned.split(' ')[0] || '';
-  return first ? first[0].toUpperCase() + first.slice(1).toLowerCase() : (name.trim() || 'Без названия');
+  // Два слова, а не одно: «Самоклеящаяся» и «Уф» читаются как обрубки, нужно
+  // «Самоклеящаяся бумага» и «УФ лаки». Регистр НЕ трогаем — иначе аббревиатуры
+  // («УФ», «CTCP») превращаются в «Уф» и «Ctcp».
+  const all = cleaned.split(' ').filter(Boolean);
+  // Если второе слово служебное («Химия и …»), берём третье — иначе выходит обрубок.
+  const STOP = new Set(['и', 'для', 'с', 'на', 'по', 'из', 'от']);
+  const take = all[1] && STOP.has(all[1].toLowerCase()) ? 3 : 2;
+  const label = all.slice(0, take).join(' ');
+  return label || name.trim() || 'Без названия';
 }
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
@@ -189,7 +196,7 @@ router.get(
         // Мёртвость определяем на МОМЕНТ НАЧАЛА месяца: иначе товар, поднятый как раз
         // этой продажей, уже не выглядел бы мёртвым и заслуга не засчиталась бы.
         prisma.$queryRaw<{
-          manager_id: string; product_id: string; name: string; qty: string; revenue: string;
+          manager_id: string; product_id: string; name: string; unit: string; qty: string; revenue: string;
         }[]>(
           Prisma.sql`WITH sold AS (
              SELECT d.manager_id, di.product_id,
@@ -213,6 +220,7 @@ router.get(
              GROUP BY di.product_id
            )
            SELECT s.manager_id, s.product_id, p.name,
+             COALESCE(p.unit, 'шт.') as unit,
              s.qty::text as qty, s.revenue::text as revenue
            FROM sold s
            JOIN products p ON p.id = s.product_id
@@ -451,7 +459,13 @@ router.get(
             products: [...dead]
               .sort((a, b) => Number(b.revenue) - Number(a.revenue))
               .slice(0, 5)
-              .map((d) => ({ productId: d.product_id, name: d.name, qty: Number(d.qty) })),
+              .map((d) => ({
+                productId: d.product_id,
+                name: d.name,
+                unit: d.unit,
+                qty: Number(d.qty),
+                revenue: Number(d.revenue),
+              })),
           },
         },
         contacts: {
