@@ -30,6 +30,7 @@ import { paymentOverdueRoutes } from './modules/analytics/payment-overdue.routes
 import { abcXyzRoutes } from './modules/analytics/abcXyz.routes';
 import { cohortsRoutes } from './modules/analytics/cohorts.routes';
 import { noteAuditRoutes } from './modules/analytics/note-audit.routes';
+import { managerKpiRoutes } from './modules/analytics/manager-kpi.routes';
 import { financeRoutes } from './modules/finance/finance.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
@@ -206,6 +207,7 @@ app.use('/api/analytics/payment-overdue', paymentOverdueRoutes);
 app.use('/api/analytics/abc-xyz', abcXyzRoutes);
 app.use('/api/analytics/cohorts', cohortsRoutes);
 app.use('/api/analytics/note-audit', noteAuditRoutes);
+app.use('/api/analytics/manager-kpi', managerKpiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/admin', adminRoutes);

@@ -784,6 +784,50 @@ export interface AnalyticsManagers {
   }[];
 }
 
+/** KPI менеджера за месяц — блоки «План», «Ассортимент», «Контакты», «Клиенты», «Посещаемость». */
+export interface ManagerKpiRow {
+  managerId: string;
+  fullName: string;
+  department: string | null;
+  plan: {
+    revenueTarget: number | null;
+    dealsTarget: number | null;
+    callNotesTarget: number | null;
+    revenueFact: number;
+    dealsFact: number;
+    /** `null` — план на месяц не задан. */
+    revenuePercent: number | null;
+  };
+  assortment: {
+    positions: number;
+    totalQty: number;
+    topProducts: { productId: string; name: string; unit: string; qty: number; revenue: number }[];
+    byCategory: { category: string; qty: number; revenue: number }[];
+    /** Товары, которые до этого месяца 90+ дней не продавались. */
+    deadSold: {
+      count: number;
+      qty: number;
+      revenue: number;
+      products: { productId: string; name: string; qty: number }[];
+    };
+  };
+  contacts: {
+    /** Полные заметки в карточке клиента. */
+    clientNotes: number;
+    /** Строки доски звонков. */
+    boardCalls: number;
+    total: number;
+    uniqueClients: number;
+    lastContactAt: string | null;
+  };
+  clients: { served: number; new: number; returned: number; regular: number };
+  attendance: { days: number; onTime: number; late: number; lateMinutes: number; absent: number };
+}
+
+export interface ManagerKpiResponse {
+  period: { year: number; month: number };
+  rows: ManagerKpiRow[];
+}
 export interface AnalyticsProfitability {
   revenue: number;
   cogs: number;

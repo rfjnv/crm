@@ -22,6 +22,7 @@ import {
 import { Pie, Bar, Line, Area } from '@ant-design/charts';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
 import HistoryCohortPanel from '../components/HistoryCohortPanel';
+import ManagerKpiPanel from '../components/ManagerKpiPanel';
 import {
   inferTypeLabel,
   safePrice,
@@ -1928,7 +1929,9 @@ export default function AnalyticsPage() {
   });
 
   const managersTab = (
-    <Card bordered={false}>
+    <>
+      <ManagerKpiPanel />
+      <Card bordered={false} title="Выручка и конверсия за выбранный период">
       <Table
         dataSource={managerRows}
         rowKey="managerId"
@@ -2001,7 +2004,8 @@ export default function AnalyticsPage() {
         ]}
         locale={{ emptyText: 'Нет данных по менеджерам' }}
       />
-    </Card>
+      </Card>
+    </>
   );
 
   // ════════════════════════════════════════
