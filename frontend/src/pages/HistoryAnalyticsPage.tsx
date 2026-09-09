@@ -1118,18 +1118,15 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Концентрация выручки (топ-20 клиентов)" size="small">
             {(() => {
-              const totalRev = extended.concentration.reduce((s, r) => s + r.revenue, 0) || 1;
-              let cumSum = 0;
-              const paretoData = extended.concentration.map((r) => {
-                const share = Math.round((r.revenue / totalRev) * 10000) / 100;
-                cumSum += share;
-                return {
-                  client: r.companyName.substring(0, 15),
-                  share,
-                  cumulative: Math.round(cumSum * 100) / 100,
-                  _clientId: r.clientId,
-                };
-              });
+              // Доли берём с бэкенда — они посчитаны от выручки ВСЕХ клиентов за год.
+              // Считать их здесь от суммы показанных топ-20 нельзя: кривая всегда
+              // упиралась бы в 100% на последней строке и завышала концентрацию.
+              const paretoData = extended.concentration.map((r) => ({
+                client: r.companyName.substring(0, 15),
+                share: r.sharePercent,
+                cumulative: r.cumulativePercent,
+                _clientId: r.clientId,
+              }));
               return (
                 <DualAxes
                   data={paretoData}
@@ -1142,7 +1139,7 @@ export default function HistoryAnalyticsPage() {
                       yField: 'share',
                       axis: { y: { title: 'Доля %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
                       style: { fill: token.colorPrimary, fillOpacity: 0.8 },
-                      tooltip: { items: [{ field: 'share', name: 'Доля', valueFormatter: (v: number) => `${v}%` }] },
+                      tooltip: { items: [{ field: 'share', name: 'Доля от всей выручки', valueFormatter: (v: number) => `${v}%` }] },
                     },
                     {
                       type: 'line',
@@ -1150,7 +1147,7 @@ export default function HistoryAnalyticsPage() {
                       axis: { y: { position: 'right', title: 'Кумулятивно %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
                       style: { stroke: token.colorError, lineWidth: 2 },
                       point: { shapeField: 'circle', sizeField: 3, style: { fill: token.colorError } },
-                      tooltip: { items: [{ field: 'cumulative', name: 'Кумулятивно', valueFormatter: (v: number) => `${v}%` }] },
+                      tooltip: { items: [{ field: 'cumulative', name: 'Накопленная доля от всей выручки', valueFormatter: (v: number) => `${v}%` }] },
                     },
                   ]}
                   axis={{ x: { labelFill: token.colorText, labelAutoRotate: true } }}

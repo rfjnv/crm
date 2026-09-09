@@ -910,7 +910,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'extended-v2' });
+      const cached = await getSnapshot({ year, month: 0, type: 'extended-v3' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -1001,15 +1001,23 @@ router.get(
       FROM client_revenue
       LIMIT 20`,
     );
-    const concentration = concentrationRaw.map((r, i) => ({
-      clientId: r.id,
-      companyName: r.company_name,
-      revenue: Number(r.revenue),
-      cumulativePercent: Number(r.grand_total) > 0
-        ? Math.round((Number(r.running_total) / Number(r.grand_total)) * 10000) / 100
-        : 0,
-      rank: i + 1,
-    }));
+    const concentration = concentrationRaw.map((r, i) => {
+      // Доли считаем от выручки ВСЕХ клиентов (grand_total), а не от суммы показанных топ-20,
+      // иначе кумулятивная кривая всегда упирается в 100% на последней строке.
+      const grandTotal = Number(r.grand_total);
+      return {
+        clientId: r.id,
+        companyName: r.company_name,
+        revenue: Number(r.revenue),
+        sharePercent: grandTotal > 0
+          ? Math.round((Number(r.revenue) / grandTotal) * 10000) / 100
+          : 0,
+        cumulativePercent: grandTotal > 0
+          ? Math.round((Number(r.running_total) / grandTotal) * 10000) / 100
+          : 0,
+        rank: i + 1,
+      };
+    });
 
     // 3. Product recurring
     const productRecurringRaw = await prisma.$queryRaw<
@@ -1300,7 +1308,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'extended-v2' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'extended-v3' }, responseData).catch(() => {});
     }
 
     res.json(responseData);

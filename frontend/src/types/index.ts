@@ -1541,6 +1541,9 @@ export interface HistoryConcentrationRow {
   clientId: string;
   companyName: string;
   revenue: number;
+  /** Доля клиента в выручке ВСЕХ клиентов за год, % (не только показанного топ-20). */
+  sharePercent: number;
+  /** Накопленная доля от выручки всех клиентов, %. */
   cumulativePercent: number;
   rank: number;
 }
