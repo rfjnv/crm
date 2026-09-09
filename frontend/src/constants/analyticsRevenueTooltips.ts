@@ -10,10 +10,6 @@ export const TOOLTIP_OPERATIONAL_REVENUE =
   'День/месяц: дата строки сделки (deal_date), иначе дата закрытия/создания сделки; часовой пояс Ташкент. ' +
   'Сумма по дням совпадает с суммой deals.amount по соответствующим закрытым сделкам.';
 
-/** Legacy label: same as operational (both metrics use CLOSED-only line revenue). */
-export const TOOLTIP_SHIPPED_REVENUE =
-  'Совпадает с основной выручкой: учитываются только закрытые сделки, только строки deal_items.';
-
 /** History monthly series: sum tied to first OUT inventory movement */
 export const TOOLTIP_SHIPPED_AT_MONTHLY =
   'Сумма строк сделок по дате первого списания со склада (OUT-движение). ' +
@@ -21,6 +17,5 @@ export const TOOLTIP_SHIPPED_AT_MONTHLY =
 
 /** Short labels for chart legend */
 export const LEGEND_OPERATIONAL = 'Выручка (закрытые сделки)';
-export const LEGEND_SHIPPED_REVENUE = 'Выручка (закрытые сделки)';
 export const LEGEND_PAID = 'Оплачено (по дате платежа)';
 export const LEGEND_SHIPPED_AT = 'Склад: по дате отгрузки';

@@ -389,20 +389,49 @@ router.get(
 );
 
 /**
+ * Период для «иерархических» вкладок — тот же контракт, что и у остальной аналитики
+ * (`period=week|month|quarter|year` либо `from`+`to` в YYYY-MM-DD, границы по Ташкенту).
+ *
+ * Раньше эти маршруты принимали только `from` и считали «от даты и до сегодня»: конец
+ * произвольного периода молча игнорировался, а фронт присылал скользящее окно
+ * (последние 30/90/365 дней), из-за чего вкладка расходилась с «Продажами».
+ */
+function resolveHierarchyPeriod(req: Request) {
+  return resolveAnalyticsPeriodRange({
+    period: typeof req.query.period === 'string' ? req.query.period : undefined,
+    from: typeof req.query.from === 'string' ? req.query.from : undefined,
+    to: typeof req.query.to === 'string' ? req.query.to : undefined,
+  });
+}
+
+/** Область видимости сделок для запроса (менеджер видит только свои). */
+function hierarchyDealScope(req: Request) {
+  return ownerScope({
+    userId: req.user!.userId,
+    role: req.user!.role as Role,
+    permissions: req.user!.permissions || [],
+    companyId: req.user!.companyId,
+  });
+}
+
+/**
  * Компактные агрегаты для вкладки «Иерархия товаров» (без списка всех строк — быстрый ответ).
  * Правила те же, что у `hierarchy-closed-items`.
+ *
+ * Роли: вкладка живёт на странице «Аналитика», закрытой в UI для SUPER_ADMIN/ADMIN —
+ * список здесь обязан совпадать, иначе по прямому запросу к API данные утекают ролям,
+ * которые страницу даже открыть не могут.
  */
 router.get(
   '/hierarchy-merchandise-stats',
+  authorize('SUPER_ADMIN', 'ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
-    if (!fromRaw) {
-      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
-    }
-    const from = new Date(fromRaw);
-    if (Number.isNaN(from.getTime())) {
-      throw new AppError(400, 'Некорректный параметр from');
-    }
+    const { start: from, end: to } = resolveHierarchyPeriod(req);
+    const dealScope = hierarchyDealScope(req);
+    // Для SUPER_ADMIN/ADMIN фильтр пустой; нужен, если список ролей когда-нибудь расширят.
+    const managerFilter = dealScope.managerId
+      ? Prisma.sql` AND d.manager_id = ${dealScope.managerId}`
+      : Prisma.empty;
 
     const [productRows, categoryRows] = await Promise.all([
       prisma.$queryRaw<
@@ -424,6 +453,7 @@ router.get(
         INNER JOIN deals d ON d.id = di.deal_id
         WHERE d.status = 'CLOSED'
           AND d.created_at >= ${from}
+          AND d.created_at < ${to}${managerFilter}
           AND COALESCE(di.requested_qty::numeric, 0) > 0
         GROUP BY di.product_id
       `),
@@ -447,6 +477,7 @@ router.get(
         INNER JOIN products p ON p.id = di.product_id
         WHERE d.status = 'CLOSED'
           AND d.created_at >= ${from}
+          AND d.created_at < ${to}${managerFilter}
           AND COALESCE(di.requested_qty::numeric, 0) > 0
         GROUP BY 1
       `),
@@ -483,26 +514,29 @@ router.get(
 );
 
 /**
- * Позиции закрытых сделок за период — те же правила, что и `getProductAnalytics` (фильтр по `deals.created_at`, без ownerScope),
- * чтобы блок «Клиенты по иерархии» совпадал с аналитикой товара.
+ * Позиции закрытых сделок за период — правила отнесения к дате те же, что и у
+ * `getProductAnalytics` (фильтр по `deals.created_at`), чтобы блок «Клиенты по иерархии»
+ * совпадал с аналитикой товара.
+ *
+ * Роли: панель есть и на «Активности клиентов» (MANAGER, HR), поэтому список шире, чем
+ * у `hierarchy-merchandise-stats`. Видимость режется `ownerScope` — менеджер видит только
+ * свои сделки, как и на «Аналитике». Ответ содержит названия клиентов, суммы и выручку
+ * по каждой сделке, так что раньше это было доступно любой авторизованной роли, включая
+ * склад и водителей.
  */
 router.get(
   '/hierarchy-closed-items',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
   asyncHandler(async (req: Request, res: Response) => {
-    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
-    if (!fromRaw) {
-      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
-    }
-    const from = new Date(fromRaw);
-    if (Number.isNaN(from.getTime())) {
-      throw new AppError(400, 'Некорректный параметр from');
-    }
+    const { start: from, end: to } = resolveHierarchyPeriod(req);
+    const dealScope = hierarchyDealScope(req);
 
     const items = await prisma.dealItem.findMany({
       where: {
         deal: {
           status: 'CLOSED',
-          createdAt: { gte: from },
+          createdAt: { gte: from, lt: to },
+          ...dealScope,
         },
       },
       select: {
@@ -587,26 +621,6 @@ router.get(
                AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
           );
 
-    const revenueTotalShipped = () =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-               AND d.manager_id = ${dealScope.managerId}`,
-          )
-        : prisma.$queryRaw<{ total: string }[]>(
-            Prisma.sql`SELECT COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}`,
-          );
-
     /** Avg line revenue per deal among deals with ≥1 line in period (operational). */
     const avgDealOperational = () =>
       dealScope.managerId
@@ -662,32 +676,6 @@ router.get(
              ORDER BY day ASC`,
           );
 
-    const revenueByDayShipped = () =>
-      dealScope.managerId
-        ? prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-               AND d.manager_id = ${dealScope.managerId}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          )
-        : prisma.$queryRaw<{ day: Date; total: string }[]>(
-            Prisma.sql`SELECT ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT} as day,
-                              SUM(${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total
-             FROM deal_items di
-             JOIN deals d ON d.id = di.deal_id
-             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${start}
-               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${end}
-             GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
-             ORDER BY day ASC`,
-          );
-
     const topClientsByOperationalRevenue = () =>
       dealScope.managerId
         ? prisma.$queryRaw<{
@@ -695,11 +683,9 @@ router.get(
             company_name: string;
             is_svip: boolean;
             operational_revenue: string;
-            shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -716,11 +702,9 @@ router.get(
             company_name: string;
             is_svip: boolean;
             operational_revenue: string;
-            shipped_revenue: string;
           }[]>(
             Prisma.sql`SELECT c.id as client_id, c.company_name, c.is_svip as is_svip,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue,
-                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as shipped_revenue
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as operational_revenue
                FROM deal_items di
                JOIN deals d ON d.id = di.deal_id
                JOIN clients c ON c.id = d.client_id
@@ -737,19 +721,16 @@ router.get(
     // в момент закрытия сделки. ADD-события на склад клиента не дублируются как выручка.
     const [
       salesRevenueOperationalRaw,
-      salesRevenueShippedRaw,
       salesAvgAgg,
       completedCount,
       totalDealsCount,
       canceledCount,
       revenueByDayOperationalRaw,
-      revenueByDayShippedRaw,
       dealsByStatus,
       topClientsRaw,
       topProductsRaw,
     ] = await Promise.all([
       revenueTotalOperational(),
-      revenueTotalShipped(),
       avgDealOperational(),
       // COMPLETED + CLOSED count (for conversion)
       prisma.deal.count({
@@ -764,7 +745,6 @@ router.get(
         where: { ...dealScope, isArchived: false, status: 'CANCELED', createdAt: { gte: start, lt: end } },
       }),
       revenueByDayOperational(),
-      revenueByDayShipped(),
       // Deals by status
       prisma.deal.groupBy({
         by: ['status'],
@@ -792,26 +772,19 @@ router.get(
       r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
 
     const opByDay = new Map(revenueByDayOperationalRaw.map((r) => [dayKey(r), Number(r.total)]));
-    const shByDay = new Map(revenueByDayShippedRaw.map((r) => [dayKey(r), Number(r.total)]));
-    const allDayKeys = new Set([...opByDay.keys(), ...shByDay.keys()]);
-    const revenueByDay = [...allDayKeys]
+    const revenueByDay = [...opByDay.keys()]
       .sort()
       .map((day) => ({
         day,
-        /** Operational line revenue (default / primary). */
+        /** Line revenue for the day (Tashkent business day). */
         total: opByDay.get(day) ?? 0,
-        /** SHIPPED/CLOSED line revenue (same date logic). */
-        shippedTotal: shByDay.get(day) ?? 0,
       }));
 
     const operationalTotal = salesRevenueOperationalRaw[0] ? Number(salesRevenueOperationalRaw[0].total) : 0;
-    const shippedTotal = salesRevenueShippedRaw[0] ? Number(salesRevenueShippedRaw[0].total) : 0;
 
     const sales = {
-      /** Operational revenue (active deals, line totals, effective item date). */
+      /** Revenue by deal lines (active deals, effective item date). */
       totalRevenue: operationalTotal,
-      /** SHIPPED/CLOSED revenue (same line + date rules). Former default for totalRevenue. */
-      shippedRevenue: shippedTotal,
       avgDealAmount: salesAvgAgg[0] ? Number(salesAvgAgg[0].avg_amount) : 0,
       conversionNewToCompleted: totalDealsCount > 0 ? completedCount / totalDealsCount : null,
       cancellationRate: totalDealsCount > 0 ? canceledCount / totalDealsCount : null,
@@ -825,7 +798,6 @@ router.get(
         companyName: c.company_name,
         isSvip: !!c.is_svip,
         totalRevenue: Number(c.operational_revenue),
-        shippedRevenue: Number(c.shipped_revenue),
       })),
       topProducts: topProductsRaw.map((p) => ({
         productId: p.product_id,
@@ -939,9 +911,11 @@ router.get(
     // ──── WAREHOUSE ────
     const [belowMinStockRaw, deadStockRaw, topSellingRaw, frozenCapitalRaw] = await Promise.all([
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
+        // Отрицательный остаток (пересортица/перепродажа) — самый острый случай нехватки,
+        // а прежнее условие `stock >= 0` как раз его и прятало из списка.
         Prisma.sql`SELECT id, name, sku, stock, min_stock
          FROM products
-         WHERE is_active = true AND stock < min_stock AND stock >= 0
+         WHERE is_active = true AND stock < min_stock
          ORDER BY stock ASC`
       ),
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
@@ -959,10 +933,16 @@ router.get(
          ORDER BY p.stock DESC`
       ),
       prisma.$queryRaw<{ product_id: string; name: string; unit: string; total_sold: string }[]>(
+        // Списания со склада за ВЫБРАННЫЙ период (бизнес-дата движения, как у «мёртвого
+        // остатка»). Раньше фильтра по периоду не было вовсе: переключатель периода на
+        // странице этот блок не двигал, и он спорил с «Топ 5 товаров» на вкладке «Продажи».
         Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, SUM(m.quantity)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
+         LEFT JOIN deals d ON d.id = m.deal_id
          WHERE ${sqlMovementIsSale('m')}
+           AND ${sqlInventoryMovementBusinessDate('m', 'd')} >= ${start}
+           AND ${sqlInventoryMovementBusinessDate('m', 'd')} < ${end}
          GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`
@@ -1014,10 +994,16 @@ router.get(
          GROUP BY d.manager_id, u.full_name
          ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST`
       ),
-      // Все сделки, ОТКРЫТЫЕ менеджером в периоде (для конверсии "открыл → закрыл") —
-      // отдельная метрика, намеренно на основе created_at.
-      prisma.$queryRaw<{ manager_id: string; total_deals: string }[]>(
-        Prisma.sql`SELECT d.manager_id, COUNT(*)::text as total_deals
+      // Конверсия «открыл → закрыл» считается по ОДНОЙ когорте: сделки, созданные
+      // в периоде, и сколько из них дошло до CLOSED.
+      //
+      // Раньше числителем был `completed_count` из запроса выручки — это другое множество
+      // (строки с эффективной датой в периоде, включая сделки, открытые раньше, и
+      // незакрытые сессионные). Доля считалась по разным когортам и могла превысить 100%.
+      prisma.$queryRaw<{ manager_id: string; total_deals: string; closed_deals: string }[]>(
+        Prisma.sql`SELECT d.manager_id,
+           COUNT(*)::text as total_deals,
+           COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as closed_deals
          FROM deals d
          WHERE d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
@@ -1035,19 +1021,28 @@ router.get(
     ]);
 
     const avgDaysMap = new Map(managerAvgDaysRaw.map((m) => [m.manager_id, Number(m.avg_days)]));
-    const totalDealsMap = new Map(managerTotalDealsRaw.map((m) => [m.manager_id, Number(m.total_deals)]));
+    const cohortMap = new Map(
+      managerTotalDealsRaw.map((m) => [
+        m.manager_id,
+        { total: Number(m.total_deals), closed: Number(m.closed_deals) },
+      ]),
+    );
 
     const managers = {
       rows: managerRevenueRaw.map((m) => {
-        const totalDeals = totalDealsMap.get(m.manager_id) ?? 0;
-        const completedCount = Number(m.completed_count);
+        const cohort = cohortMap.get(m.manager_id);
         return {
           managerId: m.manager_id,
           fullName: m.full_name,
-          completedCount,
+          /** Сделки с выручкой в периоде (по эффективной дате строки) — база для суммы и среднего чека. */
+          completedCount: Number(m.completed_count),
           totalRevenue: Number(m.total_revenue),
           avgDealAmount: Number(m.avg_deal_amount),
-          conversionRate: totalDeals > 0 ? completedCount / totalDeals : 0,
+          /** Доля закрытых среди сделок, СОЗДАННЫХ в периоде. Другая когорта, чем `completedCount`. */
+          conversionRate: cohort && cohort.total > 0 ? cohort.closed / cohort.total : null,
+          /** Сколько сделок менеджер открыл в периоде — знаменатель конверсии. */
+          openedInPeriod: cohort?.total ?? 0,
+          closedFromOpened: cohort?.closed ?? 0,
           avgDealDays: avgDaysMap.get(m.manager_id) ?? 0,
         };
       }),

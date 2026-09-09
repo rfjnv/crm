@@ -732,25 +732,22 @@ export interface RevenueTodayResponse {
 // ──── Analytics ────
 
 export interface AnalyticsSales {
-  /** Operational line revenue (active deals, effective item date). */
+  /** Line revenue (active deals, effective item date). */
   totalRevenue: number;
-  /** SHIPPED/CLOSED line revenue (same date rules). */
-  shippedRevenue: number;
   avgDealAmount: number;
   conversionNewToCompleted: number | null;
   cancellationRate: number | null;
   totalDeals: number;
   completedDeals: number;
   canceledDeals: number;
-  /** `total` = operational; `shippedTotal` = shipped/closed (same calendar day, Tashkent). */
-  revenueByDay: { day: string; total: number; shippedTotal: number }[];
+  /** `total` — line revenue of the calendar day (Tashkent). */
+  revenueByDay: { day: string; total: number }[];
   dealsByStatus: { status: string; count: number }[];
   topClients: {
     clientId: string;
     companyName: string;
     isSvip?: boolean;
     totalRevenue: number;
-    shippedRevenue: number;
   }[];
   topProducts: { productId: string; name: string; unit: string; totalQuantity: number }[];
 }
@@ -774,10 +771,15 @@ export interface AnalyticsManagers {
   rows: {
     managerId: string;
     fullName: string;
+    /** Сделки с выручкой в периоде (по эффективной дате строки). */
     completedCount: number;
     totalRevenue: number;
     avgDealAmount: number;
-    conversionRate: number;
+    /** Доля закрытых среди сделок, СОЗДАННЫХ в периоде; `null` — менеджер их не открывал. */
+    conversionRate: number | null;
+    /** Знаменатель конверсии — сколько сделок открыто в периоде. */
+    openedInPeriod: number;
+    closedFromOpened: number;
     avgDealDays: number;
   }[];
 }
@@ -1210,7 +1212,8 @@ export interface ProductAnalytics {
     dealsUsing: number;
     avgPricePerUnit: number;
   };
-  profitability: {
+  /** Себестоимость и маржа — приходят только SUPER_ADMIN, остальным ключа нет. */
+  profitability?: {
     totalCost: number;
     totalRevenue: number;
     grossProfit: number;
@@ -1389,8 +1392,6 @@ export interface HistoryMonthlyTrend {
   collected: number;
   /** Line totals by warehouse `shipped_at` month (logistics). */
   shipped: number;
-  /** SHIPPED/CLOSED line revenue by effective item date (same rules as Analytics «отгружено»). */
-  shippedRevenue?: number;
   activeClients: number;
   openingBalance: number;
   closingBalance: number;
@@ -1546,6 +1547,9 @@ export interface HistoryConcentrationRow {
   clientId: string;
   companyName: string;
   revenue: number;
+  /** Доля клиента в выручке ВСЕХ клиентов за год, % (не только показанного топ-20). */
+  sharePercent: number;
+  /** Накопленная доля от выручки всех клиентов, %. */
   cumulativePercent: number;
   rank: number;
 }

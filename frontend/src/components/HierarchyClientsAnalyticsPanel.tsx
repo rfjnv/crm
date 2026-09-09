@@ -327,7 +327,9 @@ export default function HierarchyClientsAnalyticsPanel({
         hierarchyRange[0].format('YYYY-MM-DD'),
         hierarchyRange[1].format('YYYY-MM-DD'),
       );
-      return loadSalesContext(bounds.start, bounds.end);
+      // У панели свои пресеты (скользящие окна, как на странице товара) — конец периода
+      // теперь отсекает бэкенд, а не фильтр на клиенте поверх всех строк с даты начала.
+      return loadSalesContext(bounds);
     },
     enabled: fetchEnabled,
     staleTime: hierarchyStale,

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Role } from '@prisma/client';
 import XLSX from 'xlsx';
 import { warehouseService } from './warehouse.service';
 import { AppError } from '../../lib/errors';
@@ -89,7 +90,10 @@ export class WarehouseController {
   }
 
   async findProductById(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.findProductById(req.params.id as string);
+    const product = await warehouseService.findProductById(
+      req.params.id as string,
+      req.user!.role as Role,
+    );
     res.json(product);
   }
 
@@ -123,7 +127,12 @@ export class WarehouseController {
   }
 
   async updateProduct(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.updateProduct(req.params.id as string, req.body, req.user!.userId as string);
+    const product = await warehouseService.updateProduct(
+      req.params.id as string,
+      req.body,
+      req.user!.userId as string,
+      req.user!.role as Role,
+    );
     res.json(product);
   }
 
@@ -177,6 +186,7 @@ export class WarehouseController {
       req.params.id as string,
       period,
       granularity,
+      req.user!.role as Role,
     );
     res.json(data);
   }

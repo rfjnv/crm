@@ -15,6 +15,25 @@ import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto,
 export class WarehouseService {
   // ==================== PRODUCTS ====================
 
+  /**
+   * Убирает закупочную цену из товара, если смотрящий — не SUPER_ADMIN.
+   *
+   * Весь UI уже считает её доступной только SUPER_ADMIN: и колонка в списке, и карточка
+   * «Стоимость по цене закупки», и поле в формах создания/редактирования спрятаны за
+   * `isSuperAdmin`. Но сервер клал цену в каждый ответ, поэтому её читал кто угодно из
+   * devtools — вплоть до водителей и грузчиков.
+   *
+   * Режем по умолчанию: цену отдаём, только когда роль явно передана и это SUPER_ADMIN.
+   * Внутренним вызовам (например, замене картинки) закупочная цена не нужна.
+   */
+  private redactCost<T extends { purchasePrice: Prisma.Decimal | null }>(
+    product: T,
+    viewerRole?: Role,
+  ): T {
+    if (viewerRole === 'SUPER_ADMIN') return product;
+    return { ...product, purchasePrice: null };
+  }
+
   async findAllProducts(role?: Role, companyId?: string) {
     const where = (role !== 'SUPER_ADMIN' && companyId) ? { companyId } : {};
     const products = await prisma.product.findMany({
@@ -24,17 +43,19 @@ export class WarehouseService {
     });
 
     const reservedMap = await this.getReservedQtyMap(products.map((p) => p.id));
-    return products.map((p) => this.withAvailability(p, reservedMap.get(p.id) ?? 0));
+    return products.map((p) =>
+      this.redactCost(this.withAvailability(p, reservedMap.get(p.id) ?? 0), role),
+    );
   }
 
-  async findProductById(id: string) {
+  async findProductById(id: string, viewerRole?: Role) {
     const product = await prisma.product.findUnique({
       where: { id },
       include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!product) throw new AppError(404, 'Товар не найден');
     const reservedMap = await this.getReservedQtyMap([id]);
-    return this.withAvailability(product, reservedMap.get(id) ?? 0);
+    return this.redactCost(this.withAvailability(product, reservedMap.get(id) ?? 0), viewerRole);
   }
 
   async addProductPhotos(productId: string, urls: string[]) {
@@ -98,10 +119,10 @@ export class WarehouseService {
       after: { name: product.name, sku: product.sku },
     });
 
-    return product;
+    return this.redactCost(product, role);
   }
 
-  async updateProduct(id: string, dto: UpdateProductDto, userId: string) {
+  async updateProduct(id: string, dto: UpdateProductDto, userId: string, viewerRole?: Role) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
@@ -151,7 +172,7 @@ export class WarehouseService {
       },
     });
 
-    return updated;
+    return this.redactCost(updated, viewerRole);
   }
 
   async deleteProduct(id: string, userId: string) {
@@ -718,11 +739,19 @@ export class WarehouseService {
     });
   }
 
+  /**
+   * @param viewerRole роль запрашивающего: закупочная цена и рентабельность отдаются
+   *   только SUPER_ADMIN. Карточка товара открыта всем сотрудникам CRM, и на фронте эти
+   *   два блока уже спрятаны за `isSuperAdmin` — но раньше сервер клал их в ответ всегда,
+   *   так что склад, водители и грузчики читали себестоимость и маржу прямо из ответа API.
+   */
   async getProductAnalytics(
     productId: string,
     period: number | 'all',
     granularityParam?: string | null,
+    viewerRole?: Role,
   ) {
+    const canSeeCost = viewerRole === 'SUPER_ADMIN';
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
@@ -836,7 +865,7 @@ export class WarehouseService {
     const marginPercent = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     return {
-      product,
+      product: canSeeCost ? product : { ...product, purchasePrice: null },
       movements: {
         totalIn,
         totalOut,
@@ -852,12 +881,17 @@ export class WarehouseService {
         dealsUsing: uniqueDeals.size,
         avgPricePerUnit,
       },
-      profitability: {
-        totalCost,
-        totalRevenue,
-        grossProfit,
-        marginPercent,
-      },
+      /** Только для SUPER_ADMIN — себестоимость и маржа. Остальным ключа в ответе нет. */
+      ...(canSeeCost
+        ? {
+            profitability: {
+              totalCost,
+              totalRevenue,
+              grossProfit,
+              marginPercent,
+            },
+          }
+        : {}),
       topClients: topClientsRaw.map((r) => ({
         clientId: r.client_id,
         companyName: r.company_name,

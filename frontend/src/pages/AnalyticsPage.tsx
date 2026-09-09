@@ -25,7 +25,6 @@ import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import {
   inferTypeLabel,
   safePrice,
-  getPeriodStartDate,
   loadHierarchyMerchandiseStats,
   type ProductSalesAggregate,
 } from '../lib/analyticsHierarchySales';
@@ -179,7 +178,7 @@ function compareKey(level: CompareLevel, id: string): string {
 }
 
 function buildRevenueChartData(
-  raw: { day: string; total: number; shippedTotal?: number }[],
+  raw: { day: string; total: number }[],
 ): { day: string; total: number }[] {
   if (raw.length === 0) return [];
   const map = new Map(raw.map((d) => [d.day, d.total]));
@@ -194,11 +193,17 @@ function buildRevenueChartData(
     if (dt.getUTCDay() === 0 || total === 0) continue;
     filled.push({ day: key, total });
   }
+  // Пресет «Год» — это 365 дней, поэтому один и тот же день+месяц встречается дважды.
+  // Без года подписи совпадают и точки разных лет накладываются друг на друга по оси X.
+  const spansMultipleYears = filled.length > 0
+    && filled[0].day.slice(0, 4) !== filled[filled.length - 1].day.slice(0, 4);
+
   return filled.map((d) => {
     const parts = d.day.split('-');
     const dayNum = parseInt(parts[2], 10);
     const monthIdx = parseInt(parts[1], 10) - 1;
-    return { day: `${dayNum} ${MONTH_SHORT[monthIdx]}`, total: d.total };
+    const label = `${dayNum} ${MONTH_SHORT[monthIdx]}`;
+    return { day: spansMultipleYears ? `${label} ${parts[0].slice(2)}` : label, total: d.total };
   });
 }
 
@@ -415,14 +420,10 @@ export default function AnalyticsPage() {
 
   const productHierarchyActive = analyticsTab === 'product-hierarchy';
 
-  const hierarchyPeriodStart = useMemo(() => {
-    if (periodPreset === 'custom') return analyticsRange[0].startOf('day').toDate();
-    return getPeriodStartDate(periodPreset);
-  }, [periodPreset, analyticsRange]);
-
   const { data: merchandiseStats, isLoading: merchandiseLoading } = useQuery({
     queryKey: ['analytics-hierarchy-merchandise', periodQueryKey],
-    queryFn: () => loadHierarchyMerchandiseStats(hierarchyPeriodStart),
+    // Тот же период, что и у остальных вкладок: границы считает бэкенд из `periodQuery`.
+    queryFn: () => loadHierarchyMerchandiseStats(periodQuery),
     enabled: productHierarchyActive,
     staleTime: heavyAnalyticsStale,
   });
@@ -1862,7 +1863,16 @@ export default function AnalyticsPage() {
         </Col>
       </Row>
 
-      <Card title="Топ продаваемых товаров" bordered={false} style={{ marginTop: 16 }}>
+      <Card
+        title={(
+          <span>
+            Топ списаний со склада
+            <FormulaHint text="Количество, списанное со склада за выбранный период (движения склада по бизнес-дате). Это НЕ «Топ 5 товаров» с вкладки «Продажи»: там количество считается по строкам сделок, поэтому цифры могут отличаться." />
+          </span>
+        )}
+        bordered={false}
+        style={{ marginTop: 16 }}
+      >
         {topSellingBarData.length > 0 ? (
           <>
             <Bar
@@ -1901,12 +1911,21 @@ export default function AnalyticsPage() {
   // ──── MANAGERS TAB (extended) ────
   // ════════════════════════════════════════
 
-  const managerRows = intel?.managers.rows ?? managers.rows.map((m) => ({
-    ...m,
-    uniqueClients: 0,
-    repeatClients: 0,
-    retentionRate: 0,
-  }));
+  // Выручка/конверсия — всегда из `/analytics`, чтобы совпадать с остальными вкладками
+  // (та же эффективная дата строки и сессионные сделки). Из `intelligence` берём только
+  // метрики удержания, которых в `/analytics` нет; пока он не загрузился — «—», а не 0.
+  // Раньше вся таблица переключалась между двумя источниками с разными правилами, и
+  // цифры менялись прямо на глазах.
+  const intelByManager = new Map((intel?.managers.rows ?? []).map((m) => [m.managerId, m]));
+  const managerRows = managers.rows.map((m) => {
+    const extra = intelByManager.get(m.managerId);
+    return {
+      ...m,
+      uniqueClients: extra ? extra.uniqueClients : null,
+      repeatClients: extra ? extra.repeatClients : null,
+      retentionRate: extra ? extra.retentionRate : null,
+    };
+  });
 
   const managersTab = (
     <Card bordered={false}>
@@ -1918,7 +1937,12 @@ export default function AnalyticsPage() {
         scroll={{ x: 900 }}
         columns={[
           { title: 'Менеджер', dataIndex: 'fullName', fixed: 'left' as const, width: 160, render: (v: string) => getFirstName(v) || v },
-          { title: 'Завершённых', dataIndex: 'completedCount', align: 'right' as const, width: 100 },
+          {
+            title: <span>Завершённых<FormulaHint text="Сделки с выручкой в выбранном периоде (по дате строки). Сделка, открытая раньше и закрытая сейчас, попадает сюда — это не то же самое, что знаменатель конверсии." /></span>,
+            dataIndex: 'completedCount',
+            align: 'right' as const,
+            width: 100,
+          },
           { title: 'Общая сумма', dataIndex: 'totalRevenue', align: 'right' as const, render: (v: number) => formatUZS(v), width: 130 },
           {
             title: <span>Средний чек<FormulaHint text="Общая сумма ÷ Кол-во завершённых сделок" /></span>,
@@ -1928,13 +1952,18 @@ export default function AnalyticsPage() {
             width: 120,
           },
           {
-            title: <span>Конверсия<FormulaHint text="Завершённых ÷ Всего созданных × 100%" /></span>,
+            title: <span>Конверсия<FormulaHint text="Из сделок, СОЗДАННЫХ в периоде, доля дошедших до «Закрыто». Числитель и знаменатель — одна и та же когорта, поэтому больше 100% быть не может." /></span>,
             dataIndex: 'conversionRate',
             align: 'right' as const,
             width: 100,
-            render: (v: number) => {
+            render: (v: number | null, r: (typeof managerRows)[number]) => {
+              if (v === null) return <span style={{ color: token.colorTextTertiary }}>—</span>;
               const pct = v * 100;
-              return <span style={{ color: pct >= 50 ? '#52c41a' : pct >= 25 ? '#fa8c16' : '#ff4d4f' }}>{pct.toFixed(1)}%</span>;
+              return (
+                <Tooltip title={`${r.closedFromOpened} из ${r.openedInPeriod} созданных в периоде`}>
+                  <span style={{ color: pct >= 50 ? '#52c41a' : pct >= 25 ? '#fa8c16' : '#ff4d4f' }}>{pct.toFixed(1)}%</span>
+                </Tooltip>
+              );
             },
           },
           {
@@ -1949,19 +1978,22 @@ export default function AnalyticsPage() {
             dataIndex: 'uniqueClients',
             align: 'right' as const,
             width: 90,
+            render: (v: number | null) => (v === null ? <span style={{ color: token.colorTextTertiary }}>—</span> : v),
           },
           {
             title: <span>Повт. кл.<FormulaHint text="Клиенты с 2+ завершёнными сделками у этого менеджера" /></span>,
             dataIndex: 'repeatClients',
             align: 'right' as const,
             width: 90,
+            render: (v: number | null) => (v === null ? <span style={{ color: token.colorTextTertiary }}>—</span> : v),
           },
           {
             title: <span>Удержание<FormulaHint text="Повторных клиентов ÷ Уникальных клиентов × 100%" /></span>,
             dataIndex: 'retentionRate',
             align: 'right' as const,
             width: 100,
-            render: (v: number) => {
+            render: (v: number | null) => {
+              if (v === null) return <span style={{ color: token.colorTextTertiary }}>—</span>;
               const pct = v * 100;
               return <span style={{ color: pct >= 30 ? '#52c41a' : pct >= 15 ? '#fa8c16' : '#ff4d4f', fontWeight: 600 }}>{pct.toFixed(1)}%</span>;
             },

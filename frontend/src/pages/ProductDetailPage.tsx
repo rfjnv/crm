@@ -234,7 +234,7 @@ export default function ProductDetailPage() {
         </Row>
 
         {/* Profitability - only for SUPER_ADMIN */}
-        {isSuperAdmin && profitability.totalRevenue > 0 && (
+        {isSuperAdmin && profitability && profitability.totalRevenue > 0 && (
           <Card title="Рентабельность" size="small" bordered={false}>
             <Row gutter={12}>
               <Col xs={12} sm={6}>

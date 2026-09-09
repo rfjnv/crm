@@ -16,12 +16,9 @@ import { Area, Pie, Bar, Line, DualAxes } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
-  LEGEND_OPERATIONAL,
-  LEGEND_SHIPPED_REVENUE,
   LEGEND_PAID,
   LEGEND_SHIPPED_AT,
   TOOLTIP_OPERATIONAL_REVENUE,
-  TOOLTIP_SHIPPED_REVENUE,
   TOOLTIP_SHIPPED_AT_MONTHLY,
 } from '../constants/analyticsRevenueTooltips';
 import { useThemeStore } from '../store/themeStore';
@@ -138,8 +135,6 @@ export default function HistoryAnalyticsPage() {
   const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
-  /** Monthly chart: compare operational vs shipped revenue, or show one metric. */
-  const [historyRevMode, setHistoryRevMode] = useState<'both' | 'operational' | 'shipped'>('both');
 
   const historyStaleMs = 120_000;
 
@@ -272,12 +267,25 @@ export default function HistoryAnalyticsPage() {
     return list;
   }, [dataQuality?.problemRows, dqOpTypeFilter, dqSearch]);
 
+  /**
+   * Последний месяц, за который у выбранного года есть данные. Для текущего года это
+   * идущий месяц: сравнивать его 9 месяцев с 12 месяцами прошлого года нельзя — в
+   * таблице появлялись строки «0 против большого числа», а «Итого» показывало
+   * фантастическое падение просто потому, что год ещё не кончился.
+   */
+  const comparableThroughMonth = useMemo(() => {
+    const months = (data?.monthlyTrend || []).map((m) => m.month);
+    return months.length > 0 ? Math.max(...months) : 12;
+  }, [data?.monthlyTrend]);
+
+  const isPartialYear = comparableThroughMonth < 12;
+
   const yoyRows = useMemo(() => {
     const currentMap = new Map((data?.monthlyTrend || []).map((m) => [m.month, m]));
     const prevMap = new Map((prevYearData?.monthlyTrend || []).map((m) => [m.month, m]));
     const months = Array.from(
       new Set<number>([...currentMap.keys(), ...prevMap.keys()]),
-    ).sort((a, b) => a - b);
+    ).sort((a, b) => a - b).filter((m) => m <= comparableThroughMonth);
 
     return months.map((month) => {
       const current = currentMap.get(month);
@@ -295,7 +303,7 @@ export default function HistoryAnalyticsPage() {
         deltaPct,
       };
     });
-  }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric]);
+  }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric, comparableThroughMonth]);
 
   const allYearsRows = useMemo(() => {
     if (yoyMode !== 'allYears') return [];
@@ -303,9 +311,13 @@ export default function HistoryAnalyticsPage() {
       const yData = allYearsQueries[i]?.data;
       return new Map((yData?.monthlyTrend || []).map((m) => [m.month, m]));
     });
+    // Текущий год всегда неполный, поэтому обрезаем все столбцы по его последнему
+    // месяцу с данными — иначе колонка «Разница» сравнивает 9 месяцев с 12.
+    const currentYearMonths = Array.from(yearMaps[yearMaps.length - 1]?.keys() ?? []);
+    const throughMonth = currentYearMonths.length > 0 ? Math.max(...currentYearMonths) : 12;
     const months = Array.from(
       new Set<number>(yearMaps.flatMap((m) => Array.from(m.keys()))),
-    ).sort((a, b) => a - b);
+    ).sort((a, b) => a - b).filter((m) => m <= throughMonth);
 
     return months.map((month) => {
       const row: Record<string, number | null> = {};
@@ -350,19 +362,11 @@ export default function HistoryAnalyticsPage() {
   const clickableRow = { cursor: 'pointer' };
 
   // ── Chart data ──
-  const totalShippedRevenueYear = monthlyTrend.reduce((s, m) => s + (m.shippedRevenue ?? 0), 0);
-
-  const revenueLineData = monthlyTrend.flatMap((m) => {
-    const label = MONTH_LABELS[m.month] || `${m.month}`;
-    const rows: { month: string; value: number; series: string; _month: number }[] = [];
-    if (historyRevMode === 'both' || historyRevMode === 'operational') {
-      rows.push({ month: label, value: m.revenue, series: LEGEND_OPERATIONAL, _month: m.month });
-    }
-    if (historyRevMode === 'both' || historyRevMode === 'shipped') {
-      rows.push({ month: label, value: m.shippedRevenue ?? 0, series: LEGEND_SHIPPED_REVENUE, _month: m.month });
-    }
-    return rows;
-  });
+  const revenueLineData = monthlyTrend.map((m) => ({
+    month: MONTH_LABELS[m.month] || `${m.month}`,
+    value: m.revenue,
+    _month: m.month,
+  }));
 
   const paymentsWarehouseAreaData = monthlyTrend.flatMap((m) => [
     { month: MONTH_LABELS[m.month] || `${m.month}`, value: m.collected, type: LEGEND_PAID, _month: m.month },
@@ -402,7 +406,7 @@ export default function HistoryAnalyticsPage() {
       key: 'revenue',
       title: (
         <span>
-          Операционная выручка
+          Выручка
           <Tooltip title={TOOLTIP_OPERATIONAL_REVENUE}>
             <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
           </Tooltip>
@@ -412,22 +416,6 @@ export default function HistoryAnalyticsPage() {
       prefix: <DollarOutlined />,
       style: { color: token.colorPrimary },
       fmt: true,
-    },
-    {
-      key: 'shippedRevenueY',
-      title: (
-        <span>
-          Отгруженная выручка
-          <Tooltip title={TOOLTIP_SHIPPED_REVENUE}>
-            <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.55, marginLeft: 4 }} />
-          </Tooltip>
-        </span>
-      ),
-      value: totalShippedRevenueYear,
-      prefix: <DollarOutlined />,
-      style: { color: '#237804' },
-      fmt: true,
-      noDrawer: true,
     },
     { key: 'avg', title: 'Ср. сделка', value: overview.avgDeal, prefix: <DollarOutlined />, style: {}, fmt: true },
     { key: 'paid', title: 'Оплачено', value: overview.totalPaid, prefix: <RiseOutlined />, style: { color: token.colorSuccess }, fmt: true },
@@ -699,54 +687,27 @@ export default function HistoryAnalyticsPage() {
         title={
           <span>
             Выручка по месяцам
-            <Tooltip
-              title={
-                <div style={{ maxWidth: 360 }}>
-                  <div style={{ marginBottom: 8 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>
-                  <div>{TOOLTIP_SHIPPED_REVENUE}</div>
-                </div>
-              }
-            >
+            <Tooltip title={<div style={{ maxWidth: 360 }}>{TOOLTIP_OPERATIONAL_REVENUE}</div>}>
               <InfoCircleOutlined style={{ marginLeft: 8, fontSize: 14, opacity: 0.55 }} />
             </Tooltip>
           </span>
-        }
-        extra={
-          <Segmented
-            size="small"
-            value={historyRevMode}
-            onChange={(v) => setHistoryRevMode(v as 'both' | 'operational' | 'shipped')}
-            options={[
-              { label: 'Обе линии', value: 'both' },
-              { label: 'Операционная', value: 'operational' },
-              { label: 'Отгружено', value: 'shipped' },
-            ]}
-          />
         }
         size="small"
         style={{ marginBottom: 16 }}
       >
         <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
-          Сравнение двух показателей выручки (не путать с графиком ниже: там оплаты и склад).
+          Сумма строк сделок по дате строки (не путать с графиком ниже: там оплаты и склад).
         </Paragraph>
         {revenueLineData.length > 0 ? (
           <Line
             data={revenueLineData}
             xField="month"
             yField="value"
-            seriesField="series"
             height={300}
             shapeField="smooth"
-            style={{ lineWidth: 2.5 }}
-            scale={{
-              color: {
-                domain: [LEGEND_OPERATIONAL, LEGEND_SHIPPED_REVENUE],
-                range: ['#1677ff', '#389e0d'],
-              },
-            }}
+            style={{ lineWidth: 2.5, stroke: '#1677ff' }}
             axis={axisStyle}
             tooltip={{ items: [{ field: 'value', channel: 'y', valueFormatter: (v: number) => fmtNum(v) }] }}
-            legend={{ color: { position: 'bottom', itemLabelFill: token.colorText } }}
             theme={chartTheme}
             onReady={({ chart }) => {
               chart.on('element:click', (ev: { data?: { data?: { _month?: number } } }) => {
@@ -761,7 +722,18 @@ export default function HistoryAnalyticsPage() {
       </Card>
 
       <Card
-        title={yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
+        title={(
+          <span>
+            {yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
+            {isPartialYear && (
+              <Tooltip title={`Год ещё не закончился: сравниваются только месяцы по ${MONTH_LABELS[comparableThroughMonth]} включительно, иначе «Итого» сопоставляло бы неполный год с полным.`}>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
+                  {`янв — ${MONTH_LABELS[comparableThroughMonth]}`}
+                </Text>
+              </Tooltip>
+            )}
+          </span>
+        )}
         size="small"
         style={{ marginBottom: 16 }}
         extra={
@@ -1174,18 +1146,15 @@ export default function HistoryAnalyticsPage() {
         <Col xs={24} lg={12}>
           <Card title="Концентрация выручки (топ-20 клиентов)" size="small">
             {(() => {
-              const totalRev = extended.concentration.reduce((s, r) => s + r.revenue, 0) || 1;
-              let cumSum = 0;
-              const paretoData = extended.concentration.map((r) => {
-                const share = Math.round((r.revenue / totalRev) * 10000) / 100;
-                cumSum += share;
-                return {
-                  client: r.companyName.substring(0, 15),
-                  share,
-                  cumulative: Math.round(cumSum * 100) / 100,
-                  _clientId: r.clientId,
-                };
-              });
+              // Доли берём с бэкенда — они посчитаны от выручки ВСЕХ клиентов за год.
+              // Считать их здесь от суммы показанных топ-20 нельзя: кривая всегда
+              // упиралась бы в 100% на последней строке и завышала концентрацию.
+              const paretoData = extended.concentration.map((r) => ({
+                client: r.companyName.substring(0, 15),
+                share: r.sharePercent,
+                cumulative: r.cumulativePercent,
+                _clientId: r.clientId,
+              }));
               return (
                 <DualAxes
                   data={paretoData}
@@ -1198,7 +1167,7 @@ export default function HistoryAnalyticsPage() {
                       yField: 'share',
                       axis: { y: { title: 'Доля %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
                       style: { fill: token.colorPrimary, fillOpacity: 0.8 },
-                      tooltip: { items: [{ field: 'share', name: 'Доля', valueFormatter: (v: number) => `${v}%` }] },
+                      tooltip: { items: [{ field: 'share', name: 'Доля от всей выручки', valueFormatter: (v: number) => `${v}%` }] },
                     },
                     {
                       type: 'line',
@@ -1206,7 +1175,7 @@ export default function HistoryAnalyticsPage() {
                       axis: { y: { position: 'right', title: 'Кумулятивно %', labelFill: token.colorText, labelFormatter: (v: number) => `${v}%` } },
                       style: { stroke: token.colorError, lineWidth: 2 },
                       point: { shapeField: 'circle', sizeField: 3, style: { fill: token.colorError } },
-                      tooltip: { items: [{ field: 'cumulative', name: 'Кумулятивно', valueFormatter: (v: number) => `${v}%` }] },
+                      tooltip: { items: [{ field: 'cumulative', name: 'Накопленная доля от всей выручки', valueFormatter: (v: number) => `${v}%` }] },
                     },
                   ]}
                   axis={{ x: { labelFill: token.colorText, labelAutoRotate: true } }}
