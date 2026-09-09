@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Table, Tag, Progress, Drawer, Row, Col, Statistic, Typography, Spin,
   DatePicker, Button, Modal, Form, InputNumber, message, Tooltip, Empty, Space,
+  Segmented,
 } from 'antd';
 import { EditOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -26,6 +27,12 @@ function planColor(percent: number | null): string {
   return '#ff4d4f';
 }
 
+/** Доля от целого; при нулевом знаменателе — прочерк. */
+function pct(part: number, whole: number): string {
+  if (!whole) return '—';
+  return `${Math.round((part / whole) * 1000) / 10}%`;
+}
+
 function fmtMinutes(total: number): string {
   if (total <= 0) return '0 мин';
   const h = Math.floor(total / 60);
@@ -41,6 +48,8 @@ export default function ManagerKpiPanel() {
   const [month, setMonth] = useState<Dayjs>(dayjs().startOf('month'));
   const [detail, setDetail] = useState<ManagerKpiRow | null>(null);
   const [planFor, setPlanFor] = useState<ManagerKpiRow | null>(null);
+  /** Числа или доли — переключатель в шапке карточки деталей. */
+  const [unit, setUnit] = useState<'abs' | 'pct'>('abs');
   const [planForm] = Form.useForm();
 
   const year = month.year();
@@ -174,6 +183,21 @@ export default function ManagerKpiPanel() {
       sorter: (a: ManagerKpiRow, b: ManagerKpiRow) => a.contacts.total - b.contacts.total,
     },
     {
+      title: 'Лиды',
+      key: 'leads',
+      width: 110,
+      align: 'right' as const,
+      render: (_: unknown, r: ManagerKpiRow) =>
+        r.leads.contacted === 0 ? (
+          <Text type="secondary">—</Text>
+        ) : (
+          <Tooltip title={`${r.leads.converted} из ${r.leads.contacted} холодных контактов купили`}>
+            <span>{`${r.leads.converted}/${r.leads.contacted}`}</span>
+          </Tooltip>
+        ),
+      sorter: (a: ManagerKpiRow, b: ManagerKpiRow) => a.leads.converted - b.leads.converted,
+    },
+    {
       title: 'Мёртвые',
       key: 'dead',
       width: 100,
@@ -288,6 +312,17 @@ export default function ManagerKpiPanel() {
         open={!!detail}
         onClose={() => setDetail(null)}
         width={720}
+        extra={(
+          <Segmented
+            size="small"
+            value={unit}
+            onChange={(v) => setUnit(v as 'abs' | 'pct')}
+            options={[
+              { label: 'Числа', value: 'abs' },
+              { label: 'Проценты', value: 'pct' },
+            ]}
+          />
+        )}
       >
         {detail && (
           <>
@@ -325,18 +360,55 @@ export default function ManagerKpiPanel() {
                 <span><Text type="secondary">Позиций: </Text><Text strong>{detail.assortment.positions}</Text></span>
                 <span><Text type="secondary">Продано всего: </Text><Text strong>{detail.assortment.totalQty.toLocaleString('ru-RU')}</Text></span>
               </Space>
-              {detail.assortment.topProducts.length === 0 ? (
+              {detail.assortment.topGroups.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Продаж нет" />
               ) : (
+                // Свёрнуто по «семье»: иначе весь топ занимает самоклейка разных форматов.
+                // Стрелка слева раскрывает конкретные позиции внутри группы.
                 <Table
                   size="small"
                   pagination={false}
-                  dataSource={detail.assortment.topProducts}
-                  rowKey="productId"
+                  dataSource={detail.assortment.topGroups}
+                  rowKey="family"
+                  expandable={{
+                    rowExpandable: (g) => g.products.length > 1,
+                    expandedRowRender: (g) => (
+                      <Table
+                        size="small"
+                        pagination={false}
+                        showHeader={false}
+                        dataSource={g.products}
+                        rowKey="productId"
+                        columns={[
+                          { title: 'Товар', dataIndex: 'name', ellipsis: true },
+                          { title: 'Кол-во', dataIndex: 'qty', width: 110, align: 'right' as const, render: (v: number, r: { unit: string }) => `${v.toLocaleString('ru-RU')} ${r.unit}` },
+                          {
+                            title: 'Выручка', dataIndex: 'revenue', width: 130, align: 'right' as const,
+                            render: (v: number) => (unit === 'pct' ? pct(v, detail.plan.revenueFact) : formatUZS(v)),
+                          },
+                        ]}
+                      />
+                    ),
+                  }}
                   columns={[
-                    { title: 'Товар', dataIndex: 'name', ellipsis: true },
-                    { title: 'Кол-во', dataIndex: 'qty', width: 110, align: 'right' as const, render: (v: number, r: { unit: string }) => `${v.toLocaleString('ru-RU')} ${r.unit}` },
-                    { title: 'Выручка', dataIndex: 'revenue', width: 130, align: 'right' as const, render: (v: number) => formatUZS(v) },
+                    {
+                      title: 'Товар', dataIndex: 'family', ellipsis: true,
+                      render: (v: string, g: ManagerKpiRow['assortment']['topGroups'][number]) => (
+                        <span>
+                          {v}
+                          {g.products.length > 1 && (
+                            <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                              {g.products.length} поз.
+                            </Text>
+                          )}
+                        </span>
+                      ),
+                    },
+                    { title: 'Кол-во', dataIndex: 'qty', width: 110, align: 'right' as const, render: (v: number) => v.toLocaleString('ru-RU') },
+                    {
+                      title: 'Выручка', dataIndex: 'revenue', width: 130, align: 'right' as const,
+                      render: (v: number) => (unit === 'pct' ? pct(v, detail.plan.revenueFact) : formatUZS(v)),
+                    },
                   ]}
                 />
               )}
@@ -384,24 +456,91 @@ export default function ManagerKpiPanel() {
             <Card size="small" title="4. Привлечение клиентов" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
                 <Col span={6}><Statistic title="Обслужено" value={detail.clients.served} /></Col>
-                <Col span={6}><Statistic title="Новых" value={detail.clients.new} valueStyle={{ color: '#52c41a' }} /></Col>
-                <Col span={6}><Statistic title="Вернувшихся" value={detail.clients.returned} valueStyle={{ color: '#1677ff' }} /></Col>
-                <Col span={6}><Statistic title="Постоянных" value={detail.clients.regular} /></Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Новых"
+                    value={unit === 'pct' ? pct(detail.clients.new, detail.clients.served) : detail.clients.new}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Вернувшихся"
+                    value={unit === 'pct' ? pct(detail.clients.returned, detail.clients.served) : detail.clients.returned}
+                    valueStyle={{ color: '#1677ff' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Постоянных"
+                    value={unit === 'pct' ? pct(detail.clients.regular, detail.clients.served) : detail.clients.regular}
+                  />
+                </Col>
               </Row>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Вернувшийся — покупал раньше, но перед этой покупкой был перерыв 30+ дней.
+                Вернувшийся — покупал раньше, но перед этой покупкой был перерыв 60+ дней.
               </Text>
             </Card>
 
-            <Card size="small" title="5. Посещаемость">
+            <Card size="small" title="5. Лиды" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
-                <Col span={6}><Statistic title="Дней с отметкой" value={detail.attendance.days} /></Col>
-                <Col span={6}><Statistic title="Вовремя" value={detail.attendance.onTime} valueStyle={{ color: '#52c41a' }} /></Col>
-                <Col span={6}><Statistic title="Опозданий" value={detail.attendance.late} valueStyle={{ color: detail.attendance.late > 0 ? '#ff4d4f' : undefined }} /></Col>
-                <Col span={6}><Statistic title="Без отметки" value={detail.attendance.absent} /></Col>
+                <Col span={8}><Statistic title="Холодных контактов" value={detail.leads.contacted} /></Col>
+                <Col span={8}>
+                  <Statistic
+                    title="Купили после контакта"
+                    value={detail.leads.converted}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="Конверсия лида"
+                    value={pct(detail.leads.converted, detail.leads.contacted)}
+                    valueStyle={{ color: '#1677ff' }}
+                  />
+                </Col>
               </Row>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Суммарное опоздание: <Text strong>{fmtMinutes(detail.attendance.lateMinutes)}</Text>.
+                Лид — клиент, с которым связались и который до этого не покупал 30+ дней.
+                {` Засчитывается покупка в течение ${detail.leads.windowDays} дней ПОСЛЕ контакта.`}
+                {' '}Считаются уникальные клиенты, а не заметки, поэтому несколько записей одному
+                клиенту счётчик не поднимают.
+              </Text>
+            </Card>
+
+            <Card size="small" title="6. Посещаемость">
+              <Row gutter={[12, 12]}>
+                <Col span={6}><Statistic title="Рабочих дней" value={detail.attendance.workdays} /></Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Вовремя"
+                    value={unit === 'pct'
+                      ? pct(detail.attendance.onTime, detail.attendance.workdays)
+                      : detail.attendance.onTime}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Опозданий"
+                    value={unit === 'pct'
+                      ? pct(detail.attendance.late, detail.attendance.workdays)
+                      : detail.attendance.late}
+                    valueStyle={{ color: detail.attendance.late > 0 ? '#ff4d4f' : undefined }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Нет отметки"
+                    value={unit === 'pct'
+                      ? pct(Math.max(detail.attendance.workdays - detail.attendance.days, 0), detail.attendance.workdays)
+                      : Math.max(detail.attendance.workdays - detail.attendance.days, 0)}
+                  />
+                </Col>
+              </Row>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Считаем от рабочих дней месяца (пн–пт), суббота и воскресенье исключены.
+                {' '}Суммарное опоздание: <Text strong>{fmtMinutes(detail.attendance.lateMinutes)}</Text>.
                 {' '}Допуск {GRACE_LABEL} сгорает целиком: приход в 9:16 — это 16 минут опоздания, а не одна.
               </Text>
             </Card>

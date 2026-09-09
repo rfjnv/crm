@@ -24,8 +24,24 @@ const WORK_START_MIN = 9 * 60;
 const GRACE_MIN = 15;
 const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
 
-/** Перерыв, после которого покупка считается возвратом клиента (как пороги «Реанимации»). */
-const RETURN_GAP_DAYS = 30;
+/**
+ * Перерыв, после которого покупка считается возвратом клиента.
+ *
+ * 60, а не 30: часть постоянных клиентов закупается раз в месяц, и при 30 днях
+ * обычная пауза между их покупками уже засчитывалась как «вернулся».
+ */
+const RETURN_GAP_DAYS = 60;
+
+/**
+ * Лид засчитывается, если клиент купил в течение этого срока ПОСЛЕ контакта.
+ */
+const LEAD_WINDOW_DAYS = 14;
+
+/**
+ * Клиент, купивший в эти дни ДО контакта, лидом не считается: он и так покупал,
+ * это не привлечение. Главный барьер против накрутки — см. запрос лидов ниже.
+ */
+const LEAD_RECENT_BUYER_DAYS = 30;
 
 /**
  * Внутренняя компания: её сотрудники не участвуют в KPI отдела продаж.
@@ -57,6 +73,34 @@ function parsePeriod(req: Request): { year: number; month: number } {
 function minutesOfDayTashkent(d: Date): number {
   const t = new Date(d.getTime() + TASHKENT_OFFSET);
   return t.getUTCHours() * 60 + t.getUTCMinutes();
+}
+
+/** Рабочих дней в месяце: понедельник–пятница, выходные не в счёт. */
+function workdaysInMonth(year: number, month: number): number {
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= days; d++) {
+    const dow = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
+    if (dow !== 0 && dow !== 6) n += 1;
+  }
+  return n;
+}
+
+/**
+ * «Семья» товара для группировки в топе: у большинства менеджеров весь топ
+ * занимает самоклейка разных форматов, и список превращается в «самоклейка,
+ * самоклейка, самоклейка». Убираем размеры, числа и единицы, берём первое слово.
+ */
+function productFamily(name: string): string {
+  const cleaned = name
+    .replace(/d+([.,]d+)?s*[xх*]s*d+([.,]d+)?(s*[xх*]s*d+([.,]d+)?)?/gi, ' ')
+    .replace(/d+([.,]d+)?s*(мкм|мм|см|м|кг|гр|г|л)/gi, ' ')
+    .replace(/[d]+/g, ' ')
+    .replace(/[-–—/:(),."]+/g, ' ')
+    .replace(/s+/g, ' ')
+    .trim();
+  const first = cleaned.split(' ')[0] || '';
+  return first ? first[0].toUpperCase() + first.slice(1).toLowerCase() : (name.trim() || 'Без названия');
 }
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
@@ -104,7 +148,7 @@ router.get(
 
     const deadCutoff = new Date(start.getTime() - DEAD_NO_SALES_DAYS * 86400000);
 
-    const [goals, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, attendance] =
+    const [goals, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance] =
       await Promise.all([
         // ──── 1. План на месяц (модель уже есть — та же, что в «Пользователях») ────
         prisma.userMonthlyGoal.findMany({
@@ -173,7 +217,10 @@ router.get(
            FROM sold s
            JOIN products p ON p.id = s.product_id
            LEFT JOIN last_before lb ON lb.product_id = s.product_id
-           WHERE lb.last_ts IS NULL OR lb.last_ts < ${deadCutoff}`,
+           -- Товар должен был существовать до отсечки: иначе только что заведённая
+           -- позиция засчитывалась бы как «оживлённая», хотя оживлять нечего.
+           WHERE p.created_at < ${deadCutoff}
+             AND (lb.last_ts IS NULL OR lb.last_ts < ${deadCutoff})`,
         ),
 
         // ──── 3. Звонки и контакты: полная заметка клиента + строка доски звонков ────
@@ -223,6 +270,60 @@ router.get(
            LEFT JOIN prev p ON p.client_id = s.client_id`,
         ),
 
+        // ──── 6. Лиды: контакт → покупка ────
+        //
+        // Защита от накрутки встроена в сам запрос:
+        //  1. считаем УНИКАЛЬНЫХ клиентов, а не заметки — спам заметок не помогает;
+        //  2. берём только ПЕРВЫЙ контакт с клиентом в периоде;
+        //  3. покупка засчитывается, только если она строго ПОСЛЕ контакта
+        //     (created_at заметки проставляет сервер, задним числом не поставить);
+        //  4. клиент, купивший незадолго ДО контакта, лидом не считается вовсе —
+        //     иначе достаточно обзвонить тех, кто и так покупает каждый месяц.
+        prisma.$queryRaw<{ manager_id: string; leads: string; converted: string }[]>(
+          Prisma.sql`WITH contacts AS (
+             SELECT cn.user_id AS manager_id, cn.client_id, MIN(cn.created_at) AS at
+             FROM client_notes cn
+             WHERE cn.deleted_at IS NULL
+               AND cn.created_at >= ${start} AND cn.created_at < ${end}
+               AND cn.user_id IN (${Prisma.join(ids)})
+             GROUP BY cn.user_id, cn.client_id
+             UNION ALL
+             SELECT nb.author_id, nb.client_id, MIN(nb.last_call_at)
+             FROM notes_board_rows nb
+             WHERE nb.last_call_at >= ${start} AND nb.last_call_at < ${end}
+               AND nb.author_id IN (${Prisma.join(ids)})
+             GROUP BY nb.author_id, nb.client_id
+           ),
+           first_contact AS (
+             SELECT manager_id, client_id, MIN(at) AS contact_at
+             FROM contacts GROUP BY manager_id, client_id
+           ),
+           scored AS (
+             SELECT fc.manager_id, fc.client_id,
+               EXISTS (
+                 SELECT 1 FROM deal_items di JOIN deals d ON d.id = di.deal_id
+                 WHERE d.client_id = fc.client_id
+                   AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+                   AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} > fc.contact_at
+                   AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= fc.contact_at + (${LEAD_WINDOW_DAYS} * INTERVAL '1 day')
+               ) AS converted,
+               EXISTS (
+                 SELECT 1 FROM deal_items di JOIN deals d ON d.id = di.deal_id
+                 WHERE d.client_id = fc.client_id
+                   AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+                   AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < fc.contact_at
+                   AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= fc.contact_at - (${LEAD_RECENT_BUYER_DAYS} * INTERVAL '1 day')
+               ) AS recent_buyer
+             FROM first_contact fc
+           )
+           SELECT manager_id,
+             COUNT(*)::text as leads,
+             COUNT(*) FILTER (WHERE converted)::text as converted
+           FROM scored
+           WHERE NOT recent_buyer
+           GROUP BY manager_id`,
+        ),
+
         // ──── 5. Посещаемость ────
         prisma.attendanceRecord.findMany({
           where: {
@@ -244,6 +345,8 @@ router.get(
     const boardMap = new Map(boardRaw.map((r) => [r.author_id, r]));
     const clientsByManager = groupBy(clientsRaw, (r) => r.manager_id);
     const attByManager = groupBy(attendance, (r) => r.userId);
+    const leadsMap = new Map(leadsRaw.map((r) => [r.manager_id, r]));
+    const workdays = workdaysInMonth(year, month);
 
     const rows = managers.map((m) => {
       const goal = goalMap.get(m.id);
@@ -321,6 +424,23 @@ router.get(
               qty: Number(i.qty),
               revenue: Number(i.revenue),
             })),
+          /** Тот же топ, но свёрнутый по «семье» товара — чтобы самоклейка не занимала весь список. */
+          topGroups: [...groupBy(items, (i) => productFamily(i.name)).entries()]
+            .map(([family, list]) => ({
+              family,
+              qty: list.reduce((s, i) => s + Number(i.qty), 0),
+              revenue: list.reduce((s, i) => s + Number(i.revenue), 0),
+              products: [...list]
+                .sort((a, b) => Number(b.revenue) - Number(a.revenue))
+                .map((i) => ({
+                  productId: i.product_id,
+                  name: i.name,
+                  unit: i.unit,
+                  qty: Number(i.qty),
+                  revenue: Number(i.revenue),
+                })),
+            }))
+            .sort((a, b) => b.revenue - a.revenue),
           byCategory: [...byCategory.entries()]
             .map(([category, v]) => ({ category, qty: v.qty, revenue: v.revenue }))
             .sort((a, b) => b.revenue - a.revenue),
@@ -345,7 +465,21 @@ router.get(
           lastContactAt: lastContact ? lastContact.toISOString() : null,
         },
         clients: { served, new: newClients, returned, regular },
-        attendance: { days: att.length, onTime, late, lateMinutes, absent },
+        leads: {
+          /** Уникальные клиенты, с которыми связались и которые до этого не покупали ≥30 дней. */
+          contacted: leadsMap.get(m.id) ? Number(leadsMap.get(m.id)!.leads) : 0,
+          converted: leadsMap.get(m.id) ? Number(leadsMap.get(m.id)!.converted) : 0,
+          windowDays: LEAD_WINDOW_DAYS,
+        },
+        attendance: {
+          /** Рабочих дней в месяце (пн–пт), выходные исключены. */
+          workdays,
+          days: att.length,
+          onTime,
+          late,
+          lateMinutes,
+          absent,
+        },
       };
     });
 

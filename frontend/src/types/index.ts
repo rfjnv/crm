@@ -802,6 +802,13 @@ export interface ManagerKpiRow {
     positions: number;
     totalQty: number;
     topProducts: { productId: string; name: string; unit: string; qty: number; revenue: number }[];
+    /** Тот же топ, свёрнутый по «семье» товара (самоклейка всех форматов — одна строка). */
+    topGroups: {
+      family: string;
+      qty: number;
+      revenue: number;
+      products: { productId: string; name: string; unit: string; qty: number; revenue: number }[];
+    }[];
     byCategory: { category: string; qty: number; revenue: number }[];
     /** Товары, которые до этого месяца 90+ дней не продавались. */
     deadSold: {
@@ -821,7 +828,17 @@ export interface ManagerKpiRow {
     lastContactAt: string | null;
   };
   clients: { served: number; new: number; returned: number; regular: number };
-  attendance: { days: number; onTime: number; late: number; lateMinutes: number; absent: number };
+  /** Контакт → покупка. `contacted` уже очищен от накрутки, см. эндпоинт. */
+  leads: { contacted: number; converted: number; windowDays: number };
+  attendance: {
+    /** Рабочих дней в месяце (пн–пт). */
+    workdays: number;
+    days: number;
+    onTime: number;
+    late: number;
+    lateMinutes: number;
+    absent: number;
+  };
 }
 
 export interface ManagerKpiResponse {
