@@ -771,10 +771,15 @@ export interface AnalyticsManagers {
   rows: {
     managerId: string;
     fullName: string;
+    /** Сделки с выручкой в периоде (по эффективной дате строки). */
     completedCount: number;
     totalRevenue: number;
     avgDealAmount: number;
-    conversionRate: number;
+    /** Доля закрытых среди сделок, СОЗДАННЫХ в периоде; `null` — менеджер их не открывал. */
+    conversionRate: number | null;
+    /** Знаменатель конверсии — сколько сделок открыто в периоде. */
+    openedInPeriod: number;
+    closedFromOpened: number;
     avgDealDays: number;
   }[];
 }

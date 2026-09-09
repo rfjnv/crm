@@ -1896,12 +1896,21 @@ export default function AnalyticsPage() {
   // ──── MANAGERS TAB (extended) ────
   // ════════════════════════════════════════
 
-  const managerRows = intel?.managers.rows ?? managers.rows.map((m) => ({
-    ...m,
-    uniqueClients: 0,
-    repeatClients: 0,
-    retentionRate: 0,
-  }));
+  // Выручка/конверсия — всегда из `/analytics`, чтобы совпадать с остальными вкладками
+  // (та же эффективная дата строки и сессионные сделки). Из `intelligence` берём только
+  // метрики удержания, которых в `/analytics` нет; пока он не загрузился — «—», а не 0.
+  // Раньше вся таблица переключалась между двумя источниками с разными правилами, и
+  // цифры менялись прямо на глазах.
+  const intelByManager = new Map((intel?.managers.rows ?? []).map((m) => [m.managerId, m]));
+  const managerRows = managers.rows.map((m) => {
+    const extra = intelByManager.get(m.managerId);
+    return {
+      ...m,
+      uniqueClients: extra ? extra.uniqueClients : null,
+      repeatClients: extra ? extra.repeatClients : null,
+      retentionRate: extra ? extra.retentionRate : null,
+    };
+  });
 
   const managersTab = (
     <Card bordered={false}>
@@ -1913,7 +1922,12 @@ export default function AnalyticsPage() {
         scroll={{ x: 900 }}
         columns={[
           { title: 'Менеджер', dataIndex: 'fullName', fixed: 'left' as const, width: 160, render: (v: string) => getFirstName(v) || v },
-          { title: 'Завершённых', dataIndex: 'completedCount', align: 'right' as const, width: 100 },
+          {
+            title: <span>Завершённых<FormulaHint text="Сделки с выручкой в выбранном периоде (по дате строки). Сделка, открытая раньше и закрытая сейчас, попадает сюда — это не то же самое, что знаменатель конверсии." /></span>,
+            dataIndex: 'completedCount',
+            align: 'right' as const,
+            width: 100,
+          },
           { title: 'Общая сумма', dataIndex: 'totalRevenue', align: 'right' as const, render: (v: number) => formatUZS(v), width: 130 },
           {
             title: <span>Средний чек<FormulaHint text="Общая сумма ÷ Кол-во завершённых сделок" /></span>,
@@ -1923,13 +1937,18 @@ export default function AnalyticsPage() {
             width: 120,
           },
           {
-            title: <span>Конверсия<FormulaHint text="Завершённых ÷ Всего созданных × 100%" /></span>,
+            title: <span>Конверсия<FormulaHint text="Из сделок, СОЗДАННЫХ в периоде, доля дошедших до «Закрыто». Числитель и знаменатель — одна и та же когорта, поэтому больше 100% быть не может." /></span>,
             dataIndex: 'conversionRate',
             align: 'right' as const,
             width: 100,
-            render: (v: number) => {
+            render: (v: number | null, r: (typeof managerRows)[number]) => {
+              if (v === null) return <span style={{ color: token.colorTextTertiary }}>—</span>;
               const pct = v * 100;
-              return <span style={{ color: pct >= 50 ? '#52c41a' : pct >= 25 ? '#fa8c16' : '#ff4d4f' }}>{pct.toFixed(1)}%</span>;
+              return (
+                <Tooltip title={`${r.closedFromOpened} из ${r.openedInPeriod} созданных в периоде`}>
+                  <span style={{ color: pct >= 50 ? '#52c41a' : pct >= 25 ? '#fa8c16' : '#ff4d4f' }}>{pct.toFixed(1)}%</span>
+                </Tooltip>
+              );
             },
           },
           {
@@ -1944,19 +1963,22 @@ export default function AnalyticsPage() {
             dataIndex: 'uniqueClients',
             align: 'right' as const,
             width: 90,
+            render: (v: number | null) => (v === null ? <span style={{ color: token.colorTextTertiary }}>—</span> : v),
           },
           {
             title: <span>Повт. кл.<FormulaHint text="Клиенты с 2+ завершёнными сделками у этого менеджера" /></span>,
             dataIndex: 'repeatClients',
             align: 'right' as const,
             width: 90,
+            render: (v: number | null) => (v === null ? <span style={{ color: token.colorTextTertiary }}>—</span> : v),
           },
           {
             title: <span>Удержание<FormulaHint text="Повторных клиентов ÷ Уникальных клиентов × 100%" /></span>,
             dataIndex: 'retentionRate',
             align: 'right' as const,
             width: 100,
-            render: (v: number) => {
+            render: (v: number | null) => {
+              if (v === null) return <span style={{ color: token.colorTextTertiary }}>—</span>;
               const pct = v * 100;
               return <span style={{ color: pct >= 30 ? '#52c41a' : pct >= 15 ? '#fa8c16' : '#ff4d4f', fontWeight: 600 }}>{pct.toFixed(1)}%</span>;
             },

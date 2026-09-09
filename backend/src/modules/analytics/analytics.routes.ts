@@ -986,10 +986,16 @@ router.get(
          GROUP BY d.manager_id, u.full_name
          ORDER BY SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC NULLS LAST`
       ),
-      // Все сделки, ОТКРЫТЫЕ менеджером в периоде (для конверсии "открыл → закрыл") —
-      // отдельная метрика, намеренно на основе created_at.
-      prisma.$queryRaw<{ manager_id: string; total_deals: string }[]>(
-        Prisma.sql`SELECT d.manager_id, COUNT(*)::text as total_deals
+      // Конверсия «открыл → закрыл» считается по ОДНОЙ когорте: сделки, созданные
+      // в периоде, и сколько из них дошло до CLOSED.
+      //
+      // Раньше числителем был `completed_count` из запроса выручки — это другое множество
+      // (строки с эффективной датой в периоде, включая сделки, открытые раньше, и
+      // незакрытые сессионные). Доля считалась по разным когортам и могла превысить 100%.
+      prisma.$queryRaw<{ manager_id: string; total_deals: string; closed_deals: string }[]>(
+        Prisma.sql`SELECT d.manager_id,
+           COUNT(*)::text as total_deals,
+           COUNT(*) FILTER (WHERE d.status = 'CLOSED')::text as closed_deals
          FROM deals d
          WHERE d.is_archived = false
            AND d.created_at >= ${start} AND d.created_at < ${end}
@@ -1007,19 +1013,28 @@ router.get(
     ]);
 
     const avgDaysMap = new Map(managerAvgDaysRaw.map((m) => [m.manager_id, Number(m.avg_days)]));
-    const totalDealsMap = new Map(managerTotalDealsRaw.map((m) => [m.manager_id, Number(m.total_deals)]));
+    const cohortMap = new Map(
+      managerTotalDealsRaw.map((m) => [
+        m.manager_id,
+        { total: Number(m.total_deals), closed: Number(m.closed_deals) },
+      ]),
+    );
 
     const managers = {
       rows: managerRevenueRaw.map((m) => {
-        const totalDeals = totalDealsMap.get(m.manager_id) ?? 0;
-        const completedCount = Number(m.completed_count);
+        const cohort = cohortMap.get(m.manager_id);
         return {
           managerId: m.manager_id,
           fullName: m.full_name,
-          completedCount,
+          /** Сделки с выручкой в периоде (по эффективной дате строки) — база для суммы и среднего чека. */
+          completedCount: Number(m.completed_count),
           totalRevenue: Number(m.total_revenue),
           avgDealAmount: Number(m.avg_deal_amount),
-          conversionRate: totalDeals > 0 ? completedCount / totalDeals : 0,
+          /** Доля закрытых среди сделок, СОЗДАННЫХ в периоде. Другая когорта, чем `completedCount`. */
+          conversionRate: cohort && cohort.total > 0 ? cohort.closed / cohort.total : null,
+          /** Сколько сделок менеджер открыл в периоде — знаменатель конверсии. */
+          openedInPeriod: cohort?.total ?? 0,
+          closedFromOpened: cohort?.closed ?? 0,
           avgDealDays: avgDaysMap.get(m.manager_id) ?? 0,
         };
       }),
