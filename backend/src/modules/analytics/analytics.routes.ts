@@ -911,9 +911,11 @@ router.get(
     // ──── WAREHOUSE ────
     const [belowMinStockRaw, deadStockRaw, topSellingRaw, frozenCapitalRaw] = await Promise.all([
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
+        // Отрицательный остаток (пересортица/перепродажа) — самый острый случай нехватки,
+        // а прежнее условие `stock >= 0` как раз его и прятало из списка.
         Prisma.sql`SELECT id, name, sku, stock, min_stock
          FROM products
-         WHERE is_active = true AND stock < min_stock AND stock >= 0
+         WHERE is_active = true AND stock < min_stock
          ORDER BY stock ASC`
       ),
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
@@ -931,10 +933,16 @@ router.get(
          ORDER BY p.stock DESC`
       ),
       prisma.$queryRaw<{ product_id: string; name: string; unit: string; total_sold: string }[]>(
+        // Списания со склада за ВЫБРАННЫЙ период (бизнес-дата движения, как у «мёртвого
+        // остатка»). Раньше фильтра по периоду не было вовсе: переключатель периода на
+        // странице этот блок не двигал, и он спорил с «Топ 5 товаров» на вкладке «Продажи».
         Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, SUM(m.quantity)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
+         LEFT JOIN deals d ON d.id = m.deal_id
          WHERE ${sqlMovementIsSale('m')}
+           AND ${sqlInventoryMovementBusinessDate('m', 'd')} >= ${start}
+           AND ${sqlInventoryMovementBusinessDate('m', 'd')} < ${end}
          GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`

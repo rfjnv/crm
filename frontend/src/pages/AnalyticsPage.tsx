@@ -193,11 +193,17 @@ function buildRevenueChartData(
     if (dt.getUTCDay() === 0 || total === 0) continue;
     filled.push({ day: key, total });
   }
+  // Пресет «Год» — это 365 дней, поэтому один и тот же день+месяц встречается дважды.
+  // Без года подписи совпадают и точки разных лет накладываются друг на друга по оси X.
+  const spansMultipleYears = filled.length > 0
+    && filled[0].day.slice(0, 4) !== filled[filled.length - 1].day.slice(0, 4);
+
   return filled.map((d) => {
     const parts = d.day.split('-');
     const dayNum = parseInt(parts[2], 10);
     const monthIdx = parseInt(parts[1], 10) - 1;
-    return { day: `${dayNum} ${MONTH_SHORT[monthIdx]}`, total: d.total };
+    const label = `${dayNum} ${MONTH_SHORT[monthIdx]}`;
+    return { day: spansMultipleYears ? `${label} ${parts[0].slice(2)}` : label, total: d.total };
   });
 }
 
@@ -1857,7 +1863,16 @@ export default function AnalyticsPage() {
         </Col>
       </Row>
 
-      <Card title="Топ продаваемых товаров" bordered={false} style={{ marginTop: 16 }}>
+      <Card
+        title={(
+          <span>
+            Топ списаний со склада
+            <FormulaHint text="Количество, списанное со склада за выбранный период (движения склада по бизнес-дате). Это НЕ «Топ 5 товаров» с вкладки «Продажи»: там количество считается по строкам сделок, поэтому цифры могут отличаться." />
+          </span>
+        )}
+        bordered={false}
+        style={{ marginTop: 16 }}
+      >
         {topSellingBarData.length > 0 ? (
           <>
             <Bar

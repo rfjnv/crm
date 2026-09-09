@@ -267,12 +267,25 @@ export default function HistoryAnalyticsPage() {
     return list;
   }, [dataQuality?.problemRows, dqOpTypeFilter, dqSearch]);
 
+  /**
+   * Последний месяц, за который у выбранного года есть данные. Для текущего года это
+   * идущий месяц: сравнивать его 9 месяцев с 12 месяцами прошлого года нельзя — в
+   * таблице появлялись строки «0 против большого числа», а «Итого» показывало
+   * фантастическое падение просто потому, что год ещё не кончился.
+   */
+  const comparableThroughMonth = useMemo(() => {
+    const months = (data?.monthlyTrend || []).map((m) => m.month);
+    return months.length > 0 ? Math.max(...months) : 12;
+  }, [data?.monthlyTrend]);
+
+  const isPartialYear = comparableThroughMonth < 12;
+
   const yoyRows = useMemo(() => {
     const currentMap = new Map((data?.monthlyTrend || []).map((m) => [m.month, m]));
     const prevMap = new Map((prevYearData?.monthlyTrend || []).map((m) => [m.month, m]));
     const months = Array.from(
       new Set<number>([...currentMap.keys(), ...prevMap.keys()]),
-    ).sort((a, b) => a - b);
+    ).sort((a, b) => a - b).filter((m) => m <= comparableThroughMonth);
 
     return months.map((month) => {
       const current = currentMap.get(month);
@@ -290,7 +303,7 @@ export default function HistoryAnalyticsPage() {
         deltaPct,
       };
     });
-  }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric]);
+  }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric, comparableThroughMonth]);
 
   const allYearsRows = useMemo(() => {
     if (yoyMode !== 'allYears') return [];
@@ -298,9 +311,13 @@ export default function HistoryAnalyticsPage() {
       const yData = allYearsQueries[i]?.data;
       return new Map((yData?.monthlyTrend || []).map((m) => [m.month, m]));
     });
+    // Текущий год всегда неполный, поэтому обрезаем все столбцы по его последнему
+    // месяцу с данными — иначе колонка «Разница» сравнивает 9 месяцев с 12.
+    const currentYearMonths = Array.from(yearMaps[yearMaps.length - 1]?.keys() ?? []);
+    const throughMonth = currentYearMonths.length > 0 ? Math.max(...currentYearMonths) : 12;
     const months = Array.from(
       new Set<number>(yearMaps.flatMap((m) => Array.from(m.keys()))),
-    ).sort((a, b) => a - b);
+    ).sort((a, b) => a - b).filter((m) => m <= throughMonth);
 
     return months.map((month) => {
       const row: Record<string, number | null> = {};
@@ -705,7 +722,18 @@ export default function HistoryAnalyticsPage() {
       </Card>
 
       <Card
-        title={yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
+        title={(
+          <span>
+            {yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
+            {isPartialYear && (
+              <Tooltip title={`Год ещё не закончился: сравниваются только месяцы по ${MONTH_LABELS[comparableThroughMonth]} включительно, иначе «Итого» сопоставляло бы неполный год с полным.`}>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
+                  {`янв — ${MONTH_LABELS[comparableThroughMonth]}`}
+                </Text>
+              </Tooltip>
+            )}
+          </span>
+        )}
         size="small"
         style={{ marginBottom: 16 }}
         extra={
