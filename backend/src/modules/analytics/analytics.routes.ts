@@ -389,20 +389,49 @@ router.get(
 );
 
 /**
+ * Период для «иерархических» вкладок — тот же контракт, что и у остальной аналитики
+ * (`period=week|month|quarter|year` либо `from`+`to` в YYYY-MM-DD, границы по Ташкенту).
+ *
+ * Раньше эти маршруты принимали только `from` и считали «от даты и до сегодня»: конец
+ * произвольного периода молча игнорировался, а фронт присылал скользящее окно
+ * (последние 30/90/365 дней), из-за чего вкладка расходилась с «Продажами».
+ */
+function resolveHierarchyPeriod(req: Request) {
+  return resolveAnalyticsPeriodRange({
+    period: typeof req.query.period === 'string' ? req.query.period : undefined,
+    from: typeof req.query.from === 'string' ? req.query.from : undefined,
+    to: typeof req.query.to === 'string' ? req.query.to : undefined,
+  });
+}
+
+/** Область видимости сделок для запроса (менеджер видит только свои). */
+function hierarchyDealScope(req: Request) {
+  return ownerScope({
+    userId: req.user!.userId,
+    role: req.user!.role as Role,
+    permissions: req.user!.permissions || [],
+    companyId: req.user!.companyId,
+  });
+}
+
+/**
  * Компактные агрегаты для вкладки «Иерархия товаров» (без списка всех строк — быстрый ответ).
  * Правила те же, что у `hierarchy-closed-items`.
+ *
+ * Роли: вкладка живёт на странице «Аналитика», закрытой в UI для SUPER_ADMIN/ADMIN —
+ * список здесь обязан совпадать, иначе по прямому запросу к API данные утекают ролям,
+ * которые страницу даже открыть не могут.
  */
 router.get(
   '/hierarchy-merchandise-stats',
+  authorize('SUPER_ADMIN', 'ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
-    if (!fromRaw) {
-      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
-    }
-    const from = new Date(fromRaw);
-    if (Number.isNaN(from.getTime())) {
-      throw new AppError(400, 'Некорректный параметр from');
-    }
+    const { start: from, end: to } = resolveHierarchyPeriod(req);
+    const dealScope = hierarchyDealScope(req);
+    // Для SUPER_ADMIN/ADMIN фильтр пустой; нужен, если список ролей когда-нибудь расширят.
+    const managerFilter = dealScope.managerId
+      ? Prisma.sql` AND d.manager_id = ${dealScope.managerId}`
+      : Prisma.empty;
 
     const [productRows, categoryRows] = await Promise.all([
       prisma.$queryRaw<
@@ -424,6 +453,7 @@ router.get(
         INNER JOIN deals d ON d.id = di.deal_id
         WHERE d.status = 'CLOSED'
           AND d.created_at >= ${from}
+          AND d.created_at < ${to}${managerFilter}
           AND COALESCE(di.requested_qty::numeric, 0) > 0
         GROUP BY di.product_id
       `),
@@ -447,6 +477,7 @@ router.get(
         INNER JOIN products p ON p.id = di.product_id
         WHERE d.status = 'CLOSED'
           AND d.created_at >= ${from}
+          AND d.created_at < ${to}${managerFilter}
           AND COALESCE(di.requested_qty::numeric, 0) > 0
         GROUP BY 1
       `),
@@ -483,26 +514,29 @@ router.get(
 );
 
 /**
- * Позиции закрытых сделок за период — те же правила, что и `getProductAnalytics` (фильтр по `deals.created_at`, без ownerScope),
- * чтобы блок «Клиенты по иерархии» совпадал с аналитикой товара.
+ * Позиции закрытых сделок за период — правила отнесения к дате те же, что и у
+ * `getProductAnalytics` (фильтр по `deals.created_at`), чтобы блок «Клиенты по иерархии»
+ * совпадал с аналитикой товара.
+ *
+ * Роли: панель есть и на «Активности клиентов» (MANAGER, HR), поэтому список шире, чем
+ * у `hierarchy-merchandise-stats`. Видимость режется `ownerScope` — менеджер видит только
+ * свои сделки, как и на «Аналитике». Ответ содержит названия клиентов, суммы и выручку
+ * по каждой сделке, так что раньше это было доступно любой авторизованной роли, включая
+ * склад и водителей.
  */
 router.get(
   '/hierarchy-closed-items',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR'),
   asyncHandler(async (req: Request, res: Response) => {
-    const fromRaw = typeof req.query.from === 'string' ? req.query.from.trim() : '';
-    if (!fromRaw) {
-      throw new AppError(400, 'Параметр from обязателен (ISO-дата начала периода)');
-    }
-    const from = new Date(fromRaw);
-    if (Number.isNaN(from.getTime())) {
-      throw new AppError(400, 'Некорректный параметр from');
-    }
+    const { start: from, end: to } = resolveHierarchyPeriod(req);
+    const dealScope = hierarchyDealScope(req);
 
     const items = await prisma.dealItem.findMany({
       where: {
         deal: {
           status: 'CLOSED',
-          createdAt: { gte: from },
+          createdAt: { gte: from, lt: to },
+          ...dealScope,
         },
       },
       select: {

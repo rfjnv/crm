@@ -25,7 +25,6 @@ import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import {
   inferTypeLabel,
   safePrice,
-  getPeriodStartDate,
   loadHierarchyMerchandiseStats,
   type ProductSalesAggregate,
 } from '../lib/analyticsHierarchySales';
@@ -415,14 +414,10 @@ export default function AnalyticsPage() {
 
   const productHierarchyActive = analyticsTab === 'product-hierarchy';
 
-  const hierarchyPeriodStart = useMemo(() => {
-    if (periodPreset === 'custom') return analyticsRange[0].startOf('day').toDate();
-    return getPeriodStartDate(periodPreset);
-  }, [periodPreset, analyticsRange]);
-
   const { data: merchandiseStats, isLoading: merchandiseLoading } = useQuery({
     queryKey: ['analytics-hierarchy-merchandise', periodQueryKey],
-    queryFn: () => loadHierarchyMerchandiseStats(hierarchyPeriodStart),
+    // Тот же период, что и у остальных вкладок: границы считает бэкенд из `periodQuery`.
+    queryFn: () => loadHierarchyMerchandiseStats(periodQuery),
     enabled: productHierarchyActive,
     staleTime: heavyAnalyticsStale,
   });

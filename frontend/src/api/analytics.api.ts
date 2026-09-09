@@ -128,17 +128,17 @@ export const analyticsApi = {
   getData: (query: AnalyticsPeriodQuery | AnalyticsPeriod = 'month') =>
     client.get<AnalyticsData>('/analytics', { params: analyticsPeriodParams(query) }).then((r) => r.data),
 
-  getHierarchyClosedItems: (fromIso: string) =>
+  getHierarchyClosedItems: (query: AnalyticsPeriodQuery) =>
     client
       .get<{ rows: HierarchyClosedItemRow[] }>('/analytics/hierarchy-closed-items', {
-        params: { from: fromIso },
+        params: analyticsPeriodParams(query),
       })
       .then((r) => r.data),
 
-  getHierarchyMerchandiseStats: (fromIso: string) =>
+  getHierarchyMerchandiseStats: (query: AnalyticsPeriodQuery) =>
     client
       .get<HierarchyMerchandiseStats>('/analytics/hierarchy-merchandise-stats', {
-        params: { from: fromIso },
+        params: analyticsPeriodParams(query),
       })
       .then((r) => r.data),
 

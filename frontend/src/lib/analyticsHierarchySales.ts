@@ -1,5 +1,5 @@
 import { analyticsApi } from '../api/analytics.api';
-import type { AnalyticsPeriod } from '../api/analytics.api';
+import type { AnalyticsPeriod, AnalyticsPeriodQuery } from '../api/analytics.api';
 import type { Product } from '../types';
 
 export type ProductSalesAggregate = {
@@ -60,6 +60,14 @@ export function inferTypeLabel(product: Product): string {
   return firstChunk || cleaned || 'Без типа';
 }
 
+/**
+ * Скользящее окно «последние N дней» — как на странице товара.
+ *
+ * Используется ТОЛЬКО собственными пресетами панели «Клиенты по иерархии».
+ * Вкладка «Иерархия товаров» подчиняется периоду страницы «Аналитика» и берёт
+ * календарные границы с бэкенда — иначе при выборе «Месяц» она показывала бы
+ * последние 30 дней, а «Продажи» рядом — период с 1-го числа.
+ */
 export function getPeriodStartDate(period: AnalyticsPeriod): Date {
   const now = new Date();
   const start = new Date(now);
@@ -78,6 +86,19 @@ export function getPeriodStartDate(period: AnalyticsPeriod): Date {
   /** Как на странице товара: «Год» = последние 365 дней */
   start.setDate(now.getDate() - 365);
   return start;
+}
+
+/** `Date` → календарная дата YYYY-MM-DD (локальная, как и остальные пикеры периода). */
+function toYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Границы панели → запрос периода для бэкенда (конец включительно; null = по сегодня). */
+export function periodBoundsToQuery(bounds: PeriodBounds): AnalyticsPeriodQuery {
+  return { from: toYmd(bounds.start), to: toYmd(bounds.end ?? new Date()) };
 }
 
 export function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: number): Date {
@@ -110,8 +131,8 @@ export function getPeriodBoundsByPreset(
   return { start: getStartDateByPreset(preset, customDays), end: null };
 }
 
-export async function loadHierarchyMerchandiseStats(periodStart: Date) {
-  return analyticsApi.getHierarchyMerchandiseStats(periodStart.toISOString());
+export async function loadHierarchyMerchandiseStats(query: AnalyticsPeriodQuery) {
+  return analyticsApi.getHierarchyMerchandiseStats(query);
 }
 
 type AggBuilder = {
@@ -122,8 +143,9 @@ type AggBuilder = {
   lastSaleAt: string | null;
 };
 
-export async function loadSalesContext(periodStart: Date, periodEnd?: Date | null) {
-  const { rows } = await analyticsApi.getHierarchyClosedItems(periodStart.toISOString());
+export async function loadSalesContext(bounds: PeriodBounds) {
+  const { rows } = await analyticsApi.getHierarchyClosedItems(periodBoundsToQuery(bounds));
+  const periodEnd = bounds.end;
 
   const building: Record<string, AggBuilder> = {};
   const purchaseRows: ProductPurchaseRow[] = [];
