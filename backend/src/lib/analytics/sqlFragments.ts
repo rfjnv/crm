@@ -83,10 +83,40 @@ export const SQL_DEALS_CLOSED_REVENUE_FILTER = Prisma.sql`d.status = 'CLOSED' AN
  * Выручка в аналитике: обычные сделки — только CLOSED; сессионные — все не отменённые,
  * дата строки см. {@link SQL_EFFECTIVE_REVENUE_ITEM_TS}.
  */
-export const SQL_DEALS_REVENUE_ANALYTICS_FILTER = Prisma.sql`d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED') AND (
+export const SQL_DEALS_REVENUE_BASE_FILTER = Prisma.sql`d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED') AND (
   (NOT d.is_session_deal AND d.status = 'CLOSED')
   OR (d.is_session_deal = true)
 )`;
+
+/** Служебное имя внутренней компании в таблице `companies`. */
+export const INTERNAL_COMPANY_NAME = 'grand-astra';
+
+/**
+ * Сделки внутренней компании (Grand Astra) — исключаются из ВСЕЙ аналитики.
+ *
+ * Принадлежность сделки к компании определяется через клиента: у `deals` своего
+ * `company_id` нет, а `ownerScope` скоупит именно так (`client: { companyId }`).
+ * Требует, чтобы в запросе был алиас `d` для `deals`.
+ */
+export const SQL_EXCLUDE_INTERNAL_COMPANY_DEAL = Prisma.sql`NOT EXISTS (
+  SELECT 1 FROM clients ic
+  JOIN companies ico ON ico.id = ic.company_id
+  WHERE ic.id = d.client_id AND ico.name = ${INTERNAL_COMPANY_NAME}
+)`;
+
+/** Как {@link SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}, но для товаров (алиас `p`). */
+export const SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT = Prisma.sql`NOT EXISTS (
+  SELECT 1 FROM companies ico
+  WHERE ico.id = p.company_id AND ico.name = ${INTERNAL_COMPANY_NAME}
+)`;
+
+/**
+ * Выручка в аналитике = {@link SQL_DEALS_REVENUE_BASE_FILTER} без внутренней компании.
+ *
+ * Карточка отдельного клиента и его история берут БАЗОВЫЙ фильтр: там показываются
+ * обороты конкретного клиента, и обнулять их для клиентов Grand Astra нельзя.
+ */
+export const SQL_DEALS_REVENUE_ANALYTICS_FILTER = Prisma.sql`${SQL_DEALS_REVENUE_BASE_FILTER} AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}`;
 
 /**
  * @deprecated Use SQL_DEALS_CLOSED_REVENUE_FILTER — revenue counts CLOSED only (not SHIPPED).

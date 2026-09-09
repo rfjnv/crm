@@ -7,6 +7,7 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
   resolveAnalyticsPeriodRange,
+  SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
 } from '../../lib/analytics';
 import { sqlInventoryMovementBusinessDate, sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -913,10 +914,11 @@ router.get(
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; min_stock: number }[]>(
         // Отрицательный остаток (пересортица/перепродажа) — самый острый случай нехватки,
         // а прежнее условие `stock >= 0` как раз его и прятало из списка.
-        Prisma.sql`SELECT id, name, sku, stock, min_stock
-         FROM products
-         WHERE is_active = true AND stock < min_stock
-         ORDER BY stock ASC`
+        Prisma.sql`SELECT p.id, p.name, p.sku, p.stock, p.min_stock
+         FROM products p
+         WHERE p.is_active = true AND p.stock < p.min_stock
+           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
+         ORDER BY p.stock ASC`
       ),
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
         // last_out_date = последняя продажа товара по БИЗНЕС-дате
@@ -927,6 +929,7 @@ router.get(
          LEFT JOIN inventory_movements m ON m.product_id = p.id AND ${sqlMovementIsSale('m')}
          LEFT JOIN deals d ON d.id = m.deal_id
          WHERE p.is_active = true AND p.stock > 0
+           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
          GROUP BY p.id, p.name, p.sku, p.stock
          HAVING MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) IS NULL
              OR MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) < NOW() - INTERVAL '30 days'
@@ -943,15 +946,18 @@ router.get(
          WHERE ${sqlMovementIsSale('m')}
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} >= ${start}
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} < ${end}
+           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
          GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`
       ),
-      prisma.$queryRaw<{ value: string }[]>`
-        SELECT COALESCE(SUM(stock * purchase_price), 0)::text as value
-        FROM products
-        WHERE is_active = true AND purchase_price IS NOT NULL
-      `,
+      // Prisma.sql, а не tagged-template: иначе фрагмент подставился бы как параметр.
+      prisma.$queryRaw<{ value: string }[]>(
+        Prisma.sql`SELECT COALESCE(SUM(p.stock * p.purchase_price), 0)::text as value
+         FROM products p
+         WHERE p.is_active = true AND p.purchase_price IS NOT NULL
+           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}`,
+      ),
     ]);
 
     const warehouse = {

@@ -13,7 +13,7 @@ import {
   SuperDeleteClientStockAddDto,
 } from './clients.dto';
 import {
-  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_DEALS_REVENUE_BASE_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_LINE_REVENUE_DI,
@@ -1147,7 +1147,7 @@ export class ClientsService {
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_DEALS_REVENUE_BASE_FILTER}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}`,
       ),
@@ -1158,7 +1158,7 @@ export class ClientsService {
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_DEALS_REVENUE_BASE_FILTER}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}
         GROUP BY ${SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT}
@@ -1170,7 +1170,7 @@ export class ClientsService {
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
         WHERE d.client_id = ${id}
-          AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_DEALS_REVENUE_BASE_FILTER}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${periodStart}
           AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} <= ${periodEnd}
           AND di.requested_qty IS NOT NULL
