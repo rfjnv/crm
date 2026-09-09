@@ -7,6 +7,17 @@ import { useAuthStore } from '../store/authStore';
 import { homePathForUser } from '../lib/authUser';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 
+/** Ответа от сервера не пришло вовсе: обрыв связи или таймаут просыпающегося бэкенда. */
+function loginErrorMessage(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { error?: string } }; code?: string; message?: string };
+  const fromServer = e?.response?.data?.error;
+  if (fromServer) return fromServer;
+  if (!e?.response && (e?.code === 'ERR_NETWORK' || e?.code === 'ECONNABORTED' || e?.message === 'Network Error')) {
+    return 'Сервер не отвечает. Проверьте интернет и попробуйте ещё раз.';
+  }
+  return fallback;
+}
+
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -18,13 +29,30 @@ export default function LoginPage() {
     try {
       const tokens = await authApi.login(values.login, values.password);
       useAuthStore.getState().setTokens(tokens.accessToken, tokens.refreshToken);
-      const user = await authApi.me();
+
+      // Пароль уже принят и сессия создана: сбой одного лишь профиля — не отказ во
+      // входе, поэтому повторяем запрос, а не показываем «Ошибка входа».
+      let user;
+      try {
+        user = await authApi.me();
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        try {
+          user = await authApi.me();
+        } catch (meErr) {
+          // Половинчатое состояние «токен есть, профиля нет» путает следующий вход —
+          // сбрасываем его целиком и просим повторить.
+          useAuthStore.getState().logout();
+          message.error(loginErrorMessage(meErr, 'Вход выполнен, но профиль не загрузился. Попробуйте ещё раз.'));
+          return;
+        }
+      }
+
       const fullUser = { ...user, authSource: 'crm' as const };
       setAuth(fullUser, tokens.accessToken, tokens.refreshToken);
       navigate(homePathForUser(fullUser));
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка входа';
-      message.error(msg);
+      message.error(loginErrorMessage(err, 'Ошибка входа'));
     } finally {
       setLoading(false);
     }
