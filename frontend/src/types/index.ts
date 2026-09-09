@@ -1212,7 +1212,8 @@ export interface ProductAnalytics {
     dealsUsing: number;
     avgPricePerUnit: number;
   };
-  profitability: {
+  /** Себестоимость и маржа — приходят только SUPER_ADMIN, остальным ключа нет. */
+  profitability?: {
     totalCost: number;
     totalRevenue: number;
     grossProfit: number;
