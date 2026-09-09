@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Card, Table, Tag, Progress, Drawer, Row, Col, Statistic, Typography, Spin,
@@ -67,13 +67,17 @@ export default function ManagerKpiPanel() {
   });
 
   const savePlan = useMutation({
-    mutationFn: (v: { userId: string; revenueTarget: number | null; dealsTarget: number | null; callNotesTarget: number | null }) =>
+    mutationFn: (v: {
+      userId: string; revenueTarget: number | null; dealsTarget: number | null;
+      callNotesTarget: number | null; fixedSalary: number | null;
+    }) =>
       usersApi.upsertMonthlyGoal(v.userId, {
         year,
         month: monthNum,
         revenueTarget: v.revenueTarget,
         dealsTarget: v.dealsTarget,
         callNotesTarget: v.callNotesTarget,
+        fixedSalary: v.fixedSalary,
       }),
     onSuccess: () => {
       message.success('План сохранён');
@@ -88,6 +92,14 @@ export default function ManagerKpiPanel() {
 
   const rows = data?.rows ?? [];
 
+  // Карточка держит копию строки, а не ссылку на свежие данные: после правки
+  // плана или оклада она осталась бы со старыми числами, пока её не закроют.
+  useEffect(() => {
+    if (!detail) return;
+    const fresh = rows.find((r) => r.managerId === detail.managerId);
+    if (fresh && fresh !== detail) setDetail(fresh);
+  }, [rows, detail]);
+
   const totals = useMemo(() => {
     const target = rows.reduce((s, r) => s + (r.plan.revenueTarget ?? 0), 0);
     const fact = rows.reduce((s, r) => s + r.plan.revenueFact, 0);
@@ -97,6 +109,7 @@ export default function ManagerKpiPanel() {
       percent: target > 0 ? fact / target : null,
       withoutPlan: rows.filter((r) => r.plan.revenueTarget === null).length,
       bonus: rows.reduce((s, r) => s + r.bonus.amount, 0),
+      payout: rows.reduce((s, r) => s + r.salary.total, 0),
     };
   }, [rows]);
 
@@ -106,6 +119,9 @@ export default function ManagerKpiPanel() {
       revenueTarget: row.plan.revenueTarget ?? undefined,
       dealsTarget: row.plan.dealsTarget ?? undefined,
       callNotesTarget: row.plan.callNotesTarget ?? undefined,
+      // Если оклад перенесён с прошлого месяца, подставляем его же: сохранение
+      // закрепит сумму за этим месяцем.
+      fixedSalary: row.salary.fixed ?? undefined,
     });
   }
 
@@ -179,6 +195,28 @@ export default function ManagerKpiPanel() {
           <Text type="secondary">—</Text>
         ),
       sorter: (a: ManagerKpiRow, b: ManagerKpiRow) => a.bonus.amount - b.bonus.amount,
+    },
+    {
+      title: 'К выплате',
+      key: 'payout',
+      width: 160,
+      align: 'right' as const,
+      render: (_: unknown, r: ManagerKpiRow) =>
+        r.salary.fixed === null && r.salary.bonus === 0 ? (
+          <Text type="secondary">—</Text>
+        ) : (
+          <Tooltip title={r.salary.fixed === null
+            ? 'Оклад не задан — показан один бонус'
+            : `Оклад ${formatUZS(r.salary.fixed)} + бонус ${formatUZS(r.salary.bonus)}`}>
+            <div>
+              <div><Text strong>{formatUZS(r.salary.total)}</Text></div>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {r.salary.fixed === null ? 'без оклада' : `оклад ${formatUZS(r.salary.fixed)}`}
+              </Text>
+            </div>
+          </Tooltip>
+        ),
+      sorter: (a: ManagerKpiRow, b: ManagerKpiRow) => a.salary.total - b.salary.total,
     },
     {
       title: 'Клиенты',
@@ -327,6 +365,14 @@ export default function ManagerKpiPanel() {
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
             />
           </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic
+              title="Оклады + бонусы"
+              value={totals.payout}
+              formatter={(v) => formatUZS(Number(v))}
+              valueStyle={{ fontSize: 18 }}
+            />
+          </Col>
         </Row>
 
         {isLoading ? (
@@ -338,7 +384,7 @@ export default function ManagerKpiPanel() {
             rowKey="managerId"
             size="small"
             pagination={false}
-            scroll={{ x: 1260 }}
+            scroll={{ x: 1420 }}
             onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
             locale={{ emptyText: 'Нет менеджеров за этот месяц' }}
           />
@@ -367,7 +413,7 @@ export default function ManagerKpiPanel() {
       >
         {detail && (
           <>
-            <ManagerBonusCard bonus={detail.bonus} tiers={data?.scheme.tiers ?? []} />
+            <ManagerBonusCard bonus={detail.bonus} salary={detail.salary} tiers={data?.scheme.tiers ?? []} />
 
             <Card size="small" title="1. План продаж" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
@@ -681,9 +727,19 @@ export default function ManagerKpiPanel() {
               revenueTarget: v.revenueTarget ?? null,
               dealsTarget: v.dealsTarget ?? null,
               callNotesTarget: v.callNotesTarget ?? null,
+              fixedSalary: v.fixedSalary ?? null,
             });
           }}
         >
+          <Form.Item
+            name="fixedSalary"
+            label="Оклад за месяц (сум)"
+            extra={planFor?.salary.carriedFrom
+              ? `Сейчас перенесён с ${dayjs().year(planFor.salary.carriedFrom.year).month(planFor.salary.carriedFrom.month - 1).format('MMMM YYYY')}`
+              : undefined}
+          >
+            <InputNumber style={{ width: '100%' }} min={0} step={100000} />
+          </Form.Item>
           <Form.Item name="revenueTarget" label="План по выручке (сум)">
             <InputNumber style={{ width: '100%' }} min={0} step={1000000} />
           </Form.Item>
@@ -694,7 +750,8 @@ export default function ManagerKpiPanel() {
             <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            План задаётся на выбранный месяц отдельно для каждого сотрудника.
+            План и оклад задаются на выбранный месяц отдельно для каждого сотрудника.
+            Если на новый месяц оклад не задать, действует последний заданный ранее.
           </Text>
         </Form>
       </Modal>

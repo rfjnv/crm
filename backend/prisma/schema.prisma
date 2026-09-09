@@ -350,6 +350,8 @@ model UserMonthlyGoal {
   dealsTarget     Int?     @map("deals_target")
   revenueTarget   Decimal? @map("revenue_target") @db.Decimal(15, 2)
   callNotesTarget Int?     @map("call_notes_target")
+  /** Оклад сотрудника за этот месяц; к нему прибавляется бонус по KPI. */
+  fixedSalary     Decimal? @map("fixed_salary") @db.Decimal(15, 2)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   updatedById     String?  @map("updated_by_id")

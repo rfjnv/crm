@@ -83,6 +83,8 @@ export const usersApi = {
       dealsTarget: number | null;
       revenueTarget: number | null;
       callNotesTarget: number | null;
+      /** Не передавать — значит не менять уже сохранённый оклад. */
+      fixedSalary?: number | null;
     },
   ) => client.put<MonthlyGoalProgress>(`/users/${userId}/monthly-goal`, data).then((r) => r.data),
 };

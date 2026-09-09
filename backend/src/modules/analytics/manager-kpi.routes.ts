@@ -179,12 +179,23 @@ router.get(
 
     const deadCutoff = new Date(start.getTime() - DEAD_NO_SALES_DAYS * 86400000);
 
-    const [goals, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance] =
+    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance] =
       await Promise.all([
         // ──── 1. План на месяц (модель уже есть — та же, что в «Пользователях») ────
         prisma.userMonthlyGoal.findMany({
           where: { userId: { in: ids }, year, month },
-          select: { userId: true, revenueTarget: true, dealsTarget: true, callNotesTarget: true },
+          select: { userId: true, revenueTarget: true, dealsTarget: true, callNotesTarget: true, fixedSalary: true },
+        }),
+        // Оклад редко меняется, а вводить его каждый месяц заново — лишняя работа:
+        // если на этот месяц он не задан, берём последний заданный до него.
+        prisma.userMonthlyGoal.findMany({
+          where: {
+            userId: { in: ids },
+            fixedSalary: { not: null },
+            OR: [{ year: { lt: year } }, { year, month: { lt: month } }],
+          },
+          select: { userId: true, year: true, month: true, fixedSalary: true },
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
         }),
         prisma.$queryRaw<{ manager_id: string; revenue: string; deals: string }[]>(
           Prisma.sql`SELECT d.manager_id,
@@ -370,6 +381,9 @@ router.get(
       ]);
 
     const goalMap = new Map(goals.map((g) => [g.userId, g]));
+    // Список отсортирован от свежих к старым, поэтому первая запись на сотрудника — нужная.
+    const prevSalaryMap = new Map<string, (typeof prevSalaries)[number]>();
+    for (const row of prevSalaries) if (!prevSalaryMap.has(row.userId)) prevSalaryMap.set(row.userId, row);
     const factMap = new Map(factRaw.map((f) => [f.manager_id, f]));
     const assortByManager = groupBy(assortRaw, (r) => r.manager_id);
     const deadByManager = groupBy(deadRaw, (r) => r.manager_id);
@@ -444,11 +458,22 @@ router.get(
         workdays,
       });
 
+      const ownSalary = goal?.fixedSalary != null ? Number(goal.fixedSalary) : null;
+      const carried = ownSalary === null ? prevSalaryMap.get(m.id) : undefined;
+      const fixedSalary = ownSalary ?? (carried ? Number(carried.fixedSalary) : null);
+
       return {
         managerId: m.id,
         fullName: m.fullName,
         department: m.department ?? null,
         bonus,
+        salary: {
+          fixed: fixedSalary,
+          /** Не null — оклад на этот месяц не задавали, он перенесён с этого месяца. */
+          carriedFrom: carried ? { year: carried.year, month: carried.month } : null,
+          bonus: bonus.amount,
+          total: (fixedSalary ?? 0) + bonus.amount,
+        },
         plan: {
           revenueTarget,
           dealsTarget: goal?.dealsTarget ?? null,

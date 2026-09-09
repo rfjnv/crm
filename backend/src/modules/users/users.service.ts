@@ -393,12 +393,15 @@ export class UsersService {
         dealsTarget: dto.dealsTarget,
         revenueTarget: dto.revenueTarget,
         callNotesTarget: dto.callNotesTarget,
+        fixedSalary: dto.fixedSalary ?? null,
         updatedById: performerId,
       },
       update: {
         dealsTarget: dto.dealsTarget,
         revenueTarget: dto.revenueTarget,
         callNotesTarget: dto.callNotesTarget,
+        // undefined — поле не прислали (форма «Команда»), оставляем как было.
+        fixedSalary: dto.fixedSalary,
         updatedById: performerId,
       },
       select: {
@@ -409,6 +412,7 @@ export class UsersService {
         dealsTarget: true,
         revenueTarget: true,
         callNotesTarget: true,
+        fixedSalary: true,
         updatedAt: true,
         updatedBy: { select: { fullName: true } },
       },
@@ -426,6 +430,7 @@ export class UsersService {
         dealsTarget: row.dealsTarget,
         revenueTarget: row.revenueTarget,
         callNotesTarget: row.callNotesTarget,
+        fixedSalary: row.fixedSalary,
       },
     });
 
@@ -463,6 +468,7 @@ export class UsersService {
         dealsTarget: true,
         revenueTarget: true,
         callNotesTarget: true,
+        fixedSalary: true,
         updatedAt: true,
         updatedBy: { select: { fullName: true } },
       },
@@ -501,6 +507,7 @@ export class UsersService {
         dealsTarget: true,
         revenueTarget: true,
         callNotesTarget: true,
+        fixedSalary: true,
         updatedAt: true,
         updatedBy: { select: { fullName: true } },
       },

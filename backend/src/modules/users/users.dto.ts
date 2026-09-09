@@ -39,6 +39,11 @@ export const upsertMonthlyGoalDto = z.object({
   dealsTarget: z.number().int().min(0).nullable(),
   revenueTarget: z.number().min(0).nullable(),
   callNotesTarget: z.number().int().min(0).nullable(),
+  /**
+   * Оклад за месяц. Необязательное: «Команда» шлёт только цели, и пропуск поля
+   * не должен затирать уже сохранённый оклад (undefined в Prisma = не трогать).
+   */
+  fixedSalary: z.number().min(0).nullable().optional(),
 });
 
 export const monthlyGoalQueryDto = z.object({

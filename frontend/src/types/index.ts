@@ -877,6 +877,14 @@ export interface ManagerKpiRow {
   };
   clients: { served: number; new: number; returned: number; regular: number };
   bonus: ManagerBonus;
+  salary: {
+    /** Оклад за месяц; null — не задан ни на этот месяц, ни раньше. */
+    fixed: number | null;
+    /** Не null — оклад перенесён с этого месяца, на текущий его не задавали. */
+    carriedFrom: { year: number; month: number } | null;
+    bonus: number;
+    total: number;
+  };
   /** Контакт → покупка. `contacted` уже очищен от накрутки, см. эндпоинт. */
   leads: { contacted: number; converted: number; windowDays: number };
   attendance: {

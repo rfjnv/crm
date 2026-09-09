@@ -1,9 +1,14 @@
 import { Card, Table, Progress, Row, Col, Statistic, Typography, Alert, Tag, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { formatUZS } from '../utils/currency';
-import type { ManagerBonus, ManagerBonusCriterion, BonusTier } from '../types';
+import type { ManagerBonus, ManagerBonusCriterion, BonusTier, ManagerKpiRow } from '../types';
 
 const { Text } = Typography;
+
+const MONTHS = [
+  'январе', 'феврале', 'марте', 'апреле', 'мае', 'июне',
+  'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре',
+];
 
 /** Процент с одним знаком — «59,2%», а не «59.2 %». */
 function fmtPercent(value: number | null, digits = 1): string {
@@ -36,7 +41,9 @@ function tiersLabel(tiers: BonusTier[]): string {
  * Показываем каждый шаг, а не только итог: премия — цифра, которую человек
  * оспаривает, и «поверьте расчёту» здесь не работает.
  */
-export default function ManagerBonusCard({ bonus, tiers }: { bonus: ManagerBonus; tiers: BonusTier[] }) {
+export default function ManagerBonusCard(
+  { bonus, salary, tiers }: { bonus: ManagerBonus; salary: ManagerKpiRow['salary']; tiers: BonusTier[] },
+) {
   const noPlan = bonus.planPercent === null;
   const belowFirstTier = !noPlan && bonus.rate === 0;
   const redistributed = Math.abs(bonus.weightUsed - 100) > 0.05;
@@ -207,6 +214,40 @@ export default function ManagerBonusCard({ bonus, tiers }: { bonus: ManagerBonus
           </Table.Summary.Row>
         )}
       />
+
+      <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
+        <Col xs={8}>
+          <Statistic
+            title="Оклад"
+            value={salary.fixed ?? 0}
+            formatter={(v) => (salary.fixed === null ? '—' : formatUZS(Number(v)))}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        <Col xs={8}>
+          <Statistic
+            title="Бонус"
+            value={salary.bonus}
+            formatter={(v) => formatUZS(Number(v))}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        <Col xs={8}>
+          <Statistic
+            title="К выплате"
+            value={salary.total}
+            formatter={(v) => formatUZS(Number(v))}
+            valueStyle={{ fontSize: 18, color: '#52c41a' }}
+          />
+        </Col>
+      </Row>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {salary.fixed === null
+          ? 'Оклад на этот месяц не задан — в выплате только бонус. Задать можно в «Изменить план».'
+          : salary.carriedFrom
+            ? `Оклад перенесён с ${MONTHS[salary.carriedFrom.month - 1]} ${salary.carriedFrom.year}: на этот месяц его не задавали.`
+            : 'Оклад задан на этот месяц.'}
+      </Text>
 
       <div style={{ marginTop: 10 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
