@@ -20,10 +20,20 @@ import {
 const router = Router();
 router.use(authenticate);
 
-/** Схема бонуса — одна строка на компанию; нет строки, значит действуют значения по умолчанию. */
+/**
+ * Схема бонуса — одна строка на компанию; нет строки, значит действуют значения по умолчанию.
+ *
+ * Ошибку чтения глушим намеренно: если код выкатили раньше миграции, весь KPI
+ * отдела не должен падать из-за одной таблицы — бонус просто посчитается по
+ * умолчанию. Сохранение схемы при этом честно упадёт с ошибкой.
+ */
 async function loadBonusScheme(): Promise<BonusScheme> {
-  const row = await prisma.bonusScheme.findUnique({ where: { id: 'singleton' } });
-  return row ? parseBonusScheme(row) : DEFAULT_BONUS_SCHEME;
+  try {
+    const row = await prisma.bonusScheme.findUnique({ where: { id: 'singleton' } });
+    return row ? parseBonusScheme(row) : DEFAULT_BONUS_SCHEME;
+  } catch {
+    return DEFAULT_BONUS_SCHEME;
+  }
 }
 
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
