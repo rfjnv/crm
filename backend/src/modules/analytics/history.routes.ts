@@ -18,6 +18,32 @@ router.use(authenticate);
 
 const TZ = Prisma.sql`'Asia/Tashkent'`;
 
+/**
+ * Сделки, формирующие дебиторку (та же выборка, что и на странице должников).
+ */
+const SQL_DEBT_DEALS_FILTER = Prisma.sql`d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')`;
+
+/**
+ * Только денежные проводки — см. `lib/payment-kind` (CASH_KINDS).
+ *
+ * CREDIT_TRANSFER — это зачёт переплаты между сделками ОДНОГО клиента: деньги уже
+ * посчитаны как CASH_IN на сделке-источнике. В балансе, который группируется по клиенту,
+ * такая проводка выглядела бы вторым приходом тех же денег и рисовала фантомную переплату.
+ * ADJUSTMENT — служебное выравнивание, тоже не движение денег.
+ */
+const SQL_CASH_PAYMENT_KINDS = Prisma.sql`p.kind IN ('CASH_IN', 'REVERSAL')`;
+
+/**
+ * Начало месяца по календарю Ташкента как UTC-naive timestamp.
+ *
+ * Колонки `created_at` / `paid_at` — `timestamp without time zone` в UTC, поэтому границу
+ * нужно привести к тому же типу. Прямое сравнение с `make_timestamptz(...)` полагалось бы
+ * на TimeZone сессии Postgres и «ехало» бы на несколько часов.
+ */
+function sqlTashkentMonthStartUtc(year: number, month: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`(make_timestamptz(${year}::int, ${month}, 1, 0, 0, 0, ${TZ}) AT TIME ZONE 'UTC')`;
+}
+
 // 00:00 Asia/Tashkent = 19:00 UTC previous day  (UTC+5)
 function getYearBounds(year: number) {
   const yearStart = new Date(`${year - 1}-12-31T19:00:00Z`); // Jan 1 00:00 Tashkent
@@ -63,7 +89,7 @@ router.get(
 
     // Snapshot: admin-only, past years
     if (!dealScope.managerId && isPastYear(year)) {
-      const cached = await getSnapshot({ year, month: 0, type: 'overview-v7' });
+      const cached = await getSnapshot({ year, month: 0, type: 'overview-v8' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -96,16 +122,27 @@ router.get(
       WHERE p.paid_at >= ${yearStart} AND p.paid_at < ${yearEnd}`,
     );
 
-    // Outstanding debt — per-client net (finance-aligned), then positive pool / prepayment pool / true net
+    // Outstanding debt — per-client net (finance-aligned), then positive pool / prepayment pool / true net.
+    // Оплата берётся из журнала платежей с отсечкой на конец года, а не из текущего
+    // `deals.paid_amount`: иначе при просмотре ПРОШЛОГО года из исторических сделок
+    // вычитались бы платежи, поступившие уже в следующих годах.
     const debtRaw = await prisma.$queryRaw<{ total_debt: string; total_overpayments: string; net_balance: string }[]>(
       Prisma.sql`WITH per_client AS (
-        SELECT d.client_id,
-          COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0) AS net
-        FROM deals d
-        WHERE d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')
-          AND d.created_at < ${yearEnd}${dealFilter}
-        GROUP BY d.client_id
+        SELECT l.client_id, SUM(l.delta) AS net
+        FROM (
+          SELECT d.client_id, d.amount AS delta
+          FROM deals d
+          WHERE ${SQL_DEBT_DEALS_FILTER}
+            AND d.created_at < ${yearEnd}${dealFilter}
+          UNION ALL
+          SELECT d.client_id, -p.amount AS delta
+          FROM payments p
+          JOIN deals d ON d.id = p.deal_id
+          WHERE ${SQL_CASH_PAYMENT_KINDS}
+            AND ${SQL_DEBT_DEALS_FILTER}
+            AND p.paid_at < ${yearEnd}${dealFilter}
+        ) l
+        GROUP BY l.client_id
       )
       SELECT
         COALESCE(SUM(CASE WHEN net > 0 THEN net ELSE 0 END), 0)::text as total_debt,
@@ -200,46 +237,41 @@ router.get(
     );
     const collectedMap = new Map(collectedByMonthRaw.map((r) => [r.month, Number(r.collected)]));
 
-    // Opening/closing balance per month — use per-client payment sums (client_id is reliable)
+    // Opening/closing balance per month — дебиторка как журнал: +сумма сделки при создании,
+    // −денежный платёж по дате оплаты. Обе стороны скоупятся ОДИНАКОВО (менеджер, статус,
+    // архив): раньше платежи брались вообще без фильтров, из-за чего у менеджера баланс
+    // уходил в глубокий минус, а у админа вычитались оплаты по отменённым сделкам.
     const balanceRaw = await prisma.$queryRaw<
       { month: number; opening_balance: string; closing_balance: string }[]
     >(
-      Prisma.sql`WITH client_deals AS (
-        SELECT d.client_id,
-          SUM(d.amount) FILTER (
-            WHERE d.created_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ})
-          ) as amount_at_open,
-          SUM(d.amount) FILTER (
-            WHERE d.created_at < make_timestamptz(${year}::int, m.month::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-          ) as amount_at_close,
-          m.month
+      Prisma.sql`WITH ledger AS (
+        SELECT d.created_at AS ts, d.amount AS delta
         FROM deals d
-        CROSS JOIN generate_series(1, 12) as m(month)
-        WHERE d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')
+        WHERE ${SQL_DEBT_DEALS_FILTER}
           AND d.created_at < ${yearEnd}${dealFilter}
-        GROUP BY d.client_id, m.month
-      ),
-      client_payments AS (
-        SELECT p.client_id,
-          COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}::int, ms.month::int, 1, 0, 0, 0, ${TZ})
-          ), 0) as paid_at_open,
-          COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}::int, ms.month::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-          ), 0) as paid_at_close,
-          ms.month
+        UNION ALL
+        SELECT p.paid_at AS ts, -p.amount AS delta
         FROM payments p
-        CROSS JOIN generate_series(1, 12) as ms(month)
-        GROUP BY p.client_id, ms.month
+        JOIN deals d ON d.id = p.deal_id
+        WHERE ${SQL_CASH_PAYMENT_KINDS}
+          AND ${SQL_DEBT_DEALS_FILTER}
+          AND p.paid_at < ${yearEnd}${dealFilter}
+      ),
+      per_month AS (
+        SELECT
+          CASE
+            WHEN l.ts < ${yearStart} THEN 0
+            ELSE EXTRACT(MONTH FROM (l.ts AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int
+          END AS month,
+          SUM(l.delta) AS delta
+        FROM ledger l
+        GROUP BY 1
       )
-      SELECT cd.month,
-        COALESCE(SUM(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0)), 0)::text as opening_balance,
-        COALESCE(SUM(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0)), 0)::text as closing_balance
-      FROM client_deals cd
-      LEFT JOIN client_payments cp ON cp.client_id = cd.client_id AND cp.month = cd.month
-      GROUP BY cd.month
-      ORDER BY cd.month`,
+      SELECT m.month,
+        COALESCE((SELECT SUM(pm.delta) FROM per_month pm WHERE pm.month < m.month), 0)::text as opening_balance,
+        COALESCE((SELECT SUM(pm.delta) FROM per_month pm WHERE pm.month <= m.month), 0)::text as closing_balance
+      FROM generate_series(1, 12) AS m(month)
+      ORDER BY m.month`,
     );
     const balanceMap = new Map(balanceRaw.map((r) => [r.month, { opening: Number(r.opening_balance), closing: Number(r.closing_balance) }]));
 
@@ -463,18 +495,33 @@ router.get(
         debt: string;
       }[]
     >(
-      Prisma.sql`SELECT c.id, c.company_name,
-        COALESCE(SUM(d.amount), 0)::text as total_amount,
-        COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0))::text as debt
-      FROM deals d
-      JOIN clients c ON c.id = d.client_id
-      WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')
-        AND d.created_at < ${yearEnd}${dealFilter}
-      GROUP BY c.id, c.company_name
-      HAVING (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) > 0
-      ORDER BY (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) DESC
+      // Оплата — из журнала платежей с той же отсечкой, что и у KPI «Долг» выше,
+      // иначе сумма по списку не сходилась бы с общей цифрой.
+      Prisma.sql`WITH client_amounts AS (
+        SELECT d.client_id, COALESCE(SUM(d.amount), 0) as total_amount
+        FROM deals d
+        WHERE ${SQL_DEBT_DEALS_FILTER}
+          AND d.created_at < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id
+      ),
+      client_paid AS (
+        SELECT d.client_id, COALESCE(SUM(p.amount), 0) as total_paid
+        FROM payments p
+        JOIN deals d ON d.id = p.deal_id
+        WHERE ${SQL_CASH_PAYMENT_KINDS}
+          AND ${SQL_DEBT_DEALS_FILTER}
+          AND p.paid_at < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id
+      )
+      SELECT c.id, c.company_name,
+        ca.total_amount::text as total_amount,
+        COALESCE(cp.total_paid, 0)::text as total_paid,
+        (ca.total_amount - COALESCE(cp.total_paid, 0))::text as debt
+      FROM client_amounts ca
+      JOIN clients c ON c.id = ca.client_id
+      LEFT JOIN client_paid cp ON cp.client_id = ca.client_id
+      WHERE (ca.total_amount - COALESCE(cp.total_paid, 0)) > 0
+      ORDER BY (ca.total_amount - COALESCE(cp.total_paid, 0)) DESC
       LIMIT 30`,
     );
     const debtors = debtorsRaw.map((r) => ({
@@ -576,7 +623,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastYear(year)) {
-      saveSnapshot({ year, month: 0, type: 'overview-v7' }, responseData).catch(() => {});
+      saveSnapshot({ year, month: 0, type: 'overview-v8' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -699,7 +746,7 @@ router.get(
 
     // Snapshot: admin-only, past months
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      const cached = await getSnapshot({ year, month, type: 'month-detail-v5' });
+      const cached = await getSnapshot({ year, month, type: 'month-detail-v6' });
       if (cached) { res.json(cached); return; }
     }
 
@@ -793,57 +840,64 @@ router.get(
       ORDER BY p.amount DESC`,
     );
 
-    // Debt snapshot at end of month — use per-client payment sums (client_id is reliable)
+    const monthStart = sqlTashkentMonthStartUtc(year, Prisma.sql`${month}::int`);
+    const monthEnd = Prisma.sql`(${monthStart} + interval '1 month')`;
+
+    // Баланс на начало/конец месяца — тот же журнал, что и в годовом обзоре.
     const monthBalanceRaw = await prisma.$queryRaw<
       { opening_balance: string; closing_balance: string }[]
     >(
-      Prisma.sql`WITH client_deals AS (
-        SELECT d.client_id,
-          SUM(d.amount) FILTER (
-            WHERE d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ})
-          ) as amount_at_open,
-          SUM(d.amount) FILTER (
-            WHERE d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-          ) as amount_at_close
+      Prisma.sql`WITH ledger AS (
+        SELECT d.created_at AS ts, d.amount AS delta
         FROM deals d
-        WHERE d.is_archived = false
-          AND d.status NOT IN ('CANCELED','REJECTED')
-          AND d.created_at < ${yearEnd}${dealFilter}
-        GROUP BY d.client_id
-      ),
-      client_payments AS (
-        SELECT p.client_id,
-          COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ})
-          ), 0) as paid_at_open,
-          COALESCE(SUM(p.amount) FILTER (
-            WHERE p.paid_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-          ), 0) as paid_at_close
+        WHERE ${SQL_DEBT_DEALS_FILTER}
+          AND d.created_at < ${monthEnd}${dealFilter}
+        UNION ALL
+        SELECT p.paid_at AS ts, -p.amount AS delta
         FROM payments p
-        GROUP BY p.client_id
+        JOIN deals d ON d.id = p.deal_id
+        WHERE ${SQL_CASH_PAYMENT_KINDS}
+          AND ${SQL_DEBT_DEALS_FILTER}
+          AND p.paid_at < ${monthEnd}${dealFilter}
       )
       SELECT
-        COALESCE(SUM(COALESCE(cd.amount_at_open, 0) - COALESCE(cp.paid_at_open, 0)), 0)::text as opening_balance,
-        COALESCE(SUM(COALESCE(cd.amount_at_close, 0) - COALESCE(cp.paid_at_close, 0)), 0)::text as closing_balance
-      FROM client_deals cd
-      LEFT JOIN client_payments cp ON cp.client_id = cd.client_id`,
+        COALESCE(SUM(l.delta) FILTER (WHERE l.ts < ${monthStart}), 0)::text as opening_balance,
+        COALESCE(SUM(l.delta), 0)::text as closing_balance
+      FROM ledger l`,
     );
 
+    // Должники на конец месяца. Оплату берём из журнала платежей по `paid_at`, а НЕ из
+    // `deals.paid_amount`: это текущее накопленное значение, поэтому платежи, поступившие
+    // уже после того месяца, задним числом занижали исторический долг — и снимок
+    // противоречил opening/closing balance в той же карточке.
     const debtSnapshotDebtorsRaw = await prisma.$queryRaw<
       { id: string; company_name: string; total_amount: string; total_paid: string; debt: string }[]
     >(
-      Prisma.sql`SELECT c.id, c.company_name,
-        SUM(d.amount)::text as total_amount,
-        COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0))::text as debt
-      FROM deals d
-      JOIN clients c ON c.id = d.client_id
-      WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-        AND d.created_at < make_timestamptz(${year}::int, ${month}::int, 1, 0, 0, 0, ${TZ}) + interval '1 month'
-      GROUP BY c.id, c.company_name
-      HAVING (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) > 0
-      ORDER BY (COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0)) DESC
+      Prisma.sql`WITH client_amounts AS (
+        SELECT d.client_id, COALESCE(SUM(d.amount), 0) as total_amount
+        FROM deals d
+        WHERE ${SQL_DEBT_DEALS_FILTER}
+          AND d.created_at < ${monthEnd}${dealFilter}
+        GROUP BY d.client_id
+      ),
+      client_paid AS (
+        SELECT d.client_id, COALESCE(SUM(p.amount), 0) as total_paid
+        FROM payments p
+        JOIN deals d ON d.id = p.deal_id
+        WHERE ${SQL_CASH_PAYMENT_KINDS}
+          AND ${SQL_DEBT_DEALS_FILTER}
+          AND p.paid_at < ${monthEnd}${dealFilter}
+        GROUP BY d.client_id
+      )
+      SELECT c.id, c.company_name,
+        ca.total_amount::text as total_amount,
+        COALESCE(cp.total_paid, 0)::text as total_paid,
+        (ca.total_amount - COALESCE(cp.total_paid, 0))::text as debt
+      FROM client_amounts ca
+      JOIN clients c ON c.id = ca.client_id
+      LEFT JOIN client_paid cp ON cp.client_id = ca.client_id
+      WHERE (ca.total_amount - COALESCE(cp.total_paid, 0)) > 0
+      ORDER BY (ca.total_amount - COALESCE(cp.total_paid, 0)) DESC
       LIMIT 30`,
     );
 
@@ -893,7 +947,7 @@ router.get(
     };
 
     if (!dealScope.managerId && isPastMonth(year, month)) {
-      saveSnapshot({ year, month, type: 'month-detail-v5' }, responseData).catch(() => {});
+      saveSnapshot({ year, month, type: 'month-detail-v6' }, responseData).catch(() => {});
     }
 
     res.json(responseData);
@@ -1882,6 +1936,7 @@ router.get(
   '/export/debt-breakdown',
   asyncHandler(async (req: Request, res: Response) => {
     const year = parseYear(req);
+    const { yearEnd } = getYearBounds(year);
     const dealScope = extractDealScope(req);
     const { dealFilter } = buildAclFragments(dealScope);
 
@@ -1895,19 +1950,39 @@ router.get(
         overpayment: string;
       }[]
     >(
-      Prisma.sql`SELECT c.company_name,
-        COUNT(d.id)::text as deals_count,
-        COALESCE(SUM(d.amount), 0)::text as total_amount,
-        COALESCE(SUM(d.paid_amount), 0)::text as total_paid,
-        GREATEST(COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0), 0)::text as debt,
-        GREATEST(COALESCE(SUM(d.paid_amount), 0) - COALESCE(SUM(d.amount), 0), 0)::text as overpayment
-      FROM deals d
-      JOIN clients c ON c.id = d.client_id
-      WHERE d.is_archived = false
-        AND d.status NOT IN ('CANCELED','REJECTED')${dealFilter}
-      GROUP BY c.id, c.company_name
-      HAVING COALESCE(SUM(d.amount), 0) <> COALESCE(SUM(d.paid_amount), 0)
-      ORDER BY GREATEST(COALESCE(SUM(d.amount), 0) - COALESCE(SUM(d.paid_amount), 0), 0) DESC`,
+      // Отсечка на конец выбранного года и оплата из журнала платежей — те же правила,
+      // что у списка «Должники». Раньше запрос игнорировал год и брал текущий
+      // `paid_amount`, поэтому файл с именем debt-breakdown-2025 содержал сегодняшние
+      // цифры и не сходился с таблицей на экране.
+      Prisma.sql`WITH client_amounts AS (
+        SELECT d.client_id,
+          COUNT(d.id) as deals_count,
+          COALESCE(SUM(d.amount), 0) as total_amount
+        FROM deals d
+        WHERE ${SQL_DEBT_DEALS_FILTER}
+          AND d.created_at < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id
+      ),
+      client_paid AS (
+        SELECT d.client_id, COALESCE(SUM(p.amount), 0) as total_paid
+        FROM payments p
+        JOIN deals d ON d.id = p.deal_id
+        WHERE ${SQL_CASH_PAYMENT_KINDS}
+          AND ${SQL_DEBT_DEALS_FILTER}
+          AND p.paid_at < ${yearEnd}${dealFilter}
+        GROUP BY d.client_id
+      )
+      SELECT c.company_name,
+        ca.deals_count::text as deals_count,
+        ca.total_amount::text as total_amount,
+        COALESCE(cp.total_paid, 0)::text as total_paid,
+        GREATEST(ca.total_amount - COALESCE(cp.total_paid, 0), 0)::text as debt,
+        GREATEST(COALESCE(cp.total_paid, 0) - ca.total_amount, 0)::text as overpayment
+      FROM client_amounts ca
+      JOIN clients c ON c.id = ca.client_id
+      LEFT JOIN client_paid cp ON cp.client_id = ca.client_id
+      WHERE ca.total_amount <> COALESCE(cp.total_paid, 0)
+      ORDER BY GREATEST(ca.total_amount - COALESCE(cp.total_paid, 0), 0) DESC`,
     );
 
     const BOM = '\uFEFF';
