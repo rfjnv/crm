@@ -67,16 +67,13 @@ export default function ManagerKpiPanel() {
   });
 
   const savePlan = useMutation({
-    mutationFn: (v: {
-      userId: string; revenueTarget: number | null; dealsTarget: number | null;
-      callNotesTarget: number | null; fixedSalary: number | null;
-    }) =>
+    // Планы по сделкам и контактам здесь не трогаем: их не присылаем совсем,
+    // иначе сохранение оклада обнулило бы то, что задали на странице «Команда».
+    mutationFn: (v: { userId: string; revenueTarget: number | null; fixedSalary: number | null }) =>
       usersApi.upsertMonthlyGoal(v.userId, {
         year,
         month: monthNum,
         revenueTarget: v.revenueTarget,
-        dealsTarget: v.dealsTarget,
-        callNotesTarget: v.callNotesTarget,
         fixedSalary: v.fixedSalary,
       }),
     onSuccess: () => {
@@ -117,8 +114,6 @@ export default function ManagerKpiPanel() {
     setPlanFor(row);
     planForm.setFieldsValue({
       revenueTarget: row.plan.revenueTarget ?? undefined,
-      dealsTarget: row.plan.dealsTarget ?? undefined,
-      callNotesTarget: row.plan.callNotesTarget ?? undefined,
       // Если оклад перенесён с прошлого месяца, подставляем его же: сохранение
       // закрепит сумму за этим месяцем.
       fixedSalary: row.salary.fixed ?? undefined,
@@ -725,8 +720,6 @@ export default function ManagerKpiPanel() {
             savePlan.mutate({
               userId: planFor.managerId,
               revenueTarget: v.revenueTarget ?? null,
-              dealsTarget: v.dealsTarget ?? null,
-              callNotesTarget: v.callNotesTarget ?? null,
               fixedSalary: v.fixedSalary ?? null,
             });
           }}
@@ -742,12 +735,6 @@ export default function ManagerKpiPanel() {
           </Form.Item>
           <Form.Item name="revenueTarget" label="План по выручке (сум)">
             <InputNumber style={{ width: '100%' }} min={0} step={1000000} />
-          </Form.Item>
-          <Form.Item name="dealsTarget" label="План по сделкам">
-            <InputNumber style={{ width: '100%' }} min={0} />
-          </Form.Item>
-          <Form.Item name="callNotesTarget" label="План по контактам">
-            <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
           <Text type="secondary" style={{ fontSize: 12 }}>
             План и оклад задаются на выбранный месяц отдельно для каждого сотрудника.

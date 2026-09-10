@@ -80,10 +80,10 @@ export const usersApi = {
     data: {
       year?: number;
       month?: number;
-      dealsTarget: number | null;
+      /** Не передавать — значит не менять уже сохранённое значение. */
+      dealsTarget?: number | null;
       revenueTarget: number | null;
-      callNotesTarget: number | null;
-      /** Не передавать — значит не менять уже сохранённый оклад. */
+      callNotesTarget?: number | null;
       fixedSalary?: number | null;
     },
   ) => client.put<MonthlyGoalProgress>(`/users/${userId}/monthly-goal`, data).then((r) => r.data),

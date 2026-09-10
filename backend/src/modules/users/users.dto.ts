@@ -36,9 +36,13 @@ export const updateUserDto = z.object({
 export const upsertMonthlyGoalDto = z.object({
   year: z.number().int().min(2020).max(2100).optional(),
   month: z.number().int().min(1).max(12).optional(),
-  dealsTarget: z.number().int().min(0).nullable(),
+  /**
+   * Цели по сделкам и контактам правит только страница «Команда». Форма KPI их
+   * не присылает — пропуск поля означает «не менять», а не «обнулить».
+   */
+  dealsTarget: z.number().int().min(0).nullable().optional(),
   revenueTarget: z.number().min(0).nullable(),
-  callNotesTarget: z.number().int().min(0).nullable(),
+  callNotesTarget: z.number().int().min(0).nullable().optional(),
   /**
    * Оклад за месяц. Необязательное: «Команда» шлёт только цели, и пропуск поля
    * не должен затирать уже сохранённый оклад (undefined в Prisma = не трогать).
