@@ -18,6 +18,7 @@ import { formatUZS, formatFullNumber, formatShortNumber } from '../utils/currenc
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
+import { SHOW_MY_MONTHLY_GOALS } from '../constants/featureFlags';
 import { useThemeStore } from '../store/themeStore';
 import { Area, Column } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
@@ -586,7 +587,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Monthly goal (compact, clickable → settings) ── */}
-      {hasMyGoal && myGoal && (
+      {SHOW_MY_MONTHLY_GOALS && hasMyGoal && myGoal && (
         <div className={isMobile ? 'section' : undefined}>
           <Card
             bordered={false}

@@ -22,6 +22,7 @@ import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import isoWeek from 'dayjs/plugin/isoWeek';
+import { SHOW_MY_MONTHLY_GOALS } from '../constants/featureFlags';
 
 dayjs.extend(isoWeek);
 dayjs.locale('ru');
@@ -952,7 +953,7 @@ export default function TasksPage() {
         </Row>
       </Card>
 
-      {myGoal && (myGoal.targets.deals != null || myGoal.targets.revenue != null || myGoal.targets.callNotes != null) && (
+      {SHOW_MY_MONTHLY_GOALS && myGoal && (myGoal.targets.deals != null || myGoal.targets.revenue != null || myGoal.targets.callNotes != null) && (
         <Card size="small" style={{ marginBottom: 12 }}>
           <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
             Мои цели на {dayjs().format('MMMM YYYY')}
