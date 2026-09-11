@@ -1614,6 +1614,139 @@ export class DealsService {
     return this.findById(dealId, user);
   }
 
+  /**
+   * Ответ склада по ОДНОЙ позиции (Telegram: «взвесили — ввели кг»), в отличие от
+   * submitWarehouseResponse, который требует ответить сразу по всем позициям без количества.
+   * Как только у сделки не остаётся позиций без количества — доводим до конца ровно то же,
+   * что и bulk-ответ (пересчёт суммы, смена статуса, синхронизация Telegram).
+   */
+  async submitWarehouseResponseForItem(
+    dealId: string,
+    dealItemId: string,
+    input: { requestedQty: number; price?: number; rollCount?: number; warehouseComment?: string | null },
+    user: AuthUser,
+  ): Promise<{ allDone: boolean; itemName: string; qty: number }> {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, isArchived: false },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, name: true, salePrice: true, category: true, rollStock: true } },
+          },
+        },
+      },
+    });
+
+    if (!deal) {
+      throw new AppError(404, 'Сделка не найдена');
+    }
+    if (deal.status !== 'WAITING_STOCK_CONFIRMATION') {
+      throw new AppError(400, 'Сделка должна быть в статусе "Ожидает подтверждения склада"');
+    }
+
+    const canSubmitStock = ['WAREHOUSE', 'LOADER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+    if (!canSubmitStock) {
+      throw new AppError(403, 'Недостаточно прав для ответа склада');
+    }
+
+    const row = deal.items.find((i) => i.id === dealItemId);
+    if (!row) {
+      throw new AppError(404, 'Позиция не найдена в сделке');
+    }
+    if (!dealItemNeedsStockQty(row)) {
+      throw new AppError(400, 'У этой позиции уже указано количество');
+    }
+
+    let price = input.price;
+    let priceSource: 'warehouse' | 'manager' | 'catalog' = 'warehouse';
+    if (price == null || price <= 0) {
+      price = row.price != null ? Number(row.price) : 0;
+      priceSource = 'manager';
+    }
+    if (price == null || price <= 0) {
+      const sp = row.product?.salePrice;
+      price = sp != null ? Number(sp) : 0;
+      priceSource = 'catalog';
+    }
+    if (!price || price <= 0) {
+      throw new AppError(400, 'Укажите цену или задайте цену продажи у товара в каталоге');
+    }
+
+    const qty = input.requestedQty;
+    const whComment = input.warehouseComment?.trim() || null;
+
+    const existingRollCount = row.rollCount != null ? Number(row.rollCount) : null;
+    const rollCount = resolveItemRollCount(
+      { rollCount: input.rollCount ?? existingRollCount, requestComment: row.requestComment },
+      { name: row.product?.name ?? 'товар', category: row.product?.category ?? null },
+    );
+
+    const autoStatus = autoRouteStatusByPaymentMethod(deal.paymentMethod, deal.transferInn);
+    const targetStatus: DealStatus = autoStatus ?? 'IN_PROGRESS';
+
+    let allDone = false;
+    await prisma.$transaction(async (tx) => {
+      await tx.dealItem.update({
+        where: { id: dealItemId },
+        data: {
+          warehouseComment: whComment,
+          requestedQty: qty,
+          price,
+          lineTotal: qty * price,
+          rollCount,
+          confirmedBy: user.userId,
+          confirmedAt: new Date(),
+        },
+      });
+
+      const afterRows = await tx.dealItem.findMany({ where: { dealId } });
+      const stillIncomplete = afterRows.some((i) => dealItemNeedsStockQty(i));
+      if (!stillIncomplete) {
+        allDone = true;
+        await recalcDealAmountFromItemsInTx(tx, dealId);
+        await tx.deal.update({ where: { id: dealId }, data: { status: targetStatus } });
+      }
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE',
+      entityType: 'deal_warehouse_prices',
+      entityId: dealId,
+      before: null,
+      after: { items: [{ productId: row.productId, productName: row.product?.name ?? row.productId, qty, price, priceSource, via: 'telegram' }] },
+    });
+
+    if (allDone) {
+      await auditLog({
+        userId: user.userId,
+        action: 'STATUS_CHANGE',
+        entityType: 'deal',
+        entityId: dealId,
+        before: { status: deal.status },
+        after: { status: targetStatus, respondedVia: 'telegram-weigh' },
+      });
+
+      void cleanupStockWaitTelegramMessages(dealId, 'WAITING_STOCK_CONFIRMATION', targetStatus).catch((err) => {
+        console.error('[Telegram deal groups] cleanupStockWaitTelegramMessages:', err);
+      });
+
+      void onDealStatusChanged(dealId, deal.status, targetStatus).catch((err) => {
+        console.error('[Telegram deal groups] onDealStatusChanged (stock→work):', err);
+      });
+
+      if (targetStatus === 'WAITING_FINANCE' || targetStatus === 'WAITING_WAREHOUSE_MANAGER') {
+        await this.notifyRoutedTarget(dealId, deal.title, targetStatus, user.userId);
+      }
+
+      void syncDealTelegramGroupMessages(dealId).catch((err) => {
+        console.error('[Telegram deal groups] syncDealTelegramGroupMessages:', err);
+      });
+    }
+
+    return { allDone, itemName: row.product?.name ?? 'товар', qty };
+  }
+
   // ==================== SET ITEM QUANTITIES (Manager fills after warehouse response) ====================
 
   async setItemQuantities(dealId: string, dto: SetItemQuantitiesDto, user: AuthUser) {

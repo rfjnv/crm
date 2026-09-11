@@ -4,7 +4,7 @@ import { config } from '../../lib/config';
 import { getFirstName } from '../../lib/name-utils';
 import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
 import { telegramService } from './telegram.service';
-import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX } from './telegram-admin.constants';
+import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX, TG_WAREHOUSE_WEIGH_PREFIX } from './telegram-admin.constants';
 
 const TASHKENT_TZ = 'Asia/Tashkent';
 
@@ -215,9 +215,12 @@ type DealRowWarehouseIntakeTg = {
   client: { companyName: string; contactName: string | null };
   manager: { fullName: string };
   items: Array<{
+    id: string;
     requestedQty: unknown;
     rollCount?: unknown;
     requestComment: string | null;
+    confirmedAt?: Date | null;
+    confirmer?: { fullName: string } | null;
     product: {
       name: string;
       sku: string | null;
@@ -228,6 +231,21 @@ type DealRowWarehouseIntakeTg = {
   }>;
   comments?: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
 };
+
+/** Позиция ждёт ответа склада (кг/шт не указаны) — нужна кнопка «Ввести вес». */
+function warehouseItemNeedsQty(it: { requestedQty: unknown }): boolean {
+  const n = Number(it.requestedQty);
+  return it.requestedQty == null || !Number.isFinite(n) || n <= 0;
+}
+
+function formatWeighedAt(d: Date | null | undefined): string {
+  if (!d) return '';
+  try {
+    return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: TASHKENT_TZ }).format(d);
+  } catch {
+    return '';
+  }
+}
 
 function buildPaymentShortLine(deal: DealRowWarehouseIntakeTg): string | null {
   if (!deal.paymentMethod && deal.paymentType === 'FULL') return null;
@@ -242,16 +260,25 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
   const lines = deal.items.map((it) => {
     const name = esc(it.product.name);
     const comment = it.requestComment?.trim() ? ` (${esc(it.requestComment.trim())})` : '';
+    const weighedBy = it.confirmer?.fullName ? esc(getFirstName(it.confirmer.fullName)) : null;
+    const weighedAt = formatWeighedAt(it.confirmedAt);
+    const weighedTag = weighedBy ? ` <i>(${weighedBy}${weighedAt ? `, ${esc(weighedAt)}` : ''})</i>` : '';
 
     if (isRollTrackedProduct({ category: it.product.category ?? null, rollStock: it.product.rollStock })) {
       const rollCount = it.rollCount != null ? Number(it.rollCount) : parseRollCountFromComment(it.requestComment);
-      const qtyPart = rollCount != null && rollCount > 0 ? ` — <b>${esc(String(rollCount))} рул.</b>` : ' — <b>⚠️ рулоны не указаны</b>';
-      return `• ${name}${qtyPart}${comment}`;
+      const rollsPart = rollCount != null && rollCount > 0 ? `${esc(String(rollCount))} рул.` : '⚠️ рулоны не указаны';
+      const qty = Number(it.requestedQty);
+      const weighedPart = Number.isFinite(qty) && qty > 0
+        ? ` → <b>${esc(String(qty))} кг</b> ✅${weighedTag}`
+        : ' · <b>⚖️ вес не введён</b>';
+      return `• ${name} — <b>${rollsPart}</b>${weighedPart}${comment}`;
     }
 
     const unit = it.product.unit ? ` ${esc(it.product.unit)}` : '';
     const qty = Number(it.requestedQty);
-    const qtyPart = Number.isFinite(qty) && qty > 0 ? ` — <b>${esc(String(qty))}${unit}</b>` : '';
+    const qtyPart = Number.isFinite(qty) && qty > 0
+      ? ` — <b>${esc(String(qty))}${unit}</b>${weighedTag}`
+      : ' — <b>⚖️ количество не введено</b>';
     return `• ${name}${qtyPart}${comment}`;
   });
 
@@ -280,6 +307,27 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     lines.length ? lines.join('\n') : '—',
     ...(commentsBlock ? [commentsBlock] : []),
   ].join('\n');
+}
+
+/** Короткая подпись кнопки: SKU, иначе первые слова названия (лимит Telegram — 64 символа на текст кнопки). */
+function shortItemButtonLabel(product: { name: string; sku: string | null }): string {
+  const label = product.sku?.trim() || product.name.trim();
+  return label.length > 28 ? `${label.slice(0, 27)}…` : label;
+}
+
+/**
+ * Кнопки «⚖️ Ввести вес» под постом склада — по одной на позицию без количества.
+ * Пусто, если весь список уже заполнен (обычный CRM-линк остаётся отдельным рядом).
+ */
+export function buildWarehouseWeighKeyboard(
+  deal: DealRowWarehouseIntakeTg,
+): Array<Array<{ text: string; callback_data: string }>> {
+  return deal.items
+    .filter((it) => warehouseItemNeedsQty(it))
+    .map((it) => [{
+      text: `⚖️ ${shortItemButtonLabel(it.product)}`,
+      callback_data: `${TG_WAREHOUSE_WEIGH_PREFIX}${it.id}`,
+    }]);
 }
 
 function buildProductionIntakeTelegramHtml(deal: DealRowWarehouseIntakeTg): string {
@@ -657,6 +705,7 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
       items: {
         include: {
           product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+          confirmer: { select: { fullName: true } },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -677,8 +726,14 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
   }
 
   const body = buildWarehouseQueueTelegramHtml(deal);
+  const keyboard = buildWarehouseWeighKeyboard(deal);
 
-  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
+  const sentId = await telegramService.sendHtmlMessageWithKeyboard(
+    chatId,
+    body,
+    { inline_keyboard: keyboard },
+    dealLinkPath(dealId),
+  );
   if (sentId == null) {
     await prisma.deal.update({ where: { id: dealId }, data: { sentToWarehouse: false } }).catch(() => {});
     console.warn('[Telegram deal groups] trySendWarehouseTelegram: send failed, флаг сброшен dealId=', dealId);
@@ -1172,6 +1227,7 @@ async function loadDealForTelegramSync(dealId: string) {
       items: {
         include: {
           product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+          confirmer: { select: { fullName: true } },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -1314,19 +1370,25 @@ export async function syncDealTelegramGroupMessages(
     html: string,
     field: 'warehouseTelegramMessageId' | 'productionIntakeTelegramMessageId' | 'financeTelegramMessageId',
     label: string,
+    keyboard?: Array<Array<{ text: string; callback_data: string }>>,
   ): Promise<void> => {
     if (repost) {
-      const newId = await repostGroupHtmlMessage(chatId, mid, html, path);
+      const newId = keyboard
+        ? await telegramService.sendHtmlMessageWithKeyboard(chatId, html, { inline_keyboard: keyboard }, path)
+        : await repostGroupHtmlMessage(chatId, mid, html, path);
       if (newId == null) {
         console.warn(`[Telegram deal groups] sync: ${label} repost failed dealId=`, dealId);
         return;
       }
+      if (keyboard) await telegramService.deleteGroupMessage(chatId, mid);
       await prisma.deal
         .update({ where: { id: dealId }, data: { [field]: String(newId) } })
         .catch((err) => console.error(`[Telegram deal groups] sync: save ${field}:`, err));
       return;
     }
-    const ok = await telegramService.editGroupHtmlMessage(chatId, mid, html, path);
+    const ok = keyboard
+      ? await telegramService.editGroupHtmlMessageWithKeyboard(chatId, mid, html, { inline_keyboard: keyboard }, path)
+      : await telegramService.editGroupHtmlMessage(chatId, mid, html, path);
     if (!ok) {
       console.warn(`[Telegram deal groups] sync: ${label} edit failed dealId=`, dealId);
     }
@@ -1337,7 +1399,7 @@ export async function syncDealTelegramGroupMessages(
     const mid = parseStoredTelegramMessageId(deal.warehouseTelegramMessageId);
     if (mid != null) {
       const html = appendSyncFootnote(buildWarehouseQueueTelegramHtml(deal), opts?.footnote);
-      await refreshGroupMessage(chatWh, mid, html, 'warehouseTelegramMessageId', 'warehouse');
+      await refreshGroupMessage(chatWh, mid, html, 'warehouseTelegramMessageId', 'warehouse', buildWarehouseWeighKeyboard(deal));
     }
   }
 
@@ -1617,6 +1679,7 @@ export async function sendDealToGroupManually(
       items: {
         include: {
           product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+          confirmer: { select: { fullName: true } },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -1634,9 +1697,11 @@ export async function sendDealToGroupManually(
   if (!deal) return { ok: false, error: 'Deal not found' };
 
   let body: string;
+  let keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
 
   if (group === 'warehouse') {
     body = buildWarehouseQueueTelegramHtml(deal);
+    keyboard = buildWarehouseWeighKeyboard(deal);
   } else if (group === 'production') {
     const { header } = productionSyncHeaderForEdit(deal.status, deal.items);
     body = buildProductionGroupHtml(deal, header, itemsHavePositiveQty(deal.items));
@@ -1662,7 +1727,9 @@ export async function sendDealToGroupManually(
     await telegramService.deleteGroupMessage(chatId, existingMid);
   }
 
-  const sentId = await telegramService.sendGroupHtmlMessage(chatId, body, path);
+  const sentId = keyboard.length > 0
+    ? await telegramService.sendHtmlMessageWithKeyboard(chatId, body, { inline_keyboard: keyboard }, path)
+    : await telegramService.sendGroupHtmlMessage(chatId, body, path);
   if (sentId == null) {
     return { ok: false, error: 'Telegram API returned null message ID' };
   }

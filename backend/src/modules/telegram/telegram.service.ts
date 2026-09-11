@@ -6,6 +6,7 @@ import { config } from '../../lib/config';
 import { getFirstName } from '../../lib/name-utils';
 import type { PushPayload } from '../push/push.service';
 import { registerTelegramAdminCallbacks } from './telegram-admin-callback.handler';
+import { registerTelegramWarehouseWeighHandlers } from './telegram-warehouse-weigh.handler';
 import { createTelegramBot, registerWebhook } from './telegram-transport';
 
 const LINK_SECRET = config.jwt.accessSecret + '_tg';
@@ -115,6 +116,7 @@ class TelegramService {
     });
 
     registerTelegramAdminCallbacks(this.bot);
+    registerTelegramWarehouseWeighHandlers(this.bot);
   }
 
   private formatMessage(payload: PushPayload): string {
@@ -349,6 +351,71 @@ class TelegramService {
       }
       console.warn(
         '[Telegram] editGroupHtmlMessage failed chat_id=',
+        chatId,
+        'msg=',
+        messageId,
+        desc,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Обновить текст сообщения в группе с произвольной inline-клавиатурой (кнопка CRM
+   * дописывается отдельным рядом, если передан linkPath) — вариант editGroupHtmlMessage
+   * для постов с кнопками действий (напр. «Ввести вес» на складе).
+   */
+  async editGroupHtmlMessageWithKeyboard(
+    chatId: string,
+    messageId: number,
+    html: string,
+    keyboard: TelegramBot.InlineKeyboardMarkup,
+    linkPath?: string,
+  ): Promise<boolean> {
+    if (!this.bot) return false;
+    if (!chatId || !Number.isFinite(messageId)) return false;
+    const buildMarkup = (): TelegramBot.InlineKeyboardMarkup => {
+      const rows = [...(keyboard.inline_keyboard || [])];
+      if (linkPath) {
+        const fullUrl = linkPath.startsWith('http') ? linkPath : `${config.telegram.crmUrl}${linkPath}`;
+        rows.push([{ text: '\u{1F4CB} Открыть CRM', url: fullUrl }]);
+      }
+      return { inline_keyboard: rows };
+    };
+    try {
+      const target = this.toTelegramTarget(chatId);
+      await this.bot.editMessageText(html, {
+        chat_id: target,
+        message_id: messageId,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: buildMarkup(),
+      });
+      return true;
+    } catch (err: unknown) {
+      const migratedChatId = this.getMigrateToChatId(err);
+      if (migratedChatId) {
+        try {
+          await this.bot.editMessageText(html, {
+            chat_id: this.toTelegramTarget(migratedChatId),
+            message_id: messageId,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            reply_markup: buildMarkup(),
+          });
+          console.warn(`[Telegram] editGroupHtmlMessageWithKeyboard: chat ${chatId} migrated to ${migratedChatId}. Update TELEGRAM_GROUP_*_CHAT_ID.`);
+          return true;
+        } catch {
+          // fall through
+        }
+      }
+      const e = err as { message?: string; response?: { body?: { description?: string } } };
+      const desc = e.response?.body?.description || e.message || '';
+      if (/message is not modified/i.test(desc)) {
+        return true;
+      }
+      console.warn(
+        '[Telegram] editGroupHtmlMessageWithKeyboard failed chat_id=',
         chatId,
         'msg=',
         messageId,
