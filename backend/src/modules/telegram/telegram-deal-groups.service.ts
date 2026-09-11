@@ -214,6 +214,7 @@ type DealRowWarehouseIntakeTg = {
   client: { companyName: string; contactName: string | null };
   manager: { fullName: string };
   items: Array<{
+    requestedQty: unknown;
     requestComment: string | null;
     product: { name: string; sku: string | null; unit: string | null };
   }>;
@@ -232,16 +233,23 @@ function buildPaymentShortLine(deal: DealRowWarehouseIntakeTg): string | null {
 function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string {
   const lines = deal.items.map((it) => {
     const name = esc(it.product.name);
-    const sku = it.product.sku ? ` · ${esc(it.product.sku)}` : '';
     const unit = it.product.unit ? ` ${esc(it.product.unit)}` : '';
-    const comment = it.requestComment?.trim()
-      ? `\n   💬 ${esc(it.requestComment.trim())}`
-      : '';
-    return `• ${name}${sku}${unit}${comment}`;
+    const qty = Number(it.requestedQty);
+    const qtyPart = Number.isFinite(qty) && qty > 0 ? ` — <b>${esc(String(qty))}${unit}</b>` : '';
+    const comment = it.requestComment?.trim() ? ` (${esc(it.requestComment.trim())})` : '';
+    return `• ${name}${qtyPart}${comment}`;
   });
 
   const commentsBlock = buildDealCommentsBlock(deal.comments ?? []);
   const paymentLine = buildPaymentShortLine(deal);
+
+  const deliveryParts = [deliveryTypeLabel(deal.deliveryType)];
+  if (deal.vehicleType?.trim()) deliveryParts.push(esc(deal.vehicleType.trim()));
+  if (deal.vehicleNumber?.trim()) deliveryParts.push(esc(deal.vehicleNumber.trim()));
+  const deliveryLine = `Доставка: <b>${deliveryParts.join(' · ')}</b>`;
+  const deliveryCommentLine = deal.deliveryComment?.trim()
+    ? `Комментарий доставки: <b>${esc(deal.deliveryComment.trim())}</b>`
+    : null;
 
   return [
     '📦 <b>Склад — новая сделка на проверку</b>',
@@ -250,10 +258,8 @@ function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string
     `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
     `Сделка: <b>${esc(deal.title)}</b>`,
     ...(paymentLine ? [`Оплата: <b>${paymentLine}</b>`] : []),
-    `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
-    `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
-    `Номер машины: <b>${esc(deal.vehicleNumber?.trim() || '—')}</b>`,
-    `Комментарий доставки: <b>${esc(deal.deliveryComment?.trim() || '—')}</b>`,
+    deliveryLine,
+    ...(deliveryCommentLine ? [deliveryCommentLine] : []),
     '',
     '<b>Товары:</b>',
     lines.length ? lines.join('\n') : '—',
