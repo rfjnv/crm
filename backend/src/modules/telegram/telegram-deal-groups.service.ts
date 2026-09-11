@@ -1170,7 +1170,9 @@ async function loadDealForTelegramSync(dealId: string) {
       manager: { select: { fullName: true } },
       contract: { select: { contractNumber: true, contractType: true } },
       items: {
-        include: { product: { select: { name: true, sku: true, unit: true } } },
+        include: {
+          product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
       comments: {
@@ -1613,7 +1615,9 @@ export async function sendDealToGroupManually(
       manager: { select: { fullName: true } },
       contract: { select: { contractNumber: true, contractType: true } },
       items: {
-        include: { product: { select: { name: true, sku: true, unit: true } } },
+        include: {
+          product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
       comments: {
