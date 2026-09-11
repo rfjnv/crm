@@ -2,6 +2,7 @@ import { DealStatus, PaymentMethod, PaymentStatus, PaymentType } from '@prisma/c
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { getFirstName } from '../../lib/name-utils';
+import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
 import { telegramService } from './telegram.service';
 import { TG_ADMIN_APPROVE_PREFIX, TG_ADMIN_REJECT_PREFIX } from './telegram-admin.constants';
 
@@ -215,8 +216,15 @@ type DealRowWarehouseIntakeTg = {
   manager: { fullName: string };
   items: Array<{
     requestedQty: unknown;
+    rollCount?: unknown;
     requestComment: string | null;
-    product: { name: string; sku: string | null; unit: string | null };
+    product: {
+      name: string;
+      sku: string | null;
+      unit: string | null;
+      category?: string | null;
+      rollStock?: unknown;
+    };
   }>;
   comments?: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
 };
@@ -233,10 +241,17 @@ function buildPaymentShortLine(deal: DealRowWarehouseIntakeTg): string | null {
 function buildWarehouseQueueTelegramHtml(deal: DealRowWarehouseIntakeTg): string {
   const lines = deal.items.map((it) => {
     const name = esc(it.product.name);
+    const comment = it.requestComment?.trim() ? ` (${esc(it.requestComment.trim())})` : '';
+
+    if (isRollTrackedProduct({ category: it.product.category ?? null, rollStock: it.product.rollStock })) {
+      const rollCount = it.rollCount != null ? Number(it.rollCount) : parseRollCountFromComment(it.requestComment);
+      const qtyPart = rollCount != null && rollCount > 0 ? ` — <b>${esc(String(rollCount))} рул.</b>` : ' — <b>⚠️ рулоны не указаны</b>';
+      return `• ${name}${qtyPart}${comment}`;
+    }
+
     const unit = it.product.unit ? ` ${esc(it.product.unit)}` : '';
     const qty = Number(it.requestedQty);
     const qtyPart = Number.isFinite(qty) && qty > 0 ? ` — <b>${esc(String(qty))}${unit}</b>` : '';
-    const comment = it.requestComment?.trim() ? ` (${esc(it.requestComment.trim())})` : '';
     return `• ${name}${qtyPart}${comment}`;
   });
 
@@ -640,7 +655,9 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
       client: { select: { companyName: true, contactName: true } },
       manager: { select: { fullName: true } },
       items: {
-        include: { product: { select: { name: true, sku: true, unit: true } } },
+        include: {
+          product: { select: { name: true, sku: true, unit: true, category: true, rollStock: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
       comments: {
