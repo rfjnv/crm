@@ -209,14 +209,6 @@ export default function HierarchyClientsAnalyticsPanel({
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [visibleProducts]);
 
-  useEffect(() => {
-    if (categories.length === 0) {
-      setClientScopeCategory(null);
-      return;
-    }
-    setClientScopeCategory((prev) => prev ?? categories[0]?.name ?? null);
-  }, [categories]);
-
   const typeOptionsForClients = useMemo(() => {
     if (!clientScopeCategory) return [];
     return (
@@ -228,13 +220,6 @@ export default function HierarchyClientsAnalyticsPanel({
         .map((v) => ({ label: v, value: v })) ?? []
     );
   }, [categories, clientScopeCategory]);
-
-  useEffect(() => {
-    if (!clientScopeType) return;
-    if (!typeOptionsForClients.some((opt) => opt.value === clientScopeType)) {
-      setClientScopeType(typeOptionsForClients[0]?.value ?? null);
-    }
-  }, [clientScopeType, typeOptionsForClients]);
 
   const productOptionsForClients = useMemo(() => {
     let source = visibleProducts;
@@ -249,28 +234,48 @@ export default function HierarchyClientsAnalyticsPanel({
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
   }, [visibleProducts, clientScopeCategory, clientScopeType]);
 
+  /**
+   * Единый проход согласования category/type/product: раньше это были 4
+   * независимых эффекта, которые читали и правили состояние друг друга —
+   * при рассинхронизации (например, битый product-id в URL) они могли
+   * бесконечно перещёлкивать значения между собой (React error #185).
+   * Здесь на каждом рендере считается один непротиворечивый набор значений.
+   */
   useEffect(() => {
-    if (!clientScopeCategory || !categories.some((c) => c.name === clientScopeCategory)) {
-      const first = categories[0]?.name ?? null;
-      if (first !== clientScopeCategory) setClientScopeCategory(first);
+    let nextCategory = clientScopeCategory;
+    if (!nextCategory || !categories.some((c) => c.name === nextCategory)) {
+      nextCategory = categories[0]?.name ?? null;
     }
-  }, [categories, clientScopeCategory]);
 
-  useEffect(() => {
-    const firstType = typeOptionsForClients[0]?.value ?? null;
-    setClientScopeType((prev) => {
-      if (prev && typeOptionsForClients.some((t) => t.value === prev)) return prev;
-      return firstType;
-    });
-  }, [clientScopeCategory, typeOptionsForClients]);
+    const selectedProduct =
+      clientScopeLevel === 'product' && clientScopeProductId
+        ? productsById.get(clientScopeProductId)
+        : undefined;
+    if (selectedProduct) nextCategory = normalizedCategory(selectedProduct);
 
-  useEffect(() => {
-    const firstProductId = productOptionsForClients[0]?.value ?? null;
-    setClientScopeProductId((prev) => {
-      if (prev && productOptionsForClients.some((p) => p.value === prev)) return prev;
-      return firstProductId;
+    const typesInCategory = nextCategory
+      ? (categories.find((c) => c.name === nextCategory)?.products.map((p) => inferTypeLabel(p)) ?? [])
+      : [];
+
+    let nextType = selectedProduct ? inferTypeLabel(selectedProduct) : clientScopeType;
+    if (!nextType || !typesInCategory.includes(nextType)) {
+      nextType = typesInCategory[0] ?? null;
+    }
+
+    const productsInScope = visibleProducts.filter((p) => {
+      if (nextCategory && normalizedCategory(p) !== nextCategory) return false;
+      if (nextType && inferTypeLabel(p) !== nextType) return false;
+      return true;
     });
-  }, [clientScopeCategory, clientScopeType, productOptionsForClients]);
+    let nextProductId = clientScopeProductId;
+    if (!nextProductId || !productsInScope.some((p) => p.id === nextProductId)) {
+      nextProductId = productsInScope[0]?.id ?? null;
+    }
+
+    if (nextCategory !== clientScopeCategory) setClientScopeCategory(nextCategory);
+    if (nextType !== clientScopeType) setClientScopeType(nextType);
+    if (nextProductId !== clientScopeProductId) setClientScopeProductId(nextProductId);
+  }, [categories, visibleProducts, clientScopeLevel, clientScopeCategory, clientScopeType, clientScopeProductId, productsById]);
 
   const categoryOptionsForClients = useMemo(
     () => categories.map((c) => ({ label: c.name, value: c.name })),
@@ -540,18 +545,6 @@ export default function HierarchyClientsAnalyticsPanel({
     const maxRevenue = Math.max(1, ...clients.flatMap((c) => monthKeys.map((m) => c.monthly[m] ?? 0)));
     return { monthKeys, monthLabel, clients, maxRevenue };
   }, [clientListSort, clientPurchaseSummaryRows, purchaseRows, selectedClientScopeProductIds]);
-
-  useEffect(() => {
-    if (clientScopeLevel !== 'product' || !clientScopeProductId) return;
-    const selectedProduct = productsById.get(clientScopeProductId);
-    if (!selectedProduct) return;
-
-    const expectedCategory = normalizedCategory(selectedProduct);
-    const expectedType = inferTypeLabel(selectedProduct);
-
-    if (clientScopeCategory !== expectedCategory) setClientScopeCategory(expectedCategory);
-    if (clientScopeType !== expectedType) setClientScopeType(expectedType);
-  }, [clientScopeLevel, clientScopeProductId, clientScopeCategory, clientScopeType, productsById]);
 
   const purchaseLinesColumns: ColumnsType<PurchaseLineRow> = [
     {

@@ -22,6 +22,8 @@ const MONTH_LABELS: Record<number, string> = {
   7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек',
 };
 
+const EMPTY_PRODUCTS: Product[] = [];
+
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 type MatrixTabView = 'matrix' | 'hierarchy-clients' | 'cohorts';
@@ -199,7 +201,7 @@ export default function ClientActivityMatrixPage() {
     return map;
   }, [yearQueries, yearsInRange]);
 
-  const { data: allProducts = [] } = useQuery({
+  const { data: allProducts = EMPTY_PRODUCTS } = useQuery({
     queryKey: ['products', 'hierarchy-clients'],
     queryFn: () => productsApi.list(),
     staleTime: 300_000,
