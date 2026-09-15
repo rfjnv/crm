@@ -28,6 +28,7 @@ import {
   FieldTimeOutlined,
   CalendarOutlined,
   AppstoreOutlined,
+  ApartmentOutlined,
   BellOutlined,
   SendOutlined,
   AuditOutlined,
@@ -327,6 +328,14 @@ export default function Layout() {
         key: '/inventory/products',
         icon: <AppstoreOutlined />,
         label: <Link to="/inventory/products">Товары</Link>,
+      }]
+      : []),
+    ...((hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
+      || hasPermission('manage_products'))
+      ? [{
+        key: '/inventory/groups',
+        icon: <ApartmentOutlined />,
+        label: <Link to="/inventory/groups">Группировки товаров</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER')

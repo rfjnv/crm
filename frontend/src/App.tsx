@@ -25,6 +25,7 @@ import ClosedDealsPage from './pages/ClosedDealsPage';
 import DealApprovalPage from './pages/DealApprovalPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 import ProductsPage from './pages/ProductsPage';
+import ProductGroupsPage from './pages/ProductGroupsPage';
 import WarehousePage from './pages/WarehousePage';
 import MovementsPage from './pages/MovementsPage';
 import UsersPage from './pages/UsersPage';
@@ -201,6 +202,7 @@ export default function App() {
                 <Route path="/deals/approval" element={<DealApprovalPage />} />
                 <Route path="/deals/:id" element={<DealDetailPage />} />
                 <Route path="/inventory/products" element={<ProductsPage />} />
+                <Route path="/inventory/groups" element={<ProductGroupsPage />} />
                 <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
                 <Route path="/inventory/warehouse" element={<WarehousePage />} />
                 <Route path="/inventory/audit-check" element={<AuditStockPage />} />

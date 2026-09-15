@@ -4,10 +4,12 @@ import { smartFilterOption } from '../utils/translit';
 import {
   Collapse,
   Input,
+  AutoComplete,
   Button,
   Dropdown,
   Modal,
   Select,
+  Checkbox,
   Typography,
   Tag,
   message,
@@ -18,6 +20,7 @@ import {
 import type { MenuProps } from 'antd';
 import {
   FolderOutlined,
+  TagsOutlined,
   ShoppingOutlined,
   MoreOutlined,
   EditOutlined,
@@ -41,10 +44,33 @@ import { inventoryApi } from '../api/warehouse.api';
 import type { Product } from '../types';
 
 const UNCATEGORIZED_LABEL = 'Без категории';
+const UNTYPED_LABEL = 'Без типа';
 
 function normCategory(c: string | null | undefined): string | null {
   const t = (c ?? '').trim();
   return t === '' ? null : t;
+}
+
+/** Тип читаем только из явного поля specifications.type — того же, что использует аналитика
+ *  «Клиенты по иерархии» (см. inferTypeLabel в lib/analyticsHierarchySales.ts). Название по
+ *  товару там используется лишь как запасной вариант для показа, не как ключ группировки —
+ *  иначе сюда вернулась бы та же путаница, которую и просили исправить. */
+function normType(p: Product): string | null {
+  const specs = p.specifications;
+  if (specs && typeof specs === 'object') {
+    const t = (specs as Record<string, unknown>).type;
+    if (typeof t === 'string' && t.trim()) return t.trim();
+  }
+  return null;
+}
+
+function mergeSpecifications(p: Product, patch: { type?: string | null }): Record<string, unknown> | null {
+  const base = (p.specifications && typeof p.specifications === 'object')
+    ? { ...(p.specifications as Record<string, unknown>) }
+    : {};
+  if (patch.type === null) delete base.type;
+  else if (patch.type !== undefined) base.type = patch.type;
+  return Object.keys(base).length > 0 ? base : null;
 }
 
 function dropIdForCategory(name: string | null): string {
@@ -129,7 +155,8 @@ export type ProductHierarchyPanelProps = {
   canManage: boolean;
   searchHint?: string;
   onEditProduct: (p: Product) => void;
-  onAddProductInCategory: (category: string) => void;
+  /** Опционально — страница-редактор группировок сама не создаёт новые товары. */
+  onAddProductInCategory?: (category: string) => void;
 };
 
 export default function ProductHierarchyPanel({
@@ -145,13 +172,28 @@ export default function ProductHierarchyPanel({
   const queryClient = useQueryClient();
   const [moveProduct, setMoveProduct] = useState<Product | null>(null);
   const [moveTargetCategory, setMoveTargetCategory] = useState<string | null>(null);
-  const [renameFrom, setRenameFrom] = useState<string | null>(null);
+  const [renameFrom, setRenameFrom] = useState<{ level: 'category' | 'type'; category: string | null; value: string } | null>(null);
   const [renameTo, setRenameTo] = useState('');
   const [activeDrag, setActiveDrag] = useState<Product | null>(null);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [applyCategory, setApplyCategory] = useState(false);
+  const [applyType, setApplyType] = useState(false);
+  const [bulkCategoryText, setBulkCategoryText] = useState('');
+  const [bulkTypeText, setBulkTypeText] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+
+  const toggleSelected = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
 
   const { namedGroups, uncategorized } = useMemo(() => {
     const map = new Map<string, Product[]>();
@@ -171,6 +213,22 @@ export default function ProductHierarchyPanel({
     return { namedGroups: named, uncategorized: unc };
   }, [products]);
 
+  /** Разбивает список товаров одной категории на подгруппы по типу — «Без типа» всегда последняя. */
+  function splitByType(list: Product[]): [string, Product[]][] {
+    const map = new Map<string, Product[]>();
+    for (const p of list) {
+      const key = normType(p) ?? UNTYPED_LABEL;
+      const arr = map.get(key) ?? [];
+      arr.push(p);
+      map.set(key, arr);
+    }
+    const untyped = map.get(UNTYPED_LABEL) ?? [];
+    map.delete(UNTYPED_LABEL);
+    const named = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ru'));
+    if (untyped.length > 0) named.push([UNTYPED_LABEL, untyped]);
+    return named;
+  }
+
   const categoryOptions = useMemo(() => {
     const names = new Set(namedGroups.map(([n]) => n));
     const cur = moveProduct ? normCategory(moveProduct.category) : null;
@@ -181,6 +239,19 @@ export default function ProductHierarchyPanel({
       ...sorted.map((n) => ({ label: n, value: n })),
     ];
   }, [namedGroups, moveProduct]);
+
+  const allCategoryNames = useMemo(
+    () => namedGroups.map(([n]) => n).sort((a, b) => a.localeCompare(b, 'ru')),
+    [namedGroups],
+  );
+  const allTypeNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of products) {
+      const t = normType(p);
+      if (t) names.add(t);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [products]);
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof inventoryApi.updateProduct>[1] }) =>
@@ -210,6 +281,26 @@ export default function ProductHierarchyPanel({
     onError: () => message.error('Не удалось переименовать'),
   });
 
+  /** Переименование типа — только внутри одной категории (`category`), чтобы не задеть
+   *  одноимённый тип в других категориях по неожиданности. */
+  const renameTypeMut = useMutation({
+    mutationFn: async ({ category, from, to }: { category: string | null; from: string; to: string }) => {
+      const trimmed = to.trim();
+      if (!trimmed) throw new Error('empty');
+      const affected = products.filter((p) => normCategory(p.category) === category && normType(p) === from);
+      await Promise.all(
+        affected.map((p) => inventoryApi.updateProduct(p.id, { specifications: mergeSpecifications(p, { type: trimmed }) })),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Тип переименован');
+      setRenameFrom(null);
+      setRenameTo('');
+    },
+    onError: () => message.error('Не удалось переименовать'),
+  });
+
   const clearCategoryMut = useMutation({
     mutationFn: async (categoryName: string) => {
       const affected = products.filter((p) => normCategory(p.category) === categoryName);
@@ -218,6 +309,45 @@ export default function ProductHierarchyPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       message.success('Категория снята с товаров');
+    },
+    onError: () => message.error('Не удалось обновить товары'),
+  });
+
+  const clearTypeMut = useMutation({
+    mutationFn: async ({ category, type }: { category: string | null; type: string }) => {
+      const affected = products.filter((p) => normCategory(p.category) === category && normType(p) === type);
+      await Promise.all(
+        affected.map((p) => inventoryApi.updateProduct(p.id, { specifications: mergeSpecifications(p, { type: null }) })),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success('Тип снят с товаров');
+    },
+    onError: () => message.error('Не удалось обновить товары'),
+  });
+
+  const bulkAssignMut = useMutation({
+    mutationFn: async ({ ids, category, type }: { ids: string[]; category?: string | null; type?: string | null }) => {
+      const targets = products.filter((p) => ids.includes(p.id));
+      await Promise.all(
+        targets.map((p) => {
+          const data: Parameters<typeof inventoryApi.updateProduct>[1] = {};
+          if (category !== undefined) data.category = category;
+          if (type !== undefined) data.specifications = mergeSpecifications(p, { type });
+          return inventoryApi.updateProduct(p.id, data);
+        }),
+      );
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      message.success(`Обновлено товаров: ${vars.ids.length}`);
+      setBulkMoveOpen(false);
+      setSelectedIds(new Set());
+      setApplyCategory(false);
+      setApplyType(false);
+      setBulkCategoryText('');
+      setBulkTypeText('');
     },
     onError: () => message.error('Не удалось обновить товары'),
   });
@@ -296,20 +426,40 @@ export default function ProductHierarchyPanel({
     );
   };
 
+  const openBulkMove = () => {
+    setApplyCategory(false);
+    setApplyType(false);
+    setBulkCategoryText('');
+    setBulkTypeText('');
+    setBulkMoveOpen(true);
+  };
+
+  const confirmBulkMove = () => {
+    if (!applyCategory && !applyType) {
+      message.warning('Выберите, что менять — категорию и/или тип');
+      return;
+    }
+    bulkAssignMut.mutate({
+      ids: [...selectedIds],
+      category: applyCategory ? (bulkCategoryText.trim() || null) : undefined,
+      type: applyType ? (bulkTypeText.trim() || null) : undefined,
+    });
+  };
+
   const categoryMenuItems = (categoryName: string): MenuProps['items'] => {
     if (!canManage) return [];
     return [
-      {
+      ...(onAddProductInCategory ? [{
         key: 'add',
         icon: <PlusOutlined />,
         label: 'Добавить товар',
         onClick: () => onAddProductInCategory(categoryName),
-      },
+      }] : []),
       {
         key: 'rename',
         label: 'Переименовать категорию',
         onClick: () => {
-          setRenameFrom(categoryName);
+          setRenameFrom({ level: 'category', category: null, value: categoryName });
           setRenameTo(categoryName);
         },
       },
@@ -324,6 +474,34 @@ export default function ProductHierarchyPanel({
             okText: 'Снять',
             cancelText: 'Отмена',
             onOk: () => clearCategoryMut.mutateAsync(categoryName),
+          });
+        },
+      },
+    ];
+  };
+
+  const typeMenuItems = (category: string | null, typeName: string): MenuProps['items'] => {
+    if (!canManage || typeName === UNTYPED_LABEL) return [];
+    return [
+      {
+        key: 'rename',
+        label: 'Переименовать тип',
+        onClick: () => {
+          setRenameFrom({ level: 'type', category, value: typeName });
+          setRenameTo(typeName);
+        },
+      },
+      {
+        key: 'clear',
+        danger: true,
+        label: 'Снять тип',
+        onClick: () => {
+          Modal.confirm({
+            title: 'Снять тип?',
+            content: `Товары в «${typeName}» станут без типа.`,
+            okText: 'Снять',
+            cancelText: 'Отмена',
+            onOk: () => clearTypeMut.mutateAsync({ category, type: typeName }),
           });
         },
       },
@@ -378,6 +556,13 @@ export default function ProductHierarchyPanel({
             background: token.colorFillAlter,
           }}
         >
+          {canManage && (
+            <Checkbox
+              checked={selectedIds.has(p.id)}
+              onChange={(e) => toggleSelected(p.id, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           {handle}
           <Typography.Text type="secondary" style={{ fontFamily: 'monospace', flexShrink: 0 }}>
             └
@@ -412,6 +597,37 @@ export default function ProductHierarchyPanel({
     </DraggableProductRow>
   );
 
+  const renderTypeBucket = (category: string | null, typeName: string, prods: Product[]) => (
+    <div key={typeName} style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px 4px' }}>
+        <TagsOutlined style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
+        <Typography.Text
+          type={typeName === UNTYPED_LABEL ? 'secondary' : undefined}
+          strong={typeName !== UNTYPED_LABEL}
+          style={{ flex: 1 }}
+        >
+          {typeName}
+        </Typography.Text>
+        <Tag style={{ margin: 0 }}>{prods.length}</Tag>
+        {canManage && typeName !== UNTYPED_LABEL && (
+          <Dropdown menu={{ items: typeMenuItems(category, typeName) }} trigger={['click']}>
+            <Button type="text" size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+        )}
+      </div>
+      <div>{prods.map((p) => renderProductRow(p))}</div>
+    </div>
+  );
+
+  const renderCategoryBody = (category: string | null, prods: Product[]) => {
+    const byType = splitByType(prods);
+    if (byType.length === 1) {
+      // Единственная подгруппа (обычно «Без типа») — не загромождаем интерфейс лишним заголовком.
+      return <div style={{ paddingTop: 4 }}>{prods.map((p) => renderProductRow(p))}</div>;
+    }
+    return <div style={{ paddingTop: 4 }}>{byType.map(([typeName, list]) => renderTypeBucket(category, typeName, list))}</div>;
+  };
+
   const collapseItems = namedGroups.map(([name, prods]) => ({
     key: name,
     label: (
@@ -438,7 +654,7 @@ export default function ProductHierarchyPanel({
     styles: {
       header: { alignItems: 'center' },
     },
-    children: <div style={{ paddingTop: 4 }}>{prods.map((p) => renderProductRow(p))}</div>,
+    children: renderCategoryBody(name, prods),
   }));
 
   if (loading) {
@@ -455,7 +671,7 @@ export default function ProductHierarchyPanel({
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: selectedIds.size > 0 ? 64 : 0 }}>
       {searchHint ? (
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
           {searchHint}
@@ -464,7 +680,8 @@ export default function ProductHierarchyPanel({
 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 13 }}>
         Категории можно разворачивать. Перетащите товар на строку категории (или на «{UNCATEGORIZED_LABEL}» внизу), чтобы
-        переместить.
+        переместить. Внутри категории товары дополнительно сгруппированы по типу — его можно задать и переименовать
+        через меню группы или выбрать несколько товаров чекбоксами и перенести разом.
       </Typography.Paragraph>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
@@ -503,7 +720,7 @@ export default function ProductHierarchyPanel({
             <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
               Товары без категории
             </Typography.Text>
-            {uncategorized.map((p) => renderProductRow(p))}
+            {renderCategoryBody(null, uncategorized)}
           </div>
         )}
 
@@ -525,6 +742,44 @@ export default function ProductHierarchyPanel({
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {canManage && selectedIds.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 20,
+            display: 'flex',
+            justifyContent: 'center',
+            padding: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            style={{
+              pointerEvents: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '8px 16px',
+              borderRadius: 10,
+              background: token.colorBgElevated,
+              border: `1px solid ${token.colorBorder}`,
+              boxShadow: token.boxShadowSecondary,
+            }}
+          >
+            <Typography.Text>Выбрано: {selectedIds.size}</Typography.Text>
+            <Button type="primary" size="small" onClick={openBulkMove}>
+              Перенести в группу
+            </Button>
+            <Button size="small" onClick={() => setSelectedIds(new Set())}>
+              Снять выбор
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Modal
         title="Переместить в категорию"
@@ -552,7 +807,7 @@ export default function ProductHierarchyPanel({
       </Modal>
 
       <Modal
-        title="Переименовать категорию"
+        title={renameFrom?.level === 'type' ? 'Переименовать тип' : 'Переименовать категорию'}
         open={!!renameFrom}
         onCancel={() => {
           setRenameFrom(null);
@@ -565,23 +820,73 @@ export default function ProductHierarchyPanel({
             message.warning('Введите название');
             return;
           }
-          if (t === renameFrom) {
+          if (t === renameFrom.value) {
             setRenameFrom(null);
             return;
           }
-          renameCategoryMut.mutate({ from: renameFrom, to: t });
+          if (renameFrom.level === 'category') {
+            renameCategoryMut.mutate({ from: renameFrom.value, to: t });
+          } else {
+            renameTypeMut.mutate({ category: renameFrom.category, from: renameFrom.value, to: t });
+          }
         }}
-        confirmLoading={renameCategoryMut.isPending}
+        confirmLoading={renameCategoryMut.isPending || renameTypeMut.isPending}
         okText="Сохранить"
       >
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-          Было: {renameFrom}
+          Было: {renameFrom?.value}
         </Typography.Text>
         <Input
           value={renameTo}
           onChange={(e) => setRenameTo(e.target.value)}
-          placeholder="Новое название категории"
+          placeholder={renameFrom?.level === 'type' ? 'Новое название типа' : 'Новое название категории'}
         />
+      </Modal>
+
+      <Modal
+        title={`Перенести товары (${selectedIds.size})`}
+        open={bulkMoveOpen}
+        onCancel={() => setBulkMoveOpen(false)}
+        onOk={confirmBulkMove}
+        okText="Применить"
+        confirmLoading={bulkAssignMut.isPending}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+          Отметьте, что нужно изменить у выбранных товаров. Можно ввести существующее название или новое — новая
+          группа появится сразу после сохранения.
+        </Typography.Paragraph>
+
+        <div style={{ marginBottom: 16 }}>
+          <Checkbox checked={applyCategory} onChange={(e) => setApplyCategory(e.target.checked)}>
+            Изменить категорию
+          </Checkbox>
+          {applyCategory && (
+            <AutoComplete
+              style={{ width: '100%', marginTop: 8 }}
+              value={bulkCategoryText}
+              onChange={setBulkCategoryText}
+              options={allCategoryNames.map((n) => ({ value: n }))}
+              filterOption={(input, option) => (option?.value as string ?? '').toLowerCase().includes(input.toLowerCase())}
+              placeholder="Название категории (пусто — без категории)"
+            />
+          )}
+        </div>
+
+        <div>
+          <Checkbox checked={applyType} onChange={(e) => setApplyType(e.target.checked)}>
+            Изменить тип
+          </Checkbox>
+          {applyType && (
+            <AutoComplete
+              style={{ width: '100%', marginTop: 8 }}
+              value={bulkTypeText}
+              onChange={setBulkTypeText}
+              options={allTypeNames.map((n) => ({ value: n }))}
+              filterOption={(input, option) => (option?.value as string ?? '').toLowerCase().includes(input.toLowerCase())}
+              placeholder="Название типа (пусто — без типа)"
+            />
+          )}
+        </div>
       </Modal>
     </div>
   );
