@@ -73,6 +73,69 @@ function mergeSpecifications(p: Product, patch: { type?: string | null }): Recor
   return Object.keys(base).length > 0 ? base : null;
 }
 
+/** «Тип» может кодировать вложенность через `/`, например «Лист / Кизил / Без насечки» —
+ *  тогда это три уровня, а не один длинный ярлык. */
+function typeSegments(raw: string): string[] {
+  return raw.split('/').map((s) => s.trim()).filter(Boolean);
+}
+
+function typePathMatches(raw: string | null, path: string[]): boolean {
+  if (!raw) return false;
+  const segs = typeSegments(raw);
+  if (segs.length < path.length) return false;
+  return path.every((seg, i) => segs[i] === seg);
+}
+
+type TypeTreeNode = {
+  path: string[];
+  label: string;
+  /** Товары, у которых тип заканчивается ровно на этом узле (нет более глубокого уровня). */
+  ownProducts: Product[];
+  children: TypeTreeNode[];
+};
+
+type TypeTreeBuildNode = { label: string; path: string[]; ownProducts: Product[]; childMap: Map<string, TypeTreeBuildNode> };
+
+/** Строит дерево типов произвольной глубины из плоского списка товаров одной категории. */
+function buildTypeTree(list: Product[]): TypeTreeNode[] {
+  const rootMap = new Map<string, TypeTreeBuildNode>();
+  for (const p of list) {
+    const raw = normType(p);
+    if (!raw) continue;
+    const segs = typeSegments(raw);
+    if (segs.length === 0) continue;
+
+    let map = rootMap;
+    const path: string[] = [];
+    for (let i = 0; i < segs.length; i++) {
+      path.push(segs[i]);
+      let node = map.get(segs[i]);
+      if (!node) {
+        node = { label: segs[i], path: [...path], ownProducts: [], childMap: new Map() };
+        map.set(segs[i], node);
+      }
+      if (i === segs.length - 1) node.ownProducts.push(p);
+      map = node.childMap;
+    }
+  }
+
+  const finalize = (nodes: TypeTreeBuildNode[]): TypeTreeNode[] =>
+    nodes
+      .map((n) => ({
+        path: n.path,
+        label: n.label,
+        ownProducts: [...n.ownProducts].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+        children: finalize([...n.childMap.values()]),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+
+  return finalize([...rootMap.values()]);
+}
+
+function countTypeNode(node: TypeTreeNode): number {
+  return node.ownProducts.length + node.children.reduce((sum, c) => sum + countTypeNode(c), 0);
+}
+
 function dropIdForCategory(name: string | null): string {
   return name == null ? 'drop:uncat' : `drop:cat:${encodeURIComponent(name)}`;
 }
@@ -172,7 +235,11 @@ export default function ProductHierarchyPanel({
   const queryClient = useQueryClient();
   const [moveProduct, setMoveProduct] = useState<Product | null>(null);
   const [moveTargetCategory, setMoveTargetCategory] = useState<string | null>(null);
-  const [renameFrom, setRenameFrom] = useState<{ level: 'category' | 'type'; category: string | null; value: string } | null>(null);
+  const [renameFrom, setRenameFrom] = useState<
+    | { level: 'category'; value: string }
+    | { level: 'type'; category: string | null; path: string[] }
+    | null
+  >(null);
   const [renameTo, setRenameTo] = useState('');
   const [activeDrag, setActiveDrag] = useState<Product | null>(null);
 
@@ -212,22 +279,6 @@ export default function ProductHierarchyPanel({
     unc.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     return { namedGroups: named, uncategorized: unc };
   }, [products]);
-
-  /** Разбивает список товаров одной категории на подгруппы по типу — «Без типа» всегда последняя. */
-  function splitByType(list: Product[]): [string, Product[]][] {
-    const map = new Map<string, Product[]>();
-    for (const p of list) {
-      const key = normType(p) ?? UNTYPED_LABEL;
-      const arr = map.get(key) ?? [];
-      arr.push(p);
-      map.set(key, arr);
-    }
-    const untyped = map.get(UNTYPED_LABEL) ?? [];
-    map.delete(UNTYPED_LABEL);
-    const named = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ru'));
-    if (untyped.length > 0) named.push([UNTYPED_LABEL, untyped]);
-    return named;
-  }
 
   const categoryOptions = useMemo(() => {
     const names = new Set(namedGroups.map(([n]) => n));
@@ -281,15 +332,20 @@ export default function ProductHierarchyPanel({
     onError: () => message.error('Не удалось переименовать'),
   });
 
-  /** Переименование типа — только внутри одной категории (`category`), чтобы не задеть
-   *  одноимённый тип в других категориях по неожиданности. */
+  /** Переименование узла дерева типов — только внутри одной категории (`category`) и только
+   *  этого уровня вложенности: у всех товаров, чей тип начинается с `path`, заменяется именно
+   *  сегмент на глубине `path.length - 1`, остальные уровни (родительские и дочерние) сохраняются. */
   const renameTypeMut = useMutation({
-    mutationFn: async ({ category, from, to }: { category: string | null; from: string; to: string }) => {
+    mutationFn: async ({ category, path, to }: { category: string | null; path: string[]; to: string }) => {
       const trimmed = to.trim();
       if (!trimmed) throw new Error('empty');
-      const affected = products.filter((p) => normCategory(p.category) === category && normType(p) === from);
+      const affected = products.filter((p) => normCategory(p.category) === category && typePathMatches(normType(p), path));
       await Promise.all(
-        affected.map((p) => inventoryApi.updateProduct(p.id, { specifications: mergeSpecifications(p, { type: trimmed }) })),
+        affected.map((p) => {
+          const segs = typeSegments(normType(p)!);
+          segs[path.length - 1] = trimmed;
+          return inventoryApi.updateProduct(p.id, { specifications: mergeSpecifications(p, { type: segs.join(' / ') }) });
+        }),
       );
     },
     onSuccess: () => {
@@ -314,8 +370,8 @@ export default function ProductHierarchyPanel({
   });
 
   const clearTypeMut = useMutation({
-    mutationFn: async ({ category, type }: { category: string | null; type: string }) => {
-      const affected = products.filter((p) => normCategory(p.category) === category && normType(p) === type);
+    mutationFn: async ({ category, path }: { category: string | null; path: string[] }) => {
+      const affected = products.filter((p) => normCategory(p.category) === category && typePathMatches(normType(p), path));
       await Promise.all(
         affected.map((p) => inventoryApi.updateProduct(p.id, { specifications: mergeSpecifications(p, { type: null }) })),
       );
@@ -459,7 +515,7 @@ export default function ProductHierarchyPanel({
         key: 'rename',
         label: 'Переименовать категорию',
         onClick: () => {
-          setRenameFrom({ level: 'category', category: null, value: categoryName });
+          setRenameFrom({ level: 'category', value: categoryName });
           setRenameTo(categoryName);
         },
       },
@@ -480,28 +536,28 @@ export default function ProductHierarchyPanel({
     ];
   };
 
-  const typeMenuItems = (category: string | null, typeName: string): MenuProps['items'] => {
-    if (!canManage || typeName === UNTYPED_LABEL) return [];
+  const typeMenuItems = (category: string | null, node: TypeTreeNode): MenuProps['items'] => {
+    if (!canManage) return [];
     return [
       {
         key: 'rename',
-        label: 'Переименовать тип',
+        label: 'Переименовать',
         onClick: () => {
-          setRenameFrom({ level: 'type', category, value: typeName });
-          setRenameTo(typeName);
+          setRenameFrom({ level: 'type', category, path: node.path });
+          setRenameTo(node.label);
         },
       },
       {
         key: 'clear',
         danger: true,
-        label: 'Снять тип',
+        label: node.children.length > 0 ? 'Снять тип (со всей веткой)' : 'Снять тип',
         onClick: () => {
           Modal.confirm({
             title: 'Снять тип?',
-            content: `Товары в «${typeName}» станут без типа.`,
+            content: `Товары в «${node.path.join(' / ')}» станут без типа.`,
             okText: 'Снять',
             cancelText: 'Отмена',
-            onOk: () => clearTypeMut.mutateAsync({ category, type: typeName }),
+            onOk: () => clearTypeMut.mutateAsync({ category, path: node.path }),
           });
         },
       },
@@ -597,35 +653,49 @@ export default function ProductHierarchyPanel({
     </DraggableProductRow>
   );
 
-  const renderTypeBucket = (category: string | null, typeName: string, prods: Product[]) => (
-    <div key={typeName} style={{ marginBottom: 10 }}>
+  const renderTypeNode = (category: string | null, node: TypeTreeNode, depth: number) => (
+    <div key={node.path.join('/')} style={{ marginBottom: 10, marginLeft: depth * 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px 4px' }}>
         <TagsOutlined style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
-        <Typography.Text
-          type={typeName === UNTYPED_LABEL ? 'secondary' : undefined}
-          strong={typeName !== UNTYPED_LABEL}
-          style={{ flex: 1 }}
-        >
-          {typeName}
+        <Typography.Text strong style={{ flex: 1 }}>
+          {node.label}
         </Typography.Text>
-        <Tag style={{ margin: 0 }}>{prods.length}</Tag>
-        {canManage && typeName !== UNTYPED_LABEL && (
-          <Dropdown menu={{ items: typeMenuItems(category, typeName) }} trigger={['click']}>
+        <Tag style={{ margin: 0 }}>{countTypeNode(node)}</Tag>
+        {canManage && (
+          <Dropdown menu={{ items: typeMenuItems(category, node) }} trigger={['click']}>
             <Button type="text" size="small" icon={<MoreOutlined />} />
           </Dropdown>
         )}
       </div>
-      <div>{prods.map((p) => renderProductRow(p))}</div>
+      {node.children.map((child) => renderTypeNode(category, child, depth + 1))}
+      {node.ownProducts.length > 0 && <div>{node.ownProducts.map((p) => renderProductRow(p))}</div>}
     </div>
   );
 
   const renderCategoryBody = (category: string | null, prods: Product[]) => {
-    const byType = splitByType(prods);
-    if (byType.length === 1) {
-      // Единственная подгруппа (обычно «Без типа») — не загромождаем интерфейс лишним заголовком.
+    const tree = buildTypeTree(prods);
+    const untyped = prods.filter((p) => normType(p) == null);
+    if (tree.length === 0) {
+      // Ни у кого не задан тип — не загромождаем интерфейс пустой группировкой.
       return <div style={{ paddingTop: 4 }}>{prods.map((p) => renderProductRow(p))}</div>;
     }
-    return <div style={{ paddingTop: 4 }}>{byType.map(([typeName, list]) => renderTypeBucket(category, typeName, list))}</div>;
+    return (
+      <div style={{ paddingTop: 4 }}>
+        {tree.map((node) => renderTypeNode(category, node, 0))}
+        {untyped.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px 4px' }}>
+              <TagsOutlined style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
+              <Typography.Text type="secondary" style={{ flex: 1 }}>
+                {UNTYPED_LABEL}
+              </Typography.Text>
+              <Tag style={{ margin: 0 }}>{untyped.length}</Tag>
+            </div>
+            <div>{untyped.map((p) => renderProductRow(p))}</div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const collapseItems = namedGroups.map(([name, prods]) => ({
@@ -680,8 +750,9 @@ export default function ProductHierarchyPanel({
 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 13 }}>
         Категории можно разворачивать. Перетащите товар на строку категории (или на «{UNCATEGORIZED_LABEL}» внизу), чтобы
-        переместить. Внутри категории товары дополнительно сгруппированы по типу — его можно задать и переименовать
-        через меню группы или выбрать несколько товаров чекбоксами и перенести разом.
+        переместить. Внутри категории товары дополнительно сгруппированы по типу — тип можно вложить на несколько
+        уровней через «/» (например «Лист / Кизил / Без насечки» — три уровня), задать и переименовать через меню
+        группы или выбрать несколько товаров чекбоксами и перенести разом.
       </Typography.Paragraph>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
@@ -820,26 +891,24 @@ export default function ProductHierarchyPanel({
             message.warning('Введите название');
             return;
           }
-          if (t === renameFrom.value) {
-            setRenameFrom(null);
-            return;
-          }
           if (renameFrom.level === 'category') {
+            if (t === renameFrom.value) { setRenameFrom(null); return; }
             renameCategoryMut.mutate({ from: renameFrom.value, to: t });
           } else {
-            renameTypeMut.mutate({ category: renameFrom.category, from: renameFrom.value, to: t });
+            if (t === renameFrom.path[renameFrom.path.length - 1]) { setRenameFrom(null); return; }
+            renameTypeMut.mutate({ category: renameFrom.category, path: renameFrom.path, to: t });
           }
         }}
         confirmLoading={renameCategoryMut.isPending || renameTypeMut.isPending}
         okText="Сохранить"
       >
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-          Было: {renameFrom?.value}
+          Было: {renameFrom?.level === 'type' ? renameFrom.path.join(' / ') : renameFrom?.value}
         </Typography.Text>
         <Input
           value={renameTo}
           onChange={(e) => setRenameTo(e.target.value)}
-          placeholder={renameFrom?.level === 'type' ? 'Новое название типа' : 'Новое название категории'}
+          placeholder={renameFrom?.level === 'type' ? 'Новое название этого уровня' : 'Новое название категории'}
         />
       </Modal>
 
@@ -883,7 +952,7 @@ export default function ProductHierarchyPanel({
               onChange={setBulkTypeText}
               options={allTypeNames.map((n) => ({ value: n }))}
               filterOption={(input, option) => (option?.value as string ?? '').toLowerCase().includes(input.toLowerCase())}
-              placeholder="Название типа (пусто — без типа)"
+              placeholder="Например: Лист / Кизил / Без насечки (пусто — без типа)"
             />
           )}
         </div>
