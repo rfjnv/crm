@@ -37,7 +37,7 @@ const transferTypeLabels: Record<'ONE_TIME' | 'ANNUAL', string> = {
   ANNUAL: 'Годовой',
 };
 
-type FinanceDeal = Deal & { clientDebt: number };
+type FinanceDeal = Deal & { clientDebt: number; missingContract?: boolean };
 
 export default function FinanceReviewPage() {
   const isMobile = useIsMobile();
@@ -85,6 +85,14 @@ export default function FinanceReviewPage() {
     );
   };
 
+  /** Закрытая сделка по перечислению/рассрочке без договора: бухгалтер должен его прикрепить. */
+  const missingContractStyle = { background: token.colorErrorBg };
+  const renderMissingContractTag = (deal: FinanceDeal) => (deal.missingContract ? (
+    <Tag color="error" style={{ marginInlineEnd: 0 }}>
+      {deal.status === 'CLOSED' ? 'Закрыта без договора' : 'Нет договора'}
+    </Tag>
+  ) : null);
+
   const columns = [
     {
       title: 'Сделка',
@@ -101,6 +109,7 @@ export default function FinanceReviewPage() {
             {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
             {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
             <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+            {renderMissingContractTag(deal)}
           </div>
         </div>
       ),
@@ -177,7 +186,7 @@ export default function FinanceReviewPage() {
           rowKey="id"
           loading={isLoading}
           renderCard={(deal: FinanceDeal) => (
-            <Card size="small" bordered>
+            <Card size="small" bordered style={deal.missingContract ? missingContractStyle : undefined}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Link to={`/deals/${deal.id}`}>
@@ -194,6 +203,7 @@ export default function FinanceReviewPage() {
                 {deal.paymentType && <Tag style={{ marginInlineEnd: 0 }}>{paymentTypeLabels[deal.paymentType] ?? deal.paymentType}</Tag>}
                 {deal.paymentMethod && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{paymentMethodLabels[deal.paymentMethod] ?? deal.paymentMethod}</Tag>}
                 <ReceiptPunchedTag isReceiptPunched={deal.isReceiptPunched} />
+                {renderMissingContractTag(deal)}
               </div>
 
               <div style={{ marginTop: 10 }}>
@@ -221,6 +231,7 @@ export default function FinanceReviewPage() {
           columns={columns}
           rowKey="id"
           loading={isLoading}
+          onRow={(deal) => ({ style: deal.missingContract ? missingContractStyle : undefined })}
           pagination={false}
           size="middle"
           bordered={false}

@@ -97,6 +97,8 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
 
 const FINANCE_REVIEW_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
+/** С этой даты закрытые сделки без договора показываются бухгалтеру — см. findForFinanceReview. */
+const MISSING_CONTRACT_REVIEW_SINCE = new Date('2026-04-01T00:00:00');
 
 function normalizeTransferDocuments(documents?: string[]): string[] {
   if (!Array.isArray(documents)) return [];
@@ -337,11 +339,24 @@ function parseOptionalDate(value?: string | null): Date | null | undefined {
  * Нужно, чтобы отличить кассовую операцию от настоящего редактирования условий
  * сделки: первая допустима и после закрытия, второе — нет.
  */
+function touchedFields(dto: UpdateDealDto): string[] {
+  return Object.keys(dto).filter((k) => (dto as Record<string, unknown>)[k] !== undefined);
+}
+
 function isReceiptPunchedOnlyUpdate(dto: UpdateDealDto): boolean {
-  const touched = Object.keys(dto).filter(
-    (k) => (dto as Record<string, unknown>)[k] !== undefined,
-  );
+  const touched = touchedFields(dto);
   return touched.length === 1 && touched[0] === 'isReceiptPunched';
+}
+
+/**
+ * Правка, которая привязывает договор и больше ничего не трогает. Как и отметка чека,
+ * это оформление документов, а не изменение условий сделки: сделка по перечислению
+ * может закрыться раньше, чем бухгалтер получит подписанный договор, и его нужно
+ * прикрепить постфактум. Открепление (contractId: null) сюда не входит.
+ */
+function isContractAttachOnlyUpdate(dto: UpdateDealDto): boolean {
+  const touched = touchedFields(dto);
+  return touched.length === 1 && touched[0] === 'contractId' && dto.contractId != null;
 }
 
 /**
@@ -942,12 +957,20 @@ export class DealsService {
       const receiptOnly = isReceiptPunchedOnlyUpdate(dto);
       const mayPunchReceipt = isAdmin || user.role === 'WAREHOUSE_MANAGER';
 
-      if (!isAdmin && !hasPermission && !(receiptOnly && mayPunchReceipt)) {
+      // Привязка договора к уже закрытой сделке — работа бухгалтера: такие сделки
+      // подсвечиваются в «Финансы на проверке» именно для того, чтобы договор
+      // добавили постфактум.
+      const contractOnly = isContractAttachOnlyUpdate(dto);
+      const mayAttachContract = isAdmin || user.role === 'ACCOUNTANT';
+
+      if (!isAdmin && !hasPermission && !(receiptOnly && mayPunchReceipt) && !(contractOnly && mayAttachContract)) {
         throw new AppError(
           403,
           receiptOnly
             ? 'Недостаточно прав, чтобы отметить чек по закрытой сделке'
-            : 'Недостаточно прав для редактирования закрытых сделок',
+            : contractOnly
+              ? 'Недостаточно прав, чтобы привязать договор к закрытой сделке'
+              : 'Недостаточно прав для редактирования закрытых сделок',
         );
       }
     }
@@ -2143,11 +2166,30 @@ export class DealsService {
 
   // ==================== WORKFLOW QUEUES ====================
 
+  /**
+   * Очередь «Финансы на проверке».
+   *
+   * Кроме сделок в WAITING_FINANCE сюда попадают уже ЗАКРЫТЫЕ сделки по перечислению
+   * или рассрочке без договора: они прошли мимо финансов (маршрут завскладом/админом
+   * договор не требует), а бухгалтеру нужно видеть их, чтобы прикрепить договор
+   * постфактум. Такие строки помечены `missingContract: true`.
+   *
+   * Отсечка по дате: до апреля 2026 закрытые сделки — импорт истории (4.5 тыс. штук),
+   * у которого договора не было и не будет; тянуть их в очередь бессмысленно.
+   */
   async findForFinanceReview(user: AuthUser) {
     const deals = await prisma.deal.findMany({
       where: {
-        status: 'WAITING_FINANCE',
         isArchived: false,
+        OR: [
+          { status: 'WAITING_FINANCE' },
+          {
+            status: 'CLOSED',
+            paymentMethod: { in: CONTRACT_REQUIRED_METHODS },
+            contractId: null,
+            closedAt: { gte: MISSING_CONTRACT_REVIEW_SINCE },
+          },
+        ],
       },
       include: {
         client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
@@ -2179,9 +2221,14 @@ export class DealsService {
       debtMap.set(row.clientId, Math.max(0, totalAmount - totalPaid));
     }
 
+    // Живая очередь сверху, «долги по договорам» — под ней; внутри групп — новые первыми.
+    const rank = (d: { status: DealStatus }) => (d.status === 'WAITING_FINANCE' ? 0 : 1);
+    deals.sort((a, b) => rank(a) - rank(b) || b.createdAt.getTime() - a.createdAt.getTime());
+
     return deals.map((d) => ({
       ...this.parseTransferDocuments(d),
       clientDebt: debtMap.get(d.clientId) ?? 0,
+      missingContract: requiresContract(d.paymentMethod) && !d.contractId,
     }));
   }
 
