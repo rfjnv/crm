@@ -150,7 +150,15 @@ export class DealsController {
 
   // Workflow: Finance
   async findForFinanceReview(req: Request, res: Response): Promise<void> {
-    const deals = await dealsService.findForFinanceReview(getUser(req));
+    const parseDate = (v: unknown): Date | undefined => {
+      if (typeof v !== 'string' || !v) return undefined;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    };
+    const deals = await dealsService.findForFinanceReview(getUser(req), {
+      from: parseDate(req.query.from),
+      to: parseDate(req.query.to),
+    });
     res.json(deals);
   }
 

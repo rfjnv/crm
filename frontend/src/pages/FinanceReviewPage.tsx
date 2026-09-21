@@ -1,8 +1,10 @@
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Table, Typography, Tag, theme, Card, Button,
+  Table, Typography, Tag, theme, Card, Button, DatePicker,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import { formatUZS } from '../utils/currency';
@@ -43,9 +45,20 @@ export default function FinanceReviewPage() {
   const isMobile = useIsMobile();
   const { token } = theme.useToken();
 
+  // Диапазон по дате сделки. Границы считаем в ташкентском времени, как на странице закрытых сделок.
+  const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const rangeParams = useMemo(() => {
+    const [a, b] = range ?? [];
+    if (!a || !b) return undefined;
+    return {
+      from: new Date(`${a.format('YYYY-MM-DD')}T00:00:00+05:00`).toISOString(),
+      to: new Date(`${b.format('YYYY-MM-DD')}T23:59:59.999+05:00`).toISOString(),
+    };
+  }, [range]);
+
   const { data: deals, isLoading } = useQuery({
-    queryKey: ['finance-queue'],
-    queryFn: dealsApi.financeQueue,
+    queryKey: ['finance-queue', rangeParams?.from ?? null, rangeParams?.to ?? null],
+    queryFn: () => dealsApi.financeQueue(rangeParams),
     refetchInterval: 10_000,
   });
 
@@ -179,6 +192,15 @@ export default function FinanceReviewPage() {
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         Здесь только обзор. Полную проверку и решение удобнее делать внутри самой сделки.
       </Typography.Text>
+
+      <DatePicker.RangePicker
+        value={range}
+        onChange={(r) => setRange(r)}
+        format="DD.MM.YYYY"
+        allowClear
+        placeholder={['Дата сделки с', 'по']}
+        style={{ marginBottom: 16, width: isMobile ? '100%' : undefined }}
+      />
 
       {isMobile ? (
         <MobileCardList

@@ -2177,10 +2177,16 @@ export class DealsService {
    * Отсечка по дате: до апреля 2026 закрытые сделки — импорт истории (4.5 тыс. штук),
    * у которого договора не было и не будет; тянуть их в очередь бессмысленно.
    */
-  async findForFinanceReview(user: AuthUser) {
+  async findForFinanceReview(user: AuthUser, range: { from?: Date; to?: Date } = {}) {
+    // Фильтр по дате сделки (createdAt) — той, что видна в таблице.
+    const createdAt = (range.from || range.to)
+      ? { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) }
+      : undefined;
+
     const deals = await prisma.deal.findMany({
       where: {
         isArchived: false,
+        ...(createdAt ? { createdAt } : {}),
         OR: [
           { status: 'WAITING_FINANCE' },
           {

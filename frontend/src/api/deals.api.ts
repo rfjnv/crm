@@ -234,9 +234,10 @@ export const dealsApi = {
     client.delete(`/deals/${dealId}/payments/${paymentId}/override`, { data: { reason } }).then((r) => r.data),
 
   // Workflow Queues
-  /** Очередь финансов + закрытые сделки по перечислению/рассрочке без договора (missingContract). */
-  financeQueue: () =>
-    client.get<(Deal & { clientDebt: number; missingContract?: boolean })[]>('/deals/finance-queue').then((r) => r.data),
+  /** Очередь финансов + закрытые сделки по перечислению/рассрочке без договора (missingContract).
+   * from/to — ISO-границы по дате сделки. */
+  financeQueue: (params?: { from?: string; to?: string }) =>
+    client.get<(Deal & { clientDebt: number; missingContract?: boolean })[]>('/deals/finance-queue', { params }).then((r) => r.data),
 
   shipmentQueue: () =>
     client.get<Deal[]>('/deals/shipment-queue').then((r) => r.data),
