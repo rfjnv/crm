@@ -1027,15 +1027,21 @@ export default function DealDetailPage() {
 
       {renderWorkflowActions()}
 
-      {needsContract && !deal.contractId && deal.status !== 'CLOSED' && deal.status !== 'CANCELED' && (
+      {/* Закрытые сделки тоже: они могли пройти мимо финансов, договор прикрепляют постфактум
+          (см. «Финансы на проверке»). Бэкенд пускает такую правку бухгалтеру и админам. */}
+      {needsContract && !deal.contractId && deal.status !== 'CANCELED' && (
         <Alert
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Для перечисления/рассрочки необходим договор"
+          message={deal.status === 'CLOSED'
+            ? 'Сделка закрыта без договора'
+            : 'Для перечисления/рассрочки необходим договор'}
           description={canManageContract
             ? 'Создайте новый или прикрепите существующий договор к сделке.'
-            : 'Привяжите договор к сделке перед финансовым одобрением.'}
+            : deal.status === 'CLOSED'
+              ? 'Договор прикрепляет бухгалтер или администратор.'
+              : 'Привяжите договор к сделке перед финансовым одобрением.'}
           action={canManageContract ? (
             <Space>
               <Button size="small" type="primary" icon={<FileTextOutlined />} onClick={() => {
