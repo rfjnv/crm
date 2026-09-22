@@ -97,8 +97,12 @@ const STATUS_ROLE_PERMISSIONS: Partial<Record<DealStatus, Role[]>> = {
 
 const FINANCE_REVIEW_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
-/** С этой даты закрытые сделки без договора показываются бухгалтеру — см. findForFinanceReview. */
-const MISSING_CONTRACT_REVIEW_SINCE = new Date('2026-04-01T00:00:00');
+/**
+ * С этой даты закрытые сделки без договора показываются бухгалтеру — см. findForFinanceReview.
+ * Всё, что закрыто раньше, не проверялось и проверяться не будет: контроль договоров
+ * начат с этого дня, старые сделки в очередь не тянем.
+ */
+const MISSING_CONTRACT_REVIEW_SINCE = new Date('2026-09-22T00:00:00');
 
 function normalizeTransferDocuments(documents?: string[]): string[] {
   if (!Array.isArray(documents)) return [];
