@@ -158,7 +158,10 @@ export default function DashboardPage() {
     || role === 'ADMIN'
     || (user?.permissions ?? []).includes('view_import_orders' as Permission)
     || (user?.permissions ?? []).includes('manage_import_orders' as Permission);
-  const showExtras = isAdmin || role === 'MANAGER';
+  // Сотруднику с hideMoney дашборд показывает только счётчики: графики выручки, ABC и цели
+  // по деньгам скрываются целиком — маска на числах не спасает, когда сумму выдаёт процент плана.
+  const canSeeMoney = !user?.hideMoney;
+  const showExtras = (isAdmin || role === 'MANAGER') && canSeeMoney;
 
   const analyticsPeriodQuery = useMemo((): AnalyticsPeriodQuery => {
     if (period === 'custom' && customRange) {
@@ -631,7 +634,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {(isAdmin || role === 'MANAGER') && (
+      {(isAdmin || role === 'MANAGER') && canSeeMoney && (
         <div className={isMobile ? 'section' : undefined}>
         <Card
           className="dashboard-goal-card"
@@ -683,7 +686,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {(isAdmin || role === 'MANAGER') && (
+      {(isAdmin || role === 'MANAGER') && canSeeMoney && (
         <div className={isMobile ? 'section' : undefined}>
         <Card
           className="dashboard-goal-card"

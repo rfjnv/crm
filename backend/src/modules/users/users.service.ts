@@ -15,6 +15,7 @@ const userSelect = {
   role: true,
   permissions: true,
   isActive: true,
+  hideMoney: true,
   createdAt: true,
   updatedAt: true,
   badgeIcon: true,
@@ -107,6 +108,7 @@ export class UsersService {
         role: dto.role,
         permissions,
         ...(dto.companyId && { companyId: dto.companyId }),
+        ...(dto.hideMoney !== undefined && { hideMoney: dto.hideMoney }),
       },
       select: userSelect,
     });
@@ -150,6 +152,7 @@ export class UsersService {
     }
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.hideMoney !== undefined) data.hideMoney = dto.hideMoney;
     if (dto.password !== undefined) data.password = await hashPassword(dto.password);
     if (dto.permissions !== undefined) data.permissions = dto.permissions;
     if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;

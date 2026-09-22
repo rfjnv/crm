@@ -1,3 +1,5 @@
+import { useAuthStore } from '../store/authStore';
+
 /**
  * Full-value Uzbek soum display (spaced thousands + so'm).
  * Independent from `formatShortNumber` — used for tooltips, tables, summaries.
@@ -36,7 +38,29 @@ export function formatShortNumber(value: number): string {
   return `${sign}${trimmed}${suffix}`;
 }
 
+/** Что видит сотрудник с `hideMoney` вместо любой суммы. */
+export const HIDDEN_MONEY = '•••';
+
+/** Текущему пользователю деньги не показывают (флаг `User.hideMoney`). */
+export function isMoneyHidden(): boolean {
+  return !!useAuthStore.getState().user?.hideMoney;
+}
+
+/**
+ * Денежная сумма: итог сделки, выручка, долг, платёж, касса — всё, что складывается
+ * из цен. Для сотрудника с `hideMoney` маскируется. Для цен товаров используй
+ * `formatPrice` — они видны всегда.
+ */
 export function formatUZS(value: number | string): string {
+  if (isMoneyHidden()) return HIDDEN_MONEY;
+  return formatFullNumber(value);
+}
+
+/**
+ * Цена товара (за единицу) — не маскируется никогда. Сотрудник с `hideMoney`
+ * должен видеть каталог и цены, но не суммы, которые из них складываются.
+ */
+export function formatPrice(value: number | string): string {
   return formatFullNumber(value);
 }
 

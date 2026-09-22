@@ -17,7 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
-import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { formatUZS, formatPrice, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
 import type { Product, ProductReservation } from '../types';
 import { useAuthStore } from '../store/authStore';
@@ -411,7 +411,7 @@ export default function ProductsPage() {
       align: 'right' as const,
       width: 130,
       sorter: (a: Product, b: Product) => Number(a.salePrice || 0) - Number(b.salePrice || 0),
-      render: (v: string | null) => v ? formatUZS(v) : '—',
+      render: (v: string | null) => v ? formatPrice(v) : '—',
     },
     {
       key: 'installmentPrice',
@@ -419,7 +419,7 @@ export default function ProductsPage() {
       dataIndex: 'installmentPrice',
       align: 'right' as const,
       width: 130,
-      render: (v: string | null) => v ? formatUZS(v) : '—',
+      render: (v: string | null) => v ? formatPrice(v) : '—',
     },
     {
       key: 'isActive',
@@ -777,11 +777,11 @@ export default function ProductsPage() {
                   }
                 }}
                 style={{ width: 200 }}
-                tooltip={{ formatter: (v) => formatUZS(v ?? 0) }}
+                tooltip={{ formatter: (v) => formatPrice(v ?? 0) }}
               />
               {priceRange && (
                 <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                  {formatUZS(priceRange[0])} — {formatUZS(priceRange[1])}
+                  {formatPrice(priceRange[0])} — {formatPrice(priceRange[1])}
                 </Typography.Text>
               )}
             </div>
@@ -880,7 +880,7 @@ export default function ProductsPage() {
                     </Typography.Text>
                     {p.salePrice != null && (
                       <Typography.Text style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                        {formatUZS(Number(p.salePrice))}
+                        {formatPrice(Number(p.salePrice))}
                       </Typography.Text>
                     )}
                   </div>

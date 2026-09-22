@@ -244,6 +244,7 @@ export default function UsersPage() {
       department: user.department ?? '',
       role: user.role,
       permissions: user.permissions || [],
+      hideMoney: !!user.hideMoney,
       badgeIcon: user.badgeIcon ?? undefined,
       badgeColor: user.badgeColor || '#22609A',
       badgeLabel: user.badgeLabel ?? '',
@@ -275,6 +276,7 @@ export default function UsersPage() {
         data.badgeLabel = rawLabel || null;
       }
       if (values.companyId !== undefined) data.companyId = (values.companyId as string) || null;
+      if (!!values.hideMoney !== !!editingUser.hideMoney) data.hideMoney = !!values.hideMoney;
       const nextTimepayId = ((values.timepayEmployeeId as string | undefined) ?? '').trim() || null;
       const prevTimepayId = editingUser.timepayEmployeeId ?? null;
       if (nextTimepayId !== prevTimepayId) data.timepayEmployeeId = nextTimepayId;
@@ -292,6 +294,7 @@ export default function UsersPage() {
           badgeLabel: string | null;
           companyId: string | null;
           timepayEmployeeId: string | null;
+          hideMoney: boolean;
         }>,
       });
     } else {
@@ -523,6 +526,13 @@ export default function UsersPage() {
                 </Checkbox>
               ))}
             </Checkbox.Group>
+          </Form.Item>
+          <Form.Item
+            name="hideMoney"
+            valuePropName="checked"
+            extra="Суммы сделок, выручка, долги и касса будут скрыты. Товары и их цены — видны."
+          >
+            <Checkbox>Не показывать деньги</Checkbox>
           </Form.Item>
           {isEditing && canManageTeam && (
             <>

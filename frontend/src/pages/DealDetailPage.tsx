@@ -29,7 +29,7 @@ import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
-import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { formatUZS, formatPrice, moneyFormatter, moneyParser } from '../utils/currency';
 import { isLaminationProduct } from '../utils/lamination';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import { getFirstName } from '../lib/name-utils';
@@ -909,7 +909,7 @@ export default function DealDetailPage() {
     ...(hasQuantities ? [
       { title: 'Кол-во', dataIndex: 'requestedQty', align: 'right' as const, width: 90, render: (v: number | null) => v != null ? formatQty(v) : '—' },
       { title: 'Ед.', dataIndex: ['product', 'unit'], width: 60 },
-      { title: 'Цена (с НДС)', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatUZS(v) : '—' },
+      { title: 'Цена (с НДС)', dataIndex: 'price', align: 'right' as const, render: (v: string | null) => v != null ? formatPrice(v) : '—' },
       { title: 'Сумма', key: 'total', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(calculateLineTotal(Number(r.price), Number(r.requestedQty))) : '—' },
       { title: 'НДС %', key: 'vatRate', align: 'center' as const, width: 70, render: () => includeVat ? '12%' : '—' },
       { title: 'Сумма НДС', key: 'vatAmount', align: 'right' as const, render: (_: unknown, r: DealItem) => r.requestedQty != null && r.price != null ? formatUZS(calculateVatAmount(Number(r.price), Number(r.requestedQty))) : '—' },
@@ -1387,7 +1387,7 @@ export default function DealDetailPage() {
                       {item.price != null && (
                         <div>
                           <Typography.Text type="secondary" style={{ fontSize: 11 }}>Цена</Typography.Text>
-                          <div><Typography.Text>{formatUZS(item.price)}</Typography.Text></div>
+                          <div><Typography.Text>{formatPrice(item.price)}</Typography.Text></div>
                         </div>
                       )}
                       {item.requestedQty != null && item.price != null && (

@@ -95,6 +95,8 @@ export interface User {
   role: UserRole;
   permissions: Permission[];
   isActive: boolean;
+  /** Сотруднику не показывают суммы (сделки, выручка, долги); цены товаров видны. */
+  hideMoney?: boolean;
   createdAt: string;
   updatedAt?: string;
   /** Значок в списке команды (задают админы) */

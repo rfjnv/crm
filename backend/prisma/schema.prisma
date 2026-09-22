@@ -229,6 +229,10 @@ model User {
   role        Role     @default(MANAGER)
   permissions String[] @default([])
   isActive    Boolean  @default(true) @map("is_active")
+  /** Сотруднику не показывают деньги: суммы сделок, выручку, долги, кассу. Цены товаров
+   * в каталоге остаются видны. Маска накладывается на фронте (см. utils/currency), данные
+   * в API не режутся — это защита от случайного взгляда, а не от злого умысла. */
+  hideMoney   Boolean  @default(false) @map("hide_money")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

@@ -15,6 +15,7 @@ export const createUserDto = z.object({
   department: z.string().trim().max(120).optional(),
   role: z.enum(roleValues),
   permissions: z.array(z.enum(permissionValues)).optional(),
+  hideMoney: z.boolean().optional(),
   companyId: z.string().uuid().optional(),
 });
 
@@ -24,6 +25,8 @@ export const updateUserDto = z.object({
   department: z.string().trim().max(120).nullable().optional(),
   role: z.enum(roleValues).optional(),
   isActive: z.boolean().optional(),
+  /** Не показывать сотруднику суммы (сделки, выручка, долги); цены товаров видны. */
+  hideMoney: z.boolean().optional(),
   password: z.string().min(6, 'Минимум 6 символов').optional(),
   permissions: z.array(z.enum(permissionValues)).optional(),
   badgeIcon: badgeIconEnum.nullable().optional(),
