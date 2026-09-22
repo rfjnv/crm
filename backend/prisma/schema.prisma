@@ -10,6 +10,19 @@ datasource db {
 
 // ==================== ENUMS ====================
 
+/**
+ * Уровень доступа сотрудника к деньгам.
+ *  FULL         — видит всё.
+ *  NO_STRATEGIC — видит суммы сделок, оплаты и долги клиентов (без этого менеджер не менеджер),
+ *                 но не видит закупочные цены, выручку, аналитику, кассу, расходы, KPI/бонусы.
+ *  NONE         — только товары и цены за единицу; любые суммы скрыты.
+ */
+enum MoneyAccess {
+  FULL
+  NO_STRATEGIC
+  NONE
+}
+
 enum Role {
   SUPER_ADMIN
   ADMIN
@@ -229,10 +242,10 @@ model User {
   role        Role     @default(MANAGER)
   permissions String[] @default([])
   isActive    Boolean  @default(true) @map("is_active")
-  /** Сотруднику не показывают деньги: суммы сделок, выручку, долги, кассу. Цены товаров
-   * в каталоге остаются видны. Маска накладывается на фронте (см. utils/currency), данные
-   * в API не режутся — это защита от случайного взгляда, а не от злого умысла. */
-  hideMoney   Boolean  @default(false) @map("hide_money")
+  /** Сколько денег видит сотрудник. Режется на сервере (см. middleware/moneyAccess):
+   * из ответов API вычищаются денежные поля, а стратегические разделы закрыты целиком —
+   * через F12 сумм не достать. Фронт дополнительно маскирует то, что считает сам. */
+  moneyAccess MoneyAccess @default(FULL) @map("money_access")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

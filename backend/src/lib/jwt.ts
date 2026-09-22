@@ -6,6 +6,8 @@ export interface AccessTokenPayload {
   role: string;
   permissions: string[];
   companyId?: string;
+  /** Уровень доступа к деньгам — подставляется из БД в authenticate, в токене не хранится */
+  moneyAccess?: 'FULL' | 'NO_STRATEGIC' | 'NONE';
   /** ID refresh-сессии (для «текущее устройство» в списке сеансов) */
   sessionId?: string;
   /** ID пользователя Supabase (вход по email) */

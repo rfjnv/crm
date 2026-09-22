@@ -33,7 +33,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
-import type { User, Permission } from '../types';
+import type { User, Permission, MoneyAccess } from '../types';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 import { USER_BADGE_ICON_KEYS, USER_BADGE_ICON_LABELS } from '../constants/userBadges';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
@@ -123,6 +123,7 @@ export default function UsersPage() {
       role: string;
       department?: string | null;
       permissions?: Permission[];
+      moneyAccess?: MoneyAccess;
     }) =>
       usersApi.create(data),
     onSuccess: () => {
@@ -154,6 +155,7 @@ export default function UsersPage() {
         badgeLabel: string | null;
         companyId: string | null;
         timepayEmployeeId: string | null;
+        moneyAccess: MoneyAccess;
       }>;
     }) => usersApi.update(id, data),
     onSuccess: (_, variables) => {
@@ -232,7 +234,7 @@ export default function UsersPage() {
   function openCreate() {
     setEditingUser(null);
     form.resetFields();
-    form.setFieldsValue({ role: 'MANAGER', permissions: DEFAULT_PERMISSIONS['MANAGER'] || [] });
+    form.setFieldsValue({ role: 'MANAGER', permissions: DEFAULT_PERMISSIONS['MANAGER'] || [], moneyAccess: 'FULL' });
     setOpen(true);
   }
 
@@ -244,7 +246,7 @@ export default function UsersPage() {
       department: user.department ?? '',
       role: user.role,
       permissions: user.permissions || [],
-      hideMoney: !!user.hideMoney,
+      moneyAccess: user.moneyAccess ?? 'FULL',
       badgeIcon: user.badgeIcon ?? undefined,
       badgeColor: user.badgeColor || '#22609A',
       badgeLabel: user.badgeLabel ?? '',
@@ -276,7 +278,8 @@ export default function UsersPage() {
         data.badgeLabel = rawLabel || null;
       }
       if (values.companyId !== undefined) data.companyId = (values.companyId as string) || null;
-      if (!!values.hideMoney !== !!editingUser.hideMoney) data.hideMoney = !!values.hideMoney;
+      const nextMoney = (values.moneyAccess as MoneyAccess | undefined) ?? 'FULL';
+      if (nextMoney !== (editingUser.moneyAccess ?? 'FULL')) data.moneyAccess = nextMoney;
       const nextTimepayId = ((values.timepayEmployeeId as string | undefined) ?? '').trim() || null;
       const prevTimepayId = editingUser.timepayEmployeeId ?? null;
       if (nextTimepayId !== prevTimepayId) data.timepayEmployeeId = nextTimepayId;
@@ -294,7 +297,7 @@ export default function UsersPage() {
           badgeLabel: string | null;
           companyId: string | null;
           timepayEmployeeId: string | null;
-          hideMoney: boolean;
+          moneyAccess: MoneyAccess;
         }>,
       });
     } else {
@@ -528,11 +531,18 @@ export default function UsersPage() {
             </Checkbox.Group>
           </Form.Item>
           <Form.Item
-            name="hideMoney"
-            valuePropName="checked"
-            extra="Суммы сделок, выручка, долги и касса будут скрыты. Товары и их цены — видны."
+            name="moneyAccess"
+            label="Доступ к деньгам"
+            initialValue="FULL"
+            extra="Ограничение работает на сервере: закрытые разделы отдают 403, скрытые суммы в ответах вырезаются — через F12 их не достать."
           >
-            <Checkbox>Не показывать деньги</Checkbox>
+            <Select
+              options={[
+                { value: 'FULL', label: 'Полный — видит всё' },
+                { value: 'NO_STRATEGIC', label: 'Без стратегического — суммы сделок и долги видны; закупки, выручка, касса, KPI — нет' },
+                { value: 'NONE', label: 'Без денег — только товары и цены за единицу' },
+              ]}
+            />
           </Form.Item>
           {isEditing && canManageTeam && (
             <>

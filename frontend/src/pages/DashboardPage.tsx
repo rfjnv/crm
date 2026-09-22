@@ -158,9 +158,9 @@ export default function DashboardPage() {
     || role === 'ADMIN'
     || (user?.permissions ?? []).includes('view_import_orders' as Permission)
     || (user?.permissions ?? []).includes('manage_import_orders' as Permission);
-  // Сотруднику с hideMoney дашборд показывает только счётчики: графики выручки, ABC и цели
-  // по деньгам скрываются целиком — маска на числах не спасает, когда сумму выдаёт процент плана.
-  const canSeeMoney = !user?.hideMoney;
+  // Без доступа к стратегическим деньгам дашборд показывает только счётчики: графики выручки,
+  // ABC и цели скрываются целиком — сервер их всё равно обнулит, а пустые графики только путают.
+  const canSeeMoney = (user?.moneyAccess ?? 'FULL') === 'FULL';
   const showExtras = (isAdmin || role === 'MANAGER') && canSeeMoney;
 
   const analyticsPeriodQuery = useMemo((): AnalyticsPeriodQuery => {

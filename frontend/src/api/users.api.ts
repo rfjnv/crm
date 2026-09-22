@@ -1,5 +1,5 @@
 import client from './client';
-import type { MonthlyGoalProgress, User, Permission, UserKPI, UserMedalHistoryEntry, Company } from '../types';
+import type { MonthlyGoalProgress, User, Permission, UserKPI, UserMedalHistoryEntry, Company, MoneyAccess } from '../types';
 
 export const usersApi = {
   /**
@@ -21,7 +21,7 @@ export const usersApi = {
     department?: string | null;
     permissions?: Permission[];
     companyId?: string;
-    hideMoney?: boolean;
+    moneyAccess?: MoneyAccess;
   }) =>
     client.post<User>('/users', data).then((r) => r.data),
 
@@ -40,7 +40,7 @@ export const usersApi = {
       badgeLabel: string | null;
       companyId: string | null;
       timepayEmployeeId: string | null;
-      hideMoney: boolean;
+      moneyAccess: MoneyAccess;
     }>,
   ) =>
     client.patch<User>(`/users/${id}`, data).then((r) => r.data),

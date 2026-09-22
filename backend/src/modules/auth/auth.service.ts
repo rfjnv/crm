@@ -176,7 +176,7 @@ export class AuthService {
         role: true,
         permissions: true,
         isActive: true,
-        hideMoney: true,
+        moneyAccess: true,
         createdAt: true,
         badgeIcon: true,
         badgeColor: true,

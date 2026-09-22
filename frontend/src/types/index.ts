@@ -1,5 +1,13 @@
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'SITE_ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER' | 'FOREIGN_TRADE';
 
+/**
+ * Уровень доступа к деньгам.
+ *  FULL — всё. NO_STRATEGIC — суммы сделок и долги видны, закупки/выручка/касса/KPI — нет.
+ *  NONE — только товары и цены за единицу. Ограничение применяет сервер (403 на разделы,
+ *  null в денежных полях); фронт лишь рисует «•••» и прячет то, что считает сам.
+ */
+export type MoneyAccess = 'FULL' | 'NO_STRATEGIC' | 'NONE';
+
 export type Permission =
   | 'manage_users'
   | 'view_all_deals'
@@ -95,8 +103,8 @@ export interface User {
   role: UserRole;
   permissions: Permission[];
   isActive: boolean;
-  /** Сотруднику не показывают суммы (сделки, выручка, долги); цены товаров видны. */
-  hideMoney?: boolean;
+  /** Уровень доступа к деньгам; режется на сервере, фронт только дорисовывает маску. */
+  moneyAccess?: MoneyAccess;
   createdAt: string;
   updatedAt?: string;
   /** Значок в списке команды (задают админы) */

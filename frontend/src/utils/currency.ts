@@ -1,4 +1,5 @@
 import { useAuthStore } from '../store/authStore';
+import type { MoneyAccess } from '../types';
 
 /**
  * Full-value Uzbek soum display (spaced thousands + so'm).
@@ -38,29 +39,40 @@ export function formatShortNumber(value: number): string {
   return `${sign}${trimmed}${suffix}`;
 }
 
-/** Что видит сотрудник с `hideMoney` вместо любой суммы. */
+/** Что видит сотрудник вместо скрытой суммы. */
 export const HIDDEN_MONEY = '•••';
 
-/** Текущему пользователю деньги не показывают (флаг `User.hideMoney`). */
+/** Уровень доступа текущего пользователя к деньгам (User.moneyAccess). */
+export function moneyAccess(): MoneyAccess {
+  return useAuthStore.getState().user?.moneyAccess ?? 'FULL';
+}
+
+/** Стратегическое скрыто: закупки, выручка, касса, KPI. Уровни NO_STRATEGIC и NONE. */
+export function isStrategicHidden(): boolean {
+  return moneyAccess() !== 'FULL';
+}
+
+/** Скрыты любые суммы. Уровень NONE. */
 export function isMoneyHidden(): boolean {
-  return !!useAuthStore.getState().user?.hideMoney;
+  return moneyAccess() === 'NONE';
 }
 
 /**
- * Денежная сумма: итог сделки, выручка, долг, платёж, касса — всё, что складывается
- * из цен. Для сотрудника с `hideMoney` маскируется. Для цен товаров используй
- * `formatPrice` — они видны всегда.
+ * Денежная сумма: итог сделки, выручка, долг, платёж — всё, что складывается из цен.
+ * На уровне NONE маскируется. `null` — поле уже вырезал сервер: тоже маска.
+ * Для цен за единицу используй `formatPrice`.
  */
-export function formatUZS(value: number | string): string {
-  if (isMoneyHidden()) return HIDDEN_MONEY;
+export function formatUZS(value: number | string | null | undefined): string {
+  if (value == null || isMoneyHidden()) return HIDDEN_MONEY;
   return formatFullNumber(value);
 }
 
 /**
- * Цена товара (за единицу) — не маскируется никогда. Сотрудник с `hideMoney`
- * должен видеть каталог и цены, но не суммы, которые из них складываются.
+ * Цена за единицу — видна на любом уровне: без неё не составить сделку.
+ * `null` здесь означает, что сервер скрыл поле (напр. закупочную цену) — маска.
  */
-export function formatPrice(value: number | string): string {
+export function formatPrice(value: number | string | null | undefined): string {
+  if (value == null) return HIDDEN_MONEY;
   return formatFullNumber(value);
 }
 
