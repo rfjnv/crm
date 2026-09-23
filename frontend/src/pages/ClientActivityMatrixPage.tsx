@@ -13,6 +13,7 @@ import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyt
 import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
+import { isStrategicHidden } from '../utils/currency';
 import type { HistoryClientActivity, Product } from '../types';
 
 const { Title } = Typography;
@@ -144,7 +145,9 @@ function mergeYearData(
         map.set(c.clientId, row);
       }
       for (const md of c.monthlyData) {
-        row.revenueByYM.set(`${yr}-${md.month}`, md.revenue);
+        // null — сервер вырезал сумму (ограниченный доступ к деньгам). Месяц в monthlyData
+        // всё равно означает покупку: ставим 1, чтобы ячейка светилась как активная.
+        row.revenueByYM.set(`${yr}-${md.month}`, md.revenue ?? 1);
       }
       if (c.lastContactAt && (!row.lastContactAt || c.lastContactAt > row.lastContactAt)) {
         row.lastContactAt = c.lastContactAt;
@@ -245,6 +248,12 @@ export default function ClientActivityMatrixPage() {
 
   function getRevenue(row: UnifiedRow, yr: number, month: number): number {
     return row.revenueByYM.get(`${yr}-${month}`) ?? 0;
+  }
+
+  /** Подсказка ячейки: сумма, а при скрытой выручке — только факт покупки. */
+  function cellTooltip(revenue: number): string {
+    if (revenue <= 0) return 'Нет данных';
+    return isStrategicHidden() ? 'Была покупка' : revenue.toLocaleString('ru-RU');
   }
 
   function revenueColor(revenue: number): string {
@@ -403,7 +412,7 @@ export default function ClientActivityMatrixPage() {
           const revenue = getRevenue(record, p.year, p.month);
           const intensity = revenue > 0 ? Math.min(revenue / maxRevenue, 1) : 0;
           return (
-            <Tooltip title={revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}>
+            <Tooltip title={cellTooltip(revenue)}>
               <div
                 style={{
                   width: 32, height: 24, borderRadius: 5, margin: '0 auto',
@@ -576,7 +585,7 @@ export default function ClientActivityMatrixPage() {
                                 ? `${MONTH_LABELS[p.month]}${String(p.year).slice(2)}`
                                 : MONTH_LABELS[p.month];
                               return (
-                                <Tooltip key={`${p.year}-${p.month}`} title={`${MONTH_LABELS[p.month]} ${p.year}: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                                <Tooltip key={`${p.year}-${p.month}`} title={`${MONTH_LABELS[p.month]} ${p.year}: ${cellTooltip(revenue)}`}>
                                   <div
                                     style={{
                                       width: 38, height: 38, borderRadius: 6,

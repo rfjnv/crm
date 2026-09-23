@@ -173,12 +173,13 @@ export interface DailyReportDay {
   date: string;
   dealsCreated: number;
   dealsClosed: number;
-  revenue: number;
+  /** null — сервер скрыл сумму (ограниченный доступ к деньгам). */
+  revenue: number | null;
 }
 
 export interface DailyReport {
   days: DailyReportDay[];
-  totals: { dealsCreated: number; dealsClosed: number; revenue: number };
+  totals: { dealsCreated: number; dealsClosed: number; revenue: number | null };
   from: string;
   to: string;
 }
@@ -1573,7 +1574,8 @@ export interface HistoryClientActivity {
   /** Отдел ответственного менеджера клиента (из карточки пользователя) */
   managerDepartment?: string | null;
   activeMonths: number[];
-  monthlyData: { month: number; revenue: number }[];
+  /** revenue = null, если у пользователя ограничен доступ к деньгам (сервер вырезает поле). */
+  monthlyData: { month: number; revenue: number | null }[];
   /** ISO: последняя заметка по клиенту (любой пользователь CRM) */
   lastContactAt?: string | null;
   lastContactByName?: string | null;

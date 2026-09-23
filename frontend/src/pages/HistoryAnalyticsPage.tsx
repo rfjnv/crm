@@ -339,7 +339,7 @@ export default function HistoryAnalyticsPage() {
 
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
-    const allRevenues = (data?.clientActivity || []).flatMap((c) => c.monthlyData.map((md) => md.revenue));
+    const allRevenues = (data?.clientActivity || []).flatMap((c) => c.monthlyData.map((md) => md.revenue ?? 0));
     return allRevenues.reduce((a, b) => Math.max(a, b), 1);
   }, [data?.clientActivity]);
 
@@ -382,7 +382,7 @@ export default function HistoryAnalyticsPage() {
   // ── Activity matrix helpers ──
   function getMonthRevenue(record: HistoryClientActivity, month: number): number {
     const md = record.monthlyData.find((d) => d.month === month);
-    return md ? md.revenue : 0;
+    return md ? (md.revenue ?? 0) : 0;
   }
   function getRevenueColor(revenue: number): string {
     if (revenue <= 0) return isDark ? '#2a2a2a' : '#f5f5f5';

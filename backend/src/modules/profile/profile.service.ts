@@ -70,6 +70,9 @@ export class ProfileService {
         role: true,
         permissions: true,
         isActive: true,
+        // Фронт кладёт этот ответ в authStore целиком: без поля уровень доступа к деньгам
+        // «терялся» до перезахода, и дашборд рисовал пустые графики выручки.
+        moneyAccess: true,
         createdAt: true,
         badgeIcon: true,
         badgeColor: true,

@@ -23,7 +23,7 @@ import { Column, Line } from '@ant-design/charts';
 import { profileApi } from '../api/profile.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { moneyFormatter } from '../utils/currency';
+import { formatUZS } from '../utils/currency';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 import { getFirstName } from '../lib/name-utils';
 
@@ -252,7 +252,9 @@ export default function ProfilePage() {
                         Закрыто: <strong>{report.totals.dealsClosed}</strong>
                       </Typography.Text>
                       <Typography.Text>
-                        Выручка: <strong>{moneyFormatter(report.totals.revenue)}</strong> {'so\'m'}
+                        {/* formatUZS, а не moneyFormatter: при ограниченном доступе сервер присылает null,
+                            и moneyFormatter показал бы «0 so'm» — будто продаж не было. */}
+                        Выручка: <strong>{formatUZS(report.totals.revenue)}</strong>
                       </Typography.Text>
                     </Space>
                     {dealsChartData.length > 0 && (
@@ -275,7 +277,7 @@ export default function ProfilePage() {
                         />
                       </div>
                     )}
-                    {revenueChartData.some((d) => d.revenue > 0) && (
+                    {revenueChartData.some((d) => (d.revenue ?? 0) > 0) && (
                       <div>
                         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                           Выручка по дням
