@@ -4,6 +4,7 @@ import { enrichUserFromMe } from '../lib/authUser';
 import { useAuthStore } from '../store/authStore';
 import { getDeviceId } from '../lib/deviceId';
 import { getTelegramInitData } from '../lib/telegramWebApp';
+import { isMoneyAccessDenied, notifyMoneyAccessDenied } from '../lib/moneyAccess';
 
 export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
 
@@ -76,6 +77,14 @@ client.interceptors.response.use(
         await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
         return client(originalRequest);
       }
+    }
+
+    // Нет прав на денежный раздел: объясняем причину на любой странице и в любом блоке,
+    // иначе пользователь видит просто пустоту. Ошибку всё равно пробрасываем —
+    // страница сама решает, что рисовать вместо данных.
+    if (isMoneyAccessDenied(error)) {
+      notifyMoneyAccessDenied();
+      return Promise.reject(error);
     }
 
     if (error.response?.status !== 401 || originalRequest._retry) {

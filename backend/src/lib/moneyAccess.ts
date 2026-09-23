@@ -48,22 +48,41 @@ const MONEY_RE = new RegExp([
 ].join('|'), 'i');
 
 /**
- * Разделы, закрытые целиком (путь без /api). Всё, что тут не перечислено,
- * отдаётся с вычищенными полями — например, /dashboard/analytics остаётся ради
- * счётчиков сделок, а выручка в нём обнуляется.
+ * Разделы, закрытые целиком на NO_STRATEGIC и NONE (путь без /api).
+ *
+ * Всё, что тут не перечислено, отдаётся с вычищенными полями. Рабочие инструменты
+ * менеджера — звонки, матрица контактов, история и когорты клиентов, реанимация,
+ * мёртвые товары, просрочки, расход плёнки, заметки — остаются открыты: денег в них
+ * мало, и их вырезает фильтр полей.
  */
 const STRATEGIC_PATHS: RegExp[] = [
-  // Аналитика закрыта, кроме истории клиентов (матрица активности, иерархия, когорты):
-  // это рабочий инструмент менеджера, а суммы в ней вырезает фильтр полей.
-  /^\/analytics(?!\/(history|cohorts)(\/|$))(\/|$)/,
-  /^\/finance(\/|$)/,             // касса, баланс компании
+  /^\/analytics\/?$/,                                            // сводная аналитика: выручка
+  /^\/analytics\/(intelligence|abc-xyz|manager-kpi|department-report)(\/|$)/,
+  /^\/analytics\/reanimation\/ai-report/,  // текст ИИ может пересказывать суммы — фильтр полей его не видит
+  // Любая выгрузка в файл. Фильтр полей работает только с JSON, а Excel уходит
+  // готовым файлом с суммами внутри.
+  /(^|\/)[^/]*export[^/]*(\/|$)/,
+  /^\/finance(\/|$)/,                                            // касса, баланс компании
   /^\/expenses(\/|$)/,
-  /^\/timepay(\/|$)/,             // зарплатный учёт
+  /^\/timepay(\/|$)/,                                            // зарплатный учёт
   /^\/dashboard\/revenue-today/,
   /^\/users\/[^/]+\/kpi/,
   /^\/users\/[^/]+\/monthly-goal/,
   /^\/users\/monthly-goals/,
 ];
+
+/**
+ * Документы с суммами, закрытые на NONE. Это готовые файлы (PDF/HTML), поэтому
+ * вырезать из них поля нельзя — только закрыть. На NO_STRATEGIC суммы сделок видны,
+ * и эти документы тоже.
+ */
+const ALL_MONEY_PATHS: RegExp[] = [
+  /^\/deals\/[^/]+\/payment-receipt/,
+  /^\/contracts\/[^/]+\/print/,
+];
+
+/** Код ошибки, по которому фронт показывает «нет доступа, обратитесь к администратору». */
+export const MONEY_ACCESS_DENIED = 'MONEY_ACCESS_DENIED';
 
 export function isStrategicHidden(level: MoneyAccess): boolean {
   return level !== 'FULL';
@@ -77,8 +96,14 @@ export function isAllMoneyHidden(level: MoneyAccess): boolean {
 export function assertPathAllowed(level: MoneyAccess, path: string): void {
   if (!isStrategicHidden(level)) return;
   const p = path.replace(/^\/api/, '');
-  if (STRATEGIC_PATHS.some((re) => re.test(p))) {
-    throw new AppError(403, 'Этот раздел недоступен: у вас ограничен доступ к финансовым данным');
+  const blocked = STRATEGIC_PATHS.some((re) => re.test(p))
+    || (isAllMoneyHidden(level) && ALL_MONEY_PATHS.some((re) => re.test(p)));
+  if (blocked) {
+    throw new AppError(
+      403,
+      'Нет доступа к финансовым данным в этом разделе. Обратитесь к администратору.',
+      MONEY_ACCESS_DENIED,
+    );
   }
 }
 

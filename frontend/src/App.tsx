@@ -7,6 +7,7 @@ import { authApi } from './api/auth.api';
 import { useAuthStore } from './store/authStore';
 import { getTelegramInitData, initTelegramWebApp } from './lib/telegramWebApp';
 import PrivateRoute from './components/PrivateRoute';
+import MoneyAccessGuard from './components/MoneyAccessGuard';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import DefaultHomeRedirect from './components/DefaultHomeRedirect';
@@ -185,7 +186,7 @@ export default function App() {
               <Route element={<PrivateRoute crmStaffOnly />}>
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/revenue/today" element={<RevenueTodayPage />} />
+                <Route path="/revenue/today" element={<MoneyAccessGuard><RevenueTodayPage /></MoneyAccessGuard>} />
                 <Route element={<PrivateRoute permission="view_all_clients" />}>
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
@@ -236,10 +237,10 @@ export default function App() {
                   <Route path="/worker-audit" element={<WorkerAuditPage />} />
                   <Route path="/deals/audit-check" element={<AuditCheckPage />} />
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
-                  <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/analytics" element={<MoneyAccessGuard><AnalyticsPage /></MoneyAccessGuard>} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/analytics/market" element={<MarketAnalysisPage />} />
-                  <Route path="/analytics/department-report" element={<DepartmentReportPage />} />
+                  <Route path="/analytics/department-report" element={<MoneyAccessGuard><DepartmentReportPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/price-comparison" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
@@ -247,17 +248,17 @@ export default function App() {
                   <Route path="/attendance" element={<AttendancePage />} />
                 </Route>
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
-                <Route path="/finance/expenses" element={<ExpensesPage />} />
+                <Route path="/finance/expenses" element={<MoneyAccessGuard><ExpensesPage /></MoneyAccessGuard>} />
                 {/* Роли совпадают с FINANCE_ROLES на бэкенде и с условием показа пункта меню:
                     иначе по прямой ссылке страница открывалась, а API отвечал 403. */}
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR']} />}>
                   {/* Отдельная страница долгов дублировала вкладку в Кассе и уже разошлась
                       с ней по поведению. Ссылки продолжают работать через редирект. */}
                   <Route path="/finance/debts" element={<Navigate to="/finance/cashbox?tab=debtors" replace />} />
-                  <Route path="/finance/cashbox" element={<CashboxPage />} />
+                  <Route path="/finance/cashbox" element={<MoneyAccessGuard><CashboxPage /></MoneyAccessGuard>} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
-                  <Route path="/finance/balance" element={<CompanyBalancePage />} />
+                  <Route path="/finance/balance" element={<MoneyAccessGuard><CompanyBalancePage /></MoneyAccessGuard>} />
                 </Route>
                 <Route path="/almanac/sales" element={<AlmanacSalesPage />} />
                 <Route path="/almanac/clients" element={<AlmanacClientsPage />} />

@@ -82,6 +82,7 @@ import { useActivityTracking } from '../hooks/useActivityTracking';
 import { APP_BUTTON } from './ui/AppClassNames';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
+import MoneyAccessBanner from './MoneyAccessBanner';
 import UiScaleControl from './UiScaleControl';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
@@ -953,10 +954,14 @@ export default function Layout() {
           >
             {isMobile ? (
               <div className="main-container">
+                <MoneyAccessBanner />
                 <Outlet />
               </div>
             ) : (
-              <Outlet />
+              <>
+                <MoneyAccessBanner />
+                <Outlet />
+              </>
             )}
           </div>
         </Content>
