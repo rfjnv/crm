@@ -81,6 +81,13 @@ const ALL_MONEY_PATHS: RegExp[] = [
   /^\/contracts\/[^/]+\/print/,
 ];
 
+/**
+ * AI-ассистент (чат, обучение, аудио в текст, аудиты звонков) для новичков закрыт целиком:
+ * ИИ отвечает текстом и может пересказать выручку или суммы сделок, а фильтр полей
+ * свободный текст не видит.
+ */
+const AI_PATHS: RegExp[] = [/^\/ai-assistant(\/|$)/];
+
 /** Код ошибки, по которому фронт показывает «нет доступа, обратитесь к администратору». */
 export const MONEY_ACCESS_DENIED = 'MONEY_ACCESS_DENIED';
 
@@ -96,6 +103,9 @@ export function isAllMoneyHidden(level: MoneyAccess): boolean {
 export function assertPathAllowed(level: MoneyAccess, path: string): void {
   if (!isStrategicHidden(level)) return;
   const p = path.replace(/^\/api/, '');
+  if (AI_PATHS.some((re) => re.test(p))) {
+    throw new AppError(403, 'AI-ассистент недоступен для вашей учётной записи. Обратитесь к администратору.', MONEY_ACCESS_DENIED);
+  }
   const blocked = STRATEGIC_PATHS.some((re) => re.test(p))
     || (isAllMoneyHidden(level) && ALL_MONEY_PATHS.some((re) => re.test(p)));
   if (blocked) {

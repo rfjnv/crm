@@ -83,7 +83,7 @@ client.interceptors.response.use(
     // иначе пользователь видит просто пустоту. Ошибку всё равно пробрасываем —
     // страница сама решает, что рисовать вместо данных.
     if (isMoneyAccessDenied(error)) {
-      notifyMoneyAccessDenied();
+      notifyMoneyAccessDenied(error);
       return Promise.reject(error);
     }
 

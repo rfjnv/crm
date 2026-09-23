@@ -10,9 +10,10 @@ import { MONEY_ACCESS_TEXT, MONEY_ACCESS_TITLE } from '../lib/moneyAccess';
  * пустой страницы: сервер всё равно ответит 403, и без этого человек видел бы
  * «Нет данных» и не понимал бы, что дело в правах.
  *
- * Список маршрутов должен совпадать со STRATEGIC_PATHS в backend/src/lib/moneyAccess.ts.
+ * Список маршрутов должен совпадать со STRATEGIC_PATHS / AI_PATHS в backend/src/lib/moneyAccess.ts.
+ * `text` — своя причина для раздела (напр. AI-ассистент), по умолчанию — про финансы.
  */
-export default function MoneyAccessGuard({ children }: { children?: ReactNode }) {
+export default function MoneyAccessGuard({ children, text = MONEY_ACCESS_TEXT }: { children?: ReactNode; text?: string }) {
   const navigate = useNavigate();
   const level = useAuthStore((s) => s.user?.moneyAccess ?? 'FULL');
 
@@ -22,7 +23,7 @@ export default function MoneyAccessGuard({ children }: { children?: ReactNode })
     <Result
       status="403"
       title={MONEY_ACCESS_TITLE}
-      subTitle={MONEY_ACCESS_TEXT}
+      subTitle={text}
       extra={<Button type="primary" onClick={() => navigate('/dashboard')}>На главную</Button>}
     />
   );

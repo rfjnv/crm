@@ -8,6 +8,7 @@ import { useAuthStore } from './store/authStore';
 import { getTelegramInitData, initTelegramWebApp } from './lib/telegramWebApp';
 import PrivateRoute from './components/PrivateRoute';
 import MoneyAccessGuard from './components/MoneyAccessGuard';
+import { AI_ACCESS_TEXT } from './lib/moneyAccess';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import DefaultHomeRedirect from './components/DefaultHomeRedirect';
@@ -264,10 +265,10 @@ export default function App() {
                 <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE']} />}>
-                  <Route path="/ai-assistant" element={<AiAssistantPage />} />
-                  <Route path="/ai-assistant/training" element={<AiTrainingPage />} />
-                  <Route path="/ai-assistant/transcribe" element={<AudioTranscriptionPage />} />
-                  <Route path="/ai-assistant/call-audits" element={<CallAuditDashboardPage />} />
+                  <Route path="/ai-assistant" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiAssistantPage /></MoneyAccessGuard>} />
+                  <Route path="/ai-assistant/training" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiTrainingPage /></MoneyAccessGuard>} />
+                  <Route path="/ai-assistant/transcribe" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AudioTranscriptionPage /></MoneyAccessGuard>} />
+                  <Route path="/ai-assistant/call-audits" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><CallAuditDashboardPage /></MoneyAccessGuard>} />
                 </Route>
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />

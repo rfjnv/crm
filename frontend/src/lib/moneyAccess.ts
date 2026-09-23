@@ -11,6 +11,7 @@ export const MONEY_ACCESS_DENIED = 'MONEY_ACCESS_DENIED';
 
 export const MONEY_ACCESS_TITLE = 'Нет доступа';
 export const MONEY_ACCESS_TEXT = 'У вас нет доступа к финансовым данным в этом разделе. Обратитесь к администратору.';
+export const AI_ACCESS_TEXT = 'AI-ассистент недоступен для вашей учётной записи. Обратитесь к администратору.';
 
 export function isMoneyAccessDenied(error: unknown): boolean {
   const res = (error as { response?: { status?: number; data?: { code?: string } } })?.response;
@@ -21,11 +22,13 @@ export function isMoneyAccessDenied(error: unknown): boolean {
  * Показать уведомление о нехватке прав. Один ключ — одно уведомление на экране,
  * даже если на странице упало сразу несколько запросов.
  */
-export function notifyMoneyAccessDenied(): void {
+export function notifyMoneyAccessDenied(error?: unknown): void {
+  // Текст берём у сервера: причина бывает разной (деньги, AI-ассистент).
+  const serverText = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
   notification.warning({
     key: 'money-access-denied',
     message: MONEY_ACCESS_TITLE,
-    description: MONEY_ACCESS_TEXT,
+    description: serverText || MONEY_ACCESS_TEXT,
     placement: 'topRight',
   });
 }

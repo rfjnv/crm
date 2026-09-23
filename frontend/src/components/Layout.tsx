@@ -718,7 +718,9 @@ export default function Layout() {
         }]
       : []),
     // ── AI-ассистент ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE')
+    // Новичкам (ограниченный доступ к деньгам) не показываем: ИИ может пересказать суммы.
+    // Сервер закрывает /ai-assistant для них же — см. AI_PATHS в backend/src/lib/moneyAccess.ts.
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE') && (user?.moneyAccess ?? 'FULL') === 'FULL'
       ? [
         {
           key: '/ai-assistant',
