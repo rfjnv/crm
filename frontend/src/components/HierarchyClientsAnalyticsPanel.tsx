@@ -8,7 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
 import ReceiptPunchedTag from './ReceiptPunchedTag';
-import { formatUZS } from '../utils/currency';
+import { formatUZS, isStrategicHidden } from '../utils/currency';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   inferTypeLabel,
@@ -131,7 +131,7 @@ export default function HierarchyClientsAnalyticsPanel({
     persistedView === 'matrix' ? 'matrix' : 'table',
   );
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
-  const [clientListSort, setClientListSort] = useState<ClientListSort>('revenue_desc');
+  const [clientListSort, setClientListSort] = useState<ClientListSort>(() => (isStrategicHidden() ? 'qty_desc' : 'revenue_desc'));
   const [clientRevenueFilter, setClientRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
 
   const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim();
@@ -234,6 +234,63 @@ export default function HierarchyClientsAnalyticsPanel({
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
   }, [visibleProducts, clientScopeCategory, clientScopeType]);
 
+  const hierarchyStale = 120_000;
+
+  const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
+    queryKey: [
+      'analytics-hierarchy-clients-context',
+      hierarchyPeriodPreset,
+      hierarchyCustomDays,
+      hierarchyPeriodPreset === 'range' ? hierarchyRange[0].format('YYYY-MM-DD') : null,
+      hierarchyPeriodPreset === 'range' ? hierarchyRange[1].format('YYYY-MM-DD') : null,
+    ],
+    queryFn: () => {
+      const bounds = getPeriodBoundsByPreset(
+        hierarchyPeriodPreset,
+        hierarchyCustomDays,
+        hierarchyRange[0].format('YYYY-MM-DD'),
+        hierarchyRange[1].format('YYYY-MM-DD'),
+      );
+      // У панели свои пресеты (скользящие окна, как на странице товара) — конец периода
+      // теперь отсекает бэкенд, а не фильтр на клиенте поверх всех строк с даты начала.
+      return loadSalesContext(bounds);
+    },
+    enabled: fetchEnabled,
+    staleTime: hierarchyStale,
+  });
+
+  // useMemo: иначе `?? []` даёт новый массив на каждом рендере, и все зависящие useMemo пересчитываются впустую.
+  const purchaseRows = useMemo(() => hierarchyClientContext?.purchaseRows ?? [], [hierarchyClientContext]);
+
+  /**
+   * Сколько продаж (строк сделок) за период в каждой категории. Считаем штуками строк,
+   * а не выручкой: у категорий разные единицы (кг, шт, л), а выручка у сотрудника
+   * с ограниченным доступом к деньгам приходит пустой.
+   */
+  const salesCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of purchaseRows) {
+      const product = productsById.get(row.productId);
+      if (!product) continue;
+      const category = normalizedCategory(product);
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    return counts;
+  }, [purchaseRows, productsById]);
+
+  /** Выручка скрыта (ограниченный доступ к деньгам): блоки и сортировки по ней не показываем. */
+  const moneyHidden = isStrategicHidden();
+
+  /** Категория с наибольшим числом продаж — выбор по умолчанию вместо первой по алфавиту. */
+  const busiestCategory = useMemo(() => {
+    let best: string | null = null;
+    let bestCount = 0;
+    for (const [name, count] of salesCountByCategory) {
+      if (count > bestCount) { best = name; bestCount = count; }
+    }
+    return best;
+  }, [salesCountByCategory]);
+
   /**
    * Единый проход согласования category/type/product: раньше это были 4
    * независимых эффекта, которые читали и правили состояние друг друга —
@@ -244,7 +301,10 @@ export default function HierarchyClientsAnalyticsPanel({
   useEffect(() => {
     let nextCategory = clientScopeCategory;
     if (!nextCategory || !categories.some((c) => c.name === nextCategory)) {
-      nextCategory = categories[0]?.name ?? null;
+      // Пока продажи грузятся, категорию не выбираем: иначе закрепится первая по алфавиту
+      // («Без категории», где продаж почти не бывает), и вкладка выглядит сломанной.
+      if (hierarchyClientLoading && fetchEnabled) return;
+      nextCategory = busiestCategory ?? categories[0]?.name ?? null;
     }
 
     const selectedProduct =
@@ -275,11 +335,47 @@ export default function HierarchyClientsAnalyticsPanel({
     if (nextCategory !== clientScopeCategory) setClientScopeCategory(nextCategory);
     if (nextType !== clientScopeType) setClientScopeType(nextType);
     if (nextProductId !== clientScopeProductId) setClientScopeProductId(nextProductId);
-  }, [categories, visibleProducts, clientScopeLevel, clientScopeCategory, clientScopeType, clientScopeProductId, productsById]);
+  }, [categories, visibleProducts, clientScopeLevel, clientScopeCategory, clientScopeType, clientScopeProductId, productsById,
+    busiestCategory, hierarchyClientLoading, fetchEnabled]);
 
+  /**
+   * Пустое состояние с причиной: «Нет данных» выглядело как поломка, хотя обычно просто
+   * в выбранной категории за период не было продаж. Предлагаем категорию, где они есть.
+   */
+  const scopeName = clientScopeLevel === 'category'
+    ? clientScopeCategory
+    : clientScopeLevel === 'type'
+      ? clientScopeType
+      : (clientScopeProductId ? productsById.get(clientScopeProductId)?.name : null);
+  const renderNoSales = () => (
+    <Space direction="vertical" size={4}>
+      <Typography.Text type="secondary">
+        {scopeName ? `За выбранный период продаж в «${scopeName}» нет.` : 'За выбранный период продаж нет.'}
+        {' '}Выберите другую категорию или период.
+      </Typography.Text>
+      {busiestCategory && busiestCategory !== clientScopeCategory && (
+        <Button
+          size="small"
+          type="link"
+          style={{ padding: 0 }}
+          onClick={() => {
+            setClientScopeLevel('category');
+            setClientScopeCategory(busiestCategory);
+            setClientScopeType(null);
+            setClientScopeProductId(null);
+          }}
+        >
+          Показать «{busiestCategory}» ({salesCountByCategory.get(busiestCategory) ?? 0} продаж)
+        </Button>
+      )}
+    </Space>
+  );
+
+  // Рядом с названием — число продаж за период: сразу видно, что «Без категории · 0»
+  // пуста не из-за ошибки, и где искать данные.
   const categoryOptionsForClients = useMemo(
-    () => categories.map((c) => ({ label: c.name, value: c.name })),
-    [categories],
+    () => categories.map((c) => ({ label: `${c.name} · ${salesCountByCategory.get(c.name) ?? 0}`, value: c.name })),
+    [categories, salesCountByCategory],
   );
 
   useEffect(() => {
@@ -315,32 +411,6 @@ export default function HierarchyClientsAnalyticsPanel({
     writePersist('clientSearch', internalClientSearch.trim() || null);
   }, [clientSearchTerm, internalClientSearch, writePersist]);
 
-  const hierarchyStale = 120_000;
-
-  const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
-    queryKey: [
-      'analytics-hierarchy-clients-context',
-      hierarchyPeriodPreset,
-      hierarchyCustomDays,
-      hierarchyPeriodPreset === 'range' ? hierarchyRange[0].format('YYYY-MM-DD') : null,
-      hierarchyPeriodPreset === 'range' ? hierarchyRange[1].format('YYYY-MM-DD') : null,
-    ],
-    queryFn: () => {
-      const bounds = getPeriodBoundsByPreset(
-        hierarchyPeriodPreset,
-        hierarchyCustomDays,
-        hierarchyRange[0].format('YYYY-MM-DD'),
-        hierarchyRange[1].format('YYYY-MM-DD'),
-      );
-      // У панели свои пресеты (скользящие окна, как на странице товара) — конец периода
-      // теперь отсекает бэкенд, а не фильтр на клиенте поверх всех строк с даты начала.
-      return loadSalesContext(bounds);
-    },
-    enabled: fetchEnabled,
-    staleTime: hierarchyStale,
-  });
-
-  const purchaseRows = hierarchyClientContext?.purchaseRows ?? [];
 
   const selectedClientScopeProductIds = useMemo(() => {
     if (clientScopeLevel === 'category') {
@@ -826,7 +896,7 @@ export default function HierarchyClientsAnalyticsPanel({
                       theme={chartTheme}
                     />
                   ) : (
-                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                    renderNoSales()
                   )}
                 </Card>
               </Col>
@@ -849,8 +919,10 @@ export default function HierarchyClientsAnalyticsPanel({
                       }}
                       theme={chartTheme}
                     />
+                  ) : moneyHidden ? (
+                    <Typography.Text type="secondary">Скрыто: нет доступа к финансовым данным. Обратитесь к администратору.</Typography.Text>
                   ) : (
-                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                    renderNoSales()
                   )}
                 </Card>
               </Col>
@@ -874,7 +946,7 @@ export default function HierarchyClientsAnalyticsPanel({
                       theme={chartTheme}
                     />
                   ) : (
-                    <Typography.Text type="secondary">Нет данных</Typography.Text>
+                    renderNoSales()
                   )}
                 </Card>
               </Col>
@@ -900,15 +972,17 @@ export default function HierarchyClientsAnalyticsPanel({
                 options={[
                   { label: 'Сорт: А-Я', value: 'name_asc' },
                   { label: 'Сорт: Я-А', value: 'name_desc' },
-                  { label: 'Сорт: выручка (убыв.)', value: 'revenue_desc' },
-                  { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' },
+                  ...(moneyHidden ? [] : [
+                    { label: 'Сорт: выручка (убыв.)', value: 'revenue_desc' as const },
+                    { label: 'Сорт: выручка (возр.)', value: 'revenue_asc' as const },
+                  ]),
                   { label: 'Сорт: куплено (убыв.)', value: 'qty_desc' },
                   { label: 'Сорт: куплено (возр.)', value: 'qty_asc' },
                   { label: 'Сорт: сделки (убыв.)', value: 'deals_desc' },
                   { label: 'Сорт: сделки (возр.)', value: 'deals_asc' },
                 ]}
               />
-              <Select
+              {!moneyHidden && <Select
                 value={clientRevenueFilter}
                 onChange={(v) => setClientRevenueFilter(v)}
                 style={{ minWidth: 200 }}
@@ -918,7 +992,7 @@ export default function HierarchyClientsAnalyticsPanel({
                   { label: 'Выручка ≥ 1 млн', value: 'gte_1m' },
                   { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
                 ]}
-              />
+              />}
             </div>
 
             {clientViewMode === 'table' ? (
@@ -927,7 +1001,7 @@ export default function HierarchyClientsAnalyticsPanel({
                 rowKey="clientId"
                 pagination={false}
                 dataSource={clientPurchaseSummaryRows}
-                locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+                locale={{ emptyText: renderNoSales() }}
                 expandable={{
                   expandedRowRender: (record) => (
                     <Table
@@ -947,7 +1021,7 @@ export default function HierarchyClientsAnalyticsPanel({
                 pagination={false}
                 rowKey="clientId"
                 dataSource={matrixRows.clients}
-                locale={{ emptyText: 'Нет покупок по выбранному фильтру' }}
+                locale={{ emptyText: renderNoSales() }}
                 scroll={{ x: Math.max(900, 220 + matrixRows.monthKeys.length * 78) }}
                 columns={matrixColumns}
               />
