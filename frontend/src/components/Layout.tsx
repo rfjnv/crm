@@ -18,6 +18,7 @@ import {
   ShopOutlined,
   SwapOutlined,
   LogoutOutlined,
+  BgColorsOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
@@ -127,7 +128,7 @@ export default function Layout() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [setUser]);
-  const { mode, toggle } = useThemeStore();
+  const { mode, toggle, design, toggleDesign } = useThemeStore();
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
   const mainScrollRef = useRef<HTMLDivElement>(null);
@@ -220,12 +221,23 @@ export default function Layout() {
 
   const profileMenuItems: MenuProps['items'] = [
     { key: 'profile', icon: <IdcardOutlined />, label: 'Профиль' },
+    {
+      key: 'design',
+      icon: <BgColorsOutlined />,
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+          Новый дизайн (бета)
+          <Switch size="small" checked={design === 'modern'} />
+        </span>
+      ),
+    },
     { type: 'divider' },
     { key: 'logout', icon: <LogoutOutlined />, label: 'Выход', danger: true },
   ];
 
   const onProfileMenuClick: NonNullable<MenuProps['onClick']> = ({ key }) => {
     if (key === 'profile') navigate('/profile');
+    if (key === 'design') toggleDesign();
     if (key === 'logout') void handleLogout();
   };
 

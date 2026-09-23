@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider, theme as antTheme, Spin } from 'antd';
+import { ConfigProvider, Spin } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import { authApi } from './api/auth.api';
 import { useAuthStore } from './store/authStore';
@@ -97,7 +97,7 @@ import DepartmentReportPage from './pages/DepartmentReportPage';
 import ChangelogPage from './pages/ChangelogPage';
 import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
-import { antDesignTokens } from './theme/tokens';
+import { antThemeConfig } from './theme/tokens';
 import type { ThemeMode } from './theme/tokens';
 
 const queryClient = new QueryClient({
@@ -108,11 +108,13 @@ const queryClient = new QueryClient({
 
 export default function App() {
   const mode = useThemeStore((s) => s.mode);
+  const design = useThemeStore((s) => s.design);
+  const antTheme = useMemo(() => antThemeConfig(design, mode as ThemeMode), [design, mode]);
   const [tgAuthChecking, setTgAuthChecking] = useState(true);
 
   useEffect(() => {
-    applyDocumentTheme(mode as ThemeMode);
-  }, [mode]);
+    applyDocumentTheme(mode as ThemeMode, design);
+  }, [mode, design]);
 
   // Автовход, если CRM открыта как Telegram Web App (кнопка меню бота)
   useEffect(() => {
@@ -147,22 +149,7 @@ export default function App() {
   return (
     <ConfigProvider
       locale={ruRU}
-      theme={{
-        algorithm: mode === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
-        token: {
-          colorPrimary: '#22609A',
-          ...antDesignTokens[mode as ThemeMode],
-        },
-        components: {
-          Menu: {
-            itemMarginBlock: 2,
-            groupTitleFontSize: 11,
-            groupTitleColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.35)',
-            itemSelectedBg: mode === 'dark' ? 'rgba(34, 96, 154, 0.35)' : 'rgba(34, 96, 154, 0.12)',
-            itemSelectedColor: mode === 'dark' ? '#5BA4DE' : '#1A4F80',
-          },
-        },
-      }}
+      theme={antTheme}
     >
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>

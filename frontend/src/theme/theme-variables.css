@@ -83,3 +83,34 @@ html[data-theme='dark'] .g2-tooltip {
   flex-shrink: 0 !important;
   opacity: 1 !important;
 }
+
+/* ── Новый дизайн (бета): включается в меню профиля, см. DesignMode в tokens.ts ── */
+
+html[data-design='modern'] body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Цифры одной ширины: суммы в таблицах и карточках встают ровными столбцами */
+html[data-design='modern'] .ant-table,
+html[data-design='modern'] .ant-statistic-content {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-design='modern'] .ant-statistic-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+html[data-design='modern'] .ant-table-thead > tr > th {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+html[data-design='modern'] .ant-menu-item-group-title {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}

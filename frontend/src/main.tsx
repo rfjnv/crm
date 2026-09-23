@@ -19,7 +19,10 @@ window.__crmBooted = true;
 installBlankScreenReporter();
 
 const stored = safeStorage.getItem('theme');
-applyDocumentTheme(stored === 'dark' || stored === 'light' ? (stored as ThemeMode) : 'light');
+applyDocumentTheme(
+  stored === 'dark' || stored === 'light' ? (stored as ThemeMode) : 'light',
+  safeStorage.getItem('design') === 'modern' ? 'modern' : 'classic',
+);
 
 // До первой отрисовки, иначе интерфейс скакнёт в размере на глазах у пользователя.
 applyUiScale(useUiScaleStore.getState().scale);
