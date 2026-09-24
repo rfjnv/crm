@@ -1,74 +1,71 @@
 /**
- * Стекло в духе iOS — эксперимент нового дизайна, пока только на дашборде.
+ * Матовое стекло в духе visionOS — эксперимент нового дизайна, пока только на дашборде.
  *
  * Включается, когда одновременно: новый дизайн (`data-design='modern'`) и на
  * странице есть `.dashboard-page`.
  *
- * Из чего складывается ощущение стекла:
- *  - яркий фон с цветными пятнами — иначе размывать нечего и стекло выглядит серым;
- *  - сама поверхность почти прозрачная, но с сильным размытием и насыщенностью,
- *    поэтому каждая карточка подкрашивается тем пятном, над которым лежит;
- *  - светлая кромка и блик по верхнему краю — «толщина» стекла;
- *  - плавающие меню и шапка с отступом от краёв, как панели в iPadOS.
+ * Устройство:
+ *  - за интерфейсом — фотография (без неё размывать нечего, стекло выглядит серым);
+ *  - меню — отдельная плавающая стеклянная панель;
+ *  - шапка и содержимое — одно большое стеклянное окно;
+ *  - карточки внутри окна — лёгкие полупрозрачные панели без собственного размытия.
+ * Тёмная тема: дымчатое стекло и чуть затемнённое фото. Светлая: молочное стекло.
  *
- * Если браузер не умеет backdrop-filter или пользователь попросил меньше
- * прозрачности — поверхности становятся сплошными.
+ * Фото подгружается только тем, у кого это правило срабатывает. Если браузер не
+ * умеет backdrop-filter или пользователь попросил меньше прозрачности —
+ * поверхности становятся сплошными.
  */
 
 html[data-design='modern']:has(.dashboard-page) {
-  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0.3) 100%);
-  --glass-fill-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.32) 100%);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-rim:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.3),
-    inset 1px 0 0 rgba(255, 255, 255, 0.35),
-    inset -1px 0 0 rgba(255, 255, 255, 0.2);
-  --glass-shadow: 0 10px 30px rgba(30, 41, 90, 0.12), 0 2px 6px rgba(30, 41, 90, 0.06);
-  --glass-shadow-hover: 0 16px 40px rgba(30, 41, 90, 0.18), 0 4px 10px rgba(30, 41, 90, 0.08);
-  --glass-sheen: linear-gradient(165deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 38%);
-  --glass-blur: blur(26px) saturate(200%);
-  --glass-edge: rgba(15, 23, 42, 0.06);
-  --glass-table-head: rgba(255, 255, 255, 0.35);
-  --glass-row-hover: rgba(255, 255, 255, 0.35);
-
-  background:
-    radial-gradient(38vw 38vw at 12% 12%, rgba(59, 130, 246, 0.55), transparent 70%),
-    radial-gradient(32vw 32vw at 88% 10%, rgba(236, 72, 153, 0.38), transparent 70%),
-    radial-gradient(40vw 40vw at 72% 88%, rgba(20, 184, 166, 0.45), transparent 70%),
-    radial-gradient(30vw 30vw at 22% 92%, rgba(168, 85, 247, 0.4), transparent 70%),
-    radial-gradient(26vw 26vw at 50% 45%, rgba(251, 191, 36, 0.22), transparent 70%),
-    #e8ecf5;
-  background-attachment: fixed;
+  --scene-dim: 0.42;
+  --win-bg: rgba(60, 64, 66, 0.32);
+  --win-border: rgba(255, 255, 255, 0.22);
+  --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  --win-shadow: 0 40px 100px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.2);
+  --win-blur: blur(48px) saturate(160%);
+  --panel-bg: rgba(255, 255, 255, 0.07);
+  --panel-bg-hover: rgba(255, 255, 255, 0.11);
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-rim: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --chip-border: rgba(255, 255, 255, 0.28);
+  --chip-active-bg: #f4f0e6;
+  --chip-active-text: #1c1a17;
+  --menu-active-bg: rgba(255, 255, 255, 0.16);
+  --glass-text: #ffffff;
 }
 
-html[data-design='modern'][data-theme='dark']:has(.dashboard-page) {
-  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.04) 100%);
-  --glass-fill-strong: linear-gradient(135deg, rgba(30, 35, 48, 0.55) 0%, rgba(20, 24, 34, 0.42) 100%);
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-rim:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    inset 1px 0 0 rgba(255, 255, 255, 0.06),
-    inset -1px 0 0 rgba(255, 255, 255, 0.03);
-  --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --glass-shadow-hover: 0 18px 44px rgba(0, 0, 0, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
-  --glass-sheen: linear-gradient(165deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 38%);
-  --glass-blur: blur(26px) saturate(180%);
-  --glass-edge: rgba(255, 255, 255, 0.08);
-  --glass-table-head: rgba(255, 255, 255, 0.04);
-  --glass-row-hover: rgba(255, 255, 255, 0.05);
+html[data-design='modern'][data-theme='light']:has(.dashboard-page) {
+  --scene-dim: 0;
+  --win-bg: rgba(255, 255, 255, 0.38);
+  --win-border: rgba(255, 255, 255, 0.6);
+  --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --win-shadow: 0 40px 100px rgba(20, 40, 30, 0.2), 0 8px 24px rgba(20, 40, 30, 0.1);
+  --panel-bg: rgba(255, 255, 255, 0.4);
+  --panel-bg-hover: rgba(255, 255, 255, 0.55);
+  --panel-border: rgba(255, 255, 255, 0.65);
+  --panel-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --chip-border: rgba(28, 26, 23, 0.2);
+  --chip-active-bg: #1c1a17;
+  --chip-active-text: #ffffff;
+  --menu-active-bg: rgba(255, 255, 255, 0.6);
+  --glass-text: #1c1a17;
+}
 
+/* ── Сцена ── */
+
+html[data-design='modern']:has(.dashboard-page) body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
-    radial-gradient(38vw 38vw at 12% 12%, rgba(59, 130, 246, 0.42), transparent 70%),
-    radial-gradient(32vw 32vw at 88% 10%, rgba(236, 72, 153, 0.28), transparent 70%),
-    radial-gradient(40vw 40vw at 72% 88%, rgba(20, 184, 166, 0.3), transparent 70%),
-    radial-gradient(30vw 30vw at 22% 92%, rgba(168, 85, 247, 0.32), transparent 70%),
-    #05070c;
-  background-attachment: fixed;
+    linear-gradient(rgba(0, 0, 0, var(--scene-dim)), rgba(0, 0, 0, var(--scene-dim))),
+    url('../assets/glass-bg.webp') center / cover no-repeat;
 }
 
 /* Фон должен просвечивать сквозь каркас приложения (на мобильном — и сквозь его «лист») */
+html[data-design='modern']:has(.dashboard-page),
 html[data-design='modern']:has(.dashboard-page) body,
 html[data-design='modern']:has(.dashboard-page) .top-hero,
 html[data-design='modern']:has(.dashboard-page) .main-container,
@@ -77,116 +74,177 @@ html[data-design='modern']:has(.dashboard-page) .ant-layout-content {
   background: transparent !important;
 }
 
-/* ── Материал ── */
+/* ── Плавающие поверхности: меню, окно, нижняя панель на телефоне ── */
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-header,
 html[data-design='modern']:has(.dashboard-page) .ant-layout-sider,
+html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header),
 html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
-  background: var(--glass-fill-strong) !important;
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border) !important;
-  box-shadow: var(--glass-rim), var(--glass-shadow) !important;
+  background: var(--win-bg) !important;
+  -webkit-backdrop-filter: var(--win-blur);
+  backdrop-filter: var(--win-blur);
+  border: 1px solid var(--win-border) !important;
+  box-shadow: var(--win-rim), var(--win-shadow) !important;
+}
+
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
+  scrollbar-width: none;
 }
 
 html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu,
 html[data-design='modern']:has(.dashboard-page) .ant-layout-sider-children > a:first-child {
   background: transparent !important;
-  border-bottom-color: var(--glass-edge) !important;
+  border: 0 !important;
+}
+
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-item,
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-submenu-title {
+  border-radius: 999px;
+}
+
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-item-selected {
+  background: var(--menu-active-bg) !important;
+  color: var(--glass-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Шапка — часть окна, без своего фона и липкости */
+html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
+  background: transparent !important;
+  border: 0 !important;
+  position: static !important;
+}
+
+html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
+  border-radius: 999px;
+}
+
+@media (min-width: 768px) {
+  html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
+    top: 24px !important;
+    left: 24px !important;
+    bottom: 24px !important;
+    height: auto !important;
+    border-radius: 32px;
+    padding: 8px 0;
+  }
+
+  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
+    margin: 24px 24px 24px calc(var(--app-sider-width) + 48px) !important;
+    min-height: calc(var(--app-vh, 100vh) - 48px);
+    border-radius: 40px;
+    overflow: clip;
+  }
+
+  html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
+    height: 72px !important;
+    line-height: 72px !important;
+    padding: 0 28px !important;
+  }
+
+  html[data-design='modern']:has(.dashboard-page) .ant-layout-content {
+    margin: 4px 28px 28px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
+    margin: 12px 12px 96px !important;
+    border-radius: 28px;
+    overflow: clip;
+  }
+}
+
+/* ── Дашборд внутри окна ── */
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page h4.ant-typography,
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-title {
+  font-size: 36px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+  line-height: 1.15 !important;
 }
 
 /* Карточки. Цвет рамки меняем по сторонам: у KPI-карточек слева цветная полоса */
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card {
-  position: relative;
-  background: var(--glass-fill) !important;
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border-top-color: var(--glass-border) !important;
-  border-right-color: var(--glass-border) !important;
-  border-bottom-color: var(--glass-border) !important;
-  box-shadow: var(--glass-rim), var(--glass-shadow) !important;
-  border-radius: 20px !important;
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
-}
-
-/* Блик по верхней части — отдельным слоем, чтобы не смешивать маску с backdrop-filter */
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--glass-sheen);
-  pointer-events: none;
-}
-
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card > * {
-  position: relative;
-}
-
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-head {
-  border-bottom-color: var(--glass-edge);
-  background: transparent;
+  background: var(--panel-bg) !important;
+  border-top-color: var(--panel-border) !important;
+  border-right-color: var(--panel-border) !important;
+  border-bottom-color: var(--panel-border) !important;
+  box-shadow: var(--panel-rim) !important;
+  border-radius: 24px !important;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-hoverable:hover {
-  transform: translateY(-2px) scale(1.005);
-  box-shadow: var(--glass-rim), var(--glass-shadow-hover) !important;
+  background: var(--panel-bg-hover) !important;
+  transform: translateY(-2px);
 }
 
-/* Таблицы внутри стеклянных карточек не должны быть белыми плашками */
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-head {
+  border-bottom: 0;
+  background: transparent;
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-card-value {
+  font-size: clamp(18px, 1.6vw, 30px) !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* Переключатель периода — «таблетки», выбранная кремовая (в светлой теме — тёмная) */
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented {
+  background: transparent;
+  padding: 0;
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-group {
+  gap: 8px;
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item {
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  color: var(--glass-text);
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item-label {
+  padding: 2px 16px;
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item-selected,
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-thumb {
+  background: var(--chip-active-bg) !important;
+  color: var(--chip-active-text) !important;
+  border-color: transparent;
+  border-radius: 999px;
+}
+
+/* Таблицы внутри стеклянных панелей не должны быть плашками */
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table,
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-container,
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-thead > tr > th,
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr > td {
   background: transparent !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-thead > tr > th {
-  background: var(--glass-table-head) !important;
-}
-
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr:hover > td {
-  background: var(--glass-row-hover) !important;
-}
-
-/* ── Плавающие меню и шапка, как панели iPadOS (только десктоп) ── */
-
-@media (min-width: 768px) {
-  html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
-    top: 12px !important;
-    left: 12px !important;
-    bottom: 12px !important;
-    height: auto !important;
-    border-radius: 22px;
-  }
-
-  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
-    margin-left: calc(var(--app-sider-width) + 12px) !important;
-  }
-
-  html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
-    top: 12px !important;
-    margin: 12px 24px 0;
-    border-radius: 18px;
-  }
-}
-
-html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
-  border-radius: 22px;
+  background: var(--panel-bg) !important;
 }
 
 /* ── Запасные варианты ── */
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-design='modern']:has(.dashboard-page) {
-    --glass-fill: var(--card-bg);
-    --glass-fill-strong: var(--card-bg);
+    --win-bg: var(--card-bg);
+    --panel-bg: var(--card-bg);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   html[data-design='modern']:has(.dashboard-page) {
-    --glass-fill: var(--card-bg);
-    --glass-fill-strong: var(--card-bg);
-    --glass-blur: none;
+    --win-bg: var(--card-bg);
+    --panel-bg: var(--card-bg);
+    --win-blur: none;
   }
 }
