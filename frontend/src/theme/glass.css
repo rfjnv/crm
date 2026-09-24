@@ -1,48 +1,70 @@
 /**
- * Стекло (Apple-style) — эксперимент нового дизайна, пока только на дашборде.
+ * Стекло в духе iOS — эксперимент нового дизайна, пока только на дашборде.
  *
  * Включается, когда одновременно: новый дизайн (`data-design='modern'`) и на
- * странице есть `.dashboard-page`. Стеклянными делаем плавающие поверхности —
- * шапку, боковое меню и карточки; под ними мягкий цветной фон, иначе
- * размывать нечего и стекло выглядит просто серым.
+ * странице есть `.dashboard-page`.
  *
- * Непрозрачность у карточек высокая: цифры и суммы должны читаться на любом
- * участке фона. Если браузер не умеет backdrop-filter или пользователь попросил
- * меньше прозрачности — поверхности становятся сплошными.
+ * Из чего складывается ощущение стекла:
+ *  - яркий фон с цветными пятнами — иначе размывать нечего и стекло выглядит серым;
+ *  - сама поверхность почти прозрачная, но с сильным размытием и насыщенностью,
+ *    поэтому каждая карточка подкрашивается тем пятном, над которым лежит;
+ *  - светлая кромка и блик по верхнему краю — «толщина» стекла;
+ *  - плавающие меню и шапка с отступом от краёв, как панели в iPadOS.
+ *
+ * Если браузер не умеет backdrop-filter или пользователь попросил меньше
+ * прозрачности — поверхности становятся сплошными.
  */
 
 html[data-design='modern']:has(.dashboard-page) {
-  --glass-bg: rgba(255, 255, 255, 0.62);
-  --glass-bg-strong: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0.3) 100%);
+  --glass-fill-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.32) 100%);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-rim:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.3),
+    inset 1px 0 0 rgba(255, 255, 255, 0.35),
+    inset -1px 0 0 rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 10px 30px rgba(30, 41, 90, 0.12), 0 2px 6px rgba(30, 41, 90, 0.06);
+  --glass-shadow-hover: 0 16px 40px rgba(30, 41, 90, 0.18), 0 4px 10px rgba(30, 41, 90, 0.08);
+  --glass-sheen: linear-gradient(165deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 38%);
+  --glass-blur: blur(26px) saturate(200%);
   --glass-edge: rgba(15, 23, 42, 0.06);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --glass-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
-  --glass-blur: blur(20px) saturate(180%);
-  --glass-table-head: rgba(15, 23, 42, 0.03);
+  --glass-table-head: rgba(255, 255, 255, 0.35);
+  --glass-row-hover: rgba(255, 255, 255, 0.35);
 
   background:
-    radial-gradient(1100px 700px at 8% -10%, rgba(99, 132, 255, 0.28), transparent 60%),
-    radial-gradient(900px 600px at 100% 0%, rgba(168, 85, 247, 0.18), transparent 60%),
-    radial-gradient(1000px 800px at 60% 110%, rgba(20, 184, 166, 0.16), transparent 60%),
-    #eef1f7;
+    radial-gradient(38vw 38vw at 12% 12%, rgba(59, 130, 246, 0.55), transparent 70%),
+    radial-gradient(32vw 32vw at 88% 10%, rgba(236, 72, 153, 0.38), transparent 70%),
+    radial-gradient(40vw 40vw at 72% 88%, rgba(20, 184, 166, 0.45), transparent 70%),
+    radial-gradient(30vw 30vw at 22% 92%, rgba(168, 85, 247, 0.4), transparent 70%),
+    radial-gradient(26vw 26vw at 50% 45%, rgba(251, 191, 36, 0.22), transparent 70%),
+    #e8ecf5;
   background-attachment: fixed;
 }
 
 html[data-design='modern'][data-theme='dark']:has(.dashboard-page) {
-  --glass-bg: rgba(24, 28, 38, 0.55);
-  --glass-bg-strong: rgba(24, 28, 38, 0.68);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --glass-edge: rgba(0, 0, 0, 0.3);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.35);
-  --glass-table-head: rgba(255, 255, 255, 0.03);
+  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.04) 100%);
+  --glass-fill-strong: linear-gradient(135deg, rgba(30, 35, 48, 0.55) 0%, rgba(20, 24, 34, 0.42) 100%);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-rim:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    inset -1px 0 0 rgba(255, 255, 255, 0.03);
+  --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --glass-shadow-hover: 0 18px 44px rgba(0, 0, 0, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
+  --glass-sheen: linear-gradient(165deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 38%);
+  --glass-blur: blur(26px) saturate(180%);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-table-head: rgba(255, 255, 255, 0.04);
+  --glass-row-hover: rgba(255, 255, 255, 0.05);
 
   background:
-    radial-gradient(1100px 700px at 8% -10%, rgba(79, 140, 255, 0.22), transparent 60%),
-    radial-gradient(900px 600px at 100% 0%, rgba(168, 85, 247, 0.16), transparent 60%),
-    radial-gradient(1000px 800px at 60% 110%, rgba(20, 184, 166, 0.12), transparent 60%),
-    #07090d;
+    radial-gradient(38vw 38vw at 12% 12%, rgba(59, 130, 246, 0.42), transparent 70%),
+    radial-gradient(32vw 32vw at 88% 10%, rgba(236, 72, 153, 0.28), transparent 70%),
+    radial-gradient(40vw 40vw at 72% 88%, rgba(20, 184, 166, 0.3), transparent 70%),
+    radial-gradient(30vw 30vw at 22% 92%, rgba(168, 85, 247, 0.32), transparent 70%),
+    #05070c;
   background-attachment: fixed;
 }
 
@@ -55,64 +77,116 @@ html[data-design='modern']:has(.dashboard-page) .ant-layout-content {
   background: transparent !important;
 }
 
-/* Шапка и боковое меню — плавающее стекло (фон у них задан inline, отсюда !important) */
+/* ── Материал ── */
+
 html[data-design='modern']:has(.dashboard-page) .ant-layout-header,
 html[data-design='modern']:has(.dashboard-page) .ant-layout-sider,
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider-children > a:first-child {
-  background: var(--glass-bg-strong) !important;
+html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
+  background: var(--glass-fill-strong) !important;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
-  border-color: var(--glass-edge) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-rim), var(--glass-shadow) !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu {
-  background: transparent;
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu,
+html[data-design='modern']:has(.dashboard-page) .ant-layout-sider-children > a:first-child {
+  background: transparent !important;
+  border-bottom-color: var(--glass-edge) !important;
 }
 
-/* Карточки. Меняем только цвет рамки, а не саму рамку: у KPI-карточек слева цветная полоса */
+/* Карточки. Цвет рамки меняем по сторонам: у KPI-карточек слева цветная полоса */
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card {
-  background: var(--glass-bg) !important;
+  position: relative;
+  background: var(--glass-fill) !important;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-top-color: var(--glass-border) !important;
   border-right-color: var(--glass-border) !important;
   border-bottom-color: var(--glass-border) !important;
-  box-shadow: var(--glass-highlight), var(--glass-shadow) !important;
-  border-radius: 16px !important;
+  box-shadow: var(--glass-rim), var(--glass-shadow) !important;
+  border-radius: 20px !important;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+
+/* Блик по верхней части — отдельным слоем, чтобы не смешивать маску с backdrop-filter */
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-sheen);
+  pointer-events: none;
+}
+
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card > * {
+  position: relative;
 }
 
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-head {
   border-bottom-color: var(--glass-edge);
+  background: transparent;
 }
 
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-hoverable:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--glass-highlight), 0 12px 32px rgba(15, 23, 42, 0.1) !important;
+  transform: translateY(-2px) scale(1.005);
+  box-shadow: var(--glass-rim), var(--glass-shadow-hover) !important;
 }
 
 /* Таблицы внутри стеклянных карточек не должны быть белыми плашками */
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table,
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-container,
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr > td {
-  background: transparent;
+  background: transparent !important;
 }
 
 html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-thead > tr > th {
-  background: var(--glass-table-head);
+  background: var(--glass-table-head) !important;
 }
 
-/* Нет backdrop-filter — сплошные поверхности вместо мутных полупрозрачных */
+html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr:hover > td {
+  background: var(--glass-row-hover) !important;
+}
+
+/* ── Плавающие меню и шапка, как панели iPadOS (только десктоп) ── */
+
+@media (min-width: 768px) {
+  html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
+    top: 12px !important;
+    left: 12px !important;
+    bottom: 12px !important;
+    height: auto !important;
+    border-radius: 22px;
+  }
+
+  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
+    margin-left: calc(var(--app-sider-width) + 12px) !important;
+  }
+
+  html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
+    top: 12px !important;
+    margin: 12px 24px 0;
+    border-radius: 18px;
+  }
+}
+
+html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
+  border-radius: 22px;
+}
+
+/* ── Запасные варианты ── */
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-design='modern']:has(.dashboard-page) {
-    --glass-bg: var(--card-bg);
-    --glass-bg-strong: var(--card-bg);
+    --glass-fill: var(--card-bg);
+    --glass-fill-strong: var(--card-bg);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   html[data-design='modern']:has(.dashboard-page) {
-    --glass-bg: var(--card-bg);
-    --glass-bg-strong: var(--card-bg);
+    --glass-fill: var(--card-bg);
+    --glass-fill-strong: var(--card-bg);
     --glass-blur: none;
   }
 }
