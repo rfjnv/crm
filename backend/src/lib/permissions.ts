@@ -29,6 +29,8 @@ export const PERMISSIONS = {
   MANAGE_SUPPLIERS: 'manage_suppliers',
   MANAGE_IMPORT_ORDERS: 'manage_import_orders',
   VIEW_IMPORT_ORDERS: 'view_import_orders',
+  /** РОП-агент: видит всю выручку, маржу и работу менеджеров — выдаётся поимённо. */
+  USE_ROP_AGENT: 'use_rop_agent',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -40,6 +42,7 @@ const SUPER_ONLY: Permission[] = [
   PERMISSIONS.SUPER_DEAL_OVERRIDE,
   PERMISSIONS.DELETE_ANY_DEAL,
   PERMISSIONS.VIEW_AUDIT_HISTORY,
+  PERMISSIONS.USE_ROP_AGENT,
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {

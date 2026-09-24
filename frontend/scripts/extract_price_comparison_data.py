@@ -1,4 +1,4 @@
-"""Generate frontend/src/pages/priceComparisonData.ts from repo-root price_comparison_polygraph.html."""
+"""Generate backend/src/modules/market/priceComparisonData.ts from repo-root price_comparison_polygraph.html."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HTML = ROOT / "price_comparison_polygraph.html"
-OUT = ROOT / "frontend" / "src" / "pages" / "priceComparisonData.ts"
+OUT = ROOT / "backend" / "src" / "modules" / "market" / "priceComparisonData.ts"
 
 LINE_RE = re.compile(
     r'^\s*\{cat:"((?:\\.|[^"\\])*)",'

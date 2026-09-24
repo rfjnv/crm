@@ -292,6 +292,7 @@ model User {
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
+  ropAgentChats       RopAgentChat[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
   aiReports           AiReport[]       @relation("AiReportAuthor")
@@ -1365,6 +1366,43 @@ model AiChatMessage {
 
   @@index([chatId, createdAt])
   @@map("ai_chat_messages")
+}
+
+/// Чат с РОП-агентом (личный помощник директора по продажам).
+model RopAgentChat {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String   @default("Новый чат")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages RopAgentMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("rop_agent_chats")
+}
+
+/// Реплика в чате РОП-агента. `apiMessages` — ровно то, что ушло в Claude и пришло
+/// обратно за эту реплику (вызовы инструментов, их результаты, блоки размышлений):
+/// история переигрывается дословно и только дописывается, иначе модель теряет
+/// свои прошлые размышления, а кэш промпта сбрасывается.
+model RopAgentMessage {
+  id          String   @id @default(uuid())
+  chatId      String   @map("chat_id")
+  role        String
+  text        String   @db.Text
+  apiMessages Json     @map("api_messages")
+  /// Какие инструменты вызывались (для показа «что агент смотрел»).
+  toolCalls   Json?    @map("tool_calls")
+  isError     Boolean  @default(false) @map("is_error")
+  inputTokens Int?     @map("input_tokens")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  chat RopAgentChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("rop_agent_messages")
 }
 
 model AiTrainingRule {

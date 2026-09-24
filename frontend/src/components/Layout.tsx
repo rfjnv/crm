@@ -739,6 +739,17 @@ export default function Layout() {
         },
       ]
       : []),
+    // РОП-агент — поимённо (право use_rop_agent), SUPER_ADMIN всегда. Сервер проверяет то же.
+    ...((role === 'SUPER_ADMIN' || (user?.permissions ?? []).includes('use_rop_agent' as Permission))
+      && (user?.moneyAccess ?? 'FULL') === 'FULL'
+      ? [
+        {
+          key: '/rop-agent',
+          icon: <RobotOutlined />,
+          label: <Link to="/rop-agent">РОП-агент</Link>,
+        },
+      ]
+      : []),
     // ── Уведомления (все роли) ──
     ...(role !== 'OPERATOR' ? [{
       key: '/messages',

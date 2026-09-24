@@ -1,24 +1,18 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, Input, Select, Space, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd';
+import { Alert, Badge, Button, Card, Input, Select, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import BackButton from '../components/BackButton';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { productsApi } from '../api/products.api';
-import type { Product } from '../types';
-import { normalizeSku, resolveOurPrice } from './marketCatalogLinks';
 import {
-  PRICE_ROWS,
+  marketApi,
   type Competitor,
+  type LivePriceRow,
+  type MarketComparison,
   type MatchType,
-  type PriceRow,
-} from './priceComparisonData';
-import {
-  OUR_ONLY_ROWS,
-  THEIR_ONLY_ROWS,
   type OurOnlyRow,
   type TheirOnlyRow,
-} from './uniqueProductsComparisonData';
+} from '../api/market.api';
 
 // ─── Shared ─────────────────────────────────────────────────────────────────
 
@@ -42,36 +36,23 @@ type TheirPricePick = number | 'missing' | null;
 
 // ─── Наши цены из каталога ──────────────────────────────────────────────────
 
-/** Строка сравнения с нашей ценой, взятой из каталога CRM (см. marketCatalogLinks.ts). */
-type LivePriceRow = PriceRow & {
-  /** false — цены нет в каталоге, показана цена из прайса. */
-  ourPriceFromCatalog: boolean;
-  /** Разброс цен, если строка покрывает несколько позиций каталога. */
-  ourPriceRange: [number, number] | null;
-};
+const EMPTY_MARKET: MarketComparison = { priceRows: [], theirOnly: [], ourOnly: [] };
 
 /**
- * Сравнение с актуальными ценами каталога вместо зашитых в прайс-файл: иначе при каждом
- * изменении цены в CRM страница продолжала бы сравнивать со старой. Пока каталог грузится
- * (и если он недоступен) — цены из прайса, помеченные как «не из каталога».
+ * Данные анализа рынка с сервера: прайсы конкурентов лежат там же, где их читает
+ * РОП-агент, а наша цена уже подставлена из каталога CRM (см. backend/src/modules/market).
+ * Страница показывает вкладки только после загрузки, так что во вкладках данные уже в кэше.
  */
-function useLivePriceRows(): LivePriceRow[] {
-  const { data: products } = useQuery({
-    queryKey: ['products', 'market-analysis'],
-    queryFn: () => productsApi.list() as Promise<Product[]>,
+function useMarketData() {
+  return useQuery({
+    queryKey: ['market', 'comparison'],
+    queryFn: marketApi.comparison,
     staleTime: 300_000,
   });
-  return useMemo(() => {
-    const priceBySku = new Map<string, number>();
-    for (const p of products ?? []) {
-      const price = p.salePrice != null ? Number(p.salePrice) : NaN;
-      if (p.isActive && price > 0) priceBySku.set(normalizeSku(p.sku), price);
-    }
-    return PRICE_ROWS.map((r) => {
-      const live = resolveOurPrice(r.ourProduct, r.ourPrice, priceBySku);
-      return { ...r, ourPrice: live.price, ourPriceFromCatalog: live.fromCatalog, ourPriceRange: live.range };
-    });
-  }, [products]);
+}
+
+function useMarketRows(): MarketComparison {
+  return useMarketData().data ?? EMPTY_MARKET;
 }
 
 /** Цена с пометкой, откуда она: из каталога (с диапазоном, если позиций несколько) или из прайса. */
@@ -125,10 +106,7 @@ type CompetitorRow = {
   matchType?: MatchType;
 };
 
-/** Для подписи вкладки: число строк от цен не зависит. */
-const COMPETITOR_ROWS_COUNT = PRICE_ROWS.length + THEIR_ONLY_ROWS.length;
-
-function buildCompetitorRows(priceRows: LivePriceRow[]): CompetitorRow[] {
+function buildCompetitorRows({ priceRows, theirOnly }: MarketComparison): CompetitorRow[] {
   return [
     ...priceRows.map((r) => ({
       key: `m-${r.key}`,
@@ -143,7 +121,7 @@ function buildCompetitorRows(priceRows: LivePriceRow[]): CompetitorRow[] {
       ourPriceRange: r.ourPriceRange,
       matchType: r.matchType,
     })),
-    ...THEIR_ONLY_ROWS.map((r) => ({
+    ...theirOnly.map((r) => ({
       key: `u-${r.key}`,
       competitor: r.competitor,
       category: r.category,
@@ -165,8 +143,8 @@ function CompetitorProductsTab() {
   const [pickedOurPrice, setPickedOurPrice] = useState<number | null>(null);
   const [pickedTheirPrice, setPickedTheirPrice] = useState<TheirPricePick>(null);
 
-  const livePriceRows = useLivePriceRows();
-  const allRows = useMemo(() => buildCompetitorRows(livePriceRows), [livePriceRows]);
+  const market = useMarketRows();
+  const allRows = useMemo(() => buildCompetitorRows(market), [market]);
 
   const competitors = useMemo(
     () => ['all', ...Array.from(new Set(allRows.map((r) => r.competitor)))],
@@ -559,35 +537,37 @@ function UniqueProductsTab() {
   /** Клик по тексту цены «только у нас». */
   const [pickedOurPriceText, setPickedOurPriceText] = useState<string | null>(null);
 
+  const { theirOnly, ourOnly } = useMarketRows();
+
   const competitors = useMemo(
-    () => ['all', ...Array.from(new Set(THEIR_ONLY_ROWS.map((r) => r.competitor)))],
-    [],
+    () => ['all', ...Array.from(new Set(theirOnly.map((r) => r.competitor)))],
+    [theirOnly],
   );
   const categoriesForThem = useMemo(
-    () => ['all', ...Array.from(new Set(THEIR_ONLY_ROWS.map((r) => r.category))).sort()],
-    [],
+    () => ['all', ...Array.from(new Set(theirOnly.map((r) => r.category))).sort()],
+    [theirOnly],
   );
   const categoriesForUs = useMemo(
-    () => ['all', ...Array.from(new Set(OUR_ONLY_ROWS.map((r) => r.category))).sort()],
-    [],
+    () => ['all', ...Array.from(new Set(ourOnly.map((r) => r.category))).sort()],
+    [ourOnly],
   );
 
   const rowsThemBase = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return THEIR_ONLY_ROWS.filter((r) => {
+    return theirOnly.filter((r) => {
       if (competitor !== 'all' && r.competitor !== competitor) return false;
       if (category !== 'all' && r.category !== category) return false;
       return !q || r.name.toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
     });
-  }, [search, competitor, category]);
+  }, [theirOnly, search, competitor, category]);
 
   const rowsUsBase = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return OUR_ONLY_ROWS.filter((r) => {
+    return ourOnly.filter((r) => {
       if (category !== 'all' && r.category !== category) return false;
       return !q || r.name.toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
     });
-  }, [search, category]);
+  }, [ourOnly, search, category]);
 
   const themStats = useMemo(
     () => ({
@@ -768,8 +748,8 @@ function UniqueProductsTab() {
           clearQuickUs();
         }}
         items={[
-          { key: 'them', label: `У них есть, у нас нет (${THEIR_ONLY_ROWS.length})` },
-          { key: 'us', label: `У нас есть, у них нет (${OUR_ONLY_ROWS.length})` },
+          { key: 'them', label: `У них есть, у нас нет (${theirOnly.length})` },
+          { key: 'us', label: `У нас есть, у них нет (${ourOnly.length})` },
         ]}
         style={{ marginBottom: 8 }}
       />
@@ -934,9 +914,9 @@ function PriceComparisonTab() {
   const [pickedOurPrice, setPickedOurPrice] = useState<number | null>(null);
   const [pickedTheirPrice, setPickedTheirPrice] = useState<TheirPricePick>(null);
 
-  const categories = useMemo(() => ['all', ...Array.from(new Set(PRICE_ROWS.map((r) => r.category)))], []);
-  const competitors = useMemo(() => ['all', ...Array.from(new Set(PRICE_ROWS.map((r) => r.competitor)))], []);
-  const livePriceRows = useLivePriceRows();
+  const livePriceRows = useMarketRows().priceRows;
+  const categories = useMemo(() => ['all', ...Array.from(new Set(livePriceRows.map((r) => r.category)))], [livePriceRows]);
+  const competitors = useMemo(() => ['all', ...Array.from(new Set(livePriceRows.map((r) => r.competitor)))], [livePriceRows]);
 
   const rowsAfterDropdown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1213,6 +1193,8 @@ function PriceComparisonTab() {
 
 export default function MarketAnalysisPage() {
   const [activeTab, setActiveTab] = useState('competitors');
+  const { data, isLoading, isError, refetch } = useMarketData();
+  const market = data ?? EMPTY_MARKET;
 
   return (
     <div>
@@ -1223,27 +1205,38 @@ export default function MarketAnalysisPage() {
         </Typography.Title>
       </div>
 
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+      ) : isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="Не удалось загрузить анализ рынка"
+          action={<Button size="small" onClick={() => refetch()}>Повторить</Button>}
+        />
+      ) : (
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[
           {
             key: 'competitors',
-            label: `Товары конкурентов (${COMPETITOR_ROWS_COUNT})`,
+            label: `Товары конкурентов (${market.priceRows.length + market.theirOnly.length})`,
             children: <CompetitorProductsTab />,
           },
           {
             key: 'unique',
-            label: `Уникальные товары (${THEIR_ONLY_ROWS.length + OUR_ONLY_ROWS.length})`,
+            label: `Уникальные товары (${market.theirOnly.length + market.ourOnly.length})`,
             children: <UniqueProductsTab />,
           },
           {
             key: 'prices',
-            label: `Сравнение цен (${PRICE_ROWS.length})`,
+            label: `Сравнение цен (${market.priceRows.length})`,
             children: <PriceComparisonTab />,
           },
         ]}
       />
+      )}
     </div>
   );
 }
