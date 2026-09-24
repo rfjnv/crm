@@ -10,6 +10,7 @@ import { applyUiScale, useUiScaleStore } from './store/uiScaleStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import type { ThemeMode } from './theme/tokens';
 import './theme/theme-variables.css';
+import './theme/glass.css';
 import './mobile.css';
 
 // Сообщаем сторожу из index.html, что бандл дожил до выполнения: это отличает
