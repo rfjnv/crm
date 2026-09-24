@@ -15,6 +15,7 @@ import {
 } from './rop-agent.service';
 import { assignPlan, discardPlan, listChatPlans, updatePlan } from './rop-agent.plans';
 import { listManagers } from './rop-agent.analysis';
+import { getPlanProgress } from './rop-agent.control';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
 const renameDto = z.object({ title: z.string().trim().min(1).max(100) });
@@ -89,6 +90,10 @@ router.put('/plans/:planId', asyncHandler(async (req: Request, res: Response) =>
 
 router.post('/plans/:planId/assign', asyncHandler(async (req: Request, res: Response) => {
   res.json(await assignPlan(req.params.planId as string, req.user!.userId));
+}));
+
+router.get('/plans/:planId/progress', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await getPlanProgress(req.params.planId as string, req.user!.userId));
 }));
 
 router.post('/plans/:planId/discard', asyncHandler(async (req: Request, res: Response) => {

@@ -50,6 +50,60 @@ export interface RopTaskPlan {
   updatedAt: string;
 }
 
+export interface RopClientProgress {
+  clientId: string;
+  name: string;
+  taskId: string | null;
+  checked: boolean | null;
+  calls: number;
+  answeredCalls: number;
+  talkSec: number;
+  notes: number;
+  lastNote: string | null;
+  otherContacts: number;
+  lastContactAt: string | null;
+  dealsCreated: number;
+  revenue: number;
+  touched: boolean;
+  attempted: boolean;
+  checkedWithoutTrace: boolean;
+}
+
+export type RopVerdict = 'ok' | 'in_progress' | 'behind' | 'no_touch';
+
+export interface RopProgressSummary {
+  clients: number;
+  touched: number;
+  attempted: number;
+  checked: number;
+  withDeal: number;
+  revenue: number;
+  checkedWithoutTrace: number;
+}
+
+export interface RopItemProgress {
+  key: string;
+  managerId: string;
+  managerName: string;
+  title: string;
+  dueDate: string | null;
+  overdue: boolean;
+  taskStatuses: string[];
+  reports: string[];
+  clients: RopClientProgress[];
+  summary: RopProgressSummary;
+  verdict: RopVerdict;
+}
+
+export interface RopPlanProgress {
+  planId: string;
+  title: string;
+  assignedAt: string;
+  daysSinceAssigned: number;
+  items: RopItemProgress[];
+  totals: RopProgressSummary;
+}
+
 export interface RopManager {
   id: string;
   name: string;
@@ -105,6 +159,8 @@ export const ropAgentApi = {
     client
       .post<{ plan: RopTaskPlan; createdTasks: number; warnings: string[] }>(`/rop-agent/plans/${planId}/assign`)
       .then((r) => r.data),
+  planProgress: (planId: string) =>
+    client.get<RopPlanProgress>(`/rop-agent/plans/${planId}/progress`).then((r) => r.data),
   discardPlan: (planId: string) => client.post<RopTaskPlan>(`/rop-agent/plans/${planId}/discard`).then((r) => r.data),
   listManagers: () => client.get<RopManager[]>('/rop-agent/managers').then((r) => r.data),
 };

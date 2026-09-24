@@ -20,6 +20,7 @@ import {
   type StockedProductBuyersInput,
 } from './rop-agent.analysis';
 import { proposeTaskPlan } from './rop-agent.plans';
+import { taskPlanResults } from './rop-agent.control';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -463,6 +464,22 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'task_plan_results',
+    description:
+      'Контроль розданных планов задач: по каждому менеджеру и клиенту после раздачи — звонки из телефонии '
+      + '(сколько, с разговором, минуты), заметки и последняя из них, касания других сотрудников, новые сделки и выручка, '
+      + 'галочка в чек-листе, статус задачи и отчёт менеджера, просрочен ли срок, и итог verdict. '
+      + 'Без plan_id — все розданные планы за days дней (по умолчанию 45).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        plan_id: { type: 'string', description: 'Один конкретный план.' },
+        days: { type: 'integer', description: 'За сколько дней брать розданные планы, по умолчанию 45.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'describe_tables',
     description:
       'Структура базы CRM. Без аргументов — список таблиц. С tables — колонки этих таблиц с типами и значениями перечислений. '
@@ -514,6 +531,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Список менеджеров';
     case 'propose_task_plan':
       return `Черновик плана задач: ${String(input.title ?? '').slice(0, 100)}`;
+    case 'task_plan_results':
+      return 'Проверка розданных задач';
     default:
       return name;
   }
@@ -533,6 +552,7 @@ export async function executeTool(
       case 'stocked_product_buyers': result = await stockedProductBuyers(input as StockedProductBuyersInput); break;
       case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
       case 'list_managers': result = await listManagers(); break;
+      case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
       case 'propose_task_plan': {
         const r = await proposeTaskPlan(ctx, input);
         planId = r.plan_id;

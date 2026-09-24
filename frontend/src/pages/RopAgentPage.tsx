@@ -22,6 +22,7 @@ const SUGGESTIONS = [
   'Найди пропавших постоянных клиентов и подготовь задачи менеджерам на обзвон',
   'Какой товар залежался на складе и кому его предложить? Подготовь задачи',
   'Составь горячий и холодный списки клиентов по менеджерам',
+  'Как менеджеры выполняют розданные задачи? Кого надо обсудить?',
   'Сравни менеджеров за этот месяц: выручка, сделки, активность',
 ];
 
@@ -141,6 +142,9 @@ export default function RopAgentPage() {
     askMutation.mutate(question);
   };
 
+  const askReport = (plan: RopTaskPlan) =>
+    send(`Проверь выполнение плана «${plan.title}» (plan_id ${plan.id}): кто что сделал, где проблемы и что делать дальше.`);
+
   const openChat = (id: string | null) => {
     setActiveChatId(id);
     setSidebarOpen(false);
@@ -251,7 +255,7 @@ export default function RopAgentPage() {
         </div>
         {msgPlans.map((p) => (
           <div key={p.id} style={{ marginLeft: isMobile ? 0 : 42, maxWidth: isMobile ? '100%' : 760 }}>
-            <RopTaskPlanCard plan={p} managers={managers} />
+            <RopTaskPlanCard plan={p} managers={managers} onAskReport={askReport} />
           </div>
         ))}
       </div>
