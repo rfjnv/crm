@@ -305,9 +305,9 @@ export default function ClientActivityMatrixPage() {
     if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
     if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
 
-    const minActiveMonths = Number(activeMonthsFilter);
-    if (activeMonthsFilter.trim() && Number.isFinite(minActiveMonths) && minActiveMonths > 0) {
-      rows = rows.filter((r) => r.periodActiveMonths >= minActiveMonths);
+    const exactActiveMonths = Number(activeMonthsFilter);
+    if (activeMonthsFilter.trim() && Number.isFinite(exactActiveMonths) && exactActiveMonths >= 0) {
+      rows = rows.filter((r) => r.periodActiveMonths === exactActiveMonths);
     }
 
     return [...rows].sort((a, b) => {
@@ -578,9 +578,9 @@ export default function ClientActivityMatrixPage() {
                     allowClear
                     value={activeMonthsFilter}
                     onChange={(v) => { setActiveMonthsFilter(v); patchParams({ page: 1 }); }}
-                    options={[1, 3, 6, 12].map((n) => ({ value: String(n), label: `Активность ≥ ${n} мес.` }))}
+                    options={[0, 1, 3, 6, 12].map((n) => ({ value: String(n), label: `Активность: ровно ${n} мес.` }))}
                     style={{ width: 200 }}
-                    placeholder="Активность ≥ мес."
+                    placeholder="Активность: ровно N мес."
                   />
                 </div>
 
