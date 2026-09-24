@@ -1,8 +1,12 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { Badge, Button, Card, Input, Select, Space, Table, Tabs, Tag, Typography, theme } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { Badge, Button, Card, Input, Select, Space, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import BackButton from '../components/BackButton';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { productsApi } from '../api/products.api';
+import type { Product } from '../types';
+import { normalizeSku, resolveOurPrice } from './marketCatalogLinks';
 import {
   PRICE_ROWS,
   type Competitor,
@@ -36,6 +40,59 @@ const COLOR_THEY_CHEAPER = '#cf1322';
 type RelationFilter = 'all' | 'they_cheaper' | 'we_cheaper' | 'same';
 type TheirPricePick = number | 'missing' | null;
 
+// ─── Наши цены из каталога ──────────────────────────────────────────────────
+
+/** Строка сравнения с нашей ценой, взятой из каталога CRM (см. marketCatalogLinks.ts). */
+type LivePriceRow = PriceRow & {
+  /** false — цены нет в каталоге, показана цена из прайса. */
+  ourPriceFromCatalog: boolean;
+  /** Разброс цен, если строка покрывает несколько позиций каталога. */
+  ourPriceRange: [number, number] | null;
+};
+
+/**
+ * Сравнение с актуальными ценами каталога вместо зашитых в прайс-файл: иначе при каждом
+ * изменении цены в CRM страница продолжала бы сравнивать со старой. Пока каталог грузится
+ * (и если он недоступен) — цены из прайса, помеченные как «не из каталога».
+ */
+function useLivePriceRows(): LivePriceRow[] {
+  const { data: products } = useQuery({
+    queryKey: ['products', 'market-analysis'],
+    queryFn: () => productsApi.list() as Promise<Product[]>,
+    staleTime: 300_000,
+  });
+  return useMemo(() => {
+    const priceBySku = new Map<string, number>();
+    for (const p of products ?? []) {
+      const price = p.salePrice != null ? Number(p.salePrice) : NaN;
+      if (p.isActive && price > 0) priceBySku.set(normalizeSku(p.sku), price);
+    }
+    return PRICE_ROWS.map((r) => {
+      const live = resolveOurPrice(r.ourProduct, r.ourPrice, priceBySku);
+      return { ...r, ourPrice: live.price, ourPriceFromCatalog: live.fromCatalog, ourPriceRange: live.range };
+    });
+  }, [products]);
+}
+
+/** Цена с пометкой, откуда она: из каталога (с диапазоном, если позиций несколько) или из прайса. */
+function OurPriceLabel({ value, fromCatalog, range }: { value: number; fromCatalog?: boolean; range?: [number, number] | null }) {
+  if (fromCatalog === false) {
+    return (
+      <Tooltip title="Цены нет в каталоге CRM — показана цена из прайса">
+        <span>{formatMoney(value)} <Typography.Text type="warning">*</Typography.Text></span>
+      </Tooltip>
+    );
+  }
+  if (range) {
+    return (
+      <Tooltip title={`В каталоге ${formatMoney(range[0])} – ${formatMoney(range[1])}; показана самая частая`}>
+        <span>{formatMoney(value)} <Typography.Text type="secondary">~</Typography.Text></span>
+      </Tooltip>
+    );
+  }
+  return <>{formatMoney(value)}</>;
+}
+
 function priceDelta(ourPrice: number, competitorPrice: number | null): { diff: number; percent: number } | null {
   if (competitorPrice === null || ourPrice <= 0) return null;
   const diff = competitorPrice - ourPrice;
@@ -63,30 +120,39 @@ type CompetitorRow = {
   hasMatch: boolean;
   ourAnalog?: string;
   ourPrice?: number;
+  ourPriceFromCatalog?: boolean;
+  ourPriceRange?: [number, number] | null;
   matchType?: MatchType;
 };
 
-const ALL_COMPETITOR_ROWS: CompetitorRow[] = [
-  ...PRICE_ROWS.map((r) => ({
-    key: `m-${r.key}`,
-    competitor: r.competitor,
-    category: r.category,
-    productName: r.competitorProduct,
-    price: r.competitorPrice,
-    hasMatch: true,
-    ourAnalog: r.ourProduct,
-    ourPrice: r.ourPrice,
-    matchType: r.matchType,
-  })),
-  ...THEIR_ONLY_ROWS.map((r) => ({
-    key: `u-${r.key}`,
-    competitor: r.competitor,
-    category: r.category,
-    productName: r.name,
-    price: r.price,
-    hasMatch: false,
-  })),
-];
+/** Для подписи вкладки: число строк от цен не зависит. */
+const COMPETITOR_ROWS_COUNT = PRICE_ROWS.length + THEIR_ONLY_ROWS.length;
+
+function buildCompetitorRows(priceRows: LivePriceRow[]): CompetitorRow[] {
+  return [
+    ...priceRows.map((r) => ({
+      key: `m-${r.key}`,
+      competitor: r.competitor,
+      category: r.category,
+      productName: r.competitorProduct,
+      price: r.competitorPrice,
+      hasMatch: true,
+      ourAnalog: r.ourProduct,
+      ourPrice: r.ourPrice,
+      ourPriceFromCatalog: r.ourPriceFromCatalog,
+      ourPriceRange: r.ourPriceRange,
+      matchType: r.matchType,
+    })),
+    ...THEIR_ONLY_ROWS.map((r) => ({
+      key: `u-${r.key}`,
+      competitor: r.competitor,
+      category: r.category,
+      productName: r.name,
+      price: r.price,
+      hasMatch: false,
+    })),
+  ];
+}
 
 function CompetitorProductsTab() {
   const { token } = theme.useToken();
@@ -99,18 +165,21 @@ function CompetitorProductsTab() {
   const [pickedOurPrice, setPickedOurPrice] = useState<number | null>(null);
   const [pickedTheirPrice, setPickedTheirPrice] = useState<TheirPricePick>(null);
 
+  const livePriceRows = useLivePriceRows();
+  const allRows = useMemo(() => buildCompetitorRows(livePriceRows), [livePriceRows]);
+
   const competitors = useMemo(
-    () => ['all', ...Array.from(new Set(ALL_COMPETITOR_ROWS.map((r) => r.competitor)))],
-    [],
+    () => ['all', ...Array.from(new Set(allRows.map((r) => r.competitor)))],
+    [allRows],
   );
   const categories = useMemo(
-    () => ['all', ...Array.from(new Set(ALL_COMPETITOR_ROWS.map((r) => r.category))).sort()],
-    [],
+    () => ['all', ...Array.from(new Set(allRows.map((r) => r.category))).sort()],
+    [allRows],
   );
 
   const rowsAfterSelectors = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ALL_COMPETITOR_ROWS.filter((r) => {
+    return allRows.filter((r) => {
       if (competitor !== 'all' && r.competitor !== competitor) return false;
       if (category !== 'all' && r.category !== category) return false;
       if (matchFilter === 'matched' && !r.hasMatch) return false;
@@ -122,7 +191,7 @@ function CompetitorProductsTab() {
         (r.ourAnalog?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [search, competitor, category, matchFilter]);
+  }, [allRows, search, competitor, category, matchFilter]);
 
   const compareStats = useMemo(() => {
     const comparable = rowsAfterSelectors.filter(
@@ -277,7 +346,7 @@ function CompetitorProductsTab() {
       dataIndex: 'ourPrice',
       width: 130,
       align: 'right',
-      render: (value?: number) => (
+      render: (value: number | undefined, row: CompetitorRow) => (
         <span
           role="button"
           tabIndex={0}
@@ -293,7 +362,9 @@ function CompetitorProductsTab() {
             setPickedOurPrice((p) => (p === value ? null : value));
           }}
         >
-          {value !== undefined ? formatMoney(value) : <Typography.Text type="secondary">—</Typography.Text>}
+          {value !== undefined
+            ? <OurPriceLabel value={value} fromCatalog={row.ourPriceFromCatalog} range={row.ourPriceRange} />
+            : <Typography.Text type="secondary">—</Typography.Text>}
         </span>
       ),
     },
@@ -865,16 +936,17 @@ function PriceComparisonTab() {
 
   const categories = useMemo(() => ['all', ...Array.from(new Set(PRICE_ROWS.map((r) => r.category)))], []);
   const competitors = useMemo(() => ['all', ...Array.from(new Set(PRICE_ROWS.map((r) => r.competitor)))], []);
+  const livePriceRows = useLivePriceRows();
 
   const rowsAfterDropdown = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return PRICE_ROWS.filter((r) => {
+    return livePriceRows.filter((r) => {
       if (competitor !== 'all' && r.competitor !== competitor) return false;
       if (category !== 'all' && r.category !== category) return false;
       if (matchType !== 'all' && r.matchType !== matchType) return false;
       return !q || r.ourProduct.toLowerCase().includes(q) || r.competitorProduct.toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
     });
-  }, [category, competitor, matchType, search]);
+  }, [livePriceRows, category, competitor, matchType, search]);
 
   const stats = useMemo(() => {
     const comparable = rowsAfterDropdown.filter((r) => r.competitorPrice !== null);
@@ -922,7 +994,7 @@ function PriceComparisonTab() {
     boxShadow: active ? `0 0 0 1px ${token.colorPrimary}` : undefined,
   });
 
-  const columns: ColumnsType<PriceRow> = [
+  const columns: ColumnsType<LivePriceRow> = [
     {
       title: 'Наш товар (Polygraph Business)',
       dataIndex: 'ourProduct',
@@ -980,7 +1052,7 @@ function PriceComparisonTab() {
       dataIndex: 'ourPrice',
       width: 130,
       align: 'right',
-      render: (value: number) => (
+      render: (value: number, row: LivePriceRow) => (
         <span
           role="button"
           tabIndex={0}
@@ -988,7 +1060,7 @@ function PriceComparisonTab() {
           onClick={() => { setPickedTheirPrice(null); setPickedOurPrice((p) => (p === value ? null : value)); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { setPickedTheirPrice(null); setPickedOurPrice((p) => (p === value ? null : value)); } }}
         >
-          {formatMoney(value)}
+          <OurPriceLabel value={value} fromCatalog={row.ourPriceFromCatalog} range={row.ourPriceRange} />
         </span>
       ),
     },
@@ -1157,7 +1229,7 @@ export default function MarketAnalysisPage() {
         items={[
           {
             key: 'competitors',
-            label: `Товары конкурентов (${ALL_COMPETITOR_ROWS.length})`,
+            label: `Товары конкурентов (${COMPETITOR_ROWS_COUNT})`,
             children: <CompetitorProductsTab />,
           },
           {
