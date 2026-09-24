@@ -3,7 +3,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card, Select, Spin, Table, Tooltip, Tag, Typography, theme,
-  Drawer, DatePicker, Pagination, Tabs, Input, Button, Space,
+  Drawer, DatePicker, Pagination, Tabs, Input, Button, Space, AutoComplete,
 } from 'antd';
 import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined, LineChartOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -174,6 +174,8 @@ export default function ClientActivityMatrixPage() {
   const [listSort, setListSort] = useState<'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'active_desc' | 'active_asc'>('name_asc');
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  /** Минимум активных месяцев в выбранном периоде — вводится вручную или выбирается из подсказок. */
+  const [activeMonthsFilter, setActiveMonthsFilter] = useState<string>('');
 
   const matrixStale = 120_000;
 
@@ -303,6 +305,11 @@ export default function ClientActivityMatrixPage() {
     if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
     if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
 
+    const minActiveMonths = Number(activeMonthsFilter);
+    if (activeMonthsFilter.trim() && Number.isFinite(minActiveMonths) && minActiveMonths > 0) {
+      rows = rows.filter((r) => r.periodActiveMonths >= minActiveMonths);
+    }
+
     return [...rows].sort((a, b) => {
       if (listSort === 'name_asc') return a.companyName.localeCompare(b.companyName, 'ru');
       if (listSort === 'name_desc') return b.companyName.localeCompare(a.companyName, 'ru');
@@ -311,7 +318,7 @@ export default function ClientActivityMatrixPage() {
       if (listSort === 'active_desc') return b.periodActiveMonths - a.periodActiveMonths;
       return a.periodActiveMonths - b.periodActiveMonths;
     });
-  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, listSort, dataByYear, fromYear]);
+  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, activeMonthsFilter, listSort, dataByYear, fromYear]);
 
   const patchParams = useCallback(
     (patch: Partial<ListParams>, nav?: { replace?: boolean }) => {
@@ -567,6 +574,14 @@ export default function ClientActivityMatrixPage() {
                       options={[{ label: 'Отдел: все', value: 'all' }, ...departmentOptions]}
                     />
                   )}
+                  <AutoComplete
+                    allowClear
+                    value={activeMonthsFilter}
+                    onChange={(v) => { setActiveMonthsFilter(v); patchParams({ page: 1 }); }}
+                    options={[1, 3, 6, 12].map((n) => ({ value: String(n), label: `Активность ≥ ${n} мес.` }))}
+                    style={{ width: 200 }}
+                    placeholder="Активность ≥ мес."
+                  />
                 </div>
 
                 {/* Mobile */}
