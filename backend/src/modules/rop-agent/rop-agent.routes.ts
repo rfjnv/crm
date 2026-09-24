@@ -13,9 +13,27 @@ import {
   listChats,
   renameChat,
 } from './rop-agent.service';
+import { assignPlan, discardPlan, listChatPlans, updatePlan } from './rop-agent.plans';
+import { listManagers } from './rop-agent.analysis';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
 const renameDto = z.object({ title: z.string().trim().min(1).max(100) });
+const planClientDto = z.object({
+  clientId: z.string().min(1),
+  reason: z.string().max(500).default(''),
+  offer: z.string().max(500).default(''),
+});
+const updatePlanDto = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  items: z.array(z.object({
+    key: z.string().max(64).optional(),
+    managerId: z.string().min(1),
+    title: z.string().trim().min(1).max(200),
+    description: z.string().max(4000).default(''),
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    clients: z.array(planClientDto).max(200),
+  })).min(1).max(50),
+});
 
 const router = Router();
 
@@ -56,6 +74,31 @@ router.patch('/chats/:chatId', asyncHandler(async (req: Request, res: Response) 
 router.delete('/chats/:chatId', asyncHandler(async (req: Request, res: Response) => {
   await deleteChat(req.params.chatId as string, req.user!.userId);
   res.status(204).end();
+}));
+
+// ─── Планы задач ────────────────────────────────────────────────────────────
+
+router.get('/chats/:chatId/plans', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await listChatPlans(req.params.chatId as string, req.user!.userId));
+}));
+
+router.put('/plans/:planId', asyncHandler(async (req: Request, res: Response) => {
+  const data = updatePlanDto.parse(req.body);
+  res.json(await updatePlan(req.params.planId as string, req.user!.userId, data));
+}));
+
+router.post('/plans/:planId/assign', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await assignPlan(req.params.planId as string, req.user!.userId));
+}));
+
+router.post('/plans/:planId/discard', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await discardPlan(req.params.planId as string, req.user!.userId));
+}));
+
+/** Кому можно переназначить задачу в плане. */
+router.get('/managers', asyncHandler(async (_req: Request, res: Response) => {
+  const { managers } = await listManagers();
+  res.json(managers.map((m) => ({ id: m.id, name: m.name, role: m.role, clients: m.clients })));
 }));
 
 export default router;

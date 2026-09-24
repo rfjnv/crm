@@ -1378,6 +1378,7 @@ model RopAgentChat {
 
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages RopAgentMessage[]
+  plans    RopTaskPlan[]
 
   @@index([userId, updatedAt])
   @@map("rop_agent_chats")
@@ -1403,6 +1404,31 @@ model RopAgentMessage {
 
   @@index([chatId, createdAt])
   @@map("rop_agent_messages")
+}
+
+/// План задач менеджерам, который предложил РОП-агент. Агент создаёт только черновик;
+/// задачи появляются, когда директор нажимает «Раздать» (status → ASSIGNED).
+/// `items` — по задаче на менеджера со списком клиентов; после раздачи в них
+/// записываются id созданных задач (по ним этап контроля смотрит результат).
+model RopTaskPlan {
+  id           String    @id @default(uuid())
+  chatId       String    @map("chat_id")
+  title        String
+  goal         String?   @db.Text
+  /// DRAFT | ASSIGNED | DISCARDED
+  status       String    @default("DRAFT")
+  items        Json
+  createdById  String    @map("created_by_id")
+  assignedById String?   @map("assigned_by_id")
+  assignedAt   DateTime? @map("assigned_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  chat RopAgentChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@index([status, assignedAt])
+  @@map("rop_task_plans")
 }
 
 model AiTrainingRule {

@@ -10,11 +10,20 @@ import {
 import { CATALOG_LINKS, normalizeSku } from '../market/marketCatalogLinks';
 import { livePriceRows, loadPriceBySku } from '../market/market.service';
 import { OUR_ONLY_ROWS, THEIR_ONLY_ROWS } from '../market/uniqueProductsComparisonData';
+import {
+  clientPurchaseCycles,
+  listManagers,
+  slowStock,
+  stockedProductBuyers,
+  type ClientCyclesInput,
+  type SlowStockInput,
+  type StockedProductBuyersInput,
+} from './rop-agent.analysis';
+import { proposeTaskPlan } from './rop-agent.plans';
 
 /**
- * Инструменты РОП-агента. На первом этапе — только чтение: агент смотрит данные
- * и предлагает, а ничего не меняет. Всё, что пишет в базу (задачи менеджерам),
- * появится отдельными инструментами с подтверждением директора.
+ * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
+ * пишет лишь черновик плана: задачи менеджерам создаёт директор кнопкой «Раздать».
  */
 
 /** Больше в модель не отдаём: длинный результат съедает контекст всего чата. */
@@ -346,6 +355,114 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'client_purchase_cycles',
+    description:
+      'Цикл покупок клиентов: сколько покупок, обычный интервал между ними (медиана, дни), когда брал последний раз, '
+      + 'выручка за 12 месяцев, последний контакт (заметка или звонок), три главных товара и статус: '
+      + 'due_soon — пора покупать (горячие), overdue — пропал (прошло больше overdue_factor интервалов), '
+      + 'lost — давно ушёл (холодные), regular — ещё рано. Сортировка по выручке за год.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['all', 'due_soon', 'overdue', 'lost', 'regular'], description: 'По умолчанию all.' },
+        manager_id: { type: 'string', description: 'Только клиенты этого менеджера.' },
+        min_orders: { type: 'integer', description: 'Минимум покупок в истории, по умолчанию 3.' },
+        overdue_factor: { type: 'number', description: 'Во сколько интервалов тишины клиент считается пропавшим, по умолчанию 1.5.' },
+        lost_after_days: { type: 'integer', description: 'Сколько дней без покупок — «давно ушёл», по умолчанию 180.' },
+        limit: { type: 'integer', description: 'По умолчанию 50, максимум 200.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'stocked_product_buyers',
+    description:
+      'Товары, которые сейчас есть на складе, и клиенты, которые брали их регулярно, но давно не берут '
+      + '(тишина больше overdue_factor их обычных интервалов по этому товару и больше 30 дней). '
+      + 'По каждому клиенту: менеджер, телефон, сколько раз брал, обычный объём, когда брал последний раз. '
+      + 'Это список «позвонить и узнать причину / предложить снова».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Поиск товара по названию или артикулу.' },
+        category: { type: 'string', description: 'Часть названия категории.' },
+        skus: { type: 'array', items: { type: 'string' } },
+        min_purchases: { type: 'integer', description: 'Минимум покупок этого товара клиентом, по умолчанию 3.' },
+        overdue_factor: { type: 'number', description: 'По умолчанию 1.5.' },
+        include_active: { type: 'boolean', description: 'true — вернуть и тех, кто берёт как обычно.' },
+        limit_products: { type: 'integer', description: 'По умолчанию 20.' },
+        limit_buyers: { type: 'integer', description: 'Клиентов на товар, по умолчанию 15.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'slow_stock',
+    description:
+      'Залежавшийся товар: есть на складе, но не продавался days_without_sale дней (или никогда). '
+      + 'Сумма, замороженная по закупке, продажи за год и прошлые покупатели — кому предложить.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        days_without_sale: { type: 'integer', description: 'По умолчанию 60.' },
+        category: { type: 'string' },
+        limit: { type: 'integer', description: 'По умолчанию 30.' },
+        buyers_per_product: { type: 'integer', description: 'Прошлых покупателей на товар, по умолчанию 5.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_managers',
+    description: 'Активные сотрудники, которым можно ставить задачи: id, имя, роль, сколько клиентов ведёт, сделки и выручка за 90 дней.',
+    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'propose_task_plan',
+    description:
+      'Сохраняет ЧЕРНОВИК плана задач менеджерам и показывает его директору под твоим ответом. '
+      + 'Задачи не создаются: директор проверит, поправит и нажмёт «Раздать». '
+      + 'Обычно одна задача на менеджера со списком его клиентов. manager_id и client_id — только реальные id из данных '
+      + '(list_managers, client_purchase_cycles и т.д.). Клиента давай тому, кто его ведёт (clients.manager_id), если директор не сказал иначе. '
+      + 'Если директор просит изменить план — вызови инструмент заново с исправленным планом.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Название плана, например «Вернуть пропавших клиентов — сентябрь».' },
+        goal: { type: 'string', description: 'Зачем этот план, одним-двумя предложениями.' },
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              manager_id: { type: 'string' },
+              title: { type: 'string', description: 'Название задачи для менеджера.' },
+              description: { type: 'string', description: 'Что сделать и какой результат нужен.' },
+              due_date: { type: 'string', description: 'Срок, YYYY-MM-DD.' },
+              clients: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    client_id: { type: 'string' },
+                    reason: { type: 'string', description: 'Факт: почему клиент в списке (например «брал раз в 20 дней, тишина 64 дня»).' },
+                    offer: { type: 'string', description: 'Что предложить или выяснить.' },
+                  },
+                  required: ['client_id', 'reason', 'offer'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['manager_id', 'title', 'description', 'clients'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['title', 'tasks'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'describe_tables',
     description:
       'Структура базы CRM. Без аргументов — список таблиц. С tables — колонки этих таблиц с типами и значениями перечислений. '
@@ -387,6 +504,16 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Структура базы';
     case 'run_sql':
       return `Запрос к базе: ${String(input.purpose ?? '').slice(0, 120)}`;
+    case 'client_purchase_cycles':
+      return 'Циклы покупок клиентов' + (input.status && input.status !== 'all' ? ` (${String(input.status)})` : '');
+    case 'stocked_product_buyers':
+      return 'Покупатели товара в наличии' + (input.search || input.category ? `: ${String(input.search ?? input.category)}` : '');
+    case 'slow_stock':
+      return 'Залежавшийся товар';
+    case 'list_managers':
+      return 'Список менеджеров';
+    case 'propose_task_plan':
+      return `Черновик плана задач: ${String(input.title ?? '').slice(0, 100)}`;
     default:
       return name;
   }
@@ -396,10 +523,22 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
-): Promise<{ content: string; isError: boolean }> {
+  ctx: { chatId: string; userId: string },
+): Promise<{ content: string; isError: boolean; planId?: string }> {
   try {
     let result: unknown;
+    let planId: string | undefined;
     switch (name) {
+      case 'client_purchase_cycles': result = await clientPurchaseCycles(input as ClientCyclesInput); break;
+      case 'stocked_product_buyers': result = await stockedProductBuyers(input as StockedProductBuyersInput); break;
+      case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
+      case 'list_managers': result = await listManagers(); break;
+      case 'propose_task_plan': {
+        const r = await proposeTaskPlan(ctx, input);
+        planId = r.plan_id;
+        result = r;
+        break;
+      }
       case 'market_comparison': result = await marketComparison(input as MarketInput); break;
       case 'product_economics': result = await productEconomics(input as ProductEconomicsInput); break;
       case 'describe_tables': result = await describeTables(input as { tables?: string[] }); break;
@@ -414,7 +553,7 @@ export async function executeTool(
     if (text.length > MAX_RESULT_CHARS) {
       text = `${text.slice(0, MAX_RESULT_CHARS)}\n…[обрезано: результат больше ${MAX_RESULT_CHARS} символов, сузь запрос или агрегируй]`;
     }
-    return { content: text, isError: false };
+    return { content: text, isError: false, planId };
   } catch (err) {
     // У Prisma в сообщении кусок стека вызова; модели нужна только причина от Postgres.
     const raw = (err as Error).message;

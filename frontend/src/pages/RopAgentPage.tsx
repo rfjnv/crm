@@ -10,7 +10,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { ropAgentApi, type RopAgentChat, type RopAgentMessage } from '../api/ropAgent.api';
+import { ropAgentApi, type RopAgentChat, type RopAgentMessage, type RopTaskPlan } from '../api/ropAgent.api';
+import RopTaskPlanCard from '../components/RopTaskPlanCard';
 
 const { Text } = Typography;
 
@@ -18,8 +19,9 @@ const SIDEBAR_WIDTH = 280;
 
 const SUGGESTIONS = [
   'Где конкуренты дешевле нас и на чём можно сделать демпинг без потери денег?',
-  'Какой товар залежался на складе и кому его предложить?',
-  'Какие постоянные клиенты перестали покупать в последние 2 месяца?',
+  'Найди пропавших постоянных клиентов и подготовь задачи менеджерам на обзвон',
+  'Какой товар залежался на складе и кому его предложить? Подготовь задачи',
+  'Составь горячий и холодный списки клиентов по менеджерам',
   'Сравни менеджеров за этот месяц: выручка, сделки, активность',
 ];
 
@@ -60,21 +62,37 @@ export default function RopAgentPage() {
     queryKey: ['rop-agent', 'messages', activeChatId],
     queryFn: () => ropAgentApi.getMessages(activeChatId!),
     enabled: !!activeChatId,
-    // Пока агент отвечает — опрашиваем, чтобы видеть шаги и забрать ответ.
+    // Пока агент отвечает — опрашиваем, чтобы видеть шаги и забрать ответ. Ответ идёт
+    // минутами, и директор успевает уйти на другую вкладку — опрос не останавливаем.
     refetchInterval: (q) => (q.state.data?.status.running ? 2500 : false),
+    refetchIntervalInBackground: true,
   });
   const messages = chatData?.messages ?? [];
   const status = chatData?.status;
   const running = !!status?.running;
+
+  const { data: plans = [] } = useQuery({
+    queryKey: ['rop-agent', 'plans', activeChatId],
+    queryFn: () => ropAgentApi.listPlans(activeChatId!),
+    enabled: !!activeChatId,
+  });
+  const planById = new Map(plans.map((p: RopTaskPlan) => [p.id, p]));
+  const { data: managers = [] } = useQuery({
+    queryKey: ['rop-agent', 'managers'],
+    queryFn: ropAgentApi.listManagers,
+    enabled: plans.length > 0,
+    staleTime: 300_000,
+  });
 
   // Ответ пришёл — обновим список чатов (название и порядок).
   const wasRunning = useRef(false);
   useEffect(() => {
     if (wasRunning.current && !running) {
       queryClient.invalidateQueries({ queryKey: ['rop-agent', 'chats'] });
+      queryClient.invalidateQueries({ queryKey: ['rop-agent', 'plans', activeChatId] });
     }
     wasRunning.current = running;
-  }, [running, queryClient]);
+  }, [running, queryClient, activeChatId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -183,49 +201,59 @@ export default function RopAgentPage() {
   const renderMessage = (msg: RopAgentMessage) => {
     const isUser = msg.role === 'user';
     const tools = msg.toolCalls ?? [];
+    const msgPlans = tools
+      .map((t) => (t.planId ? planById.get(t.planId) : undefined))
+      .filter((p): p is RopTaskPlan => !!p);
     return (
-      <div key={msg.id} style={{ display: 'flex', gap: 10, flexDirection: isUser ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: isUser ? token.colorPrimary : token.colorBgElevated,
-          color: isUser ? '#fff' : token.colorPrimary,
-          border: isUser ? 'none' : `1px solid ${token.colorBorderSecondary}`,
-        }}>
-          {isUser ? <UserOutlined /> : <RobotOutlined />}
+      <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 10, flexDirection: isUser ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: isUser ? token.colorPrimary : token.colorBgElevated,
+            color: isUser ? '#fff' : token.colorPrimary,
+            border: isUser ? 'none' : `1px solid ${token.colorBorderSecondary}`,
+          }}>
+            {isUser ? <UserOutlined /> : <RobotOutlined />}
+          </div>
+          <div style={{
+            maxWidth: isMobile ? '88%' : '80%', minWidth: 0, padding: '10px 14px', borderRadius: 12,
+            background: isUser ? token.colorPrimary : msg.isError ? token.colorErrorBg : token.colorBgElevated,
+            color: isUser ? '#fff' : undefined,
+            border: isUser ? 'none' : `1px solid ${msg.isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
+          }}>
+            {isUser ? (
+              <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+            ) : (
+              <>
+                <div className="rop-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
+                {tools.length > 0 && (
+                  <Collapse
+                    ghost
+                    size="small"
+                    style={{ marginTop: 6 }}
+                    items={[{
+                      key: 'tools',
+                      label: <Text type="secondary" style={{ fontSize: 12 }}>Что агент смотрел ({tools.length})</Text>,
+                      children: (
+                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+                          {tools.map((t, i) => (
+                            <li key={i}><Text type={t.isError ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>{t.label}</Text></li>
+                          ))}
+                        </ul>
+                      ),
+                    }]}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
-        <div style={{
-          maxWidth: isMobile ? '88%' : '80%', minWidth: 0, padding: '10px 14px', borderRadius: 12,
-          background: isUser ? token.colorPrimary : msg.isError ? token.colorErrorBg : token.colorBgElevated,
-          color: isUser ? '#fff' : undefined,
-          border: isUser ? 'none' : `1px solid ${msg.isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
-        }}>
-          {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
-          ) : (
-            <>
-              <div className="rop-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
-              {tools.length > 0 && (
-                <Collapse
-                  ghost
-                  size="small"
-                  style={{ marginTop: 6 }}
-                  items={[{
-                    key: 'tools',
-                    label: <Text type="secondary" style={{ fontSize: 12 }}>Что агент смотрел ({tools.length})</Text>,
-                    children: (
-                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-                        {tools.map((t, i) => (
-                          <li key={i}><Text type={t.isError ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>{t.label}</Text></li>
-                        ))}
-                      </ul>
-                    ),
-                  }]}
-                />
-              )}
-            </>
-          )}
-        </div>
+        {msgPlans.map((p) => (
+          <div key={p.id} style={{ marginLeft: isMobile ? 0 : 42, maxWidth: isMobile ? '100%' : 760 }}>
+            <RopTaskPlanCard plan={p} managers={managers} />
+          </div>
+        ))}
       </div>
     );
   };
@@ -253,7 +281,7 @@ export default function RopAgentPage() {
         <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
           {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />}
           <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
-          <Text strong ellipsis style={{ fontSize: 16, flex: 1 }}>{activeTitle}</Text>
+          <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '16px 12px' : '20px 24px' }}>

@@ -126,7 +126,7 @@ export async function askInChat(chatId: string, userId: string, question: string
 
   const turn: RunningTurn = { startedAt: Date.now(), steps: [] };
   running.set(chatId, turn);
-  runTurn(chatId, turn)
+  runTurn(chatId, userId, turn)
     .catch((err) => console.error('[rop-agent] turn failed:', (err as Error).message))
     .finally(() => running.delete(chatId));
 
@@ -142,6 +142,36 @@ async function loadHistory(chatId: string): Promise<Anthropic.MessageParam[]> {
   return rows.flatMap((r) => r.apiMessages as unknown as Anthropic.MessageParam[]);
 }
 
+const hasThinking = (messages: Anthropic.MessageParam[]) => messages.some((m) =>
+  Array.isArray(m.content) && m.content.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking'));
+
+function withoutThinking(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return messages.map((m) => {
+    if (!Array.isArray(m.content)) return m;
+    const content = m.content.filter((b) => b.type !== 'thinking' && b.type !== 'redacted_thinking');
+    return { ...m, content: content.length ? content : [{ type: 'text', text: '…' }] };
+  });
+}
+
+/**
+ * Блоки размышлений привязаны к системному промпту и набору инструментов, при
+ * которых они появились. После обновления агента (новый промпт, новые инструменты)
+ * старый чат API может отклонить. Тогда один раз убираем размышления из сохранённой
+ * истории — модель ответит без своих прошлых рассуждений, но с полным текстом
+ * переписки — и дальше чат живёт как новый.
+ */
+async function stripThinkingInChat(chatId: string): Promise<void> {
+  const rows = await prisma.ropAgentMessage.findMany({ where: { chatId }, select: { id: true, apiMessages: true } });
+  for (const r of rows) {
+    const msgs = r.apiMessages as unknown as Anthropic.MessageParam[];
+    if (!hasThinking(msgs)) continue;
+    await prisma.ropAgentMessage.update({
+      where: { id: r.id },
+      data: { apiMessages: withoutThinking(msgs) as unknown as Prisma.InputJsonValue },
+    });
+  }
+}
+
 function errorText(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) return 'Ключ Claude недействителен. Проверьте CLAUDE_API_KEY.';
   if (err instanceof Anthropic.RateLimitError) return 'Claude перегружен или исчерпан лимит. Повторите через минуту.';
@@ -150,11 +180,11 @@ function errorText(err: unknown): string {
   return `Ошибка агента: ${(err as Error).message}`;
 }
 
-async function runTurn(chatId: string, turn: RunningTurn): Promise<void> {
-  const history = await loadHistory(chatId);
+async function runTurn(chatId: string, userId: string, turn: RunningTurn): Promise<void> {
+  let history = await loadHistory(chatId);
   /** Всё, что добавится к истории за этот ответ, — сохраняется одной репликой. */
   const produced: Anthropic.MessageParam[] = [];
-  const toolCalls: { name: string; label: string; isError: boolean }[] = [];
+  const toolCalls: { name: string; label: string; isError: boolean; planId?: string }[] = [];
   let lastInputTokens: number | null = null;
 
   const saveAssistant = (text: string, isError: boolean) =>
@@ -174,17 +204,27 @@ async function runTurn(chatId: string, turn: RunningTurn): Promise<void> {
 
   try {
     const anthropic = getClient();
+    const call = () => anthropic.messages.create({
+      model: config.ropAgent.model,
+      max_tokens: 16000,
+      system: ROP_AGENT_SYSTEM_PROMPT,
+      tools: ROP_AGENT_TOOLS,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: config.ropAgent.effort },
+      cache_control: { type: 'ephemeral' },
+      messages: [...history, ...produced],
+    });
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const response = await anthropic.messages.create({
-        model: config.ropAgent.model,
-        max_tokens: 16000,
-        system: ROP_AGENT_SYSTEM_PROMPT,
-        tools: ROP_AGENT_TOOLS,
-        thinking: { type: 'adaptive' },
-        output_config: { effort: config.ropAgent.effort },
-        cache_control: { type: 'ephemeral' },
-        messages: [...history, ...produced],
-      });
+      let response: Anthropic.Message;
+      try {
+        response = await call();
+      } catch (err) {
+        if (!(round === 0 && err instanceof Anthropic.BadRequestError && hasThinking(history))) throw err;
+        console.warn('[rop-agent] history rejected, retrying without old thinking blocks:', err.message);
+        await stripThinkingInChat(chatId);
+        history = withoutThinking(history);
+        response = await call();
+      }
       const usage = response.usage;
       lastInputTokens = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
 
@@ -222,8 +262,8 @@ async function runTurn(chatId: string, turn: RunningTurn): Promise<void> {
         const input = (tu.input ?? {}) as Record<string, unknown>;
         const label = describeToolCall(tu.name, input);
         turn.steps.push(label);
-        const { content, isError } = await executeTool(tu.name, input);
-        toolCalls.push({ name: tu.name, label, isError });
+        const { content, isError, planId } = await executeTool(tu.name, input, { chatId, userId });
+        toolCalls.push({ name: tu.name, label, isError, ...(planId ? { planId } : {}) });
         return { type: 'tool_result', tool_use_id: tu.id, content, is_error: isError } satisfies Anthropic.ToolResultBlockParam;
       }));
       produced.push({ role: 'user', content: results });
