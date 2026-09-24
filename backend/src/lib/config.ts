@@ -86,6 +86,10 @@ export const config = {
   ropAgent: {
     model: trimEnv(process.env.ROP_AGENT_MODEL) || 'claude-opus-5-5',
     effort: (trimEnv(process.env.ROP_AGENT_EFFORT) || 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
+    /** Короткий комментарий к ежедневной сводке — рутина, хватает модели попроще. */
+    digestModel: trimEnv(process.env.ROP_DIGEST_MODEL) || 'claude-sonnet-5',
+    /** Час отправки ежедневной сводки по Ташкенту (0–23); пусто или off — не отправлять. */
+    digestHour: trimEnv(process.env.ROP_DIGEST_HOUR) || '9',
   },
 
   telegram: {

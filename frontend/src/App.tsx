@@ -74,6 +74,7 @@ import MyLoadingTasksPage from './pages/MyLoadingTasksPage';
 import MyVehiclePage from './pages/MyVehiclePage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import RopAgentPage from './pages/RopAgentPage';
+import RopDigestPage from './pages/RopDigestPage';
 import AiTrainingPage from './pages/AiTrainingPage';
 import AudioTranscriptionPage from './pages/AudioTranscriptionPage';
 import CallAuditDashboardPage from './pages/CallAuditDashboardPage';
@@ -273,6 +274,7 @@ export default function App() {
                 </Route>
                 {/* Доступ поимённо (право use_rop_agent) проверяет сервер; меню показывает пункт только им. */}
                 <Route path="/rop-agent" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><RopAgentPage /></MoneyAccessGuard>} />
+                <Route path="/rop-agent/digest" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><RopDigestPage /></MoneyAccessGuard>} />
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/notifications/broadcast" element={<BroadcastPage />} />

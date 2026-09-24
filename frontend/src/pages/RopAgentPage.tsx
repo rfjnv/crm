@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Typography, message, theme,
 } from 'antd';
 import {
-  CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, MenuOutlined, PlusOutlined,
+  BarChartOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, MenuOutlined, PlusOutlined,
   RobotOutlined, SendOutlined, UserOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -47,7 +48,9 @@ export default function RopAgentPage() {
   const { token } = theme.useToken();
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  // ?chat=<id> — ссылка из Telegram «Открыть разговор / план в CRM».
+  const [params, setParams] = useSearchParams();
+  const [activeChatId, setActiveChatId] = useState<string | null>(params.get('chat'));
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
@@ -148,6 +151,7 @@ export default function RopAgentPage() {
   const openChat = (id: string | null) => {
     setActiveChatId(id);
     setSidebarOpen(false);
+    if (params.has('chat')) setParams({}, { replace: true });
   };
 
   const sidebar = (
@@ -186,6 +190,7 @@ export default function RopAgentPage() {
               </div>
             ) : (
               <>
+                {chat.channel === 'telegram' && <SendOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} title="Разговор в Telegram" />}
                 <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{chat.title}</Text>
                 <div className="rop-chat-actions" style={{ display: 'flex' }} onClick={(e) => e.stopPropagation()}>
                   <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: 12 }} />}
@@ -286,6 +291,7 @@ export default function RopAgentPage() {
           {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />}
           <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
           <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
+          <Link to="/rop-agent/digest"><Button icon={<BarChartOutlined />}>{isMobile ? null : 'Сводка'}</Button></Link>
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '16px 12px' : '20px 24px' }}>

@@ -16,6 +16,8 @@ import {
 import { assignPlan, discardPlan, listChatPlans, updatePlan } from './rop-agent.plans';
 import { listManagers } from './rop-agent.analysis';
 import { getPlanProgress } from './rop-agent.control';
+import { buildDigest, getDigest, listDigests, tashkentYesterday } from './rop-agent.digest';
+import { sendDigestToUser } from './rop-agent.telegram';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
 const renameDto = z.object({ title: z.string().trim().min(1).max(100) });
@@ -98,6 +100,27 @@ router.get('/plans/:planId/progress', asyncHandler(async (req: Request, res: Res
 
 router.post('/plans/:planId/discard', asyncHandler(async (req: Request, res: Response) => {
   res.json(await discardPlan(req.params.planId as string, req.user!.userId));
+}));
+
+// ─── Ежедневная сводка ──────────────────────────────────────────────────────
+
+router.get('/digests', asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ latestDate: tashkentYesterday(), digests: await listDigests() });
+}));
+
+router.get('/digests/:date', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await getDigest(req.params.date as string));
+}));
+
+/** Собрать заново (или впервые) — цифры на сейчас и новый комментарий агента. */
+router.post('/digests/:date/build', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await buildDigest(req.params.date as string));
+}));
+
+/** Прислать сводку себе в Telegram. */
+router.post('/digests/:date/send-me', asyncHandler(async (req: Request, res: Response) => {
+  await sendDigestToUser(req.params.date as string, req.user!.userId);
+  res.json({ ok: true });
 }));
 
 /** Кому можно переназначить задачу в плане. */

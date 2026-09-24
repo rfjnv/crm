@@ -26,8 +26,13 @@ function getClient(): Anthropic {
  * какие данные агент сейчас смотрит. После перезапуска сервера статус теряется —
  * вопрос остаётся без ответа, и его можно задать заново.
  */
-type RunningTurn = { startedAt: number; steps: string[] };
+type RunningTurn = { startedAt: number; steps: string[]; done?: Promise<void> };
 const running = new Map<string, RunningTurn>();
+
+/** Дождаться, пока агент ответит в чате (для Telegram, где нет опроса со страницы). */
+export async function waitForTurn(chatId: string): Promise<void> {
+  await running.get(chatId)?.done;
+}
 
 export function getTurnStatus(chatId: string) {
   const turn = running.get(chatId);
@@ -48,12 +53,32 @@ export function listChats(userId: string) {
   return prisma.ropAgentChat.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
-    select: { id: true, title: true, createdAt: true, updatedAt: true },
+    select: { id: true, title: true, channel: true, createdAt: true, updatedAt: true },
   });
 }
 
-export function createChat(userId: string) {
-  return prisma.ropAgentChat.create({ data: { userId } });
+export function createChat(userId: string, channel: 'web' | 'telegram' = 'web') {
+  return prisma.ropAgentChat.create({
+    data: { userId, channel, ...(channel === 'telegram' ? { title: 'Telegram' } : {}) },
+  });
+}
+
+/** Разговор в Telegram — последний чат этого канала; /new начинает новый. */
+export async function getTelegramChat(userId: string) {
+  const chat = await prisma.ropAgentChat.findFirst({
+    where: { userId, channel: 'telegram' },
+    orderBy: { createdAt: 'desc' },
+  });
+  return chat ?? createChat(userId, 'telegram');
+}
+
+/** Последний ответ агента в чате — для отправки в Telegram. */
+export function getLastAssistantMessage(chatId: string) {
+  return prisma.ropAgentMessage.findFirst({
+    where: { chatId, role: 'assistant' },
+    orderBy: { createdAt: 'desc' },
+    select: { text: true, isError: true, toolCalls: true },
+  });
 }
 
 export async function renameChat(chatId: string, userId: string, title: string) {
@@ -121,12 +146,14 @@ export async function askInChat(chatId: string, userId: string, question: string
   const isFirst = (await prisma.ropAgentMessage.count({ where: { chatId } })) === 1;
   await prisma.ropAgentChat.update({
     where: { id: chatId },
-    data: isFirst && chat.title === 'Новый чат' ? { title: titleFrom(question) } : { updatedAt: new Date() },
+    data: isFirst && (chat.title === 'Новый чат' || chat.title === 'Telegram')
+      ? { title: chat.channel === 'telegram' ? `Telegram: ${titleFrom(question)}` : titleFrom(question) }
+      : { updatedAt: new Date() },
   });
 
   const turn: RunningTurn = { startedAt: Date.now(), steps: [] };
   running.set(chatId, turn);
-  runTurn(chatId, userId, turn)
+  turn.done = runTurn(chatId, userId, turn)
     .catch((err) => console.error('[rop-agent] turn failed:', (err as Error).message))
     .finally(() => running.delete(chatId));
 

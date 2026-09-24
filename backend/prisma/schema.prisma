@@ -1373,6 +1373,8 @@ model RopAgentChat {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
   title     String   @default("Новый чат")
+  /// web — страница CRM; telegram — разговор в личке с CRM-ботом (берётся последний).
+  channel   String   @default("web")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1429,6 +1431,19 @@ model RopTaskPlan {
   @@index([chatId, createdAt])
   @@index([status, assignedAt])
   @@map("rop_task_plans")
+}
+
+/// Ежедневная сводка РОП-агента за день `date` (YYYY-MM-DD по Ташкенту).
+model RopDailyDigest {
+  id         String    @id @default(uuid())
+  date       String    @unique
+  data       Json
+  commentary String?   @db.Text
+  sentAt     DateTime? @map("sent_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@map("rop_daily_digests")
 }
 
 model AiTrainingRule {

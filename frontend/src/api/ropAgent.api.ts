@@ -3,6 +3,8 @@ import client from './client';
 export interface RopAgentChat {
   id: string;
   title: string;
+  /** web — страница CRM, telegram — разговор в личке с ботом. */
+  channel?: 'web' | 'telegram';
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +106,43 @@ export interface RopPlanProgress {
   totals: RopProgressSummary;
 }
 
+export interface RopDigestData {
+  date: string;
+  revenue: {
+    day: number;
+    prevDay: number;
+    sameWeekdayLastWeek: number;
+    mtd: number;
+    prevMtd: number;
+    daily: { day: string; revenue: number }[];
+  };
+  deals: { closedDay: number; newDay: number; pipeline: { status: string; count: number; amount: number }[] };
+  managers: { id: string; name: string; revenueDay: number; revenueMtd: number; dealsMtd: number }[];
+  debts: {
+    total: number;
+    overdue: number;
+    overdueDeals: number;
+    topDebtors: { clientId: string; client: string; manager: string | null; debt: number; overdueDebt: number; maxOverdueDays: number }[];
+  };
+  clients: {
+    dueSoon: number;
+    overdue: number;
+    topOverdue: { clientId: string; client: string; manager: string; revenue12m: number; daysSince: number; cycleDays: number }[];
+  };
+  slowStock: { frozen: number; count: number; top: { productId: string; product: string; frozen: number; daysSinceSale: number | null }[] };
+  plans: { planId: string; title: string; manager: string; verdict: RopVerdict; touched: number; clients: number; overdue: boolean }[];
+}
+
+export interface RopDigest {
+  id: string;
+  date: string;
+  data: RopDigestData;
+  commentary: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RopManager {
   id: string;
   name: string;
@@ -163,4 +202,12 @@ export const ropAgentApi = {
     client.get<RopPlanProgress>(`/rop-agent/plans/${planId}/progress`).then((r) => r.data),
   discardPlan: (planId: string) => client.post<RopTaskPlan>(`/rop-agent/plans/${planId}/discard`).then((r) => r.data),
   listManagers: () => client.get<RopManager[]>('/rop-agent/managers').then((r) => r.data),
+
+  listDigests: () =>
+    client
+      .get<{ latestDate: string; digests: { date: string; createdAt: string; sentAt: string | null }[] }>('/rop-agent/digests')
+      .then((r) => r.data),
+  getDigest: (date: string) => client.get<RopDigest>(`/rop-agent/digests/${date}`).then((r) => r.data),
+  buildDigest: (date: string) => client.post<RopDigest>(`/rop-agent/digests/${date}/build`).then((r) => r.data),
+  sendDigestToMe: (date: string) => client.post(`/rop-agent/digests/${date}/send-me`).then((r) => r.data),
 };
