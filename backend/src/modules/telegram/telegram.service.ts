@@ -20,10 +20,14 @@ const SEVERITY_EMOJI: Record<string, string> = {
 /** Обработчик личного текстового сообщения боту (не команды /start и /unlink). */
 export type PrivateTextHandler = (msg: TelegramBot.Message) => Promise<void>;
 
+/** Кнопка под сообщением: ссылка (относительный путь — в CRM) или действие с callback_data (до 64 байт). */
+export type TgButton = { text: string; url: string } | { text: string; callback: string };
+
 class TelegramService {
   private bot: TelegramBot | null = null;
   private botUsername: string | null = null;
   private privateTextHandlers: PrivateTextHandler[] = [];
+  private callbackHandlers: { prefix: string; handler: (query: TelegramBot.CallbackQuery) => Promise<void> }[] = [];
 
   constructor() {
     if (!config.telegram.botToken) {
@@ -131,6 +135,52 @@ class TelegramService {
         handler(msg).catch((err) => console.error('[Telegram] private message handler failed:', (err as Error).message));
       }
     });
+
+    // Кнопки модулей по префиксу callback_data; чужие префиксы обрабатывают свои хендлеры выше.
+    this.bot.on('callback_query', (query) => {
+      const entry = this.callbackHandlers.find((h) => query.data?.startsWith(h.prefix));
+      if (!entry) return;
+      entry.handler(query).catch((err) => {
+        console.error('[Telegram] callback handler failed:', (err as Error).message);
+        this.bot?.answerCallbackQuery(query.id, { text: 'Не получилось, попробуйте ещё раз' }).catch(() => {});
+      });
+    });
+  }
+
+  /** Подписка на нажатия кнопок с callback_data, начинающимся с prefix. */
+  onCallback(prefix: string, handler: (query: TelegramBot.CallbackQuery) => Promise<void>): void {
+    this.callbackHandlers.push({ prefix, handler });
+  }
+
+  private toKeyboard(buttons?: TgButton[][]): TelegramBot.InlineKeyboardMarkup | undefined {
+    if (!buttons?.length) return undefined;
+    return {
+      inline_keyboard: buttons.map((row) => row.map((b) => ('url' in b
+        ? { text: b.text, url: b.url.startsWith('http') ? b.url : `${config.telegram.crmUrl}${b.url}` }
+        : { text: b.text, callback_data: b.callback }))),
+    };
+  }
+
+  /** Убрать кнопки у сообщения (после того как решение принято). */
+  async clearButtons(chatId: string | number, messageId: number): Promise<void> {
+    await this.bot?.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: this.toTelegramTarget(chatId), message_id: messageId })
+      .catch(() => {});
+  }
+
+  async answerCallback(queryId: string, text?: string): Promise<void> {
+    await this.bot?.answerCallbackQuery(queryId, text ? { text } : undefined).catch(() => {});
+  }
+
+  /** Заменить текст и кнопки уже отправленного сообщения (пустой список — убрать кнопки). */
+  async editHtmlMessage(chatId: string | number, messageId: number, html: string, buttons?: TgButton[][]): Promise<void> {
+    if (!this.bot) return;
+    await this.bot.editMessageText(html, {
+      chat_id: this.toTelegramTarget(chatId),
+      message_id: messageId,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+      reply_markup: this.toKeyboard(buttons) ?? { inline_keyboard: [] },
+    }).catch((err) => console.warn(`[Telegram] editHtmlMessage failed chat_id=${chatId}:`, (err as Error).message));
   }
 
   /** Подписка на личные текстовые сообщения боту. */
@@ -146,7 +196,7 @@ class TelegramService {
   async sendHtmlToChat(
     chatId: string | number,
     html: string,
-    button?: { text: string; url: string },
+    buttons?: TgButton[][],
   ): Promise<number | null> {
     if (!this.bot) return null;
     const parts: string[] = [];
@@ -160,7 +210,7 @@ class TelegramService {
     }
     if (current) parts.push(current);
 
-    const url = button ? (button.url.startsWith('http') ? button.url : `${config.telegram.crmUrl}${button.url}`) : null;
+    const keyboard = this.toKeyboard(buttons);
     let lastId: number | null = null;
     try {
       for (const [i, part] of parts.entries()) {
@@ -168,7 +218,7 @@ class TelegramService {
         const sent = await this.bot.sendMessage(this.toTelegramTarget(chatId), part, {
           parse_mode: 'HTML',
           disable_web_page_preview: true,
-          ...(isLast && url ? { reply_markup: { inline_keyboard: [[{ text: button!.text, url }]] } } : {}),
+          ...(isLast && keyboard ? { reply_markup: keyboard } : {}),
         });
         lastId = sent.message_id;
       }

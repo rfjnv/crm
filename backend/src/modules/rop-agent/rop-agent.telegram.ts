@@ -2,8 +2,9 @@ import type TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { PERMISSIONS } from '../../lib/permissions';
-import { telegramService } from '../telegram/telegram.service';
+import { telegramService, type TgButton } from '../telegram/telegram.service';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
+import { assignPlan, discardPlan } from './rop-agent.plans';
 import {
   askInChat,
   createChat,
@@ -120,11 +121,20 @@ function hasAgentAccess(u: { role: string; permissions: string[]; moneyAccess: s
   return u.role === 'SUPER_ADMIN' || u.permissions.includes(PERMISSIONS.USE_ROP_AGENT);
 }
 
+/** Сотрудник CRM с доступом к агенту по id личного чата в Telegram, иначе null. */
+export async function agentUserByChat(chatId: number | string): Promise<{ id: string; fullName: string } | null> {
+  const user = await prisma.user.findFirst({
+    where: { telegramChatId: String(chatId) },
+    select: { id: true, fullName: true, role: true, permissions: true, moneyAccess: true, isActive: true },
+  });
+  return user && hasAgentAccess(user) ? { id: user.id, fullName: user.fullName } : null;
+}
+
 /**
  * Получатели ежедневной сводки — только с правом use_rop_agent, выданным явно:
  * суперадминов в компании может быть больше, чем тех, кому нужна сводка.
  */
-async function digestRecipients(): Promise<AgentUser[]> {
+export async function digestRecipients(): Promise<AgentUser[]> {
   const users = await prisma.user.findMany({
     where: { isActive: true, moneyAccess: 'FULL', telegramChatId: { not: null }, permissions: { has: PERMISSIONS.USE_ROP_AGENT } },
     select: { id: true, fullName: true, telegramChatId: true },
@@ -141,7 +151,7 @@ async function digestFor(date: string) {
 function digestMessage(digest: { date: string; data: unknown; commentary: string | null }) {
   return {
     html: digestToTelegramHtml(digest.data as DigestData, digest.commentary),
-    button: { text: '📊 Открыть сводку в CRM', url: `/rop-agent/digest?date=${digest.date}` },
+    buttons: [[{ text: '📊 Открыть сводку в CRM', url: `/rop-agent/digest?date=${digest.date}` }]] as TgButton[][],
   };
 }
 
@@ -149,10 +159,10 @@ function digestMessage(digest: { date: string; data: unknown; commentary: string
 export async function sendDigestToRecipients(date: string): Promise<number> {
   const digest = await digestFor(date);
   const recipients = await digestRecipients();
-  const { html, button } = digestMessage(digest);
+  const { html, buttons } = digestMessage(digest);
   let sent = 0;
   for (const u of recipients) {
-    if (await telegramService.sendHtmlToChat(u.telegramChatId, html, button)) sent++;
+    if (await telegramService.sendHtmlToChat(u.telegramChatId, html, buttons)) sent++;
   }
   await prisma.ropDailyDigest.update({ where: { date }, data: { sentAt: new Date() } });
   return sent;
@@ -166,8 +176,8 @@ export async function sendDigestToUser(date: string, userId: string): Promise<vo
   }
   const digest = await prisma.ropDailyDigest.findUnique({ where: { date } });
   if (!digest) throw new AppError(404, 'Сводки за этот день нет');
-  const { html, button } = digestMessage(digest);
-  const ok = await telegramService.sendHtmlToChat(user.telegramChatId, html, button);
+  const { html, buttons } = digestMessage(digest);
+  const ok = await telegramService.sendHtmlToChat(user.telegramChatId, html, buttons);
   if (!ok) throw new AppError(502, 'Telegram не принял сообщение. Проверьте, что бот не заблокирован.');
 }
 
@@ -181,7 +191,7 @@ const HELP = [
   '/digest — сводка за вчера',
   '/help — эта подсказка',
   '',
-  'Планы задач агент готовит черновиком — раздаются они в CRM кнопкой «Раздать».',
+  'Планы задач агент готовит черновиком — раздать их можно кнопкой под ответом или в CRM.',
 ].join('\n');
 
 /** Ответ агента может занять минуты: держим «печатает…» и ждём окончания. */
@@ -205,15 +215,52 @@ async function answer(chatId: number, userId: string, question: string): Promise
 
   const reply = await getLastAssistantMessage(chat.id);
   if (!reply) return;
-  const planIds = ((reply.toolCalls as { planId?: string }[] | null) ?? []).map((t) => t.planId).filter(Boolean);
+  const planIds = ((reply.toolCalls as { planId?: string }[] | null) ?? []).map((t) => t.planId).filter((id): id is string => !!id);
   const html = reply.isError ? `⚠️ ${esc(reply.text)}` : markdownToTelegramHtml(reply.text);
-  await telegramService.sendHtmlToChat(
-    chatId,
-    html || '…',
-    planIds.length
-      ? { text: '📝 Открыть план задач в CRM', url: `/rop-agent?chat=${chat.id}` }
-      : { text: 'Открыть разговор в CRM', url: `/rop-agent?chat=${chat.id}` },
-  );
+  const plans = planIds.length
+    ? await prisma.ropTaskPlan.findMany({ where: { id: { in: planIds }, status: 'DRAFT' }, select: { id: true, title: true, items: true } })
+    : [];
+  const buttons: TgButton[][] = plans.map((p) => {
+    const tasks = (p.items as unknown as unknown[]).length;
+    return [
+      { text: `✅ Раздать (${tasks})`, callback: `rop:p:${p.id}:y` },
+      { text: '✖ Отклонить', callback: `rop:p:${p.id}:n` },
+    ];
+  });
+  buttons.push([{ text: plans.length ? '📝 Посмотреть план в CRM' : 'Открыть разговор в CRM', url: `/rop-agent?chat=${chat.id}` }]);
+  await telegramService.sendHtmlToChat(chatId, html || '…', buttons);
+}
+
+/**
+ * «Раздать» / «Отклонить» под ответом агента в Telegram. Тот же путь, что кнопки
+ * в CRM: права проверяет assignPlan (план должен быть в чате этого сотрудника).
+ */
+async function onPlanButton(query: TelegramBot.CallbackQuery): Promise<void> {
+  const [, , planId, action] = (query.data ?? '').split(':');
+  const chatId = query.message?.chat.id;
+  const messageId = query.message?.message_id;
+  const user = chatId != null ? await agentUserByChat(chatId) : null;
+  if (!user || !planId || chatId == null || messageId == null) {
+    await telegramService.answerCallback(query.id, 'Нет доступа');
+    return;
+  }
+  try {
+    if (action === 'y') {
+      const r = await assignPlan(planId, user.id);
+      await telegramService.answerCallback(query.id, `Роздано задач: ${r.createdTasks}`);
+      const warn = r.warnings.length ? `\n⚠️ ${esc(r.warnings.join('; '))}` : '';
+      await telegramService.sendHtmlToChat(chatId, `✅ План «${esc(r.plan.title)}» роздан: задач ${r.createdTasks}.${warn}`, [[{ text: 'Открыть задачи', url: '/tasks' }]]);
+    } else {
+      const p = await discardPlan(planId, user.id);
+      await telegramService.answerCallback(query.id, 'План отклонён');
+      await telegramService.sendHtmlToChat(chatId, `✖ План «${esc(p.title)}» отклонён.`);
+    }
+  } catch (err) {
+    // План уже роздан/отклонён (в CRM или вторым нажатием) — просто объясняем.
+    await telegramService.answerCallback(query.id, (err as Error).message.slice(0, 190));
+  }
+  // Остальные кнопки плана под этим сообщением больше не нужны — оставляем только ссылку.
+  await telegramService.clearButtons(chatId, messageId);
 }
 
 async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
@@ -236,8 +283,8 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
   }
   if (command === '/digest') {
     await telegramService.sendTyping(msg.chat.id);
-    const { html, button } = digestMessage(await digestFor(tashkentYesterday()));
-    await telegramService.sendHtmlToChat(msg.chat.id, html, button);
+    const { html, buttons } = digestMessage(await digestFor(tashkentYesterday()));
+    await telegramService.sendHtmlToChat(msg.chat.id, html, buttons);
     return;
   }
   if (command) {
@@ -248,3 +295,4 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
 }
 
 telegramService.onPrivateText(onPrivateText);
+telegramService.onCallback('rop:p:', onPlanButton);

@@ -90,6 +90,14 @@ export const config = {
     digestModel: trimEnv(process.env.ROP_DIGEST_MODEL) || 'claude-sonnet-5',
     /** Час отправки ежедневной сводки по Ташкенту (0–23); пусто или off — не отправлять. */
     digestHour: trimEnv(process.env.ROP_DIGEST_HOUR) || '9',
+    /** Сигналы директору в Telegram (крупная просрочка, пропал ценный клиент, сорвана задача); off — выключить. */
+    alertsEnabled: trimEnv(process.env.ROP_ALERTS).toLowerCase() !== 'off',
+    /** Просроченный долг клиента, с которого агент поднимает тревогу, сум. */
+    alertDebtMin: Number(trimEnv(process.env.ROP_ALERT_DEBT_MIN)) || 5_000_000,
+    /** Выручка клиента за год, начиная с которой его пропажа — повод для сигнала, сум. */
+    alertClientMin: Number(trimEnv(process.env.ROP_ALERT_CLIENT_MIN)) || 20_000_000,
+    /** Не больше стольких сигналов в день. */
+    alertsPerDay: Number(trimEnv(process.env.ROP_ALERTS_PER_DAY)) || 6,
   },
 
   telegram: {

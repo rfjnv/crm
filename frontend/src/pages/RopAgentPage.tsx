@@ -5,7 +5,7 @@ import {
   Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Typography, message, theme,
 } from 'antd';
 import {
-  BarChartOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, MenuOutlined, PlusOutlined,
+  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, MenuOutlined, PlusOutlined,
   RobotOutlined, SendOutlined, UserOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { ropAgentApi, type RopAgentChat, type RopAgentMessage, type RopTaskPlan } from '../api/ropAgent.api';
 import RopTaskPlanCard from '../components/RopTaskPlanCard';
+import RopMemoryDrawer from '../components/RopMemoryDrawer';
 
 const { Text } = Typography;
 
@@ -55,6 +56,7 @@ export default function RopAgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: chats = [], isLoading: chatsLoading } = useQuery({
@@ -236,6 +238,12 @@ export default function RopAgentPage() {
             ) : (
               <>
                 <div className="rop-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
+              {tools.filter((t) => (t.name === 'remember' || t.name === 'forget') && !t.isError).map((t, i) => (
+                <Tag key={i} icon={<BulbOutlined />} color="purple" style={{ marginTop: 6, whiteSpace: 'normal', cursor: 'pointer' }}
+                  onClick={() => setMemoryOpen(true)}>
+                  {t.label}
+                </Tag>
+              ))}
                 {tools.length > 0 && (
                   <Collapse
                     ghost
@@ -291,6 +299,7 @@ export default function RopAgentPage() {
           {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />}
           <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
           <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
+          <Button icon={<BulbOutlined />} onClick={() => setMemoryOpen(true)} title="Что агент помнит">{isMobile ? null : 'Память'}</Button>
           <Link to="/rop-agent/digest"><Button icon={<BarChartOutlined />}>{isMobile ? null : 'Сводка'}</Button></Link>
         </div>
 
@@ -370,6 +379,8 @@ export default function RopAgentPage() {
           />
         </div>
       </div>
+
+      <RopMemoryDrawer open={memoryOpen} onClose={() => setMemoryOpen(false)} />
 
       <style>{`
         .rop-chat-actions { opacity: 0; transition: opacity 0.2s; }

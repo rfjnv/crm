@@ -293,6 +293,7 @@ model User {
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
   ropAgentChats       RopAgentChat[]
+  ropAgentMemories    RopAgentMemory[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
   aiReports           AiReport[]       @relation("AiReportAuthor")
@@ -1375,6 +1376,8 @@ model RopAgentChat {
   title     String   @default("Новый чат")
   /// web — страница CRM; telegram — разговор в личке с CRM-ботом (берётся последний).
   channel   String   @default("web")
+  /// Отпечаток памяти агента, переданной в этот чат последней (см. rop-agent.memory).
+  memoryHash String? @map("memory_hash")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1444,6 +1447,53 @@ model RopDailyDigest {
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   @@map("rop_daily_digests")
+}
+
+/// Долговременная память РОП-агента: решения и договорённости директора.
+model RopAgentMemory {
+  id          String    @id @default(uuid())
+  content     String    @db.Text
+  /// Когда факт перестаёт действовать («в отпуске до 10-го»); null — бессрочно.
+  expiresAt   DateTime? @map("expires_at")
+  /// agent — запомнил агент в разговоре; user — добавили вручную.
+  source      String    @default("agent")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("rop_agent_memories")
+}
+
+/// Сигнал РОП-агента директору в Telegram (крупная просрочка, пропал ценный клиент,
+/// срывается розданная задача). `key` не даёт прислать одно и то же дважды.
+model RopAlert {
+  id          String    @id @default(uuid())
+  /// debt | lapsed | plan
+  kind        String
+  key         String    @unique
+  /// SENT | SKIPPED | ACCEPTED | DECLINED
+  status      String
+  /// Факты, по которым сработал сигнал.
+  payload     Json
+  /// Текст директору.
+  message     String?   @db.Text
+  /// Предложенная задача: managerId, clientId, title, description, dueDate.
+  proposal    Json?
+  /// Почему агент решил не беспокоить (status = SKIPPED).
+  reason      String?   @db.Text
+  /// Куда отправлено: [{ chatId, messageId }] — чтобы после решения убрать кнопки у всех.
+  messages    Json?
+  planId      String?   @map("plan_id")
+  decidedById String?   @map("decided_by_id")
+  decidedAt   DateTime? @map("decided_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("rop_alerts")
 }
 
 model AiTrainingRule {

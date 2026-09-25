@@ -12,6 +12,7 @@ import {
 } from '../../lib/analytics';
 import { clientPurchaseCycles, slowStock } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
+import { activeMemories, memoryText } from './rop-agent.memory';
 
 /**
  * Ежедневная сводка РОП-агента за прошедший день. Цифры считаются здесь, без модели;
@@ -236,7 +237,8 @@ export async function collectDigestData(date: string): Promise<DigestData> {
 // ─── Комментарий агента ─────────────────────────────────────────────────────
 
 const COMMENTARY_PROMPT = `Ты — РОП-агент компании Polygraph Business (Ташкент, расходники для типографий, деньги в сумах).
-Тебе дают цифры утренней сводки за вчерашний день в JSON. Напиши директору блок «На что обратить внимание сегодня»:
+Тебе дают цифры утренней сводки за вчерашний день в JSON и память агента — действующие договорённости директора.
+Учитывай память: не поднимай то, что директор уже решил или объяснил (например, клиент по договорённости платит в конце месяца). Напиши директору блок «На что обратить внимание сегодня»:
 3–6 коротких пунктов, каждый начинается с «- ». Только то, что требует действия или заметно отличается от обычного:
 провал или рост выручки, менеджер, который отстаёт, крупная просрочка долга, ценный клиент, который пропал,
 замороженные деньги в складе, розданные задачи, которые не выполняются. В каждом пункте — имя или товар и цифра.
@@ -253,7 +255,7 @@ async function writeCommentary(data: DigestData): Promise<string | null> {
       system: COMMENTARY_PROMPT,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'medium' },
-      messages: [{ role: 'user', content: JSON.stringify(data) }],
+      messages: [{ role: 'user', content: `Память агента:\n${memoryText(await activeMemories())}\n\nСводка:\n${JSON.stringify(data)}` }],
     });
     if (response.stop_reason === 'refusal') return null;
     const text = response.content

@@ -18,6 +18,8 @@ import { listManagers } from './rop-agent.analysis';
 import { getPlanProgress } from './rop-agent.control';
 import { buildDigest, getDigest, listDigests, tashkentYesterday } from './rop-agent.digest';
 import { sendDigestToUser } from './rop-agent.telegram';
+import { addMemory, deleteMemory, listMemories, updateMemory } from './rop-agent.memory';
+import { decideAlert, listAlerts } from './rop-agent.alerts';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
 const renameDto = z.object({ title: z.string().trim().min(1).max(100) });
@@ -121,6 +123,44 @@ router.post('/digests/:date/build', asyncHandler(async (req: Request, res: Respo
 router.post('/digests/:date/send-me', asyncHandler(async (req: Request, res: Response) => {
   await sendDigestToUser(req.params.date as string, req.user!.userId);
   res.json({ ok: true });
+}));
+
+// ─── Память агента ──────────────────────────────────────────────────────────
+
+const memoryDto = z.object({
+  content: z.string().trim().min(1).max(500),
+  expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+});
+
+router.get('/memories', asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await listMemories());
+}));
+
+router.post('/memories', asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json(await addMemory(req.user!.userId, memoryDto.parse(req.body)));
+}));
+
+router.patch('/memories/:id', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await updateMemory(req.params.id as string, memoryDto.partial().parse(req.body)));
+}));
+
+router.delete('/memories/:id', asyncHandler(async (req: Request, res: Response) => {
+  await deleteMemory(req.params.id as string);
+  res.status(204).end();
+}));
+
+// ─── Сигналы ────────────────────────────────────────────────────────────────
+
+router.get('/alerts', asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await listAlerts());
+}));
+
+router.post('/alerts/:id/accept', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await decideAlert(req.params.id as string, req.user!.userId, true));
+}));
+
+router.post('/alerts/:id/decline', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await decideAlert(req.params.id as string, req.user!.userId, false));
 }));
 
 /** Кому можно переназначить задачу в плане. */

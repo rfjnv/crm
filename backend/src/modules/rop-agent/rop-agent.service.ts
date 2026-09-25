@@ -5,6 +5,7 @@ import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { ROP_AGENT_SYSTEM_PROMPT } from './rop-agent.prompt';
 import { ROP_AGENT_TOOLS, describeToolCall, executeTool } from './rop-agent.tools';
+import { activeMemories, memoryHash, memoryText } from './rop-agent.memory';
 
 /** Сколько раз за один ответ агент может сходить за данными. */
 const MAX_TOOL_ROUNDS = 25;
@@ -131,9 +132,16 @@ export async function askInChat(chatId: string, userId: string, question: string
     throw new AppError(409, 'Чат стал слишком длинным. Начните новый — агент ответит быстрее и дешевле.');
   }
 
+  // Память передаём, только если она изменилась с прошлой передачи в этот чат: иначе
+  // каждая реплика тащила бы весь список заново.
+  const memories = await activeMemories();
+  const hash = memoryHash(memories);
+  const memoryBlock = hash !== chat.memoryHash
+    ? `[Память агента — действующие договорённости директора${chat.memoryHash ? ' (обновлено)' : ''}:\n${memoryText(memories)}]\n\n`
+    : '';
   const userTurn: Anthropic.MessageParam = {
     role: 'user',
-    content: [{ type: 'text', text: `[Сегодня ${tashkentToday()}, Ташкент]\n${question}` }],
+    content: [{ type: 'text', text: `${memoryBlock}[Сегодня ${tashkentToday()}, Ташкент]\n${question}` }],
   };
   const userMessage = await prisma.ropAgentMessage.create({
     data: {
@@ -146,9 +154,12 @@ export async function askInChat(chatId: string, userId: string, question: string
   const isFirst = (await prisma.ropAgentMessage.count({ where: { chatId } })) === 1;
   await prisma.ropAgentChat.update({
     where: { id: chatId },
-    data: isFirst && (chat.title === 'Новый чат' || chat.title === 'Telegram')
-      ? { title: chat.channel === 'telegram' ? `Telegram: ${titleFrom(question)}` : titleFrom(question) }
-      : { updatedAt: new Date() },
+    data: {
+      memoryHash: hash,
+      ...(isFirst && (chat.title === 'Новый чат' || chat.title === 'Telegram')
+        ? { title: chat.channel === 'telegram' ? `Telegram: ${titleFrom(question)}` : titleFrom(question) }
+        : { updatedAt: new Date() }),
+    },
   });
 
   const turn: RunningTurn = { startedAt: Date.now(), steps: [] };

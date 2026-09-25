@@ -2,7 +2,7 @@ import prisma from '../../lib/prisma';
 import { hashPassword } from '../../lib/password';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
-import { DEFAULT_PERMISSIONS } from '../../lib/permissions';
+import { DEFAULT_PERMISSIONS, PERMISSIONS } from '../../lib/permissions';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import { CreateUserDto, UpdateUserDto, UpsertMonthlyGoalDto } from './users.dto';
@@ -89,6 +89,20 @@ export class UsersService {
     });
   }
 
+  /**
+   * Право на РОП-агента открывает всю выручку, маржу и работу менеджеров, поэтому
+   * выдаёт и снимает его только суперадмин: иначе любой админ выдал бы его себе.
+   */
+  private async assertRopAgentGrant(performedBy: string, before: string[], after: string[]) {
+    const had = before.includes(PERMISSIONS.USE_ROP_AGENT);
+    const has = after.includes(PERMISSIONS.USE_ROP_AGENT);
+    if (had === has) return;
+    const performer = await prisma.user.findUnique({ where: { id: performedBy }, select: { role: true } });
+    if (performer?.role !== 'SUPER_ADMIN') {
+      throw new AppError(403, 'Доступ к РОП-агенту выдаёт и снимает только суперадминистратор');
+    }
+  }
+
   async create(dto: CreateUserDto, performedBy: string) {
     const exists = await prisma.user.findUnique({ where: { login: dto.login } });
     if (exists) {
@@ -97,6 +111,7 @@ export class UsersService {
 
     const hashed = await hashPassword(dto.password);
     const permissions = dto.permissions ?? DEFAULT_PERMISSIONS[dto.role] ?? [];
+    await this.assertRopAgentGrant(performedBy, [], permissions);
 
     const dept = dto.department?.trim();
     const user = await prisma.user.create({
@@ -154,7 +169,10 @@ export class UsersService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.moneyAccess !== undefined) data.moneyAccess = dto.moneyAccess;
     if (dto.password !== undefined) data.password = await hashPassword(dto.password);
-    if (dto.permissions !== undefined) data.permissions = dto.permissions;
+    if (dto.permissions !== undefined) {
+      await this.assertRopAgentGrant(performedBy, user.permissions, dto.permissions);
+      data.permissions = dto.permissions;
+    }
     if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;
     if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
     if (dto.badgeLabel !== undefined) data.badgeLabel = dto.badgeLabel;
