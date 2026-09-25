@@ -127,6 +127,15 @@ enum PaymentKind {
   REVERSAL
 }
 
+/// Кто это для нас: обычный клиент, своя или союзная компания, конкурент (иногда
+/// докупает у нас, когда не хватает своего товара). РОП-агент не считает своих и
+/// конкурентов клиентами в анализе, сигналах и задачах.
+enum ClientRelation {
+  CUSTOMER
+  AFFILIATE
+  COMPETITOR
+}
+
 enum ClientCreditStatus {
   NORMAL
   SATISFACTORY
@@ -458,6 +467,7 @@ model Client {
   managerId   String   @map("manager_id")
   isSvip      Boolean  @default(false) @map("is_svip")
   creditStatus ClientCreditStatus @default(NORMAL) @map("credit_status")
+  relation    ClientRelation @default(CUSTOMER)
   isArchived  Boolean  @default(false) @map("is_archived")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")

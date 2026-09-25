@@ -539,6 +539,16 @@ export default function ClientDetailPage() {
     onError: () => message.error('Ошибка обновления клиента'),
   });
 
+  const relationMut = useMutation({
+    mutationFn: (relation: 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR') => clientsApi.setRelation(id!, relation),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', id] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Тип клиента изменён');
+    },
+    onError: () => message.error('Ошибка изменения типа'),
+  });
+
   const svipMut = useMutation({
     mutationFn: () => clientsApi.toggleSvip(id!),
     onSuccess: () => {
@@ -1114,6 +1124,21 @@ export default function ClientDetailPage() {
             >
               {client.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
             </Button>
+          )}
+          {isAdmin && (
+            <Select<'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR'>
+              size="middle"
+              style={{ minWidth: 190 }}
+              value={client.relation ?? 'CUSTOMER'}
+              loading={relationMut.isPending}
+              onChange={(v) => relationMut.mutate(v)}
+              title="Кто это для нас. Своих и конкурентов РОП-агент не считает клиентами."
+              options={[
+                { value: 'CUSTOMER', label: 'Клиент' },
+                { value: 'AFFILIATE', label: 'Своя / союзная компания' },
+                { value: 'COMPETITOR', label: 'Конкурент' },
+              ]}
+            />
           )}
           {canChangeStatus && (
             <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>

@@ -43,7 +43,11 @@ const LAST_CONTACT = Prisma.sql`
     SELECT client_id, started_at AS at FROM call_sessions WHERE client_id IS NOT NULL
   ) x GROUP BY client_id`;
 
-const ACTIVE_CLIENT = Prisma.sql`c.is_archived = false AND NOT EXISTS (
+/**
+ * Настоящие клиенты: не в архиве, не внутренняя компания, не своя/союзная компания
+ * и не конкурент (clients.relation) — их не обзванивают и не «возвращают».
+ */
+const ACTIVE_CLIENT = Prisma.sql`c.is_archived = false AND c.relation = 'CUSTOMER' AND NOT EXISTS (
   SELECT 1 FROM companies ico WHERE ico.id = c.company_id AND ico.name = ${INTERNAL_COMPANY_NAME}
 )`;
 

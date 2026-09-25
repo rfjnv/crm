@@ -22,8 +22,14 @@ const ymd = (d: Date | null) => (d ? new Date(d.getTime() + 5 * 3600_000).toISOS
 
 // ─── Карточка клиента ───────────────────────────────────────────────────────
 
+const RELATION_LABELS: Record<string, string> = {
+  CUSTOMER: 'клиент',
+  AFFILIATE: 'своя / союзная компания — не клиент',
+  COMPETITOR: 'конкурент — иногда докупает у нас при нехватке своего товара',
+};
+
 type ClientRow = {
-  id: string; company_name: string; contact_name: string; phone: string | null; inn: string | null;
+  id: string; company_name: string; contact_name: string; phone: string | null; inn: string | null; relation: string;
   manager: string; is_svip: boolean; credit_status: string; is_archived: boolean; created_at: Date;
   portrait_profile: string | null; portrait_goals: string | null; portrait_pains: string | null;
   portrait_fears: string | null; portrait_objections: string | null;
@@ -33,7 +39,7 @@ async function findClient(input: { client_id?: string; search?: string }) {
   if (input.client_id) {
     const rows = await prisma.$queryRaw<ClientRow[]>(Prisma.sql`
       SELECT c.*, u.full_name AS manager FROM clients c JOIN users u ON u.id = c.manager_id WHERE c.id = ${input.client_id}`);
-    return { client: rows[0] ?? null, candidates: [] as { client_id: string; client: string; manager: string }[] };
+    return { client: rows[0] ?? null, candidates: [] as { client_id: string; client: string; manager: string; relation: string }[] };
   }
   const q = (input.search ?? '').trim();
   if (!q) throw new Error('Нужен client_id или search');
@@ -47,7 +53,7 @@ async function findClient(input: { client_id?: string; search?: string }) {
   const pick = exact.length === 1 ? exact[0] : rows.length === 1 ? rows[0] : null;
   return {
     client: pick,
-    candidates: pick ? [] : rows.map((r) => ({ client_id: r.id, client: r.company_name, manager: r.manager })),
+    candidates: pick ? [] : rows.map((r) => ({ client_id: r.id, client: r.company_name, manager: r.manager, relation: r.relation })),
   };
 }
 
@@ -150,6 +156,7 @@ export async function clientCard(input: { client_id?: string; search?: string })
     found: true,
     client: {
       client_id: c.id, name: c.company_name, contact: c.contact_name, phone: c.phone, inn: c.inn,
+      relation: c.relation, relation_label: RELATION_LABELS[c.relation] ?? c.relation,
       manager: c.manager, vip: c.is_svip, credit_status: c.credit_status, archived: c.is_archived,
       in_crm_since: ymd(c.created_at),
     },

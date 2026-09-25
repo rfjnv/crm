@@ -1,3 +1,4 @@
+import { setClientRelationDto } from './clients.dto';
 import { Request, Response } from 'express';
 import { DealStatus, Role } from '@prisma/client';
 import { z } from 'zod';
@@ -56,6 +57,11 @@ export class ClientsController {
   async toggleSvip(req: Request, res: Response): Promise<void> {
     const client = await clientsService.toggleSvip(req.params.id as string, getUser(req));
     res.json(client);
+  }
+
+  async setRelation(req: Request, res: Response): Promise<void> {
+    const { relation } = setClientRelationDto.parse(req.body);
+    res.json(await clientsService.setRelation(req.params.id as string, relation, getUser(req).userId));
   }
 
   async setCreditStatus(req: Request, res: Response): Promise<void> {

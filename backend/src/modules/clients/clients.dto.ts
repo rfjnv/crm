@@ -55,6 +55,10 @@ export const updateClientDto = z.object({
   portraitObjections: z.string().max(20000).optional(),
 });
 
+export const setClientRelationDto = z.object({
+  relation: z.enum(['CUSTOMER', 'AFFILIATE', 'COMPETITOR']),
+});
+
 export const setClientCreditStatusDto = z.object({
   creditStatus: z.enum(['NORMAL', 'SATISFACTORY', 'NEGATIVE']),
 });

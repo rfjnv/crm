@@ -71,7 +71,7 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
     prisma.user.findMany({ where: { id: { in: managerIds }, isActive: true }, select: { id: true, fullName: true } }),
     prisma.client.findMany({
       where: { id: { in: clientIds }, isArchived: false },
-      select: { id: true, companyName: true, phone: true },
+      select: { id: true, companyName: true, phone: true, relation: true },
     }),
   ]);
   const managerById = new Map(managers.map((m) => [m.id, m]));
@@ -101,6 +101,9 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
         continue;
       }
       seenClients.add(id);
+      // Не запрещаем — директор может поручить и такое, — но предупреждаем.
+      if (client.relation === 'AFFILIATE') warnings.push(`${client.companyName} — своя/союзная компания, не клиент`);
+      if (client.relation === 'COMPETITOR') warnings.push(`${client.companyName} — конкурент, не клиент`);
       planClients.push({
         clientId: id,
         name: client.companyName,

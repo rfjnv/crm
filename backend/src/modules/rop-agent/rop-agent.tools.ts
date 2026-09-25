@@ -26,6 +26,7 @@ import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
 import { clientCard, lossReasons } from './rop-agent.clients';
 import { kpiForecast } from './rop-agent.kpi';
+import { clientsService } from '../clients/clients.service';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -540,6 +541,22 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'set_client_relation',
+    description:
+      'Отметить, кто это для нас: CUSTOMER — клиент, AFFILIATE — своя или союзная компания (например, «Базис Принт», «ППС»), '
+      + 'COMPETITOR — конкурент, который иногда докупает у нас (например, «Фоил Трейдинг»). Своих и конкурентов агент не считает клиентами '
+      + 'в анализе, сигналах и задачах. Вызывай ТОЛЬКО когда директор прямо это сказал; client_id бери из client_card.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string' },
+        relation: { type: 'string', enum: ['CUSTOMER', 'AFFILIATE', 'COMPETITOR'] },
+      },
+      required: ['client_id', 'relation'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'remember',
     description:
       'Запомнить надолго решение, договорённость или факт от директора, который должен действовать и в следующих разговорах: '
@@ -627,6 +644,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return `Карточка клиента${input.search ? `: ${String(input.search).slice(0, 60)}` : ''}`;
     case 'loss_reasons':
       return 'Причины потерь клиентов';
+    case 'set_client_relation':
+      return `Отметил тип клиента: ${{ CUSTOMER: 'клиент', AFFILIATE: 'своя/союзная компания', COMPETITOR: 'конкурент' }[String(input.relation)] ?? String(input.relation)}`;
     case 'remember':
       return `Запомнил: ${String(input.content ?? '').slice(0, 140)}`;
     case 'forget':
@@ -655,6 +674,13 @@ export async function executeTool(
       case 'client_card': result = await clientCard(input as { client_id?: string; search?: string }); break;
       case 'loss_reasons': result = await lossReasons(input as { include_lost?: boolean; manager_id?: string; limit?: number }); break;
       case 'call_reviews': result = await callReviews(input as { manager_id?: string; days?: number; limit?: number }); break;
+      case 'set_client_relation': {
+        const relation = String(input.relation);
+        if (!['CUSTOMER', 'AFFILIATE', 'COMPETITOR'].includes(relation)) throw new Error('relation: CUSTOMER, AFFILIATE или COMPETITOR');
+        const c = await clientsService.setRelation(String(input.client_id), relation as 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR', ctx.userId);
+        result = { client: c.companyName, relation: c.relation };
+        break;
+      }
       case 'remember': result = await rememberTool(ctx, input); break;
       case 'forget': result = await forgetTool(input); break;
       case 'propose_task_plan': {

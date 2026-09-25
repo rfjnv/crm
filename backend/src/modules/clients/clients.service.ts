@@ -377,6 +377,27 @@ export class ClientsService {
     return updated;
   }
 
+  /**
+   * Своя/союзная компания, конкурент или обычный клиент. Меняет админ в карточке или
+   * РОП-агент по словам директора — проверку роли делает маршрут.
+   */
+  async setRelation(id: string, relation: 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR', performedBy: string) {
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+    const updated = await prisma.client.update({ where: { id }, data: { relation } });
+    await auditLog({
+      userId: performedBy,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: id,
+      before: { relation: client.relation },
+      after: { relation: updated.relation },
+    });
+    return updated;
+  }
+
   async setCreditStatus(id: string, creditStatus: ClientCreditStatus, user: AuthUser) {
     const client = await prisma.client.findUnique({ where: { id } });
     if (!client) {

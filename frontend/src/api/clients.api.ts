@@ -71,6 +71,8 @@ export const clientsApi = {
   archive: (id: string) => client.patch<Client>(`/clients/${id}/archive`).then((r) => r.data),
 
   toggleSvip: (id: string) => client.patch<Client>(`/clients/${id}/svip`).then((r) => r.data),
+  setRelation: (id: string, relation: 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR') =>
+    client.patch<Client>(`/clients/${id}/relation`, { relation }).then((r) => r.data),
 
   setCreditStatus: (id: string, creditStatus: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE') =>
     client.patch<Client>(`/clients/${id}/credit-status`, { creditStatus }).then((r) => r.data),

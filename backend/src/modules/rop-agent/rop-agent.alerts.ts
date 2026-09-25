@@ -63,6 +63,7 @@ async function debtCandidates(): Promise<Candidate[]> {
     WHERE d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED')
       AND d.payment_status IN ('UNPAID', 'PARTIAL') AND (d.amount - d.paid_amount) > 0
       AND d.due_date IS NOT NULL AND ${overdueDays} >= 7
+      AND c.relation = 'CUSTOMER'
       AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}
     GROUP BY c.id, c.company_name, c.manager_id, u.full_name
     HAVING SUM(d.amount - d.paid_amount) >= ${config.ropAgent.alertDebtMin}

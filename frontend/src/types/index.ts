@@ -265,6 +265,8 @@ export interface Client {
   portraitObjections?: string | null;
   managerId: string;
   isSvip: boolean;
+  /** CUSTOMER — клиент; AFFILIATE — своя/союзная компания; COMPETITOR — конкурент. */
+  relation?: 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR';
   creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
   isArchived: boolean;
   createdAt: string;

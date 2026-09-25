@@ -29,6 +29,7 @@ router.post('/merge', authorize('SUPER_ADMIN', 'ADMIN'), validate(mergeClientsDt
 router.patch('/:id', requirePermission('edit_client'), validate(updateClientDto), asyncHandler(clientsController.update.bind(clientsController)));
 router.post('/normalize-phones', authorize('SUPER_ADMIN'), asyncHandler(clientsController.normalizePhones.bind(clientsController)));
 router.patch('/:id/svip', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.toggleSvip.bind(clientsController)));
+router.patch('/:id/relation', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.setRelation.bind(clientsController)));
 router.patch(
   '/:id/credit-status',
   authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR'),
