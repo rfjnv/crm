@@ -15,6 +15,63 @@ import { createTelegramBot, registerWebhook } from '../telegram/telegram-transpo
 export type TgButton = { text: string; url: string } | { text: string; callback: string };
 
 type MessageHandler = (msg: TelegramBot.Message) => Promise<void>;
+
+/** Telegram режет на 4096 символах; запас — на теги. */
+const PART_LIMIT = 3800;
+
+/**
+ * Длинный HTML → части для Telegram. Режем только между строками и никогда внутри
+ * <pre>…</pre> (таблицы): половина таблицы без закрывающего тега — ошибка разметки,
+ * и Telegram отклоняет сообщение целиком. Таблица длиннее лимита делится на
+ * несколько самостоятельных <pre>.
+ */
+export function splitTelegramHtml(html: string, limit = PART_LIMIT): string[] {
+  const units: string[] = [];
+  const lines = html.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('<pre>') && !lines[i].includes('</pre>')) {
+      const block = [lines[i]];
+      while (i + 1 < lines.length && !block[block.length - 1].includes('</pre>')) block.push(lines[++i]);
+      const whole = block.join('\n');
+      if (whole.length <= limit) {
+        units.push(whole);
+      } else {
+        const inner = whole.replace(/^[\s\S]*?<pre>/, '').replace(/<\/pre>[\s\S]*$/, '').split('\n');
+        let cur: string[] = [];
+        for (const l of inner) {
+          if (cur.length && cur.join('\n').length + l.length + 12 > limit) {
+            units.push(`<pre>${cur.join('\n')}</pre>`);
+            cur = [];
+          }
+          cur.push(l);
+        }
+        if (cur.length) units.push(`<pre>${cur.join('\n')}</pre>`);
+      }
+      continue;
+    }
+    // Строка длиннее лимита (редко) — режем по символам; если разрежем тег, выручит повтор текстом.
+    for (let s = lines[i]; ; s = s.slice(limit)) {
+      units.push(s.slice(0, limit));
+      if (s.length <= limit) break;
+    }
+  }
+  const parts: string[] = [];
+  let current = '';
+  for (const u of units) {
+    if (current && current.length + u.length + 1 > limit) {
+      parts.push(current);
+      current = '';
+    }
+    current = current ? `${current}\n${u}` : u;
+  }
+  if (current) parts.push(current);
+  return parts.length ? parts : [''];
+}
+
+/** HTML → простой текст: запасной вариант, если Telegram не принял разметку. */
+function htmlToPlain(html: string): string {
+  return html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
 type CallbackHandler = (query: TelegramBot.CallbackQuery) => Promise<void>;
 
 class AgentBot {
@@ -140,9 +197,11 @@ class AgentBot {
   }
 
   /**
-   * HTML-сообщение. Длинный текст режется на части по ~4000 символов по границам
-   * строк; кнопки — под последней частью. replyKeyboard — постоянные кнопки внизу
-   * чата (только в личке). @returns message_id последней части или null.
+   * HTML-сообщение. Длинный текст режется на части (splitTelegramHtml); кнопки — под
+   * последней частью. Часть, которую Telegram не принял как HTML, уходит простым
+   * текстом — лучше без оформления, чем без ответа. replyKeyboard — постоянные
+   * кнопки внизу чата (только в личке).
+   * @returns message_id последней части или null, если хоть одна часть не ушла.
    */
   async sendHtmlToChat(
     chatId: string | number,
@@ -151,35 +210,31 @@ class AgentBot {
     opts: { replyTo?: number; replyKeyboard?: string[][] } = {},
   ): Promise<number | null> {
     if (!this.bot) return null;
-    const parts: string[] = [];
-    let current = '';
-    for (const line of html.split('\n')) {
-      if (current && current.length + line.length + 1 > 4000) {
-        parts.push(current);
-        current = '';
-      }
-      current = current ? `${current}\n${line}` : line;
-    }
-    if (current) parts.push(current);
+    const parts = splitTelegramHtml(html);
 
     const inline = this.inlineKeyboard(buttons);
     const replyMarkup = opts.replyKeyboard
       ? { keyboard: opts.replyKeyboard.map((row) => row.map((text) => ({ text }))), resize_keyboard: true, is_persistent: true }
       : inline;
     let lastId: number | null = null;
-    try {
-      for (const [i, part] of parts.entries()) {
-        const isLast = i === parts.length - 1;
-        const sent = await this.bot.sendMessage(this.target(chatId), part, {
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-          ...(i === 0 && opts.replyTo ? { reply_to_message_id: opts.replyTo } : {}),
-          ...(isLast && replyMarkup ? { reply_markup: replyMarkup as TelegramBot.InlineKeyboardMarkup } : {}),
-        });
-        lastId = sent.message_id;
+    for (const [i, part] of parts.entries()) {
+      const isLast = i === parts.length - 1;
+      const extra = {
+        disable_web_page_preview: true,
+        ...(i === 0 && opts.replyTo ? { reply_to_message_id: opts.replyTo, allow_sending_without_reply: true } : {}),
+        ...(isLast && replyMarkup ? { reply_markup: replyMarkup as TelegramBot.InlineKeyboardMarkup } : {}),
+      };
+      try {
+        lastId = (await this.bot.sendMessage(this.target(chatId), part, { parse_mode: 'HTML', ...extra })).message_id;
+      } catch (err) {
+        console.error(`[HOS bot] send failed chat_id=${chatId} part ${i + 1}/${parts.length}, retrying as plain text:`, (err as Error).message);
+        try {
+          lastId = (await this.bot.sendMessage(this.target(chatId), htmlToPlain(part).slice(0, 4096), extra)).message_id;
+        } catch (err2) {
+          console.error(`[HOS bot] plain send failed chat_id=${chatId}:`, (err2 as Error).message);
+          return null;
+        }
       }
-    } catch (err) {
-      console.error(`[HOS bot] send failed chat_id=${chatId}:`, (err as Error).message);
     }
     return lastId;
   }

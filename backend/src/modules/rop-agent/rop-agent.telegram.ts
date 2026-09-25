@@ -40,6 +40,8 @@ export function shortMoney(v: number): string {
   return fmt(v, 0);
 }
 
+const ruPct = (v: number | null) => (v == null ? '—' : `${v.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`);
+
 function delta(now: number, before: number): string {
   if (!before) return '';
   const pct = Math.round(((now - before) / before) * 100);
@@ -99,7 +101,7 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
     '',
     `💰 Выручка: <b>${shortMoney(r.day)}</b> ${[delta(r.day, r.prevDay) && `${delta(r.day, r.prevDay)} к пред. дню`, delta(r.day, r.sameWeekdayLastWeek) && `${delta(r.day, r.sameWeekdayLastWeek)} к прошлой неделе`].filter(Boolean).join(', ')}`,
     `📅 С начала месяца: <b>${shortMoney(r.mtd)}</b>${r.prevMtd ? ` ${delta(r.mtd, r.prevMtd)} к тому же периоду прошлого месяца` : ''}`,
-    ...(d.forecast ? [`📈 Прогноз месяца: <b>${shortMoney(d.forecast.forecast)}</b>${d.forecast.goal ? ` из ${shortMoney(d.forecast.goal)} (${d.forecast.forecastPct}%)` : ''}`] : []),
+    ...(d.forecast ? [`📈 Прогноз месяца: <b>${shortMoney(d.forecast.forecast)}</b>${d.forecast.goal ? ` из ${shortMoney(d.forecast.goal)} (${ruPct(d.forecast.forecastPct)})` : ''}`] : []),
     `🤝 Сделок закрыто: ${d.deals.closedDay}, новых: ${d.deals.newDay}`,
     `💳 Долги: ${shortMoney(d.debts.total)}, просрочено <b>${shortMoney(d.debts.overdue)}</b> (${d.debts.overdueDeals} сд.)`,
     `👥 Пропали: ${d.clients.overdue} постоянных клиентов · пора покупать: ${d.clients.dueSoon}`,
@@ -117,7 +119,7 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
   }
   if (d.forecast?.behind.length) {
     lines.push('', '<b>Не успевают план (прогноз)</b>');
-    for (const b of d.forecast.behind.slice(0, 6)) lines.push(`${esc(b.manager)}: ${b.forecastPct}% · не хватает ${shortMoney(b.gap)}`);
+    for (const b of d.forecast.behind.slice(0, 6)) lines.push(`${esc(b.manager)}: ${ruPct(b.forecastPct)} · не хватает ${shortMoney(b.gap)}`);
   }
   if (d.plans.length) {
     lines.push('', '<b>Розданные задачи</b>');
@@ -219,6 +221,7 @@ const QUICK = {
   lapsed: '📉 Пропавшие клиенты',
   stock: '📦 Залежалое',
   memory: '🧠 Память',
+  last: '📂 Последний ответ',
   fresh: '🆕 Новый разговор',
 } as const;
 
@@ -227,7 +230,7 @@ const QUICK_KEYBOARD: string[][] = [
   [QUICK.forecast, QUICK.managers],
   [QUICK.debts, QUICK.lapsed],
   [QUICK.stock, QUICK.memory],
-  [QUICK.fresh],
+  [QUICK.last, QUICK.fresh],
 ];
 
 /** Кнопки-вопросы: агенту уходит готовое задание. */
@@ -257,6 +260,7 @@ const HELP = [
   '/digest — сводка за вчера',
   '/alerts — сигналы, ждущие решения',
   '/memory — что помнит агент',
+  '/last — прислать последний ответ ещё раз (без новых затрат)',
   '/new — начать новый разговор',
   '',
   'Планы задач агент готовит черновиком — раздать их можно кнопкой под ответом или в CRM.',
@@ -306,11 +310,25 @@ export async function askAgentFromTelegram(ctx: ChatContext, userId: string, que
     await waitForTurn(chat.id);
   } finally {
     clearInterval(progress);
-    if (waitingId) await agentBot.deleteChatMessage(chatId, waitingId);
   }
+  await deliverLastReply(ctx, chat.id);
+  // Статус убираем только после отправки ответа: если что-то пошло не так, не останется пустоты.
+  if (waitingId) await agentBot.deleteChatMessage(chatId, waitingId);
+}
 
+/**
+ * Отправить последний ответ агента из разговора. Ответ хранится в базе, поэтому его
+ * можно прислать ещё раз (/last) без нового обращения к модели. Если Telegram не
+ * принял ответ даже простым текстом — даём ссылку на разговор в CRM.
+ */
+async function deliverLastReply(ctx: ChatContext, agentChatId: string): Promise<void> {
+  const { telegramChatId: chatId, replyTo } = ctx;
+  const chat = { id: agentChatId };
   const reply = await getLastAssistantMessage(chat.id);
-  if (!reply) return;
+  if (!reply) {
+    await agentBot.sendHtmlToChat(chatId, 'В этом разговоре ещё нет ответов агента.', undefined, { replyTo });
+    return;
+  }
   const planIds = ((reply.toolCalls as { planId?: string }[] | null) ?? []).map((t) => t.planId).filter((id): id is string => !!id);
   const html = reply.isError ? `⚠️ ${esc(reply.text)}` : markdownToTelegramHtml(reply.text);
   const plans = planIds.length
@@ -330,7 +348,15 @@ export async function askAgentFromTelegram(ctx: ChatContext, userId: string, que
     ]);
   }
   buttons.push([{ text: plans.length ? '📝 Посмотреть план в CRM' : 'Открыть разговор в CRM', url: `/rop-agent?chat=${chat.id}` }]);
-  await agentBot.sendHtmlToChat(chatId, html || '…', buttons, { replyTo });
+  const sent = await agentBot.sendHtmlToChat(chatId, html || '…', buttons, { replyTo });
+  if (!sent) {
+    await agentBot.sendHtmlToChat(
+      chatId,
+      '⚠️ Ответ готов и сохранён, но Telegram его не принял. Откройте в CRM или нажмите «📂 Последний ответ».',
+      [[{ text: 'Открыть ответ в CRM', url: `/rop-agent?chat=${chat.id}` }]],
+      { replyTo },
+    );
+  }
 }
 
 const contextOf = (chat: TelegramBot.Chat, replyTo?: number): ChatContext => ({
@@ -455,6 +481,12 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
   if (command === '/alerts' || text === QUICK.alerts) {
     const n = await sendOpenAlerts(chatId);
     if (!n) await agentBot.sendHtmlToChat(chatId, '🔔 Сигналов, ждущих решения, нет.');
+    return true;
+  }
+  if (command === '/last' || text === QUICK.last) {
+    const channel = isPrivate ? 'telegram' : 'telegram_group';
+    const chat = await getTelegramChat(user.id, channel);
+    await deliverLastReply({ telegramChatId: chatId, channel, replyTo: isPrivate ? undefined : msg.message_id }, chat.id);
     return true;
   }
   if (command === '/memory' || text === QUICK.memory) {
