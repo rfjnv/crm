@@ -4,10 +4,11 @@ import path from 'path';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
-import { PERMISSIONS } from '../../lib/permissions';
-import { telegramService, type TgButton } from '../telegram/telegram.service';
+import { agentBot, type TgButton } from './rop-agent.bot';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
 import { assignPlan, discardPlan } from './rop-agent.plans';
+import { activeMemories } from './rop-agent.memory';
+import { sendOpenAlerts } from './rop-agent.alerts';
 import { transcribeVoiceNote } from './rop-agent.voice';
 import {
   askInChat,
@@ -18,9 +19,9 @@ import {
 } from './rop-agent.service';
 
 /**
- * РОП-агент в Telegram — через существующий CRM-бот, только для тех, у кого есть
- * право use_rop_agent (или SUPER_ADMIN) и полный доступ к деньгам: ежедневная сводка
- * и разговор с агентом в личке. Остальным бот на обычный текст не отвечает, как и раньше.
+ * РОП-агент в Telegram — отдельный бот (HOS_BOT_TOKEN, см. rop-agent.bot), не CRM-бот.
+ * Писать могут только Telegram ID из HOS_ALLOWED_IDS: разговор с агентом в личке и
+ * в группе, голосовые, быстрые кнопки; сводка и сигналы уходят в группу HOS_GROUP_ID.
  */
 
 // ─── Форматирование ─────────────────────────────────────────────────────────
@@ -116,34 +117,43 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
   return lines.join('\n');
 }
 
-// ─── Кому можно ─────────────────────────────────────────────────────────────
+// ─── Кто пишет ──────────────────────────────────────────────────────────────
 
-type AgentUser = { id: string; fullName: string; telegramChatId: string };
-
-function hasAgentAccess(u: { role: string; permissions: string[]; moneyAccess: string; isActive: boolean }): boolean {
-  if (!u.isActive || u.moneyAccess !== 'FULL') return false;
-  return u.role === 'SUPER_ADMIN' || u.permissions.includes(PERMISSIONS.USE_ROP_AGENT);
-}
-
-/** Сотрудник CRM с доступом к агенту по id личного чата в Telegram, иначе null. */
-export async function agentUserByChat(chatId: number | string): Promise<{ id: string; fullName: string } | null> {
-  const user = await prisma.user.findFirst({
-    where: { telegramChatId: String(chatId) },
-    select: { id: true, fullName: true, role: true, permissions: true, moneyAccess: true, isActive: true },
-  });
-  return user && hasAgentAccess(user) ? { id: user.id, fullName: user.fullName } : null;
-}
+export type AgentUser = { id: string; fullName: string };
 
 /**
- * Получатели ежедневной сводки — только с правом use_rop_agent, выданным явно:
- * суперадминов в компании может быть больше, чем тех, кому нужна сводка.
+ * Сотрудник CRM по Telegram ID — только из HOS_ALLOWED_IDS. Кто есть кто: сначала
+ * HOS_USERS («telegramId=логин»), иначе привязанный в CRM Telegram (его chat id в
+ * личке и есть Telegram ID). null — нет доступа или сотрудник не найден.
  */
-export async function digestRecipients(): Promise<AgentUser[]> {
-  const users = await prisma.user.findMany({
-    where: { isActive: true, moneyAccess: 'FULL', telegramChatId: { not: null }, permissions: { has: PERMISSIONS.USE_ROP_AGENT } },
-    select: { id: true, fullName: true, telegramChatId: true },
+export async function agentUserByTelegramId(telegramId: number | string | undefined): Promise<AgentUser | null> {
+  if (!agentBot.isAllowed(telegramId)) return null;
+  const login = config.hos.users[String(telegramId)];
+  const user = await prisma.user.findFirst({
+    where: login ? { login } : { telegramChatId: String(telegramId) },
+    select: { id: true, fullName: true, isActive: true },
   });
-  return users as AgentUser[];
+  return user?.isActive ? { id: user.id, fullName: user.fullName } : null;
+}
+
+const NOT_LINKED = (telegramId: number | string | undefined) => [
+  '⚠️ Не нашёл вас в CRM.',
+  `Ваш Telegram ID: <code>${telegramId}</code>.`,
+  'Привяжите Telegram в CRM («Уведомления → Привязать Telegram») или попросите администратора добавить в HOS_USERS строку «ID=логин».',
+].join('\n');
+
+/** Куда слать сводку и сигналы: в группу, а без неё — в личку каждому разрешённому. */
+export function broadcastTargets(): string[] {
+  return agentBot.groupId ? [agentBot.groupId] : [...config.hos.allowedIds];
+}
+
+/** Telegram ID сотрудника CRM — для «Прислать мне» со страницы. */
+async function telegramIdOf(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { login: true, telegramChatId: true } });
+  if (!user) return null;
+  const mapped = Object.entries(config.hos.users).find(([, login]) => login === user.login)?.[0];
+  const id = mapped ?? user.telegramChatId;
+  return id && agentBot.isAllowed(id) ? id : null;
 }
 
 // ─── Сводка ─────────────────────────────────────────────────────────────────
@@ -159,64 +169,103 @@ function digestMessage(digest: { date: string; data: unknown; commentary: string
   };
 }
 
-/** Утренняя рассылка: всем получателям, отмечает sentAt. Возвращает, скольким ушло. */
+/** Утренняя рассылка: в группу (или разрешённым в личку), отмечает sentAt. */
 export async function sendDigestToRecipients(date: string): Promise<number> {
   const digest = await digestFor(date);
-  const recipients = await digestRecipients();
   const { html, buttons } = digestMessage(digest);
   let sent = 0;
-  for (const u of recipients) {
-    if (await telegramService.sendHtmlToChat(u.telegramChatId, html, buttons)) sent++;
+  for (const target of broadcastTargets()) {
+    if (await agentBot.sendHtmlToChat(target, html, buttons)) sent++;
   }
   await prisma.ropDailyDigest.update({ where: { date }, data: { sentAt: new Date() } });
   return sent;
 }
 
-/** «Прислать мне» со страницы сводки. */
+/** «Прислать мне в Telegram» со страницы сводки — в личку HOS-бота. */
 export async function sendDigestToUser(date: string, userId: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { telegramChatId: true } });
-  if (!user?.telegramChatId) {
-    throw new AppError(400, 'Telegram не привязан. Привяжите его в CRM: Уведомления → «Привязать Telegram».');
+  if (!agentBot.enabled) throw new AppError(503, 'Бот РОП-агента не настроен (HOS_BOT_TOKEN)');
+  const telegramId = await telegramIdOf(userId);
+  if (!telegramId) {
+    throw new AppError(400, 'Ваш Telegram не подключён к боту РОП-агента: нужен в HOS_ALLOWED_IDS и привязан в CRM (или в HOS_USERS).');
   }
   const digest = await prisma.ropDailyDigest.findUnique({ where: { date } });
   if (!digest) throw new AppError(404, 'Сводки за этот день нет');
   const { html, buttons } = digestMessage(digest);
-  const ok = await telegramService.sendHtmlToChat(user.telegramChatId, html, buttons);
-  if (!ok) throw new AppError(502, 'Telegram не принял сообщение. Проверьте, что бот не заблокирован.');
+  const ok = await agentBot.sendHtmlToChat(telegramId, html, buttons);
+  if (!ok) throw new AppError(502, 'Telegram не принял сообщение. Откройте бота и нажмите «Start».');
 }
 
-// ─── Разговор в личке ───────────────────────────────────────────────────────
+// ─── Разговор ───────────────────────────────────────────────────────────────
+
+/** Быстрые кнопки внизу лички: текст кнопки → действие. */
+const QUICK = {
+  digest: '📊 Сводка',
+  alerts: '🔔 Сигналы',
+  managers: '👥 Менеджеры',
+  debts: '💰 Долги',
+  lapsed: '📉 Пропавшие клиенты',
+  stock: '📦 Залежалое',
+  memory: '🧠 Память',
+  fresh: '🆕 Новый разговор',
+} as const;
+
+const QUICK_KEYBOARD: string[][] = [
+  [QUICK.digest, QUICK.alerts],
+  [QUICK.managers, QUICK.debts],
+  [QUICK.lapsed, QUICK.stock],
+  [QUICK.memory, QUICK.fresh],
+];
+
+/** Кнопки-вопросы: агенту уходит готовое задание. */
+const QUICK_QUESTIONS: Record<string, string> = {
+  [QUICK.managers]: 'Как работают менеджеры в этом месяце: выручка, сделки, розданные задачи. Кто отстаёт и что с этим сделать? Коротко.',
+  [QUICK.debts]: 'Кто сейчас должен больше всего и с какой просрочкой? Что делать с топ-5 должниками? Коротко.',
+  [QUICK.lapsed]: 'Какие ценные постоянные клиенты пропали? Топ-10: кто ведёт, что брали, что предложить.',
+  [QUICK.stock]: 'Что залежалось на складе дольше 60 дней, сколько денег заморожено и кому это предложить?',
+};
+
+/** Кнопки «продолжить» под ответом без плана: частые следующие шаги одним нажатием. */
+const FOLLOW_UPS: Record<string, string> = {
+  d: 'Подробнее: распиши по каждому пункту с цифрами и именами.',
+  t: 'Подготовь по этому план задач менеджерам.',
+};
 
 const HELP = [
   '<b>РОП-агент</b>',
-  'Пишите задание или вопрос обычным текстом или голосовым — агент изучит данные CRM и ответит.',
+  'Пишите задание обычным текстом или голосовым — агент изучит данные CRM и ответит. Внизу — быстрые кнопки.',
   '',
-  'Запись звонка менеджера пришлите файлом — агент расшифрует и разберёт. Подпишите файл: «Дилноза, Print House».',
+  '🎧 Запись звонка менеджера пришлите файлом — агент расшифрует и разберёт. Подпишите файл: «Дилноза, Print House».',
+  '👥 В группе агент отвечает, если упомянуть его или ответить на его сообщение. Туда же приходят сводка в 9:00 и сигналы.',
   '',
-  '/new — начать новый разговор',
+  '/menu — быстрые кнопки',
   '/digest — сводка за вчера',
-  '/help — эта подсказка',
+  '/alerts — сигналы, ждущие решения',
+  '/memory — что помнит агент',
+  '/new — начать новый разговор',
   '',
   'Планы задач агент готовит черновиком — раздать их можно кнопкой под ответом или в CRM.',
 ].join('\n');
 
+type ChatContext = { telegramChatId: number; channel: 'telegram' | 'telegram_group'; replyTo?: number };
+
 /** Ответ агента может занять минуты: держим «печатает…» и ждём окончания. */
-export async function askAgentFromTelegram(chatId: number, userId: string, question: string): Promise<void> {
-  const chat = await getTelegramChat(userId);
+export async function askAgentFromTelegram(ctx: ChatContext, userId: string, question: string): Promise<void> {
+  const { telegramChatId: chatId, replyTo } = ctx;
+  const chat = await getTelegramChat(userId, ctx.channel);
   try {
     await askInChat(chat.id, userId, question);
   } catch (err) {
-    await telegramService.sendHtmlToChat(chatId, `⚠️ ${esc((err as Error).message)}`);
+    await agentBot.sendHtmlToChat(chatId, `⚠️ ${esc((err as Error).message)}`, undefined, { replyTo });
     return;
   }
-  const waitingId = await telegramService.sendHtmlToChat(chatId, '⏳ Изучаю данные…');
-  await telegramService.sendTyping(chatId);
-  const typing = setInterval(() => { telegramService.sendTyping(chatId); }, 5000);
+  const waitingId = await agentBot.sendHtmlToChat(chatId, '⏳ Изучаю данные…', undefined, { replyTo });
+  await agentBot.sendTyping(chatId);
+  const typing = setInterval(() => { agentBot.sendTyping(chatId); }, 5000);
   try {
     await waitForTurn(chat.id);
   } finally {
     clearInterval(typing);
-    if (waitingId) await telegramService.deleteChatMessage(chatId, waitingId);
+    if (waitingId) await agentBot.deleteChatMessage(chatId, waitingId);
   }
 
   const reply = await getLastAssistantMessage(chat.id);
@@ -233,112 +282,189 @@ export async function askAgentFromTelegram(chatId: number, userId: string, quest
       { text: '✖ Отклонить', callback: `rop:p:${p.id}:n` },
     ];
   });
+  if (!plans.length && !reply.isError) {
+    buttons.push([
+      { text: '🔎 Подробнее', callback: 'rop:f:d' },
+      { text: '📝 Подготовь задачи', callback: 'rop:f:t' },
+    ]);
+  }
   buttons.push([{ text: plans.length ? '📝 Посмотреть план в CRM' : 'Открыть разговор в CRM', url: `/rop-agent?chat=${chat.id}` }]);
-  await telegramService.sendHtmlToChat(chatId, html || '…', buttons);
+  await agentBot.sendHtmlToChat(chatId, html || '…', buttons, { replyTo });
 }
 
+const contextOf = (chat: TelegramBot.Chat, replyTo?: number): ChatContext => ({
+  telegramChatId: chat.id,
+  channel: chat.type === 'private' ? 'telegram' : 'telegram_group',
+  replyTo: chat.type === 'private' ? undefined : replyTo,
+});
+
 /**
- * «Раздать» / «Отклонить» под ответом агента в Telegram. Тот же путь, что кнопки
- * в CRM: права проверяет assignPlan (план должен быть в чате этого сотрудника).
+ * «Раздать» / «Отклонить» под ответом агента. Нажать может любой из разрешённых —
+ * в группе план мог попросить другой; раздаётся от имени того, кто его заказал.
  */
 async function onPlanButton(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , planId, action] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
   const messageId = query.message?.message_id;
-  const user = chatId != null ? await agentUserByChat(chatId) : null;
-  if (!user || !planId || chatId == null || messageId == null) {
-    await telegramService.answerCallback(query.id, 'Нет доступа');
+  const user = await agentUserByTelegramId(query.from.id);
+  const plan = planId ? await prisma.ropTaskPlan.findUnique({ where: { id: planId }, select: { chat: { select: { userId: true } } } }) : null;
+  if (!user || !plan || chatId == null || messageId == null) {
+    await agentBot.answerCallback(query.id, 'Нет доступа');
     return;
   }
   try {
     if (action === 'y') {
-      const r = await assignPlan(planId, user.id);
-      await telegramService.answerCallback(query.id, `Роздано задач: ${r.createdTasks}`);
+      const r = await assignPlan(planId, plan.chat.userId);
+      await agentBot.answerCallback(query.id, `Роздано задач: ${r.createdTasks}`);
       const warn = r.warnings.length ? `\n⚠️ ${esc(r.warnings.join('; '))}` : '';
-      await telegramService.sendHtmlToChat(chatId, `✅ План «${esc(r.plan.title)}» роздан: задач ${r.createdTasks}.${warn}`, [[{ text: 'Открыть задачи', url: '/tasks' }]]);
+      await agentBot.sendHtmlToChat(chatId, `✅ ${esc(user.fullName)}: план «${esc(r.plan.title)}» роздан, задач ${r.createdTasks}.${warn}`, [[{ text: 'Открыть задачи', url: '/tasks' }]]);
     } else {
-      const p = await discardPlan(planId, user.id);
-      await telegramService.answerCallback(query.id, 'План отклонён');
-      await telegramService.sendHtmlToChat(chatId, `✖ План «${esc(p.title)}» отклонён.`);
+      const p = await discardPlan(planId, plan.chat.userId);
+      await agentBot.answerCallback(query.id, 'План отклонён');
+      await agentBot.sendHtmlToChat(chatId, `✖ ${esc(user.fullName)}: план «${esc(p.title)}» отклонён.`);
     }
   } catch (err) {
     // План уже роздан/отклонён (в CRM или вторым нажатием) — просто объясняем.
-    await telegramService.answerCallback(query.id, (err as Error).message.slice(0, 190));
+    await agentBot.answerCallback(query.id, (err as Error).message.slice(0, 190));
   }
-  // Остальные кнопки плана под этим сообщением больше не нужны — оставляем только ссылку.
-  await telegramService.clearButtons(chatId, messageId);
+  await agentBot.clearButtons(chatId, messageId);
+}
+
+/** «Подробнее» / «Подготовь задачи» под ответом — следующий шаг в том же разговоре. */
+async function onFollowUp(query: TelegramBot.CallbackQuery): Promise<void> {
+  const kind = (query.data ?? '').split(':')[2];
+  const question = FOLLOW_UPS[kind];
+  const message = query.message;
+  const user = await agentUserByTelegramId(query.from.id);
+  if (!user || !question || !message) {
+    await agentBot.answerCallback(query.id, 'Нет доступа');
+    return;
+  }
+  await agentBot.answerCallback(query.id, 'Спрашиваю агента');
+  await agentBot.clearButtons(message.chat.id, message.message_id);
+  await askAgentFromTelegram(contextOf(message.chat, message.message_id), user.id, question);
+}
+
+async function sendMemory(chatId: number): Promise<void> {
+  const memories = await activeMemories();
+  const text = memories.length
+    ? ['<b>🧠 Что помнит агент</b>', ...memories.map((m) => `• ${esc(m.content)}${m.expiresAt ? ` <i>(до ${m.expiresAt.toISOString().slice(0, 10).split('-').reverse().join('.')})</i>` : ''}`)].join('\n')
+    : '🧠 Память пуста. Скажите агенту «запомни: …», и он будет учитывать это везде.';
+  await agentBot.sendHtmlToChat(chatId, text, [[{ text: 'Изменить в CRM', url: '/rop-agent' }]]);
+}
+
+/** Команды и быстрые кнопки. true — обработано, дальше агенту не передаём. */
+async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: string): Promise<boolean> {
+  const chatId = msg.chat.id;
+  const isPrivate = msg.chat.type === 'private';
+  const command = text.startsWith('/') ? text.split(/\s|@/)[0].toLowerCase() : null;
+
+  if (command === '/start' || command === '/help' || command === '/menu') {
+    await agentBot.sendHtmlToChat(chatId, HELP, undefined, isPrivate ? { replyKeyboard: QUICK_KEYBOARD } : { replyTo: msg.message_id });
+    return true;
+  }
+  if (command === '/new' || text === QUICK.fresh) {
+    await createChat(user.id, isPrivate ? 'telegram' : 'telegram_group');
+    await agentBot.sendHtmlToChat(chatId, '🆕 Новый разговор. Какое задание?');
+    return true;
+  }
+  if (command === '/digest' || text === QUICK.digest) {
+    await agentBot.sendTyping(chatId);
+    const { html, buttons } = digestMessage(await digestFor(tashkentYesterday()));
+    await agentBot.sendHtmlToChat(chatId, html, buttons);
+    return true;
+  }
+  if (command === '/alerts' || text === QUICK.alerts) {
+    const n = await sendOpenAlerts(chatId);
+    if (!n) await agentBot.sendHtmlToChat(chatId, '🔔 Сигналов, ждущих решения, нет.');
+    return true;
+  }
+  if (command === '/memory' || text === QUICK.memory) {
+    await sendMemory(chatId);
+    return true;
+  }
+  if (QUICK_QUESTIONS[text]) {
+    await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user.id, QUICK_QUESTIONS[text]);
+    return true;
+  }
+  if (command) {
+    await agentBot.sendHtmlToChat(chatId, HELP, undefined, isPrivate ? { replyKeyboard: QUICK_KEYBOARD } : undefined);
+    return true;
+  }
+  return false;
 }
 
 async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
-  const user = await prisma.user.findFirst({
-    where: { telegramChatId: String(msg.chat.id) },
-    select: { id: true, role: true, permissions: true, moneyAccess: true, isActive: true },
-  });
-  if (!user || !hasAgentAccess(user)) return;
-
+  const user = await agentUserByTelegramId(msg.from?.id);
+  if (!user) {
+    await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id));
+    return;
+  }
   const text = (msg.text ?? '').trim();
-  const command = text.startsWith('/') ? text.split(/\s|@/)[0].toLowerCase() : null;
-  if (command === '/help') {
-    await telegramService.sendHtmlToChat(msg.chat.id, HELP);
+  if (await handleCommand(msg, user, text)) return;
+  await askAgentFromTelegram(contextOf(msg.chat), user.id, text);
+}
+
+/** В группе — упоминание или ответ боту; отвечаем реплаем, разговор у каждого свой. */
+async function onGroupText(msg: TelegramBot.Message): Promise<void> {
+  const user = await agentUserByTelegramId(msg.from?.id);
+  if (!user) {
+    await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id), undefined, { replyTo: msg.message_id });
     return;
   }
-  if (command === '/new') {
-    await createChat(user.id, 'telegram');
-    await telegramService.sendHtmlToChat(msg.chat.id, '🆕 Новый разговор. Какое задание?');
+  const text = agentBot.stripMention(msg.text ?? '');
+  if (!text) {
+    await agentBot.sendHtmlToChat(msg.chat.id, 'Слушаю. Какое задание?', undefined, { replyTo: msg.message_id });
     return;
   }
-  if (command === '/digest') {
-    await telegramService.sendTyping(msg.chat.id);
-    const { html, buttons } = digestMessage(await digestFor(tashkentYesterday()));
-    await telegramService.sendHtmlToChat(msg.chat.id, html, buttons);
-    return;
-  }
-  if (command) {
-    await telegramService.sendHtmlToChat(msg.chat.id, HELP);
-    return;
-  }
-  await askAgentFromTelegram(msg.chat.id, user.id, text);
+  if (await handleCommand(msg, user, text)) return;
+  await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user.id, text);
 }
 
 /** Длиннее — это уже не задание, а лекция; и распознавание дорожает. */
 const MAX_VOICE_SEC = 5 * 60;
 
 /**
- * Голосовое директора: расшифровываем, показываем, что услышали (чтобы было видно
- * ошибку распознавания), и отдаём агенту как обычный текст.
+ * Голосовое: расшифровываем, показываем, что услышали (чтобы было видно ошибку
+ * распознавания), и отдаём агенту как обычный текст.
  */
 async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
-  const user = await agentUserByChat(msg.chat.id);
-  if (!user) return;
+  const user = await agentUserByTelegramId(msg.from?.id);
+  if (!user) {
+    await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id));
+    return;
+  }
   const media = msg.voice;
   if (!media) return;
   if ((media.duration ?? 0) > MAX_VOICE_SEC) {
-    await telegramService.sendHtmlToChat(msg.chat.id, `⚠️ Голосовое длиннее ${MAX_VOICE_SEC / 60} минут — разбейте на части или напишите текстом.`);
+    await agentBot.sendHtmlToChat(msg.chat.id, `⚠️ Голосовое длиннее ${MAX_VOICE_SEC / 60} минут — разбейте на части или напишите текстом.`);
     return;
   }
 
-  const statusId = await telegramService.sendHtmlToChat(msg.chat.id, '🎙 Слушаю…');
-  await telegramService.sendTyping(msg.chat.id);
+  const statusId = await agentBot.sendHtmlToChat(msg.chat.id, '🎙 Слушаю…');
+  await agentBot.sendTyping(msg.chat.id);
   const dir = path.resolve(config.uploads.dir, 'tg-voice');
   let file: string | null = null;
   let text: string;
   try {
     await fs.mkdir(dir, { recursive: true });
-    file = await telegramService.downloadFile(media.file_id, dir);
+    file = await agentBot.downloadFile(media.file_id, dir);
     text = await transcribeVoiceNote(file);
   } catch (err) {
     const reason = err instanceof AppError ? err.message : 'Не удалось распознать голосовое. Попробуйте ещё раз или напишите текстом.';
     if (!(err instanceof AppError)) console.error('[rop-voice] failed:', (err as Error).message);
-    if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `⚠️ ${esc(reason)}`);
+    if (statusId) await agentBot.editHtmlMessage(msg.chat.id, statusId, `⚠️ ${esc(reason)}`);
     return;
   } finally {
     if (file) await fs.unlink(file).catch(() => {});
   }
 
-  if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `🎙 <i>${esc(text)}</i>`);
-  await askAgentFromTelegram(msg.chat.id, user.id, `🎙 ${text}`);
+  if (statusId) await agentBot.editHtmlMessage(msg.chat.id, statusId, `🎙 <i>${esc(text)}</i>`);
+  await askAgentFromTelegram(contextOf(msg.chat), user.id, `🎙 ${text}`);
 }
 
-telegramService.onPrivateText(onPrivateText);
-telegramService.onPrivateVoice(onPrivateVoice);
-telegramService.onCallback('rop:p:', onPlanButton);
+agentBot.onPrivateText(onPrivateText);
+agentBot.onGroupText(onGroupText);
+agentBot.onPrivateVoice(onPrivateVoice);
+agentBot.onCallback('rop:p:', onPlanButton);
+agentBot.onCallback('rop:f:', onFollowUp);

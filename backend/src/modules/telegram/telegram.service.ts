@@ -17,19 +17,9 @@ const SEVERITY_EMOJI: Record<string, string> = {
   INFO: '\u2139\uFE0F',
 };
 
-/** Обработчик личного текстового сообщения боту (не команды /start и /unlink). */
-export type PrivateTextHandler = (msg: TelegramBot.Message) => Promise<void>;
-
-/** Кнопка под сообщением: ссылка (относительный путь — в CRM) или действие с callback_data (до 64 байт). */
-export type TgButton = { text: string; url: string } | { text: string; callback: string };
-
 class TelegramService {
   private bot: TelegramBot | null = null;
   private botUsername: string | null = null;
-  private privateTextHandlers: PrivateTextHandler[] = [];
-  private privateVoiceHandlers: PrivateTextHandler[] = [];
-  private privateFileHandlers: PrivateTextHandler[] = [];
-  private callbackHandlers: { prefix: string; handler: (query: TelegramBot.CallbackQuery) => Promise<void> }[] = [];
 
   constructor() {
     if (!config.telegram.botToken) {
@@ -127,145 +117,6 @@ class TelegramService {
 
     registerTelegramAdminCallbacks(this.bot);
     registerTelegramWarehouseWeighHandlers(this.bot);
-
-    // Личка: отдаём модулям, которые подписались (РОП-агент). Группы сюда не попадают —
-    // там своя переписка и ответы складу (telegram-warehouse-weigh.handler).
-    this.bot.on('message', (msg) => {
-      if (msg.chat.type !== 'private') return;
-      // Голосовое (записано в Telegram) — это сказанное боту; аудиофайл или документ — присланный файл.
-      if (msg.voice) {
-        for (const handler of this.privateVoiceHandlers) {
-          handler(msg).catch((err) => console.error('[Telegram] private voice handler failed:', (err as Error).message));
-        }
-        return;
-      }
-      if (msg.audio || msg.document) {
-        for (const handler of this.privateFileHandlers) {
-          handler(msg).catch((err) => console.error('[Telegram] private file handler failed:', (err as Error).message));
-        }
-        return;
-      }
-      if (!msg.text) return;
-      if (msg.text.startsWith('/start') || msg.text.startsWith('/unlink')) return;
-      for (const handler of this.privateTextHandlers) {
-        handler(msg).catch((err) => console.error('[Telegram] private message handler failed:', (err as Error).message));
-      }
-    });
-
-    // Кнопки модулей по префиксу callback_data; чужие префиксы обрабатывают свои хендлеры выше.
-    this.bot.on('callback_query', (query) => {
-      const entry = this.callbackHandlers.find((h) => query.data?.startsWith(h.prefix));
-      if (!entry) return;
-      entry.handler(query).catch((err) => {
-        console.error('[Telegram] callback handler failed:', (err as Error).message);
-        this.bot?.answerCallbackQuery(query.id, { text: 'Не получилось, попробуйте ещё раз' }).catch(() => {});
-      });
-    });
-  }
-
-  /** Подписка на нажатия кнопок с callback_data, начинающимся с prefix. */
-  onCallback(prefix: string, handler: (query: TelegramBot.CallbackQuery) => Promise<void>): void {
-    this.callbackHandlers.push({ prefix, handler });
-  }
-
-  private toKeyboard(buttons?: TgButton[][]): TelegramBot.InlineKeyboardMarkup | undefined {
-    if (!buttons?.length) return undefined;
-    return {
-      inline_keyboard: buttons.map((row) => row.map((b) => ('url' in b
-        ? { text: b.text, url: b.url.startsWith('http') ? b.url : `${config.telegram.crmUrl}${b.url}` }
-        : { text: b.text, callback_data: b.callback }))),
-    };
-  }
-
-  /** Убрать кнопки у сообщения (после того как решение принято). */
-  async clearButtons(chatId: string | number, messageId: number): Promise<void> {
-    await this.bot?.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: this.toTelegramTarget(chatId), message_id: messageId })
-      .catch(() => {});
-  }
-
-  async answerCallback(queryId: string, text?: string): Promise<void> {
-    await this.bot?.answerCallbackQuery(queryId, text ? { text } : undefined).catch(() => {});
-  }
-
-  /** Заменить текст и кнопки уже отправленного сообщения (пустой список — убрать кнопки). */
-  async editHtmlMessage(chatId: string | number, messageId: number, html: string, buttons?: TgButton[][]): Promise<void> {
-    if (!this.bot) return;
-    await this.bot.editMessageText(html, {
-      chat_id: this.toTelegramTarget(chatId),
-      message_id: messageId,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-      reply_markup: this.toKeyboard(buttons) ?? { inline_keyboard: [] },
-    }).catch((err) => console.warn(`[Telegram] editHtmlMessage failed chat_id=${chatId}:`, (err as Error).message));
-  }
-
-  /** Подписка на личные текстовые сообщения боту. */
-  onPrivateText(handler: PrivateTextHandler): void {
-    this.privateTextHandlers.push(handler);
-  }
-
-  /** Подписка на голосовые сообщения в личке. */
-  onPrivateVoice(handler: PrivateTextHandler): void {
-    this.privateVoiceHandlers.push(handler);
-  }
-
-  /** Подписка на файлы в личке (аудиофайлы и документы). */
-  onPrivateFile(handler: PrivateTextHandler): void {
-    this.privateFileHandlers.push(handler);
-  }
-
-  /** Скачать файл из Telegram в папку; возвращает путь. */
-  async downloadFile(fileId: string, dir: string): Promise<string> {
-    if (!this.bot) throw new Error('Telegram bot is not configured');
-    return this.bot.downloadFile(fileId, dir);
-  }
-
-  /**
-   * HTML-сообщение в личный чат. Длинный текст режется на части по 4096 символов
-   * (лимит Telegram) по границам строк; кнопка — под последней частью.
-   * @returns message_id последней части или null.
-   */
-  async sendHtmlToChat(
-    chatId: string | number,
-    html: string,
-    buttons?: TgButton[][],
-  ): Promise<number | null> {
-    if (!this.bot) return null;
-    const parts: string[] = [];
-    let current = '';
-    for (const line of html.split('\n')) {
-      if (current && current.length + line.length + 1 > 4000) {
-        parts.push(current);
-        current = '';
-      }
-      current = current ? `${current}\n${line}` : line;
-    }
-    if (current) parts.push(current);
-
-    const keyboard = this.toKeyboard(buttons);
-    let lastId: number | null = null;
-    try {
-      for (const [i, part] of parts.entries()) {
-        const isLast = i === parts.length - 1;
-        const sent = await this.bot.sendMessage(this.toTelegramTarget(chatId), part, {
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-          ...(isLast && keyboard ? { reply_markup: keyboard } : {}),
-        });
-        lastId = sent.message_id;
-      }
-    } catch (err) {
-      console.error(`[Telegram] sendHtmlToChat failed chat_id=${chatId}:`, (err as Error).message);
-    }
-    return lastId;
-  }
-
-  async sendTyping(chatId: string | number): Promise<void> {
-    await this.bot?.sendChatAction(this.toTelegramTarget(chatId), 'typing').catch(() => {});
-  }
-
-  async deleteChatMessage(chatId: string | number, messageId: number): Promise<void> {
-    await this.bot?.deleteMessage(this.toTelegramTarget(chatId), messageId).catch(() => {});
   }
 
   private formatMessage(payload: PushPayload): string {

@@ -3,8 +3,8 @@ import client from './client';
 export interface RopAgentChat {
   id: string;
   title: string;
-  /** web — страница CRM, telegram — разговор в личке с ботом. */
-  channel?: 'web' | 'telegram';
+  /** web — страница CRM; telegram — личка с ботом; telegram_group — группа. */
+  channel?: 'web' | 'telegram' | 'telegram_group';
   createdAt: string;
   updatedAt: string;
 }

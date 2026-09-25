@@ -192,7 +192,7 @@ export default function RopAgentPage() {
               </div>
             ) : (
               <>
-                {chat.channel === 'telegram' && <SendOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} title="Разговор в Telegram" />}
+                {chat.channel && chat.channel !== 'web' && <SendOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} title={chat.channel === 'telegram_group' ? 'Разговор в группе Telegram' : 'Разговор в Telegram'} />}
                 <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{chat.title}</Text>
                 <div className="rop-chat-actions" style={{ display: 'flex' }} onClick={(e) => e.stopPropagation()}>
                   <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: 12 }} />}

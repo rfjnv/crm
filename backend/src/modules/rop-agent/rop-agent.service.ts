@@ -58,19 +58,24 @@ export function listChats(userId: string) {
   });
 }
 
-export function createChat(userId: string, channel: 'web' | 'telegram' = 'web') {
+export type ChatChannel = 'web' | 'telegram' | 'telegram_group';
+
+export function createChat(userId: string, channel: ChatChannel = 'web') {
   return prisma.ropAgentChat.create({
-    data: { userId, channel, ...(channel === 'telegram' ? { title: 'Telegram' } : {}) },
+    data: { userId, channel, ...(channel === 'web' ? {} : { title: 'Telegram' }) },
   });
 }
 
-/** Разговор в Telegram — последний чат этого канала; /new начинает новый. */
-export async function getTelegramChat(userId: string) {
+/**
+ * Разговор в Telegram — последний чат канала: отдельно личка и группа, чтобы
+ * вопросы при всех не смешивались с личной перепиской. /new начинает новый.
+ */
+export async function getTelegramChat(userId: string, channel: Exclude<ChatChannel, 'web'> = 'telegram') {
   const chat = await prisma.ropAgentChat.findFirst({
-    where: { userId, channel: 'telegram' },
+    where: { userId, channel },
     orderBy: { createdAt: 'desc' },
   });
-  return chat ?? createChat(userId, 'telegram');
+  return chat ?? createChat(userId, channel);
 }
 
 /** Последний ответ агента в чате — для отправки в Telegram. */
@@ -157,7 +162,7 @@ export async function askInChat(chatId: string, userId: string, question: string
     data: {
       memoryHash: hash,
       ...(isFirst && (chat.title === 'Новый чат' || chat.title === 'Telegram')
-        ? { title: chat.channel === 'telegram' ? `Telegram: ${titleFrom(question)}` : titleFrom(question) }
+        ? { title: chat.channel === 'web' ? titleFrom(question) : `${chat.channel === 'telegram_group' ? 'Группа' : 'Telegram'}: ${titleFrom(question)}` }
         : { updatedAt: new Date() }),
     },
   });

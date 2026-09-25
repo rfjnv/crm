@@ -100,6 +100,23 @@ export const config = {
     alertsPerDay: Number(trimEnv(process.env.ROP_ALERTS_PER_DAY)) || 6,
   },
 
+  /** Отдельный Telegram-бот РОП-агента (не CRM-бот). */
+  hos: {
+    botToken: trimEnv(process.env.HOS_BOT_TOKEN),
+    /** Группа, куда уходят сводка и сигналы; пусто — в личку каждому из allowedIds. */
+    groupId: trimEnv(process.env.HOS_GROUP_ID),
+    /** Telegram ID, которым можно писать боту и нажимать кнопки. */
+    allowedIds: (trimEnv(process.env.HOS_ALLOWED_IDS) || '8599955099,7623311783')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    /**
+     * Кто есть кто в CRM: «telegramId=логин,…». Без записи сотрудник ищется по
+     * привязанному Telegram (users.telegram_chat_id — это и есть Telegram ID).
+     */
+    users: Object.fromEntries((trimEnv(process.env.HOS_USERS) || '')
+      .split(',').map((pair) => pair.split('=').map((s) => s.trim()))
+      .filter((p) => p.length === 2 && p[0] && p[1])) as Record<string, string>,
+  },
+
   telegram: {
     botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
     clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),

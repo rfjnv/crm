@@ -5,13 +5,13 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { SQL_EXCLUDE_INTERNAL_COMPANY_DEAL } from '../../lib/analytics';
-import { telegramService, type TgButton } from '../telegram/telegram.service';
+import { agentBot, type TgButton } from './rop-agent.bot';
 import { clientPurchaseCycles } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { assignPlan, proposeTaskPlan } from './rop-agent.plans';
 import { getTelegramChat } from './rop-agent.service';
-import { agentUserByChat, digestRecipients, shortMoney } from './rop-agent.telegram';
+import { agentUserByTelegramId, broadcastTargets, shortMoney } from './rop-agent.telegram';
 
 /**
  * Сигналы РОП-агента: он сам пишет директору, когда что-то требует решения, и сразу
@@ -260,7 +260,7 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
   const candidates = await findNewCandidates();
   if (!candidates.length) return { reviewed: 0, sent: 0 };
   const reviews = await reviewCandidates(candidates);
-  const recipients = await digestRecipients();
+  const recipients = agentBot.enabled ? broadcastTargets() : [];
   const dueDate = tashkentDate(1);
 
   let sent = 0;
@@ -287,9 +287,9 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
     const html = alertHtml(alert.message!, proposal);
     const buttons = alertButtons(alert.id, proposal, c.clientId);
     const messages: { chatId: string; messageId: number }[] = [];
-    for (const u of recipients) {
-      const id = await telegramService.sendHtmlToChat(u.telegramChatId, html, buttons);
-      if (id) messages.push({ chatId: u.telegramChatId, messageId: id });
+    for (const target of recipients) {
+      const id = await agentBot.sendHtmlToChat(target, html, buttons);
+      if (id) messages.push({ chatId: target, messageId: id });
     }
     await prisma.ropAlert.update({ where: { id: alert.id }, data: { messages } });
     sent++;
@@ -346,7 +346,7 @@ export async function decideAlert(alertId: string, userId: string, accept: boole
   const messages = (alert.messages as { chatId: string; messageId: number }[] | null) ?? [];
   const html = alertHtml(alert.message ?? '', proposal, footer);
   const link: TgButton[][] = proposal?.clientId ? [[{ text: 'Открыть клиента', url: `/clients/${proposal.clientId}` }]] : [];
-  await Promise.all(messages.map((m) => telegramService.editHtmlMessage(m.chatId, m.messageId, html, link)));
+  await Promise.all(messages.map((m) => agentBot.editHtmlMessage(m.chatId, m.messageId, html, link)));
   return prisma.ropAlert.findUniqueOrThrow({ where: { id: alertId } });
 }
 
@@ -359,20 +359,36 @@ export function listAlerts(limit = 30) {
   });
 }
 
+/**
+ * Сигналы, ждущие решения, — по кнопке «🔔 Сигналы» / команде /alerts. Новые сообщения
+ * дописываются в alert.messages, чтобы после решения кнопки убрались и у них.
+ */
+export async function sendOpenAlerts(chatId: number | string): Promise<number> {
+  const open = await prisma.ropAlert.findMany({ where: { status: 'SENT' }, orderBy: { createdAt: 'desc' }, take: 10 });
+  for (const alert of open.reverse()) {
+    const proposal = alert.proposal as unknown as Proposal | null;
+    const id = await agentBot.sendHtmlToChat(chatId, alertHtml(alert.message ?? '', proposal), alertButtons(alert.id, proposal, proposal?.clientId ?? null));
+    if (id) {
+      const messages = [...((alert.messages as { chatId: string; messageId: number }[] | null) ?? []), { chatId: String(chatId), messageId: id }];
+      await prisma.ropAlert.update({ where: { id: alert.id }, data: { messages } });
+    }
+  }
+  return open.length;
+}
+
 async function onAlertButton(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , alertId, action] = (query.data ?? '').split(':');
-  const chatId = query.message?.chat.id;
-  const user = chatId != null ? await agentUserByChat(chatId) : null;
+  const user = await agentUserByTelegramId(query.from.id);
   if (!user || !alertId) {
-    await telegramService.answerCallback(query.id, 'Нет доступа');
+    await agentBot.answerCallback(query.id, 'Нет доступа');
     return;
   }
   try {
     await decideAlert(alertId, user.id, action === 'y');
-    await telegramService.answerCallback(query.id, action === 'y' ? 'Задача поставлена' : 'Ок');
+    await agentBot.answerCallback(query.id, action === 'y' ? 'Задача поставлена' : 'Ок');
   } catch (err) {
-    await telegramService.answerCallback(query.id, (err as Error).message.slice(0, 190));
+    await agentBot.answerCallback(query.id, (err as Error).message.slice(0, 190));
   }
 }
 
-telegramService.onCallback('rop:a:', onAlertButton);
+agentBot.onCallback('rop:a:', onAlertButton);

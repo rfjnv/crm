@@ -6,10 +6,10 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { analyzeSalesCallTranscript, transcribeAudioFile } from '../ai-assistant/ai-assistant.service';
-import { telegramService, type TgButton } from '../telegram/telegram.service';
+import { agentBot, type TgButton } from './rop-agent.bot';
 import { listManagers } from './rop-agent.analysis';
 import { STAGES } from './rop-agent.call-reviews';
-import { agentUserByChat, askAgentFromTelegram } from './rop-agent.telegram';
+import { agentUserByTelegramId, askAgentFromTelegram } from './rop-agent.telegram';
 
 /**
  * Разбор звонков. Менеджеры звонят с мобильных, поэтому записей в CRM нет — их
@@ -100,26 +100,26 @@ async function auditButtons(auditId: string, managerId: string | null): Promise<
 }
 
 async function onCallRecording(msg: TelegramBot.Message): Promise<void> {
-  const user = await agentUserByChat(msg.chat.id);
+  const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) return;
   const f = callFile(msg);
   if (!f) return;
   if (f.size > MAX_FILE_BYTES) {
-    await telegramService.sendHtmlToChat(msg.chat.id, '⚠️ Файл больше 20 МБ — Telegram не отдаёт такие ботам. Загрузите его в CRM: «Аудио в текст».');
+    await agentBot.sendHtmlToChat(msg.chat.id, '⚠️ Файл больше 20 МБ — Telegram не отдаёт такие ботам. Загрузите его в CRM: «Аудио в текст».');
     return;
   }
   if (f.duration && f.duration > MAX_CALL_SEC) {
-    await telegramService.sendHtmlToChat(msg.chat.id, `⚠️ Запись длиннее ${MAX_CALL_SEC / 60} минут — загрузите её в CRM: «Аудио в текст».`);
+    await agentBot.sendHtmlToChat(msg.chat.id, `⚠️ Запись длиннее ${MAX_CALL_SEC / 60} минут — загрузите её в CRM: «Аудио в текст».`);
     return;
   }
 
-  const statusId = await telegramService.sendHtmlToChat(msg.chat.id, '🎧 Разбираю звонок: расшифровка и аудит займут 1–3 минуты…');
-  const typing = setInterval(() => { telegramService.sendTyping(msg.chat.id); }, 5000);
+  const statusId = await agentBot.sendHtmlToChat(msg.chat.id, '🎧 Разбираю звонок: расшифровка и аудит займут 1–3 минуты…');
+  const typing = setInterval(() => { agentBot.sendTyping(msg.chat.id); }, 5000);
   const dir = path.resolve(config.uploads.dir, 'tg-calls');
   let file: string | null = null;
   try {
     await fs.mkdir(dir, { recursive: true });
-    file = await telegramService.downloadFile(f.fileId, dir);
+    file = await agentBot.downloadFile(f.fileId, dir);
     const who = await attributionFromCaption(msg.caption ?? '');
     // transcribeAudioFile берёт из файла только путь — остальное для типа.
     const stt = await transcribeAudioFile(
@@ -138,12 +138,12 @@ async function onCallRecording(msg: TelegramBot.Message): Promise<void> {
     if (!audit.auditId) throw new Error('аудит не сохранён');
     const html = auditHtml({ ...who, score: audit.score ?? null, saleProbability: audit.saleProbability ?? null, stageChecklist: audit.stageChecklist as unknown as Record<string, boolean>, mentorTips: audit.mentorTips });
     const hint = who.managerId ? '' : '\n\nЧей это звонок? Нажмите имя — аудит попадёт в статистику менеджера. В следующий раз можно подписать файл: «Дилноза, Print House».';
-    if (statusId) await telegramService.deleteChatMessage(msg.chat.id, statusId);
-    await telegramService.sendHtmlToChat(msg.chat.id, html + hint, await auditButtons(audit.auditId, who.managerId));
+    if (statusId) await agentBot.deleteChatMessage(msg.chat.id, statusId);
+    await agentBot.sendHtmlToChat(msg.chat.id, html + hint, await auditButtons(audit.auditId, who.managerId));
   } catch (err) {
     const reason = err instanceof AppError ? err.message : 'Не получилось разобрать запись. Проверьте файл или загрузите его в CRM: «Аудио в текст».';
     if (!(err instanceof AppError)) console.error('[rop-calls] failed:', (err as Error).message);
-    if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `⚠️ ${esc(reason)}`);
+    if (statusId) await agentBot.editHtmlMessage(msg.chat.id, statusId, `⚠️ ${esc(reason)}`);
   } finally {
     clearInterval(typing);
     if (file) await fs.unlink(file).catch(() => {});
@@ -155,14 +155,14 @@ async function onPickManager(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , auditId, short] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
   const messageId = query.message?.message_id;
-  const user = chatId != null ? await agentUserByChat(chatId) : null;
+  const user = await agentUserByTelegramId(query.from.id);
   if (!user || !auditId || !short || chatId == null || messageId == null) {
-    await telegramService.answerCallback(query.id, 'Нет доступа');
+    await agentBot.answerCallback(query.id, 'Нет доступа');
     return;
   }
   const managers = await prisma.user.findMany({ where: { id: { startsWith: short }, isActive: true }, select: { id: true, fullName: true } });
   if (managers.length !== 1) {
-    await telegramService.answerCallback(query.id, 'Сотрудник не найден');
+    await agentBot.answerCallback(query.id, 'Сотрудник не найден');
     return;
   }
   const audit = await prisma.callAudit.update({
@@ -170,8 +170,8 @@ async function onPickManager(query: TelegramBot.CallbackQuery): Promise<void> {
     data: { managerId: managers[0].id, managerName: managers[0].fullName },
     select: { id: true, score: true, saleProbability: true, stageChecklist: true, mentorTips: true, client: { select: { companyName: true } } },
   });
-  await telegramService.answerCallback(query.id, `Звонок ${managers[0].fullName}`);
-  await telegramService.editHtmlMessage(chatId, messageId, auditHtml({
+  await agentBot.answerCallback(query.id, `Звонок ${managers[0].fullName}`);
+  await agentBot.editHtmlMessage(chatId, messageId, auditHtml({
     managerName: managers[0].fullName,
     clientName: audit.client?.companyName ?? null,
     score: audit.score,
@@ -185,22 +185,22 @@ async function onPickManager(query: TelegramBot.CallbackQuery): Promise<void> {
 async function onCoachManager(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , auditId] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
-  const user = chatId != null ? await agentUserByChat(chatId) : null;
+  const user = await agentUserByTelegramId(query.from.id);
   if (!user || !auditId || chatId == null) {
-    await telegramService.answerCallback(query.id, 'Нет доступа');
+    await agentBot.answerCallback(query.id, 'Нет доступа');
     return;
   }
   const audit = await prisma.callAudit.findUnique({ where: { id: auditId }, select: { managerId: true, manager: { select: { fullName: true } } } });
   if (!audit?.managerId || !audit.manager) {
-    await telegramService.answerCallback(query.id, 'Сначала укажите, чей звонок');
+    await agentBot.answerCallback(query.id, 'Сначала укажите, чей звонок');
     return;
   }
-  await telegramService.answerCallback(query.id, 'Спрашиваю агента');
-  await askAgentFromTelegram(chatId, user.id,
+  await agentBot.answerCallback(query.id, 'Спрашиваю агента');
+  await askAgentFromTelegram({ telegramChatId: chatId, channel: query.message?.chat.type === 'private' ? 'telegram' : 'telegram_group' }, user.id,
     `Разбери звонки менеджера ${audit.manager.fullName} (manager_id ${audit.managerId}), начиная с последнего аудита ${auditId}: `
     + 'какие этапы он проваливает постоянно, что получается, 2–3 конкретных упражнения или фразы на неделю. Если аудитов мало — скажи, сколько записей ещё прислать.');
 }
 
-telegramService.onPrivateFile(onCallRecording);
-telegramService.onCallback('rop:m:', onPickManager);
-telegramService.onCallback('rop:t:', onCoachManager);
+agentBot.onPrivateFile(onCallRecording);
+agentBot.onCallback('rop:m:', onPickManager);
+agentBot.onCallback('rop:t:', onCoachManager);
