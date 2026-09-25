@@ -16,6 +16,7 @@ import {
   getLastAssistantMessage,
   getTelegramChat,
   getTurnStatus,
+  runningTurnsCount,
   waitForTurn,
 } from './rop-agent.service';
 
@@ -238,6 +239,7 @@ const HELP = [
   '🎧 Запись звонка менеджера пришлите файлом — агент расшифрует и разберёт. Подпишите файл: «Дилноза, Print House».',
   '👥 В группе агент отвечает, если упомянуть его или ответить на его сообщение. Туда же приходят сводка в 9:00 и сигналы.',
   '',
+  '/status — проверить, что бот на месте',
   '/menu — быстрые кнопки',
   '/digest — сводка за вчера',
   '/alerts — сигналы, ждущие решения',
@@ -379,6 +381,43 @@ async function sendMemory(chatId: number): Promise<void> {
   await agentBot.sendHtmlToChat(chatId, text, [[{ text: 'Изменить в CRM', url: '/rop-agent' }]]);
 }
 
+const isStatusCommand = (text: string) => /^\/(status|ping)(@\w+)?\b/i.test(text.trim());
+
+function formatUptime(sec: number): string {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return [d && `${d} д`, h && `${h} ч`, `${m} мин`].filter(Boolean).join(' ');
+}
+
+/**
+ * /status — «на месте?». Отвечает сразу, без модели: если бот не ответил, значит
+ * лежит сервер или бот. Заодно видно, что подключено и какая версия задеплоена.
+ */
+async function sendStatus(chatId: number, replyTo?: number): Promise<void> {
+  const [lastDigest, openAlerts] = await Promise.all([
+    prisma.ropDailyDigest.findFirst({ where: { sentAt: { not: null } }, orderBy: { date: 'desc' }, select: { date: true, sentAt: true } }),
+    prisma.ropAlert.count({ where: { status: 'SENT' } }),
+  ]);
+  const busy = runningTurnsCount();
+  const yes = (ok: boolean, what: string) => `${ok ? '✅' : '⚠️'} ${what}`;
+  const commit = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7);
+  const lines = [
+    '✅ <b>РОП-агент на месте и готов.</b>',
+    '',
+    `⏱ Работает без перезапуска: ${formatUptime(Math.round(process.uptime()))}`,
+    busy ? `🧠 Сейчас готовит ответов: ${busy}` : '🧠 Сейчас свободен',
+    yes(!!config.claude.apiKey, config.claude.apiKey ? 'Claude подключён' : 'Нет ключа Claude — агент не ответит'),
+    yes(!!(config.elevenlabs.apiKey || config.aisha.apiKey), config.elevenlabs.apiKey || config.aisha.apiKey ? 'Распознавание голоса и звонков подключено' : 'Нет ключей распознавания — голос и звонки не работают'),
+    lastDigest?.sentAt
+      ? `📊 Последняя сводка: за ${lastDigest.date.split('-').reverse().join('.')}, отправлена ${new Date(lastDigest.sentAt.getTime() + 5 * 3600_000).toISOString().slice(11, 16)}`
+      : '📊 Сводка ещё не отправлялась',
+    `🔔 Сигналов ждут решения: ${openAlerts}`,
+  ];
+  if (commit) lines.push(`🏷 Версия: <code>${commit}</code>`);
+  await agentBot.sendHtmlToChat(chatId, lines.join('\n'), undefined, { replyTo });
+}
+
 /** Команды и быстрые кнопки. true — обработано, дальше агенту не передаём. */
 async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: string): Promise<boolean> {
   const chatId = msg.chat.id;
@@ -421,6 +460,8 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
 }
 
 async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
+  // Статус — до поиска сотрудника: проверить «жив ли бот» можно и без привязки к CRM.
+  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id);
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) {
     await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id));
@@ -433,6 +474,7 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
 
 /** В группе — упоминание или ответ боту; отвечаем реплаем, разговор у каждого свой. */
 async function onGroupText(msg: TelegramBot.Message): Promise<void> {
+  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id, msg.message_id);
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) {
     await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id), undefined, { replyTo: msg.message_id });

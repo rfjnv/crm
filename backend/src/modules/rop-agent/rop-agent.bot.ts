@@ -54,6 +54,7 @@ class AgentBot {
   private async setCommands(): Promise<void> {
     if (!this.bot) return;
     const common = [
+      { command: 'status', description: 'Бот на месте? Проверка' },
       { command: 'digest', description: 'Сводка за вчера' },
       { command: 'alerts', description: 'Сигналы, ждущие решения' },
       { command: 'help', description: 'Что умеет агент' },
@@ -83,7 +84,11 @@ class AgentBot {
   /** Обращение к боту в группе: упоминание @бота, ответ на его сообщение или команда. */
   private addressedInGroup(msg: TelegramBot.Message): boolean {
     const text = msg.text ?? '';
-    if (text.startsWith('/')) return true;
+    if (text.startsWith('/')) {
+      // «/status@другой_бот» — не нам; «/status» и «/status@наш_бот» — нам.
+      const target = text.match(/^\/\w+@(\w+)/)?.[1];
+      return !target || target.toLowerCase() === this.me?.username.toLowerCase();
+    }
     if (this.me && msg.reply_to_message?.from?.id === this.me.id) return true;
     return !!this.me?.username && text.toLowerCase().includes(`@${this.me.username.toLowerCase()}`);
   }

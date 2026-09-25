@@ -35,6 +35,11 @@ export async function waitForTurn(chatId: string): Promise<void> {
   await running.get(chatId)?.done;
 }
 
+/** Сколько ответов агент готовит прямо сейчас (для /status). */
+export function runningTurnsCount(): number {
+  return running.size;
+}
+
 export function getTurnStatus(chatId: string) {
   const turn = running.get(chatId);
   return turn
