@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../../lib/config';
+import type { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import type { AiAssistantResponse } from './ai-assistant.dto';
@@ -675,6 +676,9 @@ export async function analyzeSalesCallTranscript(
   opts: {
     userId?: string;
     managerName?: string;
+    /** Чей звонок; без него сопоставляем managerName с именем сотрудника. */
+    managerId?: string;
+    clientId?: string;
     audioDuration?: number;
     qualityScore?: number;
     source?: string;
@@ -829,10 +833,24 @@ ${SALES_AUDIT_OUTPUT_FORMAT}
 
     let auditId: string | undefined;
     if (opts.userId) {
+      // Менеджер по имени — только если оно совпадает ровно с одним сотрудником.
+      let managerId = opts.managerId ?? null;
+      if (!managerId && opts.managerName?.trim()) {
+        const matches = await prisma.user.findMany({
+          where: { fullName: { equals: opts.managerName.trim(), mode: 'insensitive' } },
+          select: { id: true },
+          take: 2,
+        });
+        if (matches.length === 1) managerId = matches[0].id;
+      }
       const saved = await prisma.callAudit.create({
         data: {
           createdBy: opts.userId,
           managerName: opts.managerName ?? null,
+          managerId,
+          clientId: opts.clientId ?? null,
+          stageChecklist: stageChecklist as unknown as Prisma.InputJsonValue,
+          mentorTips: mentorTips as unknown as Prisma.InputJsonValue,
           transcript,
           analysis,
           score,

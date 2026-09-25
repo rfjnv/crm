@@ -22,6 +22,7 @@ import {
 import { proposeTaskPlan } from './rop-agent.plans';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
+import { callReviews } from './rop-agent.call-reviews';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -482,6 +483,22 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'call_reviews',
+    description:
+      'Качество звонков менеджеров по аудитам (записи присылают вручную — менеджеры звонят с мобильных): '
+      + 'по каждому менеджеру число аудитов, средняя оценка и вероятность продажи, доля звонков, где выполнен каждый этап '
+      + '(приветствие, выявление потребности, презентация, возражения, закрытие); последние разборы с пропущенными этапами, советами и итогом.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        manager_id: { type: 'string', description: 'Только этот менеджер.' },
+        days: { type: 'integer', description: 'За сколько дней, по умолчанию 90.' },
+        limit: { type: 'integer', description: 'Сколько последних разборов показать, по умолчанию 20.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'remember',
     description:
       'Запомнить надолго решение, договорённость или факт от директора, который должен действовать и в следующих разговорах: '
@@ -561,6 +578,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return `Черновик плана задач: ${String(input.title ?? '').slice(0, 100)}`;
     case 'task_plan_results':
       return 'Проверка розданных задач';
+    case 'call_reviews':
+      return 'Разборы звонков';
     case 'remember':
       return `Запомнил: ${String(input.content ?? '').slice(0, 140)}`;
     case 'forget':
@@ -585,6 +604,7 @@ export async function executeTool(
       case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
       case 'list_managers': result = await listManagers(); break;
       case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
+      case 'call_reviews': result = await callReviews(input as { manager_id?: string; days?: number; limit?: number }); break;
       case 'remember': result = await rememberTool(ctx, input); break;
       case 'forget': result = await forgetTool(input); break;
       case 'propose_task_plan': {

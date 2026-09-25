@@ -191,6 +191,8 @@ const HELP = [
   '<b>РОП-агент</b>',
   'Пишите задание или вопрос обычным текстом или голосовым — агент изучит данные CRM и ответит.',
   '',
+  'Запись звонка менеджера пришлите файлом — агент расшифрует и разберёт. Подпишите файл: «Дилноза, Print House».',
+  '',
   '/new — начать новый разговор',
   '/digest — сводка за вчера',
   '/help — эта подсказка',
@@ -199,7 +201,7 @@ const HELP = [
 ].join('\n');
 
 /** Ответ агента может занять минуты: держим «печатает…» и ждём окончания. */
-async function answer(chatId: number, userId: string, question: string): Promise<void> {
+export async function askAgentFromTelegram(chatId: number, userId: string, question: string): Promise<void> {
   const chat = await getTelegramChat(userId);
   try {
     await askInChat(chat.id, userId, question);
@@ -295,7 +297,7 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
     await telegramService.sendHtmlToChat(msg.chat.id, HELP);
     return;
   }
-  await answer(msg.chat.id, user.id, text);
+  await askAgentFromTelegram(msg.chat.id, user.id, text);
 }
 
 /** Длиннее — это уже не задание, а лекция; и распознавание дорожает. */
@@ -308,7 +310,7 @@ const MAX_VOICE_SEC = 5 * 60;
 async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
   const user = await agentUserByChat(msg.chat.id);
   if (!user) return;
-  const media = msg.voice ?? msg.audio;
+  const media = msg.voice;
   if (!media) return;
   if ((media.duration ?? 0) > MAX_VOICE_SEC) {
     await telegramService.sendHtmlToChat(msg.chat.id, `⚠️ Голосовое длиннее ${MAX_VOICE_SEC / 60} минут — разбейте на части или напишите текстом.`);
@@ -334,7 +336,7 @@ async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
   }
 
   if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `🎙 <i>${esc(text)}</i>`);
-  await answer(msg.chat.id, user.id, `🎙 ${text}`);
+  await askAgentFromTelegram(msg.chat.id, user.id, `🎙 ${text}`);
 }
 
 telegramService.onPrivateText(onPrivateText);
