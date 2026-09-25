@@ -82,6 +82,16 @@ export const config = {
     model: trimEnv(process.env.CLAUDE_MODEL) || 'claude-sonnet-4-5-20250929',
   },
 
+  /** РОП-агент: стратегии и разборы — на сильной модели, ключ тот же, что у Claude выше. */
+  ropAgent: {
+    model: trimEnv(process.env.ROP_AGENT_MODEL) || 'claude-opus-5-5',
+    effort: (trimEnv(process.env.ROP_AGENT_EFFORT) || 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
+    /** Короткий комментарий к ежедневной сводке — рутина, хватает модели попроще. */
+    digestModel: trimEnv(process.env.ROP_DIGEST_MODEL) || 'claude-sonnet-5',
+    /** Час отправки ежедневной сводки по Ташкенту (0–23); пусто или off — не отправлять. */
+    digestHour: trimEnv(process.env.ROP_DIGEST_HOUR) || '9',
+  },
+
   telegram: {
     botToken: trimEnv(process.env.TELEGRAM_BOT_TOKEN),
     clientBotToken: trimEnv(process.env.TELEGRAM_CLIENT_BOT_TOKEN || process.env.TELEGRAM_ORDER_BOT_TOKEN),

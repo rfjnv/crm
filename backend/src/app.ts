@@ -51,6 +51,8 @@ import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
+import ropAgentRoutes from './modules/rop-agent/rop-agent.routes';
+import marketRoutes from './modules/market/market.routes';
 import { internalReportsRoutes } from './modules/internal/reports.routes';
 import notesBoardRoutes from './modules/notes-board/notes-board.routes';
 import suppliersRoutes from './modules/suppliers/suppliers.routes';
@@ -69,6 +71,8 @@ import './modules/timepay/timepay.scheduler';
 import './modules/backup/db-backup.scheduler';
 import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
+import './modules/rop-agent/rop-agent.telegram';
+import './modules/rop-agent/rop-agent.scheduler';
 
 const app = express();
 
@@ -227,6 +231,8 @@ app.use('/api/telegram/webhook', telegramWebhookRoutes);
 app.use('/api/power-of-attorney', poaRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/ai-assistant', aiAssistantRoutes);
+app.use('/api/rop-agent', ropAgentRoutes);
+app.use('/api/market', marketRoutes);
 app.use('/api/notes-board', notesBoardRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/import-orders', importOrdersRoutes);

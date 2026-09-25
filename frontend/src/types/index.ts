@@ -37,7 +37,8 @@ export type Permission =
   | 'delivery_execute'
   | 'manage_suppliers'
   | 'manage_import_orders'
-  | 'view_import_orders';
+  | 'view_import_orders'
+  | 'use_rop_agent';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -69,9 +70,10 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_suppliers', label: 'Управление поставщиками (ВЭД)' },
   { key: 'manage_import_orders', label: 'Управление импорт-заказами (ВЭД)' },
   { key: 'view_import_orders', label: 'Просмотр импорт-заказов (ВЭД)' },
+  { key: 'use_rop_agent', label: 'РОП-агент (выдаётся поимённо)' },
 ];
 
-const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history'];
+const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history', 'use_rop_agent'];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN: ALL_PERMISSIONS.map((p) => p.key).filter((p) => !SUPER_ONLY.includes(p)),

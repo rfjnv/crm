@@ -292,6 +292,7 @@ model User {
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
+  ropAgentChats       RopAgentChat[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
   aiReports           AiReport[]       @relation("AiReportAuthor")
@@ -1365,6 +1366,84 @@ model AiChatMessage {
 
   @@index([chatId, createdAt])
   @@map("ai_chat_messages")
+}
+
+/// Чат с РОП-агентом (личный помощник директора по продажам).
+model RopAgentChat {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String   @default("Новый чат")
+  /// web — страница CRM; telegram — разговор в личке с CRM-ботом (берётся последний).
+  channel   String   @default("web")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages RopAgentMessage[]
+  plans    RopTaskPlan[]
+
+  @@index([userId, updatedAt])
+  @@map("rop_agent_chats")
+}
+
+/// Реплика в чате РОП-агента. `apiMessages` — ровно то, что ушло в Claude и пришло
+/// обратно за эту реплику (вызовы инструментов, их результаты, блоки размышлений):
+/// история переигрывается дословно и только дописывается, иначе модель теряет
+/// свои прошлые размышления, а кэш промпта сбрасывается.
+model RopAgentMessage {
+  id          String   @id @default(uuid())
+  chatId      String   @map("chat_id")
+  role        String
+  text        String   @db.Text
+  apiMessages Json     @map("api_messages")
+  /// Какие инструменты вызывались (для показа «что агент смотрел»).
+  toolCalls   Json?    @map("tool_calls")
+  isError     Boolean  @default(false) @map("is_error")
+  inputTokens Int?     @map("input_tokens")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  chat RopAgentChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("rop_agent_messages")
+}
+
+/// План задач менеджерам, который предложил РОП-агент. Агент создаёт только черновик;
+/// задачи появляются, когда директор нажимает «Раздать» (status → ASSIGNED).
+/// `items` — по задаче на менеджера со списком клиентов; после раздачи в них
+/// записываются id созданных задач (по ним этап контроля смотрит результат).
+model RopTaskPlan {
+  id           String    @id @default(uuid())
+  chatId       String    @map("chat_id")
+  title        String
+  goal         String?   @db.Text
+  /// DRAFT | ASSIGNED | DISCARDED
+  status       String    @default("DRAFT")
+  items        Json
+  createdById  String    @map("created_by_id")
+  assignedById String?   @map("assigned_by_id")
+  assignedAt   DateTime? @map("assigned_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  chat RopAgentChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@index([status, assignedAt])
+  @@map("rop_task_plans")
+}
+
+/// Ежедневная сводка РОП-агента за день `date` (YYYY-MM-DD по Ташкенту).
+model RopDailyDigest {
+  id         String    @id @default(uuid())
+  date       String    @unique
+  data       Json
+  commentary String?   @db.Text
+  sentAt     DateTime? @map("sent_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@map("rop_daily_digests")
 }
 
 model AiTrainingRule {
