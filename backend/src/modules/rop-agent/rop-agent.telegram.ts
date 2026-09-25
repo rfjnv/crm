@@ -15,6 +15,7 @@ import {
   createChat,
   getLastAssistantMessage,
   getTelegramChat,
+  getTurnStatus,
   waitForTurn,
 } from './rop-agent.service';
 
@@ -248,6 +249,25 @@ const HELP = [
 
 type ChatContext = { telegramChatId: number; channel: 'telegram' | 'telegram_group'; replyTo?: number };
 
+/** Как часто обновлять статус: чаще — Telegram начнёт ограничивать правки. */
+const PROGRESS_EVERY_MS = 5000;
+const SLOW_AFTER_SEC = 180;
+
+/**
+ * Статус, пока агент думает: секунды и что он уже посмотрел. Секунды растут при
+ * каждом обновлении — если счётчик встал, процесс на сервере прервался.
+ */
+function progressHtml(steps: string[], sec: number): string {
+  const lines = [`⏳ <b>Агент работает</b> · ${sec} с`];
+  const shown = steps.slice(-6);
+  if (steps.length > shown.length) lines.push(`<i>…ещё ${steps.length - shown.length} шаг(ов)</i>`);
+  lines.push(...shown.map((s) => `✓ ${esc(s)}`));
+  if (!steps.length) lines.push('<i>Читаю задание…</i>');
+  if (sec >= SLOW_AFTER_SEC) lines.push('', '<i>Сложный вопрос — ещё работаю.</i>');
+  lines.push('', '<i>Если секунды перестали расти — сервер перезапустился, повторите вопрос.</i>');
+  return lines.join('\n');
+}
+
 /** Ответ агента может занять минуты: держим «печатает…» и ждём окончания. */
 export async function askAgentFromTelegram(ctx: ChatContext, userId: string, question: string): Promise<void> {
   const { telegramChatId: chatId, replyTo } = ctx;
@@ -258,13 +278,19 @@ export async function askAgentFromTelegram(ctx: ChatContext, userId: string, que
     await agentBot.sendHtmlToChat(chatId, `⚠️ ${esc((err as Error).message)}`, undefined, { replyTo });
     return;
   }
-  const waitingId = await agentBot.sendHtmlToChat(chatId, '⏳ Изучаю данные…', undefined, { replyTo });
+  const startedAt = Date.now();
+  const waitingId = await agentBot.sendHtmlToChat(chatId, progressHtml([], 0), undefined, { replyTo });
   await agentBot.sendTyping(chatId);
-  const typing = setInterval(() => { agentBot.sendTyping(chatId); }, 5000);
+  const progress = setInterval(() => {
+    agentBot.sendTyping(chatId);
+    if (!waitingId) return;
+    const sec = Math.round((Date.now() - startedAt) / 1000);
+    agentBot.editHtmlMessage(chatId, waitingId, progressHtml(getTurnStatus(chat.id).steps, sec));
+  }, PROGRESS_EVERY_MS);
   try {
     await waitForTurn(chat.id);
   } finally {
-    clearInterval(typing);
+    clearInterval(progress);
     if (waitingId) await agentBot.deleteChatMessage(chatId, waitingId);
   }
 

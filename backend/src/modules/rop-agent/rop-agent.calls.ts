@@ -113,8 +113,15 @@ async function onCallRecording(msg: TelegramBot.Message): Promise<void> {
     return;
   }
 
-  const statusId = await agentBot.sendHtmlToChat(msg.chat.id, '🎧 Разбираю звонок: расшифровка и аудит займут 1–3 минуты…');
-  const typing = setInterval(() => { agentBot.sendTyping(msg.chat.id); }, 5000);
+  // Статус по этапам с секундами: разбор идёт 1–3 минуты, должно быть видно, что не завис.
+  const startedAt = Date.now();
+  let stage = '1/2 Расшифровываю запись…';
+  const statusHtml = () => `🎧 <b>Разбор звонка</b> · ${Math.round((Date.now() - startedAt) / 1000)} с\n${stage}\n\n<i>Обычно 1–3 минуты. Если секунды перестали расти — пришлите запись ещё раз.</i>`;
+  const statusId = await agentBot.sendHtmlToChat(msg.chat.id, statusHtml());
+  const typing = setInterval(() => {
+    agentBot.sendTyping(msg.chat.id);
+    if (statusId) agentBot.editHtmlMessage(msg.chat.id, statusId, statusHtml());
+  }, 5000);
   const dir = path.resolve(config.uploads.dir, 'tg-calls');
   let file: string | null = null;
   try {
@@ -126,6 +133,8 @@ async function onCallRecording(msg: TelegramBot.Message): Promise<void> {
       { path: file, originalname: f.name, mimetype: 'audio/mpeg', size: f.size } as Express.Multer.File,
       { languageMode: 'auto' },
     );
+    stage = '✓ Расшифровал\n2/2 Делаю аудит: этапы продажи, ошибки, советы…';
+    if (statusId) await agentBot.editHtmlMessage(msg.chat.id, statusId, statusHtml());
     const audit = await analyzeSalesCallTranscript(stt.text, 'mixed', {
       userId: user.id,
       managerId: who.managerId ?? undefined,
