@@ -27,6 +27,7 @@ class TelegramService {
   private bot: TelegramBot | null = null;
   private botUsername: string | null = null;
   private privateTextHandlers: PrivateTextHandler[] = [];
+  private privateVoiceHandlers: PrivateTextHandler[] = [];
   private callbackHandlers: { prefix: string; handler: (query: TelegramBot.CallbackQuery) => Promise<void> }[] = [];
 
   constructor() {
@@ -129,7 +130,14 @@ class TelegramService {
     // Личка: отдаём модулям, которые подписались (РОП-агент). Группы сюда не попадают —
     // там своя переписка и ответы складу (telegram-warehouse-weigh.handler).
     this.bot.on('message', (msg) => {
-      if (msg.chat.type !== 'private' || !msg.text) return;
+      if (msg.chat.type !== 'private') return;
+      if (msg.voice || msg.audio) {
+        for (const handler of this.privateVoiceHandlers) {
+          handler(msg).catch((err) => console.error('[Telegram] private voice handler failed:', (err as Error).message));
+        }
+        return;
+      }
+      if (!msg.text) return;
       if (msg.text.startsWith('/start') || msg.text.startsWith('/unlink')) return;
       for (const handler of this.privateTextHandlers) {
         handler(msg).catch((err) => console.error('[Telegram] private message handler failed:', (err as Error).message));
@@ -186,6 +194,17 @@ class TelegramService {
   /** Подписка на личные текстовые сообщения боту. */
   onPrivateText(handler: PrivateTextHandler): void {
     this.privateTextHandlers.push(handler);
+  }
+
+  /** Подписка на голосовые и аудио в личке. */
+  onPrivateVoice(handler: PrivateTextHandler): void {
+    this.privateVoiceHandlers.push(handler);
+  }
+
+  /** Скачать файл из Telegram в папку; возвращает путь. */
+  async downloadFile(fileId: string, dir: string): Promise<string> {
+    if (!this.bot) throw new Error('Telegram bot is not configured');
+    return this.bot.downloadFile(fileId, dir);
   }
 
   /**

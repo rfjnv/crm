@@ -1,10 +1,14 @@
 import type TelegramBot from 'node-telegram-bot-api';
+import fs from 'fs/promises';
+import path from 'path';
 import prisma from '../../lib/prisma';
+import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { PERMISSIONS } from '../../lib/permissions';
 import { telegramService, type TgButton } from '../telegram/telegram.service';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
 import { assignPlan, discardPlan } from './rop-agent.plans';
+import { transcribeVoiceNote } from './rop-agent.voice';
 import {
   askInChat,
   createChat,
@@ -185,7 +189,7 @@ export async function sendDigestToUser(date: string, userId: string): Promise<vo
 
 const HELP = [
   '<b>РОП-агент</b>',
-  'Пишите задание или вопрос обычным текстом — агент изучит данные CRM и ответит.',
+  'Пишите задание или вопрос обычным текстом или голосовым — агент изучит данные CRM и ответит.',
   '',
   '/new — начать новый разговор',
   '/digest — сводка за вчера',
@@ -294,5 +298,45 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
   await answer(msg.chat.id, user.id, text);
 }
 
+/** Длиннее — это уже не задание, а лекция; и распознавание дорожает. */
+const MAX_VOICE_SEC = 5 * 60;
+
+/**
+ * Голосовое директора: расшифровываем, показываем, что услышали (чтобы было видно
+ * ошибку распознавания), и отдаём агенту как обычный текст.
+ */
+async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
+  const user = await agentUserByChat(msg.chat.id);
+  if (!user) return;
+  const media = msg.voice ?? msg.audio;
+  if (!media) return;
+  if ((media.duration ?? 0) > MAX_VOICE_SEC) {
+    await telegramService.sendHtmlToChat(msg.chat.id, `⚠️ Голосовое длиннее ${MAX_VOICE_SEC / 60} минут — разбейте на части или напишите текстом.`);
+    return;
+  }
+
+  const statusId = await telegramService.sendHtmlToChat(msg.chat.id, '🎙 Слушаю…');
+  await telegramService.sendTyping(msg.chat.id);
+  const dir = path.resolve(config.uploads.dir, 'tg-voice');
+  let file: string | null = null;
+  let text: string;
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    file = await telegramService.downloadFile(media.file_id, dir);
+    text = await transcribeVoiceNote(file);
+  } catch (err) {
+    const reason = err instanceof AppError ? err.message : 'Не удалось распознать голосовое. Попробуйте ещё раз или напишите текстом.';
+    if (!(err instanceof AppError)) console.error('[rop-voice] failed:', (err as Error).message);
+    if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `⚠️ ${esc(reason)}`);
+    return;
+  } finally {
+    if (file) await fs.unlink(file).catch(() => {});
+  }
+
+  if (statusId) await telegramService.editHtmlMessage(msg.chat.id, statusId, `🎙 <i>${esc(text)}</i>`);
+  await answer(msg.chat.id, user.id, `🎙 ${text}`);
+}
+
 telegramService.onPrivateText(onPrivateText);
+telegramService.onPrivateVoice(onPrivateVoice);
 telegramService.onCallback('rop:p:', onPlanButton);
