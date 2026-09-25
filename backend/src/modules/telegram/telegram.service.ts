@@ -17,13 +17,9 @@ const SEVERITY_EMOJI: Record<string, string> = {
   INFO: '\u2139\uFE0F',
 };
 
-/** Обработчик личного текстового сообщения боту (не команды /start и /unlink). */
-export type PrivateTextHandler = (msg: TelegramBot.Message) => Promise<void>;
-
 class TelegramService {
   private bot: TelegramBot | null = null;
   private botUsername: string | null = null;
-  private privateTextHandlers: PrivateTextHandler[] = [];
 
   constructor() {
     if (!config.telegram.botToken) {
@@ -121,69 +117,6 @@ class TelegramService {
 
     registerTelegramAdminCallbacks(this.bot);
     registerTelegramWarehouseWeighHandlers(this.bot);
-
-    // Личка: отдаём модулям, которые подписались (РОП-агент). Группы сюда не попадают —
-    // там своя переписка и ответы складу (telegram-warehouse-weigh.handler).
-    this.bot.on('message', (msg) => {
-      if (msg.chat.type !== 'private' || !msg.text) return;
-      if (msg.text.startsWith('/start') || msg.text.startsWith('/unlink')) return;
-      for (const handler of this.privateTextHandlers) {
-        handler(msg).catch((err) => console.error('[Telegram] private message handler failed:', (err as Error).message));
-      }
-    });
-  }
-
-  /** Подписка на личные текстовые сообщения боту. */
-  onPrivateText(handler: PrivateTextHandler): void {
-    this.privateTextHandlers.push(handler);
-  }
-
-  /**
-   * HTML-сообщение в личный чат. Длинный текст режется на части по 4096 символов
-   * (лимит Telegram) по границам строк; кнопка — под последней частью.
-   * @returns message_id последней части или null.
-   */
-  async sendHtmlToChat(
-    chatId: string | number,
-    html: string,
-    button?: { text: string; url: string },
-  ): Promise<number | null> {
-    if (!this.bot) return null;
-    const parts: string[] = [];
-    let current = '';
-    for (const line of html.split('\n')) {
-      if (current && current.length + line.length + 1 > 4000) {
-        parts.push(current);
-        current = '';
-      }
-      current = current ? `${current}\n${line}` : line;
-    }
-    if (current) parts.push(current);
-
-    const url = button ? (button.url.startsWith('http') ? button.url : `${config.telegram.crmUrl}${button.url}`) : null;
-    let lastId: number | null = null;
-    try {
-      for (const [i, part] of parts.entries()) {
-        const isLast = i === parts.length - 1;
-        const sent = await this.bot.sendMessage(this.toTelegramTarget(chatId), part, {
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-          ...(isLast && url ? { reply_markup: { inline_keyboard: [[{ text: button!.text, url }]] } } : {}),
-        });
-        lastId = sent.message_id;
-      }
-    } catch (err) {
-      console.error(`[Telegram] sendHtmlToChat failed chat_id=${chatId}:`, (err as Error).message);
-    }
-    return lastId;
-  }
-
-  async sendTyping(chatId: string | number): Promise<void> {
-    await this.bot?.sendChatAction(this.toTelegramTarget(chatId), 'typing').catch(() => {});
-  }
-
-  async deleteChatMessage(chatId: string | number, messageId: number): Promise<void> {
-    await this.bot?.deleteMessage(this.toTelegramTarget(chatId), messageId).catch(() => {});
   }
 
   private formatMessage(payload: PushPayload): string {

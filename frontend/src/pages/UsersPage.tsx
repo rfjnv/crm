@@ -311,7 +311,10 @@ export default function UsersPage() {
 
   function handleRoleChange(role: string) {
     const presets = DEFAULT_PERMISSIONS[role] || [];
-    form.setFieldsValue({ permissions: presets });
+    // Доступ к РОП-агенту выдаётся поимённо и не зависит от роли — смена роли его не трогает.
+    const current: Permission[] = form.getFieldValue('permissions') || [];
+    const keep = current.includes('use_rop_agent') ? ['use_rop_agent' as Permission] : [];
+    form.setFieldsValue({ permissions: [...presets.filter((p) => p !== 'use_rop_agent'), ...keep] });
   }
 
   const columns = useMemo(
@@ -524,7 +527,7 @@ export default function UsersPage() {
           <Form.Item name="permissions" label="Разрешения">
             <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {ALL_PERMISSIONS.map((p) => (
-                <Checkbox key={p.key} value={p.key}>
+                <Checkbox key={p.key} value={p.key} disabled={p.key === 'use_rop_agent' && !isSuperAdmin}>
                   {p.label}
                 </Checkbox>
               ))}

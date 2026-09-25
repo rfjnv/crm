@@ -4,6 +4,7 @@ import { AppError } from '../../lib/errors';
 import { config } from '../../lib/config';
 import { telegramService } from './telegram.service';
 import { telegramCustomerBotService } from './telegram.customer-bot.service';
+import { agentBot } from '../rop-agent/rop-agent.bot';
 
 const router = Router();
 
@@ -38,6 +39,12 @@ router.post('/admin', verifyTelegramSecret, (req: Request, res: Response) => {
 
 router.post('/customer', verifyTelegramSecret, (req: Request, res: Response) => {
   telegramCustomerBotService.handleWebhookUpdate(req.body);
+  res.sendStatus(200);
+});
+
+/** Бот РОП-агента (HOS_BOT_TOKEN). Отвечаем сразу: ответ агента занимает минуты. */
+router.post('/hos', verifyTelegramSecret, (req: Request, res: Response) => {
+  agentBot.handleWebhookUpdate(req.body);
   res.sendStatus(200);
 });
 

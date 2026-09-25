@@ -90,6 +90,31 @@ export const config = {
     digestModel: trimEnv(process.env.ROP_DIGEST_MODEL) || 'claude-sonnet-5',
     /** Час отправки ежедневной сводки по Ташкенту (0–23); пусто или off — не отправлять. */
     digestHour: trimEnv(process.env.ROP_DIGEST_HOUR) || '9',
+    /** Сигналы директору в Telegram (крупная просрочка, пропал ценный клиент, сорвана задача); off — выключить. */
+    alertsEnabled: trimEnv(process.env.ROP_ALERTS).toLowerCase() !== 'off',
+    /** Просроченный долг клиента, с которого агент поднимает тревогу, сум. */
+    alertDebtMin: Number(trimEnv(process.env.ROP_ALERT_DEBT_MIN)) || 5_000_000,
+    /** Выручка клиента за год, начиная с которой его пропажа — повод для сигнала, сум. */
+    alertClientMin: Number(trimEnv(process.env.ROP_ALERT_CLIENT_MIN)) || 20_000_000,
+    /** Не больше стольких сигналов в день. */
+    alertsPerDay: Number(trimEnv(process.env.ROP_ALERTS_PER_DAY)) || 6,
+  },
+
+  /** Отдельный Telegram-бот РОП-агента (не CRM-бот). */
+  hos: {
+    botToken: trimEnv(process.env.HOS_BOT_TOKEN),
+    /** Группа, куда уходят сводка и сигналы; пусто — в личку каждому из allowedIds. */
+    groupId: trimEnv(process.env.HOS_GROUP_ID),
+    /** Telegram ID, которым можно писать боту и нажимать кнопки. */
+    allowedIds: (trimEnv(process.env.HOS_ALLOWED_IDS) || '8599955099,7623311783')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    /**
+     * Кто есть кто в CRM: «telegramId=логин,…». Без записи сотрудник ищется по
+     * привязанному Telegram (users.telegram_chat_id — это и есть Telegram ID).
+     */
+    users: Object.fromEntries((trimEnv(process.env.HOS_USERS) || '')
+      .split(',').map((pair) => pair.split('=').map((s) => s.trim()))
+      .filter((p) => p.length === 2 && p[0] && p[1])) as Record<string, string>,
   },
 
   telegram: {

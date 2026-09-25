@@ -72,6 +72,7 @@ import './modules/backup/db-backup.scheduler';
 import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
 import './modules/rop-agent/rop-agent.telegram';
+import './modules/rop-agent/rop-agent.calls';
 import './modules/rop-agent/rop-agent.scheduler';
 
 const app = express();

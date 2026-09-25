@@ -2,6 +2,7 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { buildDigest, tashkentYesterday } from './rop-agent.digest';
 import { sendDigestToRecipients } from './rop-agent.telegram';
+import { runAlerts } from './rop-agent.alerts';
 
 /**
  * Утренняя сводка РОП-агента за вчера: в ROP_DIGEST_HOUR (по умолчанию 9:00 Ташкента)
@@ -43,6 +44,26 @@ async function tick(): Promise<void> {
   }
 }
 
+/**
+ * Сигналы: раз в час с 10:00 до 19:00 по Ташкенту, в первые 5 минут часа. После
+ * утренней сводки (она в 9:00) и не ночью — директору это приходит в Telegram.
+ */
+const ALERT_HOURS = { from: 10, to: 19 };
+let lastAlertHour = '';
+
+async function alertsTick(): Promise<void> {
+  if (!config.ropAgent.alertsEnabled) return;
+  const now = new Date(Date.now() + TASHKENT_OFFSET_MS);
+  const hour = now.getUTCHours();
+  if (hour < ALERT_HOURS.from || hour > ALERT_HOURS.to || now.getUTCMinutes() >= 5) return;
+  const key = `${now.toISOString().slice(0, 10)}T${hour}`;
+  if (lastAlertHour === key) return;
+  lastAlertHour = key;
+  const r = await runAlerts();
+  if (r.reviewed) console.log(`[rop-alerts] reviewed ${r.reviewed}, sent ${r.sent}`);
+}
+
 setInterval(() => {
   tick().catch((err) => console.error('[rop-digest] tick failed:', (err as Error).message));
+  alertsTick().catch((err) => console.error('[rop-alerts] tick failed:', (err as Error).message));
 }, 60_000);

@@ -21,6 +21,8 @@ import {
 } from './rop-agent.analysis';
 import { proposeTaskPlan } from './rop-agent.plans';
 import { taskPlanResults } from './rop-agent.control';
+import { forgetTool, rememberTool } from './rop-agent.memory';
+import { callReviews } from './rop-agent.call-reviews';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -226,7 +228,8 @@ async function productEconomics(input: ProductEconomicsInput) {
       return {
         ...r,
         margin_pct: marginPct(r.sale_price, r.purchase_price),
-        stock_cover_days: dailyQty > 0 ? Math.round(r.stock / dailyQty) : null,
+        // С одним знаком: «0» при запасе на полдня читается как «уже кончился».
+        stock_cover_days: dailyQty > 0 ? Math.round((r.stock / dailyQty) * 10) / 10 : null,
       };
     }),
   };
@@ -480,6 +483,48 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'call_reviews',
+    description:
+      'Качество звонков менеджеров по аудитам (записи присылают вручную — менеджеры звонят с мобильных): '
+      + 'по каждому менеджеру число аудитов, средняя оценка и вероятность продажи, доля звонков, где выполнен каждый этап '
+      + '(приветствие, выявление потребности, презентация, возражения, закрытие); последние разборы с пропущенными этапами, советами и итогом.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        manager_id: { type: 'string', description: 'Только этот менеджер.' },
+        days: { type: 'integer', description: 'За сколько дней, по умолчанию 90.' },
+        limit: { type: 'integer', description: 'Сколько последних разборов показать, по умолчанию 20.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'remember',
+    description:
+      'Запомнить надолго решение, договорённость или факт от директора, который должен действовать и в следующих разговорах: '
+      + '«фольгу не демпингуем», «Акмал в отпуске до 10.10», «Print House платит только в конце месяца», «скидки на ламинацию не предлагать». '
+      + 'Одна запись — одна мысль, коротко и самодостаточно (с именами, без «он», «этот»). Для временного факта укажи expires_on.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'Что запомнить, до 500 символов.' },
+        expires_on: { type: 'string', description: 'До какого дня действует, YYYY-MM-DD. Не указывай для бессрочного.' },
+      },
+      required: ['content'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'forget',
+    description: 'Удалить запись из памяти, если директор отменил решение или факт устарел. memory_id — 8 символов из квадратных скобок в блоке памяти.',
+    input_schema: {
+      type: 'object',
+      properties: { memory_id: { type: 'string' } },
+      required: ['memory_id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'describe_tables',
     description:
       'Структура базы CRM. Без аргументов — список таблиц. С tables — колонки этих таблиц с типами и значениями перечислений. '
@@ -533,6 +578,12 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return `Черновик плана задач: ${String(input.title ?? '').slice(0, 100)}`;
     case 'task_plan_results':
       return 'Проверка розданных задач';
+    case 'call_reviews':
+      return 'Разборы звонков';
+    case 'remember':
+      return `Запомнил: ${String(input.content ?? '').slice(0, 140)}`;
+    case 'forget':
+      return 'Удалил запись из памяти';
     default:
       return name;
   }
@@ -553,6 +604,9 @@ export async function executeTool(
       case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
       case 'list_managers': result = await listManagers(); break;
       case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
+      case 'call_reviews': result = await callReviews(input as { manager_id?: string; days?: number; limit?: number }); break;
+      case 'remember': result = await rememberTool(ctx, input); break;
+      case 'forget': result = await forgetTool(input); break;
       case 'propose_task_plan': {
         const r = await proposeTaskPlan(ctx, input);
         planId = r.plan_id;

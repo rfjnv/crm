@@ -293,8 +293,10 @@ model User {
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
   aiChats             AiChat[]
   ropAgentChats       RopAgentChat[]
+  ropAgentMemories    RopAgentMemory[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
+  managedCallAudits   CallAudit[]      @relation("CallAuditManager")
   aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
   medalsGranted       UserMedalHistory[] @relation("MedalHistoryGrantedBy")
@@ -460,6 +462,7 @@ model Client {
   stockPositions ClientStockPosition[]
   stockEvents ClientStockEvent[]
   reservations ProductReservation[]
+  callAudits  CallAudit[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
@@ -1375,6 +1378,8 @@ model RopAgentChat {
   title     String   @default("Новый чат")
   /// web — страница CRM; telegram — разговор в личке с CRM-ботом (берётся последний).
   channel   String   @default("web")
+  /// Отпечаток памяти агента, переданной в этот чат последней (см. rop-agent.memory).
+  memoryHash String? @map("memory_hash")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1446,6 +1451,53 @@ model RopDailyDigest {
   @@map("rop_daily_digests")
 }
 
+/// Долговременная память РОП-агента: решения и договорённости директора.
+model RopAgentMemory {
+  id          String    @id @default(uuid())
+  content     String    @db.Text
+  /// Когда факт перестаёт действовать («в отпуске до 10-го»); null — бессрочно.
+  expiresAt   DateTime? @map("expires_at")
+  /// agent — запомнил агент в разговоре; user — добавили вручную.
+  source      String    @default("agent")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("rop_agent_memories")
+}
+
+/// Сигнал РОП-агента директору в Telegram (крупная просрочка, пропал ценный клиент,
+/// срывается розданная задача). `key` не даёт прислать одно и то же дважды.
+model RopAlert {
+  id          String    @id @default(uuid())
+  /// debt | lapsed | plan
+  kind        String
+  key         String    @unique
+  /// SENT | SKIPPED | ACCEPTED | DECLINED
+  status      String
+  /// Факты, по которым сработал сигнал.
+  payload     Json
+  /// Текст директору.
+  message     String?   @db.Text
+  /// Предложенная задача: managerId, clientId, title, description, dueDate.
+  proposal    Json?
+  /// Почему агент решил не беспокоить (status = SKIPPED).
+  reason      String?   @db.Text
+  /// Куда отправлено: [{ chatId, messageId }] — чтобы после решения убрать кнопки у всех.
+  messages    Json?
+  planId      String?   @map("plan_id")
+  decidedById String?   @map("decided_by_id")
+  decidedAt   DateTime? @map("decided_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("rop_alerts")
+}
+
 model AiTrainingRule {
   id        String   @id @default(uuid())
   title     String
@@ -1464,6 +1516,13 @@ model CallAudit {
   id              String   @id @default(uuid())
   createdBy       String   @map("created_by")
   managerName     String?  @map("manager_name")
+  /// Чей звонок — сотрудник CRM. У старых аудитов пусто, есть только managerName текстом.
+  managerId       String?  @map("manager_id")
+  clientId        String?  @map("client_id")
+  /// Этапы продажи: greeting, needsDiscovery, presentation, objectionHandling, closing — true/false.
+  stageChecklist  Json?    @map("stage_checklist")
+  /// Советы наставника (до 6 строк).
+  mentorTips      Json?    @map("mentor_tips")
   transcript      String
   analysis        String
   score           Float?
@@ -1474,9 +1533,12 @@ model CallAudit {
   source          String   @default("audio")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  author User @relation("CallAuditAuthor", fields: [createdBy], references: [id], onDelete: Cascade)
+  author  User    @relation("CallAuditAuthor", fields: [createdBy], references: [id], onDelete: Cascade)
+  manager User?   @relation("CallAuditManager", fields: [managerId], references: [id], onDelete: SetNull)
+  client  Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([createdBy])
+  @@index([managerId, createdAt])
   @@index([createdAt(sort: Desc)])
   @@map("call_audits")
 }

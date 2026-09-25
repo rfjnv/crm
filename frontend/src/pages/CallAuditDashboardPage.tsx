@@ -7,7 +7,7 @@ import {
   ArrowLeftOutlined, DeleteOutlined, EyeOutlined,
   PhoneOutlined, RiseOutlined, TeamOutlined, TrophyOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiAssistantApi, type CallAuditSummary } from '../api/ai-assistant.api';
 import { getFirstName } from '../lib/name-utils';
@@ -31,8 +31,10 @@ export default function CallAuditDashboardPage() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
 
-  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // ?audit=<id> — ссылка «Полный разбор в CRM» из Telegram (РОП-агент) открывает аудит сразу.
+  const [params] = useSearchParams();
+  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(params.get('audit'));
+  const [drawerOpen, setDrawerOpen] = useState(!!params.get('audit'));
 
   const { data: audits = [], isLoading: auditsLoading } = useQuery({
     queryKey: ['call-audits'],

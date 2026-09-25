@@ -3,8 +3,8 @@ import client from './client';
 export interface RopAgentChat {
   id: string;
   title: string;
-  /** web — страница CRM, telegram — разговор в личке с ботом. */
-  channel?: 'web' | 'telegram';
+  /** web — страница CRM; telegram — личка с ботом; telegram_group — группа. */
+  channel?: 'web' | 'telegram' | 'telegram_group';
   createdAt: string;
   updatedAt: string;
 }
@@ -143,6 +143,30 @@ export interface RopDigest {
   updatedAt: string;
 }
 
+export interface RopMemory {
+  id: string;
+  content: string;
+  expiresAt: string | null;
+  /** agent — запомнил агент в разговоре; user — добавили вручную. */
+  source: 'agent' | 'user';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { fullName: string };
+}
+
+export type RopAlertStatus = 'SENT' | 'ACCEPTED' | 'DECLINED';
+
+export interface RopAlert {
+  id: string;
+  kind: 'debt' | 'lapsed' | 'plan';
+  status: RopAlertStatus;
+  message: string | null;
+  proposal: { managerId: string; managerName: string; clientId: string | null; title: string; description: string; dueDate: string } | null;
+  planId: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
 export interface RopManager {
   id: string;
   name: string;
@@ -210,4 +234,15 @@ export const ropAgentApi = {
   getDigest: (date: string) => client.get<RopDigest>(`/rop-agent/digests/${date}`).then((r) => r.data),
   buildDigest: (date: string) => client.post<RopDigest>(`/rop-agent/digests/${date}/build`).then((r) => r.data),
   sendDigestToMe: (date: string) => client.post(`/rop-agent/digests/${date}/send-me`).then((r) => r.data),
+
+  listMemories: () => client.get<RopMemory[]>('/rop-agent/memories').then((r) => r.data),
+  addMemory: (data: { content: string; expiresOn?: string | null }) =>
+    client.post<RopMemory>('/rop-agent/memories', data).then((r) => r.data),
+  updateMemory: (id: string, data: { content?: string; expiresOn?: string | null }) =>
+    client.patch<RopMemory>(`/rop-agent/memories/${id}`, data).then((r) => r.data),
+  deleteMemory: (id: string) => client.delete(`/rop-agent/memories/${id}`),
+
+  listAlerts: () => client.get<RopAlert[]>('/rop-agent/alerts').then((r) => r.data),
+  acceptAlert: (id: string) => client.post<RopAlert>(`/rop-agent/alerts/${id}/accept`).then((r) => r.data),
+  declineAlert: (id: string) => client.post<RopAlert>(`/rop-agent/alerts/${id}/decline`).then((r) => r.data),
 };

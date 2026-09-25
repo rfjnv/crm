@@ -12,7 +12,7 @@ import dayjs from 'dayjs';
 import BackButton from '../components/BackButton';
 import DealStatusTag from '../components/DealStatusTag';
 import { HIDDEN_MONEY, formatShortNumber, formatUZS, isMoneyHidden } from '../utils/currency';
-import { ropAgentApi, type RopDigestData, type RopVerdict } from '../api/ropAgent.api';
+import { ropAgentApi, type RopAlert, type RopDigestData, type RopVerdict } from '../api/ropAgent.api';
 import type { DealStatus } from '../types';
 
 const { Text, Title } = Typography;
@@ -42,13 +42,13 @@ function Delta({ now, before, suffix }: { now: number; before: number; suffix: s
   );
 }
 
-/** Коротко для плиток и осей: «48,2 млн сум». Полная сумма — в подсказке и таблицах. */
 /**
  * Итоговая фраза агента идёт строкой сразу после списка — markdown склеил бы её
  * с последним пунктом. Отделяем пустой строкой всё, что не пункт списка.
  */
 const separateTrailingText = (md: string) => md.replace(/\n(?![-*•\s])/g, '\n\n');
 
+/** Коротко для плиток и осей: «48,2 млн сум». Полная сумма — в подсказке и таблицах. */
 const shortMoney = (v: number) => (isMoneyHidden() ? HIDDEN_MONEY : `${formatShortNumber(v)} сум`);
 const axisMoney = (v: number) => (isMoneyHidden() ? HIDDEN_MONEY : formatShortNumber(v));
 
@@ -60,6 +60,68 @@ function Tile({ title, value, full, children }: { title: string; value: string; 
         <div style={{ fontSize: 'clamp(17px, 4.6vw, 22px)', fontWeight: 600, lineHeight: 1.3, whiteSpace: 'nowrap' }}>{value}</div>
       </Tooltip>
       {children}
+    </Card>
+  );
+}
+
+const ALERT_STATUS: Record<RopAlert['status'], { label: string; color: string }> = {
+  SENT: { label: 'ждёт решения', color: 'processing' },
+  ACCEPTED: { label: 'задача поставлена', color: 'success' },
+  DECLINED: { label: 'не надо', color: 'default' },
+};
+
+/**
+ * Сигналы, которые агент сам прислал в Telegram: крупная просрочка, пропал ценный
+ * клиент, срывается задача. Решить можно и здесь — тем же действием, что кнопкой в боте.
+ */
+function AlertsCard() {
+  const queryClient = useQueryClient();
+  const { data: alerts = [], isLoading } = useQuery({ queryKey: ['rop-agent', 'alerts'], queryFn: ropAgentApi.listAlerts });
+  const decide = useMutation({
+    mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
+      (accept ? ropAgentApi.acceptAlert(id) : ropAgentApi.declineAlert(id)),
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ['rop-agent', 'alerts'] });
+      if (v.accept) message.success('Задача поставлена');
+    },
+    onError: (err) => message.error(errorMessage(err)),
+  });
+
+  if (isLoading || alerts.length === 0) return null;
+  return (
+    <Card size="small" title="Сигналы агента">
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        {alerts.slice(0, 10).map((a) => (
+          <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+              <div>{a.message}</div>
+              {a.proposal && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Задача для {a.proposal.managerName} до {dayjs(a.proposal.dueDate).format('DD.MM')}: «{a.proposal.title}»
+                </Text>
+              )}
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(a.createdAt).format('DD.MM HH:mm')} </Text>
+                <Tag color={ALERT_STATUS[a.status].color} style={{ marginLeft: 4 }}>{ALERT_STATUS[a.status].label}</Tag>
+              </div>
+            </div>
+            {a.status === 'SENT' && (
+              <Space>
+                {a.proposal && (
+                  <Button size="small" type="primary" loading={decide.isPending && decide.variables?.id === a.id && decide.variables.accept}
+                    onClick={() => decide.mutate({ id: a.id, accept: true })}>
+                    Поставить задачу
+                  </Button>
+                )}
+                <Button size="small" loading={decide.isPending && decide.variables?.id === a.id && !decide.variables.accept}
+                  onClick={() => decide.mutate({ id: a.id, accept: false })}>
+                  {a.proposal ? 'Не надо' : 'Понял'}
+                </Button>
+              </Space>
+            )}
+          </div>
+        ))}
+      </Space>
     </Card>
   );
 }
@@ -351,6 +413,7 @@ export default function RopDigestPage() {
           ) : (
             <Alert type="info" showIcon message="Комментария агента нет — Claude был недоступен при сборке. Нажмите «Собрать заново»." />
           )}
+          <AlertsCard />
           <DigestBody d={digest.data} />
           <Text type="secondary" style={{ fontSize: 12 }}>
             Собрано {dayjs(digest.updatedAt).format('DD.MM HH:mm')}
