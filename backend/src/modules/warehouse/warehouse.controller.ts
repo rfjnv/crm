@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { hasCostAccess } from '../../lib/costAccess';
 import { Role } from '@prisma/client';
 import XLSX from 'xlsx';
 import { warehouseService } from './warehouse.service';
@@ -8,7 +9,7 @@ import { uploadImageToStorage, deleteImageFromStorage } from '../../lib/imageSto
 export class WarehouseController {
   // Products
   async findAllProducts(req: Request, res: Response): Promise<void> {
-    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
+    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId, hasCostAccess(req.user));
     res.json(products);
   }
 
@@ -92,7 +93,7 @@ export class WarehouseController {
   async findProductById(req: Request, res: Response): Promise<void> {
     const product = await warehouseService.findProductById(
       req.params.id as string,
-      req.user!.role as Role,
+      hasCostAccess(req.user),
     );
     res.json(product);
   }
@@ -122,7 +123,7 @@ export class WarehouseController {
   }
 
   async createProduct(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId, req.user!.role as any);
+    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId, req.user!.role as any, hasCostAccess(req.user));
     res.status(201).json(product);
   }
 
@@ -131,7 +132,7 @@ export class WarehouseController {
       req.params.id as string,
       req.body,
       req.user!.userId as string,
-      req.user!.role as Role,
+      hasCostAccess(req.user),
     );
     res.json(product);
   }
@@ -186,7 +187,7 @@ export class WarehouseController {
       req.params.id as string,
       period,
       granularity,
-      req.user!.role as Role,
+      hasCostAccess(req.user),
     );
     res.json(data);
   }

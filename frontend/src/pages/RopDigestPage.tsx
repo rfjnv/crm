@@ -130,6 +130,8 @@ function DigestBody({ d }: { d: RopDigestData }) {
   const { token } = theme.useToken();
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer !== '#ffffff';
   const chartTheme = isDark ? 'classicDark' : 'classic';
+  // Новые сводки — по цене продажи; старые — по закупке, и без ПИН сервер отдаёт там null.
+  const slowValue = d.slowStock.stockValue ?? d.slowStock.frozen ?? null;
   const axisStyle = {
     labelFill: token.colorTextSecondary,
     grid: true,
@@ -188,8 +190,14 @@ function DigestBody({ d }: { d: RopDigestData }) {
           </Tile>
         </Col>
         <Col xs={12} md={8} xl={4}>
-          <Tile title="Залежалый товар" value={shortMoney(d.slowStock.frozen)} full={formatUZS(d.slowStock.frozen)}>
-            <Text type="secondary" style={{ fontSize: 12 }}>{d.slowStock.count} позиций, по закупке</Text>
+          <Tile
+            title="Залежалый товар"
+            value={slowValue == null ? HIDDEN_MONEY : shortMoney(slowValue)}
+            full={slowValue == null ? undefined : formatUZS(slowValue)}
+          >
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {d.slowStock.count} позиций, {d.slowStock.stockValue != null ? 'по цене продажи' : 'по закупке'}
+            </Text>
           </Tile>
         </Col>
       </Row>
@@ -318,7 +326,14 @@ function DigestBody({ d }: { d: RopDigestData }) {
               columns={[
                 { title: 'Товар', dataIndex: 'product' },
                 { title: 'Без продаж', dataIndex: 'daysSinceSale', align: 'right', render: (v: number | null) => (v == null ? 'не продавался' : `${v} дн.`) },
-                { title: 'По закупке', dataIndex: 'frozen', align: 'right', render: (v: number) => formatUZS(v) },
+                {
+                  title: d.slowStock.stockValue != null ? 'По цене продажи' : 'По закупке',
+                  align: 'right',
+                  render: (_, r) => {
+                    const v = r.stockValue ?? r.frozen;
+                    return v == null ? '•••' : formatUZS(v);
+                  },
+                },
               ]}
             />
           </Card>

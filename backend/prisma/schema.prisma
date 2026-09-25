@@ -158,6 +158,11 @@ enum AuditAction {
   STOCK_WRITE_OFF
   OVERRIDE_UPDATE
   OVERRIDE_DELETE
+  COST_PIN_SET
+  COST_PIN_RESET
+  COST_UNLOCK
+  COST_UNLOCK_FAILED
+  COST_LOCK
 }
 
 enum NotificationSeverity {
@@ -246,6 +251,10 @@ model User {
    * из ответов API вычищаются денежные поля, а стратегические разделы закрыты целиком —
    * через F12 сумм не достать. Фронт дополнительно маскирует то, что считает сам. */
   moneyAccess MoneyAccess @default(FULL) @map("money_access")
+  /** ПИН-код для доступа к себестоимости (bcrypt). Только ADMIN / SUPER_ADMIN, см. lib/costAccess. */
+  costPinHash           String?   @map("cost_pin_hash")
+  costPinFailedAttempts Int       @default(0) @map("cost_pin_failed_attempts")
+  costPinLockedUntil    DateTime? @map("cost_pin_locked_until")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -412,6 +421,8 @@ model Session {
   lastUsedAt           DateTime? @map("last_used_at")
   ip                   String?
   userAgent            String?   @map("user_agent")
+  /** До какого момента в этой сессии открыта себестоимость (после ввода ПИН). Переносится при refresh. */
+  costUnlockedUntil    DateTime? @map("cost_unlocked_until")
   createdAt            DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

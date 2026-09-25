@@ -81,6 +81,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
 import { useActivityTracking } from '../hooks/useActivityTracking';
 import { APP_BUTTON } from './ui/AppClassNames';
+import CostAccessButton from './CostAccessButton';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import UiScaleControl from './UiScaleControl';
@@ -934,6 +935,7 @@ export default function Layout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
             {/* Панель и киоск-режим не дают браузерного зума — заменяем его своим */}
             {!isMobile && <UiScaleControl />}
+            <CostAccessButton />
             <NotificationBell />
             <Switch
               checkedChildren={<BulbOutlined />}

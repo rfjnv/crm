@@ -104,7 +104,12 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
     `💳 Долги: ${shortMoney(d.debts.total)}, просрочено <b>${shortMoney(d.debts.overdue)}</b> (${d.debts.overdueDeals} сд.)`,
     `👥 Пропали: ${d.clients.overdue} постоянных клиентов · пора покупать: ${d.clients.dueSoon}`,
   ];
-  if (d.slowStock.count) lines.push(`📦 Залежалось: ${d.slowStock.count} позиций на ${shortMoney(d.slowStock.frozen)} по закупке`);
+  if (d.slowStock.count) {
+    // Старые сводки считали по закупке — в Telegram себестоимость не показываем.
+    lines.push(d.slowStock.stockValue != null
+      ? `📦 Залежалось: ${d.slowStock.count} позиций на ${shortMoney(d.slowStock.stockValue)} по цене продажи`
+      : `📦 Залежалось: ${d.slowStock.count} позиций`);
+  }
   const top = d.managers.filter((m) => m.revenueMtd > 0).slice(0, 5);
   if (top.length) {
     lines.push('', '<b>Менеджеры (месяц / вчера)</b>');

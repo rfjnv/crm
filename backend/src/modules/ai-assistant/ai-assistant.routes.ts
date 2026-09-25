@@ -8,6 +8,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { askQuestionDto, renameChatDto, createTrainingRuleDto, updateTrainingRuleDto, analyzeCallDto, transcribeAudioDto } from './ai-assistant.dto';
 import { generateStorageName } from '../../lib/uploadSecurity';
 import { config } from '../../lib/config';
+import { hasCostAccess } from '../../lib/costAccess';
 import {
   listChats,
   createChat,
@@ -190,7 +191,7 @@ router.post(
   '/:chatId/ask',
   asyncHandler(async (req: Request, res: Response) => {
     const { question } = askQuestionDto.parse(req.body);
-    const result = await askQuestionInChat(req.params.chatId as string, req.user!.userId, question);
+    const result = await askQuestionInChat(req.params.chatId as string, req.user!.userId, question, hasCostAccess(req.user));
     res.json(result);
   }),
 );

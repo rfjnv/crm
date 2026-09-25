@@ -777,7 +777,8 @@ export interface AnalyticsWarehouse {
   belowMinStock: { id: string; name: string; sku: string; stock: number; minStock: number }[];
   deadStock: { id: string; name: string; sku: string; stock: number; lastOutDate: string | null }[];
   topSelling: { productId: string; name: string; unit: string; totalSold: number }[];
-  frozenCapital: number;
+  /** null — себестоимость закрыта (нет ПИН) */
+  frozenCapital: number | null;
 }
 
 export interface AnalyticsManagers {
@@ -918,10 +919,11 @@ export interface ManagerKpiResponse {
 }
 export interface AnalyticsProfitability {
   revenue: number;
-  cogs: number;
-  grossProfit: number;
+  /** cogs / grossProfit / netProfit — null, пока себестоимость не открыта по ПИН */
+  cogs: number | null;
+  grossProfit: number | null;
   expenses: number;
-  netProfit: number;
+  netProfit: number | null;
   expensesByCategory: { category: string; total: number }[];
 }
 

@@ -25,10 +25,11 @@ import {
   Space,
   Divider,
 } from 'antd';
-import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined } from '@ant-design/icons';
+import { PlusOutlined, StopOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, BarChartOutlined, KeyOutlined } from '@ant-design/icons';
 import { Area } from '@ant-design/charts';
 import { Link } from 'react-router-dom';
 import { usersApi } from '../api/users.api';
+import { costAccessApi } from '../api/costAccess.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { moneyFormatter } from '../utils/currency';
@@ -394,6 +395,23 @@ export default function UsersPage() {
                 }}
               />
               {canEdit && <Button type="text" icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />}
+              {isSuperAdmin && (r.role === 'ADMIN' || r.role === 'SUPER_ADMIN') && (
+                <Popconfirm
+                  title="Сбросить ПИН себестоимости?"
+                  description="Доступ к себестоимости закроется, сотрудник задаст новый ПИН сам"
+                  onConfirm={() =>
+                    costAccessApi.resetPin(r.id)
+                      .then(() => message.success('ПИН сброшен'))
+                      .catch(() => message.error('Не удалось сбросить ПИН'))
+                  }
+                  okText="Сбросить"
+                  cancelText="Отмена"
+                >
+                  <Tooltip title="Сбросить ПИН себестоимости">
+                    <Button type="text" icon={<KeyOutlined />} size="small" />
+                  </Tooltip>
+                </Popconfirm>
+              )}
               {r.isActive && canToggle && (
                 <Popconfirm title="Деактивировать пользователя?" onConfirm={() => deactivateMut.mutate(r.id)}>
                   <Button type="text" danger icon={<StopOutlined />} size="small" />

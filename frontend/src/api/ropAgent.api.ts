@@ -129,7 +129,13 @@ export interface RopDigestData {
     overdue: number;
     topOverdue: { clientId: string; client: string; manager: string; revenue12m: number; daysSince: number; cycleDays: number }[];
   };
-  slowStock: { frozen: number; count: number; top: { productId: string; product: string; frozen: number; daysSinceSale: number | null }[] };
+  /** stockValue — остаток по цене продажи; в старых сводках frozen — по закупке (без ПИН приходит null). */
+  slowStock: {
+    stockValue?: number;
+    frozen?: number | null;
+    count: number;
+    top: { productId: string; product: string; stockValue?: number; frozen?: number | null; daysSinceSale: number | null }[];
+  };
   plans: { planId: string; title: string; manager: string; verdict: RopVerdict; touched: number; clients: number; overdue: boolean }[];
   forecast?: {
     period: string;

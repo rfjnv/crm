@@ -1,3 +1,4 @@
+import { useCostAccess } from '../hooks/useCostAccess';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import BackButton from '../components/BackButton';
@@ -62,6 +63,7 @@ export default function ProductDetailPage() {
   const chartTheme = isDark ? 'classicDark' : 'classic';
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const { open: costOpen } = useCostAccess();
 
   const [period, setPeriod] = useState<PeriodChoice>(30);
   const [granularity, setGranularity] = useState<ChartGranularity>('day');
@@ -203,7 +205,7 @@ export default function ProductDetailPage() {
             </Descriptions.Item>
             <Descriptions.Item label="Мин. остаток">{p.minStock} {p.unit}</Descriptions.Item>
             <Descriptions.Item label="Цена продажи">{p.salePrice ? formatUZS(Number(p.salePrice)) : '—'}</Descriptions.Item>
-            {isSuperAdmin && (
+            {costOpen && (
               <Descriptions.Item label="Закупочная">{p.purchasePrice ? formatUZS(Number(p.purchasePrice)) : '—'}</Descriptions.Item>
             )}
           </Descriptions>
@@ -233,8 +235,8 @@ export default function ProductDetailPage() {
           </Col>
         </Row>
 
-        {/* Profitability - only for SUPER_ADMIN */}
-        {isSuperAdmin && profitability && profitability.totalRevenue > 0 && (
+        {/* Profitability - only with cost access (PIN) */}
+        {costOpen && profitability && profitability.totalRevenue > 0 && (
           <Card title="Рентабельность" size="small" bordered={false}>
             <Row gutter={12}>
               <Col xs={12} sm={6}>

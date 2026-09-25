@@ -285,8 +285,9 @@ export type SlowStockInput = {
 };
 
 /**
- * Товар в наличии без продаж N дней (или никогда не продававшийся) — с суммой,
- * замороженной по закупке, и прошлыми покупателями, которым его можно предложить.
+ * Товар в наличии без продаж N дней (или никогда не продававшийся) — с суммой остатка
+ * по цене продажи и прошлыми покупателями, которым его можно предложить.
+ * По цене продажи, а не закупки: себестоимость агенту закрыта (lib/costAccess).
  */
 export async function slowStock(input: SlowStockInput) {
   const days = clamp(input.days_without_sale, 60, 14, 730);
@@ -297,7 +298,7 @@ export async function slowStock(input: SlowStockInput) {
 
   const products = await prisma.$queryRaw<{
     product_id: string; product: string; sku: string; unit: string | null; category: string | null;
-    stock: number; sale_price: number | null; purchase_price: number | null; frozen_by_purchase: number | null;
+    stock: number; sale_price: number | null; stock_value_by_sale: number | null;
     last_sale: string | null; days_since_sale: number | null; sold_qty_12m: number;
   }[]>(Prisma.sql`
     WITH lines AS (${SALES_LINES}),
@@ -307,8 +308,8 @@ export async function slowStock(input: SlowStockInput) {
       FROM lines GROUP BY product_id
     )
     SELECT p.id AS product_id, p.name AS product, p.sku, p.unit, p.category,
-      p.stock::float8 AS stock, p.sale_price::float8 AS sale_price, p.purchase_price::float8 AS purchase_price,
-      (p.stock * p.purchase_price)::float8 AS frozen_by_purchase,
+      p.stock::float8 AS stock, p.sale_price::float8 AS sale_price,
+      (p.stock * p.sale_price)::float8 AS stock_value_by_sale,
       to_char(ls.last_day, 'YYYY-MM-DD') AS last_sale,
       (${TODAY} - ls.last_day)::int AS days_since_sale,
       COALESCE(ls.qty_12m, 0)::float8 AS sold_qty_12m
@@ -316,7 +317,7 @@ export async function slowStock(input: SlowStockInput) {
     LEFT JOIN last_sale ls ON ls.product_id = p.id
     WHERE ${Prisma.join(filters, ' AND ')}
       AND (ls.last_day IS NULL OR ls.last_day < ${TODAY} - ${days}::int)
-    ORDER BY (p.stock * COALESCE(p.purchase_price, p.sale_price, 0)) DESC NULLS LAST
+    ORDER BY (p.stock * COALESCE(p.sale_price, 0)) DESC NULLS LAST
     LIMIT ${limit}`);
 
   const buyers = new Map<string, unknown[]>();
@@ -344,7 +345,7 @@ export async function slowStock(input: SlowStockInput) {
   }
 
   return {
-    rules: { days_without_sale: days, note: 'frozen_by_purchase — остаток по закупочной цене; last_sale=null — ни одной продажи в истории.' },
+    rules: { days_without_sale: days, note: 'stock_value_by_sale — остаток по цене продажи; last_sale=null — ни одной продажи в истории.' },
     products: products.map((p) => ({ ...p, past_buyers: buyers.get(p.product_id) ?? [] })),
   };
 }

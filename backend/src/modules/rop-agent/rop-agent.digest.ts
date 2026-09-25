@@ -49,9 +49,11 @@ export type DigestData = {
     topOverdue: { clientId: string; client: string; manager: string; revenue12m: number; daysSince: number; cycleDays: number }[];
   };
   slowStock: {
-    frozen: number;
+    /** Остаток по цене продажи. В старых сводках вместо него `frozen` — по закупке (вырезается без ПИН). */
+    stockValue?: number;
+    frozen?: number;
     count: number;
-    top: { productId: string; product: string; frozen: number; daysSinceSale: number | null }[];
+    top: { productId: string; product: string; stockValue?: number; frozen?: number; daysSinceSale: number | null }[];
   };
   /** Прогноз текущего месяца (может отсутствовать в старых сводках). */
   forecast?: {
@@ -216,10 +218,10 @@ async function clientsBlock(): Promise<DigestData['clients']> {
 async function slowStockBlock(): Promise<DigestData['slowStock']> {
   const r = await slowStock({ limit: 100, buyers_per_product: 0 });
   return {
-    frozen: r.products.reduce((s, p) => s + (p.frozen_by_purchase ?? 0), 0),
+    stockValue: r.products.reduce((s, p) => s + (p.stock_value_by_sale ?? 0), 0),
     count: r.products.length,
     top: r.products.slice(0, 5).map((p) => ({
-      productId: p.product_id, product: p.product, frozen: p.frozen_by_purchase ?? 0, daysSinceSale: p.days_since_sale,
+      productId: p.product_id, product: p.product, stockValue: p.stock_value_by_sale ?? 0, daysSinceSale: p.days_since_sale,
     })),
   };
 }

@@ -10,6 +10,7 @@ import {
 import { sqlInventoryMovementBusinessDate, sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
+import { hasCostAccess } from '../../lib/costAccess';
 import { authorize } from '../../middleware/authorize';
 
 const router = Router();
@@ -281,6 +282,9 @@ router.get(
 
     const rawRows = await loadProductMetrics();
     const products = rawRows.map((r) => mapRow(r, noSalesDays, zeroStockDays));
+    // Excel уходит готовым файлом — фильтр полей в authenticate его не видит,
+    // поэтому столбцы себестоимости режем здесь.
+    const withCost = hasCostAccess(req.user);
 
     const sheet = products.map((p) => ({
       'Товар': p.name,
@@ -298,8 +302,10 @@ router.get(
       'Последняя продажа': fmtDate(p.lastSaleAt),
       'Продано за 90 дн.': fmtNum(p.qtySold90d),
       'Выручка за 90 дн. (сум)': fmtNum(p.revenue90d),
-      'Заморожено (сум)': fmtNum(p.frozenValue),
-      'Цена закупки': p.purchasePrice ?? '',
+      ...(withCost ? {
+        'Заморожено (сум)': fmtNum(p.frozenValue),
+        'Цена закупки': p.purchasePrice ?? '',
+      } : {}),
       'Цена продажи': p.salePrice ?? '',
       'Всего сделок': p.lifetimeDeals,
       'Всего продано': fmtNum(p.lifetimeQty),
@@ -311,8 +317,9 @@ router.get(
         'Товар', 'Артикул', 'Категория', 'Страна', 'Ед. изм.',
         'Остаток', 'Мин. остаток', 'Проблемы', 'Мёртвый', 'Активный',
         'Без продаж (дн.)', 'На нуле (дн.)', 'Последняя продажа',
-        'Продано за 90 дн.', 'Выручка за 90 дн. (сум)', 'Заморожено (сум)',
-        'Цена закупки', 'Цена продажи',
+        'Продано за 90 дн.', 'Выручка за 90 дн. (сум)',
+        ...(withCost ? ['Заморожено (сум)', 'Цена закупки'] : []),
+        'Цена продажи',
         'Всего сделок', 'Всего продано', 'Выручка всего (сум)',
       ],
     });

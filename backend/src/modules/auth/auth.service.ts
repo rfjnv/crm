@@ -152,6 +152,8 @@ export class AuthService {
       meta,
       supabase,
       session.id,
+      // Открытая по ПИН себестоимость переживает обновление токена, но не дольше своего срока.
+      session.costUnlockedUntil && session.costUnlockedUntil > new Date() ? session.costUnlockedUntil : undefined,
     );
 
     return tokens;
@@ -201,6 +203,7 @@ export class AuthService {
     meta: SessionMeta,
     supabase?: { supabaseUserId: string },
     replacedBySessionId?: string,
+    costUnlockedUntil?: Date,
   ): Promise<TokenPair> {
     const sessionId = randomUUID();
 
@@ -232,6 +235,7 @@ export class AuthService {
         lastUsedAt: new Date(),
         ...(replacedBySessionId && { replacedBySessionId }),
         ...(supabaseUserId && { supabaseUserId }),
+        ...(costUnlockedUntil && { costUnlockedUntil }),
       },
     });
 

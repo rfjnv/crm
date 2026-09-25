@@ -4,6 +4,7 @@ import { config } from '../../lib/config';
 import type { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { COST_AI_REFUSAL, isCostSql, stripCostDeep } from '../../lib/costAccess';
 import type { AiAssistantResponse } from './ai-assistant.dto';
 import type { LanguageMode, TranscriptionResult } from '../asr/polygraph-transcriber';
 import { transcribeWithElevenLabs } from '../asr/elevenlabs-transcriber';
@@ -107,6 +108,27 @@ Table: deal_ratings -- customer QR feedback
 Table: monthly_snapshots -- monthly analytical aggregates
   id, year, month, scope, type, data (JSON), created_at
 `;
+
+/**
+ * Себестоимость закрыта от ИИ, пока админ не открыл её по ПИН: колонку убираем из схемы,
+ * запросы к ней отклоняем (`isCostSql`), а из результатов вычищаем (`stripCostDeep`).
+ * Одного запрета в промпте мало — модель можно уговорить, поэтому режет код.
+ */
+const COST_SCHEMA_LINE = 'purchase_price (nullable decimal), sale_price (nullable decimal), installment_price (nullable decimal)';
+const COST_LOCKED_RULES = `
+
+============================
+CONFIDENTIAL — COST PRICE:
+============================
+- Purchase price / cost price / себестоимость / цена закупки / маржа / COGS are CONFIDENTIAL and NOT available to you.
+- Never query or estimate them. If asked, answer in the user's language: "${COST_AI_REFUSAL}"
+`;
+
+function buildSystemPrompt(allowCost: boolean): string {
+  if (allowCost) return SYSTEM_PROMPT;
+  return SYSTEM_PROMPT.replace(COST_SCHEMA_LINE, 'sale_price (nullable decimal), installment_price (nullable decimal)')
+    + COST_LOCKED_RULES;
+}
 
 const SYSTEM_PROMPT = `You are a **senior business analytics AI** for Polygraph Business CRM (printing/polygraphy company).
 You are NOT a simple assistant. You are an ANALYST. Think like a CFO / Head of Sales.
@@ -911,6 +933,16 @@ function validateSQL(sql: string): void {
   }
 }
 
+/** Проверка, запрет себестоимости и выполнение одного SQL от ИИ. */
+async function runAiSql(sql: string, allowCost: boolean): Promise<unknown> {
+  validateSQL(sql);
+  if (!allowCost && isCostSql(stripSqlComments(sql))) {
+    throw new AppError(403, COST_AI_REFUSAL);
+  }
+  const rows = serialize(await prisma.$queryRawUnsafe(capRows(sql)));
+  return allowCost ? rows : stripCostDeep(rows);
+}
+
 /** Wraps AI-generated SQL in a subquery enforcing a hard row cap of 500. */
 function capRows(sql: string): string {
   return `SELECT * FROM (${sql.replace(/;+\s*$/, '')}) AS _ai_q LIMIT 500`;
@@ -1149,6 +1181,7 @@ export async function askQuestionInChat(
   chatId: string,
   userId: string,
   question: string,
+  allowCost = false,
 ): Promise<AiAssistantResponse> {
   const chat = await prisma.aiChat.findFirst({
     where: { id: chatId, userId },
@@ -1177,7 +1210,7 @@ export async function askQuestionInChat(
 
   let result: AiAssistantResponse;
   try {
-    result = await executeAiQuery(question, chatHistory);
+    result = await executeAiQuery(question, chatHistory, allowCost);
   } catch (err) {
     const errorMsg = err instanceof AppError ? err.message : 'Произошла ошибка при обработке запроса';
     await prisma.aiChatMessage.create({
@@ -1206,10 +1239,11 @@ export async function askQuestionInChat(
 async function executeAiQuery(
   question: string,
   chatHistory: ChatMessage[] = [],
+  allowCost = false,
 ): Promise<AiAssistantResponse> {
   const openai = getOpenAIClient();
   const customRules = await getActiveTrainingRules();
-  const fullPrompt = SYSTEM_PROMPT + customRules;
+  const fullPrompt = buildSystemPrompt(allowCost) + customRules;
 
   const historyMessages = chatHistory.map((m) => ({
     role: m.role as 'user' | 'assistant',
@@ -1267,17 +1301,11 @@ Return ONLY valid JSON.`,
     if (!sql) continue;
 
     try {
-      validateSQL(sql);
-    } catch (err) {
-      failedQueries.push({ query: sql, error: err instanceof Error ? err.message : String(err) });
-      continue;
-    }
-
-    try {
-      const queryResult = await prisma.$queryRawUnsafe(capRows(sql));
-      allResults.push({ query: sql, result: serialize(queryResult) });
+      allResults.push({ query: sql, result: await runAiSql(sql, allowCost) });
       allSqls.push(sql);
     } catch (err) {
+      // Попытку достать себестоимость не превращаем в «исправь запрос» — сразу отказ.
+      if (err instanceof AppError && err.message === COST_AI_REFUSAL) throw err;
       failedQueries.push({ query: sql, error: err instanceof Error ? err.message : String(err) });
       continue;
     }
@@ -1312,9 +1340,7 @@ Return: { "queries": ["SELECT ..."] }`,
             const sql = rawSql.trim();
             if (!sql) continue;
             try {
-              validateSQL(sql);
-              const queryResult = await prisma.$queryRawUnsafe(capRows(sql));
-              allResults.push({ query: sql, result: serialize(queryResult) });
+              allResults.push({ query: sql, result: await runAiSql(sql, allowCost) });
               allSqls.push(sql);
             } catch {
               continue;

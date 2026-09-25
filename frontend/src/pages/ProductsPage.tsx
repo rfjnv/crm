@@ -1,3 +1,4 @@
+import { useCostAccess } from '../hooks/useCostAccess';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -105,6 +106,8 @@ export default function ProductsPage() {
   const user = useAuthStore((s) => s.user);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  // Цена закупки — только админам с открытым по ПИН доступом (сервер без него её вырезает).
+  const { open: costOpen } = useCostAccess();
   const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
   const canReserve = !!user?.permissions?.includes('manage_inventory');
 
@@ -135,7 +138,7 @@ export default function ProductsPage() {
     { key: 'stock', label: 'Остаток' },
     { key: 'reservedQty', label: 'Забронировано' },
     { key: 'minStock', label: 'Мин. остаток' },
-    ...(isSuperAdmin ? [{ key: 'purchasePrice', label: 'Цена закупки' }] : []),
+    ...(costOpen ? [{ key: 'purchasePrice', label: 'Цена закупки' }] : []),
     { key: 'salePrice', label: 'Цена продажи' },
     { key: 'installmentPrice', label: 'Цена рассрочки' },
     { key: 'isActive', label: 'Статус' },
@@ -395,7 +398,7 @@ export default function ProductsPage() {
       },
     },
     { key: 'minStock', title: 'Мин. остаток', dataIndex: 'minStock', align: 'right' as const, width: 100 },
-    ...(isSuperAdmin ? [{
+    ...(costOpen ? [{
       key: 'purchasePrice',
       title: 'Цена закупки',
       dataIndex: 'purchasePrice',
@@ -993,7 +996,7 @@ export default function ProductsPage() {
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
           </Space>
-          {isSuperAdmin && (
+          {costOpen && (
             <Form.Item name="purchasePrice" label="Цена закупки">
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
@@ -1072,7 +1075,7 @@ export default function ProductsPage() {
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
           </Space>
-          {isSuperAdmin && (
+          {costOpen && (
             <Form.Item name="purchasePrice" label="Цена закупки">
               <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
             </Form.Item>
@@ -1166,7 +1169,7 @@ export default function ProductsPage() {
               />
             </Card>
           </Col>
-          {isSuperAdmin && (
+          {costOpen && (
             <Col span={12}>
               <Card size="small" styles={{ body: { padding: '12px 10px' } }}>
                 <Statistic

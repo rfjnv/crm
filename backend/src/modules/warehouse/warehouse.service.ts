@@ -16,25 +16,32 @@ export class WarehouseService {
   // ==================== PRODUCTS ====================
 
   /**
-   * Убирает закупочную цену из товара, если смотрящий — не SUPER_ADMIN.
+   * Убирает закупочную цену, если у смотрящего не открыт доступ к себестоимости
+   * (ADMIN / SUPER_ADMIN с введённым ПИН — см. lib/costAccess, решает контроллер).
    *
-   * Весь UI уже считает её доступной только SUPER_ADMIN: и колонка в списке, и карточка
-   * «Стоимость по цене закупки», и поле в формах создания/редактирования спрятаны за
-   * `isSuperAdmin`. Но сервер клал цену в каждый ответ, поэтому её читал кто угодно из
-   * devtools — вплоть до водителей и грузчиков.
-   *
-   * Режем по умолчанию: цену отдаём, только когда роль явно передана и это SUPER_ADMIN.
-   * Внутренним вызовам (например, замене картинки) закупочная цена не нужна.
+   * Сервер клал цену в каждый ответ, поэтому её читал кто угодно из devtools — вплоть
+   * до водителей и грузчиков. Теперь её дополнительно вырезает `authenticate`, но и здесь
+   * режем по умолчанию: внутренним вызовам (например, замене картинки) она не нужна.
    */
-  private redactCost<T extends { purchasePrice: Prisma.Decimal | null }>(
+  private hideCost<T extends { purchasePrice: Prisma.Decimal | null }>(
     product: T,
-    viewerRole?: Role,
+    canSeeCost = false,
   ): T {
-    if (viewerRole === 'SUPER_ADMIN') return product;
+    if (canSeeCost) return product;
     return { ...product, purchasePrice: null };
   }
 
-  async findAllProducts(role?: Role, companyId?: string) {
+  /**
+   * Без доступа к себестоимости цену закупки не пишем: форма товара пришла с пустым
+   * полем (сервер его вырезал), и сохранение стёрло бы настоящую цену.
+   */
+  private dropCostWrite<T extends { purchasePrice?: unknown }>(dto: T, canSeeCost: boolean): T {
+    if (canSeeCost || !('purchasePrice' in dto)) return dto;
+    const { purchasePrice: _ignored, ...rest } = dto;
+    return rest as T;
+  }
+
+  async findAllProducts(role?: Role, companyId?: string, canSeeCost = false) {
     const where = (role !== 'SUPER_ADMIN' && companyId) ? { companyId } : {};
     const products = await prisma.product.findMany({
       where,
@@ -44,18 +51,18 @@ export class WarehouseService {
 
     const reservedMap = await this.getReservedQtyMap(products.map((p) => p.id));
     return products.map((p) =>
-      this.redactCost(this.withAvailability(p, reservedMap.get(p.id) ?? 0), role),
+      this.hideCost(this.withAvailability(p, reservedMap.get(p.id) ?? 0), canSeeCost),
     );
   }
 
-  async findProductById(id: string, viewerRole?: Role) {
+  async findProductById(id: string, canSeeCost = false) {
     const product = await prisma.product.findUnique({
       where: { id },
       include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!product) throw new AppError(404, 'Товар не найден');
     const reservedMap = await this.getReservedQtyMap([id]);
-    return this.redactCost(this.withAvailability(product, reservedMap.get(id) ?? 0), viewerRole);
+    return this.hideCost(this.withAvailability(product, reservedMap.get(id) ?? 0), canSeeCost);
   }
 
   async addProductPhotos(productId: string, urls: string[]) {
@@ -82,7 +89,8 @@ export class WarehouseService {
     await deleteImageFromStorage(photo.url);
   }
 
-  async createProduct(dto: CreateProductDto, userId: string, companyId?: string, role?: Role) {
+  async createProduct(rawDto: CreateProductDto, userId: string, companyId?: string, role?: Role, canSeeCost = false) {
+    const dto = this.dropCostWrite(rawDto, canSeeCost);
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {
       throw new AppError(409, 'Товар с таким артикулом уже существует');
@@ -119,10 +127,11 @@ export class WarehouseService {
       after: { name: product.name, sku: product.sku },
     });
 
-    return this.redactCost(product, role);
+    return this.hideCost(product, canSeeCost);
   }
 
-  async updateProduct(id: string, dto: UpdateProductDto, userId: string, viewerRole?: Role) {
+  async updateProduct(id: string, rawDto: UpdateProductDto, userId: string, canSeeCost = false) {
+    const dto = this.dropCostWrite(rawDto, canSeeCost);
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
@@ -172,7 +181,7 @@ export class WarehouseService {
       },
     });
 
-    return this.redactCost(updated, viewerRole);
+    return this.hideCost(updated, canSeeCost);
   }
 
   async deleteProduct(id: string, userId: string) {
@@ -740,18 +749,17 @@ export class WarehouseService {
   }
 
   /**
-   * @param viewerRole роль запрашивающего: закупочная цена и рентабельность отдаются
-   *   только SUPER_ADMIN. Карточка товара открыта всем сотрудникам CRM, и на фронте эти
-   *   два блока уже спрятаны за `isSuperAdmin` — но раньше сервер клал их в ответ всегда,
-   *   так что склад, водители и грузчики читали себестоимость и маржу прямо из ответа API.
+   * @param canSeeCost открыт ли доступ к себестоимости (админ с ПИН): закупочная цена и
+   *   рентабельность отдаются только тогда. Карточка товара открыта всем сотрудникам CRM,
+   *   а раньше сервер клал эти блоки в ответ всегда — склад, водители и грузчики читали
+   *   себестоимость и маржу прямо из ответа API.
    */
   async getProductAnalytics(
     productId: string,
     period: number | 'all',
     granularityParam?: string | null,
-    viewerRole?: Role,
+    canSeeCost = false,
   ) {
-    const canSeeCost = viewerRole === 'SUPER_ADMIN';
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppError(404, 'Товар не найден');
@@ -881,7 +889,7 @@ export class WarehouseService {
         dealsUsing: uniqueDeals.size,
         avgPricePerUnit,
       },
-      /** Только для SUPER_ADMIN — себестоимость и маржа. Остальным ключа в ответе нет. */
+      /** Только с открытой себестоимостью — себестоимость и маржа. Остальным ключа в ответе нет. */
       ...(canSeeCost
         ? {
             profitability: {

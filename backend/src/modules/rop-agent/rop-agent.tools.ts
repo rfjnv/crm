@@ -1,3 +1,4 @@
+import { COST_AI_REFUSAL, isCostKey, isCostSql, stripCostDeep } from '../../lib/costAccess';
 import type Anthropic from '@anthropic-ai/sdk';
 import { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
@@ -63,6 +64,7 @@ export function validateReadOnlySql(raw: string): string {
   if (SECRET_NAME.test(sql) || SECRET_TABLES.test(sql)) {
     throw new Error('Пароли, токены и сессии недоступны агенту');
   }
+  if (isCostSql(sql)) throw new Error(COST_AI_REFUSAL);
   return sql;
 }
 
@@ -106,7 +108,7 @@ async function describeTables(input: { tables?: string[] }) {
       FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name NOT LIKE '\\_prisma%'
       GROUP BY table_name ORDER BY table_name`;
-    return { tables: rows.filter((r) => !SECRET_TABLES.test(r.table_name)) };
+    return { tables: rows.filter((r) => !SECRET_TABLES.test(r.table_name) && !isCostSql(r.table_name)) };
   }
   const rows = await prisma.$queryRaw<{ table_name: string; column_name: string; data_type: string; udt_name: string; is_nullable: string }[]>`
     SELECT table_name, column_name, data_type, udt_name, is_nullable
@@ -121,6 +123,7 @@ async function describeTables(input: { tables?: string[] }) {
   const byTable: Record<string, { column: string; type: string; nullable: boolean; values?: string[] }[]> = {};
   for (const r of rows) {
     if (SECRET_TABLES.test(r.table_name) || SECRET_NAME.test(r.column_name)) continue;
+    if (isCostSql(r.table_name) || isCostKey(r.column_name)) continue;
     const isEnum = r.data_type === 'USER-DEFINED' && enumByName.has(r.udt_name);
     (byTable[r.table_name] ??= []).push({
       column: r.column_name,
@@ -162,7 +165,6 @@ type ProductEconomicsRow = {
   category: string | null;
   stock: number;
   sale_price: number | null;
-  purchase_price: number | null;
   qty_sold: number;
   revenue: number;
   clients: number;
@@ -201,7 +203,6 @@ async function productEconomicsRows(input: ProductEconomicsInput): Promise<Produ
     SELECT p.id, p.sku, p.name, p.unit, p.category,
       p.stock::float8 AS stock,
       p.sale_price::float8 AS sale_price,
-      p.purchase_price::float8 AS purchase_price,
       COALESCE(pr.qty, 0)::float8 AS qty_sold,
       COALESCE(pr.revenue, 0)::float8 AS revenue,
       COALESCE(pr.clients, 0)::int AS clients,
@@ -215,11 +216,6 @@ async function productEconomicsRows(input: ProductEconomicsInput): Promise<Produ
   return rows;
 }
 
-function marginPct(price: number | null, cost: number | null): number | null {
-  if (!price || cost == null || price <= 0) return null;
-  return Math.round(((price - cost) / price) * 1000) / 10;
-}
-
 async function productEconomics(input: ProductEconomicsInput) {
   const days = Math.min(Math.max(Math.round(input.days ?? 90), 1), 1095);
   const rows = await productEconomicsRows(input);
@@ -229,7 +225,6 @@ async function productEconomics(input: ProductEconomicsInput) {
       const dailyQty = r.qty_sold / days;
       return {
         ...r,
-        margin_pct: marginPct(r.sale_price, r.purchase_price),
         // С одним знаком: «0» при запасе на полдня читается как «уже кончился».
         stock_cover_days: dailyQty > 0 ? Math.round((r.stock / dailyQty) * 10) / 10 : null,
       };
@@ -245,8 +240,8 @@ type MarketInput = {
 };
 
 /**
- * Сравнение цен с конкурентами плюс наша экономика по каждой строке: закупка,
- * маржа сейчас и маржа, если опуститься до цены конкурента, остаток и продажи.
+ * Сравнение цен с конкурентами плюс наша экономика по каждой строке: остаток и продажи.
+ * Закупки и маржи здесь нет — себестоимость агенту закрыта (lib/costAccess).
  * Именно это нужно, чтобы решать, где демпинговать, а где нет.
  */
 async function marketComparison(input: MarketInput) {
@@ -278,10 +273,7 @@ async function marketComparison(input: MarketInput) {
 
   const priceRows = rows.map((r) => {
     const link = CATALOG_LINKS[r.ourProduct];
-    const perUnit = link?.perUnit ?? 1;
     const linked = (link?.skus ?? []).map((s) => econBySku.get(normalizeSku(s))).filter((e): e is ProductEconomicsRow => !!e);
-    const costs = linked.map((e) => e.purchase_price).filter((c): c is number => c != null && c > 0).map((c) => c * perUnit);
-    const cost = costs.length ? Math.max(...costs) : null; // консервативно: самая дорогая закупка
     return {
       category: r.category,
       our_product: r.ourProduct,
@@ -295,9 +287,6 @@ async function marketComparison(input: MarketInput) {
       diff_pct: r.competitorPrice != null && r.ourPrice > 0
         ? Math.round(((r.competitorPrice - r.ourPrice) / r.ourPrice) * 1000) / 10
         : null,
-      purchase_price: cost,
-      margin_now_pct: marginPct(r.ourPrice, cost),
-      margin_at_competitor_price_pct: marginPct(r.competitorPrice, cost),
       linked_skus: linked.map((e) => e.sku),
       stock: linked.reduce((s, e) => s + e.stock, 0),
       sold_qty_90d: linked.reduce((s, e) => s + e.qty_sold, 0),
@@ -308,7 +297,7 @@ async function marketComparison(input: MarketInput) {
   });
 
   return {
-    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 18.03.2026, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса. purchase_price — самая высокая закупка среди привязанных артикулов.',
+    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 18.03.2026, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса. Себестоимость закрыта.',
     price_rows: priceRows,
     ...(input.include_unique
       ? { competitor_only_products: THEIR_ONLY_ROWS, our_only_products: OUR_ONLY_ROWS }
@@ -323,8 +312,8 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     name: 'market_comparison',
     description:
       'Сравнение наших цен с ценами конкурентов (Yann, Bit Trade, Avanta Trade, Foil Trading) по совпадающим товарам. '
-      + 'По каждой строке сразу даёт нашу экономику: закупочную цену, маржу сейчас и маржу, если опустить цену до конкурента, '
-      + 'остаток на складе и продажи за 90 дней. Используй для ценовых стратегий (демпинг, выравнивание, удержание цены). '
+      + 'По каждой строке сразу даёт наш остаток на складе и продажи за 90 дней. '
+      + 'Используй для ценовых стратегий (демпинг, выравнивание, удержание цены). '
       + 'include_unique=true добавит товары, которые есть только у конкурентов или только у нас.',
     input_schema: {
       type: 'object',
@@ -344,7 +333,7 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'product_economics',
     description:
-      'Экономика наших товаров: остаток, цена продажи, закупка, маржа %, продано штук и выручка за период, '
+      'Экономика наших товаров: остаток, цена продажи, продано штук и выручка за период, '
       + 'сколько разных клиентов брали, дата последней продажи и на сколько дней хватит остатка. '
       + 'Сортировка — по выручке за период. Удобно для залежавшегося товара (большой остаток, давняя последняя продажа) '
       + 'и для выбора товаров под акцию.',
@@ -406,7 +395,7 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     name: 'slow_stock',
     description:
       'Залежавшийся товар: есть на складе, но не продавался days_without_sale дней (или никогда). '
-      + 'Сумма, замороженная по закупке, продажи за год и прошлые покупатели — кому предложить.',
+      + 'Сумма остатка по цене продажи, продажи за год и прошлые покупатели — кому предложить.',
     input_schema: {
       type: 'object',
       properties: {
@@ -684,7 +673,9 @@ export async function executeTool(
       default:
         return { content: `Неизвестный инструмент ${name}`, isError: true };
     }
-    let text = JSON.stringify(result);
+    // Последний рубеж: что бы ни вернул инструмент (audit_logs с ценой в JSON, `p.*`),
+    // себестоимость в модель не уходит.
+    let text = JSON.stringify(stripCostDeep(result));
     if (text.length > MAX_RESULT_CHARS) {
       text = `${text.slice(0, MAX_RESULT_CHARS)}\n…[обрезано: результат больше ${MAX_RESULT_CHARS} символов, сузь запрос или агрегируй]`;
     }

@@ -41,7 +41,7 @@ import { statusConfig } from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import AbcXyzRecommendationCell from '../components/AbcXyzRecommendationCell';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
-import { formatUZS } from '../utils/currency';
+import { HIDDEN_MONEY, formatUZS } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import { LEGEND_OPERATIONAL, TOOLTIP_OPERATIONAL_REVENUE } from '../constants/analyticsRevenueTooltips';
 import {
@@ -1801,8 +1801,8 @@ export default function AnalyticsPage() {
           <Card bordered={false}>
             <Statistic
               title={<span>Замороженный капитал<FormulaHint text="Сумма (stock × purchasePrice) по всем товарам с остатком > 0" /></span>}
-              value={warehouse.frozenCapital}
-              formatter={(v) => formatUZS(v as number)}
+              value={warehouse.frozenCapital ?? HIDDEN_MONEY}
+              formatter={(v) => (warehouse.frozenCapital == null ? HIDDEN_MONEY : formatUZS(v as number))}
               valueStyle={{ color: '#722ed1' }}
             />
           </Card>
@@ -2017,8 +2017,10 @@ export default function AnalyticsPage() {
     value: e.total,
   }));
 
-  const grossMargin = profitability?.revenue ? ((profitability.grossProfit / profitability.revenue) * 100) : 0;
-  const netMargin = profitability?.revenue ? ((profitability.netProfit / profitability.revenue) * 100) : 0;
+  // Без ПИН сервер отдаёт себестоимость и прибыль как null — показываем «•••», а не нули.
+  const costHidden = profitability != null && profitability.cogs == null;
+  const grossMargin = profitability?.revenue && profitability.grossProfit != null ? ((profitability.grossProfit / profitability.revenue) * 100) : 0;
+  const netMargin = profitability?.revenue && profitability.netProfit != null ? ((profitability.netProfit / profitability.revenue) * 100) : 0;
 
   const profitabilityTab = (
     <div>
@@ -2037,7 +2039,7 @@ export default function AnalyticsPage() {
           <Card bordered={false} size="small">
             <Statistic
               title={<span>Себестоимость<FormulaHint text="Сумма (purchasePrice × qty) по проданным товарам" /></span>}
-              value={profitability?.cogs ?? 0}
+              value={costHidden ? HIDDEN_MONEY : profitability?.cogs ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: '#fa8c16' }}
             />
@@ -2047,7 +2049,7 @@ export default function AnalyticsPage() {
           <Card bordered={false} size="small">
             <Statistic
               title={<span>Вал. прибыль<FormulaHint text="Выручка − Себестоимость" /></span>}
-              value={profitability?.grossProfit ?? 0}
+              value={costHidden ? HIDDEN_MONEY : profitability?.grossProfit ?? 0}
               formatter={(v) => formatUZS(v as number)}
               valueStyle={{ color: '#1677ff' }}
             />
@@ -2067,8 +2069,8 @@ export default function AnalyticsPage() {
           <Card bordered={false} size="small">
             <Statistic
               title={<span>Чистая прибыль<FormulaHint text="Валовая прибыль − Расходы" /></span>}
-              value={profitability?.netProfit ?? 0}
-              formatter={(v) => formatUZS(v as number)}
+              value={costHidden ? HIDDEN_MONEY : profitability?.netProfit ?? 0}
+              formatter={(v) => (costHidden ? HIDDEN_MONEY : formatUZS(v as number))}
               valueStyle={{ color: (profitability?.netProfit ?? 0) >= 0 ? '#52c41a' : '#ff4d4f' }}
             />
           </Card>
@@ -2077,13 +2079,13 @@ export default function AnalyticsPage() {
           <Card bordered={false} size="small">
             <Statistic
               title={<span>Маржа<FormulaHint text="Чистая прибыль ÷ Выручка × 100%" /></span>}
-              value={netMargin}
-              precision={1}
-              suffix="%"
+              value={costHidden ? HIDDEN_MONEY : netMargin}
+              precision={costHidden ? undefined : 1}
+              suffix={costHidden ? undefined : '%'}
               valueStyle={{ color: netMargin >= 0 ? '#52c41a' : '#ff4d4f' }}
             />
             <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>
-              Валовая: {grossMargin.toFixed(1)}%
+              Валовая: {costHidden ? HIDDEN_MONEY : `${grossMargin.toFixed(1)}%`}
             </div>
           </Card>
         </Col>
