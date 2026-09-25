@@ -23,6 +23,7 @@ import { proposeTaskPlan } from './rop-agent.plans';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
+import { clientCard, lossReasons } from './rop-agent.clients';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -483,6 +484,39 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'client_card',
+    description:
+      'Всё о клиенте одним вызовом: контакты, менеджер, статус кредита, портрет; покупки (сколько, как часто, когда последний раз, '
+      + 'выручка по месяцам за год, средний чек, главные товары); платёжная дисциплина (сколько сделок со сроком, оплачено вовремя / '
+      + 'с опозданием, на сколько дней, текущий долг и просрочка); последние заметки менеджеров, звонки, разборы звонков, открытые сделки '
+      + 'и планы агента по нему. Используй для любого вопроса о конкретном клиенте, особенно «давать ли отсрочку» и «почему ушёл».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string' },
+        search: { type: 'string', description: 'Название компании, телефон или ИНН, если id неизвестен.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'loss_reasons',
+    description:
+      'Почему мы теряем клиентов: берёт пропавших и давно ушедших постоянных клиентов (самых ценных по выручке), читает заметки '
+      + 'менеджеров и раскладывает по причинам — цена, отсрочка/кредит, качество, наличие, сервис, упал спрос, сменился закупщик, другое, '
+      + 'не ясно, менеджер не выяснял. По каждой причине — сколько клиентов, сколько выручки за год ушло, сколько ушли к конкуренту, примеры с цитатами. '
+      + 'Плюс кто из менеджеров чаще не выясняет причину.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        include_lost: { type: 'boolean', description: 'Включать давно ушедших (больше 180 дней), по умолчанию true.' },
+        manager_id: { type: 'string', description: 'Только клиенты этого менеджера.' },
+        limit: { type: 'integer', description: 'Сколько клиентов разобрать, по умолчанию 40, максимум 80.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'call_reviews',
     description:
       'Качество звонков менеджеров по аудитам (записи присылают вручную — менеджеры звонят с мобильных): '
@@ -580,6 +614,10 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Проверка розданных задач';
     case 'call_reviews':
       return 'Разборы звонков';
+    case 'client_card':
+      return `Карточка клиента${input.search ? `: ${String(input.search).slice(0, 60)}` : ''}`;
+    case 'loss_reasons':
+      return 'Причины потерь клиентов';
     case 'remember':
       return `Запомнил: ${String(input.content ?? '').slice(0, 140)}`;
     case 'forget':
@@ -604,6 +642,8 @@ export async function executeTool(
       case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
       case 'list_managers': result = await listManagers(); break;
       case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
+      case 'client_card': result = await clientCard(input as { client_id?: string; search?: string }); break;
+      case 'loss_reasons': result = await lossReasons(input as { include_lost?: boolean; manager_id?: string; limit?: number }); break;
       case 'call_reviews': result = await callReviews(input as { manager_id?: string; days?: number; limit?: number }); break;
       case 'remember': result = await rememberTool(ctx, input); break;
       case 'forget': result = await forgetTool(input); break;
