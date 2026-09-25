@@ -24,6 +24,7 @@ import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
 import { clientCard, lossReasons } from './rop-agent.clients';
+import { kpiForecast } from './rop-agent.kpi';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -484,6 +485,23 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'kpi_forecast',
+    description:
+      'План и прогноз месяца по выручке — по компании и по каждому менеджеру: факт с начала месяца, прогноз на конец месяца '
+      + '(по профилю продаж по дням недели) с вилкой, % выполнения плана сейчас и по прогнозу, сколько не хватает до плана, сколько нужно '
+      + 'продавать в каждый оставшийся рабочий день против текущего темпа, открытые сделки, ставка бонуса по прогнозу и сколько продаж '
+      + 'нужно до следующей ступени. Без аргументов — текущий месяц.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        year: { type: 'integer' },
+        month: { type: 'integer', description: '1–12' },
+        manager_id: { type: 'string', description: 'Только этот менеджер.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'client_card',
     description:
       'Всё о клиенте одним вызовом: контакты, менеджер, статус кредита, портрет; покупки (сколько, как часто, когда последний раз, '
@@ -614,6 +632,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Проверка розданных задач';
     case 'call_reviews':
       return 'Разборы звонков';
+    case 'kpi_forecast':
+      return 'План и прогноз месяца';
     case 'client_card':
       return `Карточка клиента${input.search ? `: ${String(input.search).slice(0, 60)}` : ''}`;
     case 'loss_reasons':
@@ -642,6 +662,7 @@ export async function executeTool(
       case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
       case 'list_managers': result = await listManagers(); break;
       case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
+      case 'kpi_forecast': result = await kpiForecast(input as { year?: number; month?: number; manager_id?: string }); break;
       case 'client_card': result = await clientCard(input as { client_id?: string; search?: string }); break;
       case 'loss_reasons': result = await lossReasons(input as { include_lost?: boolean; manager_id?: string; limit?: number }); break;
       case 'call_reviews': result = await callReviews(input as { manager_id?: string; days?: number; limit?: number }); break;

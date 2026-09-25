@@ -10,6 +10,7 @@ import { clientPurchaseCycles } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { assignPlan, proposeTaskPlan } from './rop-agent.plans';
+import { kpiForecast } from './rop-agent.kpi';
 import { getTelegramChat } from './rop-agent.service';
 import { agentUserByTelegramId, broadcastTargets, shortMoney } from './rop-agent.telegram';
 
@@ -27,7 +28,7 @@ import { agentUserByTelegramId, broadcastTargets, shortMoney } from './rop-agent
 type Proposal = { managerId: string; managerName: string; clientId: string | null; title: string; description: string; dueDate: string };
 
 type Candidate = {
-  kind: 'debt' | 'lapsed' | 'plan';
+  kind: 'debt' | 'lapsed' | 'plan' | 'kpi';
   key: string;
   /** Для сортировки: чем больше, тем важнее. */
   weight: number;
@@ -130,13 +131,46 @@ async function planCandidates(): Promise<Candidate[]> {
     })));
 }
 
+/**
+ * Менеджер не успевает план: после первой недели месяца, прогноз ниже 70% (и отдельно
+ * ниже 50%) — один сигнал на порог в месяц.
+ */
+async function kpiCandidates(): Promise<Candidate[]> {
+  const day = new Date(Date.now() + 5 * 3600_000).getUTCDate();
+  if (day < 8) return [];
+  const f = await kpiForecast({});
+  return f.managers
+    .filter((m) => m.plan && m.forecast_pct != null && m.forecast_pct < 70)
+    .map((m) => {
+      const bucket = m.forecast_pct! < 50 ? 50 : 70;
+      return {
+        kind: 'kpi' as const,
+        key: `kpi:${m.manager_id}:${f.period}:${bucket}`,
+        weight: m.gap_to_plan ?? 0,
+        facts: {
+          manager: m.manager, period: f.period, days_passed: f.days_passed, days_in_month: f.days_in_month,
+          plan: m.plan, fact: m.fact_mtd, forecast: m.forecast, forecast_pct: m.forecast_pct, gap: m.gap_to_plan,
+          need_per_work_day: m.need_per_work_day, avg_per_work_day: m.avg_per_work_day, open_pipeline: m.open_pipeline,
+        },
+        managerId: m.manager_id,
+        managerName: m.manager,
+        clientId: null,
+        defaultMessage: `${m.manager}: по прогнозу ${m.forecast_pct}% плана (${shortMoney(m.forecast)} из ${shortMoney(m.plan!)}), не хватает ${shortMoney(m.gap_to_plan ?? 0)}. Нужно ${shortMoney(m.need_per_work_day ?? 0)} в день против ${shortMoney(m.avg_per_work_day)} сейчас.`,
+        defaultTask: {
+          title: `План добора до конца месяца: ${shortMoney(m.gap_to_plan ?? 0)}`,
+          description: 'Составить список: открытые сделки, которые можно закрыть в этом месяце, и клиенты, которым пора покупать. По каждому — сумма и дата. Итог — в отчёте задачи.',
+        },
+      };
+    });
+}
+
 async function findNewCandidates(): Promise<Candidate[]> {
-  const all = (await Promise.all([debtCandidates(), lapsedCandidates(), planCandidates()])).flat();
+  const all = (await Promise.all([debtCandidates(), lapsedCandidates(), planCandidates(), kpiCandidates()])).flat();
   if (!all.length) return [];
   const seen = await prisma.ropAlert.findMany({ where: { key: { in: all.map((c) => c.key) } }, select: { key: true } });
   const seenKeys = new Set(seen.map((s) => s.key));
   // Сначала срывы задач, потом долги и клиенты — по сумме.
-  const order = { plan: 0, debt: 1, lapsed: 2 };
+  const order = { plan: 0, kpi: 1, debt: 2, lapsed: 3 };
   return all
     .filter((c) => !seenKeys.has(c.key))
     .sort((a, b) => order[a.kind] - order[b.kind] || b.weight - a.weight)

@@ -131,6 +131,15 @@ export interface RopDigestData {
   };
   slowStock: { frozen: number; count: number; top: { productId: string; product: string; frozen: number; daysSinceSale: number | null }[] };
   plans: { planId: string; title: string; manager: string; verdict: RopVerdict; touched: number; clients: number; overdue: boolean }[];
+  forecast?: {
+    period: string;
+    goal: number | null;
+    fact: number;
+    forecast: number;
+    range: [number, number];
+    forecastPct: number | null;
+    behind: { manager: string; plan: number; forecastPct: number; gap: number }[];
+  };
 }
 
 export interface RopDigest {
@@ -158,7 +167,7 @@ export type RopAlertStatus = 'SENT' | 'ACCEPTED' | 'DECLINED';
 
 export interface RopAlert {
   id: string;
-  kind: 'debt' | 'lapsed' | 'plan';
+  kind: 'debt' | 'lapsed' | 'plan' | 'kpi';
   status: RopAlertStatus;
   message: string | null;
   proposal: { managerId: string; managerName: string; clientId: string | null; title: string; description: string; dueDate: string } | null;

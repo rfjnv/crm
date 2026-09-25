@@ -99,6 +99,7 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
     '',
     `💰 Выручка: <b>${shortMoney(r.day)}</b> ${[delta(r.day, r.prevDay) && `${delta(r.day, r.prevDay)} к пред. дню`, delta(r.day, r.sameWeekdayLastWeek) && `${delta(r.day, r.sameWeekdayLastWeek)} к прошлой неделе`].filter(Boolean).join(', ')}`,
     `📅 С начала месяца: <b>${shortMoney(r.mtd)}</b>${r.prevMtd ? ` ${delta(r.mtd, r.prevMtd)} к тому же периоду прошлого месяца` : ''}`,
+    ...(d.forecast ? [`📈 Прогноз месяца: <b>${shortMoney(d.forecast.forecast)}</b>${d.forecast.goal ? ` из ${shortMoney(d.forecast.goal)} (${d.forecast.forecastPct}%)` : ''}`] : []),
     `🤝 Сделок закрыто: ${d.deals.closedDay}, новых: ${d.deals.newDay}`,
     `💳 Долги: ${shortMoney(d.debts.total)}, просрочено <b>${shortMoney(d.debts.overdue)}</b> (${d.debts.overdueDeals} сд.)`,
     `👥 Пропали: ${d.clients.overdue} постоянных клиентов · пора покупать: ${d.clients.dueSoon}`,
@@ -108,6 +109,10 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
   if (top.length) {
     lines.push('', '<b>Менеджеры (месяц / вчера)</b>');
     for (const m of top) lines.push(`${esc(m.name)}: ${shortMoney(m.revenueMtd)} / ${shortMoney(m.revenueDay)}`);
+  }
+  if (d.forecast?.behind.length) {
+    lines.push('', '<b>Не успевают план (прогноз)</b>');
+    for (const b of d.forecast.behind.slice(0, 6)) lines.push(`${esc(b.manager)}: ${b.forecastPct}% · не хватает ${shortMoney(b.gap)}`);
   }
   if (d.plans.length) {
     lines.push('', '<b>Розданные задачи</b>');
@@ -203,6 +208,7 @@ export async function sendDigestToUser(date: string, userId: string): Promise<vo
 const QUICK = {
   digest: '📊 Сводка',
   alerts: '🔔 Сигналы',
+  forecast: '📈 План и прогноз',
   managers: '👥 Менеджеры',
   debts: '💰 Долги',
   lapsed: '📉 Пропавшие клиенты',
@@ -213,13 +219,15 @@ const QUICK = {
 
 const QUICK_KEYBOARD: string[][] = [
   [QUICK.digest, QUICK.alerts],
-  [QUICK.managers, QUICK.debts],
-  [QUICK.lapsed, QUICK.stock],
-  [QUICK.memory, QUICK.fresh],
+  [QUICK.forecast, QUICK.managers],
+  [QUICK.debts, QUICK.lapsed],
+  [QUICK.stock, QUICK.memory],
+  [QUICK.fresh],
 ];
 
 /** Кнопки-вопросы: агенту уходит готовое задание. */
 const QUICK_QUESTIONS: Record<string, string> = {
+  [QUICK.forecast]: 'Успеваем ли план месяца? Прогноз по компании и по каждому менеджеру, кто отстаёт и где добрать до конца месяца. Коротко.',
   [QUICK.managers]: 'Как работают менеджеры в этом месяце: выручка, сделки, розданные задачи. Кто отстаёт и что с этим сделать? Коротко.',
   [QUICK.debts]: 'Кто сейчас должен больше всего и с какой просрочкой? Что делать с топ-5 должниками? Коротко.',
   [QUICK.lapsed]: 'Какие ценные постоянные клиенты пропали? Топ-10: кто ведёт, что брали, что предложить.',

@@ -13,6 +13,7 @@ import {
 import { clientPurchaseCycles, slowStock } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
+import { kpiForecast } from './rop-agent.kpi';
 
 /**
  * Ежедневная сводка РОП-агента за прошедший день. Цифры считаются здесь, без модели;
@@ -51,6 +52,16 @@ export type DigestData = {
     frozen: number;
     count: number;
     top: { productId: string; product: string; frozen: number; daysSinceSale: number | null }[];
+  };
+  /** Прогноз текущего месяца (может отсутствовать в старых сводках). */
+  forecast?: {
+    period: string;
+    goal: number | null;
+    fact: number;
+    forecast: number;
+    range: [number, number];
+    forecastPct: number | null;
+    behind: { manager: string; plan: number; forecastPct: number; gap: number }[];
   };
   plans: {
     planId: string;
@@ -226,12 +237,30 @@ async function plansBlock(): Promise<DigestData['plans']> {
   })));
 }
 
+/** Прогноз месяца той даты, за которую сводка (1-го числа — это уже прошлый, закрытый месяц). */
+async function forecastBlock(date: string): Promise<DigestData['forecast']> {
+  const f = await kpiForecast({ year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) });
+  if (!f.company) return undefined;
+  return {
+    period: f.period,
+    goal: f.company.goal,
+    fact: f.company.fact_mtd,
+    forecast: f.company.forecast,
+    range: f.company.forecast_range as [number, number],
+    forecastPct: f.company.forecast_pct,
+    behind: f.managers
+      .filter((m) => m.plan && m.forecast_pct != null && m.forecast_pct < 90)
+      .map((m) => ({ manager: m.manager, plan: m.plan!, forecastPct: m.forecast_pct!, gap: m.gap_to_plan ?? 0 })),
+  };
+}
+
 export async function collectDigestData(date: string): Promise<DigestData> {
-  const [revenue, deals, managers, debts, clients, slow, plans] = await Promise.all([
+  const [revenue, deals, managers, debts, clients, slow, plans, forecast] = await Promise.all([
     revenueBlock(date), dealsBlock(date), managersBlock(date), debtsBlock(date),
     clientsBlock(), slowStockBlock(), plansBlock(),
+    forecastBlock(date).catch((err) => { console.error('[rop-digest] forecast failed:', (err as Error).message); return undefined; }),
   ]);
-  return { date, revenue, deals, managers, debts, clients, slowStock: slow, plans };
+  return { date, revenue, deals, managers, debts, clients, slowStock: slow, plans, forecast };
 }
 
 // ─── Комментарий агента ─────────────────────────────────────────────────────
@@ -240,7 +269,7 @@ const COMMENTARY_PROMPT = `Ты — РОП-агент компании Polygraph
 Тебе дают цифры утренней сводки за вчерашний день в JSON и память агента — действующие договорённости директора.
 Учитывай память: не поднимай то, что директор уже решил или объяснил (например, клиент по договорённости платит в конце месяца). Напиши директору блок «На что обратить внимание сегодня»:
 3–6 коротких пунктов, каждый начинается с «- ». Только то, что требует действия или заметно отличается от обычного:
-провал или рост выручки, менеджер, который отстаёт, крупная просрочка долга, ценный клиент, который пропал,
+провал или рост выручки, отставание от плана месяца по прогнозу (forecast), менеджер, который отстаёт, крупная просрочка долга, ценный клиент, который пропал,
 замороженные деньги в складе, розданные задачи, которые не выполняются. В каждом пункте — имя или товар и цифра.
 Суммы пиши коротко: «48,2 млн», «1,02 млрд». Не пересказывай всю сводку, без вступления и без заголовка.
 Последней строкой, после пустой строки, — одно предложение: с чего начать день.`;

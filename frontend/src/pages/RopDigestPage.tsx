@@ -160,6 +160,18 @@ function DigestBody({ d }: { d: RopDigestData }) {
             <Delta now={d.revenue.mtd} before={d.revenue.prevMtd} suffix="к тому же периоду" />
           </Tile>
         </Col>
+        {d.forecast && (
+          <Col xs={12} md={8} xl={4}>
+            <Tile title="Прогноз месяца" value={shortMoney(d.forecast.forecast)} full={`${formatUZS(d.forecast.range[0])} – ${formatUZS(d.forecast.range[1])}`}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {d.forecast.goal ? `${d.forecast.forecastPct}% из ${shortMoney(d.forecast.goal)}` : 'цель месяца не задана'}
+              </Text>
+              {d.forecast.behind.length > 0 && (
+                <div><Text type="warning" style={{ fontSize: 12 }}>не успевают: {d.forecast.behind.map((b) => b.manager.split(' ')[0]).join(', ')}</Text></div>
+              )}
+            </Tile>
+          </Col>
+        )}
         <Col xs={12} md={8} xl={4}>
           <Tile title="Сделки за день" value={`${d.deals.closedDay} закрыто`}>
             <Text type="secondary" style={{ fontSize: 12 }}>новых: {d.deals.newDay}</Text>
