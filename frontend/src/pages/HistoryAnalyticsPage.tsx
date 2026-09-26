@@ -268,10 +268,11 @@ export default function HistoryAnalyticsPage() {
   }, [dataQuality?.problemRows, dqOpTypeFilter, dqSearch]);
 
   /**
-   * Последний месяц, за который у выбранного года есть данные. Для текущего года это
-   * идущий месяц: сравнивать его 9 месяцев с 12 месяцами прошлого года нельзя — в
-   * таблице появлялись строки «0 против большого числа», а «Итого» показывало
-   * фантастическое падение просто потому, что год ещё не кончился.
+   * Последний месяц, за который у выбранного года есть данные. Строки таблицы на нём
+   * не обрываются — прошлые годы видно целиком, — но «Итого» считается только по этот
+   * месяц: иначе 9 месяцев текущего года сравнивались бы с 12 месяцами прошлого и
+   * сумма показывала бы фантастическое падение просто потому, что год не кончился.
+   * В ещё не наступивших месяцах у текущего года стоит «—», а не ноль.
    */
   const comparableThroughMonth = useMemo(() => {
     const months = (data?.monthlyTrend || []).map((m) => m.month);
@@ -285,9 +286,10 @@ export default function HistoryAnalyticsPage() {
     const prevMap = new Map((prevYearData?.monthlyTrend || []).map((m) => [m.month, m]));
     const months = Array.from(
       new Set<number>([...currentMap.keys(), ...prevMap.keys()]),
-    ).sort((a, b) => a - b).filter((m) => m <= comparableThroughMonth);
+    ).sort((a, b) => a - b);
 
     return months.map((month) => {
+      const isFuture = month > comparableThroughMonth;
       const current = currentMap.get(month);
       const prev = prevMap.get(month);
       const currentValue = yoyMetric === 'revenue' ? Number(current?.revenue ?? 0) : Number(current?.collected ?? 0);
@@ -297,13 +299,22 @@ export default function HistoryAnalyticsPage() {
       return {
         key: month,
         month,
-        currentValue,
+        isFuture,
+        // Месяц ещё не наступил: у текущего года не ноль, а «пока ничего», и
+        // сравнивать это с прошлым годом нечем.
+        currentValue: isFuture ? null : currentValue,
         prevValue,
-        delta,
-        deltaPct,
+        delta: isFuture ? null : delta,
+        deltaPct: isFuture ? null : deltaPct,
       };
     });
   }, [data?.monthlyTrend, prevYearData?.monthlyTrend, yoyMetric, comparableThroughMonth]);
+
+  const allYearsThroughMonth = useMemo(() => {
+    const currentYearData = allYearsQueries[ALL_YEARS.length - 1]?.data;
+    const months = (currentYearData?.monthlyTrend || []).map((m) => m.month);
+    return months.length > 0 ? Math.max(...months) : 12;
+  }, [allYearsQueries, ALL_YEARS]);
 
   const allYearsRows = useMemo(() => {
     if (yoyMode !== 'allYears') return [];
@@ -313,29 +324,37 @@ export default function HistoryAnalyticsPage() {
     });
     // Текущий год всегда неполный, поэтому обрезаем все столбцы по его последнему
     // месяцу с данными — иначе колонка «Разница» сравнивает 9 месяцев с 12.
-    const currentYearMonths = Array.from(yearMaps[yearMaps.length - 1]?.keys() ?? []);
-    const throughMonth = currentYearMonths.length > 0 ? Math.max(...currentYearMonths) : 12;
+    const throughMonth = allYearsThroughMonth;
+    const currentYear = ALL_YEARS[ALL_YEARS.length - 1];
     const months = Array.from(
       new Set<number>(yearMaps.flatMap((m) => Array.from(m.keys()))),
-    ).sort((a, b) => a - b).filter((m) => m <= throughMonth);
+    ).sort((a, b) => a - b);
 
     return months.map((month) => {
+      const isFuture = month > throughMonth;
       const row: Record<string, number | null> = {};
       ALL_YEARS.forEach((y, i) => {
         const rec = yearMaps[i].get(month);
-        row[`y${y}`] = yoyMetric === 'revenue' ? Number(rec?.revenue ?? 0) : Number(rec?.collected ?? 0);
+        const value = yoyMetric === 'revenue' ? Number(rec?.revenue ?? 0) : Number(rec?.collected ?? 0);
+        // Пусто только у текущего года: у прошлых лет октябрь–декабрь были.
+        row[`y${y}`] = isFuture && y === currentYear ? null : value;
       });
       ALL_YEARS.forEach((y, i) => {
         if (i === 0) return;
         const prevY = ALL_YEARS[i - 1];
-        const cur = Number(row[`y${y}`] ?? 0);
-        const prev = Number(row[`y${prevY}`] ?? 0);
-        row[`d${y}`] = cur - prev;
+        const cur = row[`y${y}`];
+        const prev = row[`y${prevY}`];
+        if (cur == null || prev == null) {
+          row[`d${y}`] = null;
+          row[`p${y}`] = null;
+          return;
+        }
         row[`p${y}`] = prev > 0 ? ((cur - prev) / prev) * 100 : null;
+        row[`d${y}`] = cur - prev;
       });
       return { key: month, month, ...row };
     });
-  }, [yoyMode, yoyMetric, allYearsQueries, ALL_YEARS]);
+  }, [yoyMode, yoyMetric, allYearsQueries, ALL_YEARS, allYearsThroughMonth]);
 
   // Compute max monthly revenue for activity matrix color gradient
   const maxMonthRevenue = useMemo(() => {
@@ -726,9 +745,9 @@ export default function HistoryAnalyticsPage() {
           <span>
             {yoyMode === 'allYears' ? 'Сравнение по годам' : `Сравнение с ${prevYear} годом`}
             {isPartialYear && (
-              <Tooltip title={`Год ещё не закончился: сравниваются только месяцы по ${MONTH_LABELS[comparableThroughMonth]} включительно, иначе «Итого» сопоставляло бы неполный год с полным.`}>
+              <Tooltip title={`Год ещё не закончился. Месяцы после ${MONTH_LABELS[comparableThroughMonth]} показаны по прошлым годам, а «Итого» считается по январь — ${MONTH_LABELS[comparableThroughMonth]}: иначе неполный год сравнивался бы с полным.`}>
                 <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
-                  {`янв — ${MONTH_LABELS[comparableThroughMonth]}`}
+                  {`итого: ${MONTH_LABELS[1]} — ${MONTH_LABELS[comparableThroughMonth]}`}
                 </Text>
               </Tooltip>
             )}
@@ -779,7 +798,8 @@ export default function HistoryAnalyticsPage() {
                   dataIndex: `y${y}`,
                   key: `y${y}`,
                   align: 'right' as const,
-                  render: (v: number) => fmtNum(v ?? 0),
+                  render: (v: number | null) =>
+                    v == null ? <span style={{ color: token.colorTextSecondary }}>—</span> : fmtNum(v),
                 };
                 if (i === 0) return [yearCol];
                 return [
@@ -789,10 +809,12 @@ export default function HistoryAnalyticsPage() {
                     dataIndex: `d${y}`,
                     key: `d${y}`,
                     align: 'right' as const,
-                    render: (v: number) => (
-                      <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
-                        {v >= 0 ? '+' : ''}{fmtNum(v)}
-                      </span>
+                    render: (v: number | null) => (
+                      v == null ? <span style={{ color: token.colorTextSecondary }}>—</span> : (
+                        <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                          {v >= 0 ? '+' : ''}{fmtNum(v)}
+                        </span>
+                      )
                     ),
                   },
                   {
@@ -814,9 +836,12 @@ export default function HistoryAnalyticsPage() {
               }),
             ]}
             summary={(rows) => {
+              // Суммируем только месяцы, которые текущий год успел прожить,
+              // иначе «Разница» в итогах сравнивала бы 9 месяцев с 12.
+              const comparable = rows.filter((r) => Number(r.month) <= allYearsThroughMonth);
               const totals: Record<string, number> = {};
               ALL_YEARS.forEach((y) => {
-                totals[`y${y}`] = rows.reduce((s, r) => s + Number((r as Record<string, number>)[`y${y}`] || 0), 0);
+                totals[`y${y}`] = comparable.reduce((s, r) => s + Number((r as Record<string, number>)[`y${y}`] || 0), 0);
               });
               return (
                 <Table.Summary.Row>
@@ -878,17 +903,20 @@ export default function HistoryAnalyticsPage() {
                 dataIndex: 'currentValue',
                 key: 'currentValue',
                 align: 'right',
-                render: (v: number) => fmtNum(v),
+                render: (v: number | null) =>
+                  v == null ? <span style={{ color: token.colorTextSecondary }}>—</span> : fmtNum(v),
               },
               {
                 title: 'Разница',
                 dataIndex: 'delta',
                 key: 'delta',
                 align: 'right',
-                render: (v: number) => (
-                  <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
-                    {v >= 0 ? '+' : ''}{fmtNum(v)}
-                  </span>
+                render: (v: number | null) => (
+                  v == null ? <span style={{ color: token.colorTextSecondary }}>—</span> : (
+                    <span style={{ color: v >= 0 ? token.colorSuccess : token.colorError, fontWeight: 600 }}>
+                      {v >= 0 ? '+' : ''}{fmtNum(v)}
+                    </span>
+                  )
                 ),
               },
               {
@@ -908,8 +936,11 @@ export default function HistoryAnalyticsPage() {
               },
             ]}
             summary={(rows) => {
-              const totalPrev = rows.reduce((s, r) => s + Number(r.prevValue || 0), 0);
-              const totalCurrent = rows.reduce((s, r) => s + Number(r.currentValue || 0), 0);
+              // Только прожитые месяцы: иначе прошлый год суммировался бы целиком
+              // против неполного текущего.
+              const comparable = rows.filter((r) => !r.isFuture);
+              const totalPrev = comparable.reduce((s, r) => s + Number(r.prevValue || 0), 0);
+              const totalCurrent = comparable.reduce((s, r) => s + Number(r.currentValue || 0), 0);
               const totalDelta = totalCurrent - totalPrev;
               const totalDeltaPct = totalPrev > 0 ? (totalDelta / totalPrev) * 100 : null;
               return (
