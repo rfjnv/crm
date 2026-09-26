@@ -4,6 +4,8 @@ import { authenticate } from '../../middleware/authenticate';
 import { requirePermission } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { PERMISSIONS } from '../../lib/permissions';
+import { COST_ACCESS_REQUIRED, hasCostAccess } from '../../lib/costAccess';
+import { AppError } from '../../lib/errors';
 import {
   askInChat,
   createChat,
@@ -22,6 +24,7 @@ import { addMemory, deleteMemory, listMemories, updateMemory } from './rop-agent
 import { decideAlert, listAlerts } from './rop-agent.alerts';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
+const createChatDto = z.object({ costMode: z.boolean().optional() }).optional();
 const renameDto = z.object({ title: z.string().trim().min(1).max(100) });
 const planClientDto = z.object({
   clientId: z.string().min(1),
@@ -52,28 +55,32 @@ router.get('/chats', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.post('/chats', asyncHandler(async (req: Request, res: Response) => {
-  res.status(201).json(await createChat(req.user!.userId));
+  const costMode = !!createChatDto.parse(req.body)?.costMode;
+  if (costMode && !hasCostAccess(req.user)) {
+    throw new AppError(403, 'Сначала откройте себестоимость по ПИН-коду', COST_ACCESS_REQUIRED);
+  }
+  res.status(201).json(await createChat(req.user!.userId, 'web', costMode));
 }));
 
 router.get('/chats/:chatId/messages', asyncHandler(async (req: Request, res: Response) => {
-  res.json(await getChatMessages(req.params.chatId as string, req.user!.userId));
+  res.json(await getChatMessages(req.params.chatId as string, req.user!.userId, hasCostAccess(req.user)));
 }));
 
 router.get('/chats/:chatId/status', asyncHandler(async (req: Request, res: Response) => {
   // Владение чатом проверяет getChatMessages; статус сам по себе ничего не раскрывает,
   // но проверяем так же, чтобы не угадывали чужие id.
-  await getChatMessages(req.params.chatId as string, req.user!.userId);
+  await getChatMessages(req.params.chatId as string, req.user!.userId, hasCostAccess(req.user));
   res.json(getTurnStatus(req.params.chatId as string));
 }));
 
 router.post('/chats/:chatId/ask', asyncHandler(async (req: Request, res: Response) => {
   const { question } = askDto.parse(req.body);
-  res.status(202).json(await askInChat(req.params.chatId as string, req.user!.userId, question));
+  res.status(202).json(await askInChat(req.params.chatId as string, req.user!.userId, question, hasCostAccess(req.user)));
 }));
 
 router.patch('/chats/:chatId', asyncHandler(async (req: Request, res: Response) => {
   const { title } = renameDto.parse(req.body);
-  res.json(await renameChat(req.params.chatId as string, req.user!.userId, title));
+  res.json(await renameChat(req.params.chatId as string, req.user!.userId, title, hasCostAccess(req.user)));
 }));
 
 router.delete('/chats/:chatId', asyncHandler(async (req: Request, res: Response) => {
@@ -84,7 +91,7 @@ router.delete('/chats/:chatId', asyncHandler(async (req: Request, res: Response)
 // ─── Планы задач ────────────────────────────────────────────────────────────
 
 router.get('/chats/:chatId/plans', asyncHandler(async (req: Request, res: Response) => {
-  res.json(await listChatPlans(req.params.chatId as string, req.user!.userId));
+  res.json(await listChatPlans(req.params.chatId as string, req.user!.userId, hasCostAccess(req.user)));
 }));
 
 router.put('/plans/:planId', asyncHandler(async (req: Request, res: Response) => {

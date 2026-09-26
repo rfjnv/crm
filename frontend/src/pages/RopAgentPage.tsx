@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Typography, message, theme,
+  Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Tooltip, Typography, message, theme,
 } from 'antd';
 import {
-  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, MenuOutlined, PlusOutlined,
+  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, LockOutlined, MenuOutlined, PlusOutlined,
   RobotOutlined, SendOutlined, UserOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useCostAccess } from '../hooks/useCostAccess';
 import { ropAgentApi, type RopAgentChat, type RopAgentMessage, type RopTaskPlan } from '../api/ropAgent.api';
 import RopTaskPlanCard from '../components/RopTaskPlanCard';
 import RopMemoryDrawer from '../components/RopMemoryDrawer';
@@ -26,6 +27,13 @@ const SUGGESTIONS = [
   'Составь горячий и холодный списки клиентов по менеджерам',
   'Как менеджеры выполняют розданные задачи? Кого надо обсудить?',
   'Сравни менеджеров за этот месяц: выручка, сделки, активность',
+];
+
+/** Подсказки для нового чата с себестоимостью. */
+const COST_SUGGESTIONS = [
+  'Где конкуренты дешевле нас и где можно снизить цену, сохранив маржу? Посчитай маржу до и после',
+  'Какие товары продаём с самой низкой маржой и что с ними делать?',
+  'Сколько денег заморожено в залежавшемся товаре по закупке и как их вернуть?',
 ];
 
 function errorMessage(err: unknown): string {
@@ -57,17 +65,25 @@ export default function RopAgentPage() {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [memoryOpen, setMemoryOpen] = useState(false);
+  /** Новый (ещё не созданный) чат будет с себестоимостью. */
+  const [newCostMode, setNewCostMode] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const cost = useCostAccess();
 
   const { data: chats = [], isLoading: chatsLoading } = useQuery({
     queryKey: ['rop-agent', 'chats'],
     queryFn: ropAgentApi.listChats,
   });
 
+  const activeChat = activeChatId ? chats.find((c) => c.id === activeChatId) : undefined;
+  // Чат с себестоимостью без открытого ПИН не грузим — сервер всё равно ответит 403.
+  const activeLocked = !!activeChat?.costMode && !cost.open;
+  const costChat = activeChatId ? !!activeChat?.costMode : newCostMode;
+
   const { data: chatData, isLoading: messagesLoading } = useQuery({
     queryKey: ['rop-agent', 'messages', activeChatId],
     queryFn: () => ropAgentApi.getMessages(activeChatId!),
-    enabled: !!activeChatId,
+    enabled: !!activeChatId && !activeLocked,
     // Пока агент отвечает — опрашиваем, чтобы видеть шаги и забрать ответ. Ответ идёт
     // минутами, и директор успевает уйти на другую вкладку — опрос не останавливаем.
     refetchInterval: (q) => (q.state.data?.status.running ? 2500 : false),
@@ -80,7 +96,7 @@ export default function RopAgentPage() {
   const { data: plans = [] } = useQuery({
     queryKey: ['rop-agent', 'plans', activeChatId],
     queryFn: () => ropAgentApi.listPlans(activeChatId!),
-    enabled: !!activeChatId,
+    enabled: !!activeChatId && !activeLocked,
   });
   const planById = new Map(plans.map((p: RopTaskPlan) => [p.id, p]));
   const { data: managers = [] } = useQuery({
@@ -108,7 +124,7 @@ export default function RopAgentPage() {
     mutationFn: async (question: string) => {
       let chatId = activeChatId;
       if (!chatId) {
-        const chat = await ropAgentApi.createChat();
+        const chat = await ropAgentApi.createChat(newCostMode);
         chatId = chat.id;
         setActiveChatId(chat.id);
       }
@@ -150,8 +166,9 @@ export default function RopAgentPage() {
   const askReport = (plan: RopTaskPlan) =>
     send(`Проверь выполнение плана «${plan.title}» (plan_id ${plan.id}): кто что сделал, где проблемы и что делать дальше.`);
 
-  const openChat = (id: string | null) => {
+  const openChat = (id: string | null, costMode = false) => {
     setActiveChatId(id);
+    setNewCostMode(costMode);
     setSidebarOpen(false);
     if (params.has('chat')) setParams({}, { replace: true });
   };
@@ -160,6 +177,14 @@ export default function RopAgentPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: 12 }}>
         <Button block icon={<PlusOutlined />} onClick={() => openChat(null)}>Новый разговор</Button>
+        {cost.eligible && (
+          <Tooltip title={cost.open ? 'Агент увидит закупку и маржу. Чат откроется только по ПИН' : 'Сначала откройте себестоимость замком в шапке'}>
+            <Button block icon={<LockOutlined />} style={{ marginTop: 8 }} disabled={!cost.open}
+              onClick={() => openChat(null, true)}>
+              С себестоимостью
+            </Button>
+          </Tooltip>
+        )}
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 8px' }}>
         {chatsLoading ? (
@@ -192,6 +217,7 @@ export default function RopAgentPage() {
               </div>
             ) : (
               <>
+                {chat.costMode && <LockOutlined style={{ fontSize: 12, color: token.colorWarning }} title="Чат с себестоимостью" />}
                 {chat.channel && chat.channel !== 'web' && <SendOutlined style={{ fontSize: 12, color: token.colorTextTertiary }} title={chat.channel === 'telegram_group' ? 'Разговор в группе Telegram' : 'Разговор в Telegram'} />}
                 <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{chat.title}</Text>
                 <div className="rop-chat-actions" style={{ display: 'flex' }} onClick={(e) => e.stopPropagation()}>
@@ -275,7 +301,8 @@ export default function RopAgentPage() {
     );
   };
 
-  const activeTitle = activeChatId ? chats.find((c) => c.id === activeChatId)?.title ?? 'Разговор' : 'РОП-агент';
+  const activeTitle = activeChatId ? activeChat?.title ?? 'Разговор' : 'РОП-агент';
+  const suggestions = newCostMode ? COST_SUGGESTIONS : SUGGESTIONS;
 
   return (
     <div style={{
@@ -299,6 +326,7 @@ export default function RopAgentPage() {
           {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />}
           <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
           <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
+          {costChat && <Tag icon={<LockOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>{isMobile ? null : 'себестоимость'}</Tag>}
           <Button icon={<BulbOutlined />} onClick={() => setMemoryOpen(true)} title="Что агент помнит">{isMobile ? null : 'Память'}</Button>
           <Link to="/rop-agent/digest"><Button icon={<BarChartOutlined />}>{isMobile ? null : 'Сводка'}</Button></Link>
         </div>
@@ -310,18 +338,27 @@ export default function RopAgentPage() {
                 image={<RobotOutlined style={{ fontSize: 56, color: token.colorTextQuaternary }} />}
                 description={(
                   <Text type="secondary">
-                    Дайте задание — агент изучит продажи, склад и цены конкурентов и вернётся с идеями.
+                    {newCostMode
+                      ? 'Чат с себестоимостью: агент видит закупку и маржу. В память и в Telegram эти цифры не попадут.'
+                      : 'Дайте задание — агент изучит продажи, склад и цены конкурентов и вернётся с идеями.'}
                   </Text>
                 )}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 640 }}>
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <Tag key={s} color="blue" style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: 16, whiteSpace: 'normal' }}
                     onClick={() => send(s)}>
                     {s}
                   </Tag>
                 ))}
               </div>
+            </div>
+          ) : activeLocked ? (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Empty
+                image={<LockOutlined style={{ fontSize: 48, color: token.colorWarning }} />}
+                description={<Text type="secondary">Это чат с себестоимостью. Откройте её замком в шапке — по ПИН-коду.</Text>}
+              />
             </div>
           ) : messagesLoading ? (
             <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
@@ -365,9 +402,9 @@ export default function RopAgentPage() {
                 send();
               }
             }}
-            placeholder={running ? 'Агент отвечает…' : 'Задание или вопрос агенту (Shift+Enter — новая строка)'}
+            placeholder={activeLocked ? 'Чат закрыт до ввода ПИН' : running ? 'Агент отвечает…' : 'Задание или вопрос агенту (Shift+Enter — новая строка)'}
             autoSize={{ minRows: 1, maxRows: 6 }}
-            disabled={running}
+            disabled={running || activeLocked}
             maxLength={8000}
           />
           <Button
@@ -375,7 +412,7 @@ export default function RopAgentPage() {
             icon={<SendOutlined />}
             onClick={() => send()}
             loading={askMutation.isPending}
-            disabled={running || !input.trim()}
+            disabled={running || activeLocked || !input.trim()}
           />
         </div>
       </div>

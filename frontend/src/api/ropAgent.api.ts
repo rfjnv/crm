@@ -5,6 +5,8 @@ export interface RopAgentChat {
   title: string;
   /** web — страница CRM; telegram — личка с ботом; telegram_group — группа. */
   channel?: 'web' | 'telegram' | 'telegram_group';
+  /** Чат с себестоимостью: открывается только при открытом по ПИН доступе. */
+  costMode?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -207,7 +209,8 @@ export interface RopAgentTurnStatus {
 
 export const ropAgentApi = {
   listChats: () => client.get<RopAgentChat[]>('/rop-agent/chats').then((r) => r.data),
-  createChat: () => client.post<RopAgentChat>('/rop-agent/chats').then((r) => r.data),
+  createChat: (costMode = false) =>
+    client.post<RopAgentChat>('/rop-agent/chats', costMode ? { costMode: true } : {}).then((r) => r.data),
   getMessages: (chatId: string) =>
     client
       .get<{ messages: RopAgentMessage[]; status: RopAgentTurnStatus }>(`/rop-agent/chats/${chatId}/messages`)

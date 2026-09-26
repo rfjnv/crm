@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
-import { ROP_AGENT_SYSTEM_PROMPT } from './rop-agent.prompt';
+import { COST_ACCESS_REQUIRED } from '../../lib/costAccess';
+import { ropAgentSystemPrompt } from './rop-agent.prompt';
 import { ROP_AGENT_TOOLS, describeToolCall, executeTool } from './rop-agent.tools';
 import { activeMemories, memoryHash, memoryText } from './rop-agent.memory';
 
@@ -49,9 +50,16 @@ export function getTurnStatus(chatId: string) {
 
 // ─── Чаты ───────────────────────────────────────────────────────────────────
 
-async function getOwnChat(chatId: string, userId: string) {
+/**
+ * @param costOpen открыт ли у пользователя доступ к себестоимости. Чат с себестоимостью
+ *   без него не читается и не продолжается — цифры из его истории иначе пережили бы ПИН.
+ */
+async function getOwnChat(chatId: string, userId: string, costOpen = false) {
   const chat = await prisma.ropAgentChat.findUnique({ where: { id: chatId } });
   if (!chat || chat.userId !== userId) throw new AppError(404, 'Чат не найден');
+  if (chat.costMode && !costOpen) {
+    throw new AppError(403, 'Чат с себестоимостью. Откройте себестоимость по ПИН-коду.', COST_ACCESS_REQUIRED);
+  }
   return chat;
 }
 
@@ -59,15 +67,16 @@ export function listChats(userId: string) {
   return prisma.ropAgentChat.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
-    select: { id: true, title: true, channel: true, createdAt: true, updatedAt: true },
+    select: { id: true, title: true, channel: true, costMode: true, createdAt: true, updatedAt: true },
   });
 }
 
 export type ChatChannel = 'web' | 'telegram' | 'telegram_group';
 
-export function createChat(userId: string, channel: ChatChannel = 'web') {
+export function createChat(userId: string, channel: ChatChannel = 'web', costMode = false) {
+  if (costMode && channel !== 'web') throw new AppError(400, 'Чат с себестоимостью бывает только в CRM');
   return prisma.ropAgentChat.create({
-    data: { userId, channel, ...(channel === 'web' ? {} : { title: 'Telegram' }) },
+    data: { userId, channel, costMode, ...(channel === 'web' ? {} : { title: 'Telegram' }) },
   });
 }
 
@@ -92,19 +101,21 @@ export function getLastAssistantMessage(chatId: string) {
   });
 }
 
-export async function renameChat(chatId: string, userId: string, title: string) {
-  await getOwnChat(chatId, userId);
+export async function renameChat(chatId: string, userId: string, title: string, costOpen = false) {
+  await getOwnChat(chatId, userId, costOpen);
   return prisma.ropAgentChat.update({ where: { id: chatId }, data: { title } });
 }
 
+/** Удалить можно и без ПИН: удаление ничего не раскрывает. */
 export async function deleteChat(chatId: string, userId: string) {
-  await getOwnChat(chatId, userId);
+  const chat = await prisma.ropAgentChat.findUnique({ where: { id: chatId }, select: { userId: true } });
+  if (!chat || chat.userId !== userId) throw new AppError(404, 'Чат не найден');
   if (running.has(chatId)) throw new AppError(409, 'Агент ещё отвечает в этом чате');
   await prisma.ropAgentChat.delete({ where: { id: chatId } });
 }
 
-export async function getChatMessages(chatId: string, userId: string) {
-  await getOwnChat(chatId, userId);
+export async function getChatMessages(chatId: string, userId: string, costOpen = false) {
+  await getOwnChat(chatId, userId, costOpen);
   const messages = await prisma.ropAgentMessage.findMany({
     where: { chatId },
     orderBy: { createdAt: 'asc' },
@@ -129,8 +140,8 @@ function titleFrom(question: string): string {
  * Принимает вопрос и запускает ответ в фоне. История для Claude собирается из
  * сохранённых `apiMessages` дословно и только дописывается.
  */
-export async function askInChat(chatId: string, userId: string, question: string) {
-  const chat = await getOwnChat(chatId, userId);
+export async function askInChat(chatId: string, userId: string, question: string, costOpen = false) {
+  const chat = await getOwnChat(chatId, userId, costOpen);
   if (running.has(chatId)) throw new AppError(409, 'Агент ещё отвечает на предыдущий вопрос');
 
   const last = await prisma.ropAgentMessage.findFirst({
@@ -174,7 +185,7 @@ export async function askInChat(chatId: string, userId: string, question: string
 
   const turn: RunningTurn = { startedAt: Date.now(), steps: [] };
   running.set(chatId, turn);
-  turn.done = runTurn(chatId, userId, turn)
+  turn.done = runTurn(chatId, userId, turn, chat.costMode)
     .catch((err) => console.error('[rop-agent] turn failed:', (err as Error).message))
     .finally(() => running.delete(chatId));
 
@@ -228,7 +239,7 @@ function errorText(err: unknown): string {
   return `Ошибка агента: ${(err as Error).message}`;
 }
 
-async function runTurn(chatId: string, userId: string, turn: RunningTurn): Promise<void> {
+async function runTurn(chatId: string, userId: string, turn: RunningTurn, costMode: boolean): Promise<void> {
   let history = await loadHistory(chatId);
   /** Всё, что добавится к истории за этот ответ, — сохраняется одной репликой. */
   const produced: Anthropic.MessageParam[] = [];
@@ -255,7 +266,7 @@ async function runTurn(chatId: string, userId: string, turn: RunningTurn): Promi
     const call = () => anthropic.messages.create({
       model: config.ropAgent.model,
       max_tokens: 16000,
-      system: ROP_AGENT_SYSTEM_PROMPT,
+      system: ropAgentSystemPrompt(costMode),
       tools: ROP_AGENT_TOOLS,
       thinking: { type: 'adaptive' },
       output_config: { effort: config.ropAgent.effort },
@@ -310,7 +321,7 @@ async function runTurn(chatId: string, userId: string, turn: RunningTurn): Promi
         const input = (tu.input ?? {}) as Record<string, unknown>;
         const label = describeToolCall(tu.name, input);
         turn.steps.push(label);
-        const { content, isError, planId } = await executeTool(tu.name, input, { chatId, userId });
+        const { content, isError, planId } = await executeTool(tu.name, input, { chatId, userId, allowCost: costMode });
         toolCalls.push({ name: tu.name, label, isError, ...(planId ? { planId } : {}) });
         return { type: 'tool_result', tool_use_id: tu.id, content, is_error: isError } satisfies Anthropic.ToolResultBlockParam;
       }));

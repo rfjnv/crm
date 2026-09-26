@@ -1,3 +1,4 @@
+import { COST_ACCESS_REQUIRED } from '../../lib/costAccess';
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
@@ -182,9 +183,12 @@ export async function proposeTaskPlan(
 
 // ─── Страница ───────────────────────────────────────────────────────────────
 
-export async function listChatPlans(chatId: string, userId: string) {
-  const chat = await prisma.ropAgentChat.findUnique({ where: { id: chatId }, select: { userId: true } });
+export async function listChatPlans(chatId: string, userId: string, costOpen = false) {
+  const chat = await prisma.ropAgentChat.findUnique({ where: { id: chatId }, select: { userId: true, costMode: true } });
   if (!chat || chat.userId !== userId) throw new AppError(404, 'Чат не найден');
+  if (chat.costMode && !costOpen) {
+    throw new AppError(403, 'Чат с себестоимостью. Откройте себестоимость по ПИН-коду.', COST_ACCESS_REQUIRED);
+  }
   const plans = await prisma.ropTaskPlan.findMany({ where: { chatId }, orderBy: { createdAt: 'asc' } });
   return plans.map(publicPlan);
 }

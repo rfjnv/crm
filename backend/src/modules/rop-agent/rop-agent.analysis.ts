@@ -293,7 +293,7 @@ export type SlowStockInput = {
  * по цене продажи и прошлыми покупателями, которым его можно предложить.
  * По цене продажи, а не закупки: себестоимость агенту закрыта (lib/costAccess).
  */
-export async function slowStock(input: SlowStockInput) {
+export async function slowStock(input: SlowStockInput, allowCost = false) {
   const days = clamp(input.days_without_sale, 60, 14, 730);
   const limit = clamp(input.limit, 30, 1, 100);
   const buyersPer = clamp(input.buyers_per_product, 5, 0, 20);
@@ -303,6 +303,7 @@ export async function slowStock(input: SlowStockInput) {
   const products = await prisma.$queryRaw<{
     product_id: string; product: string; sku: string; unit: string | null; category: string | null;
     stock: number; sale_price: number | null; stock_value_by_sale: number | null;
+    purchase_price: number | null; frozen_by_purchase: number | null;
     last_sale: string | null; days_since_sale: number | null; sold_qty_12m: number;
   }[]>(Prisma.sql`
     WITH lines AS (${SALES_LINES}),
@@ -314,6 +315,8 @@ export async function slowStock(input: SlowStockInput) {
     SELECT p.id AS product_id, p.name AS product, p.sku, p.unit, p.category,
       p.stock::float8 AS stock, p.sale_price::float8 AS sale_price,
       (p.stock * p.sale_price)::float8 AS stock_value_by_sale,
+      ${allowCost ? Prisma.sql`p.purchase_price::float8` : Prisma.sql`NULL::float8`} AS purchase_price,
+      ${allowCost ? Prisma.sql`(p.stock * p.purchase_price)::float8` : Prisma.sql`NULL::float8`} AS frozen_by_purchase,
       to_char(ls.last_day, 'YYYY-MM-DD') AS last_sale,
       (${TODAY} - ls.last_day)::int AS days_since_sale,
       COALESCE(ls.qty_12m, 0)::float8 AS sold_qty_12m

@@ -56,7 +56,7 @@ function stripSqlComments(sql: string): string {
 }
 
 /** Возвращает запрос без завершающей «;» или бросает ошибку с понятной причиной. */
-export function validateReadOnlySql(raw: string): string {
+export function validateReadOnlySql(raw: string, allowCost = false): string {
   const sql = stripSqlComments(raw).trim().replace(/;\s*$/, '').trim();
   if (!sql) throw new Error('Пустой запрос');
   if (sql.includes(';')) throw new Error('Разрешён только один запрос, без «;» внутри');
@@ -65,7 +65,7 @@ export function validateReadOnlySql(raw: string): string {
   if (SECRET_NAME.test(sql) || SECRET_TABLES.test(sql)) {
     throw new Error('Пароли, токены и сессии недоступны агенту');
   }
-  if (isCostSql(sql)) throw new Error(COST_AI_REFUSAL);
+  if (!allowCost && isCostSql(sql)) throw new Error(COST_AI_REFUSAL);
   return sql;
 }
 
@@ -101,7 +101,7 @@ async function runReadOnly<T>(sql: string): Promise<T[]> {
 
 // ─── Инструменты ────────────────────────────────────────────────────────────
 
-async function describeTables(input: { tables?: string[] }) {
+async function describeTables(input: { tables?: string[] }, allowCost = false) {
   const names = (input.tables ?? []).map((t) => t.trim()).filter(Boolean);
   if (!names.length) {
     const rows = await prisma.$queryRaw<{ table_name: string; columns: number }[]>`
@@ -109,7 +109,7 @@ async function describeTables(input: { tables?: string[] }) {
       FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name NOT LIKE '\\_prisma%'
       GROUP BY table_name ORDER BY table_name`;
-    return { tables: rows.filter((r) => !SECRET_TABLES.test(r.table_name) && !isCostSql(r.table_name)) };
+    return { tables: rows.filter((r) => !SECRET_TABLES.test(r.table_name) && (allowCost || !isCostSql(r.table_name))) };
   }
   const rows = await prisma.$queryRaw<{ table_name: string; column_name: string; data_type: string; udt_name: string; is_nullable: string }[]>`
     SELECT table_name, column_name, data_type, udt_name, is_nullable
@@ -124,7 +124,7 @@ async function describeTables(input: { tables?: string[] }) {
   const byTable: Record<string, { column: string; type: string; nullable: boolean; values?: string[] }[]> = {};
   for (const r of rows) {
     if (SECRET_TABLES.test(r.table_name) || SECRET_NAME.test(r.column_name)) continue;
-    if (isCostSql(r.table_name) || isCostKey(r.column_name)) continue;
+    if (!allowCost && (isCostSql(r.table_name) || isCostKey(r.column_name))) continue;
     const isEnum = r.data_type === 'USER-DEFINED' && enumByName.has(r.udt_name);
     (byTable[r.table_name] ??= []).push({
       column: r.column_name,
@@ -137,8 +137,8 @@ async function describeTables(input: { tables?: string[] }) {
   return { tables: byTable, ...(missing.length ? { not_found: missing } : {}) };
 }
 
-async function runSql(input: { sql: string }) {
-  const sql = validateReadOnlySql(input.sql);
+async function runSql(input: { sql: string }, allowCost = false) {
+  const sql = validateReadOnlySql(input.sql, allowCost);
   const rows = await runReadOnly<Record<string, unknown>>(
     `SELECT * FROM (${sql}) AS agent_query LIMIT ${SQL_ROW_LIMIT + 1}`,
   );
@@ -166,14 +166,16 @@ type ProductEconomicsRow = {
   category: string | null;
   stock: number;
   sale_price: number | null;
+  /** Только в чате с себестоимостью, иначе null. */
+  purchase_price: number | null;
   qty_sold: number;
   revenue: number;
   clients: number;
   last_sale_at: string | null;
 };
 
-/** Товары с экономикой: остаток, цены, маржа, продажи за период и когда продавался в последний раз. */
-async function productEconomicsRows(input: ProductEconomicsInput): Promise<ProductEconomicsRow[]> {
+/** Товары с экономикой: остаток, цены, продажи за период и когда продавался в последний раз. */
+async function productEconomicsRows(input: ProductEconomicsInput, allowCost = false): Promise<ProductEconomicsRow[]> {
   const days = Math.min(Math.max(Math.round(input.days ?? 90), 1), 1095);
   const limit = Math.min(Math.max(Math.round(input.limit ?? 50), 1), 200);
   const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT];
@@ -204,6 +206,7 @@ async function productEconomicsRows(input: ProductEconomicsInput): Promise<Produ
     SELECT p.id, p.sku, p.name, p.unit, p.category,
       p.stock::float8 AS stock,
       p.sale_price::float8 AS sale_price,
+      ${allowCost ? Prisma.sql`p.purchase_price::float8` : Prisma.sql`NULL::float8`} AS purchase_price,
       COALESCE(pr.qty, 0)::float8 AS qty_sold,
       COALESCE(pr.revenue, 0)::float8 AS revenue,
       COALESCE(pr.clients, 0)::int AS clients,
@@ -217,15 +220,21 @@ async function productEconomicsRows(input: ProductEconomicsInput): Promise<Produ
   return rows;
 }
 
-async function productEconomics(input: ProductEconomicsInput) {
+function marginPct(price: number | null, cost: number | null): number | null {
+  if (!price || cost == null || price <= 0) return null;
+  return Math.round(((price - cost) / price) * 1000) / 10;
+}
+
+async function productEconomics(input: ProductEconomicsInput, allowCost = false) {
   const days = Math.min(Math.max(Math.round(input.days ?? 90), 1), 1095);
-  const rows = await productEconomicsRows(input);
+  const rows = await productEconomicsRows(input, allowCost);
   return {
     period_days: days,
     products: rows.map((r) => {
       const dailyQty = r.qty_sold / days;
       return {
         ...r,
+        ...(allowCost ? { margin_pct: marginPct(r.sale_price, r.purchase_price) } : {}),
         // С одним знаком: «0» при запасе на полдня читается как «уже кончился».
         stock_cover_days: dailyQty > 0 ? Math.round((r.stock / dailyQty) * 10) / 10 : null,
       };
@@ -245,7 +254,7 @@ type MarketInput = {
  * Закупки и маржи здесь нет — себестоимость агенту закрыта (lib/costAccess).
  * Именно это нужно, чтобы решать, где демпинговать, а где нет.
  */
-async function marketComparison(input: MarketInput) {
+async function marketComparison(input: MarketInput, allowCost = false) {
   const priceBySku = await loadPriceBySku({ kind: 'trading' });
   let rows = livePriceRows(priceBySku);
   if (input.category?.trim()) {
@@ -268,13 +277,16 @@ async function marketComparison(input: MarketInput) {
 
   const allSkus = [...new Set(rows.flatMap((r) => CATALOG_LINKS[r.ourProduct]?.skus ?? []))];
   const econ = allSkus.length
-    ? await productEconomicsRows({ skus: allSkus, days: 90, limit: 200 })
+    ? await productEconomicsRows({ skus: allSkus, days: 90, limit: 200 }, allowCost)
     : [];
   const econBySku = new Map(econ.map((e) => [normalizeSku(e.sku), e]));
 
   const priceRows = rows.map((r) => {
     const link = CATALOG_LINKS[r.ourProduct];
+    const perUnit = link?.perUnit ?? 1;
     const linked = (link?.skus ?? []).map((s) => econBySku.get(normalizeSku(s))).filter((e): e is ProductEconomicsRow => !!e);
+    const costs = linked.map((e) => e.purchase_price).filter((c): c is number => c != null && c > 0).map((c) => c * perUnit);
+    const cost = allowCost && costs.length ? Math.max(...costs) : null; // консервативно: самая дорогая закупка
     return {
       category: r.category,
       our_product: r.ourProduct,
@@ -288,6 +300,11 @@ async function marketComparison(input: MarketInput) {
       diff_pct: r.competitorPrice != null && r.ourPrice > 0
         ? Math.round(((r.competitorPrice - r.ourPrice) / r.ourPrice) * 1000) / 10
         : null,
+      ...(allowCost ? {
+        purchase_price: cost,
+        margin_now_pct: marginPct(r.ourPrice, cost),
+        margin_at_competitor_price_pct: marginPct(r.competitorPrice, cost),
+      } : {}),
       linked_skus: linked.map((e) => e.sku),
       stock: linked.reduce((s, e) => s + e.stock, 0),
       sold_qty_90d: linked.reduce((s, e) => s + e.qty_sold, 0),
@@ -298,7 +315,7 @@ async function marketComparison(input: MarketInput) {
   });
 
   return {
-    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 18.03.2026, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса. Себестоимость закрыта.',
+    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 18.03.2026, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса.' + (allowCost ? ' purchase_price — самая высокая закупка среди привязанных артикулов.' : ' Себестоимость закрыта.'),
     price_rows: priceRows,
     ...(input.include_unique
       ? { competitor_only_products: THEIR_ONLY_ROWS, our_only_products: OUR_ONLY_ROWS }
@@ -313,7 +330,8 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     name: 'market_comparison',
     description:
       'Сравнение наших цен с ценами конкурентов (Yann, Bit Trade, Avanta Trade, Foil Trading) по совпадающим товарам. '
-      + 'По каждой строке сразу даёт наш остаток на складе и продажи за 90 дней. '
+      + 'По каждой строке сразу даёт наш остаток на складе и продажи за 90 дней, а в чате с себестоимостью — '
+      + 'ещё закупку, маржу сейчас и маржу по цене конкурента. '
       + 'Используй для ценовых стратегий (демпинг, выравнивание, удержание цены). '
       + 'include_unique=true добавит товары, которые есть только у конкурентов или только у нас.',
     input_schema: {
@@ -334,7 +352,7 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'product_economics',
     description:
-      'Экономика наших товаров: остаток, цена продажи, продано штук и выручка за период, '
+      'Экономика наших товаров: остаток, цена продажи (в чате с себестоимостью — ещё закупка и маржа %), продано штук и выручка за период, '
       + 'сколько разных клиентов брали, дата последней продажи и на сколько дней хватит остатка. '
       + 'Сортировка — по выручке за период. Удобно для залежавшегося товара (большой остаток, давняя последняя продажа) '
       + 'и для выбора товаров под акцию.',
@@ -659,15 +677,16 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  ctx: { chatId: string; userId: string },
+  ctx: { chatId: string; userId: string; allowCost?: boolean },
 ): Promise<{ content: string; isError: boolean; planId?: string }> {
+  const allowCost = !!ctx.allowCost;
   try {
     let result: unknown;
     let planId: string | undefined;
     switch (name) {
       case 'client_purchase_cycles': result = await clientPurchaseCycles(input as ClientCyclesInput); break;
       case 'stocked_product_buyers': result = await stockedProductBuyers(input as StockedProductBuyersInput); break;
-      case 'slow_stock': result = await slowStock(input as SlowStockInput); break;
+      case 'slow_stock': result = await slowStock(input as SlowStockInput, allowCost); break;
       case 'list_managers': result = await listManagers(); break;
       case 'task_plan_results': result = await taskPlanResults(input as { plan_id?: string; days?: number }); break;
       case 'kpi_forecast': result = await kpiForecast(input as { year?: number; month?: number; manager_id?: string }); break;
@@ -681,7 +700,11 @@ export async function executeTool(
         result = { client: c.companyName, relation: c.relation };
         break;
       }
-      case 'remember': result = await rememberTool(ctx, input); break;
+      case 'remember':
+        // Память общая для всех чатов и Telegram — себестоимость туда попасть не должна.
+        if (allowCost) throw new Error('В чате с себестоимостью память выключена. Запомнить можно в обычном чате.');
+        result = await rememberTool(ctx, input);
+        break;
       case 'forget': result = await forgetTool(input); break;
       case 'propose_task_plan': {
         const r = await proposeTaskPlan(ctx, input);
@@ -689,19 +712,19 @@ export async function executeTool(
         result = r;
         break;
       }
-      case 'market_comparison': result = await marketComparison(input as MarketInput); break;
-      case 'product_economics': result = await productEconomics(input as ProductEconomicsInput); break;
-      case 'describe_tables': result = await describeTables(input as { tables?: string[] }); break;
+      case 'market_comparison': result = await marketComparison(input as MarketInput, allowCost); break;
+      case 'product_economics': result = await productEconomics(input as ProductEconomicsInput, allowCost); break;
+      case 'describe_tables': result = await describeTables(input as { tables?: string[] }, allowCost); break;
       case 'run_sql':
         if (typeof input.sql !== 'string') throw new Error('Нужен параметр sql');
-        result = await runSql({ sql: input.sql });
+        result = await runSql({ sql: input.sql }, allowCost);
         break;
       default:
         return { content: `Неизвестный инструмент ${name}`, isError: true };
     }
     // Последний рубеж: что бы ни вернул инструмент (audit_logs с ценой в JSON, `p.*`),
     // себестоимость в модель не уходит.
-    let text = JSON.stringify(stripCostDeep(result));
+    let text = JSON.stringify(allowCost ? result : stripCostDeep(result));
     if (text.length > MAX_RESULT_CHARS) {
       text = `${text.slice(0, MAX_RESULT_CHARS)}\n…[обрезано: результат больше ${MAX_RESULT_CHARS} символов, сузь запрос или агрегируй]`;
     }

@@ -1401,6 +1401,9 @@ model RopAgentChat {
   channel   String   @default("web")
   /// Отпечаток памяти агента, переданной в этот чат последней (см. rop-agent.memory).
   memoryHash String? @map("memory_hash")
+  /// Чат с себестоимостью: создаётся и открывается только при открытом ПИН (lib/costAccess),
+  /// только в вебе. Агент в нём видит закупку и маржу, но не пишет в долговременную память.
+  costMode  Boolean  @default(false) @map("cost_mode")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
