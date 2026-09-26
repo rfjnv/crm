@@ -12,7 +12,8 @@ import { activeMemories, memoryText } from './rop-agent.memory';
 import { assignPlan, proposeTaskPlan } from './rop-agent.plans';
 import { kpiForecast } from './rop-agent.kpi';
 import { getTelegramChat } from './rop-agent.service';
-import { agentUserByTelegramId, broadcastTargets, shortMoney } from './rop-agent.telegram';
+import { broadcastTargets, callbackUser, shortMoney } from './rop-agent.telegram';
+import { directorUserIds } from './rop-agent.people';
 
 /**
  * Сигналы РОП-агента: он сам пишет директору, когда что-то требует решения, и сразу
@@ -197,6 +198,7 @@ const REVIEW_PROMPT = `Ты — РОП-агент компании Polygraph Bus
 - Не беспокой, если память это объясняет (клиент по договорённости платит позже, директор просил не поднимать) — send=false, permanent_skip=true и причина в reason.
 - Отправь не больше ${MAX_SEND_PER_RUN} самых важных; остальные send=false, permanent_skip=false (вернёмся к ним позже).
 - message — 1–2 предложения директору, с именами и цифрами, суммы коротко («18,4 млн»). Без приветствий.
+- Если manager_is_director = true — клиента ведёт сам директор: задачу НЕ предлагай (пустые строки), в message дай совет директору, что сделать самому.
 - task_title / task_description — задача менеджеру, которую ты предлагаешь поставить (конкретно: что сделать и что написать в отчёте). Если менеджер в отпуске по памяти — напиши это в message. Если задача не нужна (например, по сорванному плану нужен разговор директора с менеджером) — пустые строки.
 Ответь строго JSON по схеме.`;
 
@@ -242,7 +244,8 @@ async function reviewCandidates(candidates: Candidate[]): Promise<Review[]> {
   if (!config.claude.apiKey) return fallbackReview(candidates);
   try {
     const client = new Anthropic({ apiKey: config.claude.apiKey });
-    const input = candidates.map((c) => ({ key: c.key, kind: c.kind, facts: c.facts }));
+    const directors = await directorUserIds();
+    const input = candidates.map((c) => ({ key: c.key, kind: c.kind, facts: { ...c.facts, manager_is_director: !!c.managerId && directors.has(c.managerId) } }));
     const response = await client.messages.create({
       model: config.ropAgent.digestModel,
       max_tokens: 8000,
@@ -296,6 +299,8 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
   if (!candidates.length) return { reviewed: 0, sent: 0 };
   const reviews = await reviewCandidates(candidates);
   const recipients = agentBot.enabled ? broadcastTargets() : [];
+  // Директору задач не ставим: по его клиентам — только совет.
+  const directors = await directorUserIds();
   const dueDate = tashkentDate(1);
 
   let sent = 0;
@@ -304,7 +309,8 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
     const send = r.send && sent < allowed && recipients.length > 0;
     // «Менее срочно сейчас», упёрлись в лимит или некому слать — не записываем: пересмотрим в следующий раз.
     if (!send && !(r.send === false && r.permanent_skip)) continue;
-    const proposal: Proposal | null = send && r.task_title.trim() && c.managerId
+    const byDirector = !!c.managerId && directors.has(c.managerId);
+    const proposal: Proposal | null = send && !byDirector && r.task_title.trim() && c.managerId
       ? { managerId: c.managerId, managerName: c.managerName ?? '', clientId: c.clientId, title: r.task_title.trim(), description: r.task_description.trim(), dueDate }
       : null;
     const alert = await prisma.ropAlert.create({
@@ -413,11 +419,8 @@ export async function sendOpenAlerts(chatId: number | string): Promise<number> {
 
 async function onAlertButton(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , alertId, action] = (query.data ?? '').split(':');
-  const user = await agentUserByTelegramId(query.from.id);
-  if (!user || !alertId) {
-    await agentBot.answerCallback(query.id, 'Нет доступа');
-    return;
-  }
+  const user = await callbackUser(query, true);
+  if (!user || !alertId) return;
   try {
     await decideAlert(alertId, user.id, action === 'y');
     await agentBot.answerCallback(query.id, action === 'y' ? 'Задача поставлена' : 'Ок');

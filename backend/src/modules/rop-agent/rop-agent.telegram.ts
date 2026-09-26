@@ -11,6 +11,12 @@ import { activeMemories } from './rop-agent.memory';
 import { sendOpenAlerts } from './rop-agent.alerts';
 import { transcribeVoiceNote } from './rop-agent.voice';
 import {
+  crmUserByTelegramId,
+  directorUsers,
+  isDirectorTelegramId,
+  type AgentUser,
+} from './rop-agent.people';
+import {
   askInChat,
   createChat,
   getLastAssistantMessage,
@@ -133,28 +139,50 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
 
 // ─── Кто пишет ──────────────────────────────────────────────────────────────
 
-export type AgentUser = { id: string; fullName: string };
+export type { AgentUser };
 
 /**
- * Сотрудник CRM по Telegram ID — только из HOS_ALLOWED_IDS. Кто есть кто: сначала
- * HOS_USERS («telegramId=логин»), иначе привязанный в CRM Telegram (его chat id в
- * личке и есть Telegram ID). null — нет доступа или сотрудник не найден.
+ * Сотрудник CRM по Telegram ID — только из HOS_ALLOWED_IDS (см. rop-agent.people).
+ * null — нет доступа или сотрудник не найден.
  */
 export async function agentUserByTelegramId(telegramId: number | string | undefined): Promise<AgentUser | null> {
   if (!agentBot.isAllowed(telegramId)) return null;
-  const login = config.hos.users[String(telegramId)];
-  const user = await prisma.user.findFirst({
-    where: login ? { login } : { telegramChatId: String(telegramId) },
-    select: { id: true, fullName: true, isActive: true },
-  });
-  return user?.isActive ? { id: user.id, fullName: user.fullName } : null;
+  return crmUserByTelegramId(telegramId);
 }
 
 const NOT_LINKED = (telegramId: number | string | undefined) => [
-  '⚠️ Не нашёл вас в CRM.',
+  '⚠️ Не нашёл вас среди сотрудников CRM.',
   `Ваш Telegram ID: <code>${telegramId}</code>.`,
-  'Привяжите Telegram в CRM («Уведомления → Привязать Telegram») или попросите администратора добавить в HOS_USERS строку «ID=логин».',
+  'Администратору: добавить на Render в HOS_USERS строку «ID=логин_в_CRM» (через запятую для нескольких), '
+    + 'либо привязать Telegram в CRM («Уведомления → Привязать Telegram»).',
 ].join('\n');
+
+/**
+ * Кто нажал кнопку. Не найден в CRM — объясняем в чате, а не сухим «Нет доступа».
+ * directorOnly — кнопки решений (раздать план, поставить задачу): их жмёт директор.
+ */
+export async function callbackUser(query: TelegramBot.CallbackQuery, directorOnly = false): Promise<AgentUser | null> {
+  const user = await agentUserByTelegramId(query.from.id);
+  if (!user) {
+    await agentBot.answerCallback(query.id, 'Не нашёл вас в CRM — подробности в чате');
+    if (query.message) await agentBot.sendHtmlToChat(query.message.chat.id, NOT_LINKED(query.from.id), undefined, { replyTo: query.message.message_id });
+    return null;
+  }
+  if (directorOnly && !isDirectorTelegramId(query.from.id)) {
+    await agentBot.answerCallback(query.id, 'Решение принимает директор');
+    return null;
+  }
+  return user;
+}
+
+/**
+ * Чей разговор. В личке — свой. В группе — общий, директора: так все видят один
+ * контекст, а планы из группы раздаёт директор. Нет директора в CRM — свой.
+ */
+async function conversationOwner(ctx: ChatContext, sender: AgentUser): Promise<AgentUser> {
+  if (ctx.channel !== 'telegram_group') return sender;
+  return (await directorUsers())[0] ?? sender;
+}
 
 /** Куда слать сводку и сигналы: в группу, а без неё — в личку каждому разрешённому. */
 export function broadcastTargets(): string[] {
@@ -287,12 +315,16 @@ function progressHtml(steps: string[], sec: number): string {
   return lines.join('\n');
 }
 
-/** Ответ агента может занять минуты: держим «печатает…» и ждём окончания. */
-export async function askAgentFromTelegram(ctx: ChatContext, userId: string, question: string): Promise<void> {
+/**
+ * Ответ агента может занять минуты: держим «печатает…» и ждём окончания. В общем
+ * разговоре группы вопрос подписан именем спросившего — агент видит, кто спрашивает.
+ */
+export async function askAgentFromTelegram(ctx: ChatContext, sender: AgentUser, question: string): Promise<void> {
   const { telegramChatId: chatId, replyTo } = ctx;
-  const chat = await getTelegramChat(userId, ctx.channel);
+  const owner = await conversationOwner(ctx, sender);
+  const chat = await getTelegramChat(owner.id, ctx.channel);
   try {
-    await askInChat(chat.id, userId, question);
+    await askInChat(chat.id, owner.id, owner.id === sender.id ? question : `[спрашивает ${sender.fullName}] ${question}`);
   } catch (err) {
     await agentBot.sendHtmlToChat(chatId, `⚠️ ${esc((err as Error).message)}`, undefined, { replyTo });
     return;
@@ -366,17 +398,18 @@ const contextOf = (chat: TelegramBot.Chat, replyTo?: number): ChatContext => ({
 });
 
 /**
- * «Раздать» / «Отклонить» под ответом агента. Нажать может любой из разрешённых —
- * в группе план мог попросить другой; раздаётся от имени того, кто его заказал.
+ * «Раздать» / «Отклонить» под ответом агента — решение директора. Раздаётся от имени
+ * владельца разговора (в группе это и есть директор).
  */
 async function onPlanButton(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , planId, action] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
   const messageId = query.message?.message_id;
-  const user = await agentUserByTelegramId(query.from.id);
+  const user = await callbackUser(query, true);
+  if (!user) return;
   const plan = planId ? await prisma.ropTaskPlan.findUnique({ where: { id: planId }, select: { chat: { select: { userId: true } } } }) : null;
-  if (!user || !plan || chatId == null || messageId == null) {
-    await agentBot.answerCallback(query.id, 'Нет доступа');
+  if (!plan || chatId == null || messageId == null) {
+    await agentBot.answerCallback(query.id, 'План не найден');
     return;
   }
   try {
@@ -402,14 +435,11 @@ async function onFollowUp(query: TelegramBot.CallbackQuery): Promise<void> {
   const kind = (query.data ?? '').split(':')[2];
   const question = FOLLOW_UPS[kind];
   const message = query.message;
-  const user = await agentUserByTelegramId(query.from.id);
-  if (!user || !question || !message) {
-    await agentBot.answerCallback(query.id, 'Нет доступа');
-    return;
-  }
+  const user = await callbackUser(query);
+  if (!user || !question || !message) return;
   await agentBot.answerCallback(query.id, 'Спрашиваю агента');
   await agentBot.clearButtons(message.chat.id, message.message_id);
-  await askAgentFromTelegram(contextOf(message.chat, message.message_id), user.id, question);
+  await askAgentFromTelegram(contextOf(message.chat, message.message_id), user, question);
 }
 
 async function sendMemory(chatId: number): Promise<void> {
@@ -433,7 +463,7 @@ function formatUptime(sec: number): string {
  * /status — «на месте?». Отвечает сразу, без модели: если бот не ответил, значит
  * лежит сервер или бот. Заодно видно, что подключено и какая версия задеплоена.
  */
-async function sendStatus(chatId: number, replyTo?: number): Promise<void> {
+async function sendStatus(chatId: number, replyTo?: number, fromId?: number): Promise<void> {
   const [lastDigest, openAlerts] = await Promise.all([
     prisma.ropDailyDigest.findFirst({ where: { sentAt: { not: null } }, orderBy: { date: 'desc' }, select: { date: true, sentAt: true } }),
     prisma.ropAlert.count({ where: { status: 'SENT' } }),
@@ -454,6 +484,14 @@ async function sendStatus(chatId: number, replyTo?: number): Promise<void> {
     `🔔 Сигналов ждут решения: ${openAlerts}`,
   ];
   if (commit) lines.push(`🏷 Версия: <code>${commit}</code>`);
+  if (fromId != null) {
+    const me = await agentUserByTelegramId(fromId);
+    lines.push('', !agentBot.isAllowed(fromId)
+      ? `👤 Вы (ID <code>${fromId}</code>) не в списке доступа HOS_ALLOWED_IDS`
+      : me
+        ? `👤 Вы: ${esc(me.fullName)}${isDirectorTelegramId(fromId) ? ' — директор, решения за вами' : ' — можно спрашивать, решения принимает директор'}`
+        : `👤 Вы (ID <code>${fromId}</code>) не найдены в CRM — кнопки работать не будут. Нужна строка в HOS_USERS «${fromId}=логин».`);
+  }
   await agentBot.sendHtmlToChat(chatId, lines.join('\n'), undefined, { replyTo });
 }
 
@@ -467,8 +505,11 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
     await agentBot.sendHtmlToChat(chatId, HELP, undefined, isPrivate ? { replyKeyboard: QUICK_KEYBOARD } : { replyTo: msg.message_id });
     return true;
   }
+  const ctx = contextOf(msg.chat, msg.message_id);
+  // В группе разговор общий (директора) — /new и /last работают с ним, а не с личным.
+  const owner = await conversationOwner(ctx, user);
   if (command === '/new' || text === QUICK.fresh) {
-    await createChat(user.id, isPrivate ? 'telegram' : 'telegram_group');
+    await createChat(owner.id, ctx.channel);
     await agentBot.sendHtmlToChat(chatId, '🆕 Новый разговор. Какое задание?');
     return true;
   }
@@ -484,9 +525,8 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
     return true;
   }
   if (command === '/last' || text === QUICK.last) {
-    const channel = isPrivate ? 'telegram' : 'telegram_group';
-    const chat = await getTelegramChat(user.id, channel);
-    await deliverLastReply({ telegramChatId: chatId, channel, replyTo: isPrivate ? undefined : msg.message_id }, chat.id);
+    const chat = await getTelegramChat(owner.id, ctx.channel);
+    await deliverLastReply(ctx, chat.id);
     return true;
   }
   if (command === '/memory' || text === QUICK.memory) {
@@ -494,7 +534,7 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
     return true;
   }
   if (QUICK_QUESTIONS[text]) {
-    await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user.id, QUICK_QUESTIONS[text]);
+    await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user, QUICK_QUESTIONS[text]);
     return true;
   }
   if (command) {
@@ -506,7 +546,7 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
 
 async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
   // Статус — до поиска сотрудника: проверить «жив ли бот» можно и без привязки к CRM.
-  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id);
+  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id, undefined, msg.from?.id);
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) {
     await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id));
@@ -514,12 +554,12 @@ async function onPrivateText(msg: TelegramBot.Message): Promise<void> {
   }
   const text = (msg.text ?? '').trim();
   if (await handleCommand(msg, user, text)) return;
-  await askAgentFromTelegram(contextOf(msg.chat), user.id, text);
+  await askAgentFromTelegram(contextOf(msg.chat), user, text);
 }
 
 /** В группе — упоминание или ответ боту; отвечаем реплаем, разговор у каждого свой. */
 async function onGroupText(msg: TelegramBot.Message): Promise<void> {
-  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id, msg.message_id);
+  if (isStatusCommand(msg.text ?? '')) return sendStatus(msg.chat.id, msg.message_id, msg.from?.id);
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) {
     await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id), undefined, { replyTo: msg.message_id });
@@ -531,7 +571,7 @@ async function onGroupText(msg: TelegramBot.Message): Promise<void> {
     return;
   }
   if (await handleCommand(msg, user, text)) return;
-  await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user.id, text);
+  await askAgentFromTelegram(contextOf(msg.chat, msg.message_id), user, text);
 }
 
 /** Длиннее — это уже не задание, а лекция; и распознавание дорожает. */
@@ -573,7 +613,7 @@ async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
   }
 
   if (statusId) await agentBot.editHtmlMessage(msg.chat.id, statusId, `🎙 <i>${esc(text)}</i>`);
-  await askAgentFromTelegram(contextOf(msg.chat), user.id, `🎙 ${text}`);
+  await askAgentFromTelegram(contextOf(msg.chat), user, `🎙 ${text}`);
 }
 
 agentBot.onPrivateText(onPrivateText);

@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { directorUserIds } from './rop-agent.people';
 
 /**
  * Планы задач от РОП-агента. Агент пишет только черновик; задачи менеджерам
@@ -76,6 +77,7 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
     }),
   ]);
   const managerById = new Map(managers.map((m) => [m.id, m]));
+  const directors = await directorUserIds();
   const clientById = new Map(clients.map((c) => [c.id, c]));
   const seenClients = new Set<string>();
 
@@ -86,6 +88,10 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
     const title = str(it.title, 200);
     if (!manager) {
       warnings.push(`Задача «${title || 'без названия'}»: сотрудник ${managerId || '(не указан)'} не найден или неактивен — пропущена`);
+      continue;
+    }
+    if (directors.has(manager.id)) {
+      warnings.push(`Задача «${title || 'без названия'}» для ${manager.fullName} убрана: директору задачи не ставим — по его клиентам агент даёт совет`);
       continue;
     }
     const dueRaw = str(it.due_date ?? it.dueDate, 10);

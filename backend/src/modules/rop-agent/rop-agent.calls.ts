@@ -9,7 +9,7 @@ import { analyzeSalesCallTranscript, transcribeAudioFile } from '../ai-assistant
 import { agentBot, type TgButton } from './rop-agent.bot';
 import { listManagers } from './rop-agent.analysis';
 import { STAGES } from './rop-agent.call-reviews';
-import { agentUserByTelegramId, askAgentFromTelegram } from './rop-agent.telegram';
+import { agentUserByTelegramId, askAgentFromTelegram, callbackUser } from './rop-agent.telegram';
 
 /**
  * Разбор звонков. Менеджеры звонят с мобильных, поэтому записей в CRM нет — их
@@ -164,11 +164,8 @@ async function onPickManager(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , auditId, short] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
   const messageId = query.message?.message_id;
-  const user = await agentUserByTelegramId(query.from.id);
-  if (!user || !auditId || !short || chatId == null || messageId == null) {
-    await agentBot.answerCallback(query.id, 'Нет доступа');
-    return;
-  }
+  const user = await callbackUser(query);
+  if (!user || !auditId || !short || chatId == null || messageId == null) return;
   const managers = await prisma.user.findMany({ where: { id: { startsWith: short }, isActive: true }, select: { id: true, fullName: true } });
   if (managers.length !== 1) {
     await agentBot.answerCallback(query.id, 'Сотрудник не найден');
@@ -194,18 +191,15 @@ async function onPickManager(query: TelegramBot.CallbackQuery): Promise<void> {
 async function onCoachManager(query: TelegramBot.CallbackQuery): Promise<void> {
   const [, , auditId] = (query.data ?? '').split(':');
   const chatId = query.message?.chat.id;
-  const user = await agentUserByTelegramId(query.from.id);
-  if (!user || !auditId || chatId == null) {
-    await agentBot.answerCallback(query.id, 'Нет доступа');
-    return;
-  }
+  const user = await callbackUser(query);
+  if (!user || !auditId || chatId == null) return;
   const audit = await prisma.callAudit.findUnique({ where: { id: auditId }, select: { managerId: true, manager: { select: { fullName: true } } } });
   if (!audit?.managerId || !audit.manager) {
     await agentBot.answerCallback(query.id, 'Сначала укажите, чей звонок');
     return;
   }
   await agentBot.answerCallback(query.id, 'Спрашиваю агента');
-  await askAgentFromTelegram({ telegramChatId: chatId, channel: query.message?.chat.type === 'private' ? 'telegram' : 'telegram_group' }, user.id,
+  await askAgentFromTelegram({ telegramChatId: chatId, channel: query.message?.chat.type === 'private' ? 'telegram' : 'telegram_group' }, user,
     `Разбери звонки менеджера ${audit.manager.fullName} (manager_id ${audit.managerId}), начиная с последнего аудита ${auditId}: `
     + 'какие этапы он проваливает постоянно, что получается, 2–3 конкретных упражнения или фразы на неделю. Если аудитов мало — скажи, сколько записей ещё прислать.');
 }
