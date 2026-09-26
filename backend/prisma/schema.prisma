@@ -264,11 +264,19 @@ model User {
   costPinHash           String?   @map("cost_pin_hash")
   costPinFailedAttempts Int       @default(0) @map("cost_pin_failed_attempts")
   costPinLockedUntil    DateTime? @map("cost_pin_locked_until")
+  /**
+   * На кого оформлять сделки, которые создаёт этот сотрудник. Для руководителя, который
+   * заводит сделки за менеджера: без этого их приходилось переносить руками.
+   * null — на самого сотрудника. См. lib/dealOwner.
+   */
+  dealsOwnerId String?  @map("deals_owner_id")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   company            Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  dealsOwner         User?               @relation("DealsOwner", fields: [dealsOwnerId], references: [id], onDelete: SetNull)
+  dealsDelegatedFrom User[]              @relation("DealsOwner")
 
   sessions           Session[]
   clients            Client[]           @relation("ClientManager")

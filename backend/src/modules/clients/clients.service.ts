@@ -1,5 +1,6 @@
 import { DealStatus, Client, ClientCreditStatus, Prisma, DeliveryType } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { resolveDealOwnerId } from '../../lib/dealOwner';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
@@ -993,7 +994,8 @@ export class ClientsService {
           amount: totalAmount,
           discount: 0,
           clientId: id,
-          managerId: user.userId,
+          // Как и в обычном создании сделки — с учётом User.dealsOwnerId.
+          managerId: await resolveDealOwnerId(user.userId, tx),
           paymentType: 'FULL',
           paidAmount: 0,
           paymentStatus: 'UNPAID',
