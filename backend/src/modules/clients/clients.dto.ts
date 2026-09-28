@@ -63,6 +63,10 @@ export const setClientCreditStatusDto = z.object({
   creditStatus: z.enum(['NORMAL', 'SATISFACTORY', 'NEGATIVE']),
 });
 
+export const setClientLossReasonDto = z.object({
+  lossReason: z.enum(['NO_CREDIT', 'PRICE', 'NO_PRODUCT', 'LOGISTICS', 'COMPETITOR', 'UNKNOWN']).nullable(),
+});
+
 export const clientStockQueryDto = z.object({
   historyLimit: z.coerce.number().int().min(1).max(200).optional(),
 });

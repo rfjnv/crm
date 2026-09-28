@@ -1,3 +1,4 @@
+import type { ClientLossReason } from '../constants/clientLossReasons';
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'SITE_ADMIN' | 'OPERATOR' | 'MANAGER' | 'HR' | 'ACCOUNTANT' | 'WAREHOUSE' | 'WAREHOUSE_MANAGER' | 'DRIVER' | 'LOADER' | 'FOREIGN_TRADE';
 
 /**
@@ -268,6 +269,9 @@ export interface Client {
   /** CUSTOMER — клиент; AFFILIATE — своя/союзная компания; COMPETITOR — конкурент. */
   relation?: 'CUSTOMER' | 'AFFILIATE' | 'COMPETITOR';
   creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
+  /** Причина ухода; null — клиент не потерян. */
+  lossReason?: ClientLossReason | null;
+  lossReasonAt?: string | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

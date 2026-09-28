@@ -8,6 +8,7 @@ import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
 import { isClientCreditTransfer } from '../../lib/payment-kind';
 import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
+import { resolveDealOwnerId } from '../../lib/dealOwner';
 import { PERMISSIONS } from '../../lib/permissions';
 import {
   currentTashkentYmd,
@@ -819,6 +820,9 @@ export class DealsService {
       ? tashkentDayBoundsFromYmd(currentTashkentYmd()).start
       : undefined;
 
+    // Руководитель может заводить сделки за менеджера — тогда они сразу на нём (User.dealsOwnerId).
+    const ownerId = await resolveDealOwnerId(user.userId);
+
     // Transaction: create deal + items + optional comment
     const deal = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
@@ -828,7 +832,7 @@ export class DealsService {
           discount: 0,
           status: initialStatus as any,
           clientId: dto.clientId,
-          managerId: user.userId,
+          managerId: ownerId,
           isSessionDeal,
           paymentMethod: paymentMethodAtCreate,
           paymentType: 'FULL',
@@ -884,10 +888,10 @@ export class DealsService {
       }
 
       // Update client's managerId to track "last served by"
-      if (client.managerId !== user.userId) {
+      if (client.managerId !== ownerId) {
         await tx.client.update({
           where: { id: dto.clientId },
-          data: { managerId: user.userId },
+          data: { managerId: ownerId },
         });
       }
 

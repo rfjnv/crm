@@ -1,4 +1,4 @@
-import { setClientRelationDto } from './clients.dto';
+import { setClientRelationDto, setClientLossReasonDto } from './clients.dto';
 import { Request, Response } from 'express';
 import { DealStatus, Role } from '@prisma/client';
 import { z } from 'zod';
@@ -71,6 +71,11 @@ export class ClientsController {
       getUser(req),
     );
     res.json(client);
+  }
+
+  async setLossReason(req: Request, res: Response): Promise<void> {
+    const { lossReason } = setClientLossReasonDto.parse(req.body);
+    res.json(await clientsService.setLossReason(req.params.id as string, lossReason, getUser(req)));
   }
 
   async archive(req: Request, res: Response): Promise<void> {

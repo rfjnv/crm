@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse, InputNumber } from 'antd';
+import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse, InputNumber, Tag } from 'antd';
 import { PlusOutlined, InboxOutlined, EditOutlined, CrownFilled } from '@ant-design/icons';
 import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
@@ -9,6 +9,8 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
+import { CLIENT_LOSS_REASONS, type ClientLossReason } from '../constants/clientLossReasons';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
@@ -25,6 +27,14 @@ const CLIENT_SORT_OPTIONS: { value: ClientSortMode; label: string }[] = [
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+/** Фильтр по причине ухода: конкретная причина или «все потерянные» */
+type LossFilter = ClientLossReason | 'any';
+
+function parseLossParam(v: string | null): LossFilter | undefined {
+  if (v === 'any') return v;
+  return CLIENT_LOSS_REASONS.some((r) => r.value === v) ? (v as ClientLossReason) : undefined;
+}
 
 function parseSortParam(v: string | null): ClientSortMode {
   const x = v ?? '';
@@ -43,12 +53,13 @@ function parseClientsListParams(sp: URLSearchParams) {
     q: sp.get('q') ?? '',
     manager: sp.get('manager') || undefined,
     sort: parseSortParam(sp.get('sort')),
+    loss: parseLossParam(sp.get('loss')),
   };
 }
 
 function mergeClientsListSearchParams(
   prev: URLSearchParams,
-  patch: Partial<{ page: number; pageSize: number; q: string; manager: string | undefined; sort: ClientSortMode }>,
+  patch: Partial<{ page: number; pageSize: number; q: string; manager: string | undefined; sort: ClientSortMode; loss: LossFilter | undefined }>,
 ): URLSearchParams {
   const cur = parseClientsListParams(prev);
   const next = {
@@ -59,6 +70,7 @@ function mergeClientsListSearchParams(
       ? (patch.manager || undefined)
       : cur.manager,
     sort: patch.sort ?? cur.sort,
+    loss: Object.prototype.hasOwnProperty.call(patch, 'loss') ? patch.loss : cur.loss,
   };
   const n = new URLSearchParams();
   if (next.page !== 1) n.set('page', String(next.page));
@@ -66,6 +78,7 @@ function mergeClientsListSearchParams(
   if (next.q.trim()) n.set('q', next.q.trim());
   if (next.manager) n.set('manager', next.manager);
   if (next.sort !== 'name_asc') n.set('sort', next.sort);
+  if (next.loss) n.set('loss', next.loss);
   return n;
 }
 
@@ -151,7 +164,7 @@ function PhoneInput({ value, onChange }: { value?: string; onChange?: (v: string
 export default function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseClientsListParams(searchParams), [searchParams]);
-  const { page, pageSize, q: qUrl, manager: managerFilter, sort: sortMode } = listState;
+  const { page, pageSize, q: qUrl, manager: managerFilter, sort: sortMode, loss: lossFilter } = listState;
 
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -208,7 +221,8 @@ export default function ClientsPage() {
     enabled: isSuperAdmin,
   });
 
-  const filteredClients = useMemo(() => {
+  // Поиск и менеджер — без фильтра по причине ухода, чтобы счётчики в плашках не обнулялись при выборе
+  const baseFilteredClients = useMemo(() => {
     let list = clients ?? [];
     const q = searchDraft.trim();
     if (q) {
@@ -229,8 +243,24 @@ export default function ClientsPage() {
     if (managerFilter) {
       list = list.filter(c => c.managerId === managerFilter);
     }
+    return list;
+  }, [clients, searchDraft, managerFilter]);
+
+  const lossCounts = useMemo(() => {
+    const counts = new Map<ClientLossReason, number>();
+    for (const c of baseFilteredClients) {
+      if (c.lossReason) counts.set(c.lossReason, (counts.get(c.lossReason) ?? 0) + 1);
+    }
+    return counts;
+  }, [baseFilteredClients]);
+  const lostTotal = [...lossCounts.values()].reduce((a, b) => a + b, 0);
+
+  const filteredClients = useMemo(() => {
+    let list = baseFilteredClients;
+    if (lossFilter === 'any') list = list.filter((c) => c.lossReason);
+    else if (lossFilter) list = list.filter((c) => c.lossReason === lossFilter);
     return sortClients(list, sortMode);
-  }, [clients, searchDraft, managerFilter, sortMode]);
+  }, [baseFilteredClients, lossFilter, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize) || 1);
   const safePage = Math.min(page, totalPages);
@@ -296,6 +326,24 @@ export default function ClientsPage() {
     onError: () => message.error('Ошибка изменения статуса'),
   });
 
+  const lossReasonMut = useMutation({
+    mutationFn: ({ id, lossReason }: { id: string; lossReason: ClientLossReason | null }) =>
+      clientsApi.setLossReason(id, lossReason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Причина ухода обновлена');
+    },
+    onError: () => message.error('Ошибка изменения причины ухода'),
+  });
+
+  const lossReasonMenu = (c: Client) => (
+    <ClientLossReasonMenu
+      value={c.lossReason}
+      loading={lossReasonMut.isPending && lossReasonMut.variables?.id === c.id}
+      onChange={(lossReason) => lossReasonMut.mutate({ id: c.id, lossReason })}
+    />
+  );
+
   const openEdit = (client: Client) => {
     setEditingClient(client);
     editForm.setFieldsValue({
@@ -324,7 +372,7 @@ export default function ClientsPage() {
       dataIndex: 'companyName',
       render: (_v: string, r: Client) => (
         <ClientCompanyDisplay
-          client={{ id: r.id, companyName: r.companyName, isSvip: r.isSvip, creditStatus: r.creditStatus }}
+          client={{ id: r.id, companyName: r.companyName, isSvip: r.isSvip, creditStatus: r.creditStatus, lossReason: r.lossReason }}
           link
           variant="full"
         />
@@ -355,10 +403,10 @@ export default function ClientsPage() {
         );
       },
     },
-    ...(isAdmin || user?.permissions?.includes('edit_client')
+    ...(isAdmin || canChangeStatus || user?.permissions?.includes('edit_client')
       ? [{
         title: '',
-        width: 140,
+        width: 180,
         render: (_: unknown, r: Client) => {
           const canEdit = isAdmin || user?.permissions?.includes('edit_client');
           return (
@@ -372,6 +420,7 @@ export default function ClientsPage() {
                   title={r.isSvip ? 'Убрать SVIP' : 'Сделать SVIP'}
                 />
               )}
+              {canChangeStatus && lossReasonMenu(r)}
               {canChangeStatus && (
                 <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
                   size="small"
@@ -551,6 +600,27 @@ export default function ClientsPage() {
         </Space>
       </div>
 
+      {(lostTotal > 0 || lossFilter) && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 2 }}>Ушли:</Typography.Text>
+          <Tag.CheckableTag
+            checked={lossFilter === 'any'}
+            onChange={(on) => patchListParams({ loss: on ? 'any' : undefined, page: 1 })}
+          >
+            Все {lostTotal}
+          </Tag.CheckableTag>
+          {CLIENT_LOSS_REASONS.filter((r) => lossCounts.has(r.value) || lossFilter === r.value).map((r) => (
+            <Tag.CheckableTag
+              key={r.value}
+              checked={lossFilter === r.value}
+              onChange={(on) => patchListParams({ loss: on ? r.value : undefined, page: 1 })}
+            >
+              <span title={r.label}>{r.emoji} {r.short} {lossCounts.get(r.value) ?? 0}</span>
+            </Tag.CheckableTag>
+          ))}
+        </div>
+      )}
+
       {isMobile ? (
         <MobileCardList
           data={filteredClients}
@@ -571,6 +641,7 @@ export default function ClientsPage() {
                       companyName: client.companyName,
                       isSvip: client.isSvip,
                       creditStatus: client.creditStatus,
+                      lossReason: client.lossReason,
                     }}
                     link
                     variant="full"
@@ -610,6 +681,7 @@ export default function ClientsPage() {
                         onClick={() => svipMut.mutate(client.id)}
                       />
                     )}
+                    {canChangeStatus && lossReasonMenu(client)}
                     {canChangeStatus && (
                       <Select<'NORMAL' | 'SATISFACTORY' | 'NEGATIVE'>
                         size="small"

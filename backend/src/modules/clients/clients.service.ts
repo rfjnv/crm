@@ -1,5 +1,6 @@
-import { DealStatus, Client, ClientCreditStatus, Prisma, DeliveryType } from '@prisma/client';
+import { DealStatus, Client, ClientCreditStatus, ClientLossReason, Prisma, DeliveryType } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { resolveDealOwnerId } from '../../lib/dealOwner';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
@@ -46,6 +47,7 @@ function clientAuditSnapshot(c: Client) {
     managerId: c.managerId,
     isSvip: c.isSvip,
     creditStatus: c.creditStatus,
+    lossReason: c.lossReason,
     isArchived: c.isArchived,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -416,6 +418,33 @@ export class ClientsService {
       entityId: id,
       before: { creditStatus: client.creditStatus },
       after: { creditStatus: updated.creditStatus },
+    });
+
+    return updated;
+  }
+
+  /** Причина ухода клиента; null — снять плашку. Дата ставится при первой установке причины. */
+  async setLossReason(id: string, lossReason: ClientLossReason | null, user: AuthUser) {
+    const client = await prisma.client.findFirst({ where: { id, ...clientOwnerScope(user) } });
+    if (!client) {
+      throw new AppError(404, 'Клиент не найден');
+    }
+
+    const updated = await prisma.client.update({
+      where: { id },
+      data: {
+        lossReason,
+        lossReasonAt: lossReason ? (client.lossReason ? client.lossReasonAt : new Date()) : null,
+      },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE_CLIENT',
+      entityType: 'client',
+      entityId: id,
+      before: { lossReason: client.lossReason },
+      after: { lossReason: updated.lossReason },
     });
 
     return updated;
@@ -993,7 +1022,8 @@ export class ClientsService {
           amount: totalAmount,
           discount: 0,
           clientId: id,
-          managerId: user.userId,
+          // Как и в обычном создании сделки — с учётом User.dealsOwnerId.
+          managerId: await resolveDealOwnerId(user.userId, tx),
           paymentType: 'FULL',
           paidAmount: 0,
           paymentStatus: 'UNPAID',
