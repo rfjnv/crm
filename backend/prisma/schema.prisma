@@ -142,6 +142,16 @@ enum ClientCreditStatus {
   NEGATIVE
 }
 
+/// Почему клиент перестал покупать. null — клиент не потерян.
+enum ClientLossReason {
+  NO_CREDIT
+  PRICE
+  NO_PRODUCT
+  LOGISTICS
+  COMPETITOR
+  UNKNOWN
+}
+
 enum ClientStockEventType {
   ADD
   RESERVE_TO_DEAL
@@ -476,6 +486,8 @@ model Client {
   isSvip      Boolean  @default(false) @map("is_svip")
   creditStatus ClientCreditStatus @default(NORMAL) @map("credit_status")
   relation    ClientRelation @default(CUSTOMER)
+  lossReason  ClientLossReason? @map("loss_reason")
+  lossReasonAt DateTime? @map("loss_reason_at")
   isArchived  Boolean  @default(false) @map("is_archived")
   companyId   String?  @map("company_id")
   createdAt   DateTime @default(now()) @map("created_at")

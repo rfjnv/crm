@@ -1,6 +1,7 @@
 import { CrownFilled } from '@ant-design/icons';
 import { Space, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
+import { CLIENT_LOSS_REASON_META, type ClientLossReason } from '../constants/clientLossReasons';
 
 /** Минимальные поля для бейджа статуса рядом с названием компании */
 export type ClientCompanyBadge = {
@@ -8,6 +9,8 @@ export type ClientCompanyBadge = {
   companyName?: string | null;
   isSvip?: boolean;
   creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
+  /** Причина ухода — плашка показывается, только если её передали (список и карточка клиента) */
+  lossReason?: ClientLossReason | null;
 };
 
 type Props = {
@@ -55,6 +58,7 @@ export function ClientCompanyDisplay({
   const vip = !!client?.isSvip;
   const creditStatus = client?.creditStatus ?? 'NORMAL';
   const statusMeta = STATUS_META[creditStatus] ?? null;
+  const lossMeta = client?.lossReason ? CLIENT_LOSS_REASON_META[client.lossReason] : null;
 
   const nameEl = link && client?.id ? (
     <Typography.Text type={secondary ? 'secondary' : undefined} style={{ margin: 0 }}>
@@ -87,6 +91,15 @@ export function ClientCompanyDisplay({
           style={{ margin: 0, lineHeight: '18px', fontSize: 11, padding: '0 5px' }}
         >
           {statusMeta.label}
+        </Tag>
+      )}
+      {lossMeta && (
+        <Tag
+          bordered={false}
+          title={`Причина ухода: ${lossMeta.label}`}
+          style={{ margin: 0, lineHeight: '18px', fontSize: 11, padding: '0 6px' }}
+        >
+          {lossMeta.emoji} {lossMeta.short}
         </Tag>
       )}
       {vip && variant === 'full' && (

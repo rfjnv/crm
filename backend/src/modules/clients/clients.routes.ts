@@ -10,6 +10,7 @@ import {
   createClientNoteDto,
   updateClientNoteDto,
   setClientCreditStatusDto,
+  setClientLossReasonDto,
   addClientStockDto,
   sendClientStockAllDto,
   sendClientStockPartialDto,
@@ -35,6 +36,12 @@ router.patch(
   authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR'),
   validate(setClientCreditStatusDto),
   asyncHandler(clientsController.setCreditStatus.bind(clientsController)),
+);
+router.patch(
+  '/:id/loss-reason',
+  authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'OPERATOR'),
+  validate(setClientLossReasonDto),
+  asyncHandler(clientsController.setLossReason.bind(clientsController)),
 );
 router.patch('/:id/archive', asyncHandler(clientsController.archive.bind(clientsController)));
 router.get('/:id/history', asyncHandler(clientsController.getHistory.bind(clientsController)));

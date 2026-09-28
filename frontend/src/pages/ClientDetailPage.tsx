@@ -26,6 +26,8 @@ import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
+import { CLIENT_LOSS_REASON_META, type ClientLossReason } from '../constants/clientLossReasons';
 import { formatUZS } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import {
@@ -547,6 +549,16 @@ export default function ClientDetailPage() {
       message.success('Тип клиента изменён');
     },
     onError: () => message.error('Ошибка изменения типа'),
+  });
+
+  const lossReasonMut = useMutation({
+    mutationFn: (lossReason: ClientLossReason | null) => clientsApi.setLossReason(id!, lossReason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', id] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      message.success('Причина ухода обновлена');
+    },
+    onError: () => message.error('Ошибка изменения причины ухода'),
   });
 
   const svipMut = useMutation({
@@ -1110,6 +1122,7 @@ export default function ClientDetailPage() {
                 companyName: client.companyName,
                 isSvip: client.isSvip,
                 creditStatus: client.creditStatus,
+                lossReason: client.lossReason,
               }}
               variant="full"
             />
@@ -1153,6 +1166,14 @@ export default function ClientDetailPage() {
               ]}
             />
           )}
+          {canChangeStatus && (
+            <ClientLossReasonMenu
+              variant="button"
+              value={client.lossReason}
+              loading={lossReasonMut.isPending}
+              onChange={(v) => lossReasonMut.mutate(v)}
+            />
+          )}
           {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
         </Space>
       </div>
@@ -1185,6 +1206,14 @@ export default function ClientDetailPage() {
                           ? 'Нейтральный — ограниченный долг'
                           : 'Активный'}
                     </Descriptions.Item>
+                    {client.lossReason && (
+                      <Descriptions.Item label="Причина ухода">
+                        {CLIENT_LOSS_REASON_META[client.lossReason].emoji} {CLIENT_LOSS_REASON_META[client.lossReason].label}
+                        {client.lossReasonAt && (
+                          <Typography.Text type="secondary"> · с {dayjs(client.lossReasonAt).format('DD.MM.YYYY')}</Typography.Text>
+                        )}
+                      </Descriptions.Item>
+                    )}
                     <Descriptions.Item label="Заметки">{client.notes || '—'}</Descriptions.Item>
                   </Descriptions>
                   {(client.inn || client.bankName || client.bankAccount || client.mfo || client.vatRegCode || client.oked) && (
