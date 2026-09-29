@@ -4,8 +4,8 @@ import { config } from '../../lib/config';
 /**
  * Кто есть кто для бота РОП-агента: Telegram ID → сотрудник CRM, и кто из них
  * директор. Директор принимает решения (раздать план, поставить задачу), ему не
- * ставят задачи, общий разговор в группе — его. Остальные из HOS_ALLOWED_IDS
- * читают, спрашивают, но решений не принимают.
+ * ставят задачи, общий разговор в группе — его. Админы (HOS_ADMIN_IDS) тоже
+ * принимают решения. Остальные из HOS_ALLOWED_IDS читают и спрашивают.
  */
 
 export type AgentUser = { id: string; fullName: string };
@@ -16,6 +16,15 @@ export function isAllowedTelegramId(telegramId: number | string | undefined): bo
 
 export function isDirectorTelegramId(telegramId: number | string | undefined): boolean {
   return telegramId != null && config.hos.directorIds.includes(String(telegramId));
+}
+
+export function isAdminTelegramId(telegramId: number | string | undefined): boolean {
+  return telegramId != null && config.hos.adminIds.includes(String(telegramId));
+}
+
+/** Может ли нажимать кнопки решений: директор или админ. */
+export function canDecideTelegramId(telegramId: number | string | undefined): boolean {
+  return isDirectorTelegramId(telegramId) || isAdminTelegramId(telegramId);
 }
 
 /**

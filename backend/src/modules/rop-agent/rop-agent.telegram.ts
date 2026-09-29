@@ -13,6 +13,8 @@ import { transcribeVoiceNote } from './rop-agent.voice';
 import {
   crmUserByTelegramId,
   directorUsers,
+  canDecideTelegramId,
+  isAdminTelegramId,
   isDirectorTelegramId,
   type AgentUser,
 } from './rop-agent.people';
@@ -159,7 +161,7 @@ const NOT_LINKED = (telegramId: number | string | undefined) => [
 
 /**
  * Кто нажал кнопку. Не найден в CRM — объясняем в чате, а не сухим «Нет доступа».
- * directorOnly — кнопки решений (раздать план, поставить задачу): их жмёт директор.
+ * directorOnly — кнопки решений (раздать план, поставить задачу): их жмёт директор или админ.
  */
 export async function callbackUser(query: TelegramBot.CallbackQuery, directorOnly = false): Promise<AgentUser | null> {
   const user = await agentUserByTelegramId(query.from.id);
@@ -168,7 +170,7 @@ export async function callbackUser(query: TelegramBot.CallbackQuery, directorOnl
     if (query.message) await agentBot.sendHtmlToChat(query.message.chat.id, NOT_LINKED(query.from.id), undefined, { replyTo: query.message.message_id });
     return null;
   }
-  if (directorOnly && !isDirectorTelegramId(query.from.id)) {
+  if (directorOnly && !canDecideTelegramId(query.from.id)) {
     await agentBot.answerCallback(query.id, 'Решение принимает директор');
     return null;
   }
@@ -489,7 +491,7 @@ async function sendStatus(chatId: number, replyTo?: number, fromId?: number): Pr
     lines.push('', !agentBot.isAllowed(fromId)
       ? `👤 Вы (ID <code>${fromId}</code>) не в списке доступа HOS_ALLOWED_IDS`
       : me
-        ? `👤 Вы: ${esc(me.fullName)}${isDirectorTelegramId(fromId) ? ' — директор, решения за вами' : ' — можно спрашивать, решения принимает директор'}`
+        ? `👤 Вы: ${esc(me.fullName)}${isDirectorTelegramId(fromId) ? ' — директор, решения за вами' : isAdminTelegramId(fromId) ? ' — админ, решения тоже доступны' : ' — можно спрашивать, решения принимает директор'}`
         : `👤 Вы (ID <code>${fromId}</code>) не найдены в CRM — кнопки работать не будут. Нужна строка в HOS_USERS «${fromId}=логин».`);
   }
   await agentBot.sendHtmlToChat(chatId, lines.join('\n'), undefined, { replyTo });

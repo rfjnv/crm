@@ -109,10 +109,13 @@ export const config = {
     allowedIds: (trimEnv(process.env.HOS_ALLOWED_IDS) || '8599955099,7623311783')
       .split(',').map((s) => s.trim()).filter(Boolean),
     /**
-     * Директор(а): только они принимают решения кнопками (раздать план, поставить задачу),
+     * Директор(а): принимают решения кнопками (раздать план, поставить задачу),
      * им не ставят задачи, общий разговор в группе — их. По умолчанию — Фарход.
      */
     directorIds: (trimEnv(process.env.HOS_DIRECTOR_IDS) || '8599955099')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    /** Админы: тоже принимают решения кнопками, но директором не считаются. По умолчанию — главный админ. */
+    adminIds: (trimEnv(process.env.HOS_ADMIN_IDS) || '7623311783')
       .split(',').map((s) => s.trim()).filter(Boolean),
     /**
      * Кто есть кто в CRM: «telegramId=логин,…». Без записи сотрудник ищется по
