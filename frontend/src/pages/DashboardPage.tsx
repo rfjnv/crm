@@ -130,7 +130,7 @@ export default function DashboardPage() {
 
   const { data: debtsData } = useQuery({
     queryKey: ['finance-debts-total'],
-    queryFn: () => financeApi.getDebts(),
+    queryFn: () => financeApi.getDebts({ totalsOnly: 1 }),
     refetchInterval: 120_000,
   });
 

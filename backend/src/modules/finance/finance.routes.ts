@@ -9,7 +9,8 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/payment-kind';
 import { tashkentDayKey, tashkentStartOfToday } from '../../lib/tz';
-import { buildSearchVariants } from '../../lib/translit';
+import { buildSearchVariants } from '../../lib/translit';
+import { responseCache } from '../../lib/responseCache';
 
 function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
   if (paid <= 0) return 'UNPAID';
@@ -209,6 +210,7 @@ router.get(
 router.get(
   '/debts',
   authorize(...FINANCE_ROLES),
+  responseCache(60_000),
   asyncHandler(async (req: Request, res: Response) => {
     const user = {
       userId: req.user!.userId,
@@ -232,6 +234,25 @@ router.get(
       isArchived: false,
     };
     if (managerId) where.managerId = managerId;
+
+    // Дашборду нужна только итоговая сумма. Долг и переплата — отдельные пулы по сделкам
+    // (не сальдируются), поэтому итог — это сумма положительных и отрицательных остатков
+    // закрытых сделок; список клиентов с деталями ради него не собираем.
+    if (req.query.totalsOnly === '1' && minDebt === undefined && !paymentStatus) {
+      const balances = await prisma.deal.findMany({
+        where: { ...dealScope, status: 'CLOSED', isArchived: false, ...(managerId ? { managerId } : {}) },
+        select: { amount: true, paidAmount: true },
+      });
+      let totalDebt = 0;
+      let prepayments = 0;
+      for (const d of balances) {
+        const balance = Number(d.amount) - Number(d.paidAmount);
+        if (balance > 0) totalDebt += balance;
+        else if (balance < 0) prepayments += -balance;
+      }
+      res.json({ totals: { totalDebtGiven: totalDebt, totalDebtOwed: totalDebt, prepayments } });
+      return;
+    }
 
     const deals = await prisma.deal.findMany({
       where,
@@ -356,37 +377,47 @@ router.get(
     }
 
     if (missingClientIds.length > 0) {
-      const prepClients = await prisma.client.findMany({
-        where: { id: { in: missingClientIds } },
-        select: { id: true, companyName: true, isSvip: true, creditStatus: true },
-      });
+      // Пачкой, а не по три запроса на каждого клиента: при сотнях клиентов с предоплатой
+      // последовательные запросы растягивали ответ до 10 секунд.
+      const [prepClients, lastPayments, managerCounts] = await Promise.all([
+        prisma.client.findMany({
+          where: { id: { in: missingClientIds } },
+          select: { id: true, companyName: true, isSvip: true, creditStatus: true },
+        }),
+        prisma.payment.groupBy({
+          by: ['clientId'],
+          where: { clientId: { in: missingClientIds } },
+          _max: { paidAt: true },
+        }),
+        prisma.deal.groupBy({
+          by: ['clientId', 'managerId'],
+          where: { clientId: { in: missingClientIds }, isArchived: false, status: 'CLOSED' },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const lastPaymentByClient = new Map(lastPayments.map((p) => [p.clientId, p._max.paidAt]));
+      // Основной менеджер клиента — у кого больше закрытых сделок с ним
+      const topManagerByClient = new Map<string, { managerId: string; count: number }>();
+      for (const row of managerCounts) {
+        const current = topManagerByClient.get(row.clientId);
+        if (!current || row._count._all > current.count) {
+          topManagerByClient.set(row.clientId, { managerId: row.managerId, count: row._count._all });
+        }
+      }
+      const topManagerIds = [...new Set([...topManagerByClient.values()].map((m) => m.managerId))];
+      const managerUsers = topManagerIds.length
+        ? await prisma.user.findMany({ where: { id: { in: topManagerIds } }, select: { id: true, fullName: true } })
+        : [];
+      const managerUserById = new Map(managerUsers.map((u) => [u.id, u]));
 
       for (const pc of prepClients) {
-        const lastPayment = await prisma.payment.findFirst({
-          where: { clientId: pc.id },
-          orderBy: { paidAt: 'desc' },
-          select: { paidAt: true },
-        });
-
-        const managerAgg = await prisma.deal.groupBy({
-          by: ['managerId'],
-          where: { clientId: pc.id, isArchived: false, status: 'CLOSED' },
-          _count: true,
-          orderBy: { _count: { managerId: 'desc' } },
-          take: 1,
-        });
-
-        let mgrObj: { id: string; fullName: string; count: number } | null = null;
-        if (managerAgg.length > 0) {
-          const mgr = await prisma.user.findUnique({
-            where: { id: managerAgg[0].managerId },
-            select: { id: true, fullName: true },
-          });
-          if (mgr) mgrObj = { id: mgr.id, fullName: mgr.fullName, count: 1 };
-        }
+        const lastPaidAt = lastPaymentByClient.get(pc.id) ?? null;
+        const top = topManagerByClient.get(pc.id);
+        const mgr = top ? managerUserById.get(top.managerId) : undefined;
 
         const managers = new Map<string, { id: string; fullName: string; count: number }>();
-        if (mgrObj) managers.set(mgrObj.id, mgrObj);
+        if (mgr) managers.set(mgr.id, { id: mgr.id, fullName: mgr.fullName, count: 1 });
 
         clientMap.set(pc.id, {
           clientId: pc.id,
@@ -396,7 +427,7 @@ router.get(
           totalAmount: 0,
           totalPaid: 0,
           dealsCount: 0, // we omit deal details since they only have PAID deals
-          lastPaymentDate: lastPayment?.paidAt?.toISOString() || null,
+          lastPaymentDate: lastPaidAt?.toISOString() || null,
           managers,
           newestDealDate: '',
           oldestUnpaidDueDate: null,

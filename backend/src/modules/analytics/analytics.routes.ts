@@ -18,10 +18,13 @@ import { AppError } from '../../lib/errors';
 import { closedDealsReportService } from './closedDealsReport.service';
 import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
 import { escapeLike } from '../../lib/translit';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 
 router.use(authenticate);
+// Минута-две свежести хватает; любая запись через API сбрасывает кеш
+router.use(responseCache(2 * 60_000));
 
 router.get(
   '/export/closed-deals.xlsx',

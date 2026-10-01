@@ -204,6 +204,8 @@ export const financeApi = {
     minDebt?: number;
     managerId?: string;
     paymentStatus?: string;
+    /** Только итоги (для дашборда) — без списка клиентов. */
+    totalsOnly?: 1;
   }) =>
     client.get('/finance/debts', { params }).then((r) => r.data),
 
