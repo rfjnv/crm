@@ -26,23 +26,31 @@ export class ContractsService {
       where,
       include: {
         client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
-        deals: {
-          select: { id: true, amount: true, paidAmount: true, status: true },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    // Суммы считает база: раньше ради них в память выкачивались все сделки всех договоров
+    const sums = contracts.length
+      ? await prisma.deal.groupBy({
+        by: ['contractId'],
+        where: { contractId: { in: contracts.map((c) => c.id) } },
+        _sum: { amount: true, paidAmount: true },
+        _count: { _all: true },
+      })
+      : [];
+    const sumsByContract = new Map(sums.map((s) => [s.contractId, s]));
+
     return contracts.map((c) => {
-      const totalAmount = c.deals.reduce((s, d) => s + Number(d.amount), 0);
-      const totalPaid = c.deals.reduce((s, d) => s + Number(d.paidAmount), 0);
+      const s = sumsByContract.get(c.id);
+      const totalAmount = Number(s?._sum.amount ?? 0);
+      const totalPaid = Number(s?._sum.paidAmount ?? 0);
       return {
         ...c,
-        dealsCount: c.deals.length,
+        dealsCount: s?._count._all ?? 0,
         totalAmount,
         totalPaid,
         remaining: totalAmount - totalPaid,
-        deals: undefined,
       };
     });
   }

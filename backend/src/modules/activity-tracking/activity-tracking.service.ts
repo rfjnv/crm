@@ -47,6 +47,34 @@ export async function logActivityEvent(
   });
 }
 
+/** Время события с клиента: не из будущего и не старше 15 минут (защита от кривых часов). */
+function clampEventTime(at: string | undefined, now: Date): Date {
+  if (!at) return now;
+  const t = new Date(at);
+  if (Number.isNaN(t.getTime())) return now;
+  const min = now.getTime() - 15 * 60_000;
+  return new Date(Math.min(now.getTime(), Math.max(min, t.getTime())));
+}
+
+export async function logActivityEvents(
+  userId: string,
+  events: { type: ActivityEventType; path: string; at?: string }[],
+): Promise<void> {
+  const ctx = getRequestContext();
+  const now = new Date();
+  await prisma.userActivityEvent.createMany({
+    data: events.map((e) => ({
+      userId,
+      type: e.type,
+      path: e.path.slice(0, 300),
+      ip: ctx?.ip ?? null,
+      userAgent: ctx?.userAgent ?? null,
+      deviceId: ctx?.deviceId ?? null,
+      createdAt: clampEventTime(e.at, now),
+    })),
+  });
+}
+
 function parseDate(dateISO: string): { start: Date; end: Date } {
   const start = new Date(`${dateISO}T00:00:00`);
   if (Number.isNaN(start.getTime())) {

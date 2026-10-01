@@ -49,6 +49,8 @@ export default function WarehousePage() {
   const { data: products, isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: inventoryApi.listProducts,
+    // Здесь важны актуальные остатки — не 5 минут, как у справочника товаров по умолчанию
+    staleTime: 30_000,
   });
 
   const { data: clients } = useQuery({

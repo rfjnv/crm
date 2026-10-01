@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
@@ -48,6 +48,9 @@ function useStickyTopOffset() {
   }, []);
   return top;
 }
+
+/** Карточек за раз: все сразу — это ~10 000 DOM-узлов, на слабых ПК страница подвисала. */
+const RENDER_BATCH = 60;
 
 // ─── Product card ─────────────────────────────────────────────────────────────
 
@@ -257,6 +260,27 @@ export default function AuditStockPage() {
     return list.filter((p) => productMatchesSearch(p, search));
   }, [activeProducts, stockFilter, search]);
 
+  // Сколько карточек отрисовано. При смене фильтра, поиска или даты — снова первая порция.
+  const listKey = `${stockFilter}|${search}|${ymd}`;
+  const [rendered, setRendered] = useState({ key: listKey, count: RENDER_BATCH });
+  const renderedCount = rendered.key === listKey ? rendered.count : RENDER_BATCH;
+  const visibleProducts = filteredProducts.slice(0, renderedCount);
+  const hasMore = filteredProducts.length > renderedCount;
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return undefined;
+    // Догружаем следующую порцию, когда до конца списка остаётся около экрана
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setRendered({ key: listKey, count: renderedCount + RENDER_BATCH });
+      }
+    }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, listKey, renderedCount]);
+
   const checkedCount = activeProducts.filter((p) => checkedIds.has(p.id)).length;
   const progressPercent = activeProducts.length > 0 ? Math.round((checkedCount / activeProducts.length) * 100) : 0;
   const allDone = activeProducts.length > 0 && checkedCount === activeProducts.length;
@@ -373,7 +397,7 @@ export default function AuditStockPage() {
       )}
 
       <Space direction="vertical" style={{ width: '100%' }} size={6}>
-        {filteredProducts.map((product) => (
+        {visibleProducts.map((product) => (
           <ProductAuditCard
             key={product.id}
             product={product}
@@ -386,6 +410,11 @@ export default function AuditStockPage() {
           />
         ))}
       </Space>
+      {hasMore && (
+        <div ref={sentinelRef} style={{ padding: 16, textAlign: 'center', color: token.colorTextTertiary }}>
+          Показано {renderedCount} из {filteredProducts.length}
+        </div>
+      )}
 
       <Modal
         title={`Коррекция остатка: ${correctProduct?.name ?? ''}`}

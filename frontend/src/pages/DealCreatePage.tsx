@@ -207,7 +207,12 @@ export default function DealCreatePage() {
   }, [clientId, title, commentText, draftItems, draftBanner, paymentMethod, paymentNote, transferInn, transferDocuments, transferType, isSessionDeal]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: inventoryApi.listProducts });
+  const { data: products } = useQuery({
+    queryKey: ['products'],
+    queryFn: inventoryApi.listProducts,
+    // Здесь важны актуальные остатки — не 5 минут, как у справочника товаров по умолчанию
+    staleTime: 30_000,
+  });
 
   const { data: clientTransferInns } = useQuery({
     queryKey: ['client-transfer-inns', clientId],

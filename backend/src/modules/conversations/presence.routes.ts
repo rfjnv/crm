@@ -17,9 +17,10 @@ router.post('/ping', asyncHandler(async (req: Request, res: Response) => {
   res.json({ ok: true });
 }));
 
-// Get online users (lastSeenAt within 60 seconds)
+// Get online users. Фронт пингует раз в 60 с (фоновые вкладки браузер может притормозить),
+// поэтому «в сети» — последний пинг не старше 2,5 минут.
 router.get('/online', asyncHandler(async (req: Request, res: Response) => {
-  const threshold = new Date(Date.now() - 60_000);
+  const threshold = new Date(Date.now() - 150_000);
   const users = await prisma.user.findMany({
     where: {
       isActive: true,

@@ -88,6 +88,14 @@ export class ClientsService {
   async findAll(user: AuthUser) {
     const rows = await prisma.client.findMany({
       where: { ...clientOwnerScope(user), isArchived: false },
+      // Портрет клиента (до 5×20 000 символов) нужен только в карточке — она грузит клиента отдельно
+      omit: {
+        portraitProfile: true,
+        portraitGoals: true,
+        portraitPains: true,
+        portraitFears: true,
+        portraitObjections: true,
+      },
       include: {
         manager: { select: { id: true, fullName: true } },
       },

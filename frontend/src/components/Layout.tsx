@@ -260,11 +260,17 @@ export default function Layout() {
 
   const hasRole = (...roles: UserRole[]) => role ? roles.includes(role) : false;
 
-  // Presence ping
+  // Presence ping: раз в минуту и сразу при возврате на вкладку («в сети» на сервере — 2,5 минуты)
   useEffect(() => {
-    conversationsApi.ping();
-    const interval = setInterval(() => conversationsApi.ping(), 30_000);
-    return () => clearInterval(interval);
+    const ping = () => { conversationsApi.ping().catch(() => {}); };
+    ping();
+    const interval = setInterval(ping, 60_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') ping(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   // Время в системе / просмотры страниц — для «Журнала действий» (только реальная активность, не просто открытая вкладка)
