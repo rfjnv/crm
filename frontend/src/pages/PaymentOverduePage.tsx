@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,6 +40,7 @@ import { matchesSearch, smartFilterOption } from '../utils/translit';
 import type { PaymentOverdueBucket, PaymentOverdueDealRow } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './PaymentOverduePage.css';
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft';
 
 const { Title, Text } = Typography;
 
@@ -285,7 +286,6 @@ export default function PaymentOverduePage() {
   const [editor, setEditor] = useState<DueDateEditor | null>(null);
   const [editorDate, setEditorDate] = useState<Dayjs | null>(null);
 
-  const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchState = useCallback(
     (patch: Partial<UrlState>) => {
       setSearchParams((prev) => mergeParams(prev, patch), { replace: true });
@@ -293,17 +293,8 @@ export default function PaymentOverduePage() {
     [setSearchParams],
   );
 
-  useEffect(() => {
-    setSearchDraft(listState.q);
-  }, [listState.q]);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (searchDraft.trim() === listState.q.trim()) return;
-      patchState({ q: searchDraft });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [searchDraft, listState.q, patchState]);
+  const commitSearch = useCallback((q: string) => patchState({ q }), [patchState]);
+  const { draft: searchDraft, setDraft: setSearchDraft } = useUrlSearchDraft(listState.q, commitSearch);
 
   const {
     data,

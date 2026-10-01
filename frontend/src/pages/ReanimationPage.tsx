@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -53,6 +53,7 @@ import type {
   ReanimationStatus,
 } from '../types';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -497,7 +498,6 @@ export default function ReanimationPage() {
     }
   }, []);
 
-  const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchListState = useCallback(
     (patch: Partial<ReanimationListUrlState>, nav?: { replace?: boolean }) => {
       setSearchParams((prev) => mergeReanimationListParams(prev, patch), nav ?? { replace: true });
@@ -505,25 +505,15 @@ export default function ReanimationPage() {
     [setSearchParams],
   );
 
-  useEffect(() => {
-    setSearchDraft(listState.q);
-  }, [listState.q]);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (searchDraft.trim() === listState.q.trim()) return;
-      patchListState({ q: searchDraft });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [searchDraft, listState.q, patchListState]);
+  const commitSearch = useCallback((q: string) => patchListState({ q }), [patchListState]);
+  const { draft: searchDraft, setDraft: setSearchDraft, flush: flushSearchToUrl } = useUrlSearchDraft(
+    listState.q,
+    commitSearch,
+  );
+  // Фильтрация не должна задерживать само поле ввода
+  const deferredSearch = useDeferredValue(searchDraft);
 
   const { page, pageSize } = listState;
-
-  const flushSearchToUrl = useCallback(() => {
-    const trimmed = searchDraft.trim();
-    if (trimmed === listState.q.trim()) return;
-    patchListState({ q: trimmed });
-  }, [searchDraft, listState.q, patchListState]);
 
   const goToClientCard = useCallback(
     (clientId: string) => {
@@ -600,7 +590,7 @@ export default function ReanimationPage() {
 
   const filteredRows = useMemo(() => {
     let rows = [...data];
-    const query = searchDraft.trim();
+    const query = deferredSearch.trim();
     const {
       statuses,
       managerIds,
@@ -667,7 +657,7 @@ export default function ReanimationPage() {
     });
 
     return rows;
-  }, [data, listState, searchDraft]);
+  }, [data, listState, deferredSearch]);
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(filteredRows.length / pageSize) || 1);

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Table, Button, Modal, Form, Input, Typography, message, Space, Popconfirm, Select, Card, Collapse, InputNumber, Tag } from 'antd';
@@ -7,6 +7,7 @@ import { clientsApi, type CreateClientData } from '../api/clients.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
@@ -169,16 +170,11 @@ export default function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [searchDraft, setSearchDraft] = useState(listState.q);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    setSearchDraft(qUrl);
-  }, [qUrl]);
 
   const patchListParams = useCallback(
     (patch: Parameters<typeof mergeClientsListSearchParams>[1], nav?: { replace?: boolean }) => {
@@ -187,19 +183,13 @@ export default function ClientsPage() {
     [setSearchParams],
   );
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      const trimmed = searchDraft.trim();
-      if (trimmed === qUrl.trim()) return;
-      patchListParams({ q: trimmed, page: 1 }, { replace: true });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [searchDraft, qUrl, patchListParams]);
-
-  useEffect(() => {
-    if (searchDraft.trim() === qUrl.trim()) return;
-    if (page !== 1) patchListParams({ page: 1 }, { replace: true });
-  }, [searchDraft, qUrl, page, patchListParams]);
+  const commitSearch = useCallback(
+    (q: string) => patchListParams({ q, page: 1 }, { replace: true }),
+    [patchListParams],
+  );
+  const { draft: searchDraft, setDraft: setSearchDraft } = useUrlSearchDraft(qUrl, commitSearch);
+  // Фильтрация тысяч клиентов не должна задерживать само поле ввода
+  const deferredSearch = useDeferredValue(searchDraft);
 
   const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
 
@@ -224,7 +214,7 @@ export default function ClientsPage() {
   // Поиск и менеджер — без фильтра по причине ухода, чтобы счётчики в плашках не обнулялись при выборе
   const baseFilteredClients = useMemo(() => {
     let list = clients ?? [];
-    const q = searchDraft.trim();
+    const q = deferredSearch.trim();
     if (q) {
       list = list.filter((c) =>
         matchesSearch(
@@ -244,7 +234,7 @@ export default function ClientsPage() {
       list = list.filter(c => c.managerId === managerFilter);
     }
     return list;
-  }, [clients, searchDraft, managerFilter]);
+  }, [clients, deferredSearch, managerFilter]);
 
   const lossCounts = useMemo(() => {
     const counts = new Map<ClientLossReason, number>();
