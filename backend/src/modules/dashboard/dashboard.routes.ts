@@ -9,11 +9,14 @@ import {
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope } from '../../lib/scope';
+import { ownerScope } from '../../lib/scope';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 
 router.use(authenticate);
+// Дашборд опрашивается раз в минуту у каждого; любая запись через API сбрасывает кеш
+router.use(responseCache(60_000));
 
 router.get(
   '/analytics',

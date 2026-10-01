@@ -28,7 +28,9 @@
     "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts",
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts",
     "restore:product-prices": "tsx src/scripts/restore-wiped-product-prices.ts",
-    "seed:companies": "node dist/scripts/seed-companies.js"
+    "seed:companies": "node dist/scripts/seed-companies.js",
+    "normalize:client-phones": "tsx src/scripts/normalize-client-phones.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.93.0",
@@ -69,7 +71,8 @@
     "pg-connection-string": "^2.12.0",
     "prisma": "^6.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
   },
   "allowScripts": {
     "prisma@6.19.2": true,

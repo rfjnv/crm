@@ -58,6 +58,12 @@ services:
       - path: /*
         name: Content-Security-Policy
         value: "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org"
+      # В /assets только файлы с хешем в имени: новая сборка — новые имена, старые не меняются.
+      # Без этого браузер при каждом визите перепроверял все чанки (max-age=0).
+      # index.html сюда не попадает и по-прежнему всегда свежий.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     routes:
       - type: rewrite
         source: /*

@@ -10,11 +10,14 @@ import {
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope } from '../../lib/scope';
+import { ownerScope } from '../../lib/scope';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 
 router.use(authenticate);
+// Тяжёлый расчёт по всей истории — 5 минут кеша; любая запись через API сбрасывает его
+router.use(responseCache(5 * 60_000));
 
 // ──── Segmentation logic ────
 

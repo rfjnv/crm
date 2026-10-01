@@ -149,12 +149,7 @@ export default function MessagesPage() {
 
   useEffect(() => { scrollToBottom(); }, [messagesData, scrollToBottom]);
 
-  // Presence ping
-  useEffect(() => {
-    conversationsApi.ping();
-    const interval = setInterval(() => conversationsApi.ping(), 30_000);
-    return () => clearInterval(interval);
-  }, []);
+  // Presence ping шлёт Layout — он оборачивает и эту страницу
 
   // ── Derived ──
   const messages = messagesData?.messages ?? [];

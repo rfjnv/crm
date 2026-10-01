@@ -16,7 +16,7 @@ import { Line, Bar } from '@ant-design/charts';
 import { clientsApi } from '../api/clients.api';
 import { adminApi } from '../api/admin.api';
 import BackButton from '../components/BackButton';
-import { smartFilterOption } from '../utils/translit';
+import { smartFilterOption, validateClientPhone } from '../utils/translit';
 import { contractsApi } from '../api/contracts.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
@@ -2029,7 +2029,7 @@ export default function ClientDetailPage() {
             <Input />
           </Form.Item>
           <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
-            <Form.Item name="phone" label="Телефон" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>
+            <Form.Item name="phone" label="Телефон" style={{ flex: 1, width: isMobile ? '100%' : undefined }} rules={[{ validator: (_, v) => { const err = validateClientPhone(v); return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}>
               <Input placeholder="+998 99 999 99 99" />
             </Form.Item>
             <Form.Item name="email" label="Telegram" style={{ flex: 1, width: isMobile ? '100%' : undefined }}>

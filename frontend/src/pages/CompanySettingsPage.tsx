@@ -6,6 +6,7 @@ import {
 import { UploadOutlined, SaveOutlined, SyncOutlined } from '@ant-design/icons';
 import { settingsApi } from '../api/settings.api';
 import { timepayApi } from '../api/timepay.api';
+import TimePayUnmatchedPanel from '../components/TimePayUnmatchedPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { CompanySettings } from '../types';
 import dayjs from 'dayjs';
@@ -55,6 +56,7 @@ export default function CompanySettingsPage() {
         message.error(result.error || 'Ошибка синхронизации');
       }
       queryClient.invalidateQueries({ queryKey: ['timepay-status'] });
+      queryClient.invalidateQueries({ queryKey: ['timepay-unmatched'] });
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
     },
     onError: () => message.error('Ошибка синхронизации'),
@@ -175,6 +177,8 @@ export default function CompanySettingsPage() {
           >
             Синхронизировать сейчас
           </Button>
+
+          {timepayStatus?.hasToken && <TimePayUnmatchedPanel />}
 
           {timepayStatus?.lastSyncSample && (
             <Collapse

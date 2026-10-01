@@ -74,7 +74,8 @@ import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
 import './modules/rop-agent/rop-agent.telegram';
 import './modules/rop-agent/rop-agent.calls';
-import './modules/rop-agent/rop-agent.scheduler';
+import './modules/rop-agent/rop-agent.scheduler';
+import { invalidateCacheOnWrite } from './lib/responseCache';
 
 const app = express();
 
@@ -155,6 +156,8 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(requestContextMiddleware);
+// Успешная запись сбрасывает кеш аналитики — свои изменения видны сразу
+app.use(invalidateCacheOnWrite);
 
 /**
  * Static files (uploaded attachments).

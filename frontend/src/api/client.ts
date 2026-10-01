@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { getDeviceId } from '../lib/deviceId';
 import { getTelegramInitData } from '../lib/telegramWebApp';
 import { isMoneyAccessDenied, notifyMoneyAccessDenied } from '../lib/moneyAccess';
+import { safeStorage } from '../lib/safeStorage';
 
 export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : '/api');
 
@@ -47,6 +48,58 @@ client.interceptors.request.use((config) => {
   }
   return config;
 });
+
+/** Токен, с которым ушёл запрос (без «Bearer »). */
+function sentToken(config: { headers?: unknown }): string | null {
+  const headers = config.headers as Record<string, unknown> | undefined;
+  const value = headers?.Authorization;
+  return typeof value === 'string' && value.startsWith('Bearer ') ? value.slice(7) : null;
+}
+
+/** Access-токен ещё поживёт хотя бы 30 секунд (по полю exp из JWT). */
+function isFreshToken(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now() + 30_000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Продление сессии — по одной вкладке за раз. Сервер при продлении отзывает старый
+ * refresh-токен, а повторное предъявление отозванного считает кражей и отзывает ВСЕ сессии
+ * пользователя. Две вкладки с одной cookie, продлевающие одновременно, выкидывали человека
+ * из CRM на всех устройствах. Под общей блокировкой вторая вкладка сначала смотрит, не
+ * продлила ли сессию соседняя (токен общий в localStorage), и берёт готовый.
+ */
+async function refreshSession(failedToken: string | null): Promise<string> {
+  const run = async (): Promise<string> => {
+    const shared = safeStorage.getItem('crm_access_token');
+    if (shared && shared !== 'undefined' && shared !== failedToken && isFreshToken(shared)) {
+      useAuthStore.getState().setTokens(shared);
+      return shared;
+    }
+    // refreshToken comes from HttpOnly cookie automatically (withCredentials: true)
+    const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
+    useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
+    // Refresh user data so permissions stay up-to-date
+    try {
+      const meRes = await axios.get(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${data.accessToken}` },
+      });
+      const prev = useAuthStore.getState().user;
+      useAuthStore.getState().setAuth(
+        enrichUserFromMe(meRes.data, prev),
+        data.accessToken,
+        data.refreshToken,
+      );
+    } catch { /* tokens already updated */ }
+    return data.accessToken as string;
+  };
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks?.request ? locks.request('crm-auth-refresh', run) : run();
+}
 
 // Response interceptor: handle 401 with refresh
 let isRefreshing = false;
@@ -96,6 +149,15 @@ client.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Запрос ушёл со старым токеном, а сессию уже продлили — просто повторяем с новым
+    const currentToken = useAuthStore.getState().accessToken;
+    const failedToken = sentToken(originalRequest);
+    if (currentToken && failedToken && currentToken !== failedToken && isFreshToken(currentToken)) {
+      originalRequest._retry = true;
+      originalRequest.headers.Authorization = `Bearer ${currentToken}`;
+      return client(originalRequest);
+    }
+
     if (isRefreshing) {
       return new Promise((resolve, reject) => {
         failedQueue.push({
@@ -112,23 +174,9 @@ client.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      // refreshToken comes from HttpOnly cookie automatically (withCredentials: true)
-      const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
-      useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
-      // Refresh user data so permissions stay up-to-date
-      try {
-        const meRes = await axios.get(`${API_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${data.accessToken}` },
-        });
-        const prev = useAuthStore.getState().user;
-        useAuthStore.getState().setAuth(
-          enrichUserFromMe(meRes.data, prev),
-          data.accessToken,
-          data.refreshToken,
-        );
-      } catch { /* tokens already updated */ }
-      processQueue(null, data.accessToken);
-      originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+      const newToken = await refreshSession(failedToken);
+      processQueue(null, newToken);
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
       return client(originalRequest);
     } catch (refreshError) {
       // Refresh cookie не пережила — вероятно, кроссдоменная cookie заблокирована

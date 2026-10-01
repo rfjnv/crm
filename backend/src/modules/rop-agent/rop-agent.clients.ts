@@ -8,7 +8,8 @@ import {
   SQL_DEALS_REVENUE_BASE_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
 } from '../../lib/analytics';
-import { clientPurchaseCycles } from './rop-agent.analysis';
+import { clientPurchaseCycles } from './rop-agent.analysis';
+import { escapeLike } from '../../lib/translit';
 
 /**
  * Клиент целиком и причины потерь — чтобы на вопрос «клиент ушёл, потому что мы не
@@ -46,7 +47,7 @@ async function findClient(input: { client_id?: string; search?: string }) {
   const rows = await prisma.$queryRaw<(ClientRow & { exact: boolean })[]>(Prisma.sql`
     SELECT c.*, u.full_name AS manager, lower(c.company_name) = lower(${q}) AS exact
     FROM clients c JOIN users u ON u.id = c.manager_id
-    WHERE c.company_name ILIKE ${`%${q}%`} OR c.phone ILIKE ${`%${q}%`} OR c.inn = ${q}
+    WHERE c.company_name ILIKE ${`%${escapeLike(q)}%`} OR c.phone ILIKE ${`%${escapeLike(q)}%`} OR c.inn = ${q}
     ORDER BY exact DESC, c.is_archived, length(c.company_name)
     LIMIT 10`);
   const exact = rows.filter((r) => r.exact);

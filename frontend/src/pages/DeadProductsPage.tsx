@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -31,6 +31,7 @@ import { formatUZS } from '../utils/currency';
 import { matchesSearch, smartFilterOption } from '../utils/translit';
 import type { DeadProductIssue, DeadProductRow } from '../types';
 import './DeadProductsPage.css';
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft';
 
 const { Title, Text } = Typography;
 
@@ -300,7 +301,6 @@ export default function DeadProductsPage() {
     }
   }, [listState.noSalesDays, listState.zeroStockDays]);
 
-  const [searchDraft, setSearchDraft] = useState(() => searchParams.get('q') ?? '');
   const patchListState = useCallback(
     (patch: Partial<DeadProductsUrlState>) => {
       setSearchParams((prev) => mergeDeadProductsParams(prev, patch), { replace: true });
@@ -308,17 +308,11 @@ export default function DeadProductsPage() {
     [setSearchParams],
   );
 
-  useEffect(() => {
-    setSearchDraft(listState.q);
-  }, [listState.q]);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (searchDraft.trim() === listState.q.trim()) return;
-      patchListState({ q: searchDraft });
-    }, 300);
-    return () => window.clearTimeout(t);
-  }, [searchDraft, listState.q, patchListState]);
+  const commitSearch = useCallback((q: string) => patchListState({ q }), [patchListState]);
+  const { draft: searchDraft, setDraft: setSearchDraft, flush: flushSearch } = useUrlSearchDraft(
+    listState.q,
+    commitSearch,
+  );
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['dead-products', listState.noSalesDays, listState.zeroStockDays],
@@ -563,7 +557,7 @@ export default function DeadProductsPage() {
                 placeholder="Название, артикул, категория…"
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
-                onPressEnter={() => patchListState({ q: searchDraft })}
+                onPressEnter={flushSearch}
               />
             </div>
 

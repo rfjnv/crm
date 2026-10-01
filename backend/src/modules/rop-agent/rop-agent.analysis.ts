@@ -7,7 +7,8 @@ import {
   SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
   INTERNAL_COMPANY_NAME,
 } from '../../lib/analytics';
-import { normalizeSku } from '../market/marketCatalogLinks';
+import { normalizeSku } from '../market/marketCatalogLinks';
+import { escapeLike } from '../../lib/translit';
 
 /**
  * Аналитика для раздачи задач: кто перестал покупать, кто брал товар, который
@@ -208,10 +209,10 @@ export async function stockedProductBuyers(input: StockedProductBuyersInput) {
     SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
   ];
   if (input.search?.trim()) {
-    const q = `%${input.search.trim()}%`;
+    const q = `%${escapeLike(input.search.trim())}%`;
     productFilters.push(Prisma.sql`(p.name ILIKE ${q} OR p.sku ILIKE ${q})`);
   }
-  if (input.category?.trim()) productFilters.push(Prisma.sql`p.category ILIKE ${`%${input.category.trim()}%`}`);
+  if (input.category?.trim()) productFilters.push(Prisma.sql`p.category ILIKE ${`%${escapeLike(input.category.trim())}%`}`);
   if (input.skus?.length) productFilters.push(Prisma.sql`LOWER(TRIM(p.sku)) = ANY(${input.skus.map(normalizeSku)})`);
 
   const silentSql = Prisma.sql`(b.days_since > GREATEST(${factor} * GREATEST(b.cycle_days, ${MIN_CYCLE_DAYS}), 30))`;
@@ -298,7 +299,7 @@ export async function slowStock(input: SlowStockInput, allowCost = false) {
   const limit = clamp(input.limit, 30, 1, 100);
   const buyersPer = clamp(input.buyers_per_product, 5, 0, 20);
   const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, Prisma.sql`p.stock > 0`, SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT];
-  if (input.category?.trim()) filters.push(Prisma.sql`p.category ILIKE ${`%${input.category.trim()}%`}`);
+  if (input.category?.trim()) filters.push(Prisma.sql`p.category ILIKE ${`%${escapeLike(input.category.trim())}%`}`);
 
   const products = await prisma.$queryRaw<{
     product_id: string; product: string; sku: string; unit: string | null; category: string | null;

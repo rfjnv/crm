@@ -1397,6 +1397,18 @@ export interface TimePayStatus {
   lastSyncSample?: string | null;
 }
 
+export interface TimePayUnmatchedEmployee {
+  timepayId: string;
+  name: string;
+  /** Пользователь CRM, похожий по ФИО (если такой один) — подставляется в выбор по умолчанию. */
+  suggestedUserId: string | null;
+}
+
+export interface TimePayUnmatchedResult {
+  status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR';
+  employees: TimePayUnmatchedEmployee[];
+}
+
 export interface TimePaySyncResult {
   status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR' | 'ERROR';
   matched: number;

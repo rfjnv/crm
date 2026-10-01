@@ -117,6 +117,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+// Справочник товаров (~250 КБ) нужен на многих страницах и меняется редко; после правок
+// товаров он и так инвалидируется — иначе каждая страница перекачивала его заново.
+queryClient.setQueryDefaults(['products'], { staleTime: 5 * 60_000 });
 
 export default function App() {
   const mode = useThemeStore((s) => s.mode);

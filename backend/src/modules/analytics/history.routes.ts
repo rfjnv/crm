@@ -11,11 +11,14 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { getSnapshot, saveSnapshot, isPastMonth, isPastYear } from '../../lib/snapshots';
-import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 
 router.use(authenticate);
+// Тяжёлый расчёт по всей истории — 5 минут кеша; любая запись через API сбрасывает его
+router.use(responseCache(5 * 60_000));
 
 const TZ = Prisma.sql`'Asia/Tashkent'`;
 

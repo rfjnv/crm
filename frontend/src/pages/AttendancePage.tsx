@@ -158,8 +158,12 @@ export default function AttendancePage() {
     const presentIds = new Set(data.filter((r) => r.checkIn).map((r) => r.userId));
     const late = data.filter((r) => checkInStatus(r).kind === 'LATE').length;
     const onTime = data.filter((r) => checkInStatus(r).kind === 'ON_TIME').length;
-    const absent = Math.max(activeUsers.length - presentIds.size, 0);
-    return { total: activeUsers.length, present: presentIds.size, onTime, late, absent };
+    // «Не пришли» — только среди тех, кого отмечает TimePay (есть привязка ID). Без привязки
+    // отсутствие отметки ничего не значит: раньше так в «не пришли» попадали 16 из 19.
+    const tracked = activeUsers.filter((u) => u.timepayEmployeeId || presentIds.has(u.id));
+    const absent = tracked.filter((u) => !presentIds.has(u.id)).length;
+    const untracked = activeUsers.length - tracked.length;
+    return { total: activeUsers.length, present: presentIds.size, onTime, late, absent, untracked };
   }, [isSingleDay, users, data]);
 
   const employeeStats: EmployeeStat[] = useMemo(() => {
@@ -388,9 +392,18 @@ export default function AttendancePage() {
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Tooltip title="Активные сотрудники без отметки прихода за день">
+            <Tooltip
+              title={`Сотрудники, привязанные к TimePay, без отметки прихода за день.${summary.untracked
+                ? ` Ещё ${summary.untracked} не привязаны к TimePay и здесь не учитываются — привязать можно в Настройках компании.`
+                : ''}`}
+            >
               <Card size="small" bordered={false}>
-                <Statistic title="Не пришли" value={summary.absent} valueStyle={{ color: summary.absent ? '#cf1322' : undefined }} />
+                <Statistic
+                  title="Не пришли"
+                  value={summary.absent}
+                  valueStyle={{ color: summary.absent ? '#cf1322' : undefined }}
+                  suffix={summary.untracked ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>· без TimePay: {summary.untracked}</Typography.Text> : undefined}
+                />
               </Card>
             </Tooltip>
           </Col>

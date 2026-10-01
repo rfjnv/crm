@@ -16,11 +16,15 @@ import { ownerScope } from '../../lib/scope';
 import { authorize } from '../../middleware/authorize';
 import { AppError } from '../../lib/errors';
 import { closedDealsReportService } from './closedDealsReport.service';
-import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
+import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
+import { escapeLike } from '../../lib/translit';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 
 router.use(authenticate);
+// Минута-две свежести хватает; любая запись через API сбрасывает кеш
+router.use(responseCache(2 * 60_000));
 
 router.get(
   '/export/closed-deals.xlsx',
@@ -167,7 +171,7 @@ router.get(
       createdAt: { gte: start, lt: end },
       ...(managerId ? { userId: managerId } : {}),
       ...(clientSearch.length > 0
-        ? { client: { companyName: { contains: clientSearch, mode: 'insensitive' } } }
+        ? { client: { companyName: { contains: escapeLike(clientSearch), mode: 'insensitive' } } }
         : {}),
     };
 
@@ -320,7 +324,7 @@ router.get(
       where: {
         ...(existingClientIds.size > 0 ? { id: { notIn: [...existingClientIds] } } : {}),
         ...(clientSearch.length > 0
-          ? { companyName: { contains: clientSearch, mode: 'insensitive' } }
+          ? { companyName: { contains: escapeLike(clientSearch), mode: 'insensitive' } }
           : {}),
       },
       select: { id: true, companyName: true },

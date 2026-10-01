@@ -26,7 +26,8 @@ import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
 import { clientCard, lossReasons } from './rop-agent.clients';
 import { kpiForecast } from './rop-agent.kpi';
-import { clientsService } from '../clients/clients.service';
+import { clientsService } from '../clients/clients.service';
+import { escapeLike } from '../../lib/translit';
 
 /**
  * Инструменты РОП-агента. Все, кроме propose_task_plan, только читают. И тот
@@ -180,10 +181,10 @@ async function productEconomicsRows(input: ProductEconomicsInput, allowCost = fa
   const limit = Math.min(Math.max(Math.round(input.limit ?? 50), 1), 200);
   const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT];
   if (input.search?.trim()) {
-    const q = `%${input.search.trim()}%`;
+    const q = `%${escapeLike(input.search.trim())}%`;
     filters.push(Prisma.sql`(p.name ILIKE ${q} OR p.sku ILIKE ${q})`);
   }
-  if (input.category?.trim()) filters.push(Prisma.sql`p.category ILIKE ${`%${input.category.trim()}%`}`);
+  if (input.category?.trim()) filters.push(Prisma.sql`p.category ILIKE ${`%${escapeLike(input.category.trim())}%`}`);
   if (input.skus?.length) {
     filters.push(Prisma.sql`LOWER(TRIM(p.sku)) = ANY(${input.skus.map(normalizeSku)})`);
   }

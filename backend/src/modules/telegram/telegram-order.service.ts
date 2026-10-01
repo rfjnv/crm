@@ -2,6 +2,7 @@ import { Prisma, Role } from '@prisma/client';
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { canonicalClientPhone, formatUzPhone } from '../../lib/phone';
 import { pushService } from '../push/push.service';
 
 /**
@@ -83,6 +84,9 @@ export function phoneSearchVariants(normalizedPhone: string | null | undefined):
     if (digits.startsWith('998') && digits.length === 12) {
       set.add(digits.slice(3));
     }
+    // Так номера сохраняет форма клиента в CRM — без этого бот не узнавал существующих клиентов
+    const formatted = formatUzPhone(digits);
+    if (formatted) set.add(formatted);
   }
   return [...set].filter(Boolean);
 }
@@ -287,7 +291,7 @@ export async function createCustomerOrder(input: CreateCustomerOrderInput): Prom
         data: {
           companyName: customerName,
           contactName: customerName,
-          phone,
+          phone: canonicalClientPhone(phone),
           managerId: manager.id,
           notes: mergeClientNotes(existingClient.notes, input.chatId),
         },
@@ -296,7 +300,7 @@ export async function createCustomerOrder(input: CreateCustomerOrderInput): Prom
         data: {
           companyName: customerName,
           contactName: customerName,
-          phone,
+          phone: canonicalClientPhone(phone),
           managerId: manager.id,
           notes: mergeClientNotes(null, input.chatId),
         },

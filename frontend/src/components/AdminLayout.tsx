@@ -20,7 +20,7 @@ import { authApi } from '../api/auth.api';
 import { MARKETING_SITE_URL } from '../lib/marketingSite';
 import { getFirstName } from '../lib/name-utils';
 import PageSuspense from './PageSuspense';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 const { Header, Sider, Content } = AntLayout;
 

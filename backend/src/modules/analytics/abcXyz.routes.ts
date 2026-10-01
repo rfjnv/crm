@@ -11,10 +11,13 @@ import {
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
-import { recommendationFor } from './abcXyzRecommendations';
+import { recommendationFor } from './abcXyzRecommendations';
+import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
 router.use(authenticate);
+// Минута-две свежести хватает; любая запись через API сбрасывает кеш
+router.use(responseCache(2 * 60_000));
 
 type Abc = 'A' | 'B' | 'C';
 type Xyz = 'X' | 'Y' | 'Z' | 'NEW';

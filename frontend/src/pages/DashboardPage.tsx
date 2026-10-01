@@ -130,7 +130,7 @@ export default function DashboardPage() {
 
   const { data: debtsData } = useQuery({
     queryKey: ['finance-debts-total'],
-    queryFn: () => financeApi.getDebts(),
+    queryFn: () => financeApi.getDebts({ totalsOnly: 1 }),
     refetchInterval: 120_000,
   });
 
@@ -171,10 +171,11 @@ export default function DashboardPage() {
     return { period };
   }, [period, customRange]);
 
+  // Графики не ждут сводку: раньше они стартовали второй волной, и дашборд открывался вдвое дольше.
   const { data: monthAnalytics, isLoading: extLoading } = useQuery({
     queryKey: ['dashboard-analytics-extras', analyticsPeriodQuery],
     queryFn: () => analyticsApi.getData(analyticsPeriodQuery),
-    enabled: !!data && showExtras,
+    enabled: showExtras,
     refetchInterval: 60_000,
   });
 
@@ -187,7 +188,7 @@ export default function DashboardPage() {
   const { data: abcData } = useQuery({
     queryKey: ['dashboard-abc', analyticsPeriodQuery],
     queryFn: () => analyticsApi.getAbcXyz(analyticsPeriodQuery),
-    enabled: !!data && showExtras,
+    enabled: showExtras,
     refetchInterval: 120_000,
   });
 
@@ -322,8 +323,14 @@ export default function DashboardPage() {
   }
 
   const totalDebt = debtsData?.totals?.totalDebtOwed ?? data.totalDebt;
-  const revPct = isAdmin ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0) : null;
-  const dealPct = isAdmin ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0) : null;
+  // Текущий период ещё идёт: в начале дня «−100% к вчера» пугает, хотя значит лишь «продаж пока нет».
+  const periodInProgress = period !== 'custom';
+  const revPct = isAdmin && !(periodInProgress && !data.revenueToday)
+    ? pctChange(data.revenueToday || 0, data.revenueYesterday || 0)
+    : null;
+  const dealPct = isAdmin && !(periodInProgress && !data.closedDealsToday)
+    ? pctChange(data.closedDealsToday || 0, data.closedDealsYesterday || 0)
+    : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
   const goalPct = revenueGoal > 0 ? Math.floor((revenueMonth / revenueGoal) * 100) : 0;
