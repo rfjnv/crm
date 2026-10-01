@@ -139,6 +139,22 @@ function toDateOnly(value: string | Date | undefined): string | null {
   return value.toISOString().slice(0, 10);
 }
 
+/**
+ * start/end у date-holidays — моменты в часовом поясе страны (полночь в Китае — 16:00 UTC
+ * предыдущего дня), а end — начало следующего дня. Через toISOString однодневный праздник
+ * сдвигался на день назад и растягивался на два, и соседние дни дублировались в календаре.
+ * Поэтому берём локальную дату праздника и его длину в днях.
+ */
+function holidaySpan(date: string, row: HolidayRow): { startDate: string; endDate: string } {
+  const start = row.start ? new Date(row.start) : null;
+  const end = row.end ? new Date(row.end) : null;
+  const days = start && end
+    ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+    : 1;
+  const last = new Date(parseDateOnly(date).getTime() + (days - 1) * 86_400_000);
+  return { startDate: date, endDate: last.toISOString().slice(0, 10) };
+}
+
 function listYears(from: string, to: string): number[] {
   const fromYear = parseDateOnly(from).getUTCFullYear();
   const toYear = parseDateOnly(to).getUTCFullYear();
@@ -203,8 +219,7 @@ export function listBlockingEvents(params: {
         const date = toDateOnly(row.date);
         if (!date || date < from || date > to) continue;
 
-        const startDate = toDateOnly(row.start) ?? date;
-        const endDate = toDateOnly(row.end) ?? date;
+        const { startDate, endDate } = holidaySpan(date, row);
         const eventName = String(row.name ?? '').trim();
         if (!eventName) continue;
 
