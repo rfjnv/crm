@@ -2,6 +2,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { telegramService } from '../telegram/telegram.service';
 import { fetchDashboardList, TimePayAuthError, TimePayApiError, type TimePayDashboardEntry } from './timepay.client';
+import { createNameMatcher } from './timepay.matching';
 
 /** Компания работает в Ташкенте (UTC+5, без перехода на летнее время) — тот же принцип, что в attendance.service.ts. */
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
@@ -59,8 +60,63 @@ function parseTimePayDateTime(raw: unknown, fallbackYmd: string): Date | null {
   return null;
 }
 
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+/**
+ * Сопоставление записи TimePay с пользователем CRM: сначала по сохранённому ID TimePay,
+ * затем по ФИО (без учёта регистра, ё/е, порядка слов, отчества и латиницы — см. timepay.matching).
+ *
+ * ID-привязка — осознанное решение админа, применяем её вне зависимости от isActive
+ * (некоторые роли вроде водителей/грузчиков могут быть без доступа в CRM, но физически работают).
+ * Фоллбэк по ФИО — только для активных и только при единственном кандидате. Найденный по ФИО
+ * ID TimePay сохраняется пользователю (если у него ID ещё нет и этот ID ни за кем не закреплён):
+ * дальше он сопоставляется надёжно по ID, а «Посещаемость» знает, что его отмечает TimePay.
+ */
+async function buildEmployeeResolver() {
+  const [activeUsers, mappedUsers] = await Promise.all([
+    prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true, timepayEmployeeId: true } }),
+    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { id: true, timepayEmployeeId: true } }),
+  ]);
+  const userByTimepayId = new Map(mappedUsers.map((u) => [u.timepayEmployeeId as string, u.id]));
+  const usersWithoutId = new Set(activeUsers.filter((u) => !u.timepayEmployeeId).map((u) => u.id));
+  const matchName = createNameMatcher(activeUsers);
+
+  const resolve = async (timepayId: string | null, name: string | null): Promise<{ userId: string; byId: boolean } | null> => {
+    const byId = timepayId ? userByTimepayId.get(timepayId) : undefined;
+    if (byId) return { userId: byId, byId: true };
+    if (!name) return null;
+    const userId = matchName(name);
+    if (!userId) return null;
+    if (timepayId && usersWithoutId.has(userId) && !userByTimepayId.has(timepayId)) {
+      await prisma.user.update({ where: { id: userId }, data: { timepayEmployeeId: timepayId } });
+      userByTimepayId.set(timepayId, userId);
+      usersWithoutId.delete(userId);
+    }
+    return { userId, byId: false };
+  };
+
+  return { resolve, activeUsers };
+}
+
+/** Сотрудники TimePay за день, которых не удалось сопоставить, — для ручной привязки в настройках. */
+export async function listUnmatchedTimePayEmployees(dateYmd: string = tashkentTodayYmd()) {
+  const integration = await getIntegration();
+  if (!integration.accessToken) return { status: 'NOT_CONFIGURED' as const, employees: [] };
+  const entries = await fetchDashboardList(integration.accessToken, { date: dateYmd });
+  // Здесь только смотрим: без автопривязки, чтобы просмотр списка ничего не записывал
+  const [activeUsers, mappedUsers] = await Promise.all([
+    prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true } }),
+    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { timepayEmployeeId: true } }),
+  ]);
+  const boundIds = new Set(mappedUsers.map((u) => u.timepayEmployeeId as string));
+  const matchName = createNameMatcher(activeUsers);
+  const employees: { timepayId: string; name: string; suggestedUserId: string | null }[] = [];
+  for (const entry of entries) {
+    const timepayId = extractEmployeeId(entry);
+    const name = extractEmployeeName(entry);
+    if (!timepayId || boundIds.has(timepayId)) continue;
+    employees.push({ timepayId, name: name ?? `ID ${timepayId}`, suggestedUserId: name ? matchName(name) : null });
+  }
+  employees.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  return { status: 'SUCCESS' as const, employees };
 }
 
 const NAME_FIELD_CANDIDATES = ['full_name', 'fullname', 'fio', 'name', 'employee_name'];
@@ -217,15 +273,7 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
 
   const sampleEntry = entries.length ? JSON.stringify(entries[0], null, 2).slice(0, 4000) : null;
 
-  // ID-привязка — осознанное решение админа, применяем её вне зависимости от isActive
-  // (некоторые роли вроде водителей/грузчиков могут быть без доступа в CRM, но физически работают).
-  // Фоллбэк по ФИО оставляем только для активных, чтобы не плодить случайные совпадения.
-  const [activeUsers, mappedUsers] = await Promise.all([
-    prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true } }),
-    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { id: true, timepayEmployeeId: true } }),
-  ]);
-  const userByName = new Map(activeUsers.map((u) => [normalizeName(u.fullName), u.id]));
-  const userByTimepayId = new Map(mappedUsers.map((u) => [u.timepayEmployeeId as string, u.id]));
+  const { resolve } = await buildEmployeeResolver();
 
   const dateOnly = ymdToDateOnly(dateYmd);
   let matchedById = 0;
@@ -236,11 +284,9 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
     const timepayId = extractEmployeeId(entry);
     const name = extractEmployeeName(entry);
 
-    let userId = timepayId ? userByTimepayId.get(timepayId) : undefined;
-    const byId = !!userId;
-    if (!userId && name) {
-      userId = userByName.get(normalizeName(name));
-    }
+    const resolved = await resolve(timepayId, name);
+    const userId = resolved?.userId;
+    const byId = resolved?.byId ?? false;
 
     if (!userId) {
       if (name) unmatchedNames.push(name);

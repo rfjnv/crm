@@ -4,7 +4,8 @@ import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { setTimePayTokenDto } from './timepay.dto';
-import { getTimePayStatus, setTimePayToken, syncAttendanceFromTimePay, assertYmd } from './timepay.service';
+import { getTimePayStatus, setTimePayToken, syncAttendanceFromTimePay, assertYmd, listUnmatchedTimePayEmployees } from './timepay.service';
+import { TimePayAuthError } from './timepay.client';
 
 const router = Router();
 
@@ -23,6 +24,23 @@ router.put(
   validate(setTimePayTokenDto),
   asyncHandler(async (req: Request, res: Response) => {
     res.json(await setTimePayToken(req.body.accessToken, req.user!.userId));
+  }),
+);
+
+/** Кого из сотрудников TimePay не удалось сопоставить — для ручной привязки в настройках. */
+router.get(
+  '/unmatched',
+  asyncHandler(async (req: Request, res: Response) => {
+    const date = assertYmd(req.query.date as string | undefined);
+    try {
+      res.json(await listUnmatchedTimePayEmployees(date));
+    } catch (err) {
+      if (err instanceof TimePayAuthError) {
+        res.json({ status: 'AUTH_ERROR', employees: [] });
+        return;
+      }
+      throw err;
+    }
   }),
 );
 
