@@ -49,8 +49,10 @@ export class ClientsController {
     res.json(client);
   }
 
-  async normalizePhones(_req: Request, res: Response): Promise<void> {
-    const result = await clientsService.normalizeAllPhones();
+  /** По умолчанию только показывает изменения; записывает при ?apply=1. */
+  async normalizePhones(req: Request, res: Response): Promise<void> {
+    const apply = req.query.apply === '1' || req.query.apply === 'true';
+    const result = await clientsService.normalizeAllPhones({ dryRun: !apply });
     res.json(result);
   }
 

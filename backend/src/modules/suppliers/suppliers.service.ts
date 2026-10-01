@@ -4,7 +4,8 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
-import { CreateSupplierDto, UpdateSupplierDto } from './suppliers.dto';
+import { CreateSupplierDto, UpdateSupplierDto } from './suppliers.dto';
+import { escapeLike } from '../../lib/translit';
 
 function toPublicLogoPath(absolutePath: string): string {
   const normalized = absolutePath.replace(/\\/g, '/');
@@ -18,9 +19,9 @@ export class SuppliersService {
     if (!params.includeArchived) where.isArchived = false;
     if (params.search) {
       where.OR = [
-        { companyName: { contains: params.search, mode: 'insensitive' } },
-        { country: { contains: params.search, mode: 'insensitive' } },
-        { contactPerson: { contains: params.search, mode: 'insensitive' } },
+        { companyName: { contains: escapeLike(params.search), mode: 'insensitive' } },
+        { country: { contains: escapeLike(params.search), mode: 'insensitive' } },
+        { contactPerson: { contains: escapeLike(params.search), mode: 'insensitive' } },
       ];
     }
 

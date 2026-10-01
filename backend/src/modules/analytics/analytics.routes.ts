@@ -16,7 +16,8 @@ import { ownerScope } from '../../lib/scope';
 import { authorize } from '../../middleware/authorize';
 import { AppError } from '../../lib/errors';
 import { closedDealsReportService } from './closedDealsReport.service';
-import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
+import { sendDailyClosedDealsToWarehouse } from '../internal/reports.routes';
+import { escapeLike } from '../../lib/translit';
 
 const router = Router();
 
@@ -167,7 +168,7 @@ router.get(
       createdAt: { gte: start, lt: end },
       ...(managerId ? { userId: managerId } : {}),
       ...(clientSearch.length > 0
-        ? { client: { companyName: { contains: clientSearch, mode: 'insensitive' } } }
+        ? { client: { companyName: { contains: escapeLike(clientSearch), mode: 'insensitive' } } }
         : {}),
     };
 
@@ -320,7 +321,7 @@ router.get(
       where: {
         ...(existingClientIds.size > 0 ? { id: { notIn: [...existingClientIds] } } : {}),
         ...(clientSearch.length > 0
-          ? { companyName: { contains: clientSearch, mode: 'insensitive' } }
+          ? { companyName: { contains: escapeLike(clientSearch), mode: 'insensitive' } }
           : {}),
       },
       select: { id: true, companyName: true },

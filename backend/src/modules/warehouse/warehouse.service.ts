@@ -10,7 +10,8 @@ import {
 } from '../../lib/inventoryAnalytics';
 import { auditLog } from '../../lib/logger';
 import { deleteImageFromStorage } from '../../lib/imageStorage';
-import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
+import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
+import { escapeLike } from '../../lib/translit';
 
 export class WarehouseService {
   // ==================== PRODUCTS ====================
@@ -570,7 +571,7 @@ export class WarehouseService {
       };
     }
     if (filters?.search?.trim()) {
-      const q = filters.search.trim();
+      const q = escapeLike(filters.search.trim());
       where.OR = [
         { product: { name: { contains: q, mode: 'insensitive' } } },
         { product: { sku: { contains: q, mode: 'insensitive' } } },

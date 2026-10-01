@@ -15,7 +15,7 @@ import { CLIENT_LOSS_REASONS, type ClientLossReason } from '../constants/clientL
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
-import { buildClientSearchHaystack, matchesSearch, smartFilterOption } from '../utils/translit';
+import { buildClientSearchHaystack, matchesSearch, smartFilterOption, validateClientPhone } from '../utils/translit';
 import { getFirstName } from '../lib/name-utils';
 
 type ClientSortMode = 'name_asc' | 'name_desc' | 'created_desc' | 'contact_desc';
@@ -446,7 +446,7 @@ export default function ClientsPage() {
         <Input />
       </Form.Item>
       <Space style={{ width: '100%' }} size="middle" direction={isMobile ? 'vertical' : 'horizontal'}>
-        <Form.Item name="phone" label="Телефон" style={{ flex: 1 }}>
+        <Form.Item name="phone" label="Телефон" style={{ flex: 1 }} rules={[{ validator: (_, v) => { const err = validateClientPhone(v); return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}>
           <PhoneInput />
         </Form.Item>
         <Form.Item name="email" label="Telegram" style={{ flex: 1 }}>

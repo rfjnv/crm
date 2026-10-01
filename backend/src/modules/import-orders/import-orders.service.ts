@@ -7,7 +7,8 @@ import { auditLog } from '../../lib/logger';
 import { AuthUser } from '../../lib/scope';
 import { validateUploadedFile, generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
 import { exchangeRatesService } from '../foreign-trade/exchange-rates.service';
-import { moneyService } from '../foreign-trade/money.service';
+import { moneyService } from '../foreign-trade/money.service';
+import { escapeLike } from '../../lib/translit';
 import {
   CreateImportOrderDto,
   UpdateImportOrderDto,
@@ -92,9 +93,9 @@ export class ImportOrdersService {
     if (params.supplierId) where.supplierId = params.supplierId;
     if (params.search) {
       where.OR = [
-        { number: { contains: params.search, mode: 'insensitive' } },
-        { invoiceNumber: { contains: params.search, mode: 'insensitive' } },
-        { containerNumber: { contains: params.search, mode: 'insensitive' } },
+        { number: { contains: escapeLike(params.search), mode: 'insensitive' } },
+        { invoiceNumber: { contains: escapeLike(params.search), mode: 'insensitive' } },
+        { containerNumber: { contains: escapeLike(params.search), mode: 'insensitive' } },
       ];
     }
 

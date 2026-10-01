@@ -20,19 +20,43 @@ export function toLatin(input: string): string {
   return out;
 }
 
-/** Strip punctuation so «М-Принт» and запрос «мпринт» match the same haystack. */
-const SEARCH_PUNCT_RE = /["""«»''.,;:!?()\-–—/\\#№@&+*_=~`^|<>[\]{}]/g;
+/**
+ * Всё, что не буква, не цифра и не пробел, — пунктуация: «М-Принт» находится по «мпринт»,
+ * а `%`, `(`, `_`, `.*` ведут себя одинаково (запрос из одних символов = пустой запрос).
+ */
+const SEARCH_PUNCT_RE = /[^\p{L}\p{N}\s]/gu;
 
-export function normalizeSearch(input: string): string {
-  return toLatin(input || '')
-    .toLowerCase()
+function normalizeWith(input: string, yoAsE: boolean): string {
+  let s = (input || '').toLowerCase();
+  if (yoAsE) s = s.replace(/ё/g, 'е');
+  return toLatin(s)
     .replace(SEARCH_PUNCT_RE, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+/** Нормализация для поиска: регистр, ё→е, RU→EN транслит, без пунктуации, схлопнутые пробелы. */
+export function normalizeSearch(input: string): string {
+  return normalizeWith(input, true);
+}
+
 function digitsOnly(input: string): string {
   return input.replace(/\D/g, '');
+}
+
+/**
+ * Цифры телефона для сравнения: «+998 94 620 90 92», «998946209092» и «94 620 90 92» → «946209092».
+ * Неполный номер возвращается как есть (цифрами) — для поиска по подстроке.
+ */
+export function normalizePhone(input: string): string {
+  const digits = digitsOnly(input || '');
+  if (digits.length === 12 && digits.startsWith('998')) return digits.slice(3);
+  return digits;
+}
+
+/** Запрос похож на номер телефона: только цифры, пробелы, скобки, «+», «-», «.» и хотя бы 5 цифр. */
+function isPhoneQuery(query: string): boolean {
+  return /^[\d\s()+\-.]+$/.test(query.trim()) && digitsOnly(query).length >= 5;
 }
 
 /**
@@ -47,12 +71,17 @@ function digitsOnly(input: string): string {
 export function matchesSearch(haystack: string | null | undefined, query: string): boolean {
   if (!query || !query.trim()) return true;
   const raw = haystack || '';
-  const haystackNorm = normalizeSearch(raw);
   const haystackDigits = digitsOnly(raw);
+  // Номер целиком: «+998 94 620 90 92» должен находить «94 620 90 92», а не разбиваться на токены
+  if (isPhoneQuery(query)) return haystackDigits.includes(normalizePhone(query));
+  const haystackNorm = normalizeSearch(raw);
+  // «Баёз» ищется и по «баез», и по латинскому «bayoz» — у названия с «ё» держим оба написания
+  const haystackYo = /ё/i.test(raw) ? normalizeWith(raw, false) : '';
   const tokens = normalizeSearch(query).split(' ').filter(Boolean);
   if (tokens.length === 0) return true;
   return tokens.every((token) => {
     if (haystackNorm.includes(token)) return true;
+    if (haystackYo && haystackYo.includes(token)) return true;
     const tokenDigits = digitsOnly(token);
     // Formatted phones (+998 90 …) vs continuous digits (901234567)
     if (tokenDigits.length >= 5 && haystackDigits.includes(tokenDigits)) return true;
@@ -129,4 +158,19 @@ export function makeSmartFilterOption<TOption>(
     const merged = pieces.filter((p): p is string => !!p).join(' ');
     return matchesSearch(merged, input);
   };
+}
+
+/**
+ * Проверка телефона клиента в форме. Пусто или один префикс «+998» — номера нет.
+ * Узбекский — ровно 9 цифр после кода; иностранный (не +998) — 10–15 цифр.
+ * Возвращает текст ошибки или null.
+ */
+export function validateClientPhone(value: string | null | undefined): string | null {
+  const digits = digitsOnly(value || '');
+  if (!digits || digits === '998') return null;
+  const trimmed = (value || '').trim();
+  const foreign = trimmed.startsWith('+') && !digits.startsWith('998');
+  if (foreign) return digits.length >= 10 && digits.length <= 15 ? null : 'Некорректный номер';
+  if (digits.length === 9 || (digits.length === 12 && digits.startsWith('998'))) return null;
+  return 'Номер: +998 и 9 цифр';
 }

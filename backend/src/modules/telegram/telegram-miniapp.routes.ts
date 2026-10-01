@@ -7,7 +7,8 @@ import { rateLimiter } from '../../middleware/rateLimiter';
 import { requireTelegramMiniAppUser } from './telegram-miniapp.auth';
 import { telegramCustomerBotService } from './telegram.customer-bot.service';
 import { telegramCustomerService } from './telegram.customer.service';
-import { Lang, customerStatusLabel, t } from './telegram.customer-i18n';
+import { Lang, customerStatusLabel, t } from './telegram.customer-i18n';
+import { escapeLike } from '../../lib/translit';
 import {
   CUSTOMER_MANAGER_FILTER,
   buildCustomerClientFilter,
@@ -56,9 +57,9 @@ function productWhere(category?: string, search?: string) {
 
   if (search) {
     where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { sku: { contains: search, mode: 'insensitive' } },
-      { category: { contains: search, mode: 'insensitive' } },
+      { name: { contains: escapeLike(search), mode: 'insensitive' } },
+      { sku: { contains: escapeLike(search), mode: 'insensitive' } },
+      { category: { contains: escapeLike(search), mode: 'insensitive' } },
     ];
   }
 

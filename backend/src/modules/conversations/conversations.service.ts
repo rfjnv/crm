@@ -2,7 +2,8 @@ import { ConversationType, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
-import { SendMessageDto } from './conversations.dto';
+import { SendMessageDto } from './conversations.dto';
+import { escapeLike } from '../../lib/translit';
 
 // Role -> accessible conversation types
 const ROLE_CONVERSATIONS: Record<string, ConversationType[]> = {
@@ -255,7 +256,7 @@ export class ConversationsService {
       where: {
         conversationType: { in: types },
         isDeleted: false,
-        text: { contains: query, mode: 'insensitive' },
+        text: { contains: escapeLike(query), mode: 'insensitive' },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,

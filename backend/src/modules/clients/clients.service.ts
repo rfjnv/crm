@@ -3,6 +3,7 @@ import prisma from '../../lib/prisma';
 import { resolveDealOwnerId } from '../../lib/dealOwner';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
+import { formatUzPhone, phoneMatchKey } from '../../lib/phone';
 import { AuthUser, clientOwnerScope } from '../../lib/scope';
 import {
   CreateClientDto,
@@ -67,6 +68,11 @@ type LatestNoteRow = {
   createdAt: Date;
   authorName: string;
 };
+
+/** Название для поиска дублей: регистр, ё/е и лишние пробелы не делают клиентов разными. */
+function dupNameKey(name: string): string {
+  return name.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+}
 
 type LatestDealManagerRow = {
   clientId: string;
@@ -450,34 +456,46 @@ export class ClientsService {
     return updated;
   }
 
-  async normalizeAllPhones(): Promise<{ total: number; updated: number; details: string[] }> {
+  /**
+   * Приводит узбекские номера к «+998 XX XXX XX XX». Нераспознанные (иностранные, неполные)
+   * не трогает и возвращает списком: раньше от длинного номера брались последние 9 цифр,
+   * и казахстанский +7 … превращался в чужой узбекский.
+   */
+  async normalizeAllPhones(opts: { dryRun?: boolean } = {}): Promise<{
+    total: number;
+    updated: number;
+    dryRun: boolean;
+    details: string[];
+    unrecognized: string[];
+  }> {
     const clients = await prisma.client.findMany({
       where: { phone: { not: null } },
       select: { id: true, companyName: true, phone: true },
     });
 
     const details: string[] = [];
+    const unrecognized: string[] = [];
     let updated = 0;
 
     for (const c of clients) {
       const raw = (c.phone ?? '').trim();
       if (!raw) continue;
 
-      let digits = raw.replace(/[^0-9]/g, '');
-      if (digits.length === 12 && digits.startsWith('998')) digits = digits.slice(3);
-      if (digits.length > 9 && digits.startsWith('998')) digits = digits.slice(3);
-      if (digits.length > 9) digits = digits.slice(-9);
-      if (digits.length !== 9) continue;
-
-      const formatted = `+998 ${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 7)} ${digits.slice(7, 9)}`;
+      const formatted = formatUzPhone(raw);
+      if (!formatted) {
+        unrecognized.push(`${c.companyName}: ${raw}`);
+        continue;
+      }
       if (formatted === raw) continue;
 
-      await prisma.client.update({ where: { id: c.id }, data: { phone: formatted } });
+      if (!opts.dryRun) {
+        await prisma.client.update({ where: { id: c.id }, data: { phone: formatted } });
+      }
       details.push(`${c.companyName}: ${raw} → ${formatted}`);
       updated++;
     }
 
-    return { total: clients.length, updated, details };
+    return { total: clients.length, updated, dryRun: !!opts.dryRun, details, unrecognized };
   }
 
   async archive(id: string, user: AuthUser) {
@@ -1371,12 +1389,14 @@ export class ClientsService {
 
         const innMatch =
           a.inn && b.inn && a.inn.trim() === b.inn.trim();
-        const phoneMatch =
-          a.phone && b.phone && a.phone.replace(/\D/g, '') === b.phone.replace(/\D/g, '');
-        const sim = this._simRatio(a.companyName, b.companyName);
-        const isSub =
-          a.companyName.toLowerCase().trim().includes(b.companyName.toLowerCase().trim()) ||
-          b.companyName.toLowerCase().trim().includes(a.companyName.toLowerCase().trim());
+        // «94 620 90 92» и «+998 94 620 90 92» — один номер
+        const phoneKeyA = phoneMatchKey(a.phone);
+        const phoneMatch = phoneKeyA.length >= 7 && phoneKeyA === phoneMatchKey(b.phone);
+        // «Баёз» и «Баез» — одно название
+        const nameA = dupNameKey(a.companyName);
+        const nameB = dupNameKey(b.companyName);
+        const sim = this._simRatio(nameA, nameB);
+        const isSub = nameA.includes(nameB) || nameB.includes(nameA);
 
         if (!innMatch && !phoneMatch && sim < THRESHOLD) continue;
 

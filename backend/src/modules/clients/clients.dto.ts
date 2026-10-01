@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canonicalClientPhone } from '../../lib/phone';
 
 const telegramValueSchema = z
   .string()
@@ -8,10 +9,16 @@ const telegramValueSchema = z
     'Некорректный Telegram (пример: @username)',
   );
 
+/** Узбекский номер в любой записи сохраняем как «+998 XX XXX XX XX», иностранный — как ввели. */
+const phoneSchema = z
+  .string()
+  .optional()
+  .transform((v) => (v === undefined ? v : canonicalClientPhone(v) ?? ''));
+
 export const createClientDto = z.object({
   companyName: z.string().min(1, 'Название компании обязательно'),
   contactName: z.string().min(1, 'Контактное лицо обязательно'),
-  phone: z.string().optional(),
+  phone: phoneSchema,
   email: telegramValueSchema.optional().or(z.literal('')),
   address: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),
@@ -35,7 +42,7 @@ export const createClientDto = z.object({
 export const updateClientDto = z.object({
   companyName: z.string().min(1).optional(),
   contactName: z.string().min(1).optional(),
-  phone: z.string().optional(),
+  phone: phoneSchema,
   email: telegramValueSchema.optional().or(z.literal('')),
   address: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),

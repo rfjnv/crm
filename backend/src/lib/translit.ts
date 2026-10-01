@@ -61,11 +61,26 @@ export function normalizeSearch(input: string): string {
  * data typed in either alphabet. Collapses whitespace but preserves
  * internal spaces (so we also attempt the full phrase variant).
  */
+/**
+ * Экранирует `%`, `_` и `\` для LIKE/ILIKE. Prisma `contains` подставляет значение в `%…%`
+ * как есть: запрос «%» превращался в `ILIKE '%%%'` и находил всё подряд.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+/** Варианты запроса для Prisma `contains` — уже экранированные. Запрос без букв и цифр = пустой. */
 export function buildSearchVariants(query: string): string[] {
+  return buildRawSearchVariants(query).map(escapeLike);
+}
+
+function buildRawSearchVariants(query: string): string[] {
   const base = query.replace(/\s+/g, ' ').trim();
-  if (!base) return [];
+  if (!base || !/[\p{L}\p{N}]/u.test(base)) return [];
   const variants = new Set<string>();
   variants.add(base);
+  // «Баёз» находит и «Баез»
+  if (/ё/i.test(base)) variants.add(base.replace(/ё/g, 'е').replace(/Ё/g, 'Е'));
   variants.add(toLatin(base));
   variants.add(toCyrillic(base));
   // also provide a "spaceless" merge so "m print" matches "mprint"
