@@ -86,8 +86,8 @@ import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
 import UiScaleControl from './UiScaleControl';
 import BottomTabBar from './BottomTabBar';
-import logo from '../assets/logo.png';
-import miniLogo from '../assets/mini-logo.png';
+import logo from '../assets/logo.webp';
+import miniLogo from '../assets/mini-logo.webp';
 import PageSuspense from './PageSuspense';
 import type { UserRole, Permission } from '../types';
 
