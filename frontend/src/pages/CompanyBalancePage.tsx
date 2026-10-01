@@ -93,7 +93,7 @@ export default function CompanyBalancePage() {
         method: balanceMethod,
         managerId: balanceManagerId,
       }),
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
   });
 
   const setupBalanceMut = useMutation({

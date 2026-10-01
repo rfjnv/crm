@@ -59,7 +59,7 @@ export default function FinanceReviewPage() {
   const { data: deals, isLoading } = useQuery({
     queryKey: ['finance-queue', rangeParams?.from ?? null, rangeParams?.to ?? null],
     queryFn: () => dealsApi.financeQueue(rangeParams),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const list = deals ?? [];

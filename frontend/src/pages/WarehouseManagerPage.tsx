@@ -37,11 +37,11 @@ export default function WarehouseManagerPage() {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const qc = useQueryClient();
 
-  const { data: incoming = [], isLoading: l1 } = useQuery({ queryKey: ['wm-incoming'], queryFn: dealsApi.wmIncoming, refetchInterval: 10_000 });
+  const { data: incoming = [], isLoading: l1 } = useQuery({ queryKey: ['wm-incoming'], queryFn: dealsApi.wmIncoming, refetchInterval: 30_000 });
   const { data: approved = [], isLoading: l2 } = useQuery({
     queryKey: ['wm-approved'],
     queryFn: dealsApi.wmApproved,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
     enabled: fullWmAccess,
   });
   const { data: staff = [] } = useQuery({ queryKey: ['loading-staff'], queryFn: dealsApi.loadingStaff, enabled: fullWmAccess });

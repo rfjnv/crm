@@ -19,6 +19,7 @@ import { useAuthStore } from '../store/authStore';
 import { authApi } from '../api/auth.api';
 import { MARKETING_SITE_URL } from '../lib/marketingSite';
 import { getFirstName } from '../lib/name-utils';
+import PageSuspense from './PageSuspense';
 import logo from '../assets/logo.png';
 
 const { Header, Sider, Content } = AntLayout;
@@ -123,7 +124,7 @@ export default function AdminLayout() {
         </Header>
 
         <Content style={{ margin: 20, minHeight: 280 }}>
-          <Outlet />
+          <PageSuspense><Outlet /></PageSuspense>
         </Content>
       </AntLayout>
     </AntLayout>

@@ -17,7 +17,7 @@ export default function RevenueTodayPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['revenue-today'],
     queryFn: dashboardApi.revenueToday,
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 
   if (isLoading || !data) {

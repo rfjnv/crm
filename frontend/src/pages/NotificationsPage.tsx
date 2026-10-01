@@ -33,7 +33,7 @@ export default function NotificationsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', filter],
     queryFn: () => notificationsApi.list({ unreadOnly: filter === 'unread', limit: 50 }),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const markReadMut = useMutation({
