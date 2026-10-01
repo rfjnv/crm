@@ -201,7 +201,7 @@ export default function ClientsPage() {
     if (page !== 1) patchListParams({ page: 1 }, { replace: true });
   }, [searchDraft, qUrl, page, patchListParams]);
 
-  const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, refetchInterval: 10_000 });
+  const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';

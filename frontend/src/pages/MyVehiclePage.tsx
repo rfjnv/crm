@@ -25,7 +25,7 @@ export default function MyVehiclePage() {
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['my-vehicle'],
     queryFn: dealsApi.myVehicle,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const startMut = useMutation({

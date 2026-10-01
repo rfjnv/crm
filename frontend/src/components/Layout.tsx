@@ -88,6 +88,7 @@ import UiScaleControl from './UiScaleControl';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.png';
 import miniLogo from '../assets/mini-logo.png';
+import PageSuspense from './PageSuspense';
 import type { UserRole, Permission } from '../types';
 
 const { Header, Sider, Content } = AntLayout;
@@ -273,7 +274,7 @@ export default function Layout() {
   const { data: unreadCounts } = useQuery({
     queryKey: ['unread-counts'],
     queryFn: conversationsApi.getUnreadCounts,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const totalUnread = unreadCounts
@@ -980,10 +981,10 @@ export default function Layout() {
           >
             {isMobile ? (
               <div className="main-container">
-                <Outlet />
+                <PageSuspense><Outlet /></PageSuspense>
               </div>
             ) : (
-              <Outlet />
+              <PageSuspense><Outlet /></PageSuspense>
             )}
           </div>
         </Content>

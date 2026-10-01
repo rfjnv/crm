@@ -133,15 +133,15 @@ export default function DealsPage() {
   const { data: deals, isLoading } = useQuery({
     queryKey: ['deals', statusFilter],
     queryFn: () => dealsApi.list(statusFilter),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   // Какие колонки непустые. Раньше ради этого выкачивался весь список сделок
-  // вторым запросом каждые 10 секунд — теперь сервер отдаёт только счётчики.
+  // вторым запросом на каждом опросе — теперь сервер отдаёт только счётчики.
   const { data: statusCounts } = useQuery({
     queryKey: ['deals', 'status-counts'],
     queryFn: () => dealsApi.statusCounts(),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const hideIfEmpty: DealStatus[] = ['READY_FOR_SHIPMENT', 'SHIPMENT_ON_HOLD', 'REOPENED'];

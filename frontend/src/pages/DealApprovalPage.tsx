@@ -42,7 +42,7 @@ export default function DealApprovalPage() {
   const { data: wmDeals = [], isLoading: wmLoading } = useQuery({
     queryKey: ['deals', 'wm-pending-admin'],
     queryFn: dealsApi.wmPendingAdmin,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const approveMutation = useMutation({

@@ -38,7 +38,7 @@ export default function MyLoadingTasksPage() {
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['my-loading-tasks'],
     queryFn: dealsApi.myLoadingTasks,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const [qrDeal, setQrDeal] = useState<Deal | null>(null);

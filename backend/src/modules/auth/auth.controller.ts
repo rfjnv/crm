@@ -3,7 +3,7 @@ import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { authService } from './auth.service';
 
-const REFRESH_COOKIE = 'crm_rt';
+export const REFRESH_COOKIE = 'crm_rt';
 
 /** Strict blocks refresh cookie on cross-origin XHR (отдельный домен фронта и API) — после ~15m access JWT сессия рвётся. В prod: None + Secure. */
 const sameSite: 'lax' | 'none' = config.isProduction ? 'none' : 'lax';

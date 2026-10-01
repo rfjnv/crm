@@ -34,13 +34,13 @@ export default function NotificationBell() {
   const { data: countData } = useQuery({
     queryKey: ['notifications-unread-count'],
     queryFn: notificationsApi.getUnreadCount,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const { data: recentData } = useQuery({
     queryKey: ['notifications-recent'],
     queryFn: () => notificationsApi.list({ limit: 20 }),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   // Show notifications for new URGENT items

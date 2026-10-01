@@ -16,7 +16,8 @@ export default function TelegramLinkButton() {
   const { data: status, isLoading } = useQuery({
     queryKey: ['telegram-status'],
     queryFn: telegramApi.getStatus,
-    refetchInterval: 10_000,
+    // Опрашиваем, только пока ждём, что пользователь отправит боту команду привязки.
+    refetchInterval: (query) => (linkCommand && !query.state.data?.linked ? 5_000 : false),
   });
 
   const testGroupsMut = useMutation({

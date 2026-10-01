@@ -125,13 +125,13 @@ export default function DashboardPage() {
     queryFn: () => dashboardApi.summary(dashboardParams),
     enabled: period !== 'custom' || !!customRange,
     placeholderData: (prev) => prev,
-    refetchInterval: period === 'custom' ? 30_000 : 10_000,
+    refetchInterval: period === 'custom' ? 120_000 : 60_000,
   });
 
   const { data: debtsData } = useQuery({
     queryKey: ['finance-debts-total'],
     queryFn: () => financeApi.getDebts(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000,
   });
 
   const { data: companySettings } = useQuery({

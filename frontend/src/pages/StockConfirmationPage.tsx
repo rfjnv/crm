@@ -66,7 +66,7 @@ export default function StockConfirmationPage() {
   const { data: deals, isLoading } = useQuery({
     queryKey: ['stock-confirmation-queue'],
     queryFn: dealsApi.stockConfirmationQueue,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
   const respondMut = useMutation({

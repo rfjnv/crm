@@ -19,6 +19,24 @@ window.__crmBooted = true;
 
 installBlankScreenReporter();
 
+// Страницы грузятся отдельными чанками. После деплоя у давно открытой вкладки старых
+// чанков на сервере уже нет — перезагружаемся за свежим index.html. Не чаще раза в
+// минуту: если чанк не грузится по другой причине, ошибку покажет ErrorBoundary,
+// а не бесконечная перезагрузка.
+window.addEventListener('vite:preloadError', (event) => {
+  const KEY = 'crm_chunk_reload_at';
+  let last = 0;
+  try {
+    last = Number(sessionStorage.getItem(KEY)) || 0;
+  } catch { /* sessionStorage недоступен */ }
+  if (Date.now() - last < 60_000) return;
+  try {
+    sessionStorage.setItem(KEY, String(Date.now()));
+  } catch { /* sessionStorage недоступен */ }
+  event.preventDefault();
+  window.location.reload();
+});
+
 const stored = safeStorage.getItem('theme');
 applyDocumentTheme(
   stored === 'dark' || stored === 'light' ? (stored as ThemeMode) : 'light',
