@@ -107,6 +107,39 @@ html[data-design='modern']:has(.app-shell) .ant-layout-sider-children > a:first-
 /* Строка логотипа ниже и без отдельного блока — плитка стоит в одном ряду с иконками меню */
 html[data-design='modern']:has(.app-shell) .ant-layout-sider-children > a:first-child {
   height: 60px !important;
+  flex: none;
+  position: static !important;
+}
+
+/*
+ * Логотип стоит на месте, прокручивается только список пунктов. Раньше прокручивалась
+ * вся панель, а «липкий» логотип с прозрачным фоном накрывал уезжающие под него пункты.
+ */
+html[data-design='modern']:has(.app-shell) .ant-layout-sider {
+  overflow: hidden !important;
+}
+
+html[data-design='modern']:has(.app-shell) .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+html[data-design='modern']:has(.app-shell) .ant-layout-sider-children > .ant-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding-top: 4px !important;
+  /* Пункты мягко растворяются у верхнего и нижнего края, а не обрезаются */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 16px), transparent 100%);
+}
+
+html[data-design='modern']:has(.app-shell) .ant-layout-sider-children > .ant-menu::-webkit-scrollbar {
+  display: none;
 }
 
 html[data-design='modern']:has(.app-shell) .ant-layout-sider .ant-menu-item,
