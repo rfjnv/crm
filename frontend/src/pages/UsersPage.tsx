@@ -93,12 +93,6 @@ export default function UsersPage() {
     queryFn: () => usersApi.list({ includeInactive: true }),
   });
 
-  const { data: companies = [], error: companiesError } = useQuery({
-    queryKey: ['companies'],
-    queryFn: usersApi.listCompanies,
-  });
-  if (companiesError) console.error('[companies]', companiesError);
-
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['user-kpi', kpiUser?.id, kpiPeriod],
     queryFn: () => usersApi.kpi(kpiUser!.id, kpiPeriod),
@@ -154,7 +148,6 @@ export default function UsersPage() {
         badgeIcon: string | null;
         badgeColor: string | null;
         badgeLabel: string | null;
-        companyId: string | null;
         timepayEmployeeId: string | null;
         moneyAccess: MoneyAccess;
       }>;
@@ -251,7 +244,6 @@ export default function UsersPage() {
       badgeIcon: user.badgeIcon ?? undefined,
       badgeColor: user.badgeColor || '#22609A',
       badgeLabel: user.badgeLabel ?? '',
-      companyId: user.company?.id ?? undefined,
       timepayEmployeeId: user.timepayEmployeeId ?? '',
     });
     setOpen(true);
@@ -278,7 +270,6 @@ export default function UsersPage() {
         const rawLabel = (values.badgeLabel as string | undefined)?.trim();
         data.badgeLabel = rawLabel || null;
       }
-      if (values.companyId !== undefined) data.companyId = (values.companyId as string) || null;
       const nextMoney = (values.moneyAccess as MoneyAccess | undefined) ?? 'FULL';
       if (nextMoney !== (editingUser.moneyAccess ?? 'FULL')) data.moneyAccess = nextMoney;
       const nextTimepayId = ((values.timepayEmployeeId as string | undefined) ?? '').trim() || null;
@@ -296,7 +287,6 @@ export default function UsersPage() {
           badgeIcon: string | null;
           badgeColor: string | null;
           badgeLabel: string | null;
-          companyId: string | null;
           timepayEmployeeId: string | null;
           moneyAccess: MoneyAccess;
         }>,
@@ -304,7 +294,7 @@ export default function UsersPage() {
     } else {
       const dept = ((values.department as string | undefined) ?? '').trim();
       createMut.mutate({
-        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[]; companyId?: string }),
+        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }),
         ...(dept ? { department: dept } : {}),
       });
     }
@@ -330,14 +320,6 @@ export default function UsersPage() {
       },
       { title: 'Логин', dataIndex: 'login', width: 120 },
       { title: 'ФИО', dataIndex: 'fullName', ellipsis: true, render: (v: string) => getFirstName(v) || v },
-      {
-        title: 'Компания',
-        key: 'company',
-        width: 140,
-        render: (_: unknown, r: User) => r.company ? (
-          <Tag color={r.company.name === 'grand-astra' ? 'purple' : 'blue'}>{r.company.displayName}</Tag>
-        ) : '—',
-      },
       {
         title: 'Отдел',
         dataIndex: 'department',
@@ -507,15 +489,6 @@ export default function UsersPage() {
               tooltip="ID сотрудника в TimePay — если задан, посещаемость сопоставляется по нему, а не по ФИО"
             >
               <Input placeholder="Например: 68989" maxLength={50} allowClear />
-            </Form.Item>
-          )}
-          {isSuperAdmin && (
-            <Form.Item name="companyId" label="Компания">
-              <Select
-                allowClear
-                placeholder="Выберите компанию"
-                options={companies.map((c) => ({ value: c.id, label: c.displayName }))}
-              />
             </Form.Item>
           )}
           <Form.Item

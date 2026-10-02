@@ -9,7 +9,7 @@ import { uploadImageToStorage, deleteImageFromStorage } from '../../lib/imageSto
 export class WarehouseController {
   // Products
   async findAllProducts(req: Request, res: Response): Promise<void> {
-    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId, hasCostAccess(req.user));
+    const products = await warehouseService.findAllProducts(hasCostAccess(req.user));
     res.json(products);
   }
 
@@ -24,7 +24,7 @@ export class WarehouseController {
     // Выбранные на экране строки: их выгружаем как есть, включая нулевые остатки.
     const ids = String(req.query.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const includeZero = req.query.includeZero === '1' || ids.length > 0;
-    const products = await warehouseService.findAllProducts(req.user!.role as any, req.user!.companyId);
+    const products = await warehouseService.findAllProducts();
 
     const num = (v: unknown): number => {
       const n = Number(v);
@@ -123,7 +123,7 @@ export class WarehouseController {
   }
 
   async createProduct(req: Request, res: Response): Promise<void> {
-    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, req.user!.companyId, req.user!.role as any, hasCostAccess(req.user));
+    const product = await warehouseService.createProduct(req.body, req.user!.userId as string, hasCostAccess(req.user));
     res.status(201).json(product);
   }
 

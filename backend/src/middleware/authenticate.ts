@@ -36,7 +36,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       const payload = verifyAccessToken(token);
       const row = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, role: true, permissions: true, isActive: true, companyId: true, moneyAccess: true },
+        select: { id: true, role: true, permissions: true, isActive: true, moneyAccess: true },
       });
 
       if (!row?.isActive) {
@@ -63,7 +63,6 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
         permissions,
         moneyAccess: row.moneyAccess,
         costUnlockedUntil,
-        ...(row.companyId ? { companyId: row.companyId } : {}),
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
         ...(payload.supabaseUserId ? { supabaseUserId: payload.supabaseUserId } : {}),
       };

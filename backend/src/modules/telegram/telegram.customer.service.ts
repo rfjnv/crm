@@ -603,7 +603,6 @@ export class TelegramCustomerService {
       where: {
         role: 'MANAGER',
         isActive: true,
-        OR: [{ companyId: null }, { company: { name: { not: 'grand-astra' } } }],
       },
       select: { id: true, fullName: true, telegramChatId: true },
       orderBy: { fullName: 'asc' },

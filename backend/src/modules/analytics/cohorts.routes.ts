@@ -58,7 +58,6 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
     const isManager = user.role === 'MANAGER';
     const dealScope = ownerScope(user);
@@ -251,7 +250,6 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
     const isManager = user.role === 'MANAGER';
     const dealScope = ownerScope(user);

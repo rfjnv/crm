@@ -183,9 +183,6 @@ export class AuthService {
         badgeIcon: true,
         badgeColor: true,
         badgeLabel: true,
-        company: {
-          select: { id: true, name: true, displayName: true },
-        },
       },
     });
 

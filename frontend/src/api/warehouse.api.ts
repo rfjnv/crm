@@ -28,7 +28,7 @@ export const inventoryApi = {
         window.URL.revokeObjectURL(url);
       }),
 
-  createProduct: (data: { name: string; sku: string; unit?: string; category?: string; countryOfOrigin?: string; minStock?: number; purchasePrice?: number; salePrice?: number; specifications?: Record<string, unknown>; companyId?: string }) =>
+  createProduct: (data: { name: string; sku: string; unit?: string; category?: string; countryOfOrigin?: string; minStock?: number; purchasePrice?: number; salePrice?: number; specifications?: Record<string, unknown> }) =>
     client.post<Product>('/inventory/products', data).then((r) => r.data),
 
   updateProduct: (id: string, data: Partial<{ name: string; sku: string; unit: string; category: string | null; countryOfOrigin: string | null; minStock: number; purchasePrice: number | null; salePrice: number | null; specifications: Record<string, unknown> | null; isActive: boolean }>) =>

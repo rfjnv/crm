@@ -146,11 +146,10 @@ export async function getSystemActorId(fallbackUserId: string): Promise<string> 
   return cachedSystemActorId || fallbackUserId;
 }
 
-/** Менеджеры, доступные клиенту для выбора (grand-astra — внутренняя компания, её не показываем). */
+/** Менеджеры, доступные клиенту для выбора. */
 export const CUSTOMER_MANAGER_FILTER: Prisma.UserWhereInput = {
   role: 'MANAGER',
   isActive: true,
-  OR: [{ companyId: null }, { company: { name: { not: 'grand-astra' } } }],
 };
 
 export interface OrderItemInput {

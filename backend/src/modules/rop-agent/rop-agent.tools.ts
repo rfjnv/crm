@@ -6,7 +6,6 @@ import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
 } from '../../lib/analytics';
 import { CATALOG_LINKS, normalizeSku } from '../market/marketCatalogLinks';
 import { livePriceRows, loadPriceBySku } from '../market/market.service';
@@ -181,7 +180,7 @@ type ProductEconomicsRow = {
 async function productEconomicsRows(input: ProductEconomicsInput, allowCost = false): Promise<ProductEconomicsRow[]> {
   const days = Math.min(Math.max(Math.round(input.days ?? 90), 1), 1095);
   const limit = Math.min(Math.max(Math.round(input.limit ?? 50), 1), 200);
-  const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT];
+  const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`];
   if (input.search?.trim()) {
     const q = `%${escapeLike(input.search.trim())}%`;
     filters.push(Prisma.sql`(p.name ILIKE ${q} OR p.sku ILIKE ${q})`);
@@ -258,7 +257,7 @@ type MarketInput = {
  * Именно это нужно, чтобы решать, где демпинговать, а где нет.
  */
 async function marketComparison(input: MarketInput, allowCost = false) {
-  const priceBySku = await loadPriceBySku({ kind: 'trading' });
+  const priceBySku = await loadPriceBySku();
   let rows = livePriceRows(priceBySku);
   if (input.category?.trim()) {
     const c = input.category.trim().toLowerCase();

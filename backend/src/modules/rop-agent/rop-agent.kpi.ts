@@ -4,11 +4,9 @@ import { isDayOff } from './rop-agent.calendar';
 import { AppError } from '../../lib/errors';
 import { DEFAULT_BONUS_SCHEME, parseBonusScheme, type BonusTier } from '../../lib/bonus';
 import {
-  INTERNAL_COMPANY_NAME,
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_EXCLUDE_INTERNAL_COMPANY_DEAL,
 } from '../../lib/analytics';
 
 /**
@@ -86,8 +84,7 @@ export async function kpiForecast(input: { year?: number; month?: number; manage
     prisma.$queryRaw<{ manager_id: string; deals: number; amount: number }[]>(Prisma.sql`
       SELECT d.manager_id, COUNT(*)::int AS deals, COALESCE(SUM(d.amount), 0)::float8 AS amount
       FROM deals d
-      WHERE d.is_archived = false AND d.status NOT IN ('CLOSED', 'CANCELED', 'REJECTED') AND d.is_session_deal = false
-        AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL} ${managerFilter}
+      WHERE d.is_archived = false AND d.status NOT IN ('CLOSED', 'CANCELED', 'REJECTED') AND d.is_session_deal = false ${managerFilter}
       GROUP BY d.manager_id`),
     prisma.$queryRaw<{ manager_id: string; deals: number }[]>(Prisma.sql`
       SELECT d.manager_id, COUNT(DISTINCT d.id)::int AS deals
@@ -173,7 +170,7 @@ export async function kpiForecast(input: { year?: number; month?: number; manage
 
   const managerIds = [...new Set([...byManager.keys(), ...goals.filter((g) => g.revenueTarget != null).map((g) => g.userId)])];
   const users = await prisma.user.findMany({
-    where: { id: { in: managerIds }, OR: [{ companyId: null }, { company: { name: { not: INTERNAL_COMPANY_NAME } } }] },
+    where: { id: { in: managerIds } },
     select: { id: true, fullName: true, isActive: true },
   });
 

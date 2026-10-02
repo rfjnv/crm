@@ -11,8 +11,8 @@ router.use(authorize('SUPER_ADMIN', 'ADMIN'));
 
 router.get(
   '/comparison',
-  asyncHandler(async (req: Request, res: Response) => {
-    res.json(await getMarketComparison({ kind: 'viewer', role: req.user!.role, companyId: req.user!.companyId }));
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await getMarketComparison());
   }),
 );
 

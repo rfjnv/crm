@@ -138,7 +138,6 @@ function getAuthUser(req: Request): AuthUser {
     userId: req.user!.userId,
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
   };
 }
 
@@ -642,7 +641,7 @@ router.post(
     }
 
     // Load reanimation data (admin scope — full data for the report)
-    const adminUser: AuthUser = { userId, role, permissions: [], companyId: req.user!.companyId };
+    const adminUser: AuthUser = { userId, role, permissions: [] };
     const baseRows = await loadBaseClientRows(adminUser);
     const rows = await enrichClientRows(adminUser, baseRows, { includeProductPreviews: false });
 

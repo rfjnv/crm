@@ -1,5 +1,5 @@
 import prisma from '../../lib/prisma';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import {
   resolveProductChartGranularity,
@@ -42,10 +42,8 @@ export class WarehouseService {
     return rest as T;
   }
 
-  async findAllProducts(role?: Role, companyId?: string, canSeeCost = false) {
-    const where = (role !== 'SUPER_ADMIN' && companyId) ? { companyId } : {};
+  async findAllProducts(canSeeCost = false) {
     const products = await prisma.product.findMany({
-      where,
       orderBy: { name: 'asc' },
       include: { posterPhotos: { orderBy: { sortOrder: 'asc' } } },
     });
@@ -90,29 +88,16 @@ export class WarehouseService {
     await deleteImageFromStorage(photo.url);
   }
 
-  async createProduct(rawDto: CreateProductDto, userId: string, companyId?: string, role?: Role, canSeeCost = false) {
+  async createProduct(rawDto: CreateProductDto, userId: string, canSeeCost = false) {
     const dto = this.dropCostWrite(rawDto, canSeeCost);
     const existing = await prisma.product.findUnique({ where: { sku: dto.sku } });
     if (existing) {
       throw new AppError(409, 'Товар с таким артикулом уже существует');
     }
 
-    let resolvedCompanyId = companyId;
-    if (role === 'SUPER_ADMIN') {
-      if (!dto.companyId) {
-        throw new AppError(400, 'Выберите компанию для товара');
-      }
-      const company = await prisma.company.findUnique({ where: { id: dto.companyId } });
-      if (!company) {
-        throw new AppError(404, 'Компания не найдена');
-      }
-      resolvedCompanyId = dto.companyId;
-    }
-
-    const { manufacturedAt, expiresAt, specifications, companyId: _ignoreCompanyId, ...rest } = dto;
+    const { manufacturedAt, expiresAt, specifications, ...rest } = dto;
     const data: Prisma.ProductCreateInput = {
       ...rest,
-      ...(resolvedCompanyId ? { companyId: resolvedCompanyId } : {}),
       ...(specifications ? { specifications: specifications as Prisma.InputJsonValue } : {}),
       ...(manufacturedAt ? { manufacturedAt: new Date(manufacturedAt) } : {}),
       ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),

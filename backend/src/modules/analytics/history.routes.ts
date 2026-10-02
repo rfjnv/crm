@@ -5,7 +5,6 @@ import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
-  SQL_EXCLUDE_INTERNAL_COMPANY_DEAL,
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
@@ -23,10 +22,9 @@ router.use(responseCache(5 * 60_000));
 const TZ = Prisma.sql`'Asia/Tashkent'`;
 
 /**
- * Сделки, формирующие дебиторку (та же выборка, что и на странице должников),
- * без внутренней компании — она исключена из всей аналитики.
+ * Сделки, формирующие дебиторку (та же выборка, что и на странице должников).
  */
-const SQL_DEBT_DEALS_FILTER = Prisma.sql`d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED') AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}`;
+const SQL_DEBT_DEALS_FILTER = Prisma.sql`d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED')`;
 
 /**
  * Только денежные проводки — см. `lib/payment-kind` (CASH_KINDS).
@@ -70,7 +68,6 @@ function extractDealScope(req: Request) {
     userId: req.user!.userId,
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
   };
   return ownerScope(user);
 }

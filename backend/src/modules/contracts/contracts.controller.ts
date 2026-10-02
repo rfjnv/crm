@@ -5,7 +5,7 @@ import { AuthUser } from '../../lib/scope';
 import type { DocType } from '../../lib/pdf-generator';
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
 }
 
 const CONTRACT_FILENAME_BY_DOC: Record<DocType, string> = {

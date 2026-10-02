@@ -4,7 +4,7 @@ import prisma from '../../lib/prisma';
 import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope, assertCompanyScoped, type AuthUser } from '../../lib/scope';
+import { ownerScope, type AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/payment-kind';
@@ -78,16 +78,12 @@ router.get(
       fromDate = startOfDay;
     }
 
-    const reqUser = req.user!;
-    const companyId = (reqUser.role !== 'SUPER_ADMIN' && reqUser.companyId) ? reqUser.companyId : undefined;
-
     // Build where clause for payments
     const where: Prisma.PaymentWhereInput = {
       paidAt: {
         gte: fromDate,
         ...(toDate ? { lt: toDate } : {}),
       },
-      ...(companyId ? { client: { companyId } } : {}),
     };
 
     if (managerId) {
@@ -166,7 +162,6 @@ router.get(
     const todayAgg = await prisma.payment.aggregate({
       where: {
         paidAt: { gte: startOfDay },
-        ...(companyId ? { client: { companyId } } : {}),
         ...cashOnlyFilter,
       },
       _sum: { amount: true },
@@ -216,9 +211,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const minDebt = req.query.minDebt ? Number(req.query.minDebt) : undefined;
@@ -499,9 +492,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
     const managerId = req.query.managerId as string | undefined;
     // Сделка, закрытая сегодня, мгновенно уходила из «Активных» в «Долги» — и чтобы
@@ -589,9 +580,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const q = ((req.query.q as string) || '').trim();
@@ -672,9 +661,7 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const deal = await prisma.deal.findFirst({
@@ -744,9 +731,7 @@ router.post(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
     const rawAmount = req.body?.amount;
@@ -921,7 +906,6 @@ router.post(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
 
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
@@ -1029,17 +1013,12 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
-    assertCompanyScoped(user);
     const dealScope = ownerScope(user);
 
-    // Клиент ищется в пределах компании пользователя: иначе по чужому clientId
-    // отдавались сделки и платежи любой организации в базе.
     const client = await prisma.client.findFirst({
       where: {
         id: clientId,
-        ...(user.role !== 'SUPER_ADMIN' && user.companyId ? { companyId: user.companyId } : {}),
       },
       select: { id: true, companyName: true, contactName: true, phone: true, isSvip: true, creditStatus: true },
     });

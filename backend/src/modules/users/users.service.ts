@@ -22,7 +22,6 @@ const userSelect = {
   badgeColor: true,
   badgeLabel: true,
   timepayEmployeeId: true,
-  company: { select: { id: true, name: true, displayName: true } },
 };
 
 export class UsersService {
@@ -122,7 +121,6 @@ export class UsersService {
         department: dept || null,
         role: dto.role,
         permissions,
-        ...(dto.companyId && { companyId: dto.companyId }),
         ...(dto.moneyAccess !== undefined && { moneyAccess: dto.moneyAccess }),
       },
       select: userSelect,
@@ -176,7 +174,6 @@ export class UsersService {
     if (dto.badgeIcon !== undefined) data.badgeIcon = dto.badgeIcon;
     if (dto.badgeColor !== undefined) data.badgeColor = dto.badgeColor;
     if (dto.badgeLabel !== undefined) data.badgeLabel = dto.badgeLabel;
-    if (dto.companyId !== undefined) data.companyId = dto.companyId;
     if (dto.timepayEmployeeId !== undefined) {
       data.timepayEmployeeId = dto.timepayEmployeeId === '' ? null : dto.timepayEmployeeId;
     }

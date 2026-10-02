@@ -23,7 +23,6 @@ function getAuthUser(req: Request): AuthUser {
     userId: req.user!.userId,
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
   };
 }
 

@@ -5,7 +5,7 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
-import { AuthUser, ownerScope, companyScope } from '../../lib/scope';
+import { AuthUser, ownerScope } from '../../lib/scope';
 import { isClientCreditTransfer } from '../../lib/payment-kind';
 import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
 import { resolveDealOwnerId } from '../../lib/dealOwner';
@@ -534,11 +534,9 @@ export class DealsService {
       }
     }
 
-    const cs = companyScope(user);
     const where: Prisma.DealWhereInput = {
       ...ownerScope(user),
       isArchived: false,
-      ...(cs.companyId ? { client: { companyId: cs.companyId } } : {}),
     };
 
     if (filters?.status) {
@@ -640,13 +638,11 @@ export class DealsService {
    * непустые — ради этого он раньше выкачивал вторым запросом весь список.
    */
   async countByStatus(user: AuthUser): Promise<Record<string, number>> {
-    const cs = companyScope(user);
     const rows = await prisma.deal.groupBy({
       by: ['status'],
       where: {
         ...ownerScope(user),
         isArchived: false,
-        ...(cs.companyId ? { client: { companyId: cs.companyId } } : {}),
       },
       _count: { _all: true },
     });

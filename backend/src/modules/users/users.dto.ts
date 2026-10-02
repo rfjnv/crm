@@ -16,7 +16,6 @@ export const createUserDto = z.object({
   role: z.enum(roleValues),
   permissions: z.array(z.enum(permissionValues)).optional(),
   moneyAccess: z.enum(['FULL', 'NO_STRATEGIC', 'NONE']).optional(),
-  companyId: z.string().uuid().optional(),
 });
 
 export const updateUserDto = z.object({
@@ -32,7 +31,6 @@ export const updateUserDto = z.object({
   badgeIcon: badgeIconEnum.nullable().optional(),
   badgeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
   badgeLabel: z.string().trim().max(48, 'Не более 48 символов').nullable().optional(),
-  companyId: z.string().uuid().nullable().optional(),
   timepayEmployeeId: z.string().trim().max(50).nullable().optional(),
 });
 

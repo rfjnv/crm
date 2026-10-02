@@ -16,7 +16,6 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
-import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { formatUZS, formatPrice, moneyFormatter, moneyParser } from '../utils/currency';
 import { matchesSearch } from '../utils/translit';
@@ -110,12 +109,6 @@ export default function ProductsPage() {
   const { open: costOpen } = useCostAccess();
   const canManageProducts = isSuperAdmin || (user?.permissions ?? []).includes('manage_products');
   const canReserve = !!user?.permissions?.includes('manage_inventory');
-
-  const { data: companies = [] } = useQuery({
-    queryKey: ['companies'],
-    queryFn: usersApi.listCompanies,
-    enabled: isSuperAdmin,
-  });
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
@@ -950,18 +943,6 @@ export default function ProductsPage() {
           <Form.Item name="sku" label="Артикул (SKU)" rules={[{ required: true, message: 'Обязательно' }]}>
             <Input />
           </Form.Item>
-          {isSuperAdmin && (
-            <Form.Item
-              name="companyId"
-              label="Компания"
-              rules={[{ required: true, message: 'Выберите компанию' }]}
-            >
-              <Select
-                placeholder="Выберите компанию"
-                options={companies.map((c) => ({ value: c.id, label: c.displayName }))}
-              />
-            </Form.Item>
-          )}
           <Space size="middle" style={{ width: '100%' }}>
             <Form.Item name="unit" label="Единица измерения" initialValue="шт" style={{ flex: 1 }}>
               <Select options={[

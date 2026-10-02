@@ -89,12 +89,6 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   LOADER: ['view_all_deals', 'loading_execute'],
 };
 
-export interface Company {
-  id: string;
-  name: string;
-  displayName: string;
-}
-
 export interface User {
   id: string;
   login: string;
@@ -115,7 +109,6 @@ export interface User {
   badgeColor?: string | null;
   /** Текст «медали» в команде (произвольный, как подпись SVIP) */
   badgeLabel?: string | null;
-  company?: Company | null;
   /** ID сотрудника в TimePay — если задан, посещаемость сопоставляется по нему, а не по ФИО */
   timepayEmployeeId?: string | null;
 }

@@ -100,7 +100,6 @@ export const ROP_AGENT_SYSTEM_PROMPT = `Ты — РОП-агент компан�
 - Выручка считается по строкам сделок: COALESCE(NULLIF(di.line_total, 0), di.requested_qty * di.price, 0) из deal_items di JOIN deals d ON d.id = di.deal_id.
 - Какие сделки считаются продажей: d.is_archived = false AND d.status NOT IN ('CANCELED','REJECTED') AND ((NOT d.is_session_deal AND d.status = 'CLOSED') OR d.is_session_deal).
 - Дата продажи строки: для открытой сессионной сделки COALESCE(di.deal_date, di.created_at), иначе COALESCE(di.deal_date, d.closed_at, d.created_at).
-- Внутренняя компания исключается из всей аналитики: клиенты и товары, чей company_id указывает на companies.name = 'grand-astra'.
 - База в UTC, бизнес в Asia/Tashkent: «сегодня» — (NOW() AT TIME ZONE 'Asia/Tashkent')::date, группировка по дням — через AT TIME ZONE 'Asia/Tashkent'.
 - Менеджер сделки — deals.manager_id, закреплённый менеджер клиента — clients.manager_id; имена — users.full_name. Всегда показывай имена клиентов, товаров и людей, а не id.
 - Долг по сделке — amount минус paid_amount; оплаты — таблица payments.
