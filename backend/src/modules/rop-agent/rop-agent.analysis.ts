@@ -4,8 +4,6 @@ import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
-  INTERNAL_COMPANY_NAME,
 } from '../../lib/analytics';
 import { normalizeSku } from '../market/marketCatalogLinks';
 
@@ -27,7 +25,7 @@ const clamp = (v: number | undefined, def: number, min: number, max: number) =>
 /** Интервал короче недели не считаем «обычным»: частым покупателям пара тихих дней ничего не значит. */
 const MIN_CYCLE_DAYS = 7;
 
-/** Строки продаж с датой по Ташкенту, без внутренней компании. Нужен алиас выборки `lines`. */
+/** Строки продаж с датой по Ташкенту. Нужен алиас выборки `lines`. */
 const SALES_LINES = Prisma.sql`
   SELECT d.client_id, di.product_id, di.requested_qty AS qty,
     ${SQL_ANALYTICS_LINE_REVENUE_DI} AS revenue,
@@ -47,12 +45,10 @@ const LAST_CONTACT = Prisma.sql`
   ) x GROUP BY client_id`;
 
 /**
- * Настоящие клиенты: не в архиве, не внутренняя компания, не своя/союзная компания
- * и не конкурент (clients.relation) — их не обзванивают и не «возвращают».
+ * Настоящие клиенты: не в архиве, не своя/союзная компания и не конкурент (clients.relation) —
+ * их не обзванивают и не «возвращают».
  */
-const ACTIVE_CLIENT = Prisma.sql`c.is_archived = false AND c.relation = 'CUSTOMER' AND NOT EXISTS (
-  SELECT 1 FROM companies ico WHERE ico.id = c.company_id AND ico.name = ${INTERNAL_COMPANY_NAME}
-)`;
+const ACTIVE_CLIENT = Prisma.sql`c.is_archived = false AND c.relation = 'CUSTOMER'`;
 
 // ─── Цикл покупок клиента ───────────────────────────────────────────────────
 
@@ -242,7 +238,6 @@ export async function stockedProductBuyers(input: StockedProductBuyersInput) {
   const productFilters: Prisma.Sql[] = [
     Prisma.sql`p.is_active = true`,
     Prisma.sql`p.stock > 0`,
-    SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
   ];
   if (input.search?.trim()) {
     const q = `%${escapeLike(input.search.trim())}%`;
@@ -334,7 +329,7 @@ export async function slowStock(input: SlowStockInput, allowCost = false) {
   const days = clamp(input.days_without_sale, 60, 14, 730);
   const limit = clamp(input.limit, 30, 1, 100);
   const buyersPer = clamp(input.buyers_per_product, 5, 0, 20);
-  const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, Prisma.sql`p.stock > 0`, SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT];
+  const filters: Prisma.Sql[] = [Prisma.sql`p.is_active = true`, Prisma.sql`p.stock > 0`];
   if (input.category?.trim()) filters.push(Prisma.sql`p.category ILIKE ${`%${escapeLike(input.category.trim())}%`}`);
 
   const products = await prisma.$queryRaw<{

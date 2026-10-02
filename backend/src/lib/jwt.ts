@@ -5,7 +5,6 @@ export interface AccessTokenPayload {
   userId: string;
   role: string;
   permissions: string[];
-  companyId?: string;
   /** Уровень доступа к деньгам — подставляется из БД в authenticate, в токене не хранится */
   moneyAccess?: 'FULL' | 'NO_STRATEGIC' | 'NONE';
   /** До когда открыта себестоимость по ПИН — из сессии в authenticate, в токене не хранится */

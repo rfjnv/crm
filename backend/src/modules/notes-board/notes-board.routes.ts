@@ -54,7 +54,6 @@ router.post(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     });
     res.status(201).json(row);
   }),
@@ -81,7 +80,6 @@ router.get(
         userId: req.user!.userId,
         role: req.user!.role as Role,
         permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
       },
       q.page,
       q.pageSize,
@@ -99,7 +97,6 @@ router.patch(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     });
     res.json(row);
   }),
@@ -114,7 +111,6 @@ router.post(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     });
     res.json(row);
   }),
@@ -128,7 +124,6 @@ router.delete(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     });
     res.json(result);
   }),

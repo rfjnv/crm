@@ -7,7 +7,6 @@ import {
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
   SQL_ANALYTICS_LINE_REVENUE_DI,
   resolveAnalyticsPeriodRange,
-  SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
 } from '../../lib/analytics';
 import { sqlInventoryMovementBusinessDate, sqlMovementIsSale } from '../../lib/inventoryAnalytics';
 import { authenticate } from '../../middleware/authenticate';
@@ -415,7 +414,6 @@ function hierarchyDealScope(req: Request) {
     userId: req.user!.userId,
     role: req.user!.role as Role,
     permissions: req.user!.permissions || [],
-    companyId: req.user!.companyId,
   });
 }
 
@@ -597,7 +595,6 @@ router.get(
       userId: req.user!.userId,
       role: req.user!.role as Role,
       permissions: req.user!.permissions || [],
-      companyId: req.user!.companyId,
     };
     const dealScope = ownerScope(user);
     const { start, end } = resolveAnalyticsPeriodRange({
@@ -921,7 +918,6 @@ router.get(
         Prisma.sql`SELECT p.id, p.name, p.sku, p.stock, p.min_stock
          FROM products p
          WHERE p.is_active = true AND p.stock < p.min_stock
-           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
          ORDER BY p.stock ASC`
       ),
       prisma.$queryRaw<{ id: string; name: string; sku: string; stock: number; last_out_date: Date | null }[]>(
@@ -933,7 +929,6 @@ router.get(
          LEFT JOIN inventory_movements m ON m.product_id = p.id AND ${sqlMovementIsSale('m')}
          LEFT JOIN deals d ON d.id = m.deal_id
          WHERE p.is_active = true AND p.stock > 0
-           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
          GROUP BY p.id, p.name, p.sku, p.stock
          HAVING MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) IS NULL
              OR MAX(${sqlInventoryMovementBusinessDate('m', 'd')}) < NOW() - INTERVAL '30 days'
@@ -950,7 +945,6 @@ router.get(
          WHERE ${sqlMovementIsSale('m')}
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} >= ${start}
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} < ${end}
-           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}
          GROUP BY p.id, p.name, p.unit
          ORDER BY SUM(m.quantity) DESC
          LIMIT 10`
@@ -959,8 +953,7 @@ router.get(
       prisma.$queryRaw<{ value: string }[]>(
         Prisma.sql`SELECT COALESCE(SUM(p.stock * p.purchase_price), 0)::text as value
          FROM products p
-         WHERE p.is_active = true AND p.purchase_price IS NOT NULL
-           AND ${SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT}`,
+         WHERE p.is_active = true AND p.purchase_price IS NOT NULL`,
       ),
     ]);
 

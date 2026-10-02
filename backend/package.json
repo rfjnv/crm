@@ -28,7 +28,6 @@
     "db:fix-closed-at": "tsx src/scripts/fix-closed-at-for-closed-deals.ts",
     "verify:client-stock-add": "tsx src/scripts/verify-client-stock-add-dates.ts",
     "restore:product-prices": "tsx src/scripts/restore-wiped-product-prices.ts",
-    "seed:companies": "node dist/scripts/seed-companies.js",
     "normalize:client-phones": "tsx src/scripts/normalize-client-phones.ts",
     "test": "vitest run"
   },

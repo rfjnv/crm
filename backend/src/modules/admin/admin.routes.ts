@@ -18,7 +18,7 @@ const router = Router();
 router.use(authenticate);
 
 function getUser(req: Request): AuthUser {
-  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [], companyId: req.user!.companyId };
+  return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };
 }
 
 // ──── SUPER_ADMIN Deal Override ────

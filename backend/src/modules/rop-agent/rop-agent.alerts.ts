@@ -4,7 +4,6 @@ import type TelegramBot from 'node-telegram-bot-api';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
-import { SQL_EXCLUDE_INTERNAL_COMPANY_DEAL } from '../../lib/analytics';
 import { agentBot, type TgButton } from './rop-agent.bot';
 import { clientPurchaseCycles, recentClientNotes, NO_CONTACT_NOTE_RE, VAGUE_NOTE_SQL, type RecentNote } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
@@ -66,7 +65,6 @@ async function debtCandidates(): Promise<Candidate[]> {
       AND d.payment_status IN ('UNPAID', 'PARTIAL') AND (d.amount - d.paid_amount) > 0
       AND d.due_date IS NOT NULL AND ${overdueDays} >= 7
       AND c.relation = 'CUSTOMER'
-      AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}
     GROUP BY c.id, c.company_name, c.manager_id, u.full_name
     HAVING SUM(d.amount - d.paid_amount) >= ${config.ropAgent.alertDebtMin}
     ORDER BY overdue DESC

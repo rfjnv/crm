@@ -41,7 +41,6 @@ export const createProductDto = z.object({
   specifications: z.record(z.unknown()).optional(),
   manufacturedAt: z.string().datetime().optional(),
   expiresAt: z.string().datetime().optional(),
-  companyId: z.string().uuid('Некорректный ID компании').optional(),
 });
 
 export const updateProductDto = z.object({

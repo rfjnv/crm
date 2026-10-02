@@ -8,7 +8,6 @@ import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
-  SQL_EXCLUDE_INTERNAL_COMPANY_DEAL,
 } from '../../lib/analytics';
 import { clientPurchaseCycles, slowStock } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
@@ -145,12 +144,12 @@ async function dealsBlock(date: string): Promise<DigestData['deals']> {
         COUNT(*) FILTER (WHERE d.status = 'CLOSED' AND ${dayOf(Prisma.sql`d.closed_at`)} = ${date}::date)::int AS closed,
         COUNT(*) FILTER (WHERE ${dayOf(Prisma.sql`d.created_at`)} = ${date}::date)::int AS created
       FROM deals d
-      WHERE d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED') AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}
+      WHERE d.is_archived = false AND d.status NOT IN ('CANCELED', 'REJECTED')
         AND (d.closed_at >= (${date}::date - 2)::timestamp OR d.created_at >= (${date}::date - 2)::timestamp)`),
     prisma.$queryRaw<{ status: string; count: number; amount: number }[]>(Prisma.sql`
       SELECT d.status::text AS status, COUNT(*)::int AS count, COALESCE(SUM(d.amount), 0)::float8 AS amount
       FROM deals d
-      WHERE d.is_archived = false AND d.status NOT IN ('CLOSED', 'CANCELED', 'REJECTED') AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}
+      WHERE d.is_archived = false AND d.status NOT IN ('CLOSED', 'CANCELED', 'REJECTED')
       GROUP BY d.status ORDER BY count DESC`),
   ]);
   return { closedDay: counts[0]?.closed ?? 0, newDay: counts[0]?.created ?? 0, pipeline };
@@ -184,8 +183,7 @@ async function debtsBlock(date: string): Promise<DigestData['debts']> {
     WHERE d.is_archived = false
       AND d.status NOT IN ('CANCELED', 'REJECTED')
       AND d.payment_status IN ('UNPAID', 'PARTIAL')
-      AND (d.amount - d.paid_amount) > 0
-      AND ${SQL_EXCLUDE_INTERNAL_COMPANY_DEAL}`;
+      AND (d.amount - d.paid_amount) > 0`;
   const overdueDays = Prisma.sql`(${date}::date - DATE((d.due_date AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent'))`;
   const [totals, top] = await Promise.all([
     prisma.$queryRaw<{ total: number; overdue: number; overdue_deals: number }[]>(Prisma.sql`
