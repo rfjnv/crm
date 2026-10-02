@@ -68,7 +68,8 @@ html[data-design='modern']:has(.app-shell) body::before {
   pointer-events: none;
   background:
     linear-gradient(rgba(0, 0, 0, var(--scene-dim)), rgba(0, 0, 0, var(--scene-dim))),
-    url('../assets/glass-bg.webp') center / cover no-repeat;
+    /* Свой фон пользователя (см. store/backgroundStore.ts) или стандартное фото */
+    var(--glass-bg-image, url('../assets/glass-bg.webp')) center / cover no-repeat;
 }
 
 /* Фон должен просвечивать сквозь каркас приложения (на мобильном — и сквозь его «лист») */

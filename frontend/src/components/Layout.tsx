@@ -19,6 +19,7 @@ import {
   SwapOutlined,
   LogoutOutlined,
   BgColorsOutlined,
+  PictureOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
@@ -76,6 +77,7 @@ import { authApi } from '../api/auth.api';
 import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
 import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
+import BackgroundPickerModal from './BackgroundPickerModal';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
@@ -131,6 +133,7 @@ export default function Layout() {
     return () => window.removeEventListener('focus', onFocus);
   }, [setUser]);
   const { mode, toggle, design, toggleDesign } = useThemeStore();
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
   const mainScrollRef = useRef<HTMLDivElement>(null);
@@ -233,6 +236,7 @@ export default function Layout() {
         </span>
       ),
     },
+    ...(design === 'modern' ? [{ key: 'background', icon: <PictureOutlined />, label: 'Фон' }] : []),
     { type: 'divider' },
     { key: 'logout', icon: <LogoutOutlined />, label: 'Выход', danger: true },
   ];
@@ -240,6 +244,7 @@ export default function Layout() {
   const onProfileMenuClick: NonNullable<MenuProps['onClick']> = ({ key }) => {
     if (key === 'profile') navigate('/profile');
     if (key === 'design') toggleDesign();
+    if (key === 'background') setBackgroundOpen(true);
     if (key === 'logout') void handleLogout();
   };
 
@@ -1023,6 +1028,7 @@ export default function Layout() {
       {isMobile && (
         <BottomTabBar />
       )}
+      <BackgroundPickerModal open={backgroundOpen} onClose={() => setBackgroundOpen(false)} />
     </AntLayout>
   );
 }
