@@ -265,6 +265,9 @@ export interface Client {
   /** Причина ухода; null — клиент не потерян. */
   lossReason?: ClientLossReason | null;
   lossReasonAt?: string | null;
+  /** Для QUALITY: категории товаров и id товаров, которыми клиент недоволен. */
+  lossCategories?: string[];
+  lossProductIds?: string[];
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

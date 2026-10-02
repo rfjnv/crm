@@ -69,9 +69,16 @@ export const setClientCreditStatusDto = z.object({
   creditStatus: z.enum(['NORMAL', 'SATISFACTORY', 'NEGATIVE']),
 });
 
-export const setClientLossReasonDto = z.object({
-  lossReason: z.enum(['NO_CREDIT', 'PRICE', 'NO_PRODUCT', 'LOGISTICS', 'COMPETITOR', 'UNKNOWN']).nullable(),
-});
+export const setClientLossReasonDto = z
+  .object({
+    lossReason: z.enum(['NO_CREDIT', 'PRICE', 'NO_PRODUCT', 'LOGISTICS', 'COMPETITOR', 'QUALITY', 'UNKNOWN']).nullable(),
+    lossCategories: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+    lossProductIds: z.array(z.string().uuid()).max(1000).optional(),
+  })
+  .refine(
+    (v) => v.lossReason !== 'QUALITY' || (v.lossCategories?.length ?? 0) + (v.lossProductIds?.length ?? 0) > 0,
+    { message: 'Для «Качество товара» укажите хотя бы одну категорию или товар', path: ['lossProductIds'] },
+  );
 
 export const clientStockQueryDto = z.object({
   historyLimit: z.coerce.number().int().min(1).max(200).optional(),

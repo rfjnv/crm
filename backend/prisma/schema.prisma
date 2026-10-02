@@ -149,6 +149,7 @@ enum ClientLossReason {
   NO_PRODUCT
   LOGISTICS
   COMPETITOR
+  QUALITY
   UNKNOWN
 }
 
@@ -473,6 +474,9 @@ model Client {
   relation    ClientRelation @default(CUSTOMER)
   lossReason  ClientLossReason? @map("loss_reason")
   lossReasonAt DateTime? @map("loss_reason_at")
+  /// Для QUALITY: категории товаров (Product.category) и отдельные товары, которыми клиент недоволен.
+  lossCategories String[] @default([]) @map("loss_categories")
+  lossProductIds String[] @default([]) @map("loss_product_ids")
   isArchived  Boolean  @default(false) @map("is_archived")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

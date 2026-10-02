@@ -1,5 +1,5 @@
 import client from './client';
-import type { ClientLossReason } from '../constants/clientLossReasons';
+import type { ClientLossDetails, ClientLossReason } from '../constants/clientLossReasons';
 import type { Client, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
 
 export interface CreateClientData {
@@ -77,8 +77,8 @@ export const clientsApi = {
   setCreditStatus: (id: string, creditStatus: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE') =>
     client.patch<Client>(`/clients/${id}/credit-status`, { creditStatus }).then((r) => r.data),
 
-  setLossReason: (id: string, lossReason: ClientLossReason | null) =>
-    client.patch<Client>(`/clients/${id}/loss-reason`, { lossReason }).then((r) => r.data),
+  setLossReason: (id: string, lossReason: ClientLossReason | null, details?: ClientLossDetails) =>
+    client.patch<Client>(`/clients/${id}/loss-reason`, { lossReason, ...details }).then((r) => r.data),
 
   history: (id: string) => client.get<AuditLog[]>(`/clients/${id}/history`).then((r) => r.data),
 

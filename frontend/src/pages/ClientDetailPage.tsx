@@ -27,7 +27,7 @@ import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
-import { CLIENT_LOSS_REASON_META, type ClientLossReason } from '../constants/clientLossReasons';
+import { CLIENT_LOSS_REASON_META, type ClientLossDetails, type ClientLossReason } from '../constants/clientLossReasons';
 import { formatUZS } from '../utils/currency';
 import { getFirstName } from '../lib/name-utils';
 import {
@@ -552,7 +552,8 @@ export default function ClientDetailPage() {
   });
 
   const lossReasonMut = useMutation({
-    mutationFn: (lossReason: ClientLossReason | null) => clientsApi.setLossReason(id!, lossReason),
+    mutationFn: ({ lossReason, details }: { lossReason: ClientLossReason | null; details?: ClientLossDetails }) =>
+      clientsApi.setLossReason(id!, lossReason, details),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client', id] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -1123,6 +1124,8 @@ export default function ClientDetailPage() {
                 isSvip: client.isSvip,
                 creditStatus: client.creditStatus,
                 lossReason: client.lossReason,
+                lossCategories: client.lossCategories,
+                lossProductIds: client.lossProductIds,
               }}
               variant="full"
             />
@@ -1170,8 +1173,9 @@ export default function ClientDetailPage() {
             <ClientLossReasonMenu
               variant="button"
               value={client.lossReason}
+              details={{ lossCategories: client.lossCategories, lossProductIds: client.lossProductIds }}
               loading={lossReasonMut.isPending}
-              onChange={(v) => lossReasonMut.mutate(v)}
+              onChange={(lossReason, details) => lossReasonMut.mutate({ lossReason, details })}
             />
           )}
           {canEdit && <Button type="primary" icon={<EditOutlined />} onClick={openEdit}>Редактировать</Button>}
@@ -1211,6 +1215,18 @@ export default function ClientDetailPage() {
                         {CLIENT_LOSS_REASON_META[client.lossReason].emoji} {CLIENT_LOSS_REASON_META[client.lossReason].label}
                         {client.lossReasonAt && (
                           <Typography.Text type="secondary"> · с {dayjs(client.lossReasonAt).format('DD.MM.YYYY')}</Typography.Text>
+                        )}
+                        {client.lossReason === 'QUALITY' && (
+                          <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {(client.lossCategories ?? []).map((c) => (
+                              <Tag key={`cat-${c}`} style={{ margin: 0 }}>{c} · вся категория</Tag>
+                            ))}
+                            {(client.lossProductIds ?? []).map((pid) => (
+                              <Tag key={pid} bordered={false} style={{ margin: 0 }}>
+                                {products?.find((p) => p.id === pid)?.name ?? 'Товар'}
+                              </Tag>
+                            ))}
+                          </div>
                         )}
                       </Descriptions.Item>
                     )}

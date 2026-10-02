@@ -11,6 +11,9 @@ export type ClientCompanyBadge = {
   creditStatus?: 'NORMAL' | 'SATISFACTORY' | 'NEGATIVE';
   /** Причина ухода — плашка показывается, только если её передали (список и карточка клиента) */
   lossReason?: ClientLossReason | null;
+  /** Для «Качество товара» — попадают в подсказку плашки */
+  lossCategories?: string[];
+  lossProductIds?: string[];
 };
 
 type Props = {
@@ -59,6 +62,13 @@ export function ClientCompanyDisplay({
   const creditStatus = client?.creditStatus ?? 'NORMAL';
   const statusMeta = STATUS_META[creditStatus] ?? null;
   const lossMeta = client?.lossReason ? CLIENT_LOSS_REASON_META[client.lossReason] : null;
+  const lossDetailParts = [
+    ...(client?.lossCategories ?? []),
+    ...(client?.lossProductIds?.length ? [`товаров: ${client.lossProductIds.length}`] : []),
+  ];
+  const lossTitle = lossMeta
+    ? `Причина ухода: ${lossMeta.label}${lossDetailParts.length ? ` — ${lossDetailParts.join(', ')}` : ''}`
+    : '';
 
   const nameEl = link && client?.id ? (
     <Typography.Text type={secondary ? 'secondary' : undefined} style={{ margin: 0 }}>
@@ -96,7 +106,7 @@ export function ClientCompanyDisplay({
       {lossMeta && (
         <Tag
           bordered={false}
-          title={`Причина ухода: ${lossMeta.label}`}
+          title={lossTitle}
           style={{ margin: 0, lineHeight: '18px', fontSize: 11, padding: '0 6px' }}
         >
           {lossMeta.emoji} {lossMeta.short}

@@ -11,7 +11,7 @@ import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
-import { CLIENT_LOSS_REASONS, type ClientLossReason } from '../constants/clientLossReasons';
+import { CLIENT_LOSS_REASONS, type ClientLossDetails, type ClientLossReason } from '../constants/clientLossReasons';
 import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
 import type { Client } from '../types';
 import dayjs from 'dayjs';
@@ -325,8 +325,8 @@ export default function ClientsPage() {
   });
 
   const lossReasonMut = useMutation({
-    mutationFn: ({ id, lossReason }: { id: string; lossReason: ClientLossReason | null }) =>
-      clientsApi.setLossReason(id, lossReason),
+    mutationFn: ({ id, lossReason, details }: { id: string; lossReason: ClientLossReason | null; details?: ClientLossDetails }) =>
+      clientsApi.setLossReason(id, lossReason, details),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       message.success('Причина ухода обновлена');
@@ -337,8 +337,9 @@ export default function ClientsPage() {
   const lossReasonMenu = (c: Client) => (
     <ClientLossReasonMenu
       value={c.lossReason}
+      details={{ lossCategories: c.lossCategories, lossProductIds: c.lossProductIds }}
       loading={lossReasonMut.isPending && lossReasonMut.variables?.id === c.id}
-      onChange={(lossReason) => lossReasonMut.mutate({ id: c.id, lossReason })}
+      onChange={(lossReason, details) => lossReasonMut.mutate({ id: c.id, lossReason, details })}
     />
   );
 
@@ -370,7 +371,7 @@ export default function ClientsPage() {
       dataIndex: 'companyName',
       render: (_v: string, r: Client) => (
         <ClientCompanyDisplay
-          client={{ id: r.id, companyName: r.companyName, isSvip: r.isSvip, creditStatus: r.creditStatus, lossReason: r.lossReason }}
+          client={{ id: r.id, companyName: r.companyName, isSvip: r.isSvip, creditStatus: r.creditStatus, lossReason: r.lossReason, lossCategories: r.lossCategories, lossProductIds: r.lossProductIds }}
           link
           variant="full"
         />
@@ -640,6 +641,8 @@ export default function ClientsPage() {
                       isSvip: client.isSvip,
                       creditStatus: client.creditStatus,
                       lossReason: client.lossReason,
+                      lossCategories: client.lossCategories,
+                      lossProductIds: client.lossProductIds,
                     }}
                     link
                     variant="full"

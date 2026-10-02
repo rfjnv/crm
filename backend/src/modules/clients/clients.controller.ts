@@ -76,8 +76,13 @@ export class ClientsController {
   }
 
   async setLossReason(req: Request, res: Response): Promise<void> {
-    const { lossReason } = setClientLossReasonDto.parse(req.body);
-    res.json(await clientsService.setLossReason(req.params.id as string, lossReason, getUser(req)));
+    const { lossReason, lossCategories, lossProductIds } = setClientLossReasonDto.parse(req.body);
+    res.json(await clientsService.setLossReason(
+      req.params.id as string,
+      lossReason,
+      { lossCategories: lossCategories ?? [], lossProductIds: lossProductIds ?? [] },
+      getUser(req),
+    ));
   }
 
   async archive(req: Request, res: Response): Promise<void> {

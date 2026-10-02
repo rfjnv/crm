@@ -49,6 +49,8 @@ function clientAuditSnapshot(c: Client) {
     isSvip: c.isSvip,
     creditStatus: c.creditStatus,
     lossReason: c.lossReason,
+    lossCategories: c.lossCategories,
+    lossProductIds: c.lossProductIds,
     isArchived: c.isArchived,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -425,10 +427,30 @@ export class ClientsService {
   }
 
   /** Причина ухода клиента; null — снять плашку. Дата ставится при первой установке причины. */
-  async setLossReason(id: string, lossReason: ClientLossReason | null, user: AuthUser) {
+  async setLossReason(
+    id: string,
+    lossReason: ClientLossReason | null,
+    details: { lossCategories: string[]; lossProductIds: string[] },
+    user: AuthUser,
+  ) {
     const client = await prisma.client.findFirst({ where: { id, ...clientOwnerScope(user) } });
     if (!client) {
       throw new AppError(404, 'Клиент не найден');
+    }
+
+    // Категории и товары имеют смысл только для «Качество товара»; при другой причине — очищаем.
+    let lossCategories: string[] = [];
+    let lossProductIds: string[] = [];
+    if (lossReason === 'QUALITY') {
+      lossCategories = [...new Set(details.lossCategories)];
+      const found = await prisma.product.findMany({
+        where: { id: { in: [...new Set(details.lossProductIds)] } },
+        select: { id: true },
+      });
+      lossProductIds = found.map((p) => p.id);
+      if (lossCategories.length + lossProductIds.length === 0) {
+        throw new AppError(400, 'Для «Качество товара» укажите хотя бы одну категорию или товар');
+      }
     }
 
     const updated = await prisma.client.update({
@@ -436,6 +458,8 @@ export class ClientsService {
       data: {
         lossReason,
         lossReasonAt: lossReason ? (client.lossReason ? client.lossReasonAt : new Date()) : null,
+        lossCategories,
+        lossProductIds,
       },
     });
 
@@ -444,8 +468,8 @@ export class ClientsService {
       action: 'UPDATE_CLIENT',
       entityType: 'client',
       entityId: id,
-      before: { lossReason: client.lossReason },
-      after: { lossReason: updated.lossReason },
+      before: { lossReason: client.lossReason, lossCategories: client.lossCategories, lossProductIds: client.lossProductIds },
+      after: { lossReason: updated.lossReason, lossCategories: updated.lossCategories, lossProductIds: updated.lossProductIds },
     });
 
     return updated;
