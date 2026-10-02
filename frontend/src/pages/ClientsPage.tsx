@@ -37,6 +37,14 @@ function parseLossParam(v: string | null): LossFilter | undefined {
   return CLIENT_LOSS_REASONS.some((r) => r.value === v) ? (v as ClientLossReason) : undefined;
 }
 
+/** Активность клиента: был контакт/сделка/оплата за последние ACTIVE_DAYS дней */
+type ActivityFilter = 'active' | 'inactive';
+const ACTIVE_DAYS = 90;
+
+function parseActivityParam(v: string | null): ActivityFilter | undefined {
+  return v === 'active' || v === 'inactive' ? v : undefined;
+}
+
 function parseSortParam(v: string | null): ClientSortMode {
   const x = v ?? '';
   if (x === 'name_desc' || x === 'created_desc' || x === 'contact_desc' || x === 'name_asc') return x;
@@ -55,12 +63,13 @@ function parseClientsListParams(sp: URLSearchParams) {
     manager: sp.get('manager') || undefined,
     sort: parseSortParam(sp.get('sort')),
     loss: parseLossParam(sp.get('loss')),
+    activity: parseActivityParam(sp.get('activity')),
   };
 }
 
 function mergeClientsListSearchParams(
   prev: URLSearchParams,
-  patch: Partial<{ page: number; pageSize: number; q: string; manager: string | undefined; sort: ClientSortMode; loss: LossFilter | undefined }>,
+  patch: Partial<{ page: number; pageSize: number; q: string; manager: string | undefined; sort: ClientSortMode; loss: LossFilter | undefined; activity: ActivityFilter | undefined }>,
 ): URLSearchParams {
   const cur = parseClientsListParams(prev);
   const next = {
@@ -72,6 +81,7 @@ function mergeClientsListSearchParams(
       : cur.manager,
     sort: patch.sort ?? cur.sort,
     loss: Object.prototype.hasOwnProperty.call(patch, 'loss') ? patch.loss : cur.loss,
+    activity: Object.prototype.hasOwnProperty.call(patch, 'activity') ? patch.activity : cur.activity,
   };
   const n = new URLSearchParams();
   if (next.page !== 1) n.set('page', String(next.page));
@@ -80,6 +90,7 @@ function mergeClientsListSearchParams(
   if (next.manager) n.set('manager', next.manager);
   if (next.sort !== 'name_asc') n.set('sort', next.sort);
   if (next.loss) n.set('loss', next.loss);
+  if (next.activity) n.set('activity', next.activity);
   return n;
 }
 
@@ -165,7 +176,7 @@ function PhoneInput({ value, onChange }: { value?: string; onChange?: (v: string
 export default function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listState = useMemo(() => parseClientsListParams(searchParams), [searchParams]);
-  const { page, pageSize, q: qUrl, manager: managerFilter, sort: sortMode, loss: lossFilter } = listState;
+  const { page, pageSize, q: qUrl, manager: managerFilter, sort: sortMode, loss: lossFilter, activity: activityFilter } = listState;
 
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -226,8 +237,12 @@ export default function ClientsPage() {
     if (managerFilter) {
       list = list.filter(c => c.managerId === managerFilter);
     }
+    if (activityFilter) {
+      const threshold = Date.now() - ACTIVE_DAYS * 86_400_000;
+      list = list.filter((c) => (lastContactTs(c) >= threshold) === (activityFilter === 'active'));
+    }
     return list;
-  }, [clients, deferredSearch, managerFilter]);
+  }, [clients, deferredSearch, managerFilter, activityFilter]);
 
   const lossCounts = useMemo(() => {
     const counts = new Map<ClientLossReason, number>();
@@ -557,6 +572,18 @@ export default function ClientsPage() {
               options={(users ?? []).filter(u => u.isActive && u.role === 'MANAGER').map(u => ({ label: getFirstName(u.fullName), value: u.id }))}
             />
           )}
+          <Select<ActivityFilter>
+            className={APP_INPUT}
+            allowClear
+            placeholder="Активность"
+            style={{ width: isMobile ? '100%' : 180 }}
+            value={activityFilter}
+            onChange={(v) => patchListParams({ activity: v, page: 1 })}
+            options={[
+              { label: `Активные (${ACTIVE_DAYS} дн.)`, value: 'active' },
+              { label: 'Неактивные', value: 'inactive' },
+            ]}
+          />
           <Select<ClientSortMode>
             className={APP_INPUT}
             value={sortMode}
