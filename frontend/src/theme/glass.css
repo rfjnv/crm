@@ -40,20 +40,22 @@ html[data-design='modern']:has(.app-shell) {
 html[data-design='modern'][data-theme='light']:has(.app-shell) {
   --scene-dim: 0;
   --win-bg: rgba(255, 255, 255, 0.38);
-  --win-border: rgba(255, 255, 255, 0.6);
-  --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --win-border: rgba(255, 255, 255, 0.45);
+  --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   --win-shadow: 0 40px 100px rgba(20, 40, 30, 0.2), 0 8px 24px rgba(20, 40, 30, 0.1);
-  --panel-bg: rgba(255, 255, 255, 0.4);
-  --panel-bg-hover: rgba(255, 255, 255, 0.55);
-  --panel-border: rgba(255, 255, 255, 0.65);
-  --panel-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  /* Панели почти не белее окна: на снежном фото яркие белые плашки слепят.
+     Границу держит лёгкая тень и тонкая тёмная линия, а не белая рамка. */
+  --panel-bg: rgba(255, 255, 255, 0.16);
+  --panel-bg-hover: rgba(255, 255, 255, 0.26);
+  --panel-border: rgba(28, 26, 23, 0.07);
+  --panel-rim: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 3px rgba(20, 30, 40, 0.06);
   --chip-border: rgba(28, 26, 23, 0.2);
   --chip-active-bg: #1c1a17;
   --chip-active-text: #ffffff;
-  --menu-active-bg: rgba(255, 255, 255, 0.6);
+  --menu-active-bg: rgba(255, 255, 255, 0.4);
   --glass-text: #1c1a17;
   --table-solid: rgba(246, 247, 248, 0.78);
-  --field-bg: rgba(255, 255, 255, 0.5);
+  --field-bg: rgba(255, 255, 255, 0.3);
 }
 
 /* ── Сцена ── */
