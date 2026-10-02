@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { isDayOff } from './rop-agent.calendar';
 import { AppError } from '../../lib/errors';
 import { DEFAULT_BONUS_SCHEME, parseBonusScheme, type BonusTier } from '../../lib/bonus';
 import {
@@ -110,6 +111,9 @@ export async function kpiForecast(input: { year?: number; month?: number; manage
     }
   }
 
+  /** Рабочие дни месяца по сегодня включительно: дни, когда компания что-то продала. */
+  const companyWorkDays = new Set(rows.filter((r) => r.day >= monthStartYmd && r.revenue > 0).map((r) => r.day)).size;
+
   /** Прогноз по набору дневных продаж (одного менеджера или всей компании). */
   function forecastOf(days: DayRow[]) {
     const mtd = days.filter((r) => r.day >= monthStartYmd).reduce((s, r) => s + r.revenue, 0);
@@ -120,20 +124,22 @@ export async function kpiForecast(input: { year?: number; month?: number; manage
     }
     const dowAvg = byDow.map((v) => v / PROFILE_WEEKS);
     let rest = 0;
-    for (const d of remainingDays) rest += d.ymd === todayYmd ? Math.max(0, dowAvg[d.dow] - today) : dowAvg[d.dow];
+    for (const d of remainingDays) {
+      if (isDayOff(d.ymd)) continue;
+      rest += d.ymd === todayYmd ? Math.max(0, dowAvg[d.dow] - today) : dowAvg[d.dow];
+    }
     const byProfile = mtd + rest;
     const byPace = closed ? mtd : (mtd / Math.max(elapsedDays, 1)) * p.daysInMonth;
-    const workDaysLeft = remainingDays.filter((d) => dowAvg[d.dow] > 0).length;
+    const workDaysLeft = remainingDays.filter((d) => dowAvg[d.dow] > 0 && !isDayOff(d.ymd)).length;
     return {
       mtd,
       expected: closed ? mtd : byProfile,
       low: Math.min(byProfile, byPace),
       high: Math.max(byProfile, byPace),
       workDaysLeft,
-      avgPerWorkDay: (() => {
-        const worked = days.filter((r) => r.day >= monthStartYmd && r.revenue > 0).length;
-        return worked ? mtd / worked : 0;
-      })(),
+      // Делим на рабочие дни компании, а не на строки «менеджер–день»: у компании
+      // строк в день столько, сколько менеджеров продавало, и темп выходил в разы ниже.
+      avgPerWorkDay: companyWorkDays ? mtd / companyWorkDays : 0,
     };
   }
 
@@ -200,6 +206,8 @@ export async function kpiForecast(input: { year?: number; month?: number; manage
     days_passed: Math.floor(elapsedDays),
     days_in_month: p.daysInMonth,
     method: 'forecast = факт + ожидаемое по профилю дней недели за 8 недель; forecast_range — вилка между профилем и простым темпом. '
+      + 'avg_per_work_day — факт месяца ÷ рабочие дни компании (дни, когда были продажи); need_per_work_day — сколько продавать в каждый оставшийся рабочий день от текущего факта до плана; '
+      + 'gap_to_plan / gap_to_goal — сколько не хватает до плана по прогнозу. Воскресенья и праздники Узбекистана в оставшиеся дни не входят. '
       + 'bonus_* — только база бонуса (ставка ступени × выручка), до умножения на критерии. Планы — из «KPI менеджеров» (цель по выручке на месяц).',
     ...(input.manager_id ? {} : {
       company: {

@@ -92,10 +92,14 @@ function checkedFor(checklist: ChecklistItem[], name: string, index: number): bo
   return checklist[index]?.checked ?? null;
 }
 
+/**
+ * По клиентам судим по фактам (разговор или заметка), а не по статусу задачи: менеджер
+ * отработал клиентов, но не закрыл задачу в CRM — это не срыв, напоминать не о чем.
+ */
 function verdictOf(s: ItemProgress['summary'], overdue: boolean, allDone: boolean, days: number): Verdict {
   if (s.clients === 0) return allDone ? 'ok' : overdue ? 'behind' : 'in_progress';
   const share = s.touched / s.clients;
-  if (share >= 0.8 && (allDone || !overdue)) return 'ok';
+  if (share >= 0.8) return 'ok';
   if (s.touched === 0 && (overdue || days >= 2)) return 'no_touch';
   if (overdue) return 'behind';
   return 'in_progress';
@@ -282,7 +286,7 @@ export async function taskPlanResults(input: { plan_id?: string; days?: number }
     note: 'Факты — после момента раздачи. touched — был разговор менеджера с клиентом (звонок с длительностью) или его заметка. '
       + 'attempted — звонил, но не дозвонился. checkedWithoutTrace — отмечен в чек-листе без разговора и заметки. '
       + 'otherContacts — касания других сотрудников. '
-      + 'verdict: ok — отработано ≥80%; in_progress — срок не вышел; behind — срок вышел, отработано меньше 80%; no_touch — ни одного касания.',
+      + 'verdict: ok — отработано ≥80% (даже если задача в CRM не закрыта); in_progress — срок не вышел; behind — срок вышел, отработано меньше 80%; no_touch — ни одного касания.',
     plans: progress.map((p) => ({
       ...p,
       items: p.items.map((i) => ({

@@ -6,14 +6,15 @@ import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { SQL_EXCLUDE_INTERNAL_COMPANY_DEAL } from '../../lib/analytics';
 import { agentBot, type TgButton } from './rop-agent.bot';
-import { clientPurchaseCycles } from './rop-agent.analysis';
+import { clientPurchaseCycles, recentClientNotes, NO_CONTACT_NOTE_RE, VAGUE_NOTE_SQL, type RecentNote } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
-import { assignPlan, proposeTaskPlan } from './rop-agent.plans';
+import { appendClientToPlan, assignPlan, proposeTaskPlan, type PlanItem } from './rop-agent.plans';
 import { kpiForecast } from './rop-agent.kpi';
 import { getTelegramChat } from './rop-agent.service';
 import { broadcastTargets, callbackUser, shortMoney } from './rop-agent.telegram';
-import { directorUserIds } from './rop-agent.people';
+import { assignableManagerIds, directorUserIds } from './rop-agent.people';
+import { isDayOff } from './rop-agent.calendar';
 
 /**
  * Сигналы РОП-агента: он сам пишет директору, когда что-то требует решения, и сразу
@@ -29,7 +30,7 @@ import { directorUserIds } from './rop-agent.people';
 type Proposal = { managerId: string; managerName: string; clientId: string | null; title: string; description: string; dueDate: string };
 
 type Candidate = {
-  kind: 'debt' | 'lapsed' | 'plan' | 'kpi';
+  kind: 'debt' | 'lapsed' | 'plan' | 'kpi' | 'notes';
   key: string;
   /** Для сортировки: чем больше, тем важнее. */
   weight: number;
@@ -70,13 +71,17 @@ async function debtCandidates(): Promise<Candidate[]> {
     HAVING SUM(d.amount - d.paid_amount) >= ${config.ropAgent.alertDebtMin}
     ORDER BY overdue DESC
     LIMIT 30`);
+  const notes = await recentClientNotes(rows.map((r) => r.client_id));
   return rows.map((r) => {
     const bucket = r.max_days >= 60 ? 60 : r.max_days >= 30 ? 30 : r.max_days >= 14 ? 14 : 7;
     return {
       kind: 'debt',
       key: `debt:${r.client_id}:${bucket}`,
       weight: r.overdue,
-      facts: { client: r.client, manager: r.manager, overdue_debt: r.overdue, max_overdue_days: r.max_days, overdue_deals: r.deals },
+      facts: {
+        client: r.client, manager: r.manager, overdue_debt: r.overdue, max_overdue_days: r.max_days, overdue_deals: r.deals,
+        recent_notes: notes.get(r.client_id) ?? [],
+      },
       managerId: r.manager_id,
       managerName: r.manager,
       clientId: r.client_id,
@@ -89,10 +94,20 @@ async function debtCandidates(): Promise<Candidate[]> {
   });
 }
 
+/** Клиенты, которые уже есть в розданных за неделю задачах агента: по ним не дёргаем повторно. */
+async function clientsInRecentTasks(): Promise<Set<string>> {
+  const plans = await prisma.ropTaskPlan.findMany({
+    where: { status: 'ASSIGNED', assignedAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
+    select: { items: true },
+  });
+  return new Set(plans.flatMap((p) => (p.items as unknown as PlanItem[]).flatMap((i) => i.clients.map((c) => c.clientId))));
+}
+
 async function lapsedCandidates(): Promise<Candidate[]> {
-  const r = await clientPurchaseCycles({ status: 'overdue', limit: 200 });
-  return r.clients
-    .filter((c) => c.revenue_12m >= config.ropAgent.alertClientMin)
+  const [r, inTasks] = await Promise.all([clientPurchaseCycles({ status: 'overdue', limit: 200 }), clientsInRecentTasks()]);
+  const list = r.clients.filter((c) => c.revenue_12m >= config.ropAgent.alertClientMin && !inTasks.has(c.client_id));
+  const notes = await recentClientNotes(list.map((c) => c.client_id));
+  return list
     .map((c) => ({
       kind: 'lapsed' as const,
       key: `lapsed:${c.client_id}:${c.last_order}`,
@@ -101,6 +116,7 @@ async function lapsedCandidates(): Promise<Candidate[]> {
         client: c.client, manager: c.manager, revenue_12m: c.revenue_12m, orders: c.orders,
         usual_interval_days: c.cycle_days, days_since_last_order: c.days_since, last_contact_at: c.last_contact_at,
         top_products: c.top_products_12m.map((p) => p.product),
+        recent_notes: notes.get(c.client_id) ?? ([] as RecentNote[]),
       },
       managerId: c.manager_id,
       managerName: c.manager,
@@ -122,8 +138,11 @@ async function planCandidates(): Promise<Candidate[]> {
       key: `plan:${p.planId}:${i.key}`,
       weight: i.summary.clients - i.summary.touched,
       facts: {
-        plan: p.title, manager: i.managerName, due_date: i.dueDate, clients: i.summary.clients, worked: i.summary.touched,
-        checked_without_trace: i.summary.checkedWithoutTrace, verdict: i.verdict, manager_reports: i.reports,
+        plan: p.title, manager: i.managerName, due_date: i.dueDate, clients_in_task: i.summary.clients,
+        clients_worked: i.summary.touched, ticked_without_call_or_note: i.summary.checkedWithoutTrace,
+        manager_reports: i.reports,
+        not_worked: i.clients.filter((c) => !c.answered && !c.notes).slice(0, 10).map((c) => c.client),
+        last_notes: i.clients.filter((c) => c.last_note).slice(0, 5).map((c) => `${c.client}: ${c.last_note}`),
       },
       managerId: i.managerId,
       managerName: i.managerName,
@@ -158,21 +177,69 @@ async function kpiCandidates(): Promise<Candidate[]> {
         managerName: m.manager,
         clientId: null,
         defaultMessage: `${m.manager}: по прогнозу ${m.forecast_pct}% плана (${shortMoney(m.forecast)} из ${shortMoney(m.plan!)}), не хватает ${shortMoney(m.gap_to_plan ?? 0)}. Нужно ${shortMoney(m.need_per_work_day ?? 0)} в день против ${shortMoney(m.avg_per_work_day)} сейчас.`,
-        defaultTask: {
-          title: `План добора до конца месяца: ${shortMoney(m.gap_to_plan ?? 0)}`,
-          description: 'Составить список: открытые сделки, которые можно закрыть в этом месяце, и клиенты, которым пора покупать. По каждому — сумма и дата. Итог — в отчёте задачи.',
-        },
+        // Отставание от плана — разговор директора с менеджером, а не задача менеджеру.
+        defaultTask: null,
       };
     });
 }
 
+/**
+ * Пустые заметки: за неделю у менеджера много заметок вида «всего хватает» или в пару слов
+ * (недозвоны не в счёт). Не чаще раза в неделю на менеджера — директору, с примерами и
+ * предложением задачи «пишите заметки подробно».
+ */
+async function notesCandidates(): Promise<Candidate[]> {
+  const assignable = [...await assignableManagerIds()];
+  if (!assignable.length) return [];
+  const content = Prisma.sql`n.content`;
+  const rows = await prisma.$queryRaw<{
+    manager_id: string; manager: string; notes: number; vague: number; no_contact: number; examples: string[] | null;
+  }[]>(Prisma.sql`
+    SELECT n.user_id AS manager_id, u.full_name AS manager,
+      COUNT(*)::int AS notes,
+      COUNT(*) FILTER (WHERE ${VAGUE_NOTE_SQL(content)})::int AS vague,
+      COUNT(*) FILTER (WHERE n.content ~* ${NO_CONTACT_NOTE_RE})::int AS no_contact,
+      (array_agg(c.company_name || ': ' || LEFT(btrim(n.content), 120) ORDER BY n.created_at DESC)
+        FILTER (WHERE ${VAGUE_NOTE_SQL(content)}))[1:6] AS examples
+    FROM client_notes n
+    JOIN users u ON u.id = n.user_id
+    JOIN clients c ON c.id = n.client_id
+    WHERE n.deleted_at IS NULL AND n.created_at >= NOW() - INTERVAL '7 days' AND n.user_id = ANY(${assignable})
+    GROUP BY n.user_id, u.full_name
+    HAVING COUNT(*) >= 10`);
+  // Ключ — неделя (её понедельник): не чаще раза в неделю на менеджера.
+  const today = new Date(`${tashkentDate()}T00:00:00Z`);
+  const monday = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+  return rows
+    .filter((r) => r.vague / r.notes >= 0.4)
+    .map((r) => ({
+      kind: 'notes' as const,
+      key: `notes:${r.manager_id}:${monday}`,
+      weight: r.vague,
+      facts: {
+        manager: r.manager, notes_7d: r.notes, empty_notes_7d: r.vague, empty_share_pct: Math.round((r.vague / r.notes) * 100),
+        no_answer_notes_7d: r.no_contact, examples: r.examples ?? [],
+      },
+      managerId: r.manager_id,
+      managerName: r.manager,
+      clientId: null,
+      defaultMessage: `${r.manager}: за неделю ${r.vague} из ${r.notes} заметок без сути («всего хватает», пара слов) — не видно, что клиент берёт, у кого и когда купит.`,
+      defaultTask: {
+        title: 'Пишите заметки по клиентам подробно',
+        description: 'В каждой заметке после разговора: что клиент берёт сейчас и у кого, по какой цене, на сколько хватит запаса, '
+          + 'когда следующая закупка, что вы предложили (товар, объём, цена) и что он ответил. '
+          + '«Всего хватает» без деталей — не заметка: спросите, на сколько хватит и у кого брал в прошлый раз.',
+      },
+    }));
+}
+
 async function findNewCandidates(): Promise<Candidate[]> {
-  const all = (await Promise.all([debtCandidates(), lapsedCandidates(), planCandidates(), kpiCandidates()])).flat();
+  const all = (await Promise.all([debtCandidates(), lapsedCandidates(), planCandidates(), kpiCandidates(), notesCandidates()])).flat();
   if (!all.length) return [];
   const seen = await prisma.ropAlert.findMany({ where: { key: { in: all.map((c) => c.key) } }, select: { key: true } });
   const seenKeys = new Set(seen.map((s) => s.key));
   // Сначала срывы задач, потом долги и клиенты — по сумме.
-  const order = { plan: 0, kpi: 1, debt: 2, lapsed: 3 };
+  const order = { plan: 0, kpi: 1, notes: 2, debt: 3, lapsed: 4 };
   return all
     .filter((c) => !seenKeys.has(c.key))
     .sort((a, b) => order[a.kind] - order[b.kind] || b.weight - a.weight)
@@ -199,7 +266,18 @@ const REVIEW_PROMPT = `Ты — РОП-агент компании Polygraph Bus
 - Отправь не больше ${MAX_SEND_PER_RUN} самых важных; остальные send=false, permanent_skip=false (вернёмся к ним позже).
 - message — 1–2 предложения директору, с именами и цифрами, суммы коротко («18,4 млн»). Без приветствий.
 - Если manager_is_director = true — клиента ведёт сам директор: задачу НЕ предлагай (пустые строки), в message дай совет директору, что сделать самому.
-- task_title / task_description — задача менеджеру, которую ты предлагаешь поставить (конкретно: что сделать и что написать в отчёте). Если менеджер в отпуске по памяти — напиши это в message. Если задача не нужна (например, по сорванному плану нужен разговор директора с менеджером) — пустые строки.
+- Если manager_can_take_tasks = false — клиент закреплён за сотрудником, который не продаёт (админ, тестовая или пустая учётка): задачу не предлагай, в message предложи директору передать клиента живому менеджеру.
+- task_title / task_description — задача менеджеру, которую ты предлагаешь поставить (конкретно: что сделать и что написать в заметке клиента). Если менеджер в отпуске по памяти — напиши это в message.
+- kind = plan и kind = kpi — это разговор директора с менеджером: задачу не предлагай (пустые строки), в message — что именно обсудить, по фактам.
+
+Заметки менеджеров (recent_notes, last_notes, examples) читай обязательно — это то, что менеджер уже выяснил:
+- В заметке есть причина или договорённость («придёт 8 октября», «ждёт поставку», «ушёл к конкуренту из-за отсрочки», «закрылся») — не предлагай «позвонить и выяснить». Срок договорённости ещё не наступил — send=false, permanent_skip=false. Причина потери — скажи директору причину и что с ней можно сделать (условия, товар, цена); задачу менеджеру — только если есть что конкретно предложить клиенту.
+- Заметка без сути («всего хватает», «пока не нужно», «сам позвонит», пара слов) — это не ответ. Предложи задачу уточнить: у кого клиент берёт сейчас и по какой цене, на сколько хватит запаса, когда следующая закупка; предложить конкретный товар из top_products; записать ответы в заметку. В message прямо скажи директору, что заметка пустая, и процитируй её.
+- Контакт был за последние 3 дня и заметка содержательная — не дёргай: send=false, permanent_skip=false.
+- «Не взял трубку» — попытка, а не отработка: можно предложить перезвонить в другое время или написать в мессенджер.
+- kind = notes — у менеджера много пустых заметок за неделю: приведи 2–3 примера из examples и предложи задачу писать заметки по схеме из task_description.
+
+Пиши для людей: без английских слов и названий полей (worked, touched, overdue, behind, verdict, kind и т. п.), только по-русски и с именами.
 Ответь строго JSON по схеме.`;
 
 const REVIEW_SCHEMA = {
@@ -244,8 +322,16 @@ async function reviewCandidates(candidates: Candidate[]): Promise<Review[]> {
   if (!config.claude.apiKey) return fallbackReview(candidates);
   try {
     const client = new Anthropic({ apiKey: config.claude.apiKey });
-    const directors = await directorUserIds();
-    const input = candidates.map((c) => ({ key: c.key, kind: c.kind, facts: { ...c.facts, manager_is_director: !!c.managerId && directors.has(c.managerId) } }));
+    const [directors, assignable] = await Promise.all([directorUserIds(), assignableManagerIds()]);
+    const input = candidates.map((c) => ({
+      key: c.key,
+      kind: c.kind,
+      facts: {
+        ...c.facts,
+        manager_is_director: !!c.managerId && directors.has(c.managerId),
+        manager_can_take_tasks: !!c.managerId && assignable.has(c.managerId),
+      },
+    }));
     const response = await client.messages.create({
       model: config.ropAgent.digestModel,
       max_tokens: 8000,
@@ -290,6 +376,8 @@ function alertButtons(alertId: string, proposal: Proposal | null, clientId: stri
 
 /** Один проход: найти новые события, дать модели решить, отправить важное. */
 export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
+  // В воскресенье и праздники не дёргаем: менеджеры не работают.
+  if (isDayOff(tashkentDate())) return { reviewed: 0, sent: 0 };
   const todayStart = new Date(`${tashkentDate()}T00:00:00+05:00`);
   const sentToday = await prisma.ropAlert.count({ where: { createdAt: { gte: todayStart }, status: { not: 'SKIPPED' } } });
   const allowed = Math.min(MAX_SEND_PER_RUN, config.ropAgent.alertsPerDay - sentToday);
@@ -299,8 +387,8 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
   if (!candidates.length) return { reviewed: 0, sent: 0 };
   const reviews = await reviewCandidates(candidates);
   const recipients = agentBot.enabled ? broadcastTargets() : [];
-  // Директору задач не ставим: по его клиентам — только совет.
-  const directors = await directorUserIds();
+  // Задачи — только живым менеджерам продаж; по клиентам директора, админов и пустых учёток — совет.
+  const assignable = await assignableManagerIds();
   const dueDate = tashkentDate(1);
 
   let sent = 0;
@@ -309,8 +397,8 @@ export async function runAlerts(): Promise<{ reviewed: number; sent: number }> {
     const send = r.send && sent < allowed && recipients.length > 0;
     // «Менее срочно сейчас», упёрлись в лимит или некому слать — не записываем: пересмотрим в следующий раз.
     if (!send && !(r.send === false && r.permanent_skip)) continue;
-    const byDirector = !!c.managerId && directors.has(c.managerId);
-    const proposal: Proposal | null = send && !byDirector && r.task_title.trim() && c.managerId
+    const canAssign = !!c.managerId && assignable.has(c.managerId) && c.kind !== 'plan' && c.kind !== 'kpi';
+    const proposal: Proposal | null = send && canAssign && r.task_title.trim() && c.managerId
       ? { managerId: c.managerId, managerName: c.managerName ?? '', clientId: c.clientId, title: r.task_title.trim(), description: r.task_description.trim(), dueDate }
       : null;
     const alert = await prisma.ropAlert.create({
@@ -361,22 +449,35 @@ export async function decideAlert(alertId: string, userId: string, accept: boole
   let footer = accept && proposal ? '' : `✖ ${esc(user.fullName)}: не надо`;
   if (accept && proposal) {
     try {
-      const chat = await getTelegramChat(userId);
-      const plan = await proposeTaskPlan({ chatId: chat.id, userId }, {
-        title: proposal.title,
-        goal: alert.message,
-        tasks: [{
-          manager_id: proposal.managerId,
-          title: proposal.title,
-          description: proposal.description,
-          due_date: proposal.dueDate,
-          // Суть уже в названии и описании задачи — в чек-листе только клиент с телефоном.
-          clients: proposal.clientId ? [{ client_id: proposal.clientId, reason: '', offer: '' }] : [],
-        }],
-      });
-      await assignPlan(plan.plan_id, userId);
-      await prisma.ropAlert.update({ where: { id: alertId }, data: { planId: plan.plan_id } });
-      footer = `✅ ${esc(user.fullName)}: задача поставлена ${esc(proposal.managerName)}`;
+      const mergedInto = proposal.clientId ? await appendToTodaysTask(proposal) : null;
+      if (mergedInto) {
+        await prisma.ropAlert.update({ where: { id: alertId }, data: { planId: mergedInto } });
+        footer = `✅ ${esc(user.fullName)}: клиент добавлен в сегодняшнюю задачу ${esc(proposal.managerName)}`;
+      } else {
+        const chat = await getTelegramChat(userId);
+        const today = ddmm(tashkentDate());
+        const plan = await proposeTaskPlan({ chatId: chat.id, userId }, proposal.clientId
+          ? {
+            // Клиентские сигналы за день копятся в одной задаче менеджера, суть — в пункте чек-листа.
+            title: `Сигналы агента: ${proposal.managerName}, ${today}`,
+            goal: alert.message,
+            tasks: [{
+              manager_id: proposal.managerId,
+              title: `Связаться с клиентами — ${today}`,
+              description: 'Позвоните каждому клиенту из чек-листа. Что выяснить или предложить — в пункте клиента.',
+              due_date: proposal.dueDate,
+              clients: [{ client_id: proposal.clientId, offer: proposal.title, reason: proposal.description }],
+            }],
+          }
+          : {
+            title: proposal.title,
+            goal: alert.message,
+            tasks: [{ manager_id: proposal.managerId, title: proposal.title, description: proposal.description, due_date: proposal.dueDate, clients: [] }],
+          });
+        await assignPlan(plan.plan_id, userId);
+        await prisma.ropAlert.update({ where: { id: alertId }, data: { planId: plan.plan_id } });
+        footer = `✅ ${esc(user.fullName)}: задача поставлена ${esc(proposal.managerName)}`;
+      }
     } catch (err) {
       // Задачу поставить не вышло — возвращаем сигнал, чтобы можно было нажать ещё раз.
       await prisma.ropAlert.update({ where: { id: alertId }, data: { status: 'SENT', decidedById: null, decidedAt: null } });
@@ -389,6 +490,25 @@ export async function decideAlert(alertId: string, userId: string, accept: boole
   const link: TgButton[][] = proposal?.clientId ? [[{ text: 'Открыть клиента', url: `/clients/${proposal.clientId}` }]] : [];
   await Promise.all(messages.map((m) => agentBot.editHtmlMessage(m.chatId, m.messageId, html, link)));
   return prisma.ropAlert.findUniqueOrThrow({ where: { id: alertId } });
+}
+
+/** Сегодняшняя задача менеджера из клиентских сигналов, если в неё ещё можно дописать клиента. */
+async function appendToTodaysTask(proposal: Proposal): Promise<string | null> {
+  const accepted = await prisma.ropAlert.findMany({
+    where: { status: 'ACCEPTED', planId: { not: null }, decidedAt: { gte: new Date(`${tashkentDate()}T00:00:00+05:00`) } },
+    orderBy: { decidedAt: 'desc' },
+    select: { planId: true, proposal: true },
+  });
+  const planIds = [...new Set(accepted
+    .filter((a) => {
+      const p = a.proposal as unknown as Proposal | null;
+      return p?.managerId === proposal.managerId && !!p.clientId;
+    })
+    .map((a) => a.planId!))];
+  for (const planId of planIds) {
+    if (await appendClientToPlan(planId, { clientId: proposal.clientId!, offer: proposal.title, reason: proposal.description })) return planId;
+  }
+  return null;
 }
 
 export function listAlerts(limit = 30) {

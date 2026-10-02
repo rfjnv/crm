@@ -175,7 +175,7 @@ export type RopAlertStatus = 'SENT' | 'ACCEPTED' | 'DECLINED';
 
 export interface RopAlert {
   id: string;
-  kind: 'debt' | 'lapsed' | 'plan' | 'kpi';
+  kind: 'debt' | 'lapsed' | 'plan' | 'kpi' | 'notes';
   status: RopAlertStatus;
   message: string | null;
   proposal: { managerId: string; managerName: string; clientId: string | null; title: string; description: string; dueDate: string } | null;

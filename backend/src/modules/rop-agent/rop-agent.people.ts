@@ -51,3 +51,20 @@ export async function directorUsers(): Promise<AgentUser[]> {
 export async function directorUserIds(): Promise<Set<string>> {
   return new Set((await directorUsers()).map((u) => u.id));
 }
+
+/**
+ * Кому агент может ставить задачи: активные менеджеры продаж (роль MANAGER), у которых
+ * есть клиенты или сделки за 90 дней. Тестовые учётки без клиентов, админы и директор — нет.
+ */
+export async function assignableManagerIds(): Promise<Set<string>> {
+  const [rows, directors] = await Promise.all([
+    prisma.$queryRaw<{ id: string }[]>`
+      SELECT u.id FROM users u
+      WHERE u.is_active = true AND u.role = 'MANAGER'
+        AND (EXISTS (SELECT 1 FROM clients c WHERE c.manager_id = u.id AND c.is_archived = false)
+          OR EXISTS (SELECT 1 FROM deals d WHERE d.manager_id = u.id AND d.is_archived = false
+            AND d.created_at >= NOW() - INTERVAL '90 days'))`,
+    directorUserIds(),
+  ]);
+  return new Set(rows.map((r) => r.id).filter((id) => !directors.has(id)));
+}

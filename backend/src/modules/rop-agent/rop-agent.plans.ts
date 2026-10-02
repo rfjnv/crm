@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
-import { directorUserIds } from './rop-agent.people';
+import { assignableManagerIds, directorUserIds } from './rop-agent.people';
+import { bilingualText, bilingualTitle, toUzbekCyrillic } from './rop-agent.translate';
 
 /**
  * Планы задач от РОП-агента. Агент пишет только черновик; задачи менеджерам
@@ -77,7 +78,7 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
     }),
   ]);
   const managerById = new Map(managers.map((m) => [m.id, m]));
-  const directors = await directorUserIds();
+  const [directors, assignable] = await Promise.all([directorUserIds(), assignableManagerIds()]);
   const clientById = new Map(clients.map((c) => [c.id, c]));
   const seenClients = new Set<string>();
 
@@ -92,6 +93,10 @@ async function normalizeItems(rawItems: unknown): Promise<{ items: PlanItem[]; w
     }
     if (directors.has(manager.id)) {
       warnings.push(`Задача «${title || 'без названия'}» для ${manager.fullName} убрана: директору задачи не ставим — по его клиентам агент даёт совет`);
+      continue;
+    }
+    if (!assignable.has(manager.id)) {
+      warnings.push(`Задача «${title || 'без названия'}» для ${manager.fullName} убрана: это не менеджер продаж или у него нет ни клиентов, ни сделок за 90 дней (тестовая учётка?)`);
       continue;
     }
     const dueRaw = str(it.due_date ?? it.dueDate, 10);
@@ -216,11 +221,45 @@ export async function discardPlan(planId: string, userId: string) {
   return publicPlan(await prisma.ropTaskPlan.update({ where: { id: planId }, data: { status: 'DISCARDED' } }));
 }
 
-function checklistText(c: PlanClient): string {
+/** Что написать в заметке после разговора — одинаково во всех задачах агента. */
+const CHECKLIST_HINT = 'Клиенты — в чек-листе. Отмечайте каждого после связи и пишите заметку в карточке клиента: '
+  + 'что берёт сейчас и у кого, по какой цене, когда следующая закупка, что вы предложили и что ответил клиент.';
+
+/** Русский текст → узбекский. Пустая карта — перевод выключен или не удался, задачи по-русски. */
+type Uz = Map<string, string>;
+
+async function translateAll(texts: string[]): Promise<Uz> {
+  const unique = [...new Set(texts.map((t) => t.trim()).filter(Boolean))];
+  const uz = await toUzbekCyrillic(unique);
+  return new Map(uz ? unique.map((t, i) => [t, uz[i]]) : []);
+}
+
+const tr = (uz: Uz, t: string) => (t ? uz.get(t.trim()) ?? t : '');
+
+function checklistText(c: PlanClient, uz: Uz): string {
   const who = c.phone ? `${c.name} (${c.phone})` : c.name;
-  const parts = [who, c.offer, c.reason].filter(Boolean);
-  const text = parts.join(' — ');
+  const ru = [c.offer, c.reason].filter(Boolean).join(' — ');
+  const uzText = [c.offer, c.reason].filter(Boolean).map((t) => tr(uz, t)).join(' — ');
+  let text = ru ? `${who} — ${ru}` : who;
+  if (ru && uzText !== ru) {
+    const both = `${who} — ${uzText} / ${ru}`;
+    text = both.length <= CHECKLIST_TEXT_MAX ? both : `${who} — ${uzText}`;
+  }
   return text.length > CHECKLIST_TEXT_MAX ? `${text.slice(0, CHECKLIST_TEXT_MAX - 1)}…` : text;
+}
+
+function itemTexts(item: PlanItem): string[] {
+  return [item.title, item.description, CHECKLIST_HINT, ...item.clients.flatMap((c) => [c.offer, c.reason])];
+}
+
+function taskTitle(item: PlanItem, uz: Uz, suffix: string): string {
+  return `${bilingualTitle(uz.get(item.title), item.title, 250 - suffix.length)}${suffix}`;
+}
+
+function taskDescription(item: PlanItem, uz: Uz, withClients: boolean): string | undefined {
+  const ru = [item.description, withClients ? CHECKLIST_HINT : ''].filter(Boolean).join('\n\n');
+  const uzText = [tr(uz, item.description), withClients ? tr(uz, CHECKLIST_HINT) : ''].filter(Boolean).join('\n\n');
+  return bilingualText(uz.size ? uzText : undefined, ru) || undefined;
 }
 
 /** Срок до конца рабочего дня по Ташкенту. */
@@ -237,6 +276,8 @@ export async function assignPlan(planId: string, userId: string) {
   if (plan.status !== 'DRAFT') throw new AppError(409, 'План уже роздан или отклонён');
   // Менеджер мог уволиться, клиент — уйти в архив, пока план лежал черновиком.
   const { items, warnings } = await normalizeItems(plan.items);
+  // Перевод — до транзакции: это запрос к модели, транзакцию он держал бы открытой.
+  const uz = await translateAll(items.flatMap(itemTexts));
 
   const assigned = await prisma.$transaction(async (tx) => {
     const out: PlanItem[] = [];
@@ -251,15 +292,12 @@ export async function assignPlan(planId: string, userId: string) {
         const suffix = chunks.length > 1 ? ` (${n + 1}/${chunks.length})` : '';
         const task = await tx.task.create({
           data: {
-            title: `${item.title}${suffix}`.slice(0, 250),
-            description: [
-              item.description,
-              chunk.length ? 'Клиенты — в чек-листе. Отмечайте каждого после связи, итог по каждому напишите в отчёте.' : '',
-            ].filter(Boolean).join('\n\n') || undefined,
+            title: taskTitle(item, uz, suffix),
+            description: taskDescription(item, uz, chunk.length > 0),
             assigneeId: item.managerId,
             createdById: userId,
             dueDate: dueDateOf(item.dueDate),
-            checklist: chunk.map((c) => ({ text: checklistText(c), checked: false })),
+            checklist: chunk.map((c) => ({ text: checklistText(c, uz), checked: false })),
           },
           select: { id: true },
         });
@@ -285,4 +323,44 @@ export async function assignPlan(planId: string, userId: string) {
     createdTasks: assigned.reduce((s, i) => s + (i.taskIds?.length ?? 0), 0),
     warnings,
   };
+}
+
+/**
+ * Дописать клиента в уже розданную задачу: сигналы за день — одна задача на менеджера,
+ * а не по задаче на каждого клиента. false — дописать нельзя (задача закрыта, чек-лист
+ * полон, клиент уже в ней) — тогда ставится новая задача.
+ */
+export async function appendClientToPlan(planId: string, input: { clientId: string; offer: string; reason: string }): Promise<boolean> {
+  const plan = await prisma.ropTaskPlan.findUnique({ where: { id: planId } });
+  const items = (plan?.items ?? []) as unknown as PlanItem[];
+  if (!plan || plan.status !== 'ASSIGNED' || items.length !== 1 || items[0].taskIds?.length !== 1) return false;
+  const item = items[0];
+  if (item.clients.some((c) => c.clientId === input.clientId)) return false;
+  const [task, client] = await Promise.all([
+    prisma.task.findUnique({ where: { id: item.taskIds![0] }, select: { id: true, status: true, checklist: true } }),
+    prisma.client.findFirst({ where: { id: input.clientId, isArchived: false }, select: { companyName: true, phone: true } }),
+  ]);
+  const checklist = (Array.isArray(task?.checklist) ? task!.checklist : []) as unknown as { text: string; checked: boolean }[];
+  if (!task || !client || !['TODO', 'IN_PROGRESS'].includes(task.status) || checklist.length >= CHECKLIST_MAX) return false;
+
+  const planClient: PlanClient = {
+    clientId: input.clientId,
+    name: client.companyName,
+    phone: client.phone,
+    offer: input.offer.slice(0, 500),
+    reason: input.reason.slice(0, 500),
+    taskId: task.id,
+  };
+  const uz = await translateAll([planClient.offer, planClient.reason]);
+  await prisma.$transaction([
+    prisma.task.update({
+      where: { id: task.id },
+      data: { checklist: [...checklist, { text: checklistText(planClient, uz), checked: false }] },
+    }),
+    prisma.ropTaskPlan.update({
+      where: { id: planId },
+      data: { items: [{ ...item, clients: [...item.clients, planClient] }] as unknown as Prisma.InputJsonValue },
+    }),
+  ]);
+  return true;
 }

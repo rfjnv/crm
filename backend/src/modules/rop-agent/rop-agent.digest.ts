@@ -14,6 +14,8 @@ import { clientPurchaseCycles, slowStock } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { kpiForecast } from './rop-agent.kpi';
+import { dayOffNote } from './rop-agent.calendar';
+import { assignableManagerIds } from './rop-agent.people';
 
 /**
  * Ежедневная сводка РОП-агента за прошедший день. Цифры считаются здесь, без модели;
@@ -23,6 +25,8 @@ import { kpiForecast } from './rop-agent.kpi';
 
 export type DigestData = {
   date: string;
+  /** «воскресенье» / «праздник: …» — слабая выручка в такой день ожидаема. */
+  dayOff?: string | null;
   revenue: {
     day: number;
     prevDay: number;
@@ -63,6 +67,8 @@ export type DigestData = {
     forecast: number;
     range: [number, number];
     forecastPct: number | null;
+    /** Сколько дней месяца прошло: в первые дни прогноз — это просто обычный месяц. */
+    daysPassed?: number;
     behind: { manager: string; plan: number; forecastPct: number; gap: number }[];
   };
   plans: {
@@ -226,9 +232,16 @@ async function slowStockBlock(): Promise<DigestData['slowStock']> {
   };
 }
 
-async function plansBlock(): Promise<DigestData['plans']> {
-  const r = await taskPlanResults({ days: 30 });
-  return r.plans.flatMap((p) => p.items.map((i) => ({
+/**
+ * Задачи в работе: срок не прошёл или прошёл не больше 3 дней назад. Старые и пустые
+ * (без клиентов) не показываем, как и задачи на учётки, которым задачи не ставятся.
+ */
+async function plansBlock(date: string): Promise<DigestData['plans']> {
+  const [r, assignable] = await Promise.all([taskPlanResults({ days: 30 }), assignableManagerIds()]);
+  const staleBefore = addDays(date, -3);
+  return r.plans.flatMap((p) => p.items
+    .filter((i) => i.summary.clients > 0 && assignable.has(i.managerId) && (!i.dueDate || i.dueDate >= staleBefore))
+    .map((i) => ({
     planId: p.planId,
     title: p.title,
     manager: i.managerName,
@@ -250,6 +263,7 @@ async function forecastBlock(date: string): Promise<DigestData['forecast']> {
     forecast: f.company.forecast,
     range: f.company.forecast_range as [number, number],
     forecastPct: f.company.forecast_pct,
+    daysPassed: f.days_passed,
     behind: f.managers
       .filter((m) => m.plan && m.forecast_pct != null && m.forecast_pct < 90)
       .map((m) => ({ manager: m.manager, plan: m.plan!, forecastPct: m.forecast_pct!, gap: m.gap_to_plan ?? 0 })),
@@ -259,10 +273,10 @@ async function forecastBlock(date: string): Promise<DigestData['forecast']> {
 export async function collectDigestData(date: string): Promise<DigestData> {
   const [revenue, deals, managers, debts, clients, slow, plans, forecast] = await Promise.all([
     revenueBlock(date), dealsBlock(date), managersBlock(date), debtsBlock(date),
-    clientsBlock(), slowStockBlock(), plansBlock(),
+    clientsBlock(), slowStockBlock(), plansBlock(date),
     forecastBlock(date).catch((err) => { console.error('[rop-digest] forecast failed:', (err as Error).message); return undefined; }),
   ]);
-  return { date, revenue, deals, managers, debts, clients, slowStock: slow, plans, forecast };
+  return { date, dayOff: dayOffNote(date), revenue, deals, managers, debts, clients, slowStock: slow, plans, forecast };
 }
 
 // ─── Комментарий агента ─────────────────────────────────────────────────────
@@ -274,6 +288,9 @@ const COMMENTARY_PROMPT = `Ты — РОП-агент компании Polygraph
 провал или рост выручки, отставание от плана месяца по прогнозу (forecast), менеджер, который отстаёт, крупная просрочка долга, ценный клиент, который пропал,
 замороженные деньги в складе, розданные задачи, которые не выполняются. В каждом пункте — имя или товар и цифра.
 Суммы пиши коротко: «48,2 млн», «1,02 млрд». Не пересказывай всю сводку, без вступления и без заголовка.
+- dayOff не пустой (воскресенье или праздник) — низкая выручка в этот день ожидаема, не называй её провалом; скажи, что день нерабочий.
+- forecast.daysPassed меньше 5 — месяц только начался: прогноз — это обычный месяц по прошлым неделям, об отставании от плана не пиши.
+- Пиши для людей: без английских слов и названий полей (touched, verdict, behind, overdue и т. п.), только по-русски и с именами.
 Последней строкой, после пустой строки, — одно предложение: с чего начать день.`;
 
 async function writeCommentary(data: DigestData): Promise<string | null> {

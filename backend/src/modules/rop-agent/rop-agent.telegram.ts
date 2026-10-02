@@ -98,11 +98,10 @@ export function markdownToTelegramHtml(md: string): string {
 }
 
 const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-const VERDICT_MARK: Record<string, string> = { ok: '✅', in_progress: '⏳', behind: '⚠️', no_touch: '❗' };
 
 export function digestToTelegramHtml(d: DigestData, commentary: string | null): string {
   const date = new Date(`${d.date}T00:00:00Z`);
-  const title = `${d.date.slice(8, 10)}.${d.date.slice(5, 7)} (${WEEKDAYS[date.getUTCDay()]})`;
+  const title = `${d.date.slice(8, 10)}.${d.date.slice(5, 7)} (${WEEKDAYS[date.getUTCDay()]})${d.dayOff?.startsWith('праздник') ? ` · ${esc(d.dayOff)}` : ''}`;
   const r = d.revenue;
   const lines: string[] = [
     `<b>Сводка за ${title}</b>`,
@@ -130,9 +129,21 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
     for (const b of d.forecast.behind.slice(0, 6)) lines.push(`${esc(b.manager)}: ${ruPct(b.forecastPct)} · не хватает ${shortMoney(b.gap)}`);
   }
   if (d.plans.length) {
-    lines.push('', '<b>Розданные задачи</b>');
-    for (const p of d.plans.slice(0, 8)) {
-      lines.push(`${VERDICT_MARK[p.verdict] ?? '•'} ${esc(p.manager)}: ${p.touched}/${p.clients}${p.overdue ? ', срок прошёл' : ''}`);
+    // По менеджеру одной строкой: сколько клиентов отработал из розданных и сколько задач просрочено.
+    const byManager = new Map<string, { touched: number; clients: number; tasks: number; late: number; allOk: boolean }>();
+    for (const p of d.plans) {
+      const m = byManager.get(p.manager) ?? { touched: 0, clients: 0, tasks: 0, late: 0, allOk: true };
+      m.touched += p.touched;
+      m.clients += p.clients;
+      m.tasks += 1;
+      if (p.overdue && p.verdict !== 'ok') m.late += 1;
+      if (p.verdict !== 'ok') m.allOk = false;
+      byManager.set(p.manager, m);
+    }
+    lines.push('', '<b>Задачи в работе</b>');
+    for (const [name, m] of byManager) {
+      const mark = m.allOk ? '✅' : m.late ? '❗' : '⏳';
+      lines.push(`${mark} ${esc(name)}: отработано ${m.touched} из ${m.clients} клиентов${m.late ? `, просрочено задач: ${m.late}` : ''}`);
     }
   }
   if (commentary) lines.push('', '<b>На что обратить внимание</b>', markdownToTelegramHtml(commentary));

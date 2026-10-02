@@ -26,7 +26,8 @@ import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
 import { clientCard, lossReasons } from './rop-agent.clients';
 import { kpiForecast } from './rop-agent.kpi';
-import { clientsService } from '../clients/clients.service';
+import { clientsService } from '../clients/clients.service';
+
 import { escapeLike } from '../../lib/translit';
 
 /**
@@ -429,7 +430,9 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'list_managers',
-    description: 'Активные сотрудники, которым можно ставить задачи: id, имя, роль, сколько клиентов ведёт, сделки и выручка за 90 дней.',
+    description: 'Активные сотрудники, которые ведут клиентов или продают: id, имя, роль, сколько клиентов ведёт, сделки и выручка за 90 дней. '
+      + 'can_take_tasks — можно ли ставить задачу: только менеджерам продаж с клиентами или сделками. Если клиент закреплён за тем, кому задачу ставить нельзя, '
+      + 'предложи директору передать клиента живому менеджеру.',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {

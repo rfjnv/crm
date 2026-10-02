@@ -7,8 +7,10 @@ import {
   SQL_EXCLUDE_INTERNAL_COMPANY_PRODUCT,
   INTERNAL_COMPANY_NAME,
 } from '../../lib/analytics';
-import { normalizeSku } from '../market/marketCatalogLinks';
+import { normalizeSku } from '../market/marketCatalogLinks';
+
 import { escapeLike } from '../../lib/translit';
+import { assignableManagerIds } from './rop-agent.people';
 
 /**
  * Аналитика для раздачи задач: кто перестал покупать, кто брал товар, который
@@ -152,6 +154,40 @@ export async function clientPurchaseCycles(input: ClientCyclesInput) {
     },
     clients: rows.map((r) => ({ ...r, top_products_12m: topProducts.get(r.client_id) ?? [] })),
   };
+}
+
+// ─── Заметки менеджеров ─────────────────────────────────────────────────────
+
+/** Не дозвонился — честная попытка, а не пустая заметка. */
+export const NO_CONTACT_NOTE_RE = '(не взял|не взяла|не бер[её]т|не отвеча|недоступ|выключен|не дозвон|трубк|занят|band|javob berma|олмади|olmadi)';
+/** Ответ клиента без сути: ни что берёт, ни у кого, ни когда — надо было расспросить. */
+export const NO_INFO_NOTE_RE = '(вс[её]го хват|вс[её] есть|хватает|пока не нужно|не нужно|не надо|пока нет|сам[и]? позвон|сам[и]? скаж|сам[и]? напиш|hammasi bor|kerak emas|ҳаммаси бор|керак эмас|кейин|keyin)';
+
+/** Заметка «пустая»: короткая (и это не недозвон) или «всего хватает» без деталей. */
+export const VAGUE_NOTE_SQL = (col: Prisma.Sql) => Prisma.sql`(
+  (length(btrim(${col})) < 25 AND ${col} !~* ${NO_CONTACT_NOTE_RE}) OR (${col} ~* ${NO_INFO_NOTE_RE} AND length(btrim(${col})) < 80)
+)`;
+
+export type RecentNote = { at: string; author: string; text: string };
+
+/** Последние заметки по клиентам (кто, когда, что) — чтобы агент видел, что менеджер уже выяснил. */
+export async function recentClientNotes(clientIds: string[], days = 45, perClient = 3): Promise<Map<string, RecentNote[]>> {
+  const out = new Map<string, RecentNote[]>();
+  if (!clientIds.length) return out;
+  const rows = await prisma.$queryRaw<(RecentNote & { client_id: string })[]>(Prisma.sql`
+    SELECT client_id, at, author, text FROM (
+      SELECT n.client_id,
+        to_char((n.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD') AS at,
+        u.full_name AS author, LEFT(n.content, 300) AS text,
+        ROW_NUMBER() OVER (PARTITION BY n.client_id ORDER BY n.created_at DESC) AS rn
+      FROM client_notes n JOIN users u ON u.id = n.user_id
+      WHERE n.client_id = ANY(${clientIds}) AND n.deleted_at IS NULL
+        AND n.created_at >= NOW() - make_interval(days => ${days}::int)
+    ) x
+    WHERE rn <= ${perClient}
+    ORDER BY client_id, rn`);
+  for (const r of rows) out.set(r.client_id, [...(out.get(r.client_id) ?? []), { at: r.at, author: r.author, text: r.text }]);
+  return out;
 }
 
 /** Три главных товара клиента за год — чтобы было что предложить. */
@@ -360,7 +396,10 @@ export async function slowStock(input: SlowStockInput, allowCost = false) {
 
 // ─── Менеджеры ──────────────────────────────────────────────────────────────
 
-/** Кому можно ставить задачи: активные сотрудники, которые ведут клиентов или продавали за полгода. */
+/**
+ * Сотрудники, которые ведут клиентов или продавали за полгода. can_take_tasks — можно ли
+ * ставить задачу (см. assignableManagerIds): админам, директору и пустым учёткам — нет.
+ */
 export async function listManagers() {
   const rows = await prisma.$queryRaw<{
     id: string; name: string; role: string; clients: number; deals_90d: number; revenue_90d: number;
@@ -386,5 +425,6 @@ export async function listManagers() {
     WHERE u.is_active = true
       AND (u.role = 'MANAGER' OR u.id IN (SELECT manager_id FROM recent) OR COALESCE(cl.clients, 0) > 0)
     ORDER BY revenue_90d DESC, clients DESC`);
-  return { managers: rows };
+  const assignable = await assignableManagerIds();
+  return { managers: rows.map((r) => ({ ...r, can_take_tasks: assignable.has(r.id) })) };
 }

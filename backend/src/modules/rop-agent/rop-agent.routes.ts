@@ -173,7 +173,7 @@ router.post('/alerts/:id/decline', asyncHandler(async (req: Request, res: Respon
 /** Кому можно переназначить задачу в плане. */
 router.get('/managers', asyncHandler(async (_req: Request, res: Response) => {
   const { managers } = await listManagers();
-  res.json(managers.map((m) => ({ id: m.id, name: m.name, role: m.role, clients: m.clients })));
+  res.json(managers.filter((m) => m.can_take_tasks).map((m) => ({ id: m.id, name: m.name, role: m.role, clients: m.clients })));
 }));
 
 export default router;

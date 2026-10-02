@@ -98,6 +98,8 @@ export const config = {
     alertClientMin: Number(trimEnv(process.env.ROP_ALERT_CLIENT_MIN)) || 20_000_000,
     /** Не больше стольких сигналов в день. */
     alertsPerDay: Number(trimEnv(process.env.ROP_ALERTS_PER_DAY)) || 6,
+    /** Язык задач менеджерам: uz-cyrl — узбекский кириллицей с русским ниже; ru — только русский. */
+    taskLanguage: (trimEnv(process.env.ROP_TASK_LANG) || 'uz-cyrl').toLowerCase(),
   },
 
   /** Отдельный Telegram-бот РОП-агента (не CRM-бот). */
