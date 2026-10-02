@@ -875,7 +875,7 @@ export default function Layout() {
   );
 
   return (
-    <AntLayout style={{ minHeight: 'var(--app-vh, 100vh)', minWidth: 0 }}>
+    <AntLayout className="app-shell" style={{ minHeight: 'var(--app-vh, 100vh)', minWidth: 0 }}>
       {isMobile ? (
         <Drawer
           placement="left"

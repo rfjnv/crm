@@ -1,8 +1,9 @@
 /**
- * Матовое стекло в духе visionOS — эксперимент нового дизайна, пока только на дашборде.
+ * Матовое стекло в духе visionOS — новый дизайн, на всех страницах приложения.
  *
  * Включается, когда одновременно: новый дизайн (`data-design='modern'`) и на
- * странице есть `.dashboard-page`.
+ * странице есть каркас приложения `.app-shell` (Layout). Вход и админка сайта
+ * его не используют. Крупный заголовок, KPI и «таблетки» периода — только на дашборде.
  *
  * Устройство:
  *  - за интерфейсом — фотография (без неё размывать нечего, стекло выглядит серым);
@@ -16,7 +17,7 @@
  * поверхности становятся сплошными.
  */
 
-html[data-design='modern']:has(.dashboard-page) {
+html[data-design='modern']:has(.app-shell) {
   --scene-dim: 0.42;
   --win-bg: rgba(60, 64, 66, 0.32);
   --win-border: rgba(255, 255, 255, 0.22);
@@ -32,9 +33,11 @@ html[data-design='modern']:has(.dashboard-page) {
   --chip-active-text: #1c1a17;
   --menu-active-bg: rgba(255, 255, 255, 0.16);
   --glass-text: #ffffff;
+  --table-solid: rgba(44, 48, 50, 0.82);
+  --field-bg: rgba(255, 255, 255, 0.06);
 }
 
-html[data-design='modern'][data-theme='light']:has(.dashboard-page) {
+html[data-design='modern'][data-theme='light']:has(.app-shell) {
   --scene-dim: 0;
   --win-bg: rgba(255, 255, 255, 0.38);
   --win-border: rgba(255, 255, 255, 0.6);
@@ -49,11 +52,13 @@ html[data-design='modern'][data-theme='light']:has(.dashboard-page) {
   --chip-active-text: #ffffff;
   --menu-active-bg: rgba(255, 255, 255, 0.6);
   --glass-text: #1c1a17;
+  --table-solid: rgba(246, 247, 248, 0.78);
+  --field-bg: rgba(255, 255, 255, 0.5);
 }
 
 /* ── Сцена ── */
 
-html[data-design='modern']:has(.dashboard-page) body::before {
+html[data-design='modern']:has(.app-shell) body::before {
   content: '';
   position: fixed;
   inset: 0;
@@ -65,20 +70,20 @@ html[data-design='modern']:has(.dashboard-page) body::before {
 }
 
 /* Фон должен просвечивать сквозь каркас приложения (на мобильном — и сквозь его «лист») */
-html[data-design='modern']:has(.dashboard-page),
-html[data-design='modern']:has(.dashboard-page) body,
-html[data-design='modern']:has(.dashboard-page) .top-hero,
-html[data-design='modern']:has(.dashboard-page) .main-container,
-html[data-design='modern']:has(.dashboard-page) .ant-layout,
-html[data-design='modern']:has(.dashboard-page) .ant-layout-content {
+html[data-design='modern']:has(.app-shell),
+html[data-design='modern']:has(.app-shell) body,
+html[data-design='modern']:has(.app-shell) .top-hero,
+html[data-design='modern']:has(.app-shell) .main-container,
+html[data-design='modern']:has(.app-shell) .ant-layout,
+html[data-design='modern']:has(.app-shell) .ant-layout-content {
   background: transparent !important;
 }
 
 /* ── Плавающие поверхности: меню, окно, нижняя панель на телефоне ── */
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider,
-html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header),
-html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
+html[data-design='modern']:has(.app-shell) .ant-layout-sider,
+html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header),
+html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
   background: var(--win-bg) !important;
   -webkit-backdrop-filter: var(--win-blur);
   backdrop-filter: var(--win-blur);
@@ -86,40 +91,40 @@ html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
   box-shadow: var(--win-rim), var(--win-shadow) !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
+html[data-design='modern']:has(.app-shell) .ant-layout-sider {
   scrollbar-width: none;
 }
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu,
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider-children > a:first-child {
+html[data-design='modern']:has(.app-shell) .ant-layout-sider .ant-menu,
+html[data-design='modern']:has(.app-shell) .ant-layout-sider-children > a:first-child {
   background: transparent !important;
   border: 0 !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-item,
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-submenu-title {
+html[data-design='modern']:has(.app-shell) .ant-layout-sider .ant-menu-item,
+html[data-design='modern']:has(.app-shell) .ant-layout-sider .ant-menu-submenu-title {
   border-radius: 10px;
 }
 
-html[data-design='modern']:has(.dashboard-page) .ant-layout-sider .ant-menu-item-selected {
+html[data-design='modern']:has(.app-shell) .ant-layout-sider .ant-menu-item-selected {
   background: var(--menu-active-bg) !important;
   color: var(--glass-text) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* Шапка — часть окна, без своего фона и липкости */
-html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
+html[data-design='modern']:has(.app-shell) .ant-layout-header {
   background: transparent !important;
   border: 0 !important;
   position: static !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
+html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
   border-radius: 999px;
 }
 
 @media (min-width: 768px) {
-  html[data-design='modern']:has(.dashboard-page) .ant-layout-sider {
+  html[data-design='modern']:has(.app-shell) .ant-layout-sider {
     top: 24px !important;
     left: 24px !important;
     bottom: 24px !important;
@@ -128,26 +133,26 @@ html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
     padding: 8px 0;
   }
 
-  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
+  html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
     margin: 24px 24px 24px calc(var(--app-sider-width) + 48px) !important;
     min-height: calc(var(--app-vh, 100vh) - 48px);
     border-radius: 40px;
     overflow: clip;
   }
 
-  html[data-design='modern']:has(.dashboard-page) .ant-layout-header {
+  html[data-design='modern']:has(.app-shell) .ant-layout-header {
     height: 72px !important;
     line-height: 72px !important;
     padding: 0 28px !important;
   }
 
-  html[data-design='modern']:has(.dashboard-page) .ant-layout-content {
+  html[data-design='modern']:has(.app-shell) .ant-layout-content {
     margin: 4px 28px 28px !important;
   }
 }
 
 @media (max-width: 767px) {
-  html[data-design='modern']:has(.dashboard-page) .ant-layout:has(> .ant-layout-header) {
+  html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
     margin: 12px 12px 96px !important;
     border-radius: 28px;
     overflow: clip;
@@ -156,8 +161,8 @@ html[data-design='modern']:has(.dashboard-page) .bottom-tab-bar {
 
 /* ── Дашборд внутри окна ── */
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page h4.ant-typography,
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-title {
+html[data-design='modern']:has(.app-shell) .dashboard-page h4.ant-typography,
+html[data-design='modern']:has(.app-shell) .dashboard-page .dashboard-title {
   font-size: 36px !important;
   font-weight: 600 !important;
   letter-spacing: -0.02em;
@@ -165,7 +170,7 @@ html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-title
 }
 
 /* Карточки. Цвет рамки меняем по сторонам: у KPI-карточек слева цветная полоса */
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card {
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-card {
   background: var(--panel-bg) !important;
   border-top-color: var(--panel-border) !important;
   border-right-color: var(--panel-border) !important;
@@ -175,17 +180,17 @@ html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card {
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-hoverable:hover {
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-card-hoverable:hover {
   background: var(--panel-bg-hover) !important;
   transform: translateY(-2px);
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-card-head {
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-card-head {
   border-bottom: 0;
   background: transparent;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-card-value {
+html[data-design='modern']:has(.app-shell) .dashboard-page .dashboard-card-value {
   font-size: clamp(18px, 1.6vw, 30px) !important;
   font-weight: 500 !important;
   letter-spacing: -0.02em;
@@ -193,27 +198,27 @@ html[data-design='modern']:has(.dashboard-page) .dashboard-page .dashboard-card-
 }
 
 /* Переключатель периода — «таблетки», выбранная кремовая (в светлой теме — тёмная) */
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented {
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented {
   background: transparent;
   padding: 0;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-group {
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented-group {
   gap: 8px;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item {
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented-item {
   border: 1px solid var(--chip-border);
   border-radius: 999px;
   color: var(--glass-text);
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item-label {
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented-item-label {
   padding: 2px 16px;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-item-selected,
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-thumb {
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented-item-selected,
+html[data-design='modern']:has(.app-shell) .dashboard-page .ant-segmented-thumb {
   background: var(--chip-active-bg) !important;
   color: var(--chip-active-text) !important;
   border-color: transparent;
@@ -221,28 +226,57 @@ html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-segmented-t
 }
 
 /* Таблицы внутри стеклянных панелей не должны быть плашками */
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table,
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-container,
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-thead > tr > th,
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr > td {
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-container,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-thead > tr > th,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-tbody > tr > td {
   background: transparent !important;
 }
 
-html[data-design='modern']:has(.dashboard-page) .dashboard-page .ant-table-tbody > tr:hover > td {
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-tbody > tr:hover > td {
   background: var(--panel-bg) !important;
+}
+
+/* Поля ввода и фильтры — полупрозрачные, а не сплошные плашки поверх стекла */
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-input,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-input-affix-wrapper,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-input-number,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-input-search-button,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-select-outlined,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-select-selector,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-picker {
+  background: var(--field-bg) !important;
+}
+
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-input-affix-wrapper .ant-input {
+  background: transparent !important;
+}
+
+/*
+ * Закреплённые колонки и липкая шапка таблицы лежат поверх прокручиваемых строк —
+ * прозрачными их делать нельзя, иначе строки просвечивают. Даём им плотную заливку
+ * в тон стекла.
+ */
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-left,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-right,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder .ant-table-thead > tr > th {
+  background: var(--table-solid) !important;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 /* ── Запасные варианты ── */
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html[data-design='modern']:has(.dashboard-page) {
+  html[data-design='modern']:has(.app-shell) {
     --win-bg: var(--card-bg);
     --panel-bg: var(--card-bg);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  html[data-design='modern']:has(.dashboard-page) {
+  html[data-design='modern']:has(.app-shell) {
     --win-bg: var(--card-bg);
     --panel-bg: var(--card-bg);
     --win-blur: none;
