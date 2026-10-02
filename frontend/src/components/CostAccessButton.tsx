@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Form, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
 import { LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import { LockSimple, LockSimpleOpen } from '@phosphor-icons/react';
+import { useThemeStore } from '../store/themeStore';
 import { costAccessApi } from '../api/costAccess.api';
 import { useCostAccess } from '../hooks/useCostAccess';
 import { APP_BUTTON } from './ui/AppClassNames';
@@ -30,6 +32,7 @@ const PIN_RULES = [
  */
 export default function CostAccessButton() {
   const cost = useCostAccess();
+  const modern = useThemeStore((s) => s.design) === 'modern';
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<'unlock' | 'setPin' | null>(null);
   const [unlockForm] = Form.useForm<{ pin: string; long: boolean }>();
@@ -77,8 +80,8 @@ export default function CostAccessButton() {
       <Tooltip title="Себестоимость открыта. Нажмите, чтобы закрыть сейчас">
         <Button
           type="text"
-          className={APP_BUTTON}
-          icon={<UnlockOutlined />}
+          className={modern ? `${APP_BUTTON} hdr-btn hdr-btn--wide` : APP_BUTTON}
+          icon={modern ? <LockSimpleOpen size={19} /> : <UnlockOutlined />}
           loading={lock.isPending}
           onClick={() => lock.mutate()}
           style={{ color: 'var(--ant-color-warning, #fa8c16)', fontVariantNumeric: 'tabular-nums' }}
@@ -94,8 +97,8 @@ export default function CostAccessButton() {
       <Tooltip title="Себестоимость закрыта">
         <Button
           type="text"
-          className={APP_BUTTON}
-          icon={<LockOutlined />}
+          className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
+          icon={modern ? <LockSimple size={19} /> : <LockOutlined />}
           aria-label="Открыть себестоимость"
           onClick={() => setModal(cost.hasPin ? 'unlock' : 'setPin')}
         />

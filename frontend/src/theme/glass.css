@@ -335,3 +335,137 @@ html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky
     --win-blur: none;
   }
 }
+
+/* ── Шапка нового дизайна (components/ModernHeaderBar.tsx) ── */
+
+html[data-design='modern'] {
+  --hdr-btn: rgba(255, 255, 255, 0.1);
+  --hdr-btn-hover: rgba(255, 255, 255, 0.18);
+  --hdr-rim: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --hdr-text: #ffffff;
+  --hdr-sep: rgba(255, 255, 255, 0.18);
+}
+
+html[data-design='modern'][data-theme='light'] {
+  --hdr-btn: rgba(255, 255, 255, 0.35);
+  --hdr-btn-hover: rgba(255, 255, 255, 0.55);
+  --hdr-rim: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --hdr-text: #1c1a17;
+  --hdr-sep: rgba(28, 26, 23, 0.12);
+}
+
+html[data-design='modern'] .hdr-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: normal;
+}
+
+html[data-design='modern'] .ant-btn.hdr-btn {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--hdr-btn);
+  box-shadow: var(--hdr-rim);
+  color: var(--hdr-text);
+}
+
+html[data-design='modern'] .ant-btn.hdr-btn:hover {
+  background: var(--hdr-btn-hover) !important;
+  color: var(--hdr-text) !important;
+}
+
+/* Открытая себестоимость показывает таймер — кнопка шире */
+html[data-design='modern'] .ant-btn.hdr-btn--wide {
+  width: auto;
+  padding: 0 14px;
+  gap: 6px;
+}
+
+/* Счётчик уведомлений — красный кружок в углу кнопки */
+html[data-design='modern'] .hdr-actions .ant-badge .ant-badge-count {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+
+/* Масштаб − 100% + одной таблеткой */
+html[data-design='modern'] .hdr-zoom {
+  height: 40px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--hdr-btn);
+  box-shadow: var(--hdr-rim);
+}
+
+html[data-design='modern'] .hdr-zoom .ant-btn {
+  height: 32px;
+  min-width: 32px;
+  border-radius: 999px;
+  color: var(--hdr-text);
+}
+
+html[data-design='modern'] .hdr-zoom .ant-btn:not(.ant-btn-icon-only) {
+  min-width: 48px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-design='modern'] .hdr-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--hdr-sep);
+}
+
+/* Чип пользователя: аватар с первой буквой, имя, стрелка */
+html[data-design='modern'] .hdr-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  max-width: 260px;
+  padding: 0 12px 0 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hdr-btn);
+  box-shadow: var(--hdr-rim);
+  color: var(--hdr-text);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+html[data-design='modern'] .hdr-user:hover {
+  background: var(--hdr-btn-hover);
+}
+
+html[data-design='modern'] .hdr-user__avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+html[data-design='modern'] .hdr-user__name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-design='modern'] .hdr-user__caret {
+  flex-shrink: 0;
+  opacity: 0.7;
+}

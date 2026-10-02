@@ -1,5 +1,7 @@
 import { Button, Dropdown, Slider, Space, Typography, theme } from 'antd';
 import { ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons';
+import { Minus, Plus } from '@phosphor-icons/react';
+import { useThemeStore } from '../store/themeStore';
 import { APP_BUTTON } from './ui/AppClassNames';
 import { MAX_SCALE, MIN_SCALE, SCALE_STEP, useUiScaleStore } from '../store/uiScaleStore';
 
@@ -11,6 +13,7 @@ const PRESETS = [0.6, 0.7, 0.8, 0.9, 1] as const;
  */
 export default function UiScaleControl() {
   const scale = useUiScaleStore((s) => s.scale);
+  const design = useThemeStore((s) => s.design);
   const setScale = useUiScaleStore((s) => s.setScale);
   const step = useUiScaleStore((s) => s.step);
   const { token: tk } = theme.useToken();
@@ -50,12 +53,15 @@ export default function UiScaleControl() {
     </div>
   );
 
+  // В новом дизайне — одна стеклянная «таблетка» − 100% +
+  const modern = design === 'modern';
+
   return (
-    <Space size={2}>
+    <Space size={2} className={modern ? 'hdr-zoom' : undefined}>
       <Button
         type="text"
         className={APP_BUTTON}
-        icon={<ZoomOutOutlined />}
+        icon={modern ? <Minus size={17} /> : <ZoomOutOutlined />}
         onClick={() => step(-SCALE_STEP)}
         disabled={scale <= MIN_SCALE}
         title="Уменьшить масштаб"
@@ -68,7 +74,7 @@ export default function UiScaleControl() {
       <Button
         type="text"
         className={APP_BUTTON}
-        icon={<ZoomInOutlined />}
+        icon={modern ? <Plus size={17} /> : <ZoomInOutlined />}
         onClick={() => step(SCALE_STEP)}
         disabled={scale >= MAX_SCALE}
         title="Увеличить масштаб"

@@ -19,7 +19,6 @@ import {
   SwapOutlined,
   LogoutOutlined,
   BgColorsOutlined,
-  PictureOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
@@ -78,6 +77,8 @@ import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
 import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
+import ModernHeaderBar from './ModernHeaderBar';
+import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
@@ -224,11 +225,12 @@ export default function Layout() {
     navigate('/login');
   };
 
+  const modernIcons = design === 'modern';
   const profileMenuItems: MenuProps['items'] = [
-    { key: 'profile', icon: <IdcardOutlined />, label: 'Профиль' },
+    { key: 'profile', icon: modernIcons ? <UserCircle size={16} /> : <IdcardOutlined />, label: 'Профиль' },
     {
       key: 'design',
-      icon: <BgColorsOutlined />,
+      icon: modernIcons ? <Palette size={16} /> : <BgColorsOutlined />,
       label: (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
           Новый дизайн (бета)
@@ -236,9 +238,9 @@ export default function Layout() {
         </span>
       ),
     },
-    ...(design === 'modern' ? [{ key: 'background', icon: <PictureOutlined />, label: 'Фон' }] : []),
+    ...(design === 'modern' ? [{ key: 'background', icon: <ImageIcon size={16} />, label: 'Фон' }] : []),
     { type: 'divider' },
-    { key: 'logout', icon: <LogoutOutlined />, label: 'Выход', danger: true },
+    { key: 'logout', icon: modernIcons ? <SignOut size={16} /> : <LogoutOutlined />, label: 'Выход', danger: true },
   ];
 
   const onProfileMenuClick: NonNullable<MenuProps['onClick']> = ({ key }) => {
@@ -951,49 +953,63 @@ export default function Layout() {
             lineHeight: isMobile ? undefined : '56px',
           }}
         >
-          {isMobile ? (
-            <Button
-              type="text"
-              className={APP_BUTTON}
-              icon={<MenuOutlined />}
-              onClick={() => setMobileMenuOpen(true)}
-              style={{ minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          {design === 'modern' ? (
+            <ModernHeaderBar
+              isMobile={isMobile}
+              collapsed={collapsed}
+              onMenuClick={() => (isMobile ? setMobileMenuOpen(true) : setCollapsed(!collapsed))}
+              isDark={mode === 'dark'}
+              onToggleTheme={toggle}
+              displayName={getFirstName(user?.fullName) || 'Профиль'}
+              profileMenu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
             />
           ) : (
-            <Button
-              type="text"
-              className={APP_BUTTON}
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
-            />
+            <>
+              {isMobile ? (
+                <Button
+                  type="text"
+                  className={APP_BUTTON}
+                  icon={<MenuOutlined />}
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{ minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                />
+              ) : (
+                <Button
+                  type="text"
+                  className={APP_BUTTON}
+                  icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setCollapsed(!collapsed)}
+                />
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
+                {/* Панель и киоск-режим не дают браузерного зума — заменяем его своим */}
+                {!isMobile && <UiScaleControl />}
+                <CostAccessButton />
+                <NotificationBell />
+                <Switch
+                  checkedChildren={<BulbOutlined />}
+                  unCheckedChildren={<BulbOutlined />}
+                  checked={mode === 'dark'}
+                  onChange={toggle}
+                  size="small"
+                />
+                {!isMobile && (
+                  <Dropdown
+                    menu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
+                    trigger={['click']}
+                    placement="bottomRight"
+                  >
+                    <Button type="text" className={APP_BUTTON} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 280 }}>
+                      <Typography.Text strong ellipsis style={{ maxWidth: 220 }}>
+                        {getFirstName(user?.fullName) || 'Профиль'}
+                      </Typography.Text>
+                      <DownOutlined style={{ fontSize: 10 }} />
+                    </Button>
+                  </Dropdown>
+                )}
+              </div>
+            </>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
-            {/* Панель и киоск-режим не дают браузерного зума — заменяем его своим */}
-            {!isMobile && <UiScaleControl />}
-            <CostAccessButton />
-            <NotificationBell />
-            <Switch
-              checkedChildren={<BulbOutlined />}
-              unCheckedChildren={<BulbOutlined />}
-              checked={mode === 'dark'}
-              onChange={toggle}
-              size="small"
-            />
-            {!isMobile && (
-              <Dropdown
-                menu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
-                trigger={['click']}
-                placement="bottomRight"
-              >
-                <Button type="text" className={APP_BUTTON} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 280 }}>
-                  <Typography.Text strong ellipsis style={{ maxWidth: 220 }}>
-                    {getFirstName(user?.fullName) || 'Профиль'}
-                  </Typography.Text>
-                  <DownOutlined style={{ fontSize: 10 }} />
-                </Button>
-              </Dropdown>
-            )}
-          </div>
         </Header>
         <Content
           className={isMobile ? 'app-main-content app-main-content--mobile-shell' : 'app-main-content'}

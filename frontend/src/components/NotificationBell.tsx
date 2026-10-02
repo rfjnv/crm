@@ -6,7 +6,9 @@ import {
   BellOutlined, InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined,
   CheckOutlined, RightOutlined,
 } from '@ant-design/icons';
+import { BellSimple } from '@phosphor-icons/react';
 import { notificationsApi } from '../api/notifications.api';
+import { useThemeStore } from '../store/themeStore';
 import { APP_BUTTON } from './ui/AppClassNames';
 import type { AppNotification, NotificationSeverity } from '../types';
 import { getFirstName } from '../lib/name-utils';
@@ -27,6 +29,7 @@ const severityConfig: Record<NotificationSeverity, { icon: React.ReactNode; colo
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const modern = useThemeStore((s) => s.design) === 'modern';
   const queryClient = useQueryClient();
   const { token: themeToken } = theme.useToken();
   const prevUrgentIdsRef = useRef<Set<string>>(new Set());
@@ -167,8 +170,8 @@ export default function NotificationBell() {
       <Badge count={unreadCount} size="small" offset={[-2, 4]} overflowCount={99}>
         <Button
           type="text"
-          className={APP_BUTTON}
-          icon={<BellOutlined style={{ fontSize: 18 }} />}
+          className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
+          icon={modern ? <BellSimple size={19} /> : <BellOutlined style={{ fontSize: 18 }} />}
           onClick={() => setOpen(true)}
           style={unreadCount > 0 ? { animation: 'bellPulse 2s infinite' } : undefined}
         />
