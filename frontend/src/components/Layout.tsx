@@ -814,16 +814,54 @@ export default function Layout() {
           background: themeToken.colorBgContainer,
         }}
       >
-        <img
-          src={(!isMobile && collapsed) ? miniLogo : logo}
-          alt="Polygraph Business"
-          style={{
-            height: (!isMobile && collapsed) ? 40 : 52,
-            maxWidth: (!isMobile && collapsed) ? 48 : 192,
-            objectFit: 'contain',
-            transition: 'all 0.3s',
-          }}
-        />
+        {design === 'modern' ? (
+          // Знак остаётся в фирменном синем на белой плитке — так он читается на любом фоне,
+          // включая тёмное стекло. Белеет только название, набранное шрифтом.
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <span
+              style={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                borderRadius: 11,
+                background: '#ffffff',
+                display: 'grid',
+                placeItems: 'center',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08)',
+              }}
+            >
+              <img
+                src={miniLogo}
+                alt={(!isMobile && collapsed) ? 'Polygraph Business' : ''}
+                style={{ width: 26, height: 26, objectFit: 'contain' }}
+              />
+            </span>
+            {(isMobile || !collapsed) && (
+              <span
+                style={{
+                  color: themeToken.colorText,
+                  fontSize: 16,
+                  fontWeight: 500,
+                  lineHeight: 1.15,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Polygraph<br />Business
+              </span>
+            )}
+          </span>
+        ) : (
+          <img
+            src={(!isMobile && collapsed) ? miniLogo : logo}
+            alt="Polygraph Business"
+            style={{
+              height: (!isMobile && collapsed) ? 40 : 52,
+              maxWidth: (!isMobile && collapsed) ? 48 : 192,
+              objectFit: 'contain',
+              transition: 'all 0.3s',
+            }}
+          />
+        )}
       </Link>
       <Menu
         mode="inline"
