@@ -132,7 +132,7 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
     left: 24px !important;
     bottom: 24px !important;
     height: auto !important;
-    border-radius: 32px;
+    border-radius: 20px;
     padding: 8px 0;
   }
 

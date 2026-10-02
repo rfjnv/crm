@@ -78,6 +78,7 @@ import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
 import ModernHeaderBar from './ModernHeaderBar';
+import { withModernMenuIcons } from '../config/modernMenuIcons';
 import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
@@ -905,7 +906,7 @@ export default function Layout() {
         selectedKeys={[selectedDilnoza]}
         openKeys={menuOpenKeys}
         onOpenChange={setMenuOpenKeys}
-        items={menuItems}
+        items={design === 'modern' ? withModernMenuIcons(menuItems) : menuItems}
         style={{ borderRight: 0, paddingTop: 12 }}
       />
     </>
