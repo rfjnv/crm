@@ -415,57 +415,143 @@ html[data-design='modern'] .hdr-zoom .ant-btn:not(.ant-btn-icon-only) {
   font-variant-numeric: tabular-nums;
 }
 
-html[data-design='modern'] .hdr-sep {
-  width: 1px;
-  height: 24px;
-  margin: 0 2px;
-  background: var(--hdr-sep);
-}
-
-/* Чип пользователя: аватар с первой буквой, имя, стрелка */
-html[data-design='modern'] .hdr-user {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+/* Кружок пользователя: пока первая буква, позже — фото */
+html[data-design='modern'] .hdr-avatar {
+  width: 40px;
   height: 40px;
-  max-width: 260px;
-  padding: 0 12px 0 4px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--hdr-btn);
-  box-shadow: var(--hdr-rim);
-  color: var(--hdr-text);
-  font: inherit;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-html[data-design='modern'] .hdr-user:hover {
-  background: var(--hdr-btn-hover);
-}
-
-html[data-design='modern'] .hdr-user__avatar {
-  width: 32px;
-  height: 32px;
   flex-shrink: 0;
+  border: 0;
+  padding: 0;
   border-radius: 999px;
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #60a5fa, #2563eb);
   color: #ffffff;
-  font-size: 14px;
+  font: inherit;
+  font-size: 16px;
   font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 8px rgba(37, 99, 235, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-html[data-design='modern'] .hdr-user__name {
-  font-size: 14px;
+html[data-design='modern'] button.hdr-avatar:hover {
+  transform: scale(1.05);
+}
+
+html[data-design='modern'] .hdr-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+  cursor: default;
+}
+
+/* Панель под кружком: всё, что раньше было кнопками в шапке */
+html[data-design='modern'] .hdr-panel {
+  width: 300px;
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--hdr-sep);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.12);
+  color: var(--ant-color-text);
+}
+
+html[data-design='modern'] .hdr-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 12px;
+}
+
+html[data-design='modern'] .hdr-panel__name {
+  font-size: 15px;
   font-weight: 600;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-html[data-design='modern'] .hdr-user__caret {
-  flex-shrink: 0;
-  opacity: 0.7;
+html[data-design='modern'] .hdr-panel__group {
+  padding: 4px 0;
+  border-top: 1px solid var(--hdr-sep);
+}
+
+html[data-design='modern'] .hdr-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+html[data-design='modern'] .hdr-panel__row--action {
+  cursor: pointer;
+}
+
+html[data-design='modern'] .hdr-panel__row--action:hover {
+  background: var(--ant-color-fill-tertiary);
+}
+
+html[data-design='modern'] .hdr-panel__row--danger {
+  color: var(--ant-color-error);
+}
+
+html[data-design='modern'] .hdr-panel__icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  opacity: 0.8;
+}
+
+html[data-design='modern'] .hdr-panel__label {
+  flex: 1;
+}
+
+html[data-design='modern'] .hdr-panel__control {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Внутри панели кнопки масштаба и замка — поменьше и без своего фона */
+html[data-design='modern'] .hdr-panel .hdr-zoom {
+  height: 34px;
+  background: var(--ant-color-fill-tertiary);
+  box-shadow: none;
+}
+
+html[data-design='modern'] .hdr-panel .hdr-zoom .ant-btn,
+html[data-design='modern'] .hdr-panel .ant-btn.hdr-btn {
+  color: var(--ant-color-text);
+}
+
+html[data-design='modern'] .hdr-panel .ant-btn.hdr-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  background: var(--ant-color-fill-tertiary);
+  box-shadow: none;
+}
+
+html[data-design='modern'] .hdr-panel .ant-btn.hdr-btn--wide {
+  width: auto;
+}
+
+/* Меню раскрывается при наведении — плавно, поверх страницы */
+@media (min-width: 768px) {
+  html[data-design='modern'] .app-shell > .ant-layout-sider {
+    transition:
+      width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      min-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      max-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      flex-basis 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  }
 }

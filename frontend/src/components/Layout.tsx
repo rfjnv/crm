@@ -78,6 +78,7 @@ import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
 import ModernHeaderBar from './ModernHeaderBar';
+import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -98,9 +99,14 @@ const { Header, Sider, Content } = AntLayout;
 
 const SIDER_WIDTH = 220;
 const SIDER_COLLAPSED_WIDTH = 64;
+/** Новый дизайн: меню закреплено раскрытым (иначе раскрывается при наведении). */
+const SIDER_PINNED_KEY = 'crm_sider_pinned';
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [siderPinned, setSiderPinned] = useState(() => safeStorage.getItem(SIDER_PINNED_KEY) === '1');
+  const [siderHover, setSiderHover] = useState(false);
+  const siderHoverTimer = useRef<number | undefined>(undefined);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
   const navigate = useNavigate();
@@ -294,8 +300,32 @@ export default function Layout() {
     ? Object.values(unreadCounts).reduce((sum, c) => sum + c, 0)
     : 0;
 
-  const siderWidth = collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH;
-  const showGroupLabels = isMobile || !collapsed;
+  // Новый дизайн на компьютере: меню узкое и раскрывается поверх страницы при наведении,
+  // если его не закрепили в панели профиля. Ширина под контент — всегда узкая, чтобы
+  // раскрытие не дёргало страницу.
+  const hoverSider = design === 'modern' && !isMobile;
+  const siderCollapsed = hoverSider ? !(siderPinned || siderHover) : collapsed;
+  const siderWidth = hoverSider
+    ? (siderPinned ? SIDER_WIDTH : SIDER_COLLAPSED_WIDTH)
+    : (collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH);
+  const showGroupLabels = isMobile || !siderCollapsed;
+
+  const onSiderEnter = () => {
+    if (!hoverSider || siderPinned) return;
+    window.clearTimeout(siderHoverTimer.current);
+    siderHoverTimer.current = window.setTimeout(() => setSiderHover(true), 80);
+  };
+  const onSiderLeave = () => {
+    if (!hoverSider || siderPinned) return;
+    window.clearTimeout(siderHoverTimer.current);
+    siderHoverTimer.current = window.setTimeout(() => setSiderHover(false), 220);
+  };
+  const toggleSiderPinned = () => {
+    const next = !siderPinned;
+    setSiderPinned(next);
+    setSiderHover(false);
+    safeStorage.setItem(SIDER_PINNED_KEY, next ? '1' : '0');
+  };
 
   const menuItems: MenuProps['items'] = [
     // ── ОПЕРАЦИИ ──
@@ -810,10 +840,10 @@ export default function Layout() {
           height: 72,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: isMobile ? 'flex-start' : (collapsed ? 'center' : 'flex-start'),
+          justifyContent: isMobile ? 'flex-start' : (siderCollapsed ? 'center' : 'flex-start'),
           borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
           textDecoration: 'none',
-          padding: (!isMobile && collapsed) ? '0' : '0 14px',
+          padding: (!isMobile && siderCollapsed) ? '0' : '0 14px',
           overflow: 'hidden',
           position: 'sticky',
           top: 0,
@@ -839,11 +869,11 @@ export default function Layout() {
             >
               <img
                 src={miniLogo}
-                alt={(!isMobile && collapsed) ? 'Polygraph Business' : ''}
+                alt={(!isMobile && siderCollapsed) ? 'Polygraph Business' : ''}
                 style={{ width: 26, height: 26, objectFit: 'contain' }}
               />
             </span>
-            {(isMobile || !collapsed) && (
+            {(isMobile || !siderCollapsed) && (
               <span
                 style={{
                   color: themeToken.colorText,
@@ -859,11 +889,11 @@ export default function Layout() {
           </span>
         ) : (
           <img
-            src={(!isMobile && collapsed) ? miniLogo : logo}
+            src={(!isMobile && siderCollapsed) ? miniLogo : logo}
             alt="Polygraph Business"
             style={{
-              height: (!isMobile && collapsed) ? 40 : 52,
-              maxWidth: (!isMobile && collapsed) ? 48 : 192,
+              height: (!isMobile && siderCollapsed) ? 40 : 52,
+              maxWidth: (!isMobile && siderCollapsed) ? 48 : 192,
               objectFit: 'contain',
               transition: 'all 0.3s',
             }}
@@ -908,8 +938,10 @@ export default function Layout() {
       ) : (
         <Sider
           collapsible
-          collapsed={collapsed}
+          collapsed={siderCollapsed}
           onCollapse={setCollapsed}
+          onMouseEnter={onSiderEnter}
+          onMouseLeave={onSiderLeave}
           trigger={null}
           width={SIDER_WIDTH}
           collapsedWidth={SIDER_COLLAPSED_WIDTH}
@@ -956,12 +988,16 @@ export default function Layout() {
           {design === 'modern' ? (
             <ModernHeaderBar
               isMobile={isMobile}
-              collapsed={collapsed}
-              onMenuClick={() => (isMobile ? setMobileMenuOpen(true) : setCollapsed(!collapsed))}
+              onOpenMobileMenu={() => setMobileMenuOpen(true)}
+              displayName={getFirstName(user?.fullName) || 'Профиль'}
               isDark={mode === 'dark'}
               onToggleTheme={toggle}
-              displayName={getFirstName(user?.fullName) || 'Профиль'}
-              profileMenu={{ items: profileMenuItems, onClick: onProfileMenuClick }}
+              siderPinned={siderPinned}
+              onToggleSiderPinned={toggleSiderPinned}
+              onToggleDesign={toggleDesign}
+              onOpenBackground={() => setBackgroundOpen(true)}
+              onOpenProfile={() => navigate('/profile')}
+              onLogout={() => void handleLogout()}
             />
           ) : (
             <>
