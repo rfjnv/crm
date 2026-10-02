@@ -21,6 +21,7 @@ import {
   type StockedProductBuyersInput,
 } from './rop-agent.analysis';
 import { proposeTaskPlan } from './rop-agent.plans';
+import { describeTaskAction, listTasks, proposeTaskChanges, type ListTasksInput } from './rop-agent.task-actions';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
@@ -436,6 +437,46 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'list_tasks',
+    description: 'Задачи в CRM (раздел «Задачи»): кому, статус, срок, кто поставил, создана ли агентом, чек-лист. '
+      + 'Без statuses — только незакрытые (TODO, IN_PROGRESS, DONE). Ищи здесь задачи перед propose_task_changes. '
+      + 'Пример: «убрать все задачи до сегодня» — due_before = сегодня (или created_before, если директор говорит о дате постановки).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        assignee_id: { type: 'string', description: 'Только задачи этого сотрудника (id из list_managers).' },
+        statuses: { type: 'array', items: { type: 'string', enum: ['TODO', 'IN_PROGRESS', 'DONE', 'APPROVED'] } },
+        due_before: { type: 'string', description: 'Срок раньше этого дня, YYYY-MM-DD (сам день не входит).' },
+        due_after: { type: 'string', description: 'Срок с этого дня, YYYY-MM-DD.' },
+        created_before: { type: 'string', description: 'Поставлены раньше этого дня, YYYY-MM-DD.' },
+        created_after: { type: 'string', description: 'Поставлены с этого дня, YYYY-MM-DD.' },
+        only_agent_tasks: { type: 'boolean', description: 'Только задачи, которые раздал агент.' },
+        search: { type: 'string', description: 'Часть названия задачи.' },
+        limit: { type: 'number', description: 'Сколько показать, до 300 (по умолчанию 100). total — сколько всего подходит.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'propose_task_changes',
+    description: 'Готовит изменение задач CRM: close — закрыть (статус «одобрена», в отчёт пишется, кто закрыл), '
+      + 'delete — удалить совсем (только если директор прямо сказал «удалить»), set_due_date — перенести срок, reassign — передать другому сотруднику. '
+      + 'Ничего не меняет сразу: директор или админ подтверждает кнопкой «Выполнить» под твоим ответом. '
+      + 'task_ids — только реальные id из list_tasks. Если директор сказал «убрать» и не уточнил — закрывай (close): история сохранится.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['close', 'delete', 'set_due_date', 'reassign'] },
+        task_ids: { type: 'array', items: { type: 'string' }, description: 'До 300 задач.' },
+        due_date: { type: 'string', description: 'Для set_due_date: новый срок, YYYY-MM-DD.' },
+        assignee_id: { type: 'string', description: 'Для reassign: кому передать.' },
+        note: { type: 'string', description: 'Причина коротко — попадёт в отчёт закрытой задачи.' },
+      },
+      required: ['action', 'task_ids'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'propose_task_plan',
     description:
       'Сохраняет ЧЕРНОВИК плана задач менеджерам и показывает его директору под твоим ответом. '
@@ -658,6 +699,10 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return `Черновик плана задач: ${String(input.title ?? '').slice(0, 100)}`;
     case 'task_plan_results':
       return 'Проверка розданных задач';
+    case 'list_tasks':
+      return 'Задачи в CRM';
+    case 'propose_task_changes':
+      return `Изменение задач: ${describeTaskAction(String(input.action))} (${Array.isArray(input.task_ids) ? input.task_ids.length : 0})`;
     case 'call_reviews':
       return 'Разборы звонков';
     case 'kpi_forecast':
@@ -682,11 +727,12 @@ export async function executeTool(
   name: string,
   input: Record<string, unknown>,
   ctx: { chatId: string; userId: string; allowCost?: boolean },
-): Promise<{ content: string; isError: boolean; planId?: string }> {
+): Promise<{ content: string; isError: boolean; planId?: string; actionId?: string }> {
   const allowCost = !!ctx.allowCost;
   try {
     let result: unknown;
     let planId: string | undefined;
+    let actionId: string | undefined;
     switch (name) {
       case 'client_purchase_cycles': result = await clientPurchaseCycles(input as ClientCyclesInput); break;
       case 'stocked_product_buyers': result = await stockedProductBuyers(input as StockedProductBuyersInput); break;
@@ -710,6 +756,13 @@ export async function executeTool(
         result = await rememberTool(ctx, input);
         break;
       case 'forget': result = await forgetTool(input); break;
+      case 'list_tasks': result = await listTasks(input as ListTasksInput); break;
+      case 'propose_task_changes': {
+        const r = await proposeTaskChanges(ctx, input);
+        actionId = r.action_id;
+        result = r;
+        break;
+      }
       case 'propose_task_plan': {
         const r = await proposeTaskPlan(ctx, input);
         planId = r.plan_id;
@@ -732,7 +785,7 @@ export async function executeTool(
     if (text.length > MAX_RESULT_CHARS) {
       text = `${text.slice(0, MAX_RESULT_CHARS)}\n…[обрезано: результат больше ${MAX_RESULT_CHARS} символов, сузь запрос или агрегируй]`;
     }
-    return { content: text, isError: false, planId };
+    return { content: text, isError: false, planId, actionId };
   } catch (err) {
     // У Prisma в сообщении кусок стека вызова; модели нужна только причина от Postgres.
     const raw = (err as Error).message;

@@ -7,6 +7,7 @@ import { AppError } from '../../lib/errors';
 import { agentBot, type TgButton } from './rop-agent.bot';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
 import { assignPlan, discardPlan } from './rop-agent.plans';
+import { decideTaskAction } from './rop-agent.task-actions';
 import { activeMemories } from './rop-agent.memory';
 import { sendOpenAlerts } from './rop-agent.alerts';
 import { transcribeVoiceNote } from './rop-agent.voice';
@@ -374,7 +375,9 @@ async function deliverLastReply(ctx: ChatContext, agentChatId: string): Promise<
     await agentBot.sendHtmlToChat(chatId, 'В этом разговоре ещё нет ответов агента.', undefined, { replyTo });
     return;
   }
-  const planIds = ((reply.toolCalls as { planId?: string }[] | null) ?? []).map((t) => t.planId).filter((id): id is string => !!id);
+  const calls = (reply.toolCalls as { planId?: string; actionId?: string }[] | null) ?? [];
+  const planIds = calls.map((t) => t.planId).filter((id): id is string => !!id);
+  const actionIds = calls.map((t) => t.actionId).filter((id): id is string => !!id);
   const html = reply.isError ? `⚠️ ${esc(reply.text)}` : markdownToTelegramHtml(reply.text);
   const plans = planIds.length
     ? await prisma.ropTaskPlan.findMany({ where: { id: { in: planIds }, status: 'DRAFT' }, select: { id: true, title: true, items: true } })
@@ -386,7 +389,16 @@ async function deliverLastReply(ctx: ChatContext, agentChatId: string): Promise<
       { text: '✖ Отклонить', callback: `rop:p:${p.id}:n` },
     ];
   });
-  if (!plans.length && !reply.isError) {
+  const actions = actionIds.length
+    ? await prisma.ropTaskAction.findMany({ where: { id: { in: actionIds }, status: 'PENDING' }, select: { id: true, summary: true, taskIds: true } })
+    : [];
+  for (const a of actions) {
+    buttons.push([
+      { text: `✅ Выполнить (${(a.taskIds as unknown as string[]).length})`, callback: `rop:x:${a.id}:y` },
+      { text: '✖ Отмена', callback: `rop:x:${a.id}:n` },
+    ]);
+  }
+  if (!plans.length && !actions.length && !reply.isError) {
     buttons.push([
       { text: '🔎 Подробнее', callback: 'rop:f:d' },
       { text: '📝 Подготовь задачи', callback: 'rop:f:t' },
@@ -438,6 +450,26 @@ async function onPlanButton(query: TelegramBot.CallbackQuery): Promise<void> {
     }
   } catch (err) {
     // План уже роздан/отклонён (в CRM или вторым нажатием) — просто объясняем.
+    await agentBot.answerCallback(query.id, (err as Error).message.slice(0, 190));
+  }
+  await agentBot.clearButtons(chatId, messageId);
+}
+
+/** «Выполнить» / «Отмена» изменения задач (закрыть, удалить, перенести, передать) — решение директора или админа. */
+async function onTaskActionButton(query: TelegramBot.CallbackQuery): Promise<void> {
+  const [, , actionId, choice] = (query.data ?? '').split(':');
+  const chatId = query.message?.chat.id;
+  const messageId = query.message?.message_id;
+  const user = await callbackUser(query, true);
+  if (!user || !actionId || chatId == null || messageId == null) return;
+  try {
+    const r = await decideTaskAction(actionId, user.id, choice === 'y');
+    await agentBot.answerCallback(query.id, choice === 'y' ? `Готово: ${r.changed}` : 'Отменено');
+    await agentBot.sendHtmlToChat(chatId, choice === 'y'
+      ? `✅ ${esc(user.fullName)}: ${esc(r.summary)}. Изменено задач: ${r.changed}.`
+      : `✖ ${esc(user.fullName)}: отменено — ${esc(r.summary)}.`,
+    choice === 'y' ? [[{ text: 'Открыть задачи', url: '/tasks' }]] : undefined);
+  } catch (err) {
     await agentBot.answerCallback(query.id, (err as Error).message.slice(0, 190));
   }
   await agentBot.clearButtons(chatId, messageId);
@@ -633,4 +665,5 @@ agentBot.onPrivateText(onPrivateText);
 agentBot.onGroupText(onGroupText);
 agentBot.onPrivateVoice(onPrivateVoice);
 agentBot.onCallback('rop:p:', onPlanButton);
+agentBot.onCallback('rop:x:', onTaskActionButton);
 agentBot.onCallback('rop:f:', onFollowUp);

@@ -12,8 +12,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useCostAccess } from '../hooks/useCostAccess';
-import { ropAgentApi, type RopAgentChat, type RopAgentMessage, type RopTaskPlan } from '../api/ropAgent.api';
+import { ropAgentApi, type RopAgentChat, type RopAgentMessage, type RopTaskAction, type RopTaskPlan } from '../api/ropAgent.api';
 import RopTaskPlanCard from '../components/RopTaskPlanCard';
+import RopTaskActionCard from '../components/RopTaskActionCard';
 import RopMemoryDrawer from '../components/RopMemoryDrawer';
 
 const { Text } = Typography;
@@ -99,6 +100,12 @@ export default function RopAgentPage() {
     enabled: !!activeChatId && !activeLocked,
   });
   const planById = new Map(plans.map((p: RopTaskPlan) => [p.id, p]));
+  const { data: taskActions = [] } = useQuery({
+    queryKey: ['rop-agent', 'task-actions', activeChatId],
+    queryFn: () => ropAgentApi.listTaskActions(activeChatId!),
+    enabled: !!activeChatId && !activeLocked,
+  });
+  const taskActionById = new Map(taskActions.map((a: RopTaskAction) => [a.id, a]));
   const { data: managers = [] } = useQuery({
     queryKey: ['rop-agent', 'managers'],
     queryFn: ropAgentApi.listManagers,
@@ -112,6 +119,7 @@ export default function RopAgentPage() {
     if (wasRunning.current && !running) {
       queryClient.invalidateQueries({ queryKey: ['rop-agent', 'chats'] });
       queryClient.invalidateQueries({ queryKey: ['rop-agent', 'plans', activeChatId] });
+      queryClient.invalidateQueries({ queryKey: ['rop-agent', 'task-actions', activeChatId] });
     }
     wasRunning.current = running;
   }, [running, queryClient, activeChatId]);
@@ -241,6 +249,9 @@ export default function RopAgentPage() {
     const msgPlans = tools
       .map((t) => (t.planId ? planById.get(t.planId) : undefined))
       .filter((p): p is RopTaskPlan => !!p);
+    const msgActions = tools
+      .map((t) => (t.actionId ? taskActionById.get(t.actionId) : undefined))
+      .filter((a): a is RopTaskAction => !!a);
     return (
       <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', gap: 10, flexDirection: isUser ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
@@ -295,6 +306,11 @@ export default function RopAgentPage() {
         {msgPlans.map((p) => (
           <div key={p.id} style={{ marginLeft: isMobile ? 0 : 42, maxWidth: isMobile ? '100%' : 760 }}>
             <RopTaskPlanCard plan={p} managers={managers} onAskReport={askReport} />
+          </div>
+        ))}
+        {msgActions.map((a) => (
+          <div key={a.id} style={{ marginLeft: isMobile ? 0 : 42, maxWidth: isMobile ? '100%' : 760 }}>
+            <RopTaskActionCard action={a} chatId={activeChatId!} />
           </div>
         ))}
       </div>

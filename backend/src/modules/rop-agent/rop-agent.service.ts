@@ -243,7 +243,7 @@ async function runTurn(chatId: string, userId: string, turn: RunningTurn, costMo
   let history = await loadHistory(chatId);
   /** Всё, что добавится к истории за этот ответ, — сохраняется одной репликой. */
   const produced: Anthropic.MessageParam[] = [];
-  const toolCalls: { name: string; label: string; isError: boolean; planId?: string }[] = [];
+  const toolCalls: { name: string; label: string; isError: boolean; planId?: string; actionId?: string }[] = [];
   let lastInputTokens: number | null = null;
 
   const saveAssistant = (text: string, isError: boolean) =>
@@ -321,8 +321,8 @@ async function runTurn(chatId: string, userId: string, turn: RunningTurn, costMo
         const input = (tu.input ?? {}) as Record<string, unknown>;
         const label = describeToolCall(tu.name, input);
         turn.steps.push(label);
-        const { content, isError, planId } = await executeTool(tu.name, input, { chatId, userId, allowCost: costMode });
-        toolCalls.push({ name: tu.name, label, isError, ...(planId ? { planId } : {}) });
+        const { content, isError, planId, actionId } = await executeTool(tu.name, input, { chatId, userId, allowCost: costMode });
+        toolCalls.push({ name: tu.name, label, isError, ...(planId ? { planId } : {}), ...(actionId ? { actionId } : {}) });
         return { type: 'tool_result', tool_use_id: tu.id, content, is_error: isError } satisfies Anthropic.ToolResultBlockParam;
       }));
       produced.push({ role: 'user', content: results });

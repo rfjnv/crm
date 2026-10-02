@@ -17,6 +17,19 @@ export interface RopAgentToolCall {
   isError: boolean;
   /** Черновик плана задач, который агент сохранил этим вызовом. */
   planId?: string;
+  /** Изменение задач (закрыть, удалить, перенести, передать), ждущее подтверждения. */
+  actionId?: string;
+}
+
+export interface RopTaskAction {
+  id: string;
+  action: 'close' | 'delete' | 'set_due_date' | 'reassign';
+  summary: string;
+  status: 'PENDING' | 'DONE' | 'CANCELED';
+  tasks: number;
+  changed: number | null;
+  createdAt: string;
+  decidedAt: string | null;
 }
 
 export type RopPlanStatus = 'DRAFT' | 'ASSIGNED' | 'DISCARDED';
@@ -259,6 +272,12 @@ export const ropAgentApi = {
   updateMemory: (id: string, data: { content?: string; expiresOn?: string | null }) =>
     client.patch<RopMemory>(`/rop-agent/memories/${id}`, data).then((r) => r.data),
   deleteMemory: (id: string) => client.delete(`/rop-agent/memories/${id}`),
+
+  listTaskActions: (chatId: string) => client.get<RopTaskAction[]>(`/rop-agent/chats/${chatId}/task-actions`).then((r) => r.data),
+  confirmTaskAction: (id: string) =>
+    client.post<{ status: string; changed: number }>(`/rop-agent/task-actions/${id}/confirm`).then((r) => r.data),
+  cancelTaskAction: (id: string) =>
+    client.post<{ status: string; changed: number }>(`/rop-agent/task-actions/${id}/cancel`).then((r) => r.data),
 
   listAlerts: () => client.get<RopAlert[]>('/rop-agent/alerts').then((r) => r.data),
   acceptAlert: (id: string) => client.post<RopAlert>(`/rop-agent/alerts/${id}/accept`).then((r) => r.data),

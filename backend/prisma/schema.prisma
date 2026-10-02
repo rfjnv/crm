@@ -1430,6 +1430,7 @@ model RopAgentChat {
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages RopAgentMessage[]
   plans    RopTaskPlan[]
+  taskActions RopTaskAction[]
 
   @@index([userId, updatedAt])
   @@map("rop_agent_chats")
@@ -1480,6 +1481,30 @@ model RopTaskPlan {
   @@index([chatId, createdAt])
   @@index([status, assignedAt])
   @@map("rop_task_plans")
+}
+
+/// Изменение задач, подготовленное РОП-агентом: выполняется после подтверждения директором или админом.
+model RopTaskAction {
+  id          String    @id @default(uuid())
+  chatId      String    @map("chat_id")
+  /// close | delete | set_due_date | reassign
+  action      String
+  taskIds     Json      @map("task_ids")
+  /// dueDate (YYYY-MM-DD), assigneeId, note
+  params      Json      @default("{}")
+  summary     String    @db.Text
+  /// PENDING | DONE | CANCELED
+  status      String    @default("PENDING")
+  result      Json?
+  createdById String    @map("created_by_id")
+  decidedById String?   @map("decided_by_id")
+  decidedAt   DateTime? @map("decided_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  chat RopAgentChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("rop_task_actions")
 }
 
 /// Ежедневная сводка РОП-агента за день `date` (YYYY-MM-DD по Ташкенту).

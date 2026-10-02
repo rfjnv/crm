@@ -22,6 +22,7 @@ import { buildDigest, getDigest, listDigests, tashkentYesterday } from './rop-ag
 import { sendDigestToUser } from './rop-agent.telegram';
 import { addMemory, deleteMemory, listMemories, updateMemory } from './rop-agent.memory';
 import { decideAlert, listAlerts } from './rop-agent.alerts';
+import { decideTaskAction, listChatTaskActions } from './rop-agent.task-actions';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
 const createChatDto = z.object({ costMode: z.boolean().optional() }).optional();
@@ -109,6 +110,22 @@ router.get('/plans/:planId/progress', asyncHandler(async (req: Request, res: Res
 
 router.post('/plans/:planId/discard', asyncHandler(async (req: Request, res: Response) => {
   res.json(await discardPlan(req.params.planId as string, req.user!.userId));
+}));
+
+// ─── Изменения задач (закрыть, удалить, перенести, передать) ────────────────
+
+router.get('/chats/:chatId/task-actions', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await listChatTaskActions(req.params.chatId as string, req.user!.userId));
+}));
+
+router.post('/task-actions/:id/confirm', asyncHandler(async (req: Request, res: Response) => {
+  const r = await decideTaskAction(req.params.id as string, req.user!.userId, true);
+  res.json({ status: r.status, changed: r.changed });
+}));
+
+router.post('/task-actions/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
+  const r = await decideTaskAction(req.params.id as string, req.user!.userId, false);
+  res.json({ status: r.status, changed: r.changed });
 }));
 
 // ─── Ежедневная сводка ──────────────────────────────────────────────────────
