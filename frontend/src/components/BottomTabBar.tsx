@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getMobileBottomNavItems, resolveActiveMobileNavPath } from '../config/mobileBottomNav';
+import { modernIconFor } from '../config/modernMenuIcons';
+import { useThemeStore } from '../store/themeStore';
 import type { UserRole, Permission } from '../types';
 import './BottomTabBar.css';
 
@@ -9,6 +11,7 @@ export default function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const modern = useThemeStore((s) => s.design) === 'modern';
 
   const items = useMemo(() => {
     if (!user?.role) return [];
@@ -29,6 +32,8 @@ export default function BottomTabBar() {
         {items.map((tab) => {
           const isActive = activePath === tab.path;
           const Icon = tab.Icon;
+          // В новом дизайне — Phosphor; у активной вкладки иконка залитая, как в iOS
+          const PhIcon = modern ? modernIconFor(tab.path) : undefined;
           return (
             <button
               key={tab.path}
@@ -39,7 +44,11 @@ export default function BottomTabBar() {
               aria-label={tab.label}
             >
               <span className="tab-item__icon" aria-hidden>
-                <Icon style={{ fontSize: 22, color: 'inherit' }} />
+                {PhIcon ? (
+                  <PhIcon size={24} weight={isActive ? 'fill' : 'regular'} />
+                ) : (
+                  <Icon style={{ fontSize: 22, color: 'inherit' }} />
+                )}
               </span>
               <span className="tab-label">{tab.label}</span>
             </button>

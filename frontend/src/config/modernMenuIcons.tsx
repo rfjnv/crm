@@ -93,6 +93,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/tasks': Kanban,
   '/notes-board': Notepad,
   '/finance/cashbox?tab=debtors': Receipt,
+  '/finance/debts': Receipt,
   '/finance/review': Scales,
   '/finance/expenses': Wallet,
   '/finance/cashbox': CashRegister,
@@ -135,6 +136,11 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/notifications': BellSimple,
   '/notifications/broadcast': PaperPlaneTilt,
 };
+
+/** Иконка Phosphor для пункта меню или вкладки нижней панели (по пути), если она задана. */
+export function modernIconFor(key: string): Icon | undefined {
+  return ICON_BY_KEY[key];
+}
 
 type MenuItem = NonNullable<MenuProps['items']>[number];
 

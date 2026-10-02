@@ -1081,6 +1081,10 @@ export default function Layout() {
       {isMobile && (
         <BottomTabBar />
       )}
+      {/* Раскрытое по наведению меню размывает страницу под собой, чтобы она не отвлекала */}
+      {hoverSider && !siderPinned && (
+        <div className={`sider-scrim${siderHover ? ' sider-scrim--on' : ''}`} aria-hidden />
+      )}
       <BackgroundPickerModal open={backgroundOpen} onClose={() => setBackgroundOpen(false)} />
     </AntLayout>
   );
