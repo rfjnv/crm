@@ -858,28 +858,28 @@ export default function Layout() {
           <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <span
               style={{
-                width: 40,
-                height: 40,
+                width: 34,
+                height: 34,
                 flexShrink: 0,
-                borderRadius: 11,
+                borderRadius: 9,
                 background: '#ffffff',
                 display: 'grid',
                 placeItems: 'center',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08)',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
               }}
             >
               <img
                 src={miniLogo}
                 alt={(!isMobile && siderCollapsed) ? 'Polygraph Business' : ''}
-                style={{ width: 26, height: 26, objectFit: 'contain' }}
+                style={{ width: 22, height: 22, objectFit: 'contain' }}
               />
             </span>
             {(isMobile || !siderCollapsed) && (
               <span
                 style={{
                   color: themeToken.colorText,
-                  fontSize: 16,
-                  fontWeight: 500,
+                  fontSize: 15,
+                  fontWeight: 600,
                   lineHeight: 1.15,
                   whiteSpace: 'nowrap',
                 }}
