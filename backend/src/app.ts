@@ -64,6 +64,9 @@ import exchangeRatesRoutes from './modules/foreign-trade/exchange-rates.routes';
 import vedMapRoutes from './modules/foreign-trade/ved-map.routes';
 import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import telephonyRoutes from './modules/telephony/telephony.routes';
+import mobileRoutes from './modules/mobile/mobile.routes';
+import callsRoutes, { clientCallsRouter } from './modules/mobile/calls.routes';
+import mobileInternalRoutes from './modules/mobile/mobile.internal.routes';
 import dbBackupRoutes, { internalBackupRoutes } from './modules/backup/db-backup.routes';
 import './modules/telegram/telegram.customer-bot.service';
 import './modules/internal/dailyClosedDeals.scheduler';
@@ -73,7 +76,9 @@ import './modules/notes-board/notes-board-reminders.scheduler';
 import './modules/foreign-trade/exchange-rates.scheduler';
 import './modules/rop-agent/rop-agent.telegram';
 import './modules/rop-agent/rop-agent.calls';
-import './modules/rop-agent/rop-agent.scheduler';
+import './modules/rop-agent/rop-agent.scheduler';
+import './modules/mobile/mobile.scheduler';
+
 import { invalidateCacheOnWrite } from './lib/responseCache';
 
 const app = express();
@@ -190,6 +195,7 @@ app.use('/api/debug', authenticate, authorize('SUPER_ADMIN'), debugRoutes);
 app.use('/api/backup', authenticate, authorize('SUPER_ADMIN'), dbBackupRoutes);
 app.use('/api/internal/backup', internalBackupRoutes);
 app.use('/api/internal/reports', internalReportsRoutes);
+app.use('/api/internal/mobile', mobileInternalRoutes);
 
 // Public routes (no auth)
 app.use('/api/public/rate', ratingsRoutes);
@@ -201,6 +207,8 @@ app.use('/api/site-cms', siteCmsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/cost-access', costAccessRoutes);
+// /api/clients/:id/calls — раньше общего роутера клиентов
+app.use('/api/clients', clientCallsRouter);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/deals', dealsRoutes);
 app.use('/api/contracts', contractsRoutes);
@@ -246,6 +254,9 @@ app.use('/api/foreign-trade', exchangeRatesRoutes);
 app.use('/api/foreign-trade', vedMapRoutes);
 app.use('/api/worker-reviews', workerReviewsRoutes);
 app.use('/api/telephony', telephonyRoutes);
+// Мобильная телефония (приложение CallSync на телефонах менеджеров)
+app.use('/api/mobile', mobileRoutes);
+app.use('/api/calls', callsRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

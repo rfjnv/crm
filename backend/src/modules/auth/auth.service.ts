@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Role } from '@prisma/client';
+import { Role, type User } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../lib/jwt';
@@ -21,18 +21,7 @@ interface SessionMeta {
 
 export class AuthService {
   async login(dto: LoginDto, meta: SessionMeta): Promise<TokenPair> {
-    const user = await prisma.user.findUnique({ where: { login: dto.login } });
-
-    if (!user || !user.isActive) {
-      await this.logFailedLogin(dto.login);
-      throw new AppError(401, 'Неверный логин или пароль');
-    }
-
-    const valid = await comparePassword(dto.password, user.password);
-    if (!valid) {
-      await this.logFailedLogin(dto.login, user.id);
-      throw new AppError(401, 'Неверный логин или пароль');
-    }
+    const user = await this.verifyCredentials(dto.login, dto.password);
 
     const tokens = await this.createSessionForUser(user.id, user.role, user.permissions, meta);
 
@@ -237,6 +226,40 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  /**
+   * Проверка логина и пароля без создания web-сессии (её создаёт login, телефону CallSync она не нужна).
+   *
+   * `caseInsensitiveLogin` — для входа с телефона: логины кириллические, а клавиатура Android
+   * сама делает первую букву заглавной. Регистр сравниваем в JS, а не в SQL: lower() в Postgres
+   * с локалью C кириллицу не трогает. Нестрогое совпадение принимаем, только если оно одно.
+   */
+  async verifyCredentials(
+    rawLogin: string,
+    password: string,
+    opts: { caseInsensitiveLogin?: boolean } = {},
+  ): Promise<User> {
+    const login = rawLogin.trim().normalize('NFC');
+    let user = await prisma.user.findUnique({ where: { login } });
+    if (!user && opts.caseInsensitiveLogin && login) {
+      const wanted = login.toLocaleLowerCase('ru');
+      const candidates = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, login: true } });
+      const matched = candidates.filter((c) => c.login.normalize('NFC').toLocaleLowerCase('ru') === wanted);
+      if (matched.length === 1) user = await prisma.user.findUnique({ where: { id: matched[0].id } });
+    }
+
+    if (!user || !user.isActive) {
+      await this.logFailedLogin(login);
+      throw new AppError(401, 'Неверный логин или пароль');
+    }
+
+    const valid = await comparePassword(password, user.password);
+    if (!valid) {
+      await this.logFailedLogin(login, user.id);
+      throw new AppError(401, 'Неверный логин или пароль');
+    }
+    return user;
   }
 
   private async logFailedLogin(login: string, userId?: string): Promise<void> {

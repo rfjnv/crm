@@ -44,6 +44,7 @@ import {
   SafetyCertificateOutlined,
   StarOutlined,
   PhoneOutlined,
+  MobileOutlined,
   IdcardOutlined,
   HistoryOutlined,
   EyeOutlined,
@@ -357,6 +358,13 @@ export default function Layout() {
         key: '/reviews',
         icon: <StarOutlined />,
         label: <Link to="/reviews">Отзывы</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent')
+      ? [{
+        key: '/calls',
+        icon: <PhoneOutlined />,
+        label: <Link to="/calls">Звонки</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT')
@@ -735,6 +743,15 @@ export default function Layout() {
             key: '/worker-audit',
             icon: <AuditOutlined />,
             label: <Link to="/worker-audit">Аудит сотрудников</Link>,
+          },
+        ]
+      : []),
+    ...(isAdmin
+      ? [
+          {
+            key: '/mobile-devices',
+            icon: <MobileOutlined />,
+            label: <Link to="/mobile-devices">Телефоны (CallSync)</Link>,
           },
         ]
       : []),

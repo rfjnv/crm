@@ -9,7 +9,7 @@ import { telegramService } from '../telegram/telegram.service';
 const router = Router();
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
-function assertInternalToken(req: Request): void {
+export function assertInternalToken(req: Request): void {
   const expected = config.reports.internalToken;
   if (!expected) {
     throw new AppError(503, 'INTERNAL_REPORTS_TOKEN не настроен на сервере');

@@ -54,6 +54,7 @@ import {
 } from '../constants/clientPortraitTemplates';
 import dayjs, { type Dayjs } from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
+import ClientCallsTab from '../components/calls/ClientCallsTab';
 
 dayjs.extend(isoWeek);
 
@@ -65,6 +66,7 @@ const CLIENT_DETAIL_TAB_KEYS = [
   'analytics',
   'payments',
   'client-card',
+  'calls',
   'notes',
   'history',
 ] as const;
@@ -1801,6 +1803,15 @@ export default function ClientDetailPage() {
                 },
               ]
             : []),
+          {
+            key: 'calls',
+            label: (
+              <span>
+                <PhoneOutlined /> Звонки
+              </span>
+            ),
+            children: <ClientCallsTab clientId={id!} />,
+          },
           {
             key: 'notes',
             label: (

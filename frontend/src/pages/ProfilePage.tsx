@@ -26,6 +26,7 @@ import { useThemeStore } from '../store/themeStore';
 import { formatUZS } from '../utils/currency';
 import { TeamMedalDisplay } from '../components/TeamMedalDisplay';
 import { getFirstName } from '../lib/name-utils';
+import PairPhoneCard from '../components/calls/PairPhoneCard';
 
 const { RangePicker } = DatePicker;
 
@@ -172,6 +173,7 @@ export default function ProfilePage() {
                     </Col>
                   </Row>
                 </Card>
+                <PairPhoneCard />
                 <Card title="Личные данные и пароль" style={{ borderRadius: 12 }}>
                   <Form
                     form={profileForm}

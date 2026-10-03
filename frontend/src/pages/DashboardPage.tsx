@@ -28,6 +28,7 @@ import DashboardGreeting from '../components/DashboardGreeting';
 import type { Permission, UserRole, DealStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
+import MissedCallsWidget from '../components/calls/MissedCallsWidget';
 
 const DEFAULT_GOAL = 250_000_000;
 
@@ -655,6 +656,9 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
+
+      {/* Пропущенные звонки с рабочих телефонов: менеджеру свои, руководителю сводка */}
+      <MissedCallsWidget />
 
       {(isAdmin || role === 'MANAGER') && canSeeMoney && (
         <div className={isMobile ? 'section' : undefined}>

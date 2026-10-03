@@ -48,3 +48,4 @@ Documents/
 
 # Frontend build artifacts
 frontend/.env
+MANAGERS_CREDENTIALS.md

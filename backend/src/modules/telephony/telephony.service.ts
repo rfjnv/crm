@@ -1,3 +1,4 @@
+import { Prisma, type CallSessionStatus } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import prisma from '../../lib/prisma';
 
@@ -33,7 +34,7 @@ function mapDirection(input?: string): 'INBOUND' | 'OUTBOUND' | 'INTERNAL' {
   return 'INBOUND';
 }
 
-function mapStatus(eventType: TelephonyWebhookPayload['eventType'], billSec?: number) {
+function mapStatus(eventType: TelephonyWebhookPayload['eventType'], billSec?: number): CallSessionStatus | undefined {
   if (eventType === 'ringing') return 'RINGING';
   if (eventType === 'answered') return 'ANSWERED';
   if (eventType === 'recording_ready') return undefined;
@@ -60,21 +61,21 @@ export class TelephonyService {
 
     const eventStatus = mapStatus(payload.eventType, payload.billSec);
     const startedAt = parseDateOrNow(payload.startedAt);
-    const prismaAny = prisma as any;
-
-    const existing = await prismaAny.callSession.findUnique({
+    const existing = await prisma.callSession.findUnique({
       where: { externalCallId: payload.externalCallId.trim() },
       select: { id: true, rawEvents: true },
     });
 
-    const nextRawEvents: unknown[] = Array.isArray(existing?.rawEvents) ? [...existing.rawEvents] : [];
+    const nextRawEvents: Prisma.InputJsonValue[] = Array.isArray(existing?.rawEvents)
+      ? [...(existing.rawEvents as Prisma.InputJsonValue[])]
+      : [];
     nextRawEvents.push({
       eventType: payload.eventType,
       at: new Date().toISOString(),
-      payload: payload.rawEvent ?? payload,
+      payload: (payload.rawEvent ?? payload) as Prisma.InputJsonValue,
     });
 
-    const row = await prismaAny.callSession.upsert({
+    const row = await prisma.callSession.upsert({
       where: { externalCallId: payload.externalCallId.trim() },
       create: {
         externalCallId: payload.externalCallId.trim(),

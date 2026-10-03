@@ -318,6 +318,10 @@ model User {
   ropAgentMemories    RopAgentMemory[]
   aiTrainingRules     AiTrainingRule[] @relation("AiTrainingRuleAuthor")
   callAudits          CallAudit[]      @relation("CallAuditAuthor")
+  managedCalls        CallSession[]    @relation("CallSessionManager")
+  callRecordings      CallRecording[]  @relation("CallRecordingUser")
+  mobileDevices       MobileDevice[]   @relation("MobileDeviceUser")
+  mobilePairingCodes  MobilePairingCode[] @relation("MobilePairingCodeUser")
   managedCallAudits   CallAudit[]      @relation("CallAuditManager")
   aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
@@ -491,6 +495,7 @@ model Client {
   stockEvents ClientStockEvent[]
   reservations ProductReservation[]
   callAudits  CallAudit[]
+  calls       CallSession[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
@@ -1133,6 +1138,19 @@ enum CallResult {
 
 enum TelephonyProvider {
   ASTERISK
+  /// Мобильные телефоны менеджеров через приложение CallSync
+  MOBILE
+}
+
+/// Что с записью разговора: очередь транскрибации и аудита живёт в БД, а не в памяти процесса.
+enum CallAudioStatus {
+  NONE
+  UPLOADED
+  TRANSCRIBING
+  TRANSCRIBED
+  ANALYZED
+  FAILED
+  SKIPPED
 }
 
 enum CallDirection {
@@ -1163,15 +1181,19 @@ model Task {
   plannedDate  DateTime?   @map("planned_date")
   approvedById String?     @map("approved_by_id")
   approvedAt   DateTime?   @map("approved_at")
+  /// Задача «перезвонить» по пропущенному звонку (CallSync)
+  callSessionId String?    @map("call_session_id")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
   assignee    User             @relation("TaskAssignee", fields: [assigneeId], references: [id])
   createdBy   User             @relation("TaskCreator", fields: [createdById], references: [id])
   approvedBy  User?            @relation("TaskApprover", fields: [approvedById], references: [id])
+  callSession CallSession?     @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
   attachments TaskAttachment[]
 
   @@index([assigneeId, status])
+  @@index([callSessionId])
   @@index([createdById])
   @@index([plannedDate, status])
   @@map("tasks")
@@ -1613,6 +1635,7 @@ model TelephonyExtension {
 model CallSession {
   id              String            @id @default(uuid())
   provider        TelephonyProvider @default(ASTERISK)
+  /// Для мобильных: mobile:<userId>:<device_call_id> — идемпотентность по паре (сотрудник, device_call_id)
   externalCallId  String            @unique @map("external_call_id")
   direction       CallDirection
   status          CallSessionStatus @default(RINGING)
@@ -1626,18 +1649,157 @@ model CallSession {
   durationSec     Int?              @map("duration_sec")
   billSec         Int?              @map("bill_sec")
   recordingUrl    String?           @map("recording_url")
+  /// Для мобильных — путь в приватном bucket call-recordings; чистится через 12 месяцев
   recordingPath   String?           @map("recording_path")
   transcript      String?           @db.Text
   auditId         String?           @map("audit_id")
   rawEvents       Json?             @map("raw_events")
+
+  // ── CallSync (мобильные телефоны) ──
+  deviceId        String?           @map("device_id")
+  deviceCallId    String?           @map("device_call_id")
+  /// Номер собеседника в E.164 (null — скрытый номер)
+  phone           String?
+  /// phoneMatchKey(phone): по нему ищем клиента и задачи «перезвонить»
+  phoneKey        String?           @map("phone_key")
+  /// Точное направление из приложения: in, out, out_unanswered, missed, rejected, blocked, voicemail, answered_externally
+  mobileType      String?           @map("mobile_type")
+  simSlot         Int?              @map("sim_slot")
+  audioStatus     CallAudioStatus   @default(NONE) @map("audio_status")
+  audioError      String?           @map("audio_error")
+  audioAttempts   Int               @default(0) @map("audio_attempts")
+  /// Пропущенный отработан: менеджер перезвонил сам или нажал «Перезвонил»
+  calledBackAt    DateTime?         @map("called_back_at")
+
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  manager    User?           @relation("CallSessionManager", fields: [managerUserId], references: [id], onDelete: SetNull)
+  client     Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  device     MobileDevice?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  recordings CallRecording[]
+  tasks      Task[]
 
   @@index([managerUserId, startedAt])
   @@index([clientId, startedAt])
   @@index([status, startedAt])
   @@index([startedAt])
+  @@index([provider, startedAt])
+  @@index([phone])
+  @@index([phoneKey])
+  @@index([audioStatus])
   @@map("call_sessions")
+}
+
+/// Файл записи разговора с телефона. Сюда же попадают записи, которые приложение не сопоставило со звонком.
+model CallRecording {
+  id             String    @id @default(uuid())
+  sha256         String    @unique
+  callSessionId  String?   @map("call_session_id")
+  userId         String    @map("user_id")
+  deviceId       String?   @map("device_id")
+  /// Путь в bucket call-recordings; null — файл удалён по сроку хранения
+  storagePath    String?   @map("storage_path")
+  fileName       String    @map("file_name")
+  mimeType       String?   @map("mime_type")
+  sizeBytes      Int       @map("size_bytes")
+  durationSec    Int?      @map("duration_sec")
+  fileModifiedAt DateTime? @map("file_modified_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  callSession CallSession? @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
+  user        User         @relation("CallRecordingUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([callSessionId])
+  @@index([createdAt])
+  @@map("call_recordings")
+}
+
+/// Телефон сотрудника с приложением CallSync. Одно активное устройство на сотрудника.
+model MobileDevice {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  model                  String?
+  androidVersion         String?   @map("android_version")
+  sdkInt                 Int?      @map("sdk_int")
+  appVersion             String?   @map("app_version")
+  /// SHA-256 токена устройства; сам токен не храним
+  tokenHash              String    @unique @map("token_hash")
+  active                 Boolean   @default(true)
+  revokedAt              DateTime? @map("revoked_at")
+  /// Любой запрос с телефона
+  lastSeenAt             DateTime? @map("last_seen_at")
+  /// Последний heartbeat
+  lastSyncAt             DateTime? @map("last_sync_at")
+  lastCallAt             DateTime? @map("last_call_at")
+  queueCalls             Int       @default(0) @map("queue_calls")
+  queueFiles             Int       @default(0) @map("queue_files")
+  queueBytes             Float     @default(0) @map("queue_bytes")
+  failedCalls            Int       @default(0) @map("failed_calls")
+  simSlot                Int?      @map("sim_slot")
+  permissions            Json?
+  recordingsDirFound     Boolean?  @map("recordings_dir_found")
+  recordingsPathOverride String?   @map("recordings_path_override")
+  uploadLogsRequested    Boolean   @default(false) @map("upload_logs_requested")
+  lastLogPath            String?   @map("last_log_path")
+  lastLogAt              DateTime? @map("last_log_at")
+  /// Алерты руководителю: одно сообщение на эпизод
+  silentAlertedAt        DateTime? @map("silent_alerted_at")
+  noRecordingsAlertedAt  DateTime? @map("no_recordings_alerted_at")
+  problemsAlertKey       String?   @map("problems_alert_key")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user  User          @relation("MobileDeviceUser", fields: [userId], references: [id], onDelete: Cascade)
+  calls CallSession[]
+
+  @@index([userId, active])
+  @@index([active, lastSeenAt])
+  @@map("mobile_devices")
+}
+
+/// Одноразовый код привязки телефона (QR в профиле), живёт 10 минут
+model MobilePairingCode {
+  id        String    @id @default(uuid())
+  codeHash  String    @unique @map("code_hash")
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation("MobilePairingCodeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mobile_pairing_codes")
+}
+
+/// Папка записей разговоров для модели телефона (как её присылает приложение: «samsung SM-A346E»)
+model MobileDeviceModelConfig {
+  id             String   @id @default(uuid())
+  model          String   @unique
+  recordingsPath String   @map("recordings_path")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("mobile_device_model_configs")
+}
+
+/// Настройки мобильной телефонии (одна строка)
+model MobileTelephonySettings {
+  id                  String   @id @default("singleton")
+  /// Рабочее время для алертов, по Ташкенту
+  workStartHour       Int      @default(9) @map("work_start_hour")
+  workEndHour         Int      @default(18) @map("work_end_hour")
+  /// Дни недели: 1 — понедельник … 7 — воскресенье
+  workDays            Int[]    @default([1, 2, 3, 4, 5, 6]) @map("work_days")
+  wifiOnlyAboveMb     Int      @default(20) @map("wifi_only_above_mb")
+  syncIntervalMin     Int      @default(15) @map("sync_interval_min")
+  /// Короче — не транскрибируем: несколько STT и Claude на каждый короткий звонок слишком дороги
+  minAuditDurationSec Int      @default(30) @map("min_audit_duration_sec")
+  autoAuditEnabled    Boolean  @default(true) @map("auto_audit_enabled")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("mobile_telephony_settings")
 }
 
 // ==================== FOREIGN TRADE (ВЭД) ====================

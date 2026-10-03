@@ -84,6 +84,8 @@ const RopDigestPage = lazy(() => import('./pages/RopDigestPage'));
 const AiTrainingPage = lazy(() => import('./pages/AiTrainingPage'));
 const AudioTranscriptionPage = lazy(() => import('./pages/AudioTranscriptionPage'));
 const CallAuditDashboardPage = lazy(() => import('./pages/CallAuditDashboardPage'));
+const CallsPage = lazy(() => import('./pages/CallsPage'));
+const MobileDevicesPage = lazy(() => import('./pages/MobileDevicesPage'));
 const NoteAuditPage = lazy(() => import('./pages/NoteAuditPage'));
 const NotesBoardPage = lazy(() => import('./pages/NotesBoardPage'));
 const SuppliersPage = lazy(() => import('./pages/SuppliersPage'));
@@ -223,6 +225,11 @@ export default function App() {
                   <Route path="/users" element={<UsersPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
+                {/* Звонки с рабочих телефонов (CallSync): доступ режет сервер — менеджер видит только свои */}
+                <Route path="/calls" element={<CallsPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/mobile-devices" element={<MobileDevicesPage />} />
+                </Route>
                 <Route path="/changelog" element={<ChangelogPage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR']} />}>
                   <Route path="/manager/client-activity" element={<ClientActivityMatrixPage />} />

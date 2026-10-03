@@ -168,6 +168,14 @@ export const config = {
     enabled: trimEnv(process.env.TELEPHONY_ENABLED).toLowerCase() === 'true',
     webhookSecret: trimEnv(process.env.TELEPHONY_WEBHOOK_SECRET),
   },
+  /** Мобильная телефония (приложение CallSync) */
+  mobile: {
+    /**
+     * Адрес бэкенда, который телефон получает в QR привязки (без /api). По умолчанию —
+     * публичный адрес Render; иначе берётся из запроса.
+     */
+    publicServerUrl: trimEnv(process.env.MOBILE_PUBLIC_SERVER_URL) || trimEnv(process.env.RENDER_EXTERNAL_URL) || trimEnv(process.env.BACKEND_PUBLIC_URL),
+  },
 
   supabase: {
     url: trimEnv(process.env.SUPABASE_URL),
