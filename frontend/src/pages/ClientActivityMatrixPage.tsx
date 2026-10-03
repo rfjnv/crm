@@ -3,27 +3,42 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card, Select, Spin, Table, Tooltip, Tag, Typography, theme,
-  Drawer, DatePicker, Pagination, Tabs, Input, Button, Space, AutoComplete,
+  DatePicker, Pagination, Tabs, Input, Button, Space, AutoComplete,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { CalendarOutlined, ApartmentOutlined, SearchOutlined, ArrowLeftOutlined, LineChartOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { analyticsApi } from '../api/analytics.api';
 import { productsApi } from '../api/products.api';
 import HierarchyClientsAnalyticsPanel from '../components/HierarchyClientsAnalyticsPanel';
 import HistoryCohortPanel from '../components/HistoryCohortPanel';
+import ActivityPeriodBar, { ActivityLegend } from '../components/activity/ActivityPeriodBar';
+import ClientPeriodDrawer, { type ClientPeriodTarget } from '../components/activity/ClientPeriodDrawer';
+import { buildActivityColumns, heatColor, heatTooltip } from '../components/activity/activityColumns';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useClientActivityDays } from '../hooks/useClientActivityDays';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import { isStrategicHidden } from '../utils/currency';
+import {
+  GRANULARITY_UNIT, addMonths, buildBuckets, daysBetween, monthFirstDay, monthLastDay, sumDaysByBucket, weeksOfMonth,
+  type ActivityBucket, type ActivityGranularity,
+} from '../utils/activityPeriods';
 import type { HistoryClientActivity, Product } from '../types';
 
 const { Title } = Typography;
 
-const MONTH_LABELS: Record<number, string> = {
-  1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
-  7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек',
+/** Недели по дням тянем не дальше двух лет — дальше колонок слишком много, чтобы что-то увидеть. */
+const MAX_WEEK_RANGE_MONTHS = 24;
+
+/** Быстрые значения фильтра «ровно N периодов» под каждый масштаб. */
+const ACTIVE_COUNT_PRESETS: Record<ActivityGranularity, number[]> = {
+  month: [0, 1, 3, 6, 12],
+  week: [0, 1, 2, 4, 8],
+  day: [0, 1, 2, 3, 5],
 };
 
 const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_CELLS = new Map<string, number>();
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
@@ -44,7 +59,13 @@ type ListParams = {
   page: number;
   pageSize: number;
   view: MatrixTabView;
+  granularity: ActivityGranularity;
+  /** Режим «Дни»: месяц `YYYY-MM` и, если выбрана, неделя внутри него (первый день). */
+  dayMonth: string;
+  dayWeek: string | null;
 };
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
 
 function parseParams(sp: URLSearchParams): ListParams {
   const fromRaw = sp.get('from') || `${CY}-01`;
@@ -71,14 +92,23 @@ function parseParams(sp: URLSearchParams): ListParams {
   const view: MatrixTabView =
     tabRaw === 'hierarchy-clients' ? 'hierarchy-clients' : tabRaw === 'cohorts' ? 'cohorts' : 'matrix';
 
+  const gRaw = sp.get('g');
+  const granularity: ActivityGranularity = gRaw === 'week' || gRaw === 'day' ? gRaw : 'month';
+  const rest = { selectedClients, clientSearch, page, pageSize, view, granularity };
+
   // Ensure from <= to
   const startTs = fromYear * 100 + fromMonth;
   const endTs = toYear * 100 + toMonth;
-  if (startTs > endTs) {
-    return { fromYear: toYear, fromMonth: toMonth, toYear: fromYear, toMonth: fromMonth, selectedClients, clientSearch, page, pageSize, view };
-  }
+  const range = startTs > endTs
+    ? { fromYear: toYear, fromMonth: toMonth, toYear: fromYear, toMonth: fromMonth }
+    : { fromYear, fromMonth, toYear, toMonth };
 
-  return { fromYear, fromMonth, toYear, toMonth, selectedClients, clientSearch, page, pageSize, view };
+  const dmRaw = sp.get('dm') || '';
+  const dayMonth = /^20(2\d|3[0-5])-(0[1-9]|1[0-2])$/.test(dmRaw) ? dmRaw : `${range.toYear}-${pad2(range.toMonth)}`;
+  const dwRaw = sp.get('dw');
+  const dayWeek = dwRaw && weeksOfMonth(dayMonth).some((w) => w.key === dwRaw) ? dwRaw : null;
+
+  return { ...range, ...rest, dayMonth, dayWeek };
 }
 
 function mergeParams(prev: URLSearchParams, patch: Partial<ListParams>): URLSearchParams {
@@ -98,31 +128,28 @@ function mergeParams(prev: URLSearchParams, patch: Partial<ListParams>): URLSear
   next.page !== 1 ? sp.set('page', String(next.page)) : sp.delete('page');
   next.pageSize !== DEFAULT_PAGE_SIZE ? sp.set('pageSize', String(next.pageSize)) : sp.delete('pageSize');
   next.view !== 'matrix' ? sp.set('view', next.view) : sp.delete('view');
+  next.granularity !== 'month' ? sp.set('g', next.granularity) : sp.delete('g');
+  if (next.granularity === 'day') {
+    sp.set('dm', next.dayMonth);
+    next.dayWeek ? sp.set('dw', next.dayWeek) : sp.delete('dw');
+  } else {
+    sp.delete('dm');
+    sp.delete('dw');
+  }
 
   return sp;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-type YearMonth = { year: number; month: number };
-
-function buildPeriods(fromYear: number, fromMonth: number, toYear: number, toMonth: number): YearMonth[] {
-  const periods: YearMonth[] = [];
-  let y = fromYear, m = fromMonth;
-  while (y < toYear || (y === toYear && m <= toMonth)) {
-    periods.push({ year: y, month: m });
-    m++;
-    if (m > 12) { m = 1; y++; }
-  }
-  return periods;
-}
-
 type UnifiedRow = {
   clientId: string;
   companyName: string;
+  managerDepartment: string | null;
   lastContactAt: string | null;
   lastContactByName: string | null;
-  revenueByYM: Map<string, number>;
+  /** Выручка по месяцам, ключ `YYYY-MM`. */
+  revenueByMonth: Map<string, number>;
 };
 
 function mergeYearData(
@@ -138,17 +165,19 @@ function mergeYearData(
         row = {
           clientId: c.clientId,
           companyName: c.companyName,
+          managerDepartment: c.managerDepartment?.trim() || null,
           lastContactAt: c.lastContactAt ?? null,
           lastContactByName: c.lastContactByName ?? null,
-          revenueByYM: new Map(),
+          revenueByMonth: new Map(),
         };
         map.set(c.clientId, row);
       }
       for (const md of c.monthlyData) {
         // null — сервер вырезал сумму (ограниченный доступ к деньгам). Месяц в monthlyData
         // всё равно означает покупку: ставим 1, чтобы ячейка светилась как активная.
-        row.revenueByYM.set(`${yr}-${md.month}`, md.revenue ?? 1);
+        row.revenueByMonth.set(`${yr}-${pad2(md.month)}`, md.revenue ?? 1);
       }
+      if (!row.managerDepartment && c.managerDepartment?.trim()) row.managerDepartment = c.managerDepartment.trim();
       if (c.lastContactAt && (!row.lastContactAt || c.lastContactAt > row.lastContactAt)) {
         row.lastContactAt = c.lastContactAt;
         row.lastContactByName = c.lastContactByName ?? null;
@@ -165,46 +194,80 @@ export default function ClientActivityMatrixPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const params = useMemo(() => parseParams(searchParams), [searchParams]);
-  const { fromYear, fromMonth, toYear, toMonth, selectedClients, clientSearch, page, pageSize, view } = params;
+  const {
+    fromYear, fromMonth, toYear, toMonth, selectedClients, clientSearch, page, pageSize, view,
+    granularity, dayMonth, dayWeek,
+  } = params;
 
   const isMobile = useIsMobile();
-  const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number; year: number } | null>(null);
-  const [drawerSortOrder, setDrawerSortOrder] = useState<'desc' | 'asc'>('desc');
-  const [drawerDateRange, setDrawerDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const moneyHidden = isStrategicHidden();
+  const [cellDrawer, setCellDrawer] = useState<ClientPeriodTarget | null>(null);
   const [listSort, setListSort] = useState<'name_asc' | 'name_desc' | 'revenue_desc' | 'revenue_asc' | 'active_desc' | 'active_asc'>('name_asc');
   const [revenueFilter, setRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  /** Минимум активных месяцев в выбранном периоде — вводится вручную или выбирается из подсказок. */
-  const [activeMonthsFilter, setActiveMonthsFilter] = useState<string>('');
+  /** Ровно столько активных периодов (месяцев / недель / дней) — вводится вручную или из подсказок. */
+  const [activeCountFilter, setActiveCountFilter] = useState<string>('');
 
   const matrixStale = 120_000;
+  const unit = GRANULARITY_UNIT[granularity];
 
-  // Derive unique years in range
-  const yearsInRange = useMemo(() => {
+  // ── Период на экране ─────────────────────────────────────────────────────────
+
+  const toYM = `${toYear}-${pad2(toMonth)}`;
+  const period = useMemo(() => {
+    if (granularity === 'day') {
+      const week = dayWeek ? weeksOfMonth(dayMonth).find((w) => w.key === dayWeek) : undefined;
+      return {
+        from: week?.start ?? monthFirstDay(dayMonth),
+        to: week?.end ?? monthLastDay(dayMonth),
+        // Грузим весь месяц: переключение недель внутри него — без запросов.
+        fetchFrom: monthFirstDay(dayMonth),
+        fetchTo: monthLastDay(dayMonth),
+        clamped: false,
+      };
+    }
+    let from = monthFirstDay(`${fromYear}-${pad2(fromMonth)}`);
+    const to = monthLastDay(toYM);
+    let clamped = false;
+    if (granularity === 'week' && daysBetween(from, to) > MAX_WEEK_RANGE_MONTHS * 31) {
+      from = monthFirstDay(addMonths(toYM, -(MAX_WEEK_RANGE_MONTHS - 1)));
+      clamped = true;
+    }
+    return { from, to, fetchFrom: from, fetchTo: to, clamped };
+  }, [granularity, dayMonth, dayWeek, fromYear, fromMonth, toYM]);
+
+  const buckets = useMemo(
+    () => buildBuckets(granularity, period.from, period.to),
+    [granularity, period.from, period.to],
+  );
+
+  // Список клиентов, отдел и последний контакт — из годовых данных; в режиме «Дни» — за год этого месяца.
+  const rowYears = useMemo(() => {
+    if (granularity === 'day') return [Number(dayMonth.slice(0, 4))];
     const ys: number[] = [];
     for (let y = fromYear; y <= toYear; y++) ys.push(y);
     return ys;
-  }, [fromYear, toYear]);
+  }, [granularity, dayMonth, fromYear, toYear]);
 
-  // Fetch each year in parallel
   const yearQueries = useQueries({
-    queries: yearsInRange.map((yr) => ({
+    queries: rowYears.map((yr) => ({
       queryKey: ['manager-client-activity', yr],
       queryFn: () => analyticsApi.getHistory(yr),
       staleTime: matrixStale,
     })),
   });
 
-  const isLoading = yearQueries.some((q) => q.isLoading);
+  const days = useClientActivityDays(period.fetchFrom, period.fetchTo, view === 'matrix' && granularity !== 'month');
+  const isLoading = yearQueries.some((q) => q.isLoading) || days.isLoading;
 
   const dataByYear = useMemo(() => {
     const map = new Map<number, HistoryClientActivity[]>();
-    yearsInRange.forEach((yr, i) => {
+    rowYears.forEach((yr, i) => {
       const activity = yearQueries[i]?.data?.clientActivity;
       if (activity) map.set(yr, activity);
     });
     return map;
-  }, [yearQueries, yearsInRange]);
+  }, [yearQueries, rowYears]);
 
   const { data: allProducts = EMPTY_PRODUCTS } = useQuery({
     queryKey: ['products', 'hierarchy-clients'],
@@ -217,108 +280,85 @@ export default function ClientActivityMatrixPage() {
     [allProducts],
   );
 
-  const { data: clientMonthData, isLoading: clientMonthLoading } = useQuery({
-    queryKey: ['manager-client-activity-client-month', cellDrawer?.clientId, cellDrawer?.month, cellDrawer?.year],
-    queryFn: () => analyticsApi.getHistoryClientMonth(cellDrawer!.clientId, cellDrawer!.month, cellDrawer!.year),
-    enabled: !!cellDrawer,
-    staleTime: matrixStale,
-  });
-
   // ── Data ─────────────────────────────────────────────────────────────────────
 
   const unifiedRows = useMemo(
-    () => mergeYearData(yearsInRange, dataByYear),
-    [yearsInRange, dataByYear],
+    () => mergeYearData(rowYears, dataByYear),
+    [rowYears, dataByYear],
   );
 
-  const displayedPeriods = useMemo(
-    () => buildPeriods(fromYear, fromMonth, toYear, toMonth),
-    [fromYear, fromMonth, toYear, toMonth],
+  /** Недели и дни: дневная выручка, сложенная по колонкам. */
+  const cellsByClient = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    if (granularity === 'month') return map;
+    for (const [clientId, list] of days.byClient) map.set(clientId, sumDaysByBucket(list, granularity));
+    return map;
+  }, [days.byClient, granularity]);
+
+  const valueOf = useCallback(
+    (row: UnifiedRow, b: ActivityBucket): number =>
+      (granularity === 'month' ? row.revenueByMonth : (cellsByClient.get(row.clientId) ?? EMPTY_CELLS)).get(b.key) ?? 0,
+    [granularity, cellsByClient],
   );
-
-  const isMultiYear = toYear > fromYear;
-
-  const maxRevenue = useMemo(() => {
-    let max = 1;
-    for (const row of unifiedRows) {
-      for (const v of row.revenueByYM.values()) {
-        if (v > max) max = v;
-      }
-    }
-    return max;
-  }, [unifiedRows]);
-
-  function getRevenue(row: UnifiedRow, yr: number, month: number): number {
-    return row.revenueByYM.get(`${yr}-${month}`) ?? 0;
-  }
-
-  /** Подсказка ячейки: сумма, а при скрытой выручке — только факт покупки. */
-  function cellTooltip(revenue: number): string {
-    if (revenue <= 0) return 'Нет данных';
-    return isStrategicHidden() ? 'Была покупка' : revenue.toLocaleString('ru-RU');
-  }
-
-  function revenueColor(revenue: number): string {
-    const noData = token.colorFillTertiary || '#2f2f2f';
-    if (revenue <= 0) return noData;
-    return `rgba(56,218,17,${0.2 + Math.min(revenue / maxRevenue, 1) * 0.8})`;
-  }
 
   // ── Filtering / sorting ───────────────────────────────────────────────────────
 
   const departmentOptions = useMemo(() => {
     const depts = Array.from(
-      new Set((dataByYear.get(fromYear) ?? []).map((c) => (c.managerDepartment || '').trim()).filter(Boolean)),
+      new Set(unifiedRows.map((r) => r.managerDepartment || '').filter(Boolean)),
     ).sort((a, b) => a.localeCompare(b, 'ru'));
     return depts.map((d) => ({ label: d, value: d }));
-  }, [dataByYear, fromYear]);
+  }, [unifiedRows]);
 
   const filteredRows = useMemo(() => {
     let rows = unifiedRows;
     if (selectedClients.length > 0) rows = rows.filter((r) => selectedClients.includes(r.clientId));
     const q = clientSearch.trim();
     if (q) rows = rows.filter((r) => matchesSearch(r.companyName, q));
+    if (departmentFilter !== 'all') rows = rows.filter((r) => r.managerDepartment === departmentFilter);
     return rows;
-  }, [unifiedRows, selectedClients, clientSearch]);
+  }, [unifiedRows, selectedClients, clientSearch, departmentFilter]);
 
-  const listRows = useMemo(() => {
-    const periodRevenue = (row: UnifiedRow) =>
-      displayedPeriods.reduce((sum, p) => sum + getRevenue(row, p.year, p.month), 0);
-    const activeCount = (row: UnifiedRow) =>
-      displayedPeriods.filter((p) => getRevenue(row, p.year, p.month) > 0).length;
-
-    let rows = filteredRows.map((r) => ({
-      ...r,
-      periodRevenue: periodRevenue(r),
-      periodActiveMonths: activeCount(r),
-    }));
-
-    if (departmentFilter !== 'all') {
-      const dept = departmentFilter;
-      rows = rows.filter((r) => {
-        const c = (dataByYear.get(fromYear) ?? []).find((c) => c.clientId === r.clientId);
-        return (c?.managerDepartment || '').trim() === dept;
-      });
-    }
+  const { listRows, maxRevenue } = useMemo(() => {
+    let max = 1;
+    let rows = filteredRows.map((r) => {
+      let periodRevenue = 0;
+      let periodActive = 0;
+      for (const b of buckets) {
+        const v = valueOf(r, b);
+        if (v > 0) { periodRevenue += v; periodActive++; if (v > max) max = v; }
+      }
+      return { ...r, periodRevenue, periodActive };
+    });
 
     if (revenueFilter === 'gt_0') rows = rows.filter((r) => r.periodRevenue > 0);
     if (revenueFilter === 'gte_1m') rows = rows.filter((r) => r.periodRevenue >= 1_000_000);
     if (revenueFilter === 'gte_10m') rows = rows.filter((r) => r.periodRevenue >= 10_000_000);
 
-    const exactActiveMonths = Number(activeMonthsFilter);
-    if (activeMonthsFilter.trim() && Number.isFinite(exactActiveMonths) && exactActiveMonths >= 0) {
-      rows = rows.filter((r) => r.periodActiveMonths === exactActiveMonths);
+    const exactActive = Number(activeCountFilter);
+    if (activeCountFilter.trim() && Number.isFinite(exactActive) && exactActive >= 0) {
+      rows = rows.filter((r) => r.periodActive === exactActive);
     }
 
-    return [...rows].sort((a, b) => {
+    rows.sort((a, b) => {
       if (listSort === 'name_asc') return a.companyName.localeCompare(b.companyName, 'ru');
       if (listSort === 'name_desc') return b.companyName.localeCompare(a.companyName, 'ru');
       if (listSort === 'revenue_desc') return b.periodRevenue - a.periodRevenue;
       if (listSort === 'revenue_asc') return a.periodRevenue - b.periodRevenue;
-      if (listSort === 'active_desc') return b.periodActiveMonths - a.periodActiveMonths;
-      return a.periodActiveMonths - b.periodActiveMonths;
+      if (listSort === 'active_desc') return b.periodActive - a.periodActive;
+      return a.periodActive - b.periodActive;
     });
-  }, [filteredRows, displayedPeriods, departmentFilter, revenueFilter, activeMonthsFilter, listSort, dataByYear, fromYear]);
+    return { listRows: rows, maxRevenue: max };
+  }, [filteredRows, buckets, valueOf, revenueFilter, activeCountFilter, listSort]);
+
+  type ListRow = (typeof listRows)[number];
+
+  /** Сколько клиентов из списка купили в каждом периоде. */
+  const buyersByBucket = useMemo(
+    () => buckets.map((b) => listRows.reduce((n, r) => n + (valueOf(r, b) > 0 ? 1 : 0), 0)),
+    [buckets, listRows, valueOf],
+  );
+  const buyersInPeriod = useMemo(() => listRows.filter((r) => r.periodActive > 0).length, [listRows]);
 
   const patchParams = useCallback(
     (patch: Partial<ListParams>, nav?: { replace?: boolean }) => {
@@ -340,57 +380,59 @@ export default function ClientActivityMatrixPage() {
     return listRows.slice(start, start + pageSize);
   }, [listRows, safePage, pageSize]);
 
-  useEffect(() => {
-    if (!cellDrawer) return;
-    setDrawerSortOrder('desc');
-    setDrawerDateRange(null);
-  }, [cellDrawer?.clientId, cellDrawer?.month, cellDrawer?.year]);
+  // ── Переходы между масштабами ────────────────────────────────────────────────
 
-  const filteredDrawerItems = useMemo(() => {
-    let items = [...(clientMonthData?.items ?? [])];
-    if (drawerDateRange) {
-      const [from, to] = drawerDateRange;
-      const fromTs = from.startOf('day').valueOf();
-      const toTs = to.endOf('day').valueOf();
-      items = items.filter((item) => {
-        if (!item.createdAt) return false;
-        const ts = dayjs(item.createdAt).valueOf();
-        return ts >= fromTs && ts <= toTs;
-      });
-    }
-    return items.sort((a, b) => {
-      const aTs = a.createdAt ? dayjs(a.createdAt).valueOf() : 0;
-      const bTs = b.createdAt ? dayjs(b.createdAt).valueOf() : 0;
-      return drawerSortOrder === 'desc' ? bTs - aTs : aTs - bTs;
-    });
-  }, [clientMonthData?.items, drawerDateRange, drawerSortOrder]);
-
-  const filteredDrawerTotal = useMemo(
-    () => filteredDrawerItems.reduce((sum, item) => sum + Number(item.total || 0), 0),
-    [filteredDrawerItems],
+  const openDays = useCallback(
+    (month: string, week: string | null) => patchParams({ granularity: 'day', dayMonth: month, dayWeek: week, page: 1 }),
+    [patchParams],
   );
+
+  const changeGranularity = useCallback((g: ActivityGranularity) => {
+    setActiveCountFilter('');
+    patchParams({ granularity: g, dayWeek: null, page: 1 });
+  }, [patchParams]);
+
+  const drill = useMemo(() => {
+    if (granularity === 'month') {
+      return {
+        onBucketClick: (b: ActivityBucket) => openDays(b.key, null),
+        bucketClickHint: 'Открыть месяц по дням',
+      };
+    }
+    if (granularity === 'week') {
+      return {
+        onBucketClick: (b: ActivityBucket) => openDays(b.start.slice(0, 7), b.key),
+        bucketClickHint: 'Открыть дни этой недели',
+        onGroupClick: (g: ActivityBucket[]) => openDays(g[0].groupKey, null),
+        groupClickHint: 'Открыть месяц по дням',
+      };
+    }
+    return dayWeek
+      ? { onGroupClick: () => openDays(dayMonth, null), groupClickHint: 'Вернуться ко всему месяцу' }
+      : { onGroupClick: (g: ActivityBucket[]) => openDays(dayMonth, g[0].groupKey), groupClickHint: 'Показать только эту неделю' };
+  }, [granularity, dayMonth, dayWeek, openDays]);
 
   // ── Table columns ─────────────────────────────────────────────────────────────
 
-  const activityCols = useMemo(() => [
+  const activityCols = useMemo<ColumnsType<ListRow>>(() => [
     {
       title: 'Клиент',
       dataIndex: 'companyName',
       key: 'companyName',
       fixed: 'left' as const,
-      width: 260,
-      render: (_: string, r: UnifiedRow) => (
+      width: 240,
+      render: (_: string, r: ListRow) => (
         <a onClick={() => navigate(`/clients/${r.clientId}`)}>{r.companyName}</a>
       ),
     },
     {
       title: 'Посл. контакт',
       key: 'lastContact',
-      width: 148,
+      width: 132,
       fixed: 'left' as const,
-      sorter: (a: UnifiedRow, b: UnifiedRow) =>
+      sorter: (a: ListRow, b: ListRow) =>
         (a.lastContactAt ?? '').localeCompare(b.lastContactAt ?? ''),
-      render: (_: unknown, r: UnifiedRow) => {
+      render: (_: unknown, r: ListRow) => {
         if (!r.lastContactAt) return <Typography.Text type="secondary">—</Typography.Text>;
         const when = dayjs(r.lastContactAt);
         return (
@@ -405,63 +447,74 @@ export default function ClientActivityMatrixPage() {
         );
       },
     },
-    ...displayedPeriods.map((p) => {
-      const isNewYear = isMultiYear && p.month === 1;
-      return {
-        title: isMultiYear
-          ? `${MONTH_LABELS[p.month]} ${String(p.year).slice(2)}`
-          : MONTH_LABELS[p.month],
-        key: `y${p.year}m${p.month}`,
-        width: isMultiYear ? 64 : 72,
-        align: 'center' as const,
-        onHeaderCell: () => isNewYear ? { style: { borderLeft: `2px solid ${token.colorPrimary}` } } : {},
-        render: (_: unknown, record: UnifiedRow) => {
-          const revenue = getRevenue(record, p.year, p.month);
-          const intensity = revenue > 0 ? Math.min(revenue / maxRevenue, 1) : 0;
-          return (
-            <Tooltip title={cellTooltip(revenue)}>
-              <div
-                style={{
-                  width: 32, height: 24, borderRadius: 5, margin: '0 auto',
-                  backgroundColor: revenueColor(revenue),
-                  color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
-                  fontSize: 10, fontWeight: 600,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: revenue > 0 ? 'pointer' : 'default',
-                  borderLeft: isNewYear ? `2px solid ${token.colorPrimary}` : undefined,
-                }}
-                onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
-              >
-                {revenue > 0 ? '●' : '—'}
-              </div>
-            </Tooltip>
-          );
-        },
-      };
+    ...buildActivityColumns<ListRow>({
+      buckets,
+      valueOf,
+      max: maxRevenue,
+      token,
+      moneyHidden,
+      onCellClick: (r, b) => setCellDrawer({ clientId: r.clientId, clientName: r.companyName, bucket: b }),
+      ...drill,
     }),
     {
       title: 'Активных',
       key: 'active',
       width: 90,
-      render: (_: unknown, r: UnifiedRow) => {
-        const count = displayedPeriods.filter((p) => getRevenue(r, p.year, p.month) > 0).length;
-        return <Tag color="blue">{count} мес.</Tag>;
-      },
+      align: 'center' as const,
+      render: (_: unknown, r: ListRow) => <Tag color={r.periodActive > 0 ? 'blue' : 'default'}>{r.periodActive} {unit}</Tag>,
     },
-  ], [displayedPeriods, isMultiYear, maxRevenue, navigate, token]);
+  ], [buckets, valueOf, maxRevenue, token, moneyHidden, drill, unit, navigate]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  const noDataColor = token.colorFillTertiary || '#2f2f2f';
   const clientOptions = useMemo(
     () => unifiedRows.map((c) => ({ label: c.companyName, value: c.clientId })),
     [unifiedRows],
   );
 
   const rangeValue: [Dayjs, Dayjs] = [
-    dayjs(`${fromYear}-${String(fromMonth).padStart(2, '0')}-01`),
-    dayjs(`${toYear}-${String(toMonth).padStart(2, '0')}-01`),
+    dayjs(`${fromYear}-${pad2(fromMonth)}-01`),
+    dayjs(`${toYear}-${pad2(toMonth)}-01`),
   ];
+
+  const rangePicker = granularity !== 'day' && (
+    <DatePicker.RangePicker
+      picker="month"
+      value={rangeValue}
+      format="MMM YYYY"
+      allowClear={false}
+      onChange={(range) => {
+        if (!range?.[0] || !range?.[1]) return;
+        patchParams({
+          fromYear: range[0].year(),
+          fromMonth: range[0].month() + 1,
+          toYear: range[1].year(),
+          toMonth: range[1].month() + 1,
+          page: 1,
+        });
+      }}
+    />
+  );
+
+  const summaryRow = () => (
+    <Table.Summary>
+      <Table.Summary.Row>
+        <Table.Summary.Cell index={0} colSpan={2}>
+          <Typography.Text type="secondary">Купили клиентов</Typography.Text>
+        </Table.Summary.Cell>
+        {buckets.map((b, i) => (
+          <Table.Summary.Cell key={b.key} index={2 + i} align="center">
+            <Typography.Text type={buyersByBucket[i] ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+              {b.future && !buyersByBucket[i] ? '' : buyersByBucket[i]}
+            </Typography.Text>
+          </Table.Summary.Cell>
+        ))}
+        <Table.Summary.Cell index={2 + buckets.length} align="center">
+          <Typography.Text strong>{buyersInPeriod}</Typography.Text>
+        </Table.Summary.Cell>
+      </Table.Summary.Row>
+    </Table.Summary>
+  );
 
   return (
     <div>
@@ -477,60 +530,49 @@ export default function ClientActivityMatrixPage() {
         items={[
           {
             key: 'matrix',
-            label: <span><CalendarOutlined /> Матрица по месяцам</span>,
-            children: isLoading ? (
-              <div style={{ textAlign: 'center', padding: 48 }}><Spin size="large" /></div>
-            ) : (
+            label: <span><CalendarOutlined /> Матрица активности</span>,
+            children: (
               <Card
                 size="small"
                 extra={(
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* Single range picker — month granularity, any span */}
-                    <DatePicker.RangePicker
-                      picker="month"
-                      value={rangeValue}
-                      format="MMM YYYY"
-                      allowClear={false}
-                      onChange={(range) => {
-                        if (!range?.[0] || !range?.[1]) return;
-                        patchParams({
-                          fromYear: range[0].year(),
-                          fromMonth: range[0].month() + 1,
-                          toYear: range[1].year(),
-                          toMonth: range[1].month() + 1,
-                          page: 1,
-                        });
-                      }}
-                    />
-
-                    <Select
-                      mode="multiple"
-                      placeholder="Фильтр клиентов"
-                      allowClear
-                      showSearch
-                      style={{ width: isMobile ? 220 : 260 }}
-                      maxTagCount={2}
-                      value={selectedClients}
-                      onChange={(vals) => patchParams({ selectedClients: vals, page: 1 })}
-                      options={clientOptions}
-                      filterOption={smartFilterOption}
-                    />
-                  </div>
+                  <Select
+                    mode="multiple"
+                    placeholder="Фильтр клиентов"
+                    allowClear
+                    showSearch
+                    style={{ width: isMobile ? 220 : 260 }}
+                    maxTagCount={2}
+                    value={selectedClients}
+                    onChange={(vals) => patchParams({ selectedClients: vals, page: 1 })}
+                    options={clientOptions}
+                    filterOption={smartFilterOption}
+                  />
                 )}
               >
-                {/* Legend */}
-                <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: noDataColor }} /> Нет данных
-                  </span>
-                  <Tag>{displayedPeriods.length} мес.</Tag>
-                </div>
+                <ActivityPeriodBar
+                  granularity={granularity}
+                  onGranularityChange={changeGranularity}
+                  extra={rangePicker}
+                  dayMonth={dayMonth}
+                  dayWeek={dayWeek}
+                  onDayChange={(month, week) => patchParams({ dayMonth: month, dayWeek: week, page: 1 })}
+                />
+
+                <ActivityLegend>
+                  <Tag style={{ margin: 0 }}>{buckets.length} {unit}</Tag>
+                  {period.clamped && (
+                    <Tag color="warning" style={{ margin: 0 }}>
+                      По неделям — последние {MAX_WEEK_RANGE_MONTHS} мес. периода
+                    </Tag>
+                  )}
+                  {!isMobile && (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {granularity === 'day'
+                        ? (dayWeek ? 'Нажмите на неделю, чтобы вернуться ко всему месяцу' : 'Нажмите на неделю в заголовке, чтобы оставить только её')
+                        : 'Нажмите на заголовок, чтобы раскрыть его по дням'}
+                    </Typography.Text>
+                  )}
+                </ActivityLegend>
 
                 {/* Filters row */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -551,8 +593,8 @@ export default function ClientActivityMatrixPage() {
                       { label: 'Сорт: Я-А', value: 'name_desc' },
                       { label: 'Сорт: выручка ↓', value: 'revenue_desc' },
                       { label: 'Сорт: выручка ↑', value: 'revenue_asc' },
-                      { label: 'Сорт: активные мес. ↓', value: 'active_desc' },
-                      { label: 'Сорт: активные мес. ↑', value: 'active_asc' },
+                      { label: `Сорт: активных ${unit} ↓`, value: 'active_desc' },
+                      { label: `Сорт: активных ${unit} ↑`, value: 'active_asc' },
                     ]}
                   />
                   <Select
@@ -576,76 +618,78 @@ export default function ClientActivityMatrixPage() {
                   )}
                   <AutoComplete
                     allowClear
-                    value={activeMonthsFilter}
-                    onChange={(v) => { setActiveMonthsFilter(v); patchParams({ page: 1 }); }}
-                    options={[0, 1, 3, 6, 12].map((n) => ({ value: String(n), label: `Активность: ровно ${n} мес.` }))}
-                    style={{ width: 200 }}
-                    placeholder="Активность: ровно N мес."
+                    value={activeCountFilter}
+                    onChange={(v) => { setActiveCountFilter(v); patchParams({ page: 1 }); }}
+                    options={ACTIVE_COUNT_PRESETS[granularity].map((n) => ({ value: String(n), label: `Активность: ровно ${n} ${unit}` }))}
+                    style={{ width: 210 }}
+                    placeholder={`Активность: ровно N ${unit}`}
                   />
                 </div>
 
-                {/* Mobile */}
-                {isMobile ? (
-                  <div>
-                    <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {pagedRows.map((record) => (
-                        <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
-                          <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                            <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
+                <Spin spinning={isLoading}>
+                  {isMobile ? (
+                    <div>
+                      <div style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {pagedRows.map((record) => (
+                          <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                              <a onClick={() => navigate(`/clients/${record.clientId}`)}>{record.companyName}</a>
+                              <Tag color={record.periodActive > 0 ? 'blue' : 'default'} style={{ margin: 0 }}>{record.periodActive} {unit}</Tag>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {buckets.map((b) => {
+                                const revenue = valueOf(record, b);
+                                return (
+                                  <Tooltip key={b.key} title={heatTooltip(b, revenue, moneyHidden)}>
+                                    <div
+                                      style={{
+                                        width: 38, height: 38, borderRadius: 6,
+                                        backgroundColor: b.future && revenue <= 0 ? 'transparent' : heatColor(revenue, maxRevenue, token),
+                                        border: b.future && revenue <= 0 ? `1px dashed ${token.colorBorderSecondary}` : undefined,
+                                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: 10, fontWeight: 500, lineHeight: 1.1,
+                                        cursor: revenue > 0 ? 'pointer' : 'default',
+                                      }}
+                                      onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, bucket: b }) : undefined}
+                                    >
+                                      {b.sublabel && <span style={{ fontSize: 9, opacity: 0.7 }}>{b.sublabel}</span>}
+                                      <span>{b.label}</span>
+                                    </div>
+                                  </Tooltip>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {displayedPeriods.map((p) => {
-                              const revenue = getRevenue(record, p.year, p.month);
-                              const label = isMultiYear
-                                ? `${MONTH_LABELS[p.month]}${String(p.year).slice(2)}`
-                                : MONTH_LABELS[p.month];
-                              return (
-                                <Tooltip key={`${p.year}-${p.month}`} title={`${MONTH_LABELS[p.month]} ${p.year}: ${cellTooltip(revenue)}`}>
-                                  <div
-                                    style={{
-                                      width: 38, height: 38, borderRadius: 6,
-                                      backgroundColor: revenueColor(revenue),
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      fontSize: 10, fontWeight: 500,
-                                      cursor: revenue > 0 ? 'pointer' : 'default',
-                                    }}
-                                    onClick={revenue > 0 ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: p.month, year: p.year }) : undefined}
-                                  >
-                                    {label}
-                                  </div>
-                                </Tooltip>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {listRows.length > pageSize && (
-                      <div style={{ textAlign: 'center', marginTop: 12 }}>
-                        <Pagination
-                          current={safePage} total={listRows.length} pageSize={pageSize}
-                          showSizeChanger pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-                          onChange={(p, ps) => patchParams({ page: p, pageSize: ps })}
-                          size="small"
-                        />
+                        ))}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <Table
-                    dataSource={pagedRows}
-                    columns={activityCols}
-                    rowKey="clientId"
-                    size="small"
-                    pagination={{
-                      current: safePage, pageSize, total: listRows.length,
-                      showSizeChanger: true, pageSizeOptions: [...PAGE_SIZE_OPTIONS],
-                      showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-                      onChange: (p, ps) => patchParams({ page: p, pageSize: ps }),
-                    }}
-                    scroll={{ x: 1200 }}
-                  />
-                )}
+                      {listRows.length > pageSize && (
+                        <div style={{ textAlign: 'center', marginTop: 12 }}>
+                          <Pagination
+                            current={safePage} total={listRows.length} pageSize={pageSize}
+                            showSizeChanger pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+                            onChange={(p, ps) => patchParams({ page: p, pageSize: ps })}
+                            size="small"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <Table<ListRow>
+                      dataSource={pagedRows}
+                      columns={activityCols}
+                      rowKey="clientId"
+                      size="small"
+                      summary={summaryRow}
+                      pagination={{
+                        current: safePage, pageSize, total: listRows.length,
+                        showSizeChanger: true, pageSizeOptions: [...PAGE_SIZE_OPTIONS],
+                        showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
+                        onChange: (p, ps) => patchParams({ page: p, pageSize: ps }),
+                      }}
+                      scroll={{ x: 'max-content' }}
+                    />
+                  )}
+                </Spin>
               </Card>
             ),
           },
@@ -670,56 +714,7 @@ export default function ClientActivityMatrixPage() {
         ]}
       />
 
-      <Drawer
-        title={cellDrawer ? `${cellDrawer.clientName} — ${MONTH_LABELS[cellDrawer.month]} ${cellDrawer.year}` : ''}
-        open={!!cellDrawer}
-        onClose={() => setCellDrawer(null)}
-        width="100%"
-      >
-        {clientMonthLoading ? <Spin /> : (
-          <>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-              <DatePicker.RangePicker
-                value={drawerDateRange}
-                onChange={(range) => setDrawerDateRange(range as [Dayjs, Dayjs] | null)}
-                placeholder={['Дата от', 'Дата до']}
-                allowClear
-              />
-              <Select
-                value={drawerSortOrder}
-                onChange={(v) => setDrawerSortOrder(v)}
-                style={{ width: 170 }}
-                options={[
-                  { label: 'Сначала новые', value: 'desc' },
-                  { label: 'Сначала старые', value: 'asc' },
-                ]}
-              />
-            </div>
-            <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
-              Итого: {filteredDrawerTotal.toLocaleString('ru-RU')}
-            </div>
-            <Table
-              dataSource={filteredDrawerItems}
-              rowKey="id"
-              size="small"
-              pagination={false}
-              scroll={{ x: 700 }}
-              columns={[
-                { title: 'Товар', dataIndex: 'productName', key: 'productName', ellipsis: true },
-                { title: 'Ед.', dataIndex: 'unit', key: 'unit', width: 60 },
-                { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 90, render: (v: number) => v.toLocaleString('ru-RU') },
-                { title: 'Цена', dataIndex: 'price', key: 'price', width: 100, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
-                { title: 'Итого', dataIndex: 'total', key: 'total', width: 120, render: (v: number) => Number(v || 0).toLocaleString('ru-RU') },
-                { title: 'Сделка', dataIndex: 'dealTitle', key: 'dealTitle', ellipsis: true },
-                {
-                  title: 'Дата', dataIndex: 'createdAt', key: 'createdAt', width: 110,
-                  render: (v: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' }) : '—',
-                },
-              ]}
-            />
-          </>
-        )}
-      </Drawer>
+      <ClientPeriodDrawer target={cellDrawer} onClose={() => setCellDrawer(null)} />
     </div>
   );
 }

@@ -1790,6 +1790,31 @@ export interface HistoryClientMonthData {
   totalRevenue: number;
 }
 
+/** Выручка клиентов по дням (Ташкент) — источник для матрицы по неделям и дням. */
+export interface HistoryClientDaysData {
+  from: string;
+  to: string;
+  clients: { clientId: string; days: { date: string; revenue: number | null }[] }[];
+}
+
+/** Покупки клиента за период; `soldOn` — день строки для аналитики (YYYY-MM-DD). */
+export interface HistoryClientPeriodItem {
+  id: string;
+  productName: string;
+  unit: string;
+  qty: number;
+  price: number;
+  total: number | null;
+  dealTitle: string;
+  dealId: string;
+  soldOn: string;
+}
+
+export interface HistoryClientPeriodData {
+  items: HistoryClientPeriodItem[];
+  totalRevenue: number | null;
+}
+
 export type ReanimationStatus = 'ACTIVE' | 'ONE_TIME_LOST' | 'SLEEPING' | 'CHURNED';
 
 export interface ReanimationProductPreview {

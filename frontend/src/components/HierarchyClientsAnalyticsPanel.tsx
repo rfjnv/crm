@@ -8,8 +8,14 @@ import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
 import type { Product } from '../types';
 import ReceiptPunchedTag from './ReceiptPunchedTag';
+import ActivityPeriodBar, { ActivityLegend } from './activity/ActivityPeriodBar';
+import { buildActivityColumns } from './activity/activityColumns';
 import { formatUZS, isStrategicHidden } from '../utils/currency';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
+import {
+  bucketKeyOf, buildBuckets, daysBetween, tashkentDay, todayTashkent,
+  type ActivityBucket, type ActivityGranularity,
+} from '../utils/activityPeriods';
 import {
   inferTypeLabel,
   safePrice,
@@ -49,8 +55,12 @@ type MatrixClientRow = {
   clientId: string;
   clientName: string;
   clientIsSvip: boolean;
-  monthly: Record<string, number>;
+  /** Выручка по колонкам матрицы (ключ — `ActivityBucket.key`). */
+  cells: Map<string, number>;
 };
+
+/** По дням матрица читается, пока колонок не больше двух месяцев. */
+const MATRIX_MAX_DAYS = 62;
 type BasicClientRow = { clientId: string; clientIsSvip: boolean };
 
 type CategorySummary = {
@@ -130,6 +140,7 @@ export default function HierarchyClientsAnalyticsPanel({
   const [clientViewMode, setClientViewMode] = useState<ClientViewMode>(
     persistedView === 'matrix' ? 'matrix' : 'table',
   );
+  const [matrixGranularity, setMatrixGranularity] = useState<ActivityGranularity>('month');
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
   const [clientListSort, setClientListSort] = useState<ClientListSort>(() => (isStrategicHidden() ? 'qty_desc' : 'revenue_desc'));
   const [clientRevenueFilter, setClientRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
@@ -572,26 +583,38 @@ export default function HierarchyClientsAnalyticsPanel({
       .map((p) => ({ name: p.name, value: p.soldQty }));
   }, [productsById, purchaseRows, selectedClientScopeProductIds]);
 
+  /** Календарные границы выбранного периода (Ташкент) — колонки матрицы. */
+  const matrixPeriod = useMemo(() => {
+    const bounds = getPeriodBoundsByPreset(
+      hierarchyPeriodPreset,
+      hierarchyCustomDays,
+      hierarchyRange[0].format('YYYY-MM-DD'),
+      hierarchyRange[1].format('YYYY-MM-DD'),
+    );
+    const from = tashkentDay(bounds.start.toISOString());
+    const to = bounds.end ? tashkentDay(bounds.end.toISOString()) : todayTashkent();
+    return { from, to: to < from ? from : to };
+  }, [hierarchyPeriodPreset, hierarchyCustomDays, hierarchyRange]);
+  const matrixDaysDisabled = daysBetween(matrixPeriod.from, matrixPeriod.to) > MATRIX_MAX_DAYS;
+  const effectiveMatrixGranularity: ActivityGranularity =
+    matrixGranularity === 'day' && matrixDaysDisabled ? 'week' : matrixGranularity;
+
   const matrixRows = useMemo(() => {
     const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
-    const monthSet = new Set<string>();
-    for (const row of rows) monthSet.add(row.saleAt.slice(0, 7));
-    const monthKeys = [...monthSet].sort();
-    const monthLabel = (monthKey: string) => {
-      const [y, m] = monthKey.split('-');
-      return `${m}.${String(y).slice(-2)}`;
-    };
+    const buckets = buildBuckets(effectiveMatrixGranularity, matrixPeriod.from, matrixPeriod.to);
 
     const byClient = new Map<string, MatrixClientRow>();
     for (const row of rows) {
-      const month = row.saleAt.slice(0, 7);
+      const key = bucketKeyOf(tashkentDay(row.saleAt), effectiveMatrixGranularity);
       const current = byClient.get(row.clientId) ?? {
         clientId: row.clientId,
         clientName: row.clientName,
         clientIsSvip: row.clientIsSvip,
-        monthly: {},
+        cells: new Map<string, number>(),
       };
-      current.monthly[month] = (current.monthly[month] ?? 0) + row.salesRevenue;
+      // Без доступа к деньгам выручка приходит нулём — покупка всё равно была, ячейка должна светиться.
+      const value = row.salesRevenue > 0 ? row.salesRevenue : row.soldQty > 0 ? 1 : 0;
+      current.cells.set(key, (current.cells.get(key) ?? 0) + value);
       byClient.set(row.clientId, current);
     }
 
@@ -612,9 +635,10 @@ export default function HierarchyClientsAnalyticsPanel({
         return sa.dealsCount - sb.dealsCount;
       });
 
-    const maxRevenue = Math.max(1, ...clients.flatMap((c) => monthKeys.map((m) => c.monthly[m] ?? 0)));
-    return { monthKeys, monthLabel, clients, maxRevenue };
-  }, [clientListSort, clientPurchaseSummaryRows, purchaseRows, selectedClientScopeProductIds]);
+    let maxRevenue = 1;
+    for (const c of clients) for (const v of c.cells.values()) if (v > maxRevenue) maxRevenue = v;
+    return { buckets, clients, maxRevenue };
+  }, [clientListSort, clientPurchaseSummaryRows, purchaseRows, selectedClientScopeProductIds, effectiveMatrixGranularity, matrixPeriod]);
 
   const purchaseLinesColumns: ColumnsType<PurchaseLineRow> = [
     {
@@ -724,32 +748,13 @@ export default function HierarchyClientsAnalyticsPanel({
         </Button>
       ),
     },
-    ...matrixRows.monthKeys.map((monthKey) => ({
-      title: matrixRows.monthLabel(monthKey),
-      key: `m_${monthKey}`,
-      width: 78,
-      align: 'center' as const,
-      render: (_value: unknown, row: MatrixClientRow) => {
-        const revenue = row.monthly[monthKey] ?? 0;
-        const ratio = Math.min(1, revenue / matrixRows.maxRevenue);
-        const bg = revenue > 0
-          ? `rgba(56, 218, 17, ${Math.max(0.2, ratio).toFixed(2)})`
-          : (token.colorFillTertiary || '#f0f0f0');
-        return (
-          <div
-            title={revenue > 0 ? formatUZS(revenue) : 'Нет покупки'}
-            style={{
-              width: 24,
-              height: 24,
-              margin: '0 auto',
-              borderRadius: 6,
-              background: bg,
-              border: `1px solid ${token.colorBorderSecondary}`,
-            }}
-          />
-        );
-      },
-    })),
+    ...buildActivityColumns<MatrixClientRow>({
+      buckets: matrixRows.buckets,
+      valueOf: (row: MatrixClientRow, b: ActivityBucket) => row.cells.get(b.key) ?? 0,
+      max: matrixRows.maxRevenue,
+      token,
+      moneyHidden,
+    }),
   ];
 
   if (visibleProducts.length === 0) {
@@ -857,7 +862,7 @@ export default function HierarchyClientsAnalyticsPanel({
             onChange={(v) => setClientViewMode(v as ClientViewMode)}
             options={[
               { label: 'Таблица', value: 'table' },
-              { label: 'Матрица по месяцам', value: 'matrix' },
+              { label: 'Матрица активности', value: 'matrix' },
             ]}
           />
         </Space>
@@ -1016,15 +1021,23 @@ export default function HierarchyClientsAnalyticsPanel({
                 columns={clientSummaryColumns}
               />
             ) : (
-              <Table
-                size="small"
-                pagination={false}
-                rowKey="clientId"
-                dataSource={matrixRows.clients}
-                locale={{ emptyText: renderNoSales() }}
-                scroll={{ x: Math.max(900, 220 + matrixRows.monthKeys.length * 78) }}
-                columns={matrixColumns}
-              />
+              <>
+                <ActivityPeriodBar
+                  granularity={effectiveMatrixGranularity}
+                  onGranularityChange={setMatrixGranularity}
+                  disabled={matrixDaysDisabled ? { day: `По дням — для периода до ${MATRIX_MAX_DAYS} дней` } : undefined}
+                />
+                <ActivityLegend />
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey="clientId"
+                  dataSource={matrixRows.clients}
+                  locale={{ emptyText: renderNoSales() }}
+                  scroll={{ x: 'max-content' }}
+                  columns={matrixColumns}
+                />
+              </>
             )}
 
             <Affix offsetBottom={16}>

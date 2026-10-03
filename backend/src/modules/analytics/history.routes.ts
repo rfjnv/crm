@@ -1436,6 +1436,135 @@ router.get(
   }),
 );
 
+// ── Дневная активность клиентов (для матрицы по неделям и дням) ──
+
+/** Самый длинный период, который отдаём по дням: недели за пару лет — ещё разумный объём. */
+const MAX_ACTIVITY_DAYS = 800;
+
+/**
+ * Период из `?from=YYYY-MM-DD&to=YYYY-MM-DD` (оба дня включительно, календарь Ташкента)
+ * → границы `[start, end)` как UTC-naive timestamp, того же типа, что `created_at` / `closed_at`.
+ *
+ * Границы строятся в SQL, а не JS-датой: сравнение `timestamp` с `timestamptz` зависит от
+ * TimeZone сессии Postgres и сдвигает день на несколько часов (см. sqlTashkentMonthStartUtc).
+ */
+function parseDayRange(req: Request): { from: string; to: string; start: Prisma.Sql; end: Prisma.Sql } | null {
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
+  const fromMs = Date.parse(`${from}T00:00:00Z`);
+  const toMs = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || fromMs > toMs) return null;
+  if ((toMs - fromMs) / 86_400_000 + 1 > MAX_ACTIVITY_DAYS) return null;
+  return {
+    from,
+    to,
+    start: Prisma.sql`((${from}::date::timestamp AT TIME ZONE ${TZ}) AT TIME ZONE 'UTC')`,
+    end: Prisma.sql`(((${to}::date + 1)::timestamp AT TIME ZONE ${TZ}) AT TIME ZONE 'UTC')`,
+  };
+}
+
+const SQL_EFFECTIVE_DAY_TASHKENT = Prisma.sql`(DATE((${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}))`;
+
+router.get(
+  '/client-days',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const range = parseDayRange(req);
+    if (!range) {
+      res.status(400).json({ error: `Нужны from и to в формате YYYY-MM-DD, не длиннее ${MAX_ACTIVITY_DAYS} дней` });
+      return;
+    }
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+
+    // Та же выборка и та же дата строки, что у месячной матрицы (`/`, блок 8) — суммы сходятся.
+    const rows = await prisma.$queryRaw<{ client_id: string; day: string; revenue: string }[]>(
+      Prisma.sql`SELECT
+        d.client_id,
+        to_char(${SQL_EFFECTIVE_DAY_TASHKENT}, 'YYYY-MM-DD') as day,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${range.start}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${range.end}${dealFilter}
+      GROUP BY d.client_id, ${SQL_EFFECTIVE_DAY_TASHKENT}
+      ORDER BY d.client_id, day`,
+    );
+
+    const byClient = new Map<string, { date: string; revenue: number }[]>();
+    for (const r of rows) {
+      const list = byClient.get(r.client_id) ?? [];
+      list.push({ date: r.day, revenue: Number(r.revenue) });
+      byClient.set(r.client_id, list);
+    }
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      clients: Array.from(byClient, ([clientId, days]) => ({ clientId, days })),
+    });
+  }),
+);
+
+// ── Покупки клиента за произвольный период (клик по ячейке матрицы) ──
+router.get(
+  '/client-period/:clientId',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const range = parseDayRange(req);
+    if (!range) {
+      res.status(400).json({ error: `Нужны from и to в формате YYYY-MM-DD, не длиннее ${MAX_ACTIVITY_DAYS} дней` });
+      return;
+    }
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+    const clientId = req.params.clientId as string;
+
+    const itemsRaw = await prisma.$queryRaw<
+      {
+        id: string;
+        product_name: string;
+        unit: string;
+        qty: string;
+        price: string;
+        total: string;
+        deal_title: string;
+        deal_id: string;
+        sold_on: string;
+      }[]
+    >(
+      Prisma.sql`SELECT di.id, p.name as product_name, p.unit,
+        COALESCE(di.requested_qty, 0)::text as qty, COALESCE(di.price, 0)::text as price,
+        (${SQL_ANALYTICS_LINE_REVENUE_DI})::text as total,
+        d.title as deal_title, d.id as deal_id,
+        to_char(${SQL_EFFECTIVE_DAY_TASHKENT}, 'YYYY-MM-DD') as sold_on
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      WHERE d.client_id = ${clientId}
+        AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${range.start}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${range.end}${dealFilter}
+      ORDER BY ${SQL_EFFECTIVE_REVENUE_ITEM_TS} DESC, d.title`,
+    );
+
+    const items = itemsRaw.map((r) => ({
+      id: r.id,
+      productName: r.product_name,
+      unit: r.unit,
+      qty: Math.round(Number(r.qty) * 100) / 100,
+      price: Number(r.price),
+      total: Number(r.total),
+      dealTitle: r.deal_title,
+      dealId: r.deal_id,
+      soldOn: r.sold_on,
+    }));
+
+    res.json({
+      items,
+      totalRevenue: items.reduce((sum, i) => sum + i.total, 0),
+    });
+  }),
+);
+
 // ── Product buyers endpoint ──
 router.get(
   '/product-buyers/:productId',

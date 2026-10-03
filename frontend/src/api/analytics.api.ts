@@ -7,6 +7,8 @@ import type {
   HistoryDrilldownData,
   HistoryMonthDetail,
   HistoryClientMonthData,
+  HistoryClientDaysData,
+  HistoryClientPeriodData,
   HistoryProductBuyersData,
   HistoryCashflowData,
   DataQualityData,
@@ -192,6 +194,11 @@ export const analyticsApi = {
     client.get<HistoryMonthDetail>(`/analytics/history/month/${month}`, { params: { year } }).then((r) => r.data),
   getHistoryClientMonth: (clientId: string, month: number, year: number = new Date().getFullYear()) =>
     client.get<HistoryClientMonthData>(`/analytics/history/client-month/${clientId}/${month}`, { params: { year } }).then((r) => r.data),
+  /** Выручка клиентов по дням за период (оба конца включительно, YYYY-MM-DD). */
+  getHistoryClientDays: (from: string, to: string) =>
+    client.get<HistoryClientDaysData>('/analytics/history/client-days', { params: { from, to } }).then((r) => r.data),
+  getHistoryClientPeriod: (clientId: string, from: string, to: string) =>
+    client.get<HistoryClientPeriodData>(`/analytics/history/client-period/${clientId}`, { params: { from, to } }).then((r) => r.data),
   getHistoryCohortClients: (cohortMonth: number, activeMonth: number, year: number = new Date().getFullYear()) =>
     client.get<HistoryCohortClientsData>(`/analytics/history/cohort-clients/${cohortMonth}/${activeMonth}`, { params: { year } }).then((r) => r.data),
   getHistoryProductBuyers: (productId: string, year: number = new Date().getFullYear()) =>

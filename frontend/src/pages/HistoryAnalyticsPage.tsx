@@ -25,6 +25,15 @@ import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import HistoryCohortPanel from '../components/HistoryCohortPanel';
+import ActivityPeriodBar, { ActivityLegend } from '../components/activity/ActivityPeriodBar';
+import ClientPeriodDrawer, { type ClientPeriodTarget } from '../components/activity/ClientPeriodDrawer';
+import { buildActivityColumns, heatColor, heatTooltip } from '../components/activity/activityColumns';
+import { useClientActivityDays } from '../hooks/useClientActivityDays';
+import { isStrategicHidden } from '../utils/currency';
+import {
+  GRANULARITY_UNIT, buildBuckets, monthFirstDay, monthLastDay, sumDaysByBucket, weeksOfMonth,
+  type ActivityBucket, type ActivityGranularity,
+} from '../utils/activityPeriods';
 import { getFirstName } from '../lib/name-utils';
 import type {
   HistoryTopClient, HistoryTopProduct, HistoryManager, HistoryDebtor,
@@ -132,6 +141,11 @@ export default function HistoryAnalyticsPage() {
 
   // New drawer states
   const [cellDrawer, setCellDrawer] = useState<{ clientId: string; clientName: string; month: number } | null>(null);
+  const [periodDrawer, setPeriodDrawer] = useState<ClientPeriodTarget | null>(null);
+  // Матрица активности: месяцы / недели / дни внутри выбранного года
+  const [actGranularity, setActGranularity] = useState<ActivityGranularity>('month');
+  const [actDayMonth, setActDayMonth] = useState<string | null>(null);
+  const [actDayWeek, setActDayWeek] = useState<string | null>(null);
   const [productDrawer, setProductDrawer] = useState<{ productId: string; productName: string } | null>(null);
   const [managerDrawer, setManagerDrawer] = useState<{ managerId: string; managerName: string } | null>(null);
   const [methodDrawer, setMethodDrawer] = useState<string | null>(null);
@@ -356,11 +370,6 @@ export default function HistoryAnalyticsPage() {
     });
   }, [yoyMode, yoyMetric, allYearsQueries, ALL_YEARS, allYearsThroughMonth]);
 
-  // Compute max monthly revenue for activity matrix color gradient
-  const maxMonthRevenue = useMemo(() => {
-    const allRevenues = (data?.clientActivity || []).flatMap((c) => c.monthlyData.map((md) => md.revenue ?? 0));
-    return allRevenues.reduce((a, b) => Math.max(a, b), 1);
-  }, [data?.clientActivity]);
 
   // Only show months that have data (e.g. for 2026 with Jan+Feb only → [1, 2])
   const visibleMonths = useMemo(() => {
@@ -368,6 +377,53 @@ export default function HistoryAnalyticsPage() {
     const maxMonth = Math.max(...data.monthlyTrend.map((m) => m.month));
     return Array.from({ length: maxMonth }, (_, i) => i + 1);
   }, [data?.monthlyTrend]);
+
+  // ── Матрица активности по неделям и дням ──
+  const lastVisibleMonth = `${year}-${String(visibleMonths[visibleMonths.length - 1]).padStart(2, '0')}`;
+  // Месяц режима «Дни» всегда внутри выбранного года
+  const actMonth = actDayMonth?.startsWith(`${year}-`) ? actDayMonth : lastVisibleMonth;
+  const actWeek = actDayWeek && weeksOfMonth(actMonth).some((w) => w.key === actDayWeek) ? actDayWeek : null;
+  const actPeriod = useMemo(() => {
+    if (actGranularity === 'day') {
+      const week = actWeek ? weeksOfMonth(actMonth).find((w) => w.key === actWeek) : undefined;
+      return {
+        from: week?.start ?? monthFirstDay(actMonth),
+        to: week?.end ?? monthLastDay(actMonth),
+        fetchFrom: monthFirstDay(actMonth),
+        fetchTo: monthLastDay(actMonth),
+      };
+    }
+    const from = `${year}-01-01`;
+    const to = monthLastDay(lastVisibleMonth);
+    return { from, to, fetchFrom: from, fetchTo: to };
+  }, [actGranularity, actMonth, actWeek, year, lastVisibleMonth]);
+  const actBuckets = useMemo(
+    () => buildBuckets(actGranularity, actPeriod.from, actPeriod.to),
+    [actGranularity, actPeriod.from, actPeriod.to],
+  );
+  const actDays = useClientActivityDays(actPeriod.fetchFrom, actPeriod.fetchTo, actGranularity !== 'month');
+  const actCells = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    if (actGranularity === 'month') {
+      for (const c of data?.clientActivity ?? []) {
+        map.set(c.clientId, new Map(c.monthlyData.map((md) => [`${year}-${String(md.month).padStart(2, '0')}`, md.revenue ?? 1] as const)));
+      }
+    } else {
+      for (const [clientId, list] of actDays.byClient) map.set(clientId, sumDaysByBucket(list, actGranularity));
+    }
+    return map;
+  }, [actGranularity, actDays.byClient, data?.clientActivity, year]);
+  const actValue = (r: HistoryClientActivity, b: ActivityBucket) => actCells.get(r.clientId)?.get(b.key) ?? 0;
+  const actMax = useMemo(() => {
+    let max = 1;
+    for (const c of filteredActivity) {
+      for (const b of actBuckets) {
+        const v = actCells.get(c.clientId)?.get(b.key) ?? 0;
+        if (v > max) max = v;
+      }
+    }
+    return max;
+  }, [filteredActivity, actBuckets, actCells]);
 
   if (isLoading || !data) {
     return <div style={{ textAlign: 'center', marginTop: 120 }}><Spin size="large" /></div>;
@@ -399,15 +455,29 @@ export default function HistoryAnalyticsPage() {
   }));
 
   // ── Activity matrix helpers ──
-  function getMonthRevenue(record: HistoryClientActivity, month: number): number {
-    const md = record.monthlyData.find((d) => d.month === month);
-    return md ? (md.revenue ?? 0) : 0;
-  }
-  function getRevenueColor(revenue: number): string {
-    if (revenue <= 0) return isDark ? '#2a2a2a' : '#f5f5f5';
-    const intensity = Math.min(revenue / maxMonthRevenue, 1);
-    return `rgba(56,218,17,${0.2 + intensity * 0.8})`;
-  }
+  const actUnit = GRANULARITY_UNIT[actGranularity];
+  const actActiveCount = (r: HistoryClientActivity) => actBuckets.filter((b) => actValue(r, b) > 0).length;
+  const openActivityDays = (month: string, week: string | null) => {
+    setActGranularity('day');
+    setActDayMonth(month);
+    setActDayWeek(week);
+  };
+  const openActivityCell = (r: HistoryClientActivity, b: ActivityBucket) => {
+    if (actGranularity === 'month') setCellDrawer({ clientId: r.clientId, clientName: r.companyName, month: Number(b.key.slice(5)) });
+    else setPeriodDrawer({ clientId: r.clientId, clientName: r.companyName, bucket: b });
+  };
+  const activityDrill = actGranularity === 'month'
+    ? { onBucketClick: (b: ActivityBucket) => openActivityDays(b.key, null), bucketClickHint: 'Открыть месяц по дням' }
+    : actGranularity === 'week'
+      ? {
+        onBucketClick: (b: ActivityBucket) => openActivityDays(b.start.slice(0, 7), b.key),
+        bucketClickHint: 'Открыть дни этой недели',
+        onGroupClick: (g: ActivityBucket[]) => openActivityDays(g[0].groupKey, null),
+        groupClickHint: 'Открыть месяц по дням',
+      }
+      : actWeek
+        ? { onGroupClick: () => openActivityDays(actMonth, null), groupClickHint: 'Вернуться ко всему месяцу' }
+        : { onGroupClick: (g: ActivityBucket[]) => openActivityDays(actMonth, g[0].groupKey), groupClickHint: 'Показать только эту неделю' };
 
   // ── KPI cards config ──
   const kpiCards: {
@@ -553,31 +623,19 @@ export default function HistoryAnalyticsPage() {
         );
       },
     },
-    ...visibleMonths.map((m) => ({
-      title: MONTH_LABELS[m], key: `m${m}`, width: 50, align: 'center' as const,
-      render: (_: unknown, record: HistoryClientActivity) => {
-        const revenue = getMonthRevenue(record, m);
-        const bgColor = getRevenueColor(revenue);
-        const isClickable = revenue > 0;
-        const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
-        return (
-          <Tooltip title={`${MONTH_LABELS[m]} — операционная выручка: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
-            <div
-              style={{
-                width: 28, height: 28, borderRadius: 4, backgroundColor: bgColor, margin: '0 auto',
-                cursor: isClickable ? 'pointer' : 'default',
-                color: intensity > 0.5 ? '#fff' : undefined,
-              }}
-              onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
-            />
-          </Tooltip>
-        );
-      },
-    })),
+    ...buildActivityColumns<HistoryClientActivity>({
+      buckets: actBuckets,
+      valueOf: actValue,
+      max: actMax,
+      token,
+      moneyHidden: isStrategicHidden(),
+      onCellClick: openActivityCell,
+      ...activityDrill,
+    }),
     {
-      title: 'Мес.', key: 'total', width: 55, align: 'center' as const,
-      render: (_: unknown, record: HistoryClientActivity) => <Tag color="blue">{record.activeMonths.length}</Tag>,
-      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => a.activeMonths.length - b.activeMonths.length,
+      title: actUnit[0].toUpperCase() + actUnit.slice(1), key: 'total', width: 64, align: 'center' as const,
+      render: (_: unknown, record: HistoryClientActivity) => <Tag color="blue">{actActiveCount(record)}</Tag>,
+      sorter: (a: HistoryClientActivity, b: HistoryClientActivity) => actActiveCount(a) - actActiveCount(b),
     },
   ];
 
@@ -1092,41 +1150,55 @@ export default function HistoryAnalyticsPage() {
             filterOption={smartFilterOption} />
         }
       >
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.2)' }} /> Мало</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,0.6)' }} /></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: 'rgba(56,218,17,1)' }} /> Много</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}><div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5' }} /> Нет данных</span>
-        </div>
+        <ActivityPeriodBar
+          granularity={actGranularity}
+          onGranularityChange={(g) => { setActGranularity(g); setActDayWeek(null); }}
+          dayMonth={actMonth}
+          dayWeek={actWeek}
+          onDayChange={(month, week) => { setActDayMonth(month); setActDayWeek(week); }}
+          minMonth={`${year}-01`}
+          maxMonth={`${year}-12`}
+        />
+        <ActivityLegend>
+          {!isMobile && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {actGranularity === 'day'
+                ? (actWeek ? 'Нажмите на неделю, чтобы вернуться ко всему месяцу' : 'Нажмите на неделю в заголовке, чтобы оставить только её')
+                : 'Нажмите на заголовок, чтобы раскрыть его по дням'}
+            </Text>
+          )}
+        </ActivityLegend>
         {isMobile ? (
           <div style={{ maxHeight: 500, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filteredActivity.map((record) => (
               <div key={record.clientId} style={{ border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
                 <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>{record.companyName}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {visibleMonths.map((m) => {
-                    const revenue = getMonthRevenue(record, m);
-                    const bgColor = getRevenueColor(revenue);
+                  {actBuckets.map((b) => {
+                    const revenue = actValue(record, b);
                     const isClickable = revenue > 0;
-                    const intensity = revenue > 0 ? Math.min(revenue / maxMonthRevenue, 1) : 0;
+                    const intensity = revenue > 0 ? Math.min(revenue / actMax, 1) : 0;
                     return (
-                      <Tooltip key={m} title={`${MONTH_LABELS[m]} — операционная выручка: ${revenue > 0 ? revenue.toLocaleString('ru-RU') : 'Нет данных'}`}>
+                      <Tooltip key={b.key} title={heatTooltip(b, revenue, isStrategicHidden())}>
                         <div
-                          onClick={isClickable ? () => setCellDrawer({ clientId: record.clientId, clientName: record.companyName, month: m }) : undefined}
+                          onClick={isClickable ? () => openActivityCell(record, b) : undefined}
                           style={{
-                            width: 36, height: 36, borderRadius: 6, backgroundColor: bgColor,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 10, fontWeight: 500, cursor: isClickable ? 'pointer' : 'default',
+                            width: 36, height: 36, borderRadius: 6,
+                            backgroundColor: b.future && !isClickable ? 'transparent' : heatColor(revenue, actMax, token),
+                            border: b.future && !isClickable ? `1px dashed ${token.colorBorderSecondary}` : undefined,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 10, fontWeight: 500, lineHeight: 1.1, cursor: isClickable ? 'pointer' : 'default',
                             color: intensity > 0.5 ? '#fff' : token.colorTextSecondary,
                           }}
                         >
-                          {MONTH_LABELS[m]}
+                          {b.sublabel && <span style={{ fontSize: 9, opacity: 0.7 }}>{b.sublabel}</span>}
+                          <span>{b.label}</span>
                         </div>
                       </Tooltip>
                     );
                   })}
                   <div style={{ display: 'flex', alignItems: 'center', marginLeft: 4 }}>
-                    <Tag color="blue" style={{ margin: 0 }}>{record.activeMonths.length} мес.</Tag>
+                    <Tag color="blue" style={{ margin: 0 }}>{actActiveCount(record)} {actUnit}</Tag>
                   </div>
                 </div>
               </div>
@@ -1134,7 +1206,9 @@ export default function HistoryAnalyticsPage() {
             {filteredActivity.length === 0 && <div style={{ textAlign: 'center', color: token.colorTextSecondary, padding: 24 }}>Нет данных</div>}
           </div>
         ) : (
-          <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={false} scroll={{ x: 900 }} />
+          <Spin spinning={actDays.isLoading}>
+            <Table dataSource={filteredActivity} columns={activityCols} rowKey="clientId" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+          </Spin>
         )}
       </Card>
     </>
@@ -1675,6 +1749,8 @@ export default function HistoryAnalyticsPage() {
           </>
         ) : null}
       </Drawer>
+
+      <ClientPeriodDrawer target={periodDrawer} onClose={() => setPeriodDrawer(null)} />
 
       {/* Product Buyers Drawer */}
       <Drawer
