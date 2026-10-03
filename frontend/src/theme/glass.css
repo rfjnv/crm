@@ -629,3 +629,145 @@ html[data-design='modern'] .sider-scrim--on {
     background: rgba(0, 0, 0, 0.25);
   }
 }
+
+/* ── Шапка дашборда: приветствие, фразы, период (components/DashboardGreeting.tsx) ── */
+
+html[data-design='modern'] .dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+html[data-design='modern'] .dash-head__text {
+  min-width: 0;
+}
+
+html[data-design='modern'] .dash-greeting {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--ant-color-text);
+}
+
+/* Приветствие проявляется по словам */
+html[data-design='modern'] .dash-greeting__word {
+  display: inline-block;
+  white-space: pre;
+  animation: dash-word-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes dash-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* Фраза под приветствием: новая въезжает снизу, старая уходит вверх */
+html[data-design='modern'] .dash-motto {
+  height: 22px;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--ant-color-text-secondary);
+}
+
+html[data-design='modern'] .dash-motto__text {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: dash-motto-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+html[data-design='modern'] .dash-motto__text--out {
+  animation: dash-motto-out 0.35s ease-in both;
+}
+
+@keyframes dash-motto-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dash-motto-out {
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-design='modern'] .dash-greeting__word,
+  html[data-design='modern'] .dash-motto__text {
+    animation: none;
+  }
+}
+
+/* Выбор периода — стеклянная таблетка в стиле кнопок шапки */
+html[data-design='modern'] .dash-head__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+html[data-design='modern'] .dash-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hdr-btn);
+  box-shadow: var(--hdr-rim);
+  color: var(--hdr-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+html[data-design='modern'] .dash-period:hover {
+  background: var(--hdr-btn-hover);
+}
+
+html[data-design='modern'] .dash-period__caret {
+  opacity: 0.7;
+}
+
+html[data-design='modern'] .dash-period-panel {
+  width: 200px;
+}
+
+html[data-design='modern'] .ant-picker.dash-range {
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hdr-btn) !important;
+  box-shadow: var(--hdr-rim);
+  padding: 0 14px;
+}
+
+html[data-design='modern'] .ant-picker.dash-range input {
+  color: var(--hdr-text);
+  font-weight: 600;
+}

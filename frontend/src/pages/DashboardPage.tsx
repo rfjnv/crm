@@ -24,6 +24,7 @@ import { Area, Column } from '@ant-design/charts';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
+import DashboardGreeting from '../components/DashboardGreeting';
 import type { Permission, UserRole, DealStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
@@ -144,6 +145,7 @@ export default function DashboardPage() {
   const { token: tk } = theme.useToken();
   const navigate = useNavigate();
   const isDark = useThemeStore((s) => s.mode) === 'dark';
+  const design = useThemeStore((s) => s.design);
   const chartTheme = isDark ? 'classicDark' : 'classic';
   const isMobile = useIsMobile();
 
@@ -370,62 +372,75 @@ export default function DashboardPage() {
         .stock-row-low td { background: rgba(250, 140, 22, 0.06) !important; }
       `}</style>
 
-      {/* ── Header ── */}
-      {isMobile ? (
-        <div className="dashboard-header">
-          <div>
-            <div className="dashboard-title">Дашборд</div>
+      {design === 'modern' ? (
+        <DashboardGreeting
+          name={getFirstName(user?.fullName) || 'коллега'}
+          period={period}
+          onPeriodChange={handlePeriodChange}
+          canPickCustom={isAdmin}
+          customRange={customRange}
+          onCustomRange={handleCustomRange}
+        />
+      ) : (
+        <>
+        {/* ── Header ── */}
+        {isMobile ? (
+          <div className="dashboard-header">
+            <div>
+              <div className="dashboard-title">Дашборд</div>
+              {user?.fullName && (
+                <Typography.Text
+                  type="secondary"
+                  className="dashboard-subtitle"
+                  style={{ fontSize: 13, display: 'block', marginTop: 4 }}
+                >
+                  Добро пожаловать, {user.fullName.split(' ')[0]}
+                </Typography.Text>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 20 }}>
+            <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
             {user?.fullName && (
-              <Typography.Text
-                type="secondary"
-                className="dashboard-subtitle"
-                style={{ fontSize: 13, display: 'block', marginTop: 4 }}
-              >
+              <Typography.Text type="secondary" className="dashboard-subtitle" style={{ fontSize: 13 }}>
                 Добро пожаловать, {user.fullName.split(' ')[0]}
               </Typography.Text>
             )}
           </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 20 }}>
-          <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>Дашборд</Typography.Title>
-          {user?.fullName && (
-            <Typography.Text type="secondary" className="dashboard-subtitle" style={{ fontSize: 13 }}>
-              Добро пожаловать, {user.fullName.split(' ')[0]}
-            </Typography.Text>
+        )}
+
+        {/* ── Period selector ── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: isMobile ? 12 : 16,
+          flexWrap: 'wrap',
+        }}>
+          <Segmented
+            size={isMobile ? 'small' : 'middle'}
+            value={period}
+            onChange={handlePeriodChange}
+            options={[
+              ...PERIOD_OPTIONS,
+              ...(isAdmin ? [{ label: 'Период', value: 'custom' as DashboardPeriod, icon: <CalendarOutlined /> }] : []),
+            ]}
+          />
+          {period === 'custom' && isAdmin && (
+            <DatePicker.RangePicker
+              size={isMobile ? 'small' : 'middle'}
+              value={customRange}
+              onChange={handleCustomRange as (dates: unknown) => void}
+              format="DD.MM.YYYY"
+              allowClear={false}
+              style={{ maxWidth: isMobile ? '100%' : 260 }}
+              disabledDate={(current) => current && current > dayjs().endOf('day')}
+            />
           )}
         </div>
+        </>
       )}
-
-      {/* ── Period selector ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        marginBottom: isMobile ? 12 : 16,
-        flexWrap: 'wrap',
-      }}>
-        <Segmented
-          size={isMobile ? 'small' : 'middle'}
-          value={period}
-          onChange={handlePeriodChange}
-          options={[
-            ...PERIOD_OPTIONS,
-            ...(isAdmin ? [{ label: 'Период', value: 'custom' as DashboardPeriod, icon: <CalendarOutlined /> }] : []),
-          ]}
-        />
-        {period === 'custom' && isAdmin && (
-          <DatePicker.RangePicker
-            size={isMobile ? 'small' : 'middle'}
-            value={customRange}
-            onChange={handleCustomRange as (dates: unknown) => void}
-            format="DD.MM.YYYY"
-            allowClear={false}
-            style={{ maxWidth: isMobile ? '100%' : 260 }}
-            disabledDate={(current) => current && current > dayjs().endOf('day')}
-          />
-        )}
-      </div>
 
       {/* ── KPI cards ── */}
       <div className={isMobile ? 'section' : undefined}>
