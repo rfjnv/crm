@@ -1670,6 +1670,8 @@ model CallSession {
   audioAttempts   Int               @default(0) @map("audio_attempts")
   /// Пропущенный отработан: менеджер перезвонил сам или нажал «Перезвонил»
   calledBackAt    DateTime?         @map("called_back_at")
+  /// Копия записи в архиве на Google Drive (Supabase — только временный буфер)
+  driveFileId     String?           @map("drive_file_id")
 
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
@@ -1705,6 +1707,11 @@ model CallRecording {
   sizeBytes      Int       @map("size_bytes")
   durationSec    Int?      @map("duration_sec")
   fileModifiedAt DateTime? @map("file_modified_at")
+  /// Архив на Google Drive
+  driveFileId    String?   @map("drive_file_id")
+  archivedAt     DateTime? @map("archived_at")
+  driveAttempts  Int       @default(0) @map("drive_attempts")
+  driveError     String?   @map("drive_error")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   callSession CallSession? @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
@@ -1713,6 +1720,7 @@ model CallRecording {
   @@index([userId, createdAt])
   @@index([callSessionId])
   @@index([createdAt])
+  @@index([driveFileId])
   @@map("call_recordings")
 }
 
@@ -1797,9 +1805,29 @@ model MobileTelephonySettings {
   /// Короче — не транскрибируем: несколько STT и Claude на каждый короткий звонок слишком дороги
   minAuditDurationSec Int      @default(30) @map("min_audit_duration_sec")
   autoAuditEnabled    Boolean  @default(true) @map("auto_audit_enabled")
+  /// Сколько дней запись лежит в Supabase после копирования на Google Drive (буфер для прослушивания и аудита)
+  recordingsBufferDays Int     @default(7) @map("recordings_buffer_days")
+  /// Удалять записи с Google Drive старше N месяцев; 0 — хранить всегда
+  driveRetentionMonths Int     @default(0) @map("drive_retention_months")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("mobile_telephony_settings")
+}
+
+/// Подключённый Google Drive для архива записей (одна строка). Доступ только к файлам, созданным CRM (scope drive.file).
+model GoogleDriveConnection {
+  id            String    @id @default("singleton")
+  refreshToken  String?   @map("refresh_token")
+  accountEmail  String?   @map("account_email")
+  /// Папка «CallSync — записи звонков» в корне Drive
+  rootFolderId  String?   @map("root_folder_id")
+  connectedAt   DateTime? @map("connected_at")
+  connectedById String?   @map("connected_by_id")
+  lastError     String?   @map("last_error")
+  lastErrorAt   DateTime? @map("last_error_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("google_drive_connection")
 }
 
 // ==================== FOREIGN TRADE (ВЭД) ====================

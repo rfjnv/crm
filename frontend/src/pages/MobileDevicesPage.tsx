@@ -9,6 +9,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
 import { mobileApi, type MobileDeviceRow, type MobileSettings } from '../api/calls.api';
 import { apiErrorMessage } from '../components/calls/callsUi';
+import DriveArchiveCard from '../components/calls/DriveArchiveCard';
 
 dayjs.extend(relativeTime);
 
@@ -172,6 +173,8 @@ export default function MobileDevicesPage() {
         locale={{ emptyText: 'Телефоны ещё не привязаны. Сотрудник привязывает телефон в своём профиле.' }}
       />
 
+      <DriveArchiveCard />
+
       <Card size="small" title="Папка записей по модели телефона" style={{ marginTop: 16 }}>
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           Путь от корня памяти телефона, несколько — через «;». Пусто — приложение ищет в стандартных папках Samsung и MIUI.
@@ -214,6 +217,22 @@ export default function MobileDevicesPage() {
               <Form.Item name="syncIntervalMin" label="Синхронизация, мин"><InputNumber min={15} max={1440} /></Form.Item>
               <Form.Item name="wifiOnlyAboveMb" label="Только по Wi-Fi файлы больше, МБ"><InputNumber min={0} max={1000} /></Form.Item>
               <Form.Item name="minAuditDurationSec" label="Анализировать звонки от, с"><InputNumber min={0} max={3600} /></Form.Item>
+            </Space>
+            <Space wrap size={16}>
+              <Form.Item
+                name="recordingsBufferDays"
+                label="Держать запись в Supabase после копирования на Drive, дней"
+                tooltip="Свежие записи играют быстрее. Supabase бесплатно даёт около 1 ГБ"
+              >
+                <InputNumber min={1} max={365} />
+              </Form.Item>
+              <Form.Item
+                name="driveRetentionMonths"
+                label="Удалять с Drive записи старше, мес."
+                tooltip="0 — хранить всегда. Расшифровки и аудиты в CRM остаются в любом случае"
+              >
+                <InputNumber min={0} max={120} />
+              </Form.Item>
             </Space>
             <Form.Item name="autoAuditEnabled" label="Автоматический аудит записей" valuePropName="checked">
               <Switch />

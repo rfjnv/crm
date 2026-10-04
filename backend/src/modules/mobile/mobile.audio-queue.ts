@@ -3,7 +3,11 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { analyzeSalesCallTranscript, transcribeAudioFile } from '../ai-assistant/ai-assistant.service';
 import { getMobileSettings } from './mobile.settings';
-import { audioExt, audioMime, downloadToTemp, removeFiles } from './mobile.storage';
+import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import { audioExt, audioMime, downloadToTemp } from './mobile.storage';
+import { downloadDriveToFile } from './mobile.drive';
 
 /**
  * Очередь транскрибации и аудита записей — в БД (audioStatus = UPLOADED), без очередей
@@ -37,7 +41,7 @@ async function claimNext(now: Date): Promise<string | null> {
         updated_at = (${now}::timestamptz AT TIME ZONE 'UTC')
     WHERE id = (
       SELECT id FROM call_sessions
-      WHERE recording_path IS NOT NULL
+      WHERE (recording_path IS NOT NULL OR drive_file_id IS NOT NULL)
         AND audio_attempts < ${MAX_ATTEMPTS}
         AND (audio_status = 'UPLOADED'
           OR (audio_status = 'FAILED' AND updated_at < (${retryBefore}::timestamptz AT TIME ZONE 'UTC')))
@@ -52,9 +56,9 @@ async function claimNext(now: Date): Promise<string | null> {
 async function processOne(id: string): Promise<void> {
   const call = await prisma.callSession.findUnique({
     where: { id },
-    select: { id: true, recordingPath: true, durationSec: true, transcript: true, managerUserId: true, clientId: true },
+    select: { id: true, recordingPath: true, driveFileId: true, durationSec: true, transcript: true, managerUserId: true, clientId: true },
   });
-  if (!call?.recordingPath) return;
+  if (!call || (!call.recordingPath && !call.driveFileId)) return;
 
   const settings = await getMobileSettings();
   if (!settings.autoAuditEnabled || (call.durationSec ?? 0) < settings.minAuditDurationSec || !call.managerUserId) {
@@ -69,10 +73,17 @@ async function processOne(id: string): Promise<void> {
     let transcript = call.transcript;
     // Повтор после сбоя аудита не платит за расшифровку второй раз
     if (!transcript) {
-      const local = await downloadToTemp(call.recordingPath);
+      // Из Supabase, а если буфер уже почищен — с Google Drive
+      const ext = audioExt(call.recordingPath ?? 'recording.m4a');
+      let local: string;
+      if (call.recordingPath) {
+        local = await downloadToTemp(call.recordingPath);
+      } else {
+        local = path.join(os.tmpdir(), `callsync-${randomUUID()}.${ext}`);
+        await downloadDriveToFile(call.driveFileId!, local);
+      }
       try {
         const stat = await fs.stat(local);
-        const ext = audioExt(call.recordingPath);
         const stt = await transcribeAudioFile(
           { path: local, originalname: `recording.${ext}`, mimetype: audioMime(ext), size: stat.size } as Express.Multer.File,
           { languageMode: 'auto' },
@@ -124,31 +135,4 @@ export async function drainAudioQueue(maxItems = 20): Promise<number> {
     running = false;
   }
   return done;
-}
-
-// ─── Срок хранения ──────────────────────────────────────────────────────────
-
-const RETENTION_MONTHS = 12;
-const BATCH = 100;
-
-/** Файлы записей старше 12 месяцев удаляются из bucket. Журнал звонков хранится бессрочно. */
-export async function cleanupOldRecordings(now: Date = new Date()): Promise<number> {
-  const cutoff = new Date(now);
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - RETENTION_MONTHS);
-  let removed = 0;
-  for (;;) {
-    const batch = await prisma.callRecording.findMany({
-      where: { createdAt: { lt: cutoff }, storagePath: { not: null } },
-      select: { id: true, storagePath: true },
-      take: BATCH,
-    });
-    if (batch.length === 0) break;
-    const paths = batch.map((b) => b.storagePath!);
-    await removeFiles(paths);
-    await prisma.callRecording.updateMany({ where: { id: { in: batch.map((b) => b.id) } }, data: { storagePath: null } });
-    await prisma.callSession.updateMany({ where: { recordingPath: { in: paths } }, data: { recordingPath: null } });
-    removed += batch.length;
-    if (batch.length < BATCH) break;
-  }
-  return removed;
 }

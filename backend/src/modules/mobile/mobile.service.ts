@@ -11,6 +11,7 @@ import { callPhoneKey, mapMobileCall, mobileExternalId } from './mobile.mapping'
 import { processNewMobileCall } from './mobile.processing';
 import { getMobileSettings } from './mobile.settings';
 import { audioExt, audioMime, removeFiles, uploadFile } from './mobile.storage';
+import { publicServerUrl } from './mobile.public-url';
 import type { z } from 'zod';
 
 // ─── Привязка телефона ──────────────────────────────────────────────────────
@@ -24,11 +25,6 @@ function hashPairingCode(code: string): string {
   return createHash('sha256').update(code.trim().toUpperCase().replace(/[\s-]/g, '')).digest('hex');
 }
 
-/** Адрес бэкенда для QR: приложение само добавляет к нему /api/mobile/auth. */
-export function publicServerUrl(fallback: string): string {
-  return (config.mobile.publicServerUrl || fallback).replace(/\/+$/, '').replace(/\/api$/, '');
-}
-
 export async function createPairingCode(userId: string, fallbackServer: string) {
   let code = '';
   for (let i = 0; i < PAIRING_LENGTH; i++) code += PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)];
@@ -36,6 +32,7 @@ export async function createPairingCode(userId: string, fallbackServer: string) 
   // Старые неиспользованные коды этого сотрудника больше не нужны
   await prisma.mobilePairingCode.deleteMany({ where: { userId, usedAt: null } });
   await prisma.mobilePairingCode.create({ data: { codeHash: hashPairingCode(code), userId, expiresAt } });
+  // Приложение само добавляет к адресу /api/mobile/auth
   const server = publicServerUrl(fallbackServer);
   return {
     code,

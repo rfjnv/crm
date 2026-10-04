@@ -18,6 +18,18 @@ import {
 import { listDevices, listDeviceModels } from './mobile.devices';
 import { getMobileSettings, updateMobileSettings } from './mobile.settings';
 import { signedUrl } from './mobile.storage';
+import { config } from '../../lib/config';
+import { archiveRecordings } from './mobile.archive';
+import {
+  connectDrive,
+  disconnectDrive,
+  DRIVE_ROOT_FOLDER_NAME,
+  driveAuthUrl,
+  driveRedirectUri,
+  getDriveConnection,
+  isDriveConfigured,
+  verifyDriveState,
+} from './mobile.drive';
 import { removeTempUpload, singleFileUpload } from './mobile.upload';
 
 const router = Router();
@@ -127,6 +139,63 @@ router.put('/device-models', ...admin, asyncHandler(async (req: Request, res: Re
       update: { recordingsPath: dto.recordingsPath },
     });
   }
+  res.json({ ok: true });
+}));
+
+// ─── CRM: архив записей на Google Drive ────────────────────────────────────
+
+router.get('/drive', ...admin, asyncHandler(async (req: Request, res: Response) => {
+  const [row, archivedCount, pendingCount, failedCount] = await Promise.all([
+    getDriveConnection(),
+    prisma.callRecording.count({ where: { driveFileId: { not: null } } }),
+    prisma.callRecording.count({ where: { driveFileId: null, storagePath: { not: null }, driveAttempts: { lt: 5 } } }),
+    prisma.callRecording.count({ where: { driveFileId: null, storagePath: { not: null }, driveAttempts: { gte: 5 } } }),
+  ]);
+  res.json({
+    configured: isDriveConfigured(),
+    connected: !!row?.refreshToken,
+    accountEmail: row?.accountEmail ?? null,
+    connectedAt: row?.connectedAt ?? null,
+    lastError: row?.lastError ?? null,
+    lastErrorAt: row?.lastErrorAt ?? null,
+    redirectUri: driveRedirectUri(`${req.protocol}://${req.get('host')}`),
+    folderName: DRIVE_ROOT_FOLDER_NAME,
+    archivedCount,
+    pendingCount,
+    failedCount,
+  });
+}));
+
+router.get('/drive/auth-url', ...admin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ url: driveAuthUrl(req.user!.userId, `${req.protocol}://${req.get('host')}`) });
+}));
+
+/** Сюда Google возвращает браузер после входа. Токена CRM тут нет — кто подключал, знает подписанный state. */
+router.get('/drive/callback', asyncHandler(async (req: Request, res: Response) => {
+  const back = (status: string, reason?: string) =>
+    res.redirect(`${config.telegram.crmUrl}/mobile-devices?drive=${status}${reason ? `&reason=${encodeURIComponent(reason)}` : ''}`);
+  if (typeof req.query.error === 'string') return back('error', req.query.error === 'access_denied' ? 'Доступ не выдан' : req.query.error);
+  try {
+    const userId = verifyDriveState(String(req.query.state ?? ''));
+    await connectDrive(String(req.query.code ?? ''), userId, `${req.protocol}://${req.get('host')}`);
+    // Сразу начинаем копировать то, что накопилось
+    archiveRecordings().catch((err) => console.error('[mobile] drive archive failed:', (err as Error).message));
+    return back('connected');
+  } catch (err) {
+    console.error('[mobile] drive connect failed:', (err as Error).message);
+    return back('error', err instanceof AppError ? err.message : 'Не удалось подключить Google Drive');
+  }
+}));
+
+router.post('/drive/disconnect', ...admin, asyncHandler(async (_req: Request, res: Response) => {
+  await disconnectDrive();
+  res.json({ ok: true });
+}));
+
+/** «Скопировать сейчас» — и повторить записи, которые не скопировались за 5 попыток. */
+router.post('/drive/sync', ...admin, asyncHandler(async (_req: Request, res: Response) => {
+  await prisma.callRecording.updateMany({ where: { driveFileId: null, storagePath: { not: null } }, data: { driveAttempts: 0 } });
+  archiveRecordings().catch((err) => console.error('[mobile] drive archive failed:', (err as Error).message));
   res.json({ ok: true });
 }));
 

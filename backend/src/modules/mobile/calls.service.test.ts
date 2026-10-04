@@ -11,7 +11,7 @@ vi.mock('./mobile.storage', () => ({
   signedUrl: vi.fn(async (p: string) => `https://storage.test/signed/${p}`),
 }));
 
-import { getAudioUrl, getCall, linkClient, listCalls, markCalledBack } from './calls.service';
+import { getAudioUrl, getCall, linkClient, listCalls, markCalledBack, verifyAudioStreamToken } from './calls.service';
 import { signedUrl } from './mobile.storage';
 
 const manager1 = { userId: 'm1', role: 'MANAGER', permissions: [] };
@@ -58,6 +58,23 @@ describe('доступ к звонкам', () => {
     const own = await addCall({ managerUserId: 'm1' });
     await expect(getAudioUrl(manager1, own.id)).resolves.toEqual({ url: 'https://storage.test/signed/m1/2026/10/rec.m4a', expiresInSec: 3600 });
     expect(signedUrl).toHaveBeenCalledWith('m1/2026/10/rec.m4a', 3600);
+  });
+
+  it('запись уже только на Google Drive — ссылка на поток с токеном для этого звонка', async () => {
+    const own = await addCall({ managerUserId: 'm1', recordingPath: null, driveFileId: 'drive-1' });
+    const { url } = await getAudioUrl(manager1, own.id, 'https://api.test');
+    expect(url.startsWith(`https://api.test/api/calls/${own.id}/audio-stream?t=`)).toBe(true);
+    const token = decodeURIComponent(new URL(url).searchParams.get('t')!);
+    expect(() => verifyAudioStreamToken(token, own.id)).not.toThrow();
+    // Токен одного звонка не открывает другой
+    const other = await addCall({ managerUserId: 'm2', recordingPath: null, driveFileId: 'drive-2' });
+    expect(() => verifyAudioStreamToken(token, other.id)).toThrow();
+    expect(signedUrl).not.toHaveBeenCalled();
+  });
+
+  it('чужую запись с Drive менеджер тоже не получает', async () => {
+    const foreign = await addCall({ managerUserId: 'm2', recordingPath: null, driveFileId: 'drive-1' });
+    await expect(getAudioUrl(manager1, foreign.id, 'https://api.test')).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('РОП (use_rop_agent) и директор видят звонки всех менеджеров', async () => {

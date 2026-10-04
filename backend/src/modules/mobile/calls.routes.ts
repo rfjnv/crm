@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { Readable } from 'stream';
+import type { ReadableStream as NodeReadableStream } from 'stream/web';
+import prisma from '../../lib/prisma';
 import { asyncHandler } from '../../lib/asyncHandler';
+import { AppError } from '../../lib/errors';
+import { downloadFromDrive } from './mobile.drive';
 import { authenticate } from '../../middleware/authenticate';
 import { authenticateDevice } from './mobile.device-auth';
 import { callbackTaskDto, linkClientDto, listCallsQuery, parseOr400 } from './mobile.dto';
@@ -15,6 +20,7 @@ import {
   listCalls,
   markCalledBack,
   missedToday,
+  verifyAudioStreamToken,
 } from './calls.service';
 
 /** /api/calls — приём звонков с телефона (токен устройства) и журнал звонков в CRM (JWT). */
@@ -59,7 +65,28 @@ router.get('/:id', authenticate, asyncHandler(async (req: Request, res: Response
 }));
 
 router.get('/:id/audio-url', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  res.json(await getAudioUrl(req.user!, String(req.params.id)));
+  res.json(await getAudioUrl(req.user!, String(req.params.id), `${req.protocol}://${req.get('host')}`));
+}));
+
+/** Запись с Google Drive для плеера. Без JWT CRM: доступ по токену из audio-url (на час). */
+router.get('/:id/audio-stream', asyncHandler(async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  verifyAudioStreamToken(String(req.query.t ?? ''), id);
+  const call = await prisma.callSession.findUnique({ where: { id }, select: { driveFileId: true } });
+  if (!call?.driveFileId) throw new AppError(404, 'Записи на Google Drive нет');
+
+  const upstream = await downloadFromDrive(call.driveFileId, req.header('range') ?? undefined);
+  if (!upstream.ok || !upstream.body) throw new AppError(502, `Google Drive не отдал запись (${upstream.status})`);
+  res.status(upstream.status);
+  for (const h of ['content-type', 'content-length', 'content-range']) {
+    const v = upstream.headers.get(h);
+    if (v) res.setHeader(h, v);
+  }
+  res.setHeader('accept-ranges', 'bytes');
+  res.setHeader('cache-control', 'private, max-age=3600');
+  // Плеер CRM живёт на другом домене, общий helmet иначе запретит встраивание
+  res.setHeader('cross-origin-resource-policy', 'cross-origin');
+  Readable.fromWeb(upstream.body as unknown as NodeReadableStream).pipe(res);
 }));
 
 router.post('/:id/link-client', authenticate, asyncHandler(async (req: Request, res: Response) => {

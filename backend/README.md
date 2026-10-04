@@ -18,11 +18,15 @@ Android-приложение CallSync стоит на рабочих телеф�
 - Пропущенный (`missed`, `rejected`) создаёт задачу «Перезвонить» на менеджера со сроком 2 часа
   и шлёт ему сообщение в Telegram. Исходящий разговор или отвеченный входящий с этим номером
   закрывает задачу сам. Пропущенные старше суток (история за 7 дней при первом входе) задач не создают.
-- Записи хранятся в приватном bucket Supabase `call-recordings`, слушать их можно по signed URL на час.
+- Записи сначала попадают в приватный bucket Supabase `call-recordings`, а оттуда копируются
+  в архив на Google Drive (см. ниже). Supabase служит буфером: скопированная запись удаляется
+  из него через `recordingsBufferDays` (по умолчанию 7 дней). Слушать можно и свежие, и старые записи.
   Записи короче `minAuditDurationSec` (по умолчанию 30 с) не анализируются. Остальные по одной проходят
   транскрибацию и аудит (`transcribeAudioFile` → `analyzeSalesCallTranscript`), результат попадает в «Историю аудитов».
   Очередь хранится в БД (`call_sessions.audio_status`), на каждую запись не больше 3 попыток.
-- Записи старше 12 месяцев удаляются из bucket. Журнал звонков хранится бессрочно.
+- Пока Google Drive не подключён, записи лежат в Supabase до 12 месяцев (на бесплатном тарифе это около 1 ГБ).
+  Срок хранения на Drive задаётся настройкой `driveRetentionMonths` (0 — хранить всегда).
+  Журнал звонков, расшифровки и аудиты хранятся бессрочно.
 - Алерты руководителю (пользователи с правом `use_rop_agent` и SUPER_ADMIN) уходят в Telegram только
   в рабочее время: телефон молчит больше 2 часов рабочего времени; за 2 дня есть отвеченные звонки,
   но нет ни одной записи; выключены разрешения или не найдена папка записей. По каждому эпизоду
@@ -38,6 +42,7 @@ Android-приложение CallSync стоит на рабочих телеф�
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (+ `SUPABASE_ANON_KEY`) | Хранилище записей и логов приложения |
 | `INTERNAL_REPORTS_TOKEN` | Защищает `POST /api/internal/mobile/tick` (заголовок `x-internal-token`) |
 | `MOBILE_PUBLIC_SERVER_URL` | Необязательная. Адрес бэкенда для QR привязки, без `/api`. По умолчанию берётся `RENDER_EXTERNAL_URL` или `BACKEND_PUBLIC_URL`, иначе адрес из запроса |
+| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET` | OAuth-клиент Google для архива записей на Drive |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CRM_URL` | Сообщения о пропущенных и алерты, ссылки в них |
 | `AISHA_AI_API_KEY`, `ELEVENLABS_API_KEY`, ключ Claude | Транскрибация и аудит, как у «Аудио в текст» |
 
@@ -46,6 +51,29 @@ Android-приложение CallSync стоит на рабочих телеф�
 Создать в Supabase → Storage → New bucket. Имя `call-recordings`, **Public bucket выключен**.
 Сервер пишет туда service-role ключом. Записи лежат по пути `<userId>/<yyyy>/<mm>/<uuid>.<ext>`,
 логи приложения — в `logs/<userId>/<deviceId>/…`. Лимит размера файла в bucket — не меньше 50 МБ.
+
+### Архив на Google Drive
+
+CRM копирует записи в папку «CallSync — записи звонков / <менеджер> / <месяц>» на подключённом Google Drive.
+Доступ — scope `drive.file`: CRM видит только файлы и папки, которые создала сама, остальное на этом Drive ей недоступно.
+Чтобы записи были и на офисном компьютере, достаточно поставить на нём «Google Drive для компьютера» под тем же аккаунтом.
+
+Настройка один раз:
+
+1. https://console.cloud.google.com → создать проект (например, «CRM CallSync»).
+2. «APIs & Services» → «Library» → **Google Drive API** → Enable.
+3. «OAuth consent screen»: тип External, название приложения, email поддержки; в Scopes добавить
+   `.../auth/drive.file`. Затем **Publish app** (статус In production). В статусе Testing Google
+   отзывает доступ через 7 дней. Для `drive.file` проверка приложения Google не нужна.
+4. «Credentials» → «Create credentials» → «OAuth client ID» → тип **Web application**.
+   В «Authorized redirect URIs» вписать `https://<бэкенд>/api/mobile/drive/callback`
+   (точный адрес показан в CRM в карточке «Архив записей: Google Drive»).
+5. Client ID и Client secret — в переменные Render `GOOGLE_DRIVE_CLIENT_ID` и `GOOGLE_DRIVE_CLIENT_SECRET`.
+6. CRM → «Телефоны (CallSync)» → «Подключить Google Drive» → войти в Google-аккаунт → разрешить.
+
+Сменить аккаунт (например, с личного на аккаунт компании) — кнопка «Подключить другой аккаунт».
+Записи, уже скопированные на старый аккаунт, остаются на нём, но из CRM их не послушать:
+перенесите папку в новый аккаунт или держите старый подключённым, пока они нужны.
 
 ### Внешний cron
 

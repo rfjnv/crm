@@ -107,6 +107,8 @@ export const mobileSettingsDto = z.object({
   syncIntervalMin: z.number().int().min(15).max(24 * 60),
   minAuditDurationSec: z.number().int().min(0).max(3600),
   autoAuditEnabled: z.boolean(),
+  recordingsBufferDays: z.number().int().min(1).max(365),
+  driveRetentionMonths: z.number().int().min(0).max(120),
 }).partial().refine(
   (v) => v.workStartHour === undefined || v.workEndHour === undefined || v.workStartHour < v.workEndHour,
   { message: 'Начало рабочего дня должно быть раньше конца' },

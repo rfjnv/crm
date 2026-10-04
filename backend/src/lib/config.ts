@@ -176,6 +176,11 @@ export const config = {
      */
     publicServerUrl: trimEnv(process.env.MOBILE_PUBLIC_SERVER_URL) || trimEnv(process.env.RENDER_EXTERNAL_URL) || trimEnv(process.env.BACKEND_PUBLIC_URL),
   },
+  /** OAuth-клиент Google для архива записей звонков на Google Drive (Google Cloud → Credentials) */
+  googleDrive: {
+    clientId: trimEnv(process.env.GOOGLE_DRIVE_CLIENT_ID),
+    clientSecret: trimEnv(process.env.GOOGLE_DRIVE_CLIENT_SECRET),
+  },
 
   supabase: {
     url: trimEnv(process.env.SUPABASE_URL),

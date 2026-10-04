@@ -1,4 +1,6 @@
 import type { Prisma } from '@prisma/client';
+import jwt from 'jsonwebtoken';
+import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { canonicalClientPhone } from '../../lib/phone';
@@ -8,6 +10,7 @@ import { canSeeAllCalls, callScope } from './mobile.access';
 import { CALLBACK_TYPES, MOBILE_CALL_TYPES, clientPhoneKeys } from './mobile.mapping';
 import { callbackTitle, closeCallbacks, findOpenCallbackTask, OPEN_TASK_STATUSES, phoneLabel } from './mobile.processing';
 import { signedUrl } from './mobile.storage';
+import { publicServerUrl } from './mobile.public-url';
 
 interface CallsUser {
   userId: string;
@@ -30,6 +33,7 @@ const callListSelect = {
   toNumber: true,
   simSlot: true,
   recordingPath: true,
+  driveFileId: true,
   audioStatus: true,
   audioError: true,
   auditId: true,
@@ -53,11 +57,11 @@ async function auditScores(auditIds: (string | null)[]): Promise<Map<string, num
 }
 
 function toListItem(row: CallListRow, scores: Map<string, number | null>) {
-  const { recordingPath, ...rest } = row;
+  const { recordingPath, driveFileId, ...rest } = row;
   return {
     ...rest,
     counterpart: counterpart(row),
-    hasRecording: !!recordingPath,
+    hasRecording: !!recordingPath || !!driveFileId,
     auditScore: row.auditId ? scores.get(row.auditId) ?? null : null,
   };
 }
@@ -146,10 +150,33 @@ export async function getCall(user: CallsUser, id: string) {
   return { ...toListItem(rest, scores), transcript: row.transcript, endedAt: row.endedAt, tasks: row.tasks, clientMatchNote, audit };
 }
 
-export async function getAudioUrl(user: CallsUser, id: string) {
-  const row = await findCallForUser(user, id, { recordingPath: true });
-  if (!row.recordingPath) throw new AppError(404, 'У звонка нет записи');
-  return { url: await signedUrl(row.recordingPath, 3600), expiresInSec: 3600 };
+const STREAM_PURPOSE = 'call-audio-stream';
+const STREAM_TTL_SEC = 3600;
+
+/**
+ * Ссылка для плеера. Свежая запись — signed URL Supabase. Если буфер уже почищен и запись
+ * осталась только на Google Drive — ссылка на наш поток с подписанным токеном на час:
+ * <audio> не умеет слать заголовок Authorization, а файлы на Drive наружу не открываем.
+ */
+export async function getAudioUrl(user: CallsUser, id: string, fallbackServer = '') {
+  const row = await findCallForUser(user, id, { recordingPath: true, driveFileId: true });
+  if (row.recordingPath) return { url: await signedUrl(row.recordingPath, STREAM_TTL_SEC), expiresInSec: STREAM_TTL_SEC };
+  if (row.driveFileId) {
+    const t = jwt.sign({ callId: id, purpose: STREAM_PURPOSE }, config.jwt.accessSecret, { expiresIn: STREAM_TTL_SEC });
+    return { url: `${publicServerUrl(fallbackServer)}/api/calls/${id}/audio-stream?t=${encodeURIComponent(t)}`, expiresInSec: STREAM_TTL_SEC };
+  }
+  throw new AppError(404, 'У звонка нет записи');
+}
+
+/** Проверка токена потока: выдан для этого звонка и не истёк. */
+export function verifyAudioStreamToken(token: string, callId: string): void {
+  try {
+    const payload = jwt.verify(token, config.jwt.accessSecret) as { callId?: string; purpose?: string };
+    if (payload.purpose === STREAM_PURPOSE && payload.callId === callId) return;
+  } catch {
+    // ниже — общий ответ
+  }
+  throw new AppError(401, 'Ссылка на запись устарела — нажмите «Слушать» ещё раз');
 }
 
 /**

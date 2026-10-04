@@ -132,6 +132,22 @@ export interface MobileSettings {
   syncIntervalMin: number;
   minAuditDurationSec: number;
   autoAuditEnabled: boolean;
+  recordingsBufferDays: number;
+  driveRetentionMonths: number;
+}
+
+export interface DriveStatus {
+  configured: boolean;
+  connected: boolean;
+  accountEmail: string | null;
+  connectedAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  redirectUri: string;
+  folderName: string;
+  archivedCount: number;
+  pendingCount: number;
+  failedCount: number;
 }
 
 export const callsApi = {
@@ -167,5 +183,9 @@ export const mobileApi = {
   setModelPath: (model: string, recordingsPath: string) =>
     client.put('/mobile/device-models', { model, recordingsPath }).then((r) => r.data),
   settings: () => client.get<MobileSettings>('/mobile/settings').then((r) => r.data),
+  drive: () => client.get<DriveStatus>('/mobile/drive').then((r) => r.data),
+  driveAuthUrl: () => client.get<{ url: string }>('/mobile/drive/auth-url').then((r) => r.data),
+  driveDisconnect: () => client.post('/mobile/drive/disconnect').then((r) => r.data),
+  driveSync: () => client.post('/mobile/drive/sync').then((r) => r.data),
   updateSettings: (data: Partial<MobileSettings>) => client.put<MobileSettings>('/mobile/settings', data).then((r) => r.data),
 };
