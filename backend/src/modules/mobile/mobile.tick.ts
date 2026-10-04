@@ -1,6 +1,7 @@
 import { tashkentDayKey } from '../../lib/tz';
 import { drainAudioQueue } from './mobile.audio-queue';
 import { archiveRecordings, cleanupRecordings } from './mobile.archive';
+import { processCallReports } from './calls.manage';
 import { runMobileChecks } from './mobile.alerts';
 
 /**
@@ -33,7 +34,10 @@ export async function runMobileTick(now: Date = new Date()) {
  * cron столько ждать не будет.
  */
 export function kickAudioQueue(): void {
-  drainAudioQueue().catch((err) => console.error('[mobile] audio queue failed:', (err as Error).message));
+  // Общие анализы ждут расшифровок — проверяем их после прохода очереди
+  drainAudioQueue()
+    .then(() => processCallReports())
+    .catch((err) => console.error('[mobile] audio queue failed:', (err as Error).message));
   archiveRecordings().catch((err) => console.error('[mobile] drive archive failed:', (err as Error).message));
 }
 

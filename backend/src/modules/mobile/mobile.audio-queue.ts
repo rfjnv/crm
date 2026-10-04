@@ -42,6 +42,7 @@ async function claimNext(now: Date): Promise<string | null> {
     WHERE id = (
       SELECT id FROM call_sessions
       WHERE (recording_path IS NOT NULL OR drive_file_id IS NOT NULL)
+        AND deleted_at IS NULL
         AND audio_attempts < ${MAX_ATTEMPTS}
         AND (audio_status = 'UPLOADED'
           OR (audio_status = 'FAILED' AND updated_at < (${retryBefore}::timestamptz AT TIME ZONE 'UTC')))
@@ -56,15 +57,26 @@ async function claimNext(now: Date): Promise<string | null> {
 async function processOne(id: string): Promise<void> {
   const call = await prisma.callSession.findUnique({
     where: { id },
-    select: { id: true, recordingPath: true, driveFileId: true, durationSec: true, transcript: true, managerUserId: true, clientId: true },
+    select: {
+      id: true, recordingPath: true, driveFileId: true, durationSec: true, transcript: true, managerUserId: true, clientId: true,
+      analysisRequest: true,
+    },
   });
   if (!call || (!call.recordingPath && !call.driveFileId)) return;
 
+  // Ручной запрос (кнопка «Проанализировать» или общий анализ) идёт всегда;
+  // без него — только при включённом постоянном анализе и не короче порога
+  const request = call.analysisRequest as 'AUDIT' | 'TRANSCRIPT' | null;
   const settings = await getMobileSettings();
-  if (!settings.autoAuditEnabled || (call.durationSec ?? 0) < settings.minAuditDurationSec || !call.managerUserId) {
+  if (!request && (!settings.autoAuditEnabled || (call.durationSec ?? 0) < settings.minAuditDurationSec)) {
     await prisma.callSession.update({
       where: { id },
-      data: { audioStatus: 'SKIPPED', audioError: !call.managerUserId ? 'Не указан менеджер' : 'Автоаудит выключен или звонок слишком короткий' },
+      data: {
+        audioStatus: 'SKIPPED',
+        audioError: !settings.autoAuditEnabled
+          ? 'Анализ не запускали'
+          : `Звонок короче ${settings.minAuditDurationSec} с — не анализируем автоматически`,
+      },
     });
     return;
   }
@@ -95,6 +107,24 @@ async function processOne(id: string): Promise<void> {
       await prisma.callSession.update({ where: { id }, data: { transcript, audioStatus: 'TRANSCRIBED', audioError: null } });
     }
 
+    // Нужна была только расшифровка (общий анализ). Пока расшифровывали, могли попросить и аудит
+    let wantAudit = request !== 'TRANSCRIPT';
+    if (!wantAudit) {
+      const fresh = await prisma.callSession.findUnique({ where: { id }, select: { analysisRequest: true } });
+      wantAudit = fresh?.analysisRequest === 'AUDIT';
+    }
+    if (!wantAudit || !call.managerUserId) {
+      await prisma.callSession.update({
+        where: { id },
+        data: {
+          audioStatus: 'TRANSCRIBED',
+          analysisRequest: null,
+          audioError: wantAudit ? 'Не указан менеджер — аудит не сделан' : null,
+        },
+      });
+      return;
+    }
+
     const audit = await analyzeSalesCallTranscript(transcript, 'mixed', {
       userId: call.managerUserId,
       managerId: call.managerUserId,
@@ -104,13 +134,13 @@ async function processOne(id: string): Promise<void> {
     });
     await prisma.callSession.update({
       where: { id },
-      data: { auditId: audit.auditId ?? null, audioStatus: 'ANALYZED', audioError: null },
+      data: { auditId: audit.auditId ?? null, audioStatus: 'ANALYZED', audioError: null, analysisRequest: null },
     });
   } catch (err) {
     const message = (err as Error).message || 'Неизвестная ошибка';
     // В записи нет речи — повтор не поможет
     if (err instanceof AppError && err.statusCode === 400) {
-      await prisma.callSession.update({ where: { id }, data: { audioStatus: 'SKIPPED', audioError: message.slice(0, 500) } });
+      await prisma.callSession.update({ where: { id }, data: { audioStatus: 'SKIPPED', audioError: message.slice(0, 500), analysisRequest: null } });
       return;
     }
     console.error(`[mobile] audio ${id} failed:`, message);

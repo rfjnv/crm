@@ -133,8 +133,8 @@ export async function archiveRecordings(): Promise<number> {
   return done;
 }
 
-/** Пока запись ждёт аудита, её файл в Supabase нужен — не удаляем. */
-const AUDIO_IN_PROGRESS = ['UPLOADED', 'TRANSCRIBING', 'TRANSCRIBED'] as const;
+/** Пока запись в очереди разбора, её файл в Supabase нужен — не удаляем. */
+const AUDIO_IN_PROGRESS = ['UPLOADED', 'TRANSCRIBING'] as const;
 
 /**
  * Чистка Supabase: скопированные на Drive записи старше recordingsBufferDays; любые записи

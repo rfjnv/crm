@@ -216,7 +216,7 @@ export default function MobileDevicesPage() {
             <Space wrap size={16}>
               <Form.Item name="syncIntervalMin" label="Синхронизация, мин"><InputNumber min={15} max={1440} /></Form.Item>
               <Form.Item name="wifiOnlyAboveMb" label="Только по Wi-Fi файлы больше, МБ"><InputNumber min={0} max={1000} /></Form.Item>
-              <Form.Item name="minAuditDurationSec" label="Анализировать звонки от, с"><InputNumber min={0} max={3600} /></Form.Item>
+              <Form.Item name="minAuditDurationSec" label="При постоянном анализе — звонки от, с"><InputNumber min={0} max={3600} /></Form.Item>
             </Space>
             <Space wrap size={16}>
               <Form.Item
@@ -234,7 +234,12 @@ export default function MobileDevicesPage() {
                 <InputNumber min={0} max={120} />
               </Form.Item>
             </Space>
-            <Form.Item name="autoAuditEnabled" label="Автоматический аудит записей" valuePropName="checked">
+            <Form.Item
+              name="autoAuditEnabled"
+              label="Постоянный анализ звонков"
+              valuePropName="checked"
+              extra="Включено — каждая запись автоматически расшифровывается и проходит аудит (платно: AISHA, ElevenLabs и Claude). Выключено — анализируются только звонки, выбранные в журнале."
+            >
               <Switch />
             </Form.Item>
             <Button type="primary" htmlType="submit" loading={saveSettings.isPending}>Сохранить</Button>

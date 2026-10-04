@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Readable } from 'stream';
 import type { ReadableStream as NodeReadableStream } from 'stream/web';
@@ -6,6 +6,9 @@ import prisma from '../../lib/prisma';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
 import { downloadFromDrive } from './mobile.drive';
+import { canSeeAllCalls } from './mobile.access';
+import { kickAudioQueue } from './mobile.tick';
+import { createGroupReport, deleteCalls, MAX_REPORT_CALLS, reassignCalls, requestAnalysis } from './calls.manage';
 import { authenticate } from '../../middleware/authenticate';
 import { authenticateDevice } from './mobile.device-auth';
 import { callbackTaskDto, linkClientDto, listCallsQuery, parseOr400 } from './mobile.dto';
@@ -58,6 +61,81 @@ router.get('/', authenticate, asyncHandler(async (req: Request, res: Response) =
 
 router.get('/missed', authenticate, asyncHandler(async (req: Request, res: Response) => {
   res.json(await missedToday(req.user!));
+}));
+
+// ─── CRM: управление звонками (руководитель) ────────────────────────────────
+
+/** Разбор стоит денег, а смена менеджера и удаление меняют статистику — только руководителю. */
+function requireCallsLeader(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.user || !canSeeAllCalls(req.user)) {
+    next(new AppError(403, 'Доступно руководителю отдела продаж и администраторам'));
+    return;
+  }
+  next();
+}
+
+const leader = [authenticate, requireCallsLeader];
+const callIdsDto = z.object({ callIds: z.array(z.string().min(1)).min(1, 'Выберите звонки').max(200) });
+
+router.post('/analyze', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const dto = parseOr400(callIdsDto, req.body);
+  const result = await requestAnalysis(req.user!, dto.callIds, 'AUDIT');
+  kickAudioQueue();
+  res.json(result);
+}));
+
+router.post('/reassign', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const dto = parseOr400(callIdsDto.extend({ managerId: z.string().min(1, 'Выберите сотрудника') }), req.body);
+  res.json(await reassignCalls(dto.callIds, dto.managerId));
+}));
+
+router.post('/delete', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const dto = parseOr400(callIdsDto, req.body);
+  res.json(await deleteCalls(req.user!, dto.callIds));
+}));
+
+router.post('/reports', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const dto = parseOr400(
+    z.object({ callIds: z.array(z.string().min(1)).min(1, 'Выберите звонки').max(MAX_REPORT_CALLS, `Не больше ${MAX_REPORT_CALLS} звонков`), title: z.string().max(200).optional() }),
+    req.body,
+  );
+  const report = await createGroupReport(req.user!, dto.callIds, dto.title);
+  kickAudioQueue();
+  res.status(201).json(report);
+}));
+
+router.get('/reports', ...leader, asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await prisma.callGroupReport.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: { id: true, title: true, status: true, error: true, callIds: true, createdAt: true, finishedAt: true, createdBy: { select: { fullName: true } } },
+  });
+  res.json(rows.map(({ callIds, ...r }) => ({ ...r, callsCount: callIds.length })));
+}));
+
+router.get('/reports/:reportId', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const report = await prisma.callGroupReport.findUnique({
+    where: { id: String(req.params.reportId) },
+    include: { createdBy: { select: { fullName: true } } },
+  });
+  if (!report) throw new AppError(404, 'Анализ не найден');
+  const calls = await prisma.callSession.findMany({
+    where: { id: { in: report.callIds } },
+    orderBy: { startedAt: 'asc' },
+    select: {
+      id: true, startedAt: true, durationSec: true, mobileType: true, audioStatus: true, deletedAt: true,
+      transcript: true, manager: { select: { fullName: true } }, client: { select: { companyName: true } }, phone: true,
+    },
+  });
+  res.json({
+    ...report,
+    calls: calls.map(({ transcript, ...c }, i) => ({ ...c, number: i + 1, hasTranscript: !!transcript })),
+  });
+}));
+
+router.delete('/reports/:reportId', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  await prisma.callGroupReport.deleteMany({ where: { id: String(req.params.reportId) } });
+  res.json({ ok: true });
 }));
 
 router.get('/:id', authenticate, asyncHandler(async (req: Request, res: Response) => {

@@ -1,15 +1,21 @@
-import { useMemo } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { Card, Checkbox, DatePicker, Input, Select, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { Alert, Button, Card, Checkbox, DatePicker, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography, message } from 'antd';
+import { FileSearchOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { callsApi, type CallsFilters } from '../api/calls.api';
+import { callsApi, mobileApi, type CallsFilters } from '../api/calls.api';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import CallsList from '../components/calls/CallsList';
 import { useCallActions } from '../components/calls/useCallActions';
-import { CALL_TYPE_OPTIONS, canSeeAllCalls } from '../components/calls/callsUi';
+import { CALL_TYPE_OPTIONS, apiErrorMessage, canSeeAllCalls } from '../components/calls/callsUi';
+import ReassignCallsModal from '../components/calls/ReassignCallsModal';
+import CallReportsDrawer from '../components/calls/CallReportsDrawer';
+
+/** Столько звонков можно отдать в один общий анализ */
+const MAX_REPORT_CALLS = 50;
 
 /**
  * Журнал звонков с рабочих телефонов (CallSync). Фильтры живут в URL — ссылкой из Telegram
@@ -54,6 +60,58 @@ export default function CallsPage() {
   });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list(), enabled: seeAll });
 
+  const queryClient = useQueryClient();
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const [selected, setSelected] = useState<string[]>([]);
+  const [reassignOpen, setReassignOpen] = useState(false);
+
+  // Постоянный анализ — платный: переключатель на виду у админа
+  const { data: settings } = useQuery({ queryKey: ['mobile-settings'], queryFn: mobileApi.settings, enabled: isAdmin });
+  const toggleAuto = useMutation({
+    mutationFn: (on: boolean) => mobileApi.updateSettings({ autoAuditEnabled: on }),
+    onSuccess: (st) => {
+      queryClient.setQueryData(['mobile-settings'], st);
+      message.success(st.autoAuditEnabled ? 'Постоянный анализ включён: новые записи разбираются автоматически' : 'Постоянный анализ выключен: только по выбору');
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+
+  const refreshCalls = () => {
+    queryClient.invalidateQueries({ queryKey: ['calls'] });
+    queryClient.invalidateQueries({ queryKey: ['call'] });
+  };
+  const analyze = useMutation({
+    mutationFn: () => callsApi.analyze(selected),
+    onSuccess: (r) => {
+      const parts = [`Поставлено на анализ: ${r.queued + r.inProgress}`];
+      if (r.alreadyDone) parts.push(`уже проанализированы: ${r.alreadyDone}`);
+      if (r.noRecording) parts.push(`без записи: ${r.noRecording}`);
+      message.success(parts.join(', '));
+      setSelected([]);
+      refreshCalls();
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+  const report = useMutation({
+    mutationFn: () => callsApi.createReport(selected),
+    onSuccess: (r) => {
+      message.success('Общий анализ запущен');
+      setSelected([]);
+      queryClient.invalidateQueries({ queryKey: ['call-reports'] });
+      patch({ reports: '1', report: r.id }, true);
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+  const remove = useMutation({
+    mutationFn: () => callsApi.remove(selected),
+    onSuccess: (r) => {
+      message.success(`Удалено звонков: ${r.deleted}`);
+      setSelected([]);
+      refreshCalls();
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+
   const { actions, elements } = useCallActions({
     openCallId: params.get('call'),
     onOpenChange: (id) => patch({ call: id ?? undefined }, true),
@@ -70,7 +128,22 @@ export default function CallsPage() {
 
   return (
     <div>
-      <Typography.Title level={4} style={{ marginTop: 0 }}>Звонки</Typography.Title>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>Звонки</Typography.Title>
+        <Space wrap>
+          {isAdmin && settings && (
+            <Tooltip title="Включено — каждая запись автоматически расшифровывается и проходит аудит (платно). Выключено — только выбранные звонки.">
+              <Space size={6}>
+                <Switch size="small" checked={settings.autoAuditEnabled} loading={toggleAuto.isPending} onChange={(v) => toggleAuto.mutate(v)} />
+                <Typography.Text>Постоянный анализ</Typography.Text>
+              </Space>
+            </Tooltip>
+          )}
+          {seeAll && (
+            <Button icon={<FileSearchOutlined />} onClick={() => patch({ reports: '1' }, true)}>Общие анализы</Button>
+          )}
+        </Space>
+      </div>
       <Card size="small" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <DatePicker.RangePicker
@@ -114,6 +187,33 @@ export default function CallsPage() {
         </div>
       </Card>
 
+      {seeAll && selected.length > 0 && (
+        <Alert
+          type="info"
+          style={{ marginBottom: 12, position: 'sticky', top: 8, zIndex: 5 }}
+          message={(
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <Typography.Text strong>Выбрано: {selected.length}</Typography.Text>
+              <Button size="small" type="primary" loading={analyze.isPending} onClick={() => analyze.mutate()}>Проанализировать</Button>
+              <Tooltip title={selected.length > MAX_REPORT_CALLS ? `Не больше ${MAX_REPORT_CALLS} звонков` : 'Один отчёт по всем выбранным разговорам: общие ошибки, возражения, сравнение менеджеров'}>
+                <Button size="small" loading={report.isPending} disabled={selected.length > MAX_REPORT_CALLS} onClick={() => report.mutate()}>Общий анализ</Button>
+              </Tooltip>
+              <Button size="small" onClick={() => setReassignOpen(true)}>Чей звонок</Button>
+              <Popconfirm
+                title={`Удалить звонков: ${selected.length}?`}
+                description="Записи и аудиты удалятся, звонки пропадут из журнала и статистики."
+                okText="Удалить"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => remove.mutate()}
+              >
+                <Button size="small" danger loading={remove.isPending}>Удалить</Button>
+              </Popconfirm>
+              <Button size="small" type="link" onClick={() => setSelected([])}>Снять выделение</Button>
+            </div>
+          )}
+        />
+      )}
+
       <CallsList
         items={data?.items ?? []}
         loading={isFetching && !data}
@@ -122,9 +222,21 @@ export default function CallsPage() {
         pageSize={filters.pageSize ?? 30}
         onPageChange={(page, pageSize) => patch({ page: String(page), pageSize: String(pageSize) }, true)}
         showManager={seeAll}
+        selectedIds={seeAll ? selected : undefined}
+        onSelectionChange={seeAll ? setSelected : undefined}
         {...actions}
       />
       {elements}
+      <ReassignCallsModal callIds={selected} open={reassignOpen} onClose={() => setReassignOpen(false)} onDone={() => setSelected([])} />
+      {seeAll && (
+        <CallReportsDrawer
+          open={params.get('reports') === '1'}
+          onClose={() => patch({ reports: undefined, report: undefined }, true)}
+          openReportId={params.get('report')}
+          onOpenReport={(id) => patch({ report: id ?? undefined }, true)}
+          onOpenCall={(id) => patch({ reports: undefined, report: undefined, call: id }, true)}
+        />
+      )}
     </div>
   );
 }

@@ -279,9 +279,10 @@ function storagePathFor(userId: string, at: Date, ext: string): string {
 /** Ставим ли запись звонка в очередь на транскрибацию и аудит. */
 async function audioStatusFor(session: Pick<CallSession, 'durationSec'>): Promise<{ audioStatus: 'UPLOADED' | 'SKIPPED'; audioError: string | null }> {
   const settings = await getMobileSettings();
-  if (!settings.autoAuditEnabled) return { audioStatus: 'SKIPPED', audioError: 'Автоаудит выключен в настройках' };
+  // Постоянный анализ выключен — запись ждёт ручного запуска (кнопка «Проанализировать»)
+  if (!settings.autoAuditEnabled) return { audioStatus: 'SKIPPED', audioError: 'Анализ не запускали' };
   if ((session.durationSec ?? 0) < settings.minAuditDurationSec) {
-    return { audioStatus: 'SKIPPED', audioError: `Звонок короче ${settings.minAuditDurationSec} с — не анализируем` };
+    return { audioStatus: 'SKIPPED', audioError: `Звонок короче ${settings.minAuditDurationSec} с — не анализируем автоматически` };
   }
   return { audioStatus: 'UPLOADED', audioError: null };
 }
@@ -320,7 +321,8 @@ export async function receiveAudio(
 
   const session = callId
     ? await prisma.callSession.findFirst({
-      where: { id: callId, provider: 'MOBILE', managerUserId: device.userId },
+      // Чей телефон — по externalCallId: менеджера у звонка руководитель мог сменить
+      where: { id: callId, provider: 'MOBILE', deletedAt: null, externalCallId: { startsWith: `mobile:${device.userId}:` } },
       select: { id: true, durationSec: true, startedAt: true },
     })
     : null;

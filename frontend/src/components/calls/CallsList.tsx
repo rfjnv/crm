@@ -1,4 +1,4 @@
-import { Button, Card, Dropdown, Empty, Pagination, Space, Spin, Table, Tag, Typography, theme } from 'antd';
+import { Button, Card, Checkbox, Dropdown, Empty, Pagination, Space, Spin, Table, Tag, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { MoreOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -25,6 +25,9 @@ interface Props extends CallRowActions {
   onPageChange: (page: number, pageSize: number) => void;
   showManager?: boolean;
   showClient?: boolean;
+  /** Выделение чекбоксами (для руководителя): id выбранных звонков */
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
 function ClientCell({ call }: { call: CallListItem }) {
@@ -51,7 +54,15 @@ function rowMenu(call: CallListItem, a: CallRowActions) {
 }
 
 export default function CallsList(props: Props) {
-  const { items, loading, totalCount, page, pageSize, onPageChange, showManager = true, showClient = true } = props;
+  const { items, loading, totalCount, page, pageSize, onPageChange, showManager = true, showClient = true, selectedIds, onSelectionChange } = props;
+  const selectable = !!onSelectionChange;
+  const selected = new Set(selectedIds ?? []);
+  const toggle = (id: string, on: boolean) => {
+    const next = new Set(selected);
+    if (on) next.add(id);
+    else next.delete(id);
+    onSelectionChange?.([...next]);
+  };
   const isMobile = useIsMobile();
   const { token } = theme.useToken();
 
@@ -71,7 +82,15 @@ export default function CallsList(props: Props) {
           {items.map((call) => (
             <Card key={call.id} size="small" onClick={() => props.onOpen(call)} styles={{ body: { padding: 12 } }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
+                {selectable && (
+                  <Checkbox
+                    checked={selected.has(call.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => toggle(call.id, e.target.checked)}
+                    style={{ alignSelf: 'flex-start', marginTop: 2 }}
+                  />
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div>{showClient ? <ClientCell call={call} /> : null}</div>
                   <Typography.Text>{formatUzPhone(call.counterpart) || 'скрытый номер'}</Typography.Text>
                 </div>
@@ -129,7 +148,17 @@ export default function CallsList(props: Props) {
       columns={columns}
       dataSource={items}
       loading={loading}
-      onRow={(c) => ({ onClick: () => props.onOpen(c), style: { cursor: 'pointer' } })}
+      onRow={(c) => ({
+        // Клик по чекбоксу выделяет строку, а не открывает звонок
+        onClick: (e) => { if (!(e.target as HTMLElement).closest('.ant-table-selection-column')) props.onOpen(c); },
+        style: { cursor: 'pointer' },
+      })}
+      rowSelection={selectable ? {
+        selectedRowKeys: selectedIds,
+        preserveSelectedRowKeys: true,
+        onChange: (keys) => onSelectionChange?.(keys.map(String)),
+        columnWidth: 40,
+      } : undefined}
       pagination={{ current: page, pageSize, total: totalCount, onChange: onPageChange, showSizeChanger: true, pageSizeOptions: [20, 30, 50, 100] }}
       scroll={{ x: 900 }}
       locale={{ emptyText: 'Звонков нет' }}

@@ -322,6 +322,7 @@ model User {
   callRecordings      CallRecording[]  @relation("CallRecordingUser")
   mobileDevices       MobileDevice[]   @relation("MobileDeviceUser")
   mobilePairingCodes  MobilePairingCode[] @relation("MobilePairingCodeUser")
+  callGroupReports    CallGroupReport[] @relation("CallGroupReportAuthor")
   managedCallAudits   CallAudit[]      @relation("CallAuditManager")
   aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
@@ -1672,6 +1673,12 @@ model CallSession {
   calledBackAt    DateTime?         @map("called_back_at")
   /// Копия записи в архиве на Google Drive (Supabase — только временный буфер)
   driveFileId     String?           @map("drive_file_id")
+  /// Разбор запрошен вручную: AUDIT — расшифровка и аудит, TRANSCRIPT — только расшифровка (для общего анализа)
+  analysisRequest String?           @map("analysis_request")
+  analysisRequestedById String?     @map("analysis_requested_by_id")
+  /// Удалён руководителем (личный звонок и т.п.). Строка остаётся, чтобы телефон не прислал звонок заново
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedById     String?           @map("deleted_by_id")
 
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
@@ -1690,6 +1697,7 @@ model CallSession {
   @@index([phone])
   @@index([phoneKey])
   @@index([audioStatus])
+  @@index([deletedAt])
   @@map("call_sessions")
 }
 
@@ -1804,7 +1812,8 @@ model MobileTelephonySettings {
   syncIntervalMin     Int      @default(15) @map("sync_interval_min")
   /// Короче — не транскрибируем: несколько STT и Claude на каждый короткий звонок слишком дороги
   minAuditDurationSec Int      @default(30) @map("min_audit_duration_sec")
-  autoAuditEnabled    Boolean  @default(true) @map("auto_audit_enabled")
+  /// Постоянный анализ: каждая запись автоматически. Выключен — только по выбору (это платно)
+  autoAuditEnabled    Boolean  @default(false) @map("auto_audit_enabled")
   /// Сколько дней запись лежит в Supabase после копирования на Google Drive (буфер для прослушивания и аудита)
   recordingsBufferDays Int     @default(7) @map("recordings_buffer_days")
   /// Удалять записи с Google Drive старше N месяцев; 0 — хранить всегда
@@ -1812,6 +1821,33 @@ model MobileTelephonySettings {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("mobile_telephony_settings")
+}
+
+enum CallReportStatus {
+  /// Ждёт расшифровок выбранных звонков
+  WAITING
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// Общий анализ нескольких звонков (выбранных в журнале)
+model CallGroupReport {
+  id          String           @id @default(uuid())
+  title       String
+  createdById String           @map("created_by_id")
+  callIds     String[]         @map("call_ids")
+  status      CallReportStatus @default(WAITING)
+  result      String?          @db.Text
+  error       String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  finishedAt  DateTime?        @map("finished_at")
+
+  createdBy User @relation("CallGroupReportAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("call_group_reports")
 }
 
 /// Подключённый Google Drive для архива записей (одна строка). Доступ только к файлам, созданным CRM (scope drive.file).

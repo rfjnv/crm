@@ -19,8 +19,9 @@ export function canSeeAllCalls(user: CallsUser): boolean {
     || (user.permissions ?? []).includes(PERMISSIONS.USE_ROP_AGENT);
 }
 
+/** Видимые пользователю звонки; удалённые руководителем не видны никому. */
 export function callScope(user: CallsUser): Prisma.CallSessionWhereInput {
-  return canSeeAllCalls(user) ? {} : { managerUserId: user.userId };
+  return canSeeAllCalls(user) ? { deletedAt: null } : { deletedAt: null, managerUserId: user.userId };
 }
 
 /** Кому идут алерты по телефонам: РОП (use_rop_agent) и директор. */

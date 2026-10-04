@@ -36,7 +36,9 @@ const AUDIO_STATUS: Record<CallAudioStatus, { label: string; color: string }> = 
 
 export function AudioStatusTag({ call }: { call: Pick<CallListItem, 'audioStatus' | 'audioError' | 'auditScore'> }) {
   const s = AUDIO_STATUS[call.audioStatus] ?? AUDIO_STATUS.NONE;
-  const label = call.audioStatus === 'ANALYZED' && call.auditScore != null ? `Оценка ${call.auditScore}/10` : s.label;
+  const label = call.audioStatus === 'ANALYZED' && call.auditScore != null
+    ? `Оценка ${call.auditScore}/10`
+    : call.audioStatus === 'SKIPPED' && call.audioError === 'Анализ не запускали' ? 'Не анализирован' : s.label;
   return (
     <Tag color={s.color} title={call.audioError ?? undefined} style={{ marginInlineEnd: 0 }}>
       {label}

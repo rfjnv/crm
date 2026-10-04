@@ -14,6 +14,8 @@ type Tables = {
   mobileDevice: Row[];
   client: Row[];
   callAudit: Row[];
+  user: Row[];
+  callGroupReport: Row[];
 };
 
 function same(a: unknown, b: unknown): boolean {
@@ -40,6 +42,8 @@ function fieldMatches(value: any, cond: any): boolean {
       case 'lt': if (value == null || cmp(value, arg) >= 0) return false; break;
       case 'lte': if (value == null || cmp(value, arg) > 0) return false; break;
       case 'contains': if (typeof value !== 'string' || !value.includes(arg as string)) return false; break;
+      case 'startsWith': if (typeof value !== 'string' || !value.startsWith(arg as string)) return false; break;
+      case 'notIn': if ((arg as any[]).some((a) => same(value, a))) return false; break;
       case 'has': if (!Array.isArray(value) || !value.includes(arg)) return false; break;
       default: throw new Error(`fakePrisma: оператор ${op} не поддержан`);
     }
@@ -48,7 +52,7 @@ function fieldMatches(value: any, cond: any): boolean {
 }
 
 export function createFakePrisma() {
-  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [] };
+  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [], user: [], callGroupReport: [] };
 
   function matches(table: keyof Tables, row: Row, where: any): boolean {
     if (!where) return true;
@@ -73,7 +77,10 @@ export function createFakePrisma() {
     const out: Row = {};
     for (const [k, v] of Object.entries(select)) {
       if (!v) continue;
-      if (k === 'manager') out.manager = null;
+      if (k === 'manager') {
+        const u = db.user.find((x) => x.id === row.managerUserId);
+        out.manager = u ? { id: u.id, fullName: u.fullName } : null;
+      }
       else if (k === 'client') out.client = db.client.find((c) => c.id === row.clientId) ?? null;
       else if (k === 'tasks') out.tasks = db.task.filter((t) => t.callSessionId === row.id);
       else out[k] = row[k];
@@ -88,12 +95,14 @@ export function createFakePrisma() {
   }
 
   const defaults: Record<keyof Tables, () => Row> = {
-    callSession: () => ({ clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
+    callSession: () => ({ deletedAt: null, analysisRequest: null, driveFileId: null, clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
     task: () => ({ status: 'TODO', description: null, report: null, callSessionId: null }),
     callRecording: () => ({ callSessionId: null }),
     mobileDevice: () => ({ active: true }),
     client: () => ({ isArchived: false }),
     callAudit: () => ({ clientId: null }),
+    user: () => ({ isActive: true }),
+    callGroupReport: () => ({ status: 'WAITING', result: null, error: null }),
   };
 
   function model(table: keyof Tables, unique: string[] = []) {
@@ -136,6 +145,12 @@ export function createFakePrisma() {
         for (const r of list) Object.assign(r, data, { updatedAt: new Date() });
         return { count: list.length };
       },
+      deleteMany: async ({ where }: any = {}) => {
+        const keep = rows().filter((row) => !matches(table, row, where));
+        const count = rows().length - keep.length;
+        db[table] = keep;
+        return { count };
+      },
     };
   }
 
@@ -146,6 +161,8 @@ export function createFakePrisma() {
     mobileDevice: model('mobileDevice'),
     client: model('client'),
     callAudit: model('callAudit'),
+    user: model('user'),
+    callGroupReport: model('callGroupReport'),
     /** Поиск клиента по номеру: как SQL-префильтр — цифры номера встречаются в поле phone */
     $queryRaw: async (sql: Prisma.Sql) => {
       const pattern = String(sql.values[0] ?? '').replace(/%/g, '');

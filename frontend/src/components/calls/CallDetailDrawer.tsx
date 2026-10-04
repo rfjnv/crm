@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Descriptions, Drawer, Empty, List, Space, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Empty, List, Popconfirm, Space, Spin, Tag, Typography, message } from 'antd';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { callsApi } from '../../api/calls.api';
 import { formatUzPhone } from '../../utils/phone';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import CallAudioPlayer from './CallAudioPlayer';
-import { AudioStatusTag, apiErrorMessage, callTypeLabel, formatDuration } from './callsUi';
+import { AudioStatusTag, apiErrorMessage, callTypeLabel, canSeeAllCalls, formatDuration } from './callsUi';
+import { useAuthStore } from '../../store/authStore';
+import ReassignCallsModal from './ReassignCallsModal';
 
 const STAGES: Record<string, string> = {
   greeting: 'Приветствие',
@@ -31,10 +34,14 @@ export default function CallDetailDrawer({
 }) {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
+  const isLeader = canSeeAllCalls(useAuthStore((s) => s.user));
+  const [reassignOpen, setReassignOpen] = useState(false);
   const { data: call, isLoading, error } = useQuery({
     queryKey: ['call', callId],
     queryFn: () => callsApi.get(callId!),
     enabled: !!callId,
+    // Пока звонок в очереди анализа — подтягиваем результат
+    refetchInterval: (q) => (q.state.data && ['UPLOADED', 'TRANSCRIBING'].includes(q.state.data.audioStatus) ? 10_000 : false),
   });
 
   const refresh = () => {
@@ -53,7 +60,27 @@ export default function CallDetailDrawer({
     onError: (err) => message.error(apiErrorMessage(err)),
   });
 
+  const analyzeMut = useMutation({
+    mutationFn: () => callsApi.analyze([callId!]),
+    onSuccess: (r) => {
+      message.success(r.queued || r.inProgress ? 'Звонок поставлен на анализ — результат появится через пару минут' : 'Анализировать нечего');
+      refresh();
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+  const deleteMut = useMutation({
+    mutationFn: () => callsApi.remove([callId!]),
+    onSuccess: () => {
+      message.success('Звонок удалён');
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['client-calls'] });
+      onClose();
+    },
+    onError: (err) => message.error(apiErrorMessage(err)),
+  });
+
   const missed = call && call.status === 'MISSED';
+  const analysisRunning = call && (call.audioStatus === 'UPLOADED' || call.audioStatus === 'TRANSCRIBING');
 
   return (
     <Drawer
@@ -106,6 +133,27 @@ export default function CallDetailDrawer({
               <Button type="primary" onClick={() => calledBackMut.mutate()} loading={calledBackMut.isPending}>Перезвонил</Button>
             )}
           </Space>
+
+          {isLeader && (
+            <Space wrap>
+              {call.hasRecording && !call.auditId && (
+                <Button onClick={() => analyzeMut.mutate()} loading={analyzeMut.isPending} disabled={!!analysisRunning}>
+                  {analysisRunning ? 'Анализируется…' : 'Проанализировать'}
+                </Button>
+              )}
+              <Button onClick={() => setReassignOpen(true)}>Чей звонок</Button>
+              <Popconfirm
+                title="Удалить звонок?"
+                description="Запись и аудит удалятся, звонок пропадёт из журнала и статистики."
+                okText="Удалить"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => deleteMut.mutate()}
+              >
+                <Button danger loading={deleteMut.isPending}>Удалить</Button>
+              </Popconfirm>
+            </Space>
+          )}
+          {callId && <ReassignCallsModal callIds={[callId]} open={reassignOpen} onClose={() => setReassignOpen(false)} />}
 
           {call.tasks.length > 0 && (
             <List

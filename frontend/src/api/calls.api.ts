@@ -94,6 +94,37 @@ export interface ClientCallsResponse extends CallsPage {
   stats: { days: number; callsCount: number; missedCount: number; avgDurationSec: number | null };
 }
 
+export type CallReportStatus = 'WAITING' | 'RUNNING' | 'DONE' | 'FAILED';
+
+export interface CallReportRow {
+  id: string;
+  title: string;
+  status: CallReportStatus;
+  error: string | null;
+  callsCount: number;
+  createdAt: string;
+  finishedAt: string | null;
+  createdBy: { fullName: string };
+}
+
+export interface CallReportDetail extends Omit<CallReportRow, 'callsCount'> {
+  result: string | null;
+  callIds: string[];
+  calls: {
+    id: string;
+    number: number;
+    startedAt: string;
+    durationSec: number | null;
+    mobileType: MobileCallType | null;
+    audioStatus: CallAudioStatus;
+    deletedAt: string | null;
+    hasTranscript: boolean;
+    phone: string | null;
+    manager: { fullName: string } | null;
+    client: { companyName: string } | null;
+  }[];
+}
+
 export interface MobileDeviceRow {
   id: string;
   model: string | null;
@@ -165,6 +196,16 @@ export const callsApi = {
     client.post<{ taskId: string; existing: boolean }>(`/calls/${id}/callback-task`, {}).then((r) => r.data),
   calledBack: (id: string) => client.post<{ calls: number; tasks: number }>(`/calls/${id}/called-back`).then((r) => r.data),
   missed: () => client.get<MissedSummary>('/calls/missed').then((r) => r.data),
+  analyze: (callIds: string[]) =>
+    client.post<{ queued: number; alreadyDone: number; noRecording: number; inProgress: number }>('/calls/analyze', { callIds }).then((r) => r.data),
+  reassign: (callIds: string[], managerId: string) =>
+    client.post<{ updated: number; managerName: string }>('/calls/reassign', { callIds, managerId }).then((r) => r.data),
+  remove: (callIds: string[]) => client.post<{ deleted: number }>('/calls/delete', { callIds }).then((r) => r.data),
+  createReport: (callIds: string[], title?: string) =>
+    client.post<{ id: string; title: string }>('/calls/reports', { callIds, title }).then((r) => r.data),
+  reports: () => client.get<CallReportRow[]>('/calls/reports').then((r) => r.data),
+  report: (id: string) => client.get<CallReportDetail>(`/calls/reports/${id}`).then((r) => r.data),
+  removeReport: (id: string) => client.delete(`/calls/reports/${id}`).then((r) => r.data),
   forClient: (clientId: string, page = 1, pageSize = 20) =>
     client.get<ClientCallsResponse>(`/clients/${clientId}/calls`, { params: { page, pageSize } }).then((r) => r.data),
 };
