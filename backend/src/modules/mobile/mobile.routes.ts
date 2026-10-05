@@ -1,4 +1,7 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { auditLog } from '../../lib/logger';
+import { canSeeAllCalls } from './mobile.access';
 import prisma from '../../lib/prisma';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
@@ -75,9 +78,10 @@ router.post('/logs', authenticateDevice, singleFileUpload('file', MAX_LOG_BYTES)
 router.post(
   '/pairing-code',
   authenticate,
-  rateLimiter(WINDOW_15M, 20, byUserOrIp),
+  rateLimiter(WINDOW_15M, 60, byUserOrIp),
   asyncHandler(async (req: Request, res: Response) => {
-    res.json(await createPairingCode(req.user!.userId, `${req.protocol}://${req.get('host')}`));
+    const dto = parseOr400(z.object({ userId: z.string().trim().min(1, 'Выберите сотрудника') }), req.body ?? {});
+    res.json(await createPairingCode(req.user!, dto.userId, `${req.protocol}://${req.get('host')}`));
   }),
 );
 
@@ -85,32 +89,51 @@ router.post(
 
 const admin = [authenticate, authorize('ADMIN', 'SUPER_ADMIN')];
 
-router.get('/devices', ...admin, asyncHandler(async (_req: Request, res: Response) => {
+/** Телефоны подключает и обслуживает руководство: админы и РОП. Настройки, Drive и модели — только админы. */
+function requirePhonesManager(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.user || !canSeeAllCalls(req.user)) {
+    next(new AppError(403, 'Доступно руководству'));
+    return;
+  }
+  next();
+}
+const phones = [authenticate, requirePhonesManager];
+
+router.get('/devices', ...phones, asyncHandler(async (_req: Request, res: Response) => {
   res.json(await listDevices());
 }));
 
-router.post('/devices/:id/revoke', ...admin, asyncHandler(async (req: Request, res: Response) => {
+router.post('/devices/:id/revoke', ...phones, asyncHandler(async (req: Request, res: Response) => {
+  const id = String(req.params.id);
   const { count } = await prisma.mobileDevice.updateMany({
-    where: { id: String(req.params.id), active: true },
+    where: { id, active: true },
     data: { active: false, revokedAt: new Date() },
   });
   if (count === 0) throw new AppError(404, 'Активное устройство не найдено');
+  const device = await prisma.mobileDevice.findUnique({ where: { id }, select: { model: true, user: { select: { id: true, fullName: true } } } });
+  await auditLog({
+    userId: req.user!.userId,
+    action: 'UPDATE',
+    entityType: 'mobile_device',
+    entityId: id,
+    after: { event: 'revoked', forUserId: device?.user.id, forUserName: device?.user.fullName, model: device?.model },
+  });
   res.json({ ok: true });
 }));
 
-router.post('/devices/:id/request-logs', ...admin, asyncHandler(async (req: Request, res: Response) => {
+router.post('/devices/:id/request-logs', ...phones, asyncHandler(async (req: Request, res: Response) => {
   const { count } = await prisma.mobileDevice.updateMany({ where: { id: String(req.params.id) }, data: { uploadLogsRequested: true } });
   if (count === 0) throw new AppError(404, 'Устройство не найдено');
   res.json({ ok: true });
 }));
 
-router.get('/devices/:id/log-url', ...admin, asyncHandler(async (req: Request, res: Response) => {
+router.get('/devices/:id/log-url', ...phones, asyncHandler(async (req: Request, res: Response) => {
   const device = await prisma.mobileDevice.findUnique({ where: { id: String(req.params.id) }, select: { lastLogPath: true } });
   if (!device?.lastLogPath) throw new AppError(404, 'Лог ещё не присылали');
   res.json({ url: await signedUrl(device.lastLogPath, 3600) });
 }));
 
-router.put('/devices/:id', ...admin, asyncHandler(async (req: Request, res: Response) => {
+router.put('/devices/:id', ...phones, asyncHandler(async (req: Request, res: Response) => {
   const dto = parseOr400(updateDeviceDto, req.body);
   const exists = await prisma.mobileDevice.findUnique({ where: { id: String(req.params.id) }, select: { id: true } });
   if (!exists) throw new AppError(404, 'Устройство не найдено');

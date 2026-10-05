@@ -211,8 +211,11 @@ export const callsApi = {
 };
 
 export const mobileApi = {
-  pairingCode: () =>
-    client.post<{ code: string; qr: string; server: string; expiresAt: string }>('/mobile/pairing-code').then((r) => r.data),
+  /** QR привязки для сотрудника — создаёт руководство */
+  pairingCode: (userId: string) =>
+    client
+      .post<{ code: string; qr: string; server: string; expiresAt: string; employee: { id: string; name: string } }>('/mobile/pairing-code', { userId })
+      .then((r) => r.data),
   devices: () => client.get<{ workingNow: boolean; devices: MobileDeviceRow[] }>('/mobile/devices').then((r) => r.data),
   revoke: (id: string) => client.post(`/mobile/devices/${id}/revoke`).then((r) => r.data),
   requestLogs: (id: string) => client.post(`/mobile/devices/${id}/request-logs`).then((r) => r.data),

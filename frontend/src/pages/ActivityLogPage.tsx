@@ -19,7 +19,7 @@ const ENTITY_TYPES = [
   'deal', 'client', 'client_note', 'notes_board_row', 'client_stock_event', 'contract', 'contract_attachment',
   'user', 'user_goal', 'import_order', 'import_order_attachment', 'product',
   'stock_correction', 'inventory_movement', 'supplier', 'notification_batch',
-  'power_of_attorney', 'session',
+  'power_of_attorney', 'session', 'mobile_device',
 ];
 
 export default function ActivityLogPage() {

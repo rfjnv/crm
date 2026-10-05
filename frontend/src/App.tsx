@@ -227,7 +227,8 @@ export default function App() {
                 <Route path="/profile" element={<ProfilePage />} />
                 {/* Звонки с рабочих телефонов (CallSync): доступ режет сервер — менеджер видит только свои */}
                 <Route path="/calls" element={<CallsPage />} />
-                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                {/* Телефоны подключает руководство: админы и РОП (право use_rop_agent) */}
+                <Route element={<PrivateRoute permission="use_rop_agent" />}>
                   <Route path="/mobile-devices" element={<MobileDevicesPage />} />
                 </Route>
                 <Route path="/changelog" element={<ChangelogPage />} />

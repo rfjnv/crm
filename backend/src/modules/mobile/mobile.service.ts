@@ -12,6 +12,8 @@ import { processNewMobileCall } from './mobile.processing';
 import { getMobileSettings } from './mobile.settings';
 import { audioExt, audioMime, removeFiles, uploadFile } from './mobile.storage';
 import { publicServerUrl } from './mobile.public-url';
+import { canSeeAllCalls } from './mobile.access';
+import { auditLog } from '../../lib/logger';
 import type { z } from 'zod';
 
 // ─── Привязка телефона ──────────────────────────────────────────────────────
@@ -25,13 +27,31 @@ function hashPairingCode(code: string): string {
   return createHash('sha256').update(code.trim().toUpperCase().replace(/[\s-]/g, '')).digest('hex');
 }
 
-export async function createPairingCode(userId: string, fallbackServer: string) {
+/**
+ * QR привязки для сотрудника. Телефоны подключает руководство (менеджеры приложением не
+ * управляют), поэтому код создаёт руководитель для выбранного сотрудника — и это пишется
+ * в журнал действий: кто и для кого.
+ */
+export async function createPairingCode(actor: { userId: string; role: string; permissions?: string[] }, userId: string, fallbackServer: string) {
+  if (!canSeeAllCalls(actor)) throw new AppError(403, 'Подключать телефоны может только руководство');
+  const employee = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, isActive: true, role: true } });
+  if (!employee) throw new AppError(404, 'Сотрудник не найден');
+  if (!employee.isActive) throw new AppError(400, 'Сотрудник деактивирован — подключить телефон нельзя');
+  if (employee.role === 'SITE_ADMIN') throw new AppError(400, 'Это аккаунт сайта, а не сотрудник CRM');
+
   let code = '';
   for (let i = 0; i < PAIRING_LENGTH; i++) code += PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)];
   const expiresAt = new Date(Date.now() + PAIRING_TTL_MS);
   // Старые неиспользованные коды этого сотрудника больше не нужны
   await prisma.mobilePairingCode.deleteMany({ where: { userId, usedAt: null } });
-  await prisma.mobilePairingCode.create({ data: { codeHash: hashPairingCode(code), userId, expiresAt } });
+  const row = await prisma.mobilePairingCode.create({ data: { codeHash: hashPairingCode(code), userId, expiresAt }, select: { id: true } });
+  await auditLog({
+    userId: actor.userId,
+    action: 'CREATE',
+    entityType: 'mobile_device',
+    entityId: row.id,
+    after: { event: 'pairing_code', forUserId: employee.id, forUserName: employee.fullName, expiresAt: expiresAt.toISOString() },
+  });
   // Приложение само добавляет к адресу /api/mobile/auth
   const server = publicServerUrl(fallbackServer);
   return {
@@ -39,6 +59,7 @@ export async function createPairingCode(userId: string, fallbackServer: string) 
     server,
     qr: `callsync://pair?server=${encodeURIComponent(server)}&code=${code}`,
     expiresAt: expiresAt.toISOString(),
+    employee: { id: employee.id, name: employee.fullName },
   };
 }
 

@@ -16,6 +16,7 @@ type Tables = {
   callAudit: Row[];
   user: Row[];
   callGroupReport: Row[];
+  mobilePairingCode: Row[];
 };
 
 function same(a: unknown, b: unknown): boolean {
@@ -52,7 +53,7 @@ function fieldMatches(value: any, cond: any): boolean {
 }
 
 export function createFakePrisma() {
-  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [], user: [], callGroupReport: [] };
+  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [], user: [], callGroupReport: [], mobilePairingCode: [] };
 
   function matches(table: keyof Tables, row: Row, where: any): boolean {
     if (!where) return true;
@@ -103,6 +104,7 @@ export function createFakePrisma() {
     callAudit: () => ({ clientId: null }),
     user: () => ({ isActive: true }),
     callGroupReport: () => ({ status: 'WAITING', result: null, error: null }),
+    mobilePairingCode: () => ({ usedAt: null }),
   };
 
   function model(table: keyof Tables, unique: string[] = []) {
@@ -163,6 +165,8 @@ export function createFakePrisma() {
     callAudit: model('callAudit'),
     user: model('user'),
     callGroupReport: model('callGroupReport'),
+    mobilePairingCode: model('mobilePairingCode', ['codeHash']),
+    $transaction: async (fn: (tx: any) => Promise<unknown>): Promise<unknown> => fn(prisma),
     /** Поиск клиента по номеру: как SQL-префильтр — цифры номера встречаются в поле phone */
     $queryRaw: async (sql: Prisma.Sql) => {
       const pattern = String(sql.values[0] ?? '').replace(/%/g, '');

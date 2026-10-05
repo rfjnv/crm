@@ -746,7 +746,7 @@ export default function Layout() {
           },
         ]
       : []),
-    ...(isAdmin
+    ...(hasPermission('use_rop_agent')
       ? [
           {
             key: '/mobile-devices',

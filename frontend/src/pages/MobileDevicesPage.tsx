@@ -10,6 +10,9 @@ import 'dayjs/locale/ru';
 import { mobileApi, type MobileDeviceRow, type MobileSettings } from '../api/calls.api';
 import { apiErrorMessage } from '../components/calls/callsUi';
 import DriveArchiveCard from '../components/calls/DriveArchiveCard';
+import ConnectPhoneModal from '../components/calls/ConnectPhoneModal';
+import { useAuthStore } from '../store/authStore';
+import { MobileOutlined } from '@ant-design/icons';
 
 dayjs.extend(relativeTime);
 
@@ -30,10 +33,14 @@ export default function MobileDevicesPage() {
   const [pathFor, setPathFor] = useState<MobileDeviceRow | null>(null);
   const [pathValue, setPathValue] = useState('');
   const [modelPath, setModelPath] = useState<{ model: string; path: string } | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  // РОП подключает и обслуживает телефоны; настройки, Drive и папки по моделям — только админам
+  const role = useAuthStore((s) => s.user?.role);
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   const { data, isLoading } = useQuery({ queryKey: ['mobile-devices'], queryFn: mobileApi.devices, refetchInterval: 60_000 });
-  const { data: models = [] } = useQuery({ queryKey: ['mobile-device-models'], queryFn: mobileApi.deviceModels });
-  const { data: settings } = useQuery({ queryKey: ['mobile-settings'], queryFn: mobileApi.settings });
+  const { data: models = [] } = useQuery({ queryKey: ['mobile-device-models'], queryFn: mobileApi.deviceModels, enabled: isAdmin });
+  const { data: settings } = useQuery({ queryKey: ['mobile-settings'], queryFn: mobileApi.settings, enabled: isAdmin });
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['mobile-devices'] });
@@ -159,7 +166,11 @@ export default function MobileDevicesPage() {
 
   return (
     <div>
-      <Typography.Title level={4} style={{ marginTop: 0 }}>Телефоны (CallSync)</Typography.Title>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>Телефоны (CallSync)</Typography.Title>
+        <Button type="primary" icon={<MobileOutlined />} onClick={() => setConnectOpen(true)}>Подключить телефон</Button>
+      </div>
+      <ConnectPhoneModal open={connectOpen} onClose={() => setConnectOpen(false)} />
 
       <Table<MobileDeviceRow>
         rowKey="id"
@@ -170,11 +181,12 @@ export default function MobileDevicesPage() {
         pagination={false}
         scroll={{ x: 1100 }}
         onRow={(d) => ({ style: { opacity: d.active ? 1 : 0.55, background: d.active && (d.silent || d.problems.length > 0) ? token.colorErrorBg : undefined } })}
-        locale={{ emptyText: 'Телефоны ещё не привязаны. Сотрудник привязывает телефон в своём профиле.' }}
+        locale={{ emptyText: 'Телефоны ещё не подключены. Нажмите «Подключить телефон» и выберите сотрудника.' }}
       />
 
-      <DriveArchiveCard />
+      {isAdmin && <DriveArchiveCard />}
 
+      {isAdmin && (
       <Card size="small" title="Папка записей по модели телефона" style={{ marginTop: 16 }}>
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           Путь от корня памяти телефона, несколько — через «;». Пусто — приложение ищет в стандартных папках Samsung и MIUI.
@@ -197,8 +209,9 @@ export default function MobileDevicesPage() {
           ]}
         />
       </Card>
+      )}
 
-      {settings && (
+      {isAdmin && settings && (
         <Card size="small" title="Настройки" style={{ marginTop: 16 }}>
           <Form
             layout="vertical"
