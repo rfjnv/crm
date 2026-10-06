@@ -590,14 +590,69 @@ html[data-design='modern'] .hdr-panel .ant-btn.hdr-btn--wide {
   width: auto;
 }
 
-/* Меню раскрывается при наведении — плавно, поверх страницы */
+/*
+ * Меню раскрывается при наведении — плавно, поверх страницы. Раскладка внутри не
+ * меняется: панель меняет только ширину, иконки стоят на месте, подписи проявляются
+ * с лёгким сдвигом. Кривая — как у анимаций iOS.
+ */
+html[data-design='modern'] {
+  --sider-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @media (min-width: 768px) {
   html[data-design='modern'] .app-shell > .ant-layout-sider {
     transition:
-      width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
-      min-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
-      max-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
-      flex-basis 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+      width 0.34s var(--sider-ease),
+      min-width 0.34s var(--sider-ease),
+      max-width 0.34s var(--sider-ease),
+      flex-basis 0.34s var(--sider-ease),
+      box-shadow 0.34s var(--sider-ease) !important;
+  }
+
+  /* Иконки выровнены по узкой полосе (центр — 32px), поэтому при раскрытии не сдвигаются */
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-inline > .ant-menu-item,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-inline > .ant-menu-submenu > .ant-menu-submenu-title,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-item-group-list > .ant-menu-item {
+    padding-left: 14px !important;
+  }
+
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-item-group-title {
+    padding-left: 16px;
+    white-space: nowrap;
+  }
+
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-title-content,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-item-group-title,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-submenu-arrow,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .sider-brand-name {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.24s ease 0.08s,
+      transform 0.34s var(--sider-ease) 0.04s;
+  }
+
+  html[data-design='modern'] .app-shell > .ant-layout-sider.sider--narrow .ant-menu-title-content,
+  html[data-design='modern'] .app-shell > .ant-layout-sider.sider--narrow .ant-menu-item-group-title,
+  html[data-design='modern'] .app-shell > .ant-layout-sider.sider--narrow .ant-menu-submenu-arrow,
+  html[data-design='modern'] .app-shell > .ant-layout-sider.sider--narrow .sider-brand-name {
+    opacity: 0;
+    transform: translateX(-8px);
+    transition:
+      opacity 0.12s ease,
+      transform 0.2s ease;
+  }
+
+  html[data-design='modern'] .app-shell > .ant-layout-sider .ant-menu-title-content,
+  html[data-design='modern'] .app-shell > .ant-layout-sider .sider-brand-name {
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-design='modern'] .app-shell > .ant-layout-sider,
+  html[data-design='modern'] .app-shell > .ant-layout-sider * {
+    transition-duration: 0.01s !important;
   }
 }
 
@@ -611,7 +666,7 @@ html[data-design='modern'] .sider-scrim {
   background: rgba(0, 0, 0, 0.12);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  transition: opacity 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.34s var(--sider-ease);
 }
 
 html[data-design='modern'][data-theme='light'] .sider-scrim {

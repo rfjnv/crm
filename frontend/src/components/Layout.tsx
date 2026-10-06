@@ -310,7 +310,12 @@ export default function Layout() {
   const siderWidth = hoverSider
     ? (siderPinned ? SIDER_WIDTH : SIDER_COLLAPSED_WIDTH)
     : (collapsed ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH);
-  const showGroupLabels = isMobile || !siderCollapsed;
+  // Меню нового дизайна не перестраивается при сворачивании: список и логотип те же,
+  // панель лишь меняет ширину, а подписи плавно гаснут (см. .sider--narrow в glass.css).
+  // Так ничего не прыгает — antd в режиме collapsed прятал группы и центрировал иконки.
+  const siderNarrow = hoverSider && siderCollapsed;
+  const compactLayout = !hoverSider && siderCollapsed;
+  const showGroupLabels = isMobile || hoverSider || !siderCollapsed;
 
   const onSiderEnter = () => {
     if (!hoverSider || siderPinned) return;
@@ -858,10 +863,10 @@ export default function Layout() {
           height: 72,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: isMobile ? 'flex-start' : (siderCollapsed ? 'center' : 'flex-start'),
+          justifyContent: isMobile ? 'flex-start' : (compactLayout ? 'center' : 'flex-start'),
           borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
           textDecoration: 'none',
-          padding: (!isMobile && siderCollapsed) ? '0' : '0 14px',
+          padding: (!isMobile && compactLayout) ? '0' : '0 14px',
           overflow: 'hidden',
           position: 'sticky',
           top: 0,
@@ -887,12 +892,13 @@ export default function Layout() {
             >
               <img
                 src={miniLogo}
-                alt={(!isMobile && siderCollapsed) ? 'Polygraph Business' : ''}
+                alt={(!isMobile && compactLayout) ? 'Polygraph Business' : ''}
                 style={{ width: 22, height: 22, objectFit: 'contain' }}
               />
             </span>
-            {(isMobile || !siderCollapsed) && (
+            {(isMobile || !compactLayout) && (
               <span
+                className="sider-brand-name"
                 style={{
                   color: themeToken.colorText,
                   fontSize: 15,
@@ -907,11 +913,11 @@ export default function Layout() {
           </span>
         ) : (
           <img
-            src={(!isMobile && siderCollapsed) ? miniLogo : logo}
+            src={(!isMobile && compactLayout) ? miniLogo : logo}
             alt="Polygraph Business"
             style={{
-              height: (!isMobile && siderCollapsed) ? 40 : 52,
-              maxWidth: (!isMobile && siderCollapsed) ? 48 : 192,
+              height: (!isMobile && compactLayout) ? 40 : 52,
+              maxWidth: (!isMobile && compactLayout) ? 48 : 192,
               objectFit: 'contain',
               transition: 'all 0.3s',
             }}
@@ -956,12 +962,13 @@ export default function Layout() {
       ) : (
         <Sider
           collapsible
-          collapsed={siderCollapsed}
+          collapsed={hoverSider ? false : siderCollapsed}
           onCollapse={setCollapsed}
+          className={siderNarrow ? 'sider--narrow' : undefined}
           onMouseEnter={onSiderEnter}
           onMouseLeave={onSiderLeave}
           trigger={null}
-          width={SIDER_WIDTH}
+          width={siderNarrow ? SIDER_COLLAPSED_WIDTH : SIDER_WIDTH}
           collapsedWidth={SIDER_COLLAPSED_WIDTH}
           style={{
             background: themeToken.colorBgContainer,
