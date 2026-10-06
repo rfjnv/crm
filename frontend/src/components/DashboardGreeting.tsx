@@ -3,6 +3,7 @@ import { DatePicker, Dropdown } from 'antd';
 import { CalendarBlank, CaretDown, Check } from '@phosphor-icons/react';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { DashboardPeriod } from '../api/warehouse.api';
+import { useHoverGlider } from '../hooks/useHoverGlider';
 
 /** Фразы под приветствием сменяют друг друга, чтобы шапка не была скучной. */
 const MOTTOS = [
@@ -134,21 +135,7 @@ export default function DashboardGreeting({
           onOpenChange={setOpen}
           trigger={['click']}
           placement="bottomRight"
-          popupRender={() => (
-            <div className="hdr-panel dash-period-panel">
-              {items.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  className="hdr-panel__row hdr-panel__row--action"
-                  onClick={() => choose(item.value)}
-                >
-                  <span className="hdr-panel__label">{item.label}</span>
-                  {item.value === period && <Check size={16} weight="bold" />}
-                </button>
-              ))}
-            </div>
-          )}
+          popupRender={() => <PeriodPanel items={items} current={period} onChoose={choose} />}
         >
           <button type="button" className="dash-period">
             <CalendarBlank size={18} />
@@ -157,6 +144,34 @@ export default function DashboardGreeting({
           </button>
         </Dropdown>
       </div>
+    </div>
+  );
+}
+
+function PeriodPanel({
+  items,
+  current,
+  onChoose,
+}: {
+  items: { value: DashboardPeriod; label: string }[];
+  current: DashboardPeriod;
+  onChoose: (value: DashboardPeriod) => void;
+}) {
+  const glider = useHoverGlider<HTMLDivElement>('.hdr-panel__row--action');
+  return (
+    <div className="hdr-panel dash-period-panel" ref={glider.ref}>
+      <span className="hover-glider" style={glider.style} aria-hidden />
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          className="hdr-panel__row hdr-panel__row--action"
+          onClick={() => onChoose(item.value)}
+        >
+          <span className="hdr-panel__label">{item.label}</span>
+          {item.value === current && <Check size={16} weight="bold" />}
+        </button>
+      ))}
     </div>
   );
 }

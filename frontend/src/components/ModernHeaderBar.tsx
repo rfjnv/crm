@@ -18,6 +18,7 @@ import CostAccessButton from './CostAccessButton';
 import NotificationBell from './NotificationBell';
 import { APP_BUTTON } from './ui/AppClassNames';
 import { useCostAccess } from '../hooks/useCostAccess';
+import { useHoverGlider } from '../hooks/useHoverGlider';
 
 interface Props {
   isMobile: boolean;
@@ -91,6 +92,7 @@ function ProfilePanel({
   close,
 }: Props & { initial: string; close: () => void }) {
   const cost = useCostAccess();
+  const glider = useHoverGlider<HTMLDivElement>('.hdr-panel__row--action');
   // Пункты, которые уводят со страницы или открывают окно, закрывают панель;
   // переключатели оставляют её открытой, чтобы было видно результат.
   const andClose = (fn: () => void) => () => {
@@ -99,7 +101,8 @@ function ProfilePanel({
   };
 
   return (
-    <div className="hdr-panel">
+    <div className="hdr-panel" ref={glider.ref}>
+      <span className="hover-glider" style={glider.style} aria-hidden />
       <div className="hdr-panel__head">
         <span className="hdr-avatar hdr-avatar--lg" aria-hidden>{initial}</span>
         <span className="hdr-panel__name">{displayName}</span>

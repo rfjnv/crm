@@ -80,6 +80,7 @@ import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
 import ModernHeaderBar from './ModernHeaderBar';
 import { withModernMenuIcons } from '../config/modernMenuIcons';
+import { useHoverGlider } from '../hooks/useHoverGlider';
 import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
@@ -143,6 +144,7 @@ export default function Layout() {
   }, [setUser]);
   const { mode, toggle, design, toggleDesign } = useThemeStore();
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const menuGlider = useHoverGlider<HTMLDivElement>('.ant-menu-item, .ant-menu-submenu-title', design === 'modern');
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
   const mainScrollRef = useRef<HTMLDivElement>(null);
@@ -924,14 +926,18 @@ export default function Layout() {
           />
         )}
       </Link>
-      <Menu
-        mode="inline"
-        selectedKeys={[selectedDilnoza]}
-        openKeys={menuOpenKeys}
-        onOpenChange={setMenuOpenKeys}
-        items={design === 'modern' ? withModernMenuIcons(menuItems) : menuItems}
-        style={{ borderRight: 0, paddingTop: 12 }}
-      />
+      {/* Прокручивается список, а не вся панель; в новом дизайне за курсором едет подсветка */}
+      <div className="sider-menu-scroll" ref={menuGlider.ref}>
+        {design === 'modern' && <span className="hover-glider" style={menuGlider.style} aria-hidden />}
+        <Menu
+          mode="inline"
+          selectedKeys={[selectedDilnoza]}
+          openKeys={menuOpenKeys}
+          onOpenChange={setMenuOpenKeys}
+          items={design === 'modern' ? withModernMenuIcons(menuItems) : menuItems}
+          style={{ borderRight: 0, paddingTop: 12 }}
+        />
+      </div>
     </>
   );
 
