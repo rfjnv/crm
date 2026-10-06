@@ -79,7 +79,8 @@ import { getFirstName } from '../lib/name-utils';
 import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
 import ModernHeaderBar from './ModernHeaderBar';
-import { withModernMenuIcons } from '../config/modernMenuIcons';
+import { buildModernMenu, parentKeyOf } from '../config/modernMenuTree';
+import { toModernMenuItems } from '../config/modernMenuItems';
 import { useHoverGlider } from '../hooks/useHoverGlider';
 import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
@@ -857,6 +858,25 @@ export default function Layout() {
 
   const selectedDilnoza = '/' + location.pathname.split('/').slice(1, 3).join('/');
 
+  // Новый дизайн: меню собирается из разделов для этого пользователя (config/modernMenuTree.ts)
+  const modernSections = buildModernMenu({
+    role,
+    isAdmin,
+    hasRole,
+    hasPermission: (perm) => !!hasPermission(perm),
+    ownPermissions: (user?.permissions ?? []) as string[],
+    canViewClients: !!canViewClients,
+    canViewClosedDealsHistory,
+    moneyFull: (user?.moneyAccess ?? 'FULL') === 'FULL',
+  });
+  const currentMenuGroup = design === 'modern' ? parentKeyOf(modernSections, selectedDilnoza) : undefined;
+
+  // Группа, в которой открыта текущая страница, раскрывается сама
+  useEffect(() => {
+    if (!currentMenuGroup) return;
+    setMenuOpenKeys((prev) => (prev.includes(currentMenuGroup) ? prev : [...prev, currentMenuGroup]));
+  }, [currentMenuGroup]);
+
   const menuContent = (
     <>
       <Link
@@ -934,7 +954,7 @@ export default function Layout() {
           selectedKeys={[selectedDilnoza]}
           openKeys={menuOpenKeys}
           onOpenChange={setMenuOpenKeys}
-          items={design === 'modern' ? withModernMenuIcons(menuItems) : menuItems}
+          items={design === 'modern' ? toModernMenuItems(modernSections, totalUnread) : menuItems}
           style={{ borderRight: 0, paddingTop: 12 }}
         />
       </div>

@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react';
-import type { MenuProps } from 'antd';
 import type { Icon } from '@phosphor-icons/react';
 import {
   Archive,
@@ -68,9 +66,8 @@ import {
 } from '@phosphor-icons/react';
 
 /**
- * Иконки бокового меню в новом дизайне — Phosphor вместо Ant Design.
- * Ключ — `key` пункта меню в Layout.tsx. Пункт, которого здесь нет, остаётся со
- * своей старой иконкой, поэтому новый пункт меню ничего не сломает.
+ * Иконки Phosphor по пути страницы — для нижней панели на телефоне (BottomTabBar).
+ * Боковое меню нового дизайна берёт иконки из config/modernMenuTree.ts.
  */
 const ICON_BY_KEY: Record<string, Icon> = {
   '/dashboard': Gauge,
@@ -144,18 +141,4 @@ const ICON_BY_KEY: Record<string, Icon> = {
 /** Иконка Phosphor для пункта меню или вкладки нижней панели (по пути), если она задана. */
 export function modernIconFor(key: string): Icon | undefined {
   return ICON_BY_KEY[key];
-}
-
-type MenuItem = NonNullable<MenuProps['items']>[number];
-
-/** Заменяет иконки пунктов меню (и вложенных) на Phosphor. */
-export function withModernMenuIcons(items: MenuProps['items']): MenuProps['items'] {
-  return items?.map((item): MenuItem => {
-    if (!item || !('key' in item)) return item;
-    const PhIcon = typeof item.key === 'string' ? ICON_BY_KEY[item.key] : undefined;
-    const next = { ...item } as MenuItem & { icon?: ReactNode; children?: MenuProps['items'] };
-    if (PhIcon && 'icon' in next && next.icon) next.icon = <PhIcon size={18} />;
-    if ('children' in next && next.children) next.children = withModernMenuIcons(next.children);
-    return next;
-  });
 }
