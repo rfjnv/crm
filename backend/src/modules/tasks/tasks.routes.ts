@@ -9,6 +9,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
 import { createTaskDto, updateTaskDto, moveTaskDto } from './tasks.dto';
 import { generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
+import { notifyTasksAssigned } from './tasks.notify';
 
 import { config } from '../../lib/config';
 
@@ -155,6 +156,8 @@ router.post(
         })
       ),
     );
+
+    void notifyTasksAssigned(createdTasks, req.user!.userId);
 
     res.status(201).json({
       createdCount: createdTasks.length,

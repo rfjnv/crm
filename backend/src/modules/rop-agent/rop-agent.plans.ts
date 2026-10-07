@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { notifyTasksAssigned } from '../tasks/tasks.notify';
 import { assignableManagerIds, directorUserIds } from './rop-agent.people';
 import { bilingualText, bilingualTitle, toUzbekCyrillic } from './rop-agent.translate';
 
@@ -279,6 +280,7 @@ export async function assignPlan(planId: string, userId: string) {
   // Перевод — до транзакции: это запрос к модели, транзакцию он держал бы открытой.
   const uz = await translateAll(items.flatMap(itemTexts));
 
+  const created: { assigneeId: string; title: string }[] = [];
   const assigned = await prisma.$transaction(async (tx) => {
     const out: PlanItem[] = [];
     for (const item of items) {
@@ -299,8 +301,9 @@ export async function assignPlan(planId: string, userId: string) {
             dueDate: dueDateOf(item.dueDate),
             checklist: chunk.map((c) => ({ text: checklistText(c, uz), checked: false })),
           },
-          select: { id: true },
+          select: { id: true, assigneeId: true, title: true },
         });
+        created.push(task);
         taskIds.push(task.id);
         clients.push(...chunk.map((c) => ({ ...c, taskId: task.id })));
       }
@@ -317,6 +320,7 @@ export async function assignPlan(planId: string, userId: string) {
     });
     return out;
   });
+  void notifyTasksAssigned(created, userId);
 
   return {
     plan: publicPlan(await prisma.ropTaskPlan.findUniqueOrThrow({ where: { id: planId } })),
