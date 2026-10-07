@@ -469,7 +469,6 @@ export default function VedMapPage() {
     L.tileLayer(VED_MAP_TILE_URL, {
       attribution: VED_MAP_TILE_ATTRIBUTION,
       maxZoom: 19,
-      subdomains: 'abcd',
     }).addTo(map);
 
     markersLayer.current = L.layerGroup().addTo(map);

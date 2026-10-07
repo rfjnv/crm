@@ -1,10 +1,14 @@
-/** Leaflet tile layer with English labels (Carto Voyager). */
+/**
+ * Leaflet tile layer with English labels (Esri World Street Map, no API key).
+ * Carto Voyager was used before, but Carto now serves "API KEY REQUIRED"
+ * tiles to requests without a key, and the map went blank.
+ */
 export const VED_MAP_TILE_URL =
-  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
 
 export const VED_MAP_TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-  + '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+  'Tiles &copy; <a href="https://www.esri.com">Esri</a> &mdash; '
+  + 'Esri, HERE, Garmin, USGS, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 export type LatLng = [number, number];
 
