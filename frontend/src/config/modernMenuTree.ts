@@ -127,6 +127,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           icon: UsersThree,
           children: [
             { key: '/clients', to: '/clients', text: 'Все клиенты', soloText: 'Клиенты', show: a.canViewClients },
+            { key: '/clients/map', to: '/clients/map', text: 'На карте', show: a.canViewClients },
             { key: '/clients/duplicates', to: '/clients/duplicates', text: 'Дубликаты', show: hasRole('SUPER_ADMIN', 'ADMIN') },
             { key: '/reviews', to: '/reviews', text: 'Отзывы', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR') },
             { key: '/calls', to: '/calls', text: 'Звонки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent') },

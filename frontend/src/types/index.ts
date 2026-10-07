@@ -1376,7 +1376,28 @@ export interface CompanySettings {
   dailyRevenueGoal: number | null;
   balanceStartDate: string | null;
   initialBalance: number;
+  officeAddress: string | null;
+  officeLatitude: number | null;
+  officeLongitude: number | null;
+  warehouseAddress: string | null;
+  warehouseLatitude: number | null;
+  warehouseLongitude: number | null;
   updatedAt: string;
+}
+
+/** Клиент на карте клиентов (GET /clients/map). */
+export interface ClientMapPoint {
+  id: string;
+  companyName: string;
+  contactName: string;
+  phone: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isSvip: boolean;
+  manager: { id: string; fullName: string };
+  /** Незакрытые сделки с доставкой — кого пора везти. */
+  pendingDeliveryDeals: number;
 }
 
 // ──── TimePay integration ────

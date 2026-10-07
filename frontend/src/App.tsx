@@ -23,6 +23,7 @@ import type { ThemeMode } from './theme/tokens';
 const RatePage = lazy(() => import('./pages/RatePage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
+const ClientsMapPage = lazy(() => import('./pages/ClientsMapPage'));
 const ClientDetailPage = lazy(() => import('./pages/ClientDetailPage'));
 const DuplicateClientsPage = lazy(() => import('./pages/DuplicateClientsPage'));
 const DealsPage = lazy(() => import('./pages/DealsPage'));
@@ -200,6 +201,7 @@ export default function App() {
                 <Route path="/revenue/today" element={<MoneyAccessGuard><RevenueTodayPage /></MoneyAccessGuard>} />
                 <Route element={<PrivateRoute permission="view_all_clients" />}>
                   <Route path="/clients" element={<ClientsPage />} />
+                  <Route path="/clients/map" element={<ClientsMapPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>

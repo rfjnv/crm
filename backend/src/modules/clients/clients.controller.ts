@@ -26,6 +26,10 @@ export class ClientsController {
     res.json(clients);
   }
 
+  async findForMap(req: Request, res: Response): Promise<void> {
+    res.json(await clientsService.findForMap(getUser(req)));
+  }
+
   async findById(req: Request, res: Response): Promise<void> {
     const parsed = clientFiltersSchema.safeParse(req.query);
     if (!parsed.success) {

@@ -1,6 +1,6 @@
 import client from './client';
 import type { ClientLossDetails, ClientLossReason } from '../constants/clientLossReasons';
-import type { Client, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
+import type { Client, ClientMapPoint, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
 
 export interface CreateClientData {
   companyName: string;
@@ -59,6 +59,7 @@ export interface SendClientStockAllPayload {
 
 export const clientsApi = {
   list: () => client.get<Client[]>('/clients').then((r) => r.data),
+  mapPoints: () => client.get<ClientMapPoint[]>('/clients/map').then((r) => r.data),
 
   getById: (id: string, params?: { dealStatus?: string; from?: string; to?: string }) =>
     client.get<Client>(`/clients/${id}`, { params }).then((r) => r.data),

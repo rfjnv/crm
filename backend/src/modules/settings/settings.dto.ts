@@ -16,6 +16,12 @@ export const updateCompanySettingsDto = z.object({
   dailyRevenueGoal: z.coerce.number().min(0).nullable().optional(),
   balanceStartDate: z.coerce.date().nullable().optional(),
   initialBalance: z.coerce.number().min(0).optional(),
+  officeAddress: z.string().nullable().optional(),
+  officeLatitude: z.number().min(-90).max(90).nullable().optional(),
+  officeLongitude: z.number().min(-180).max(180).nullable().optional(),
+  warehouseAddress: z.string().nullable().optional(),
+  warehouseLatitude: z.number().min(-90).max(90).nullable().optional(),
+  warehouseLongitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export type UpdateCompanySettingsDto = z.infer<typeof updateCompanySettingsDto>;

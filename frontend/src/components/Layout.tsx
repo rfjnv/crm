@@ -61,6 +61,7 @@ import {
   RobotOutlined,
   ReadOutlined,
   ExperimentOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -353,6 +354,10 @@ export default function Layout() {
         key: '/clients',
         icon: <TeamOutlined />,
         label: <Link to="/clients">Клиенты</Link>,
+      }, {
+        key: '/clients/map',
+        icon: <EnvironmentOutlined />,
+        label: <Link to="/clients/map">Клиенты на карте</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN')

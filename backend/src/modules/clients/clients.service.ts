@@ -189,6 +189,43 @@ export class ClientsService {
     });
   }
 
+  /**
+   * Клиенты для карты: у кого есть координаты — точкой, у кого нет — списком, чтобы поставить вручную.
+   * pendingDeliveryDeals — незакрытые сделки с доставкой: их копят, а потом развозят одним маршрутом.
+   */
+  async findForMap(user: AuthUser) {
+    const rows = await prisma.client.findMany({
+      where: { ...clientOwnerScope(user), isArchived: false },
+      select: {
+        id: true,
+        companyName: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        latitude: true,
+        longitude: true,
+        isSvip: true,
+        manager: { select: { id: true, fullName: true } },
+      },
+      orderBy: { companyName: 'asc' },
+    });
+    if (rows.length === 0) return [];
+
+    const pending = await prisma.deal.groupBy({
+      by: ['clientId'],
+      where: {
+        clientId: { in: rows.map((r) => r.id) },
+        isArchived: false,
+        deliveryType: DeliveryType.DELIVERY,
+        status: { notIn: [DealStatus.SHIPPED, DealStatus.IN_DELIVERY, DealStatus.CLOSED, DealStatus.CANCELED, DealStatus.REJECTED] },
+      },
+      _count: { _all: true },
+    });
+    const pendingByClient = new Map(pending.map((p) => [p.clientId, p._count._all]));
+
+    return rows.map((r) => ({ ...r, pendingDeliveryDeals: pendingByClient.get(r.id) ?? 0 }));
+  }
+
   async findById(id: string, user: AuthUser, filters?: DealFilters) {
     // Build deals where clause
     const dealsWhere: Record<string, unknown> = { isArchived: false };

@@ -23,6 +23,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', asyncHandler(clientsController.findAll.bind(clientsController)));
+router.get('/map', asyncHandler(clientsController.findForMap.bind(clientsController)));
 router.get('/duplicates', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(clientsController.findDuplicates.bind(clientsController)));
 router.get('/:id', asyncHandler(clientsController.findById.bind(clientsController)));
 router.post('/', validate(createClientDto), asyncHandler(clientsController.create.bind(clientsController)));
