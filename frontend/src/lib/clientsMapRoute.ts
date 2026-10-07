@@ -125,6 +125,7 @@ export function yandexRouteUrl(points: LatLng[]): string {
   return `https://yandex.uz/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
 }
 
-export function googleRouteUrl(points: LatLng[]): string {
-  return `https://www.google.com/maps/dir/${points.map(([lat, lng]) => `${lat},${lng}`).join('/')}`;
+/** Маршрут от текущего места до одной точки — для водителя «поехать сюда». */
+export function yandexToPointUrl([lat, lng]: LatLng): string {
+  return `https://yandex.uz/maps/?rtext=${encodeURIComponent(`~${lat},${lng}`)}&rtt=auto`;
 }

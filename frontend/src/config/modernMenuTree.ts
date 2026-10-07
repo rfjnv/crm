@@ -202,6 +202,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           children: [
             { key: '/my-loading-tasks', to: '/my-loading-tasks', text: 'Мои отгрузки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER') },
             { key: '/my-vehicle', to: '/my-vehicle', text: 'Моя машина', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'DRIVER') },
+            { key: '/delivery-route', to: '/delivery-route', text: 'Маршрут доставки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER') },
           ],
         },
       ],

@@ -481,6 +481,13 @@ export default function Layout() {
         label: <Link to="/my-vehicle">Моя машина</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER')
+      ? [{
+        key: '/delivery-route',
+        icon: <NodeIndexOutlined />,
+        label: <Link to="/delivery-route">Маршрут доставки</Link>,
+      }]
+      : []),
 
     // ── АЛЬМАНАХ ──
     { type: 'divider' as const },

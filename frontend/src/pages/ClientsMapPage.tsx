@@ -44,64 +44,41 @@ import {
   type LatLng,
 } from '../lib/vedMapGeo';
 import {
+  BASES,
+  COLOR_ROUTE,
+  DEFAULT_CENTER,
+  baseIcon,
+  basePoint,
+  escapeHtml,
+  formatDuration,
+  stopIcon,
+  type BaseKind,
+} from '../lib/deliveryMap';
+import { deliveryRouteApi, type DeliveryRoutePayload } from '../api/deliveryRoute.api';
+import {
   MAX_ROUTE_POINTS,
   fetchRoadRoute,
-  googleRouteUrl,
   optimizeStopOrder,
   yandexRouteUrl,
   type RoadRoute,
 } from '../lib/clientsMapRoute';
 import type { ClientMapPoint, CompanySettings } from '../types';
 
-type BaseKind = 'WAREHOUSE' | 'OFFICE';
-
-const BASES: Record<BaseKind, {
-  title: string;
-  emoji: string;
-  color: string;
-  address: 'warehouseAddress' | 'officeAddress';
-  lat: 'warehouseLatitude' | 'officeLatitude';
-  lng: 'warehouseLongitude' | 'officeLongitude';
-}> = {
-  WAREHOUSE: {
-    title: 'Склад', emoji: '🏭', color: '#d4380d',
-    address: 'warehouseAddress', lat: 'warehouseLatitude', lng: 'warehouseLongitude',
-  },
-  OFFICE: {
-    title: 'Офис', emoji: '🏢', color: '#531dab',
-    address: 'officeAddress', lat: 'officeLatitude', lng: 'officeLongitude',
-  },
-};
-
 const COLOR_CLIENT = '#1677ff';
 const COLOR_PENDING = '#fa8c16';
-const COLOR_ROUTE = '#389e0d';
-/** Центр Ташкента — пока нет ни одной точки. */
-const DEFAULT_CENTER: LatLng = [41.3111, 69.2797];
 
-const STORAGE_KEY = 'clientsMap.route.v1';
+/** Набор маршрута раньше жил только в браузере — переносим его в общий маршрут один раз. */
+const LEGACY_STORAGE_KEY = 'clientsMap.route.v1';
 
-interface StoredRoute {
-  ids: string[];
-  start: BaseKind;
-  roundtrip: boolean;
-}
-
-function loadStoredRoute(): StoredRoute {
+function takeLegacyRouteIds(): string[] {
   try {
-    const raw = safeStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const v = JSON.parse(raw) as Partial<StoredRoute>;
-      return {
-        ids: Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === 'string') : [],
-        start: v.start === 'OFFICE' ? 'OFFICE' : 'WAREHOUSE',
-        roundtrip: v.roundtrip !== false,
-      };
-    }
+    const raw = safeStorage.getItem(LEGACY_STORAGE_KEY);
+    safeStorage.removeItem(LEGACY_STORAGE_KEY);
+    const ids = raw ? (JSON.parse(raw) as { ids?: unknown }).ids : null;
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [];
   } catch {
-    // битые данные — начинаем с пустого маршрута
+    return [];
   }
-  return { ids: [], start: 'WAREHOUSE', roundtrip: true };
 }
 
 type Placing =
@@ -118,48 +95,8 @@ function hasCoords(c: ClientMapPoint): c is ClientMapPoint & { latitude: number;
   return c.latitude != null && c.longitude != null;
 }
 
-function basePoint(settings: CompanySettings | undefined, kind: BaseKind): LatLng | null {
-  if (!settings) return null;
-  const lat = settings[BASES[kind].lat];
-  const lng = settings[BASES[kind].lng];
-  return lat != null && lng != null ? [lat, lng] : null;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
-}
-
 function round6(n: number): number {
   return Math.round(n * 1e6) / 1e6;
-}
-
-function formatDuration(min: number): string {
-  const total = Math.round(min);
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return h ? `${h} ч ${m} мин` : `${m} мин`;
-}
-
-function baseIcon(kind: BaseKind): L.DivIcon {
-  const b = BASES[kind];
-  return L.divIcon({
-    className: '',
-    iconSize: [38, 38],
-    iconAnchor: [19, 19],
-    html: `<div style="width:38px;height:38px;border-radius:10px;background:#fff;border:3px solid ${b.color};
-      box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:20px;">${b.emoji}</div>`,
-  });
-}
-
-function stopIcon(n: number, selected: boolean): L.DivIcon {
-  return L.divIcon({
-    className: '',
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-    html: `<div style="width:26px;height:26px;border-radius:13px;background:${COLOR_ROUTE};color:#fff;
-      border:2px solid ${selected ? '#faad14' : '#fff'};box-shadow:0 1px 5px rgba(0,0,0,.35);
-      font:700 12px/22px sans-serif;text-align:center;">${n}</div>`,
-  });
 }
 
 export default function ClientsMapPage() {
@@ -179,10 +116,13 @@ export default function ClientsMapPage() {
   const fittedRef = useRef(false);
   const settingsRef = useRef<CompanySettings | undefined>(undefined);
 
-  const stored = useMemo(loadStoredRoute, []);
-  const [routeIds, setRouteIds] = useState<string[]>(stored.ids);
-  const [start, setStart] = useState<BaseKind>(stored.start);
-  const [roundtrip, setRoundtrip] = useState(stored.roundtrip);
+  // Рабочая копия общего маршрута: правки видны сразу, на сервер уходят с задержкой
+  const [routeIds, setRouteIds] = useState<string[]>([]);
+  const [start, setStart] = useState<BaseKind>('WAREHOUSE');
+  const [roundtrip, setRoundtrip] = useState(true);
+  const [routeReady, setRouteReady] = useState(false);
+  const dirtyRef = useRef(false);
+  const editSeqRef = useRef(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
@@ -199,6 +139,12 @@ export default function ClientsMapPage() {
   const { data: settings } = useQuery({
     queryKey: ['company-settings'],
     queryFn: settingsApi.getCompanySettings,
+  });
+
+  const { data: shared } = useQuery({
+    queryKey: ['delivery-route'],
+    queryFn: deliveryRouteApi.get,
+    refetchInterval: 30_000,
   });
 
   settingsRef.current = settings;
@@ -237,8 +183,62 @@ export default function ClientsMapPage() {
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
 
+  const markEdited = () => {
+    dirtyRef.current = true;
+    editSeqRef.current += 1;
+  };
+  const editRouteIds: typeof setRouteIds = (v) => {
+    markEdited();
+    setRouteIds(v);
+  };
+  const editStart = (v: BaseKind) => {
+    markEdited();
+    setStart(v);
+  };
+  const editRoundtrip = (v: boolean) => {
+    markEdited();
+    setRoundtrip(v);
+  };
+
+  const saveRouteMut = useMutation({
+    mutationFn: ({ payload }: { payload: DeliveryRoutePayload; seq: number }) => deliveryRouteApi.save(payload),
+    onSuccess: (data, { seq }) => {
+      if (seq === editSeqRef.current) dirtyRef.current = false;
+      qc.setQueryData(['delivery-route'], data);
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Маршрут не сохранился');
+    },
+  });
+
+  // Чужие правки (другой менеджер) подтягиваем, пока у нас нет несохранённых
   useEffect(() => {
-    safeStorage.setItem(STORAGE_KEY, JSON.stringify({ ids: routeIds, start, roundtrip } satisfies StoredRoute));
+    if (!shared || dirtyRef.current) return;
+    if (!routeReady) {
+      setRouteReady(true);
+      const legacy = shared.clientIds.length === 0 ? takeLegacyRouteIds() : [];
+      if (legacy.length) {
+        markEdited();
+        setRouteIds(legacy);
+        setStart(shared.startBase);
+        setRoundtrip(shared.roundtrip);
+        return;
+      }
+    }
+    setRouteIds(shared.clientIds);
+    setStart(shared.startBase);
+    setRoundtrip(shared.roundtrip);
+  }, [shared, routeReady]);
+
+  useEffect(() => {
+    if (!dirtyRef.current) return undefined;
+    const seq = editSeqRef.current;
+    const t = window.setTimeout(() => {
+      saveRouteMut.mutate({ payload: { clientIds: routeIds, startBase: start, roundtrip }, seq });
+    }, 600);
+    return () => window.clearTimeout(t);
+    // saveRouteMut меняется каждый рендер, сохранять нужно только по правкам
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeIds, start, roundtrip]);
 
   useEffect(() => {
@@ -248,7 +248,8 @@ export default function ClientsMapPage() {
   }, [placing]);
 
   const toggleInRoute = (id: string) => {
-    setRouteIds((prev) => {
+    if (!routeReady) return;
+    editRouteIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= MAX_ROUTE_POINTS - 2) {
         message.warning(`В одном маршруте не больше ${MAX_ROUTE_POINTS - 2} клиентов`);
@@ -259,7 +260,7 @@ export default function ClientsMapPage() {
   };
 
   const moveStop = (id: string, dir: -1 | 1) => {
-    setRouteIds((prev) => {
+    editRouteIds((prev) => {
       const ids = prev.filter((x) => routeOrder.has(x));
       const i = ids.indexOf(id);
       const j = i + dir;
@@ -270,7 +271,7 @@ export default function ClientsMapPage() {
   };
 
   const addAllPending = () => {
-    setRouteIds((prev) => {
+    editRouteIds((prev) => {
       const next = [...prev];
       for (const c of pendingClients) {
         if (next.length >= MAX_ROUTE_POINTS - 2) break;
@@ -293,7 +294,7 @@ export default function ClientsMapPage() {
         routeClients.map((c) => [c.latitude, c.longitude] as LatLng),
         roundtrip,
       );
-      setRouteIds(order.map((i) => routeClients[i].id));
+      editRouteIds(order.map((i) => routeClients[i].id));
       message.success('Порядок объезда пересчитан');
     } finally {
       setOptimizing(false);
@@ -533,18 +534,28 @@ export default function ClientsMapPage() {
 
   const routeTab = (
     <Space orientation="vertical" style={{ width: '100%' }} size={8}>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {!routeReady
+          ? 'Загружаю общий маршрут…'
+          : saveRouteMut.isPending
+            ? 'Сохраняю…'
+            : <>Маршрут общий — водитель видит его в «Маршрут доставки»
+              {shared?.updatedByName && shared.updatedAt
+                ? ` · изменил ${shared.updatedByName}, ${new Date(shared.updatedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+                : ''}</>}
+      </Typography.Text>
       <Space wrap size={8}>
         <span>Старт:</span>
         <Segmented
           size="small"
           value={start}
-          onChange={(v) => setStart(v as BaseKind)}
+          onChange={(v) => editStart(v as BaseKind)}
           options={[
             { value: 'WAREHOUSE', label: '🏭 Склад' },
             { value: 'OFFICE', label: '🏢 Офис' },
           ]}
         />
-        <Checkbox checked={roundtrip} onChange={(e) => setRoundtrip(e.target.checked)}>
+        <Checkbox checked={roundtrip} onChange={(e) => editRoundtrip(e.target.checked)}>
           вернуться назад
         </Checkbox>
       </Space>
@@ -584,7 +595,7 @@ export default function ClientsMapPage() {
             title: 'Очистить маршрут?',
             okText: 'Очистить',
             cancelText: 'Отмена',
-            onOk: () => setRouteIds([]),
+            onOk: () => editRouteIds([]),
           })}
         >
           Очистить
@@ -599,11 +610,8 @@ export default function ClientsMapPage() {
             {road.approximate && <Tag color="orange">по прямой — сервис дорог не ответил</Tag>}
           </Space>
           <Space wrap size={6} style={{ marginTop: 6 }}>
-            <Button size="small" icon={<EnvironmentOutlined />} href={yandexRouteUrl(routePoints)} target="_blank">
-              Яндекс Карты
-            </Button>
-            <Button size="small" icon={<EnvironmentOutlined />} href={googleRouteUrl(routePoints)} target="_blank">
-              Google Maps
+            <Button size="small" type="primary" icon={<EnvironmentOutlined />} href={yandexRouteUrl(routePoints)} target="_blank">
+              Открыть в Яндекс Картах
             </Button>
             <Button size="small" icon={<AimOutlined />} onClick={fitRoute}>Весь маршрут</Button>
           </Space>

@@ -2545,3 +2545,24 @@ export const IMPORT_DOCUMENT_TYPE_LABELS: Record<ImportDocumentType, string> = {
 
 export const SUPPLIER_CURRENCIES: SupplierCurrency[] = ['USD', 'EUR', 'CNY', 'RUB', 'UZS'];
 export const INCOTERMS_LIST: Incoterms[] = ['EXW', 'FCA', 'FOB', 'CFR', 'CIF', 'DAP', 'DDP'];
+
+/** Общий маршрут доставки (GET/PUT /delivery-route). */
+export interface DeliveryRouteStop {
+  id: string;
+  companyName: string;
+  contactName: string;
+  phone: string | null;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+export interface DeliveryRoute {
+  clientIds: string[];
+  startBase: 'WAREHOUSE' | 'OFFICE';
+  roundtrip: boolean;
+  updatedAt: string | null;
+  updatedByName: string | null;
+  /** Остановки в порядке объезда; клиенты без точки и архивные сюда не попадают. */
+  stops: DeliveryRouteStop[];
+}

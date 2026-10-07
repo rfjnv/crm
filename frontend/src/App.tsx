@@ -24,6 +24,7 @@ const RatePage = lazy(() => import('./pages/RatePage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
 const ClientsMapPage = lazy(() => import('./pages/ClientsMapPage'));
+const DeliveryRoutePage = lazy(() => import('./pages/DeliveryRoutePage'));
 const ClientDetailPage = lazy(() => import('./pages/ClientDetailPage'));
 const DuplicateClientsPage = lazy(() => import('./pages/DuplicateClientsPage'));
 const DealsPage = lazy(() => import('./pages/DealsPage'));
@@ -295,6 +296,7 @@ export default function App() {
                 <Route path="/pending-admin" element={<Navigate to="/deals/approval?tab=wm" replace />} />
                 <Route path="/my-loading-tasks" element={<MyLoadingTasksPage />} />
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
+                <Route path="/delivery-route" element={<DeliveryRoutePage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE']} />}>
                   <Route path="/ai-assistant" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiAssistantPage /></MoneyAccessGuard>} />
                   <Route path="/ai-assistant/training" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiTrainingPage /></MoneyAccessGuard>} />

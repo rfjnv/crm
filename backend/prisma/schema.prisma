@@ -503,6 +503,19 @@ model Client {
   @@map("clients")
 }
 
+/// Общий маршрут доставки: менеджеры копят клиентов на карте, водитель видит тот же набор. Одна строка id="current".
+model DeliveryRoute {
+  id          String   @id @default("current")
+  clientIds   String[] @map("client_ids")
+  /// WAREHOUSE | OFFICE — откуда выезжаем
+  startBase   String   @default("WAREHOUSE") @map("start_base")
+  roundtrip   Boolean  @default(true)
+  updatedById String?  @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("delivery_routes")
+}
+
 model ClientNote {
   id        String    @id @default(uuid())
   clientId  String    @map("client_id")
