@@ -38,6 +38,10 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
 }
 
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 export function formatDuration(min: number): string {
   const total = Math.round(min);
   const h = Math.floor(total / 60);
@@ -56,13 +60,15 @@ export function baseIcon(kind: BaseKind): L.DivIcon {
   });
 }
 
-export function stopIcon(n: number, selected: boolean): L.DivIcon {
+export const COLOR_DELIVERED = '#8c8c8c';
+
+export function stopIcon(n: number, selected: boolean, delivered = false): L.DivIcon {
   return L.divIcon({
     className: '',
     iconSize: [26, 26],
     iconAnchor: [13, 13],
-    html: `<div style="width:26px;height:26px;border-radius:13px;background:${COLOR_ROUTE};color:#fff;
+    html: `<div style="width:26px;height:26px;border-radius:13px;background:${delivered ? COLOR_DELIVERED : COLOR_ROUTE};color:#fff;
       border:2px solid ${selected ? '#faad14' : '#fff'};box-shadow:0 1px 5px rgba(0,0,0,.35);
-      font:700 12px/22px sans-serif;text-align:center;">${n}</div>`,
+      font:700 12px/22px sans-serif;text-align:center;">${delivered ? '✓' : n}</div>`,
   });
 }

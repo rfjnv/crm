@@ -19,6 +19,14 @@ const updateDeliveryRouteDto = z.object({
   roundtrip: z.boolean(),
 });
 
+const markDeliveredDto = z.object({ delivered: z.boolean() });
+
+export interface DeliveredMark {
+  at: string;
+  byId: string;
+  byName: string;
+}
+
 function canEdit(req: Request): boolean {
   return req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('view_all_clients');
 }
@@ -58,6 +66,7 @@ async function loadRoute() {
     roundtrip: route?.roundtrip ?? true,
     updatedAt: route?.updatedAt ?? null,
     updatedByName: updatedBy?.fullName ?? null,
+    delivered: (route?.delivered ?? {}) as unknown as Record<string, DeliveredMark>,
     // Удалённые, архивные и клиенты без точки выпадают, порядок — как в маршруте
     stops: ids.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c),
   };
@@ -78,7 +87,35 @@ router.put('/', requireEdit, validate(updateDeliveryRouteDto), asyncHandler(asyn
     roundtrip: dto.roundtrip,
     updatedById: req.user!.userId,
   };
-  await prisma.deliveryRoute.upsert({ where: { id: ROUTE_ID }, create: { id: ROUTE_ID, ...data }, update: data });
+  await prisma.$transaction([
+    prisma.deliveryRoute.upsert({ where: { id: ROUTE_ID }, create: { id: ROUTE_ID, ...data }, update: data }),
+    // Убранные из маршрута клиенты забирают с собой и отметку «доставлено»
+    prisma.$executeRaw`
+      UPDATE delivery_routes
+      SET delivered = COALESCE(
+        (SELECT jsonb_object_agg(key, value) FROM jsonb_each(delivered) WHERE key = ANY(client_ids)),
+        '{}'::jsonb)
+      WHERE id = ${ROUTE_ID}`,
+  ]);
+  res.json(await loadRoute());
+}));
+
+/** Водитель отмечает остановку доставленной (или снимает отметку, если ошибся). */
+router.post('/stops/:clientId/delivered', requireView, validate(markDeliveredDto), asyncHandler(async (req, res) => {
+  const clientId = req.params.clientId as string;
+  const { delivered } = req.body as z.infer<typeof markDeliveredDto>;
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { fullName: true } });
+  const mark: DeliveredMark = { at: new Date().toISOString(), byId: req.user!.userId, byName: user?.fullName ?? '' };
+  // Точечно в jsonb, чтобы одновременные отметки и правки маршрута не затирали друг друга
+  const updated = delivered
+    ? await prisma.$executeRaw`
+      UPDATE delivery_routes
+      SET delivered = delivered || jsonb_build_object(${clientId}::text, ${JSON.stringify(mark)}::jsonb)
+      WHERE id = ${ROUTE_ID} AND ${clientId} = ANY(client_ids)`
+    : await prisma.$executeRaw`
+      UPDATE delivery_routes SET delivered = delivered - ${clientId}::text
+      WHERE id = ${ROUTE_ID} AND ${clientId} = ANY(client_ids)`;
+  if (updated === 0) throw new AppError(404, 'Этого клиента уже нет в маршруте');
   res.json(await loadRoute());
 }));
 

@@ -2557,12 +2557,20 @@ export interface DeliveryRouteStop {
   longitude: number;
 }
 
+export interface DeliveredMark {
+  at: string;
+  byId: string;
+  byName: string;
+}
+
 export interface DeliveryRoute {
   clientIds: string[];
   startBase: 'WAREHOUSE' | 'OFFICE';
   roundtrip: boolean;
   updatedAt: string | null;
   updatedByName: string | null;
+  /** Отметки водителя «доставлено» по id клиента. */
+  delivered: Record<string, DeliveredMark>;
   /** Остановки в порядке объезда; клиенты без точки и архивные сюда не попадают. */
   stops: DeliveryRouteStop[];
 }

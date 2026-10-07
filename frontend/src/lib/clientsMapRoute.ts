@@ -125,7 +125,13 @@ export function yandexRouteUrl(points: LatLng[]): string {
   return `https://yandex.uz/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
 }
 
+/** Маршрут от текущего места водителя через точки — когда часть уже развезли. */
+export function yandexFromHereUrl(points: LatLng[]): string {
+  const rtext = ['', ...points.map(([lat, lng]) => `${lat},${lng}`)].join('~');
+  return `https://yandex.uz/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
+}
+
 /** Маршрут от текущего места до одной точки — для водителя «поехать сюда». */
-export function yandexToPointUrl([lat, lng]: LatLng): string {
-  return `https://yandex.uz/maps/?rtext=${encodeURIComponent(`~${lat},${lng}`)}&rtt=auto`;
+export function yandexToPointUrl(point: LatLng): string {
+  return yandexFromHereUrl([point]);
 }

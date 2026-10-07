@@ -510,6 +510,8 @@ model DeliveryRoute {
   /// WAREHOUSE | OFFICE — откуда выезжаем
   startBase   String   @default("WAREHOUSE") @map("start_base")
   roundtrip   Boolean  @default(true)
+  /// Отметки водителя: { [clientId]: { at: ISO, byId, byName } }. Ключи вне clientIds вычищаются при правке маршрута.
+  delivered   Json     @default("{}")
   updatedById String?  @map("updated_by_id")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

@@ -23,6 +23,7 @@ import {
   AimOutlined,
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CheckOutlined,
   CloseOutlined,
   DeleteOutlined,
   EnvironmentOutlined,
@@ -51,6 +52,8 @@ import {
   basePoint,
   escapeHtml,
   formatDuration,
+  formatTime,
+  COLOR_DELIVERED,
   stopIcon,
   type BaseKind,
 } from '../lib/deliveryMap';
@@ -158,6 +161,9 @@ export default function ClientsMapPage() {
     [routeIds, byId],
   );
   const routeOrder = useMemo(() => new Map(routeClients.map((c, i) => [c.id, i + 1])), [routeClients]);
+  // Отметки водителя; для клиентов, которых убрали из маршрута, отметки нет
+  const delivered = useMemo(() => shared?.delivered ?? {}, [shared]);
+  const deliveredInRoute = routeClients.filter((c) => delivered[c.id]).length;
   const startPoint = basePoint(settings, start);
 
   const routePoints = useMemo<LatLng[]>(() => {
@@ -419,7 +425,7 @@ export default function ClientsMapPage() {
       const tip = `<b>${escapeHtml(c.companyName)}</b>${c.address ? `<br/>${escapeHtml(c.address)}` : ''}`
         + (c.pendingDeliveryDeals ? `<br/>Ждёт доставку: ${c.pendingDeliveryDeals}` : '');
       const marker = inRoute
-        ? L.marker([c.latitude, c.longitude], { icon: stopIcon(inRoute, isSel), zIndexOffset: 500 })
+        ? L.marker([c.latitude, c.longitude], { icon: stopIcon(inRoute, isSel, !!delivered[c.id]), zIndexOffset: 500 })
         : L.circleMarker([c.latitude, c.longitude], {
           radius: isSel ? 10 : 7,
           color: isSel ? '#faad14' : '#fff',
@@ -433,7 +439,7 @@ export default function ClientsMapPage() {
       });
       marker.addTo(layer);
     }
-  }, [located, filteredLocated, routeOrder, selectedId]);
+  }, [located, filteredLocated, routeOrder, selectedId, delivered]);
 
   // Офис и склад
   useEffect(() => {
@@ -600,6 +606,15 @@ export default function ClientsMapPage() {
         >
           Очистить
         </Button>
+        {deliveredInRoute > 0 && (
+          <Button
+            size="small"
+            icon={<CheckOutlined />}
+            onClick={() => editRouteIds((prev) => prev.filter((id) => !delivered[id]))}
+          >
+            Убрать доставленных ({deliveredInRoute})
+          </Button>
+        )}
       </Space>
 
       {road && (
@@ -640,12 +655,16 @@ export default function ClientsMapPage() {
               }}
             >
               <span style={{
-                minWidth: 22, height: 22, borderRadius: 11, background: COLOR_ROUTE, color: '#fff',
-                fontSize: 12, fontWeight: 700, lineHeight: '22px', textAlign: 'center',
-              }}>{i + 1}</span>
+                minWidth: 22, height: 22, borderRadius: 11, background: delivered[c.id] ? COLOR_DELIVERED : COLOR_ROUTE,
+                color: '#fff', fontSize: 12, fontWeight: 700, lineHeight: '22px', textAlign: 'center',
+              }}>{delivered[c.id] ? '✓' : i + 1}</span>
               <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => selectClient(c)}>
-                <Typography.Text ellipsis style={{ display: 'block' }}>{c.companyName}</Typography.Text>
-                {c.address && (
+                <Typography.Text ellipsis delete={!!delivered[c.id]} style={{ display: 'block' }}>{c.companyName}</Typography.Text>
+                {delivered[c.id] ? (
+                  <Typography.Text type="success" ellipsis style={{ display: 'block', fontSize: 12 }}>
+                    Доставлено {formatTime(delivered[c.id].at)}{delivered[c.id].byName ? ` · ${delivered[c.id].byName}` : ''}
+                  </Typography.Text>
+                ) : c.address && (
                   <Typography.Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12 }}>
                     {c.address}
                   </Typography.Text>
