@@ -127,7 +127,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           icon: UsersThree,
           children: [
             { key: '/clients', to: '/clients', text: 'Все клиенты', soloText: 'Клиенты', show: a.canViewClients },
-            { key: '/clients/map', to: '/clients/map', text: 'На карте', show: a.canViewClients },
+            { key: '/clients/map', to: '/clients/map', text: 'Маршрут доставки', show: a.canViewClients },
             { key: '/clients/duplicates', to: '/clients/duplicates', text: 'Дубликаты', show: hasRole('SUPER_ADMIN', 'ADMIN') },
             { key: '/reviews', to: '/reviews', text: 'Отзывы', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR') },
             { key: '/calls', to: '/calls', text: 'Звонки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent') },
@@ -202,7 +202,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           children: [
             { key: '/my-loading-tasks', to: '/my-loading-tasks', text: 'Мои отгрузки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER') },
             { key: '/my-vehicle', to: '/my-vehicle', text: 'Моя машина', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'DRIVER') },
-            { key: '/delivery-route', to: '/delivery-route', text: 'Маршрут доставки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER') },
+            { key: '/delivery-route', to: '/delivery-route', text: 'Мой маршрут', show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE', 'DRIVER', 'LOADER') },
           ],
         },
       ],

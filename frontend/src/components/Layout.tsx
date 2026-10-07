@@ -357,7 +357,7 @@ export default function Layout() {
       }, {
         key: '/clients/map',
         icon: <EnvironmentOutlined />,
-        label: <Link to="/clients/map">Клиенты на карте</Link>,
+        label: <Link to="/clients/map">Маршрут доставки</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN')
@@ -485,7 +485,7 @@ export default function Layout() {
       ? [{
         key: '/delivery-route',
         icon: <NodeIndexOutlined />,
-        label: <Link to="/delivery-route">Маршрут доставки</Link>,
+        label: <Link to="/delivery-route">Мой маршрут</Link>,
       }]
       : []),
 
