@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Empty, Grid, Progress, Space, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Grid, Progress, Spin, Typography, message } from 'antd';
 import { CheckOutlined, EnvironmentOutlined, PhoneOutlined, UndoOutlined } from '@ant-design/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -142,89 +142,139 @@ export default function DeliveryRoutePage() {
   };
 
   const updated = route?.updatedAt ? formatTime(route.updatedAt) : null;
+  const next = remaining[0] ?? null;
+  const nextIndex = next ? stops.findIndex((s) => s.id === next.id) + 1 : 0;
+  const allDone = stops.length > 0 && remaining.length === 0;
 
   // Когда часть развезли — ведём от текущего места через оставшихся (и обратно на базу)
-  const navPoints: LatLng[] = remaining.map((s) => [s.latitude, s.longitude]);
-  if (startPoint && roundtrip) navPoints.push(startPoint);
-  let nav: { href: string; text: string } | null = null;
-  if (deliveredCount === 0) {
-    if (routePoints.length >= 2) nav = { href: yandexRouteUrl(routePoints), text: 'Открыть в Яндекс Картах' };
-  } else if (navPoints.length > 0) {
-    nav = {
-      href: yandexFromHereUrl(navPoints),
-      text: remaining.length
-        ? `Оставшиеся ${remaining.length} — в Яндекс Картах`
-        : `Обратно: ${BASES[startBase].title.toLowerCase()}`,
-    };
-  }
+  const restPoints: LatLng[] = remaining.map((s) => [s.latitude, s.longitude]);
+  if (startPoint && roundtrip) restPoints.push(startPoint);
+  const wholeRouteHref = deliveredCount === 0
+    ? (routePoints.length >= 2 ? yandexRouteUrl(routePoints) : null)
+    : (restPoints.length > 0 ? yandexFromHereUrl(restPoints) : null);
+
+  const phoneHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 
   const header = (
-    <Space orientation="vertical" size={4} style={{ width: '100%' }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>Маршрут доставки</Typography.Title>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {stops.length} остановок · старт: {BASES[startBase].emoji} {BASES[startBase].title}
-        {roundtrip ? ' (с возвратом)' : ''}
-        {updated ? ` · обновлён ${updated}${route?.updatedByName ? `, ${route.updatedByName}` : ''}` : ''}
-      </Typography.Text>
-      {road && (
-        <Space wrap size={12}>
-          <span><b>{road.distanceKm.toFixed(1)} км</b></span>
-          <span>≈ {formatDuration(road.durationMin)} в пути</span>
-          {road.approximate && <Tag color="orange">по прямой — сервис дорог не ответил</Tag>}
-        </Space>
-      )}
+    <div>
+      <Typography.Title level={4} style={{ margin: 0 }}>Мой маршрут</Typography.Title>
       {stops.length > 0 && (
-        <div style={{ maxWidth: 420 }}>
-          <Typography.Text>Доставлено {deliveredCount} из {stops.length}</Typography.Text>
+        <div style={{ maxWidth: 480, marginTop: 4 }}>
+          <Typography.Text style={{ fontSize: 15 }}>
+            Доставлено <b>{deliveredCount}</b> из <b>{stops.length}</b>
+            {road ? ` · ${road.distanceKm.toFixed(0)} км, ≈ ${formatDuration(road.durationMin)}` : ''}
+          </Typography.Text>
           <Progress
             percent={Math.round((deliveredCount / stops.length) * 100)}
             showInfo={false}
             strokeColor={COLOR_ROUTE}
-            size="small"
           />
         </div>
       )}
-      {stops.length > 0 && remaining.length === 0 && (
-        <Alert type="success" showIcon title="Все остановки доставлены" />
+      {!startPoint && stops.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 8 }}
+          title={`${BASES[startBase].title} не отмечен на карте — маршрут без точки выезда`}
+        />
       )}
-      {nav && (
+    </div>
+  );
+
+  /** Главное на экране водителя: куда ехать сейчас и кнопка «Доставлено». */
+  const nextCard = next ? (
+    <Card
+      size="small"
+      style={{ borderColor: COLOR_ROUTE, borderWidth: 2 }}
+      styles={{ body: { padding: 14 } }}
+    >
+      <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+        Следующая остановка · №{nextIndex}
+      </Typography.Text>
+      <Typography.Title level={4} style={{ margin: '2px 0 4px' }}>{next.companyName}</Typography.Title>
+      {next.address && <div style={{ fontSize: 15 }}>{next.address}</div>}
+      <div style={{ fontSize: 14, color: 'var(--ant-color-text-secondary, #8c8c8c)' }}>
+        {next.contactName}{next.phone ? ` · ${next.phone}` : ''}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <Button
+          size="large"
+          icon={<EnvironmentOutlined />}
+          href={yandexToPointUrl([next.latitude, next.longitude])}
+          target="_blank"
+          style={{ flex: 1 }}
+        >
+          Поехать
+        </Button>
+        {next.phone && (
+          <Button size="large" icon={<PhoneOutlined />} href={phoneHref(next.phone)} style={{ flex: 1 }}>
+            Позвонить
+          </Button>
+        )}
+      </div>
+      <Button
+        type="primary"
+        size="large"
+        block
+        icon={<CheckOutlined />}
+        loading={markMut.isPending && markMut.variables?.id === next.id}
+        style={{ marginTop: 8, background: COLOR_ROUTE, height: 52, fontSize: 17 }}
+        onClick={() => markMut.mutate({ id: next.id, value: true })}
+      >
+        Доставлено
+      </Button>
+    </Card>
+  ) : allDone ? (
+    <Card size="small" style={{ borderColor: COLOR_ROUTE }} styles={{ body: { padding: 14 } }}>
+      <Typography.Title level={4} style={{ margin: 0, color: COLOR_ROUTE }}>
+        <CheckOutlined /> Все доставлены
+      </Typography.Title>
+      {startPoint && roundtrip && (
         <Button
           type="primary"
           size="large"
-          block={isMobile}
+          block
           icon={<EnvironmentOutlined />}
-          href={nav.href}
+          href={yandexToPointUrl(startPoint)}
           target="_blank"
+          style={{ marginTop: 12 }}
         >
-          {nav.text}
+          Обратно: {BASES[startBase].title.toLowerCase()}
         </Button>
       )}
-      {!startPoint && stops.length > 0 && (
-        <Alert type="warning" showIcon title={`${BASES[startBase].title} не отмечен на карте — маршрут без точки старта`} />
-      )}
-    </Space>
-  );
+    </Card>
+  ) : null;
 
   const list = stops.length === 0 ? (
     <Empty
       image={Empty.PRESENTED_IMAGE_SIMPLE}
-      description={isLoading ? 'Загрузка…' : 'Маршрут пуст — менеджеры собирают его на карте клиентов'}
+      description={isLoading ? 'Загрузка…' : 'Маршрута пока нет — его собирают менеджеры. Страница обновится сама.'}
     />
   ) : (
     <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        <Typography.Text strong style={{ fontSize: 15 }}>Все остановки</Typography.Text>
+        {wholeRouteHref && !allDone && (
+          <Button size="small" icon={<EnvironmentOutlined />} href={wholeRouteHref} target="_blank">
+            {deliveredCount ? 'Оставшиеся в Яндексе' : 'Весь маршрут в Яндексе'}
+          </Button>
+        )}
+      </div>
       {startPoint && (
         <div style={{ padding: '6px 0', color: BASES[startBase].color }}>
-          {BASES[startBase].emoji} {BASES[startBase].title} — старт
+          {BASES[startBase].emoji} Выезд: {BASES[startBase].title.toLowerCase()}
         </div>
       )}
       {stops.map((s, i) => {
         const mark = delivered[s.id];
         const busy = markMut.isPending && markMut.variables?.id === s.id;
+        const isNext = next?.id === s.id;
         return (
           <div
             key={s.id}
             style={{
-              display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start',
+              display: 'flex', gap: 10, padding: '8px 0', alignItems: 'center',
               borderTop: '1px solid var(--ant-color-split, #f0f0f0)',
               background: s.id === selectedId ? 'rgba(250,173,20,.12)' : undefined,
             }}
@@ -234,57 +284,41 @@ export default function DeliveryRoutePage() {
               color: '#fff', fontWeight: 700, lineHeight: '26px', textAlign: 'center', flex: 'none',
             }}>{mark ? '✓' : i + 1}</span>
             <div
-              style={{ flex: 1, minWidth: 0, cursor: 'pointer', opacity: mark ? 0.65 : 1 }}
+              style={{ flex: 1, minWidth: 0, cursor: 'pointer', opacity: mark ? 0.6 : 1 }}
               onClick={() => showStop(s.id, [s.latitude, s.longitude])}
             >
-              <Typography.Text strong delete={!!mark} style={{ display: 'block' }}>{s.companyName}</Typography.Text>
-              {s.address && <Typography.Text type="secondary" style={{ display: 'block', fontSize: 13 }}>{s.address}</Typography.Text>}
-              <Typography.Text style={{ display: 'block', fontSize: 13 }}>{s.contactName}</Typography.Text>
-              {mark && (
+              <Typography.Text strong={isNext} delete={!!mark} style={{ display: 'block' }}>
+                {s.companyName}{isNext ? ' — следующая' : ''}
+              </Typography.Text>
+              {mark ? (
                 <Typography.Text type="success" style={{ display: 'block', fontSize: 12 }}>
                   Доставлено {formatTime(mark.at)}{mark.byName ? ` · ${mark.byName}` : ''}
                 </Typography.Text>
+              ) : s.address && (
+                <Typography.Text type="secondary" style={{ display: 'block', fontSize: 13 }}>{s.address}</Typography.Text>
               )}
             </div>
-            <Space orientation="vertical" size={4} style={{ flex: 'none' }}>
-              {mark ? (
-                <Button size="small" icon={<UndoOutlined />} loading={busy} onClick={() => markMut.mutate({ id: s.id, value: false })}>
-                  Отменить
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    loading={busy}
-                    style={{ background: COLOR_ROUTE }}
-                    onClick={() => markMut.mutate({ id: s.id, value: true })}
-                  >
-                    Доставлено
-                  </Button>
-                  {s.phone && (
-                    <Button size="small" icon={<PhoneOutlined />} href={`tel:${s.phone.replace(/[^\d+]/g, '')}`}>
-                      Позвонить
-                    </Button>
-                  )}
-                  <Button
-                    size="small"
-                    icon={<EnvironmentOutlined />}
-                    href={yandexToPointUrl([s.latitude, s.longitude])}
-                    target="_blank"
-                  >
-                    Сюда
-                  </Button>
-                </>
-              )}
-            </Space>
+            {mark ? (
+              <Button size="small" type="link" icon={<UndoOutlined />} loading={busy} onClick={() => markMut.mutate({ id: s.id, value: false })}>
+                Отменить
+              </Button>
+            ) : !isNext && (
+              <Button size="small" icon={<CheckOutlined />} loading={busy} onClick={() => markMut.mutate({ id: s.id, value: true })}>
+                Доставлено
+              </Button>
+            )}
           </div>
         );
       })}
       {startPoint && roundtrip && (
         <div style={{ padding: '6px 0', color: BASES[startBase].color, borderTop: '1px solid var(--ant-color-split, #f0f0f0)' }}>
-          {BASES[startBase].emoji} {BASES[startBase].title} — возврат
+          {BASES[startBase].emoji} Возврат: {BASES[startBase].title.toLowerCase()}
         </div>
+      )}
+      {updated && (
+        <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 8 }}>
+          Маршрут составил{route?.updatedByName ? ` ${route.updatedByName}` : 'и'}, {updated}
+        </Typography.Text>
       )}
     </div>
   );
@@ -293,27 +327,38 @@ export default function DeliveryRoutePage() {
     return <Alert type="error" showIcon title="Не удалось загрузить маршрут доставки" />;
   }
 
+  const mapCard = (
+    <Card
+      size="small"
+      style={isMobile ? { width: '100%', height: '40vh' } : { flex: 1 }}
+      styles={{ body: { padding: 0, height: '100%' } }}
+    >
+      <div ref={mapRef} style={{ width: '100%', height: '100%', borderRadius: 8 }} />
+    </Card>
+  );
+
+  const listCard = (
+    <Card size="small">
+      {isLoading ? <Spin style={{ display: 'block', margin: '40px auto' }} /> : list}
+    </Card>
+  );
+
+  // Одно дерево для телефона и компьютера: иначе при смене ширины карта пересоздаётся и пропадает
   return (
     <div style={isMobile
       ? { display: 'flex', flexDirection: 'column', gap: 12 }
       : { display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(100vh - 120px)', minHeight: 520 }}
     >
       {header}
-      <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0, flexDirection: isMobile ? 'column' : 'row' }}>
-        <Card
-          size="small"
-          style={isMobile ? { width: '100%', height: '55vh' } : { flex: 1, minWidth: 300 }}
-          styles={{ body: { padding: 0, height: '100%' } }}
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, flex: 1, minHeight: 0 }}>
+        <div style={isMobile
+          ? { display: 'contents' }
+          : { width: 420, flex: 'none', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}
         >
-          <div ref={mapRef} style={{ width: '100%', height: '100%', borderRadius: 8 }} />
-        </Card>
-        <Card
-          size="small"
-          style={isMobile ? { width: '100%' } : { width: 400, overflow: 'hidden' }}
-          styles={{ body: isMobile ? {} : { overflowY: 'auto', height: '100%' } }}
-        >
-          {isLoading ? <Spin style={{ display: 'block', margin: '40px auto' }} /> : list}
-        </Card>
+          {nextCard && <div style={{ order: 0 }}>{nextCard}</div>}
+          <div style={{ order: 2 }}>{listCard}</div>
+        </div>
+        <div style={isMobile ? { order: 1 } : { flex: 1, minWidth: 300, display: 'flex' }}>{mapCard}</div>
       </div>
     </div>
   );

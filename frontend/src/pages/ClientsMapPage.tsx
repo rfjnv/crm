@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -13,7 +13,6 @@ import {
   Modal,
   Segmented,
   Space,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -22,12 +21,12 @@ import {
 import {
   AimOutlined,
   ArrowDownOutlined,
+  ArrowLeftOutlined,
   ArrowUpOutlined,
   CheckOutlined,
   CloseOutlined,
   DeleteOutlined,
   EnvironmentOutlined,
-  NodeIndexOutlined,
   PlusOutlined,
   SearchOutlined,
   ThunderboltOutlined,
@@ -175,6 +174,7 @@ export default function ClientsMapPage() {
   }, [routeClients, startPoint?.[0], startPoint?.[1], roundtrip]);
 
   const pendingClients = useMemo(() => located.filter((c) => c.pendingDeliveryDeals > 0), [located]);
+  const pendingNotInRoute = pendingClients.filter((c) => !routeOrder.has(c.id)).length;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -501,148 +501,141 @@ export default function ClientsMapPage() {
     if (routePoints.length) mapInstance.current?.fitBounds(L.latLngBounds(routePoints), { padding: [40, 40] });
   };
 
+
   const placingLabel = placing
     ? placing.kind === 'client' ? placing.client.companyName : BASES[placing.base].title
     : '';
+
+  const step = (n: number, title: string, children: ReactNode, hint?: string) => (
+    <div style={{ padding: '10px 0', borderTop: '1px solid var(--ant-color-split, #f0f0f0)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{
+          width: 22, height: 22, borderRadius: 11, background: '#1677ff', color: '#fff',
+          fontSize: 12, fontWeight: 700, lineHeight: '22px', textAlign: 'center', flex: 'none',
+        }}>{n}</span>
+        <Typography.Text strong style={{ fontSize: 15 }}>{title}</Typography.Text>
+      </div>
+      {hint && (
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: '0 0 8px' }}>{hint}</Typography.Paragraph>
+      )}
+      {children}
+    </div>
+  );
 
   const renderBase = (k: BaseKind) => {
     const b = BASES[k];
     const p = basePoint(settings, k);
     const addr = settings?.[b.address];
     return (
-      <div key={k} style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
-        border: `1px solid ${p ? b.color : 'var(--ant-color-border, #d9d9d9)'}`,
-        borderStyle: p ? 'solid' : 'dashed', borderRadius: 8,
-      }}>
-        <span style={{ fontSize: 20 }}>{b.emoji}</span>
+      <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <span style={{ fontSize: 18 }}>{b.emoji}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Typography.Text strong>{b.title}</Typography.Text>
-          <div>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-              {p ? (addr || `${p[0].toFixed(5)}, ${p[1].toFixed(5)}`) : 'Не указан на карте'}
-            </Typography.Text>
-          </div>
+          <Typography.Text type={p ? 'secondary' : 'warning'} style={{ display: 'block', fontSize: 12 }} ellipsis>
+            {p ? (addr || 'отмечен на карте') : 'не отмечен на карте'}
+          </Typography.Text>
         </div>
-        {p && (
-          <Tooltip title="Показать">
-            <Button size="small" type="text" icon={<AimOutlined />} onClick={() => flyTo(p, 15)} />
-          </Tooltip>
-        )}
+        {p && <Button size="small" type="link" onClick={() => flyTo(p, 15)}>Показать</Button>}
         {isAdmin && (
           <Button size="small" onClick={() => void startPlacing({ kind: 'base', base: k })}>
-            {p ? 'Перенести' : 'Указать'}
+            {p ? 'Изменить' : 'Отметить'}
           </Button>
         )}
       </div>
     );
   };
 
-  const routeTab = (
-    <Space orientation="vertical" style={{ width: '100%' }} size={8}>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {!routeReady
-          ? 'Загружаю общий маршрут…'
-          : saveRouteMut.isPending
-            ? 'Сохраняю…'
-            : <>Маршрут общий — водитель видит его в «Маршрут доставки»
-              {shared?.updatedByName && shared.updatedAt
-                ? ` · изменил ${shared.updatedByName}, ${new Date(shared.updatedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
-                : ''}</>}
-      </Typography.Text>
-      <Space wrap size={8}>
-        <span>Старт:</span>
-        <Segmented
-          size="small"
-          value={start}
-          onChange={(v) => editStart(v as BaseKind)}
-          options={[
-            { value: 'WAREHOUSE', label: '🏭 Склад' },
-            { value: 'OFFICE', label: '🏢 Офис' },
-          ]}
-        />
-        <Checkbox checked={roundtrip} onChange={(e) => editRoundtrip(e.target.checked)}>
-          вернуться назад
-        </Checkbox>
-      </Space>
+  const saveStatus = !routeReady
+    ? <Typography.Text type="secondary">Загрузка маршрута…</Typography.Text>
+    : saveRouteMut.isPending
+      ? <Typography.Text type="secondary">Сохраняю…</Typography.Text>
+      : (
+        <Typography.Text type="success">
+          <CheckOutlined /> Сохранено — водитель видит этот маршрут у себя
+        </Typography.Text>
+      );
+
+  const stepStart = step(1, 'Откуда выезжаем', (
+    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
+      <Segmented
+        block
+        value={start}
+        onChange={(v) => editStart(v as BaseKind)}
+        options={[
+          { value: 'WAREHOUSE', label: '🏭 Со склада' },
+          { value: 'OFFICE', label: '🏢 Из офиса' },
+        ]}
+      />
+      <Checkbox checked={roundtrip} onChange={(e) => editRoundtrip(e.target.checked)}>
+        В конце вернуться обратно
+      </Checkbox>
       {!startPoint && (
         <Alert
           type="warning"
           showIcon
-          title={`${BASES[start].title} ещё не отмечен на карте — маршрут строится без него`}
-          description={isAdmin ? 'Нажмите «Указать» в блоке выше.' : 'Попросите администратора отметить его.'}
+          title={`${BASES[start].title} ещё не отмечен на карте`}
+          description={isAdmin
+            ? 'Без него нельзя расставить остановки по пути.'
+            : 'Без него нельзя расставить остановки по пути. Попросите администратора отметить.'}
+          action={isAdmin && (
+            <Button size="small" onClick={() => void startPlacing({ kind: 'base', base: start })}>Отметить</Button>
+          )}
         />
       )}
-      <Space wrap size={6}>
+    </Space>
+  ));
+
+  const stepWho = step(2, 'Кого везём', (
+    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
+      <Button
+        block
+        icon={<PlusOutlined />}
+        onClick={addAllPending}
+        disabled={pendingNotInRoute === 0}
+      >
+        {pendingClients.length === 0
+          ? 'Заказов на доставку сейчас нет'
+          : pendingNotInRoute === 0
+            ? 'Все с заказом на доставку уже в маршруте'
+            : `Добавить всех с заказом на доставку (${pendingNotInRoute})`}
+      </Button>
+      <Button block icon={<SearchOutlined />} onClick={() => setTab('clients')}>
+        Выбрать клиентов из списка
+      </Button>
+    </Space>
+  ), 'Или нажмите на точку клиента на карте → «Добавить в маршрут».');
+
+  const stepOrder = step(3, `Порядок объезда${routeClients.length ? ` · ${routeClients.length}` : ''}`, (
+    routeClients.length === 0 ? (
+      <Typography.Text type="secondary">Маршрут пока пуст — добавьте клиентов на шаге 2.</Typography.Text>
+    ) : (
+      <Space orientation="vertical" size={6} style={{ width: '100%' }}>
         <Button
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={addAllPending}
-          disabled={pendingClients.length === 0}
-        >
-          Всех, кто ждёт доставку ({pendingClients.length})
-        </Button>
-        <Button
-          size="small"
           type="primary"
+          block
           icon={<ThunderboltOutlined />}
           loading={optimizing}
           onClick={() => void optimize()}
           disabled={routeClients.length < 2}
         >
-          Оптимальный порядок
-        </Button>
-        <Button
-          size="small"
-          danger
-          icon={<DeleteOutlined />}
-          disabled={routeIds.length === 0}
-          onClick={() => Modal.confirm({
-            title: 'Очистить маршрут?',
-            okText: 'Очистить',
-            cancelText: 'Отмена',
-            onOk: () => editRouteIds([]),
-          })}
-        >
-          Очистить
+          Расставить по пути (самый короткий объезд)
         </Button>
         {deliveredInRoute > 0 && (
-          <Button
-            size="small"
-            icon={<CheckOutlined />}
-            onClick={() => editRouteIds((prev) => prev.filter((id) => !delivered[id]))}
-          >
-            Убрать доставленных ({deliveredInRoute})
-          </Button>
+          <Alert
+            type="success"
+            showIcon
+            title={`Водитель отметил доставленными: ${deliveredInRoute}`}
+            action={(
+              <Button size="small" onClick={() => editRouteIds((prev) => prev.filter((id) => !delivered[id]))}>
+                Убрать их
+              </Button>
+            )}
+          />
         )}
-      </Space>
-
-      {road && (
-        <Card size="small" styles={{ body: { padding: 8 } }}>
-          <Space wrap size={12}>
-            <span><b>{road.distanceKm.toFixed(1)} км</b></span>
-            <span>≈ {formatDuration(road.durationMin)} в пути</span>
-            {road.approximate && <Tag color="orange">по прямой — сервис дорог не ответил</Tag>}
-          </Space>
-          <Space wrap size={6} style={{ marginTop: 6 }}>
-            <Button size="small" type="primary" icon={<EnvironmentOutlined />} href={yandexRouteUrl(routePoints)} target="_blank">
-              Открыть в Яндекс Картах
-            </Button>
-            <Button size="small" icon={<AimOutlined />} onClick={fitRoute}>Весь маршрут</Button>
-          </Space>
-        </Card>
-      )}
-
-      {routeClients.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Добавляйте клиентов кнопкой «+» в списке или по клику на точку — набор сохраняется, пока вы его не очистите"
-        />
-      ) : (
         <div>
           {startPoint && (
             <div style={{ padding: '4px 0', color: BASES[start].color }}>
-              {BASES[start].emoji} {BASES[start].title} — старт
+              {BASES[start].emoji} Выезд: {BASES[start].title.toLowerCase()}
             </div>
           )}
           {routeClients.map((c, i) => (
@@ -670,19 +663,64 @@ export default function ClientsMapPage() {
                   </Typography.Text>
                 )}
               </div>
-              <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={i === 0} onClick={() => moveStop(c.id, -1)} />
-              <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={i === routeClients.length - 1} onClick={() => moveStop(c.id, 1)} />
-              <Button size="small" type="text" danger icon={<CloseOutlined />} onClick={() => toggleInRoute(c.id)} />
+              <Tooltip title="Раньше">
+                <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={i === 0} onClick={() => moveStop(c.id, -1)} />
+              </Tooltip>
+              <Tooltip title="Позже">
+                <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={i === routeClients.length - 1} onClick={() => moveStop(c.id, 1)} />
+              </Tooltip>
+              <Tooltip title="Убрать из маршрута">
+                <Button size="small" type="text" danger icon={<CloseOutlined />} onClick={() => toggleInRoute(c.id)} />
+              </Tooltip>
             </div>
           ))}
           {startPoint && roundtrip && (
             <div style={{ padding: '4px 0', color: BASES[start].color, borderTop: '1px solid var(--ant-color-split, #f0f0f0)' }}>
-              {BASES[start].emoji} {BASES[start].title} — возврат
+              {BASES[start].emoji} Возврат: {BASES[start].title.toLowerCase()}
             </div>
           )}
         </div>
+        <Button
+          size="small"
+          type="link"
+          danger
+          icon={<DeleteOutlined />}
+          style={{ paddingInline: 0 }}
+          onClick={() => Modal.confirm({
+            title: 'Очистить весь маршрут?',
+            content: 'Водитель тоже перестанет его видеть.',
+            okText: 'Очистить',
+            okButtonProps: { danger: true },
+            cancelText: 'Отмена',
+            onOk: () => editRouteIds([]),
+          })}
+        >
+          Очистить весь маршрут
+        </Button>
+      </Space>
+    )
+  ));
+
+  const summary = (
+    <div style={{ padding: '10px 0', borderTop: '1px solid var(--ant-color-split, #f0f0f0)' }}>
+      {road && routeClients.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <Typography.Text style={{ fontSize: 16 }}>
+            <b>{road.distanceKm.toFixed(1)} км</b> · ≈ {formatDuration(road.durationMin)} в пути
+          </Typography.Text>
+          {road.approximate && <Tag color="orange" style={{ marginLeft: 8 }}>по прямой</Tag>}
+        </div>
       )}
-    </Space>
+      <div style={{ marginBottom: 8, fontSize: 13 }}>{saveStatus}</div>
+      {road && routeClients.length > 0 && (
+        <Space wrap size={6}>
+          <Button type="primary" icon={<EnvironmentOutlined />} href={yandexRouteUrl(routePoints)} target="_blank">
+            Открыть в Яндекс Картах
+          </Button>
+          <Button icon={<AimOutlined />} onClick={fitRoute}>Показать на карте</Button>
+        </Space>
+      )}
+    </div>
   );
 
   const clientRow = (c: ClientMapPoint) => {
@@ -692,54 +730,54 @@ export default function ClientsMapPage() {
       <div
         key={c.id}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0',
           borderTop: '1px solid var(--ant-color-split, #f0f0f0)',
           background: c.id === selectedId ? 'rgba(250,173,20,.12)' : undefined,
         }}
       >
-        <span style={{
-          width: 10, height: 10, borderRadius: 5, flex: 'none',
-          background: !onMap ? '#bfbfbf' : inRoute ? COLOR_ROUTE : c.pendingDeliveryDeals ? COLOR_PENDING : COLOR_CLIENT,
-        }} />
         <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => selectClient(c)}>
           <Typography.Text ellipsis style={{ display: 'block' }}>{c.companyName}</Typography.Text>
           <Typography.Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12 }}>
             {c.address || 'адрес не указан'}
           </Typography.Text>
+          {c.pendingDeliveryDeals > 0 && (
+            <Tag color="orange" style={{ marginTop: 2 }}>заказ на доставку: {c.pendingDeliveryDeals}</Tag>
+          )}
         </div>
-        {c.pendingDeliveryDeals > 0 && (
-          <Tooltip title="Незакрытые сделки с доставкой">
-            <Tag color="orange" style={{ marginInlineEnd: 0 }}>{c.pendingDeliveryDeals}</Tag>
-          </Tooltip>
-        )}
         {onMap ? (
-          <Tooltip title={inRoute ? 'Убрать из маршрута' : 'В маршрут'}>
-            <Button
-              size="small"
-              type={inRoute ? 'primary' : 'default'}
-              icon={inRoute ? <CloseOutlined /> : <PlusOutlined />}
-              onClick={() => toggleInRoute(c.id)}
-            />
-          </Tooltip>
+          inRoute ? (
+            <Button size="small" onClick={() => toggleInRoute(c.id)}>
+              ✓ №{routeOrder.get(c.id)} · убрать
+            </Button>
+          ) : (
+            <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => toggleInRoute(c.id)}>
+              Добавить
+            </Button>
+          )
         ) : canEditClient ? (
-          <Button size="small" onClick={() => void startPlacing({ kind: 'client', client: c })}>Указать</Button>
-        ) : null}
+          <Button size="small" onClick={() => void startPlacing({ kind: 'client', client: c })}>Отметить на карте</Button>
+        ) : (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>нет точки</Typography.Text>
+        )}
       </div>
     );
   };
 
   const LIST_LIMIT = 300;
-  const clientsTab = (
+  const clientsPicker = (
     <Space orientation="vertical" style={{ width: '100%' }} size={8}>
+      <Button icon={<ArrowLeftOutlined />} onClick={() => setTab('route')}>
+        Готово — к маршруту ({routeClients.length})
+      </Button>
       <Input
         allowClear
         prefix={<SearchOutlined />}
-        placeholder="Название, контакт, адрес, телефон"
+        placeholder="Поиск: название, адрес, телефон"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
       <Checkbox checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)}>
-        Только кто ждёт доставку
+        Только с заказом на доставку
       </Checkbox>
       <div>
         {filteredLocated.slice(0, LIST_LIMIT).map(clientRow)}
@@ -749,7 +787,7 @@ export default function ClientsMapPage() {
           </Typography.Text>
         )}
         {filteredLocated.length === 0 && (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="На карте никого не найдено" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Никого не найдено" />
         )}
       </div>
       {filteredUnlocated.length > 0 && (
@@ -757,12 +795,12 @@ export default function ClientsMapPage() {
           size="small"
           items={[{
             key: 'unlocated',
-            label: `Без точки на карте: ${filteredUnlocated.length}`,
+            label: `Нет точки на карте — нельзя добавить: ${filteredUnlocated.length}`,
             children: (
               <div>
                 {canEditClient && (
                   <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-                    «Указать» — карта подлетит к адресу клиента (если найдёт), дальше кликните точное место.
+                    Нажмите «Отметить на карте», затем кликните место клиента на карте.
                   </Typography.Paragraph>
                 )}
                 {filteredUnlocated.slice(0, LIST_LIMIT).map(clientRow)}
@@ -774,104 +812,119 @@ export default function ClientsMapPage() {
     </Space>
   );
 
+  const selectedCard = selected && (
+    <Card
+      size="small"
+      style={{ borderColor: '#faad14', marginBottom: 8 }}
+      title={<Typography.Text ellipsis>{selected.companyName}</Typography.Text>}
+      extra={<Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setSelectedId(null)} />}
+    >
+      <div style={{ fontSize: 13 }}>
+        <div>{selected.contactName}{selected.phone ? ` · ${selected.phone}` : ''}</div>
+        {selected.address && <div style={{ color: 'var(--ant-color-text-secondary, #8c8c8c)' }}>{selected.address}</div>}
+        <div>Менеджер: {selected.manager.fullName}</div>
+        {selected.pendingDeliveryDeals > 0 && (
+          <Tag color="orange" style={{ marginTop: 4 }}>заказ на доставку: {selected.pendingDeliveryDeals}</Tag>
+        )}
+      </div>
+      <Space wrap size={6} style={{ marginTop: 8 }}>
+        {hasCoords(selected) && (
+          routeOrder.has(selected.id) ? (
+            <Button onClick={() => toggleInRoute(selected.id)}>
+              Убрать из маршрута (№{routeOrder.get(selected.id)})
+            </Button>
+          ) : (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => toggleInRoute(selected.id)}>
+              Добавить в маршрут
+            </Button>
+          )
+        )}
+        <Link to={`/clients/${selected.id}`}><Button>Карточка клиента</Button></Link>
+        {canEditClient && (
+          <Button type="link" onClick={() => void startPlacing({ kind: 'client', client: selected })}>
+            {hasCoords(selected) ? 'Поправить точку' : 'Отметить на карте'}
+          </Button>
+        )}
+      </Space>
+    </Card>
+  );
+
+  const basesBlock = (
+    <Collapse
+      size="small"
+      style={{ marginTop: 8 }}
+      defaultActiveKey={startPoint ? [] : ['bases']}
+      items={[{
+        key: 'bases',
+        label: 'Склад и офис на карте',
+        children: (
+          <div>
+            {renderBase('WAREHOUSE')}
+            {renderBase('OFFICE')}
+          </div>
+        ),
+      }]}
+    />
+  );
+
   return (
     <div style={isMobile
       ? { display: 'flex', flexDirection: 'column' }
       : { display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 520 }}
     >
-      <Space style={{ marginBottom: 12 }} wrap align="center">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Клиенты на карте</Typography.Title>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            На карте {located.length} из {clients.length} · копите клиентов в маршрут и стройте объезд со склада
-          </Typography.Text>
-        </div>
-        {placing && (
-          <Alert
-            type="info"
-            showIcon
-            style={{ padding: '4px 12px' }}
-            title={<>Кликните на карте: <b>{placingLabel}</b></>}
-            action={<Button size="small" onClick={() => { setPlacing(null); setPending(null); }}>Отмена</Button>}
-          />
-        )}
-      </Space>
+      <div style={{ marginBottom: 12 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>Маршрут доставки по клиентам</Typography.Title>
+        <Typography.Text type="secondary">
+          Соберите, кого везти, — программа расставит их по пути, а водитель увидит маршрут у себя в телефоне.
+        </Typography.Text>
+      </div>
+      {placing && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title={<>Кликните на карте, где находится: <b>{placingLabel}</b></>}
+          action={<Button size="small" onClick={() => { setPlacing(null); setPending(null); }}>Отмена</Button>}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0, flexWrap: 'wrap' }}>
         <Card
           size="small"
           style={isMobile
             ? { width: '100%' }
-            : { width: 380, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}
+            : { width: 400, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}
           styles={{ body: { overflowY: 'auto', flex: 1, minHeight: 0 } }}
         >
-          <Space orientation="vertical" style={{ width: '100%' }} size={8}>
-            {renderBase('WAREHOUSE')}
-            {renderBase('OFFICE')}
-
-            {selected && (
-              <Card
-                size="small"
-                style={{ borderColor: '#faad14' }}
-                title={<Typography.Text ellipsis>{selected.companyName}</Typography.Text>}
-                extra={<Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setSelectedId(null)} />}
-              >
-                <div style={{ fontSize: 13 }}>
-                  <div>{selected.contactName}{selected.phone ? ` · ${selected.phone}` : ''}</div>
-                  {selected.address && <div style={{ color: 'var(--ant-color-text-secondary, #8c8c8c)' }}>{selected.address}</div>}
-                  <div>Менеджер: {selected.manager.fullName}</div>
-                  {selected.pendingDeliveryDeals > 0 && (
-                    <Tag color="orange" style={{ marginTop: 4 }}>Ждёт доставку: {selected.pendingDeliveryDeals}</Tag>
-                  )}
-                </div>
-                <Space wrap size={6} style={{ marginTop: 8 }}>
-                  <Link to={`/clients/${selected.id}`}><Button size="small">Карточка</Button></Link>
-                  {hasCoords(selected) && (
-                    <Button
-                      size="small"
-                      type={routeOrder.has(selected.id) ? 'default' : 'primary'}
-                      icon={<NodeIndexOutlined />}
-                      onClick={() => toggleInRoute(selected.id)}
-                    >
-                      {routeOrder.has(selected.id) ? `Убрать из маршрута (№${routeOrder.get(selected.id)})` : 'В маршрут'}
-                    </Button>
-                  )}
-                  {canEditClient && (
-                    <Button size="small" onClick={() => void startPlacing({ kind: 'client', client: selected })}>
-                      {hasCoords(selected) ? 'Перенести точку' : 'Указать на карте'}
-                    </Button>
-                  )}
-                </Space>
-              </Card>
-            )}
-
-            <Tabs
-              size="small"
-              activeKey={tab}
-              onChange={(k) => setTab(k as 'route' | 'clients')}
-              items={[
-                { key: 'route', label: `Маршрут (${routeClients.length})`, children: routeTab },
-                { key: 'clients', label: `Клиенты (${clients.length})`, children: clientsTab },
-              ]}
-            />
-          </Space>
+          {selectedCard}
+          {tab === 'clients' ? clientsPicker : (
+            <>
+              {stepStart}
+              {stepWho}
+              {stepOrder}
+              {summary}
+              {basesBlock}
+            </>
+          )}
         </Card>
 
         <Card
           size="small"
           style={isMobile
-            ? { width: '100%', height: '60vh', order: -1, position: 'relative' }
+            ? { width: '100%', height: '55vh', order: -1, position: 'relative' }
             : { flex: 1, minWidth: 300, minHeight: 420, position: 'relative' }}
           styles={{ body: { padding: 0, height: '100%' } }}
         >
           <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: isMobile ? 0 : 420, borderRadius: 8 }} />
           <div style={{
-            position: 'absolute', right: 10, top: 10, zIndex: 500, background: 'rgba(255,255,255,.92)',
-            borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#333', boxShadow: '0 1px 4px rgba(0,0,0,.2)',
+            position: 'absolute', right: 10, top: 10, zIndex: 500, background: 'rgba(255,255,255,.94)',
+            borderRadius: 6, padding: '6px 10px', fontSize: 12, color: '#333', boxShadow: '0 1px 4px rgba(0,0,0,.2)',
+            lineHeight: 1.7,
           }}>
-            <span style={{ color: COLOR_CLIENT }}>●</span> клиент{' '}
-            <span style={{ color: COLOR_PENDING, marginLeft: 8 }}>●</span> ждёт доставку{' '}
-            <span style={{ color: COLOR_ROUTE, marginLeft: 8 }}>●</span> в маршруте
+            <div><span style={{ color: COLOR_CLIENT }}>●</span> клиент</div>
+            <div><span style={{ color: COLOR_PENDING }}>●</span> есть заказ на доставку</div>
+            <div><span style={{ color: COLOR_ROUTE }}>●</span> в маршруте (цифра — порядок)</div>
+            <div><span style={{ color: COLOR_DELIVERED }}>●</span> уже доставлено</div>
           </div>
         </Card>
       </div>
