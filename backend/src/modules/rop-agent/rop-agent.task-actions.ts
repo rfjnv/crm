@@ -1,7 +1,7 @@
 import { Prisma, TaskStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
-import { notifyTasksAssigned } from '../tasks/tasks.notify';
+import { notifyTasksAssigned, notifyTasksDueChanged } from '../tasks/tasks.notify';
 import type { PlanItem } from './rop-agent.plans';
 
 /**
@@ -221,6 +221,8 @@ export async function decideTaskAction(actionId: string, userId: string, accept:
         where: { id: { in: ids } },
         data: { dueDate: new Date(`${params.dueDate}T18:00:00+05:00`) },
       })).count;
+      const moved = await prisma.task.findMany({ where: { id: { in: ids } }, select: { assigneeId: true, title: true, dueDate: true } });
+      void notifyTasksDueChanged(moved, userId);
     } else if (row.action === 'reassign') {
       changed = (await prisma.task.updateMany({ where: { id: { in: ids } }, data: { assigneeId: params.assigneeId } })).count;
       const moved = await prisma.task.findMany({ where: { id: { in: ids } }, select: { assigneeId: true, title: true } });

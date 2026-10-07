@@ -92,6 +92,7 @@ import { APP_BUTTON } from './ui/AppClassNames';
 import CostAccessButton from './CostAccessButton';
 import NotificationBell from './NotificationBell';
 import NotificationPermissionBanner from './NotificationPermissionBanner';
+import TaskAlertBar from './TaskAlertBar';
 import UiScaleControl from './UiScaleControl';
 import BottomTabBar from './BottomTabBar';
 import logo from '../assets/logo.webp';
@@ -1098,6 +1099,7 @@ export default function Layout() {
             </>
           )}
         </Header>
+        <TaskAlertBar top={isMobile ? 'calc(56px + env(safe-area-inset-top, 0px))' : 56} />
         <Content
           className={isMobile ? 'app-main-content app-main-content--mobile-shell' : 'app-main-content'}
           style={{

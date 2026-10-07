@@ -9,7 +9,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
 import { createTaskDto, updateTaskDto, moveTaskDto } from './tasks.dto';
 import { generateStorageName, sanitizeFilename } from '../../lib/uploadSecurity';
-import { notifyTasksAssigned } from './tasks.notify';
+import { notifyTasksAssigned, notifyTasksDueChanged } from './tasks.notify';
 
 import { config } from '../../lib/config';
 
@@ -201,6 +201,10 @@ router.patch(
       data: updateData,
       include: taskInclude,
     });
+
+    if ((existing.dueDate?.getTime() ?? null) !== (task.dueDate?.getTime() ?? null)) {
+      void notifyTasksDueChanged([task], req.user!.userId);
+    }
 
     res.json(task);
   }),
