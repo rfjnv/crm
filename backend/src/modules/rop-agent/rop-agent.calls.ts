@@ -4,6 +4,7 @@ import path from 'path';
 import { Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { AGENT_OFF_TEXT } from './rop-agent.service';
 import { AppError } from '../../lib/errors';
 import { analyzeSalesCallTranscript, transcribeAudioFile } from '../ai-assistant/ai-assistant.service';
 import { agentBot, type TgButton } from './rop-agent.bot';
@@ -102,6 +103,10 @@ async function auditButtons(auditId: string, managerId: string | null): Promise<
 async function onCallRecording(msg: TelegramBot.Message): Promise<void> {
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) return;
+  if (!config.ropAgent.enabled) {
+    await agentBot.sendHtmlToChat(msg.chat.id, `⏸ ${AGENT_OFF_TEXT}`);
+    return;
+  }
   const f = callFile(msg);
   if (!f) return;
   if (f.size > MAX_FILE_BYTES) {

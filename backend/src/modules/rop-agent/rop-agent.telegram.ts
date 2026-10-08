@@ -26,8 +26,7 @@ import {
   getTelegramChat,
   getTurnStatus,
   runningTurnsCount,
-  waitForTurn,
-} from './rop-agent.service';
+  waitForTurn, AGENT_OFF_TEXT } from './rop-agent.service';
 
 /**
  * РОП-агент в Telegram — отдельный бот (HOS_BOT_TOKEN, см. rop-agent.bot), не CRM-бот.
@@ -517,7 +516,7 @@ async function sendStatus(chatId: number, replyTo?: number, fromId?: number): Pr
   const yes = (ok: boolean, what: string) => `${ok ? '✅' : '⚠️'} ${what}`;
   const commit = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7);
   const lines = [
-    '✅ <b>РОП-агент на месте и готов.</b>',
+    config.ropAgent.enabled ? '✅ <b>РОП-агент на месте и готов.</b>' : `⏸ <b>${esc(AGENT_OFF_TEXT)}</b>`,
     '',
     `⏱ Работает без перезапуска: ${formatUptime(Math.round(process.uptime()))}`,
     busy ? `🧠 Сейчас готовит ответов: ${busy}` : '🧠 Сейчас свободен',
@@ -630,6 +629,10 @@ async function onPrivateVoice(msg: TelegramBot.Message): Promise<void> {
   const user = await agentUserByTelegramId(msg.from?.id);
   if (!user) {
     await agentBot.sendHtmlToChat(msg.chat.id, NOT_LINKED(msg.from?.id));
+    return;
+  }
+  if (!config.ropAgent.enabled) {
+    await agentBot.sendHtmlToChat(msg.chat.id, `⏸ ${esc(AGENT_OFF_TEXT)}`);
     return;
   }
   const media = msg.voice;

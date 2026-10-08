@@ -28,7 +28,7 @@ export function tasksInUzbek(): boolean {
 
 /** Перевод пачкой. null — перевод выключен или не удался (тогда задачи остаются по-русски). */
 export async function toUzbekCyrillic(texts: string[]): Promise<string[] | null> {
-  if (!tasksInUzbek() || !config.claude.apiKey || !texts.length) return null;
+  if (!tasksInUzbek() || !config.claude.apiKey || !config.ropAgent.enabled || !texts.length) return null;
   try {
     const client = new Anthropic({ apiKey: config.claude.apiKey });
     const response = await client.messages.create({

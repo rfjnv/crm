@@ -84,6 +84,12 @@ export const config = {
 
   /** РОП-агент: стратегии и разборы — на сильной модели, ключ тот же, что у Claude выше. */
   ropAgent: {
+    /**
+     * Главный выключатель РОП-агента: off — ни одного обращения к Claude и распознаванию
+     * (чат, голосовые, разбор звонков, сводка, сигналы, перевод задач). Сейчас по умолчанию
+     * выключен — агент на доработке; включить — ROP_AGENT=on на Render.
+     */
+    enabled: (trimEnv(process.env.ROP_AGENT) || 'off').toLowerCase() === 'on',
     model: trimEnv(process.env.ROP_AGENT_MODEL) || 'claude-opus-5-5',
     effort: (trimEnv(process.env.ROP_AGENT_EFFORT) || 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
     /** Короткий комментарий к ежедневной сводке — рутина, хватает модели попроще. */

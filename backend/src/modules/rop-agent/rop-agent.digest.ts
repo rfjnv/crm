@@ -292,7 +292,7 @@ const COMMENTARY_PROMPT = `Ты — РОП-агент компании Polygraph
 Последней строкой, после пустой строки, — одно предложение: с чего начать день.`;
 
 async function writeCommentary(data: DigestData): Promise<string | null> {
-  if (!config.claude.apiKey) return null;
+  if (!config.claude.apiKey || !config.ropAgent.enabled) return null;
   try {
     const client = new Anthropic({ apiKey: config.claude.apiKey });
     const response = await client.messages.create({

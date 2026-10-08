@@ -23,6 +23,7 @@ function digestHour(): number | null {
 }
 
 async function tick(): Promise<void> {
+  if (!config.ropAgent.enabled) return;
   const hour = digestHour();
   if (hour === null) return;
   const now = new Date(Date.now() + TASHKENT_OFFSET_MS);
@@ -52,7 +53,7 @@ const ALERT_HOURS = { from: 10, to: 19 };
 let lastAlertHour = '';
 
 async function alertsTick(): Promise<void> {
-  if (!config.ropAgent.alertsEnabled) return;
+  if (!config.ropAgent.enabled || !config.ropAgent.alertsEnabled) return;
   const now = new Date(Date.now() + TASHKENT_OFFSET_MS);
   const hour = now.getUTCHours();
   if (hour < ALERT_HOURS.from || hour > ALERT_HOURS.to || now.getUTCMinutes() >= 5) return;

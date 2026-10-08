@@ -140,7 +140,15 @@ function titleFrom(question: string): string {
  * Принимает вопрос и запускает ответ в фоне. История для Claude собирается из
  * сохранённых `apiMessages` дословно и только дописывается.
  */
+/** Агент выключен (ROP_AGENT) — объясняем вместо ответа, токены не тратим. */
+export const AGENT_OFF_TEXT = 'РОП-агент временно выключен на доработку. Сводки, сигналы и ответы вернутся, когда его включат.';
+
+export function assertAgentEnabled(): void {
+  if (!config.ropAgent.enabled) throw new AppError(503, AGENT_OFF_TEXT);
+}
+
 export async function askInChat(chatId: string, userId: string, question: string, costOpen = false) {
+  assertAgentEnabled();
   const chat = await getOwnChat(chatId, userId, costOpen);
   if (running.has(chatId)) throw new AppError(409, 'Агент ещё отвечает на предыдущий вопрос');
 
