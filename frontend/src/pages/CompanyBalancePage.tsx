@@ -246,6 +246,14 @@ export default function CompanyBalancePage() {
                   <Typography.Text type="secondary">
                     Безналичные (нетто): <b style={{ color: tk.colorPrimary }}>{formatUZS(balanceData?.kpi?.bank ?? 0)}</b>
                   </Typography.Text>
+                  {!!(balanceData?.usd?.incoming || balanceData?.usd?.expenses) && (
+                    <Typography.Text
+                      type="secondary"
+                      title={`Приход $${balanceData!.usd!.incoming.toLocaleString('ru-RU')} − расход $${balanceData!.usd!.expenses.toLocaleString('ru-RU')}. В сумовый баланс не входит.`}
+                    >
+                      Доллары: <b style={{ color: tk.colorSuccess }}>${balanceData!.usd!.balance.toLocaleString('ru-RU')}</b>
+                    </Typography.Text>
+                  )}
                   <Typography.Text type="secondary">
                     Обновлено: {dayjs(balanceData?.updatedAt).format('DD.MM.YYYY HH:mm')}
                   </Typography.Text>

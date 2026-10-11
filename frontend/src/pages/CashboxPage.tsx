@@ -30,6 +30,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { UsdPaymentFields, UsdPaymentTag, usdPayload } from '../components/UsdPaymentFields';
 import { getFirstName } from '../lib/name-utils';
 
 type DebtRange = 'all' | '1m' | '5m' | '10m' | 'custom';
@@ -294,9 +295,11 @@ export default function CashboxPage() {
   }, [queryClient]);
 
   const activeCashPaymentMut = useMutation({
-    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string }) =>
+    mutationFn: (vals: { dealId: string; amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string; usdAmount?: number; usdRate?: number }) =>
       dealsApi.createPayment(vals.dealId, {
         amount: vals.amount,
+        usdAmount: vals.usdAmount,
+        usdRate: vals.usdRate,
         method: vals.method,
         note: vals.note,
         paidAt: vals.paidAt,
@@ -512,6 +515,7 @@ export default function CashboxPage() {
           note: vals.note,
           paidAt: paidAtStr,
           receivedById: vals.receivedById,
+          ...(usdPayload(vals) as { usdAmount?: number; usdRate?: number }),
         });
       }
     } catch {
@@ -615,7 +619,10 @@ export default function CashboxPage() {
       align: 'right' as const,
       render: (v: number, r: CashboxPayment) =>
         r.kind === 'CASH_IN' || r.kind === 'REVERSAL' ? (
-          formatUZS(v)
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {formatUZS(v)}
+            <UsdPaymentTag usdAmount={r.usdAmount} usdRate={r.usdRate} />
+          </span>
         ) : (
           // Служебная проводка: денег в кассу не поступало, в итоги не входит.
           <Typography.Text type="secondary" title={nonCashHint[r.kind]}>
@@ -1067,6 +1074,11 @@ export default function CashboxPage() {
                 <Col xs={24} sm={12} lg={6}>
                   <Card size="small">
                     <Statistic title="Итого за период" value={data?.totals.totalAmount ?? 0} formatter={(v) => formatUZS(Number(v))} />
+                    {!!data?.totals.usdTotal && (
+                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                        сумами {formatUZS(data.totals.uzsTotal ?? 0)} · долларами ${data.totals.usdTotal.toLocaleString('ru-RU')}
+                      </Typography.Text>
+                    )}
                   </Card>
                 </Col>
                 <Col xs={24} sm={12} lg={6}>
@@ -1905,6 +1917,8 @@ export default function CashboxPage() {
                   parser={(v) => Number(moneyParser(v))}
                 />
               </Form.Item>
+
+              {activePayMode === 'cash' && <UsdPaymentFields form={activePayForm} />}
 
               {/* Второстепенные поля — в две колонки, иначе модалка вырастает
                   в вертикальную простыню из пяти одинаковых полей. */}

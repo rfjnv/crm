@@ -165,6 +165,9 @@ export const createPaymentRecordDto = z.object({
   paidAt: z.string().datetime().optional(),
   /** Кто фактически принял деньги. По умолчанию — тот, кто вносит запись. */
   receivedById: z.string().uuid().optional(),
+  /** Часть суммы, принятая долларами: сколько $ и по какому курсу. amount — полный эквивалент в сумах. */
+  usdAmount: z.number().positive().max(10_000_000).optional(),
+  usdRate: z.number().positive().max(1_000_000).optional(),
 });
 
 export const updatePaymentRecordDto = z.object({
@@ -175,6 +178,9 @@ export const updatePaymentRecordDto = z.object({
   method: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT']).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
   paidAt: z.string().datetime().optional(),
+  /** null снимает долларовую часть. */
+  usdAmount: z.number().positive().max(10_000_000).nullable().optional(),
+  usdRate: z.number().positive().max(1_000_000).nullable().optional(),
 });
 
 export type CreateDealDto = z.infer<typeof createDealDto>;

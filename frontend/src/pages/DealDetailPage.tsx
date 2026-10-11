@@ -34,6 +34,7 @@ import { isLaminationProduct } from '../utils/lamination';
 import type { DealStatus, Deal, DealItem, PaymentStatus, DealHistoryEntry, UserRole, PaymentMethod, ContractListItem, PaymentRecord } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import { getAuditActionLabel } from '../lib/auditActionLabels';
+import { UsdPaymentFields, UsdPaymentTag, usdPayload } from '../components/UsdPaymentFields';
 import dayjs from 'dayjs';
 
 const paymentStatusLabels: Record<PaymentStatus, { color: string; label: string }> = {
@@ -440,7 +441,7 @@ export default function DealDetailPage() {
   });
 
   const paymentRecordMut = useMutation({
-    mutationFn: (data: { amount: number; method?: string; note?: string; paidAt?: string }) =>
+    mutationFn: (data: { amount: number; method?: string; note?: string; paidAt?: string; usdAmount?: number; usdRate?: number }) =>
       dealsApi.createPayment(id!, data),
     onSuccess: () => { invalidate(); setPaymentRecordModal(false); setEditingPayment(null); paymentRecordForm.resetFields(); message.success('Платёж добавлен'); },
     onError: (err: unknown) => {
@@ -450,7 +451,7 @@ export default function DealDetailPage() {
   });
 
   const updatePaymentRecordMut = useMutation({
-    mutationFn: (data: { paymentId: string; amount?: number; method?: string | null; note?: string | null; paidAt?: string }) => {
+    mutationFn: (data: { paymentId: string; amount?: number; method?: string | null; note?: string | null; paidAt?: string; usdAmount?: number | null; usdRate?: number | null }) => {
       const { paymentId, ...rest } = data;
       return dealsApi.updatePayment_record(id!, paymentId, rest);
     },
@@ -1310,7 +1311,7 @@ export default function DealDetailPage() {
                   {(dealPayments ?? []).map((p: any) => (
                     <Card key={p.id} size="small" bordered>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography.Text strong>{formatUZS(p.amount)}</Typography.Text>
+                        <Typography.Text strong>{formatUZS(p.amount)}<UsdPaymentTag usdAmount={p.usdAmount} usdRate={p.usdRate} /></Typography.Text>
                         <Space size={4}>
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(p.paidAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
                           {p.kind === 'CREDIT_TRANSFER' ? (
@@ -1323,7 +1324,7 @@ export default function DealDetailPage() {
                             <>
                               <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
                                 setEditingPayment({ id: p.id });
-                                paymentRecordForm.setFieldsValue({ amount: Number(p.amount), method: p.method || undefined, paidAt: dayjs(p.paidAt), note: p.note || '' });
+                                paymentRecordForm.setFieldsValue({ amount: Number(p.amount), method: p.method || undefined, paidAt: dayjs(p.paidAt), note: p.note || '', usdAmount: p.usdAmount != null ? Number(p.usdAmount) : null, usdRate: p.usdRate != null ? Number(p.usdRate) : null });
                                 setPaymentRecordModal(true);
                               }} />
                               <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(p.id)}>
@@ -1780,7 +1781,7 @@ export default function DealDetailPage() {
                           style={{ marginTop: 16 }}
                           scroll={{ x: 500 }}
                           columns={[
-                            { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string) => formatUZS(v) },
+                            { title: 'Сумма', dataIndex: 'amount', align: 'right' as const, render: (v: string, r: PaymentRecord) => <span style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}<UsdPaymentTag usdAmount={r.usdAmount} usdRate={r.usdRate} /></span> },
                             {
                               title: 'Способ', dataIndex: 'method',
                               render: (v: string | null, record: PaymentRecord) => record.kind === 'CREDIT_TRANSFER'
@@ -1803,7 +1804,7 @@ export default function DealDetailPage() {
                                   <Space size={0}>
                                     <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
                                       setEditingPayment({ id: record.id });
-                                      paymentRecordForm.setFieldsValue({ amount: Number(record.amount), method: record.method || undefined, paidAt: dayjs(record.paidAt), note: record.note || '' });
+                                      paymentRecordForm.setFieldsValue({ amount: Number(record.amount), method: record.method || undefined, paidAt: dayjs(record.paidAt), note: record.note || '', usdAmount: record.usdAmount != null ? Number(record.usdAmount) : null, usdRate: record.usdRate != null ? Number(record.usdRate) : null });
                                       setPaymentRecordModal(true);
                                     }} />
                                     <Popconfirm title="Удалить платёж?" onConfirm={() => deletePaymentRecordMut.mutate(record.id)}>
@@ -2568,14 +2569,16 @@ export default function DealDetailPage() {
       >
         <Form form={paymentRecordForm} layout="vertical" onFinish={(v) => {
           if (editingPayment) {
-            updatePaymentRecordMut.mutate({ paymentId: editingPayment.id, amount: v.amount, method: v.method || null, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined, note: v.note || null });
+            updatePaymentRecordMut.mutate({ paymentId: editingPayment.id, amount: v.amount, method: v.method || null, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined, note: v.note || null, ...usdPayload(v, true) });
           } else {
-            paymentRecordMut.mutate({ ...v, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined });
+            const { usdAmount: _usd, usdRate: _rate, ...rest } = v;
+            paymentRecordMut.mutate({ ...rest, paidAt: v.paidAt ? v.paidAt.toISOString() : undefined, ...(usdPayload(v) as { usdAmount?: number; usdRate?: number }) });
           }
         }}>
-          <Form.Item name="amount" label="Сумма" rules={[{ required: true, message: 'Укажите сумму' }]}>
+          <Form.Item name="amount" label="Сумма (всего в сумах)" rules={[{ required: true, message: 'Укажите сумму' }]}>
             <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
           </Form.Item>
+          <UsdPaymentFields form={paymentRecordForm} />
           <Form.Item name="method" label="Способ оплаты">
             <Select allowClear placeholder="Выберите" options={[
               { label: 'Наличные', value: 'CASH' },

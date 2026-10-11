@@ -1080,6 +1080,9 @@ export interface PaymentRecord {
   dealId: string;
   clientId: string;
   amount: string;
+  /** Часть оплаты, принятая долларами; amount — полный эквивалент в сумах. */
+  usdAmount?: string | null;
+  usdRate?: string | null;
   paidAt: string;
   method?: string | null;
   note?: string | null;

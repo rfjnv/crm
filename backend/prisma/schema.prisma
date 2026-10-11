@@ -1034,6 +1034,13 @@ model Payment {
   receivedById String? @map("received_by_id")
   /// Денежная это проводка или служебная — см. enum PaymentKind.
   kind      PaymentKind @default(CASH_IN)
+  /// Часть оплаты, принятая долларами (сумма в $). amount — всегда полный сумовый
+  /// эквивалент, засчитанный на сделку; сумами в кассу пришло amount − usdUzs.
+  usdAmount Decimal? @db.Decimal(12, 2) @map("usd_amount")
+  /// Курс, по которому доллары засчитаны на сделку (сум за $1).
+  usdRate   Decimal? @db.Decimal(12, 2) @map("usd_rate")
+  /// usdAmount × usdRate — хранится, чтобы кассовые итоги считались агрегатом.
+  usdUzs    Decimal? @db.Decimal(14, 2) @map("usd_uzs")
   createdAt DateTime @default(now()) @map("created_at")
 
   deal       Deal   @relation(fields: [dealId], references: [id])

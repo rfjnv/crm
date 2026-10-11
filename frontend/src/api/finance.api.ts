@@ -8,6 +8,9 @@ export interface CashboxPayment {
   clientName: string;
   clientIsSvip?: boolean;
   amount: number;
+  /** Часть оплаты, принятая долларами; amount — полный эквивалент в сумах. */
+  usdAmount?: number | null;
+  usdRate?: number | null;
   paidAt: string;
   method: string | null;
   note: string | null;
@@ -23,6 +26,9 @@ export interface CashboxResponse {
   payments: CashboxPayment[];
   totals: {
     totalAmount: number;
+    /** Сколько пришло долларами ($) и сколько — сумами (totalAmount минус эквивалент $). */
+    usdTotal?: number;
+    uzsTotal?: number;
     todayTotal: number;
     count: number;
     /** Сумма служебных проводок в периоде — показывается отдельно, в деньги не входит. */
@@ -171,6 +177,8 @@ export interface CompanyBalanceResponse {
     netInRange?: number;
   };
   breakdown?: { real: number; expected: number; debts: number };
+  /** Доллары в кассе — отдельный остаток, в сумовый баланс не входят. */
+  usd?: { incoming: number; expenses: number; balance: number };
   byMethod?: Record<string, CompanyBalanceMethodAgg>;
   recentIncoming?: CompanyBalanceRecentIncoming[];
   charts?: {

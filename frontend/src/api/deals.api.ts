@@ -209,10 +209,10 @@ export const dealsApi = {
     client.get<Shipment>(`/deals/${dealId}/shipment`).then((r) => r.data),
 
   // Payment Records
-  createPayment: (dealId: string, data: { amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string }) =>
+  createPayment: (dealId: string, data: { amount: number; method?: string; note?: string; paidAt?: string; receivedById?: string; usdAmount?: number; usdRate?: number }) =>
     client.post<PaymentRecord>(`/deals/${dealId}/payments`, data).then((r) => r.data),
 
-  updatePayment_record: (dealId: string, paymentId: string, data: { amount?: number; method?: string | null; note?: string | null; paidAt?: string }) =>
+  updatePayment_record: (dealId: string, paymentId: string, data: { amount?: number; method?: string | null; note?: string | null; paidAt?: string; usdAmount?: number | null; usdRate?: number | null }) =>
     client.patch<PaymentRecord>(`/deals/${dealId}/payments/${paymentId}`, data).then((r) => r.data),
 
   deletePayment_record: (dealId: string, paymentId: string) =>

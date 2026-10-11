@@ -9,7 +9,7 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/payment-kind';
 import { tashkentDayKey, tashkentStartOfToday } from '../../lib/tz';
-import { buildSearchVariants } from '../../lib/translit';
+import { buildSearchVariants } from '../../lib/translit';
 import { responseCache } from '../../lib/responseCache';
 
 function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
@@ -148,6 +148,10 @@ router.get(
       .reduce((s, p) => s + Number(p.amount), 0);
 
     const totalAmount = cashPayments.reduce((s, p) => s + Number(p.amount), 0);
+    // Долларовая часть: сколько $ физически пришло и сколько сумов она закрыла на сделках.
+    // Итог «сумами» = totalAmount − usdUzsTotal — как раздельные колонки кассовой книги.
+    const usdTotal = cashPayments.reduce((s, p) => s + Number(p.usdAmount ?? 0), 0);
+    const usdUzsTotal = cashPayments.reduce((s, p) => s + Number(p.usdUzs ?? 0), 0);
 
     // Breakdown by method
     const byMethod: Record<string, number> = {};
@@ -177,6 +181,8 @@ router.get(
         clientName: p.client?.companyName,
         clientIsSvip: !!p.client?.isSvip,
         amount: Number(p.amount),
+        usdAmount: p.usdAmount != null ? Number(p.usdAmount) : null,
+        usdRate: p.usdRate != null ? Number(p.usdRate) : null,
         paidAt: p.paidAt,
         method: p.method,
         note: p.note,
@@ -188,6 +194,8 @@ router.get(
       })),
       totals: {
         totalAmount,
+        usdTotal: Math.round(usdTotal * 100) / 100,
+        uzsTotal: Math.round((totalAmount - usdUzsTotal) * 100) / 100,
         todayTotal,
         // Считаем только денежные проводки — служебные видны в списке, но не в итогах.
         count: cashPayments.length,
@@ -1140,17 +1148,23 @@ router.get(
       ...(managerId ? { deal: { managerId } } : {}),
     };
 
+    // Расходы в $ ведутся отдельным долларовым остатком — в сумовую кассу идут
+    // только остальные, по сумовому эквиваленту (amountUzs).
+    const nonUsdExpense: Prisma.ExpenseWhereInput = { OR: [{ currency: null }, { currency: { not: 'USD' } }] };
     const expenseWhere: Prisma.ExpenseWhereInput = {
+      ...nonUsdExpense,
       status: 'APPROVED',
       date: { gte: startDate, lte: now },
       ...(method ? { method } : {}),
     };
     const expenseRangeWhere: Prisma.ExpenseWhereInput = {
+      ...nonUsdExpense,
       status: 'APPROVED',
       date: { gte: rangeStart, lte: now },
       ...(method ? { method } : {}),
     };
     const expenseBeforeRangeWhere: Prisma.ExpenseWhereInput = {
+      ...nonUsdExpense,
       status: 'APPROVED',
       date: { gte: startDate, lt: rangeStart },
       ...(method ? { method } : {}),
@@ -1170,23 +1184,25 @@ router.get(
       expenseRangeByMethodAgg,
       expectedRows,
       debtRows,
+      usdIncomingAgg,
+      usdExpenseAgg,
     ] = await Promise.all([
-      prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
-      prisma.payment.aggregate({ where: paymentBeforeRangeWhere, _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true, usdUzs: true } }),
+      prisma.payment.aggregate({ where: paymentBeforeRangeWhere, _sum: { amount: true, usdUzs: true } }),
       prisma.payment.findMany({
         where: paymentRangeWhere,
-        select: { paidAt: true, amount: true, method: true },
+        select: { paidAt: true, amount: true, usdUzs: true, method: true },
         orderBy: { paidAt: 'asc' },
       }),
       prisma.payment.groupBy({
         by: ['method'],
         where: paymentWhere,
-        _sum: { amount: true },
+        _sum: { amount: true, usdUzs: true },
       }),
       prisma.payment.groupBy({
         by: ['method'],
         where: paymentRangeWhere,
-        _sum: { amount: true },
+        _sum: { amount: true, usdUzs: true },
       }),
       prisma.payment.findMany({
         where: paymentRangeWhere,
@@ -1204,22 +1220,22 @@ router.get(
           receivedBy: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.expense.aggregate({ where: expenseWhere, _sum: { amount: true } }),
-      prisma.expense.aggregate({ where: expenseBeforeRangeWhere, _sum: { amount: true } }),
+      prisma.expense.aggregate({ where: expenseWhere, _sum: { amountUzs: true } }),
+      prisma.expense.aggregate({ where: expenseBeforeRangeWhere, _sum: { amountUzs: true } }),
       prisma.expense.findMany({
         where: expenseRangeWhere,
-        select: { date: true, amount: true, method: true },
+        select: { date: true, amount: true, amountUzs: true, method: true },
         orderBy: { date: 'asc' },
       }),
       prisma.expense.groupBy({
         by: ['method'],
         where: expenseWhere,
-        _sum: { amount: true },
+        _sum: { amountUzs: true },
       }),
       prisma.expense.groupBy({
         by: ['method'],
         where: expenseRangeWhere,
-        _sum: { amount: true },
+        _sum: { amountUzs: true },
       }),
       prisma.deal.findMany({
         where: {
@@ -1236,13 +1252,22 @@ router.get(
         },
         select: { amount: true, paidAmount: true },
       }),
+      prisma.payment.aggregate({ where: paymentWhere, _sum: { usdAmount: true } }),
+      prisma.expense.aggregate({
+        where: { status: 'APPROVED', currency: 'USD', date: { gte: startDate, lte: now }, ...(method ? { method } : {}) },
+        _sum: { amount: true },
+      }),
     ]);
 
     const initialBalance = Number(settings.initialBalance || 0);
-    const incomingAll = Number(incomingAllAgg._sum.amount || 0);
-    const incomingBeforeRange = Number(incomingBeforeRangeAgg._sum.amount || 0);
-    const expensesAll = Number(expenseAllAgg._sum.amount || 0);
-    const expensesBeforeRange = Number(expenseBeforeRangeAgg._sum.amount || 0);
+    // Сумовая касса: из поступлений вычитаем долларовую часть (она лежит в $).
+    const sumUzs = (s: { amount?: unknown; usdUzs?: unknown }) => Number(s.amount || 0) - Number(s.usdUzs || 0);
+    const incomingAll = sumUzs(incomingAllAgg._sum);
+    const incomingBeforeRange = sumUzs(incomingBeforeRangeAgg._sum);
+    const expensesAll = Number(expenseAllAgg._sum.amountUzs || 0);
+    const expensesBeforeRange = Number(expenseBeforeRangeAgg._sum.amountUzs || 0);
+    const usdIncoming = Number(usdIncomingAgg._sum.usdAmount || 0);
+    const usdExpenses = Number(usdExpenseAgg._sum.amount || 0);
     const realBalance = initialBalance + incomingAll - expensesAll;
 
     const expectedAmount = expectedRows.reduce(
@@ -1260,7 +1285,7 @@ router.get(
     const incomingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const p of incomingRows) {
       const day = tashkentDayKey(p.paidAt);
-      const amt = Number(p.amount);
+      const amt = Number(p.amount) - Number(p.usdUzs || 0);
       incomingByDay.set(day, (incomingByDay.get(day) || 0) + amt);
       const key = p.method || 'UNKNOWN';
       if (!incomingByDayMethodMap.has(day)) incomingByDayMethodMap.set(day, new Map());
@@ -1272,7 +1297,7 @@ router.get(
     const outgoingByDayMethodMap = new Map<string, Map<string, number>>();
     for (const e of expenseRows) {
       const day = tashkentDayKey(e.date);
-      const amt = Number(e.amount);
+      const amt = Number(e.amountUzs ?? e.amount);
       outgoingByDay.set(day, (outgoingByDay.get(day) || 0) + amt);
       const key = e.method || 'UNKNOWN';
       if (!outgoingByDayMethodMap.has(day)) outgoingByDayMethodMap.set(day, new Map());
@@ -1335,29 +1360,29 @@ router.get(
     for (const row of incomingByMethodAgg) {
       const m = row.method || 'UNKNOWN';
       if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
-      byMethod[m].incoming = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+      byMethod[m].incoming = Math.round(sumUzs(row._sum) * 100) / 100;
     }
     for (const row of expenseByMethodAgg) {
       const m = row.method || 'UNKNOWN';
       if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
-      byMethod[m].outgoing = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+      byMethod[m].outgoing = Math.round(Number(row._sum.amountUzs || 0) * 100) / 100;
     }
     for (const row of incomingRangeByMethodAgg) {
       const m = row.method || 'UNKNOWN';
       if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
-      byMethod[m].incomingInRange = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+      byMethod[m].incomingInRange = Math.round(sumUzs(row._sum) * 100) / 100;
     }
     for (const row of expenseRangeByMethodAgg) {
       const m = row.method || 'UNKNOWN';
       if (!byMethod[m]) byMethod[m] = { incoming: 0, outgoing: 0, net: 0, incomingInRange: 0, outgoingInRange: 0 };
-      byMethod[m].outgoingInRange = Math.round(Number(row._sum.amount || 0) * 100) / 100;
+      byMethod[m].outgoingInRange = Math.round(Number(row._sum.amountUzs || 0) * 100) / 100;
     }
     for (const m of Object.keys(byMethod)) {
       byMethod[m].net = Math.round((byMethod[m].incoming - byMethod[m].outgoing) * 100) / 100;
     }
 
-    const incomingInRange = incomingRows.reduce((s, p) => s + Number(p.amount), 0);
-    const outgoingInRange = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
+    const incomingInRange = incomingRows.reduce((s, p) => s + Number(p.amount) - Number(p.usdUzs || 0), 0);
+    const outgoingInRange = expenseRows.reduce((s, e) => s + Number(e.amountUzs ?? e.amount), 0);
 
     res.json({
       setupRequired: false,
@@ -1374,6 +1399,12 @@ router.get(
         incomingInRange: Math.round(incomingInRange * 100) / 100,
         outgoingInRange: Math.round(outgoingInRange * 100) / 100,
         netInRange: Math.round((incomingInRange - outgoingInRange) * 100) / 100,
+      },
+      // Доллары в кассе — отдельный остаток, как в кассовой книге.
+      usd: {
+        incoming: Math.round(usdIncoming * 100) / 100,
+        expenses: Math.round(usdExpenses * 100) / 100,
+        balance: Math.round((usdIncoming - usdExpenses) * 100) / 100,
       },
       breakdown: {
         real: Math.round(realBalance * 100) / 100,

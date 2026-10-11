@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { resolveUsdPart, usdPartData } from '../../lib/paymentUsd';
 import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
 import { AuthUser, ownerScope } from '../../lib/scope';
@@ -3015,11 +3016,14 @@ export class DealsService {
         receivedById = receiver.id;
       }
 
+      const usdPart = resolveUsdPart(dto.amount, dto.usdAmount, dto.usdRate);
+
       const created = await tx.payment.create({
         data: {
           dealId,
           clientId: deal.clientId,
           amount: dto.amount,
+          ...(usdPart ? usdPartData(usdPart) : {}),
           paidAt: paymentDate,
           method: dto.method,
           note: dto.note,
@@ -3104,9 +3108,21 @@ export class DealsService {
         if (paymentDate > new Date()) throw new AppError(400, 'Дата оплаты не может быть в будущем');
       }
 
+      // Долларовая часть: null в любом поле снимает её, не переданные поля берутся из
+      // платежа — и всё перепроверяется против новой суммы.
+      const clearUsd = dto.usdAmount === null || dto.usdRate === null;
+      const usdPart = clearUsd
+        ? null
+        : resolveUsdPart(
+          newAmount,
+          dto.usdAmount ?? (payment.usdAmount != null ? Number(payment.usdAmount) : null),
+          dto.usdRate ?? (payment.usdRate != null ? Number(payment.usdRate) : null),
+        );
+
       const updated = await tx.payment.update({
         where: { id: paymentId },
         data: {
+          ...usdPartData(usdPart),
           ...(dto.amount !== undefined && { amount: dto.amount }),
           ...(dto.method !== undefined && { method: dto.method }),
           ...(dto.note !== undefined && { note: dto.note }),
