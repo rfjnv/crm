@@ -53,8 +53,9 @@ export function UsdPaymentFields({ form }: { form: FormInstance }) {
                 rules={[
                   { required: true, message: 'Укажите курс' },
                   {
-                    validator: () => (usdUzs > amount + 1
-                      ? Promise.reject(new Error('Доллары по этому курсу больше всей суммы'))
+                    // Доллары больше суммы — это сдача сумами; больше половины — скорее опечатка.
+                    validator: () => (usdUzs - amount > usdUzs / 2
+                      ? Promise.reject(new Error('Доллары по этому курсу намного больше суммы'))
                       : Promise.resolve()),
                   },
                 ]}
@@ -64,8 +65,9 @@ export function UsdPaymentFields({ form }: { form: FormInstance }) {
             </Col>
           </Row>
           {usdUzs > 0 && (
-            <Typography.Text type={uzsPart < 0 ? 'danger' : 'secondary'} style={{ display: 'block', marginTop: -8, marginBottom: 12, fontSize: 12 }}>
-              ${Number(usdAmount).toLocaleString('ru-RU')} × {Number(usdRate).toLocaleString('ru-RU')} = {formatUZS(usdUzs)} · сумами: {formatUZS(Math.max(0, uzsPart))}
+            <Typography.Text type={uzsPart < 0 ? 'warning' : 'secondary'} style={{ display: 'block', marginTop: -8, marginBottom: 12, fontSize: 12 }}>
+              ${Number(usdAmount).toLocaleString('ru-RU')} × {Number(usdRate).toLocaleString('ru-RU')} = {formatUZS(usdUzs)} ·{' '}
+              {uzsPart >= 0 ? `сумами: ${formatUZS(uzsPart)}` : `сдача сумами: ${formatUZS(-uzsPart)}`}
             </Typography.Text>
           )}
         </>
