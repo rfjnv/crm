@@ -262,6 +262,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
             { key: '/analytics/contact-matrix', to: '/analytics/contact-matrix', text: 'Матрица контактов', show: people },
             { key: '/revenue/today', to: '/revenue/today', text: 'Продажи за день', show: people },
             { key: '/kpi', to: '/kpi', text: 'KPI менеджеров', show: people },
+            { key: '/call-reports', to: '/call-reports', text: 'Отчёт по звонкам', show: people },
           ],
         },
         {

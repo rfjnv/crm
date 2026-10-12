@@ -698,6 +698,11 @@ export default function Layout() {
               label: <Link to="/kpi">KPI менеджеров</Link>,
             },
             {
+              key: '/call-reports',
+              icon: <PhoneOutlined />,
+              label: <Link to="/call-reports">Отчёт по звонкам</Link>,
+            },
+            {
               key: '/analytics/contact-matrix',
               icon: <NodeIndexOutlined />,
               label: <Link to="/analytics/contact-matrix">Матрица контактов</Link>,

@@ -100,6 +100,7 @@ const VedProcessBoardPage = lazy(() => import('./pages/VedProcessBoardPage'));
 const VedMapPage = lazy(() => import('./pages/VedMapPage'));
 const EmployeeCardsPage = lazy(() => import('./pages/EmployeeCardsPage'));
 const HrJournalPage = lazy(() => import('./pages/HrJournalPage'));
+const CallReportsPage = lazy(() => import('./pages/CallReportsPage'));
 const AuditCheckPage = lazy(() => import('./pages/AuditCheckPage'));
 const AuditStockPage = lazy(() => import('./pages/AuditStockPage'));
 const ActivityLogPage = lazy(() => import('./pages/ActivityLogPage'));
@@ -233,6 +234,7 @@ export default function App() {
                   <Route path="/worker-audit" element={<Navigate to="/employee-cards" replace />} />
                   <Route path="/attendance" element={<AttendancePage />} />
                   <Route path="/kpi" element={<MoneyAccessGuard><KpiPage /></MoneyAccessGuard>} />
+                  <Route path="/call-reports" element={<CallReportsPage />} />
                   <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
                   <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
                 </Route>

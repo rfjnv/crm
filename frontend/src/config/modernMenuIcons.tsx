@@ -128,6 +128,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/employee-cards': UserFocus,
   '/hr-journal': Notebook,
   '/kpi': ChartLineUp,
+  '/call-reports': PhoneCall,
   '/revenue/today': CurrencyCircleDollar,
   '/attendance': Clock,
   '/admin/activity-log': Eye,
