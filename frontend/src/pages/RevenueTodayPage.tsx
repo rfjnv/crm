@@ -32,6 +32,18 @@ export default function RevenueTodayPage() {
     refetchInterval: isToday ? 60_000 : false,
   });
 
+  // Прошлый день — для сравнения в виде «По менеджерам».
+  const prevDate = date.subtract(1, 'day');
+  const prevParam = prevDate.format('YYYY-MM-DD');
+  const { data: prevData } = useQuery({
+    queryKey: ['revenue-today', prevParam],
+    queryFn: () => dashboardApi.revenueToday(prevParam),
+    enabled: view === 'managers',
+    staleTime: 5 * 60_000,
+  });
+  const curLabel = isToday ? 'Сегодня' : date.format('DD.MM');
+  const prevLabel = isToday ? 'Вчера' : prevDate.format('DD.MM');
+
   const columns = [
     {
       title: 'Время',
@@ -107,7 +119,13 @@ export default function RevenueTodayPage() {
         {isLoading || !data ? (
           <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />
         ) : view === 'managers' ? (
-          <RevenueByManagers payments={data.payments} total={data.total} />
+          <RevenueByManagers
+            payments={data.payments}
+            total={data.total}
+            prevPayments={prevData?.payments}
+            curLabel={curLabel}
+            prevLabel={prevLabel}
+          />
         ) : isMobile ? (
           <>
             <MobileCardList
