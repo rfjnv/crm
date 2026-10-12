@@ -58,9 +58,18 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.VIEW_ALL_CLIENTS,
     PERMISSIONS.EDIT_CLIENT,
   ],
-  /** HR не продаёт: кадры (сотрудники, посещаемость, KPI — по роли) и отдел ВЭД. */
+  /**
+   * HR не продаёт: кадры (сотрудники, посещаемость, KPI — по роли) плюс всё, что
+   * есть у ВЭД — HR работает в отделе ВЭД на полставки. Держать в паре с FOREIGN_TRADE.
+   */
   HR: [
+    PERMISSIONS.MANAGE_INVENTORY,
+    PERMISSIONS.CREATE_INVENTORY_IN,
+    PERMISSIONS.MANAGE_PRODUCTS,
+    PERMISSIONS.VIEW_ALL_DEALS,
     PERMISSIONS.VIEW_ALL_CLIENTS,
+    PERMISSIONS.MANAGE_CONTRACT,
+    PERMISSIONS.MANAGE_EXPENSES,
     PERMISSIONS.MANAGE_SUPPLIERS,
     PERMISSIONS.MANAGE_IMPORT_ORDERS,
     PERMISSIONS.VIEW_IMPORT_ORDERS,
