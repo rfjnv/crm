@@ -326,6 +326,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
             { key: '/users', to: '/users', text: 'Сотрудники CRM', show: people },
             { key: '/employee-cards', to: '/employee-cards', text: 'Карточки сотрудников', show: people },
             { key: '/attendance', to: '/attendance', text: 'Посещаемость', show: people },
+            { key: '/hr-journal', to: '/hr-journal', text: 'Журнал HR', show: isAdmin },
           ],
         },
         {

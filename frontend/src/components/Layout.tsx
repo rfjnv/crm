@@ -789,6 +789,15 @@ export default function Layout() {
           },
         ]
       : []),
+    ...(isAdmin
+      ? [
+          {
+            key: '/hr-journal',
+            icon: <FileTextOutlined />,
+            label: <Link to="/hr-journal">Журнал HR</Link>,
+          },
+        ]
+      : []),
     ...(isAdmin || role === 'HR'
       ? [
           {

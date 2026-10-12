@@ -65,6 +65,7 @@ import exchangeRatesRoutes from './modules/foreign-trade/exchange-rates.routes';
 import vedMapRoutes from './modules/foreign-trade/ved-map.routes';
 import workerReviewsRoutes from './modules/worker-reviews/worker-reviews.routes';
 import employeeCardsRoutes from './modules/employee-cards/employee-cards.routes';
+import hrJournalRoutes from './modules/hr-journal/hr-journal.routes';
 import telephonyRoutes from './modules/telephony/telephony.routes';
 import mobileRoutes from './modules/mobile/mobile.routes';
 import callsRoutes, { clientCallsRouter } from './modules/mobile/calls.routes';
@@ -257,6 +258,7 @@ app.use('/api/foreign-trade', exchangeRatesRoutes);
 app.use('/api/foreign-trade', vedMapRoutes);
 app.use('/api/worker-reviews', workerReviewsRoutes);
 app.use('/api/employee-cards', employeeCardsRoutes);
+app.use('/api/hr-journal', hrJournalRoutes);
 app.use('/api/telephony', telephonyRoutes);
 // Мобильная телефония (приложение CallSync на телефонах менеджеров)
 app.use('/api/mobile', mobileRoutes);

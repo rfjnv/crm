@@ -63,6 +63,7 @@ import {
   Wallet,
   Warehouse,
   Waveform,
+  Notebook,
 } from '@phosphor-icons/react';
 
 /**
@@ -125,6 +126,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/team': UsersFour,
   '/users': User,
   '/employee-cards': UserFocus,
+  '/hr-journal': Notebook,
   '/kpi': ChartLineUp,
   '/revenue/today': CurrencyCircleDollar,
   '/attendance': Clock,

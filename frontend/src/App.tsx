@@ -99,6 +99,7 @@ const ExchangeRatesHistoryPage = lazy(() => import('./pages/ExchangeRatesHistory
 const VedProcessBoardPage = lazy(() => import('./pages/VedProcessBoardPage'));
 const VedMapPage = lazy(() => import('./pages/VedMapPage'));
 const EmployeeCardsPage = lazy(() => import('./pages/EmployeeCardsPage'));
+const HrJournalPage = lazy(() => import('./pages/HrJournalPage'));
 const AuditCheckPage = lazy(() => import('./pages/AuditCheckPage'));
 const AuditStockPage = lazy(() => import('./pages/AuditStockPage'));
 const ActivityLogPage = lazy(() => import('./pages/ActivityLogPage'));
@@ -255,6 +256,10 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
                   <Route path="/deals/closed" element={<ClosedDealsPage />} />
+                </Route>
+                {/* Журнал HR — для руководства: всё, что HR отметила и написала */}
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/hr-journal" element={<HrJournalPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN']} />}>
                   <Route path="/admin/activity-log" element={<ActivityLogPage />} />
