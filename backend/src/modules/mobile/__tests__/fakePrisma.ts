@@ -17,6 +17,7 @@ type Tables = {
   user: Row[];
   callGroupReport: Row[];
   mobilePairingCode: Row[];
+  servicePhone: Row[];
 };
 
 function same(a: unknown, b: unknown): boolean {
@@ -53,7 +54,7 @@ function fieldMatches(value: any, cond: any): boolean {
 }
 
 export function createFakePrisma() {
-  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [], user: [], callGroupReport: [], mobilePairingCode: [] };
+  const db: Tables = { callSession: [], task: [], callRecording: [], mobileDevice: [], client: [], callAudit: [], user: [], callGroupReport: [], mobilePairingCode: [], servicePhone: [] };
 
   function matches(table: keyof Tables, row: Row, where: any): boolean {
     if (!where) return true;
@@ -96,7 +97,7 @@ export function createFakePrisma() {
   }
 
   const defaults: Record<keyof Tables, () => Row> = {
-    callSession: () => ({ deletedAt: null, analysisRequest: null, driveFileId: null, clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
+    callSession: () => ({ followUpCallId: null, followUpAt: null, followUpDirection: null, phoneKey: null, deletedAt: null, analysisRequest: null, driveFileId: null, clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
     task: () => ({ status: 'TODO', description: null, report: null, callSessionId: null }),
     callRecording: () => ({ callSessionId: null }),
     mobileDevice: () => ({ active: true }),
@@ -105,6 +106,7 @@ export function createFakePrisma() {
     user: () => ({ isActive: true }),
     callGroupReport: () => ({ status: 'WAITING', result: null, error: null }),
     mobilePairingCode: () => ({ usedAt: null }),
+    servicePhone: () => ({ note: null }),
   };
 
   function model(table: keyof Tables, unique: string[] = []) {
@@ -166,6 +168,7 @@ export function createFakePrisma() {
     user: model('user'),
     callGroupReport: model('callGroupReport'),
     mobilePairingCode: model('mobilePairingCode', ['codeHash']),
+    servicePhone: model('servicePhone', ['phoneKey']),
     $transaction: async (fn: (tx: any) => Promise<unknown>): Promise<unknown> => fn(prisma),
     /** Поиск клиента по номеру: как SQL-префильтр — цифры номера встречаются в поле phone */
     $queryRaw: async (sql: Prisma.Sql) => {

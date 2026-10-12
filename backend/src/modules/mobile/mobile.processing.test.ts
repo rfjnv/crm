@@ -148,10 +148,10 @@ describe('задача «перезвонить»', () => {
     expect(state.fake.db.task[0].status).toBe('DONE');
   });
 
-  it('разговор у другого менеджера задачу не закрывает', async () => {
+  it('разговор другого менеджера с этим номером тоже закрывает: клиенту уже дозвонились', async () => {
     await processNewMobileCall(await addCall({ startedAt: minutesAgo(40) }), NOW);
     await processNewMobileCall(await addCall({ managerUserId: 'm2', mobileType: 'out', direction: 'OUTBOUND', status: 'COMPLETED', durationSec: 60, startedAt: minutesAgo(20) }), NOW);
-    expect(state.fake.db.task[0].status).toBe('TODO');
+    expect(state.fake.db.task[0].status).toBe('DONE');
   });
 
   it('пачка не по порядку: пропущенный пришёл после разговора — задачи нет', async () => {

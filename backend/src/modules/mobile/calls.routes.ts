@@ -23,8 +23,10 @@ import {
   listCalls,
   markCalledBack,
   missedToday,
+  phoneHistory,
   verifyAudioStreamToken,
 } from './calls.service';
+import { addServicePhone, listServicePhones, removeServicePhone } from './mobile.service-phones';
 
 /** /api/calls — приём звонков с телефона (токен устройства) и журнал звонков в CRM (JWT). */
 const router = Router();
@@ -136,6 +138,30 @@ router.get('/reports/:reportId', ...leader, asyncHandler(async (req: Request, re
 router.delete('/reports/:reportId', ...leader, asyncHandler(async (req: Request, res: Response) => {
   await prisma.callGroupReport.deleteMany({ where: { id: String(req.params.reportId) } });
   res.json({ ok: true });
+}));
+
+// ─── Служебные номера (склад, сотрудники) ───────────────────────────────────
+
+router.get('/service-phones', ...leader, asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await listServicePhones());
+}));
+
+router.post('/service-phones', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  const dto = parseOr400(z.object({
+    phone: z.string().trim().min(1, 'Укажите номер').max(32),
+    name: z.string().trim().min(1, 'Укажите, чей это номер').max(120),
+    note: z.string().trim().max(500).optional(),
+  }), req.body);
+  res.status(201).json(await addServicePhone(req.user!.userId, dto));
+}));
+
+router.delete('/service-phones/:spId', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  await removeServicePhone(String(req.params.spId));
+  res.json({ ok: true });
+}));
+
+router.get('/:id/history', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  res.json(await phoneHistory(req.user!, String(req.params.id)));
 }));
 
 router.get('/:id', authenticate, asyncHandler(async (req: Request, res: Response) => {

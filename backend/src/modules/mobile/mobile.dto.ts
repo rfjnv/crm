@@ -72,6 +72,16 @@ export const listCallsQuery = z.object({
   clientId: z.string().trim().min(1).optional(),
   /** Поиск по цифрам номера */
   phone: z.string().trim().max(32).optional(),
+  /**
+   * Чем закончился несостоявшийся звонок (пропущенный, без ответа): none — никто не перезвонил,
+   * manager — перезвонил менеджер, client — клиент перезвонил сам
+   */
+  outcome: z.enum(['none', 'manager', 'client']).optional(),
+  /** all — все номера, clients — без служебных, service — только служебные */
+  numbers: z.enum(['all', 'clients', 'service']).optional(),
+  /** Не короче, секунд */
+  minDuration: z.coerce.number().int().min(0).max(24 * 3600).optional(),
+  analysis: z.enum(['analyzed', 'not_analyzed']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(30),
 });

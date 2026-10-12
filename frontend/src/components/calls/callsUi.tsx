@@ -1,4 +1,4 @@
-import { Tag } from 'antd';
+import { Tag, Tooltip } from 'antd';
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
@@ -44,6 +44,41 @@ export function AudioStatusTag({ call }: { call: Pick<CallListItem, 'audioStatus
       {label}
     </Tag>
   );
+}
+
+/** «через 15 мин», «через 2 ч», «через 3 дн» */
+export function delayText(from: string, to: string): string {
+  const min = Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 60_000));
+  if (min < 60) return `через ${min} мин`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `через ${h} ч`;
+  return `через ${Math.round(h / 24)} дн`;
+}
+
+/**
+ * Чем закончился несостоявшийся звонок (пропущенный, без ответа): перезвонил менеджер,
+ * перезвонил клиент или никто. По разговорам — у любого менеджера компании.
+ */
+export function FollowUpTag({ call, full }: {
+  call: Pick<CallListItem, 'status' | 'mobileType' | 'startedAt' | 'counterpart' | 'calledBackAt' | 'followUp' | 'service'>;
+  full?: boolean;
+}) {
+  if (call.status !== 'MISSED' && call.status !== 'FAILED') return null;
+  if (!call.counterpart || call.service || call.mobileType === 'blocked' || call.mobileType === 'voicemail') return null;
+  const f = call.followUp;
+  if (f) {
+    const who = f.by === 'manager' ? 'Перезвонил менеджер' : 'Клиент перезвонил';
+    const detail = `${who}${f.managerName ? ` (${f.by === 'manager' ? '' : 'говорил '}${f.managerName})` : ''} ${delayText(call.startedAt, f.at)}`;
+    return (
+      <Tooltip title={full ? undefined : detail}>
+        <Tag color={f.by === 'manager' ? 'green' : 'blue'} style={{ marginInlineEnd: 0 }}>
+          {full ? detail : `${who} ${delayText(call.startedAt, f.at)}`}
+        </Tag>
+      </Tooltip>
+    );
+  }
+  if (call.calledBackAt) return <Tag color="green" style={{ marginInlineEnd: 0 }}>Отмечено «Перезвонил»</Tag>;
+  return <Tag color="red" style={{ marginInlineEnd: 0 }}>Не перезвонили</Tag>;
 }
 
 /** Звонок не состоялся (пропущен, отклонён, недозвон) */

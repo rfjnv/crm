@@ -323,6 +323,7 @@ model User {
   mobileDevices       MobileDevice[]   @relation("MobileDeviceUser")
   mobilePairingCodes  MobilePairingCode[] @relation("MobilePairingCodeUser")
   callGroupReports    CallGroupReport[] @relation("CallGroupReportAuthor")
+  servicePhones       ServicePhone[]    @relation("ServicePhoneAuthor")
   managedCallAudits   CallAudit[]      @relation("CallAuditManager")
   aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
@@ -1700,6 +1701,11 @@ model CallSession {
   audioAttempts   Int               @default(0) @map("audio_attempts")
   /// Пропущенный отработан: менеджер перезвонил сам или нажал «Перезвонил»
   calledBackAt    DateTime?         @map("called_back_at")
+  /// Для несостоявшегося звонка (пропущенный, без ответа): первый разговор с этим номером после него.
+  /// OUTBOUND — перезвонили мы, INBOUND — перезвонил клиент. Любой менеджер компании.
+  followUpCallId    String?        @map("follow_up_call_id")
+  followUpAt        DateTime?      @map("follow_up_at")
+  followUpDirection CallDirection? @map("follow_up_direction")
   /// Копия записи в архиве на Google Drive (Supabase — только временный буфер)
   driveFileId     String?           @map("drive_file_id")
   /// Разбор запрошен вручную: AUDIT — расшифровка и аудит, TRANSCRIPT — только расшифровка (для общего анализа)
@@ -1724,7 +1730,7 @@ model CallSession {
   @@index([startedAt])
   @@index([provider, startedAt])
   @@index([phone])
-  @@index([phoneKey])
+  @@index([phoneKey, startedAt])
   @@index([audioStatus])
   @@index([deletedAt])
   @@map("call_sessions")
@@ -1850,6 +1856,24 @@ model MobileTelephonySettings {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("mobile_telephony_settings")
+}
+
+/// Служебный номер (склад, сотрудник компании, курьер): не клиент, не «неизвестный»,
+/// по нему не ставятся задачи «перезвонить» и не идёт автоматический анализ.
+model ServicePhone {
+  id          String   @id @default(uuid())
+  /// Как ввели («+998 90 123 45 67»)
+  phone       String
+  /// phoneMatchKey(phone) — по нему сравниваем со звонками
+  phoneKey    String   @unique @map("phone_key")
+  name        String
+  note        String?
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  createdBy User @relation("ServicePhoneAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("service_phones")
 }
 
 enum CallReportStatus {

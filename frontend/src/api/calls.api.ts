@@ -25,7 +25,23 @@ export interface CallListItem {
   calledBackAt: string | null;
   manager: { id: string; fullName: string } | null;
   client: { id: string; companyName: string; contactName: string } | null;
+  /** Служебный номер (склад, сотрудник) */
+  service: { id: string; name: string } | null;
+  /** Первый разговор с этим номером после несостоявшегося звонка */
+  followUp: { callId: string; at: string; by: 'manager' | 'client'; managerName: string | null } | null;
 }
+
+export interface ServicePhone {
+  id: string;
+  phone: string;
+  name: string;
+  note: string | null;
+  createdAt: string;
+  createdBy: { fullName: string };
+}
+
+export type CallOutcomeFilter = 'none' | 'manager' | 'client';
+export type CallNumbersFilter = 'all' | 'clients' | 'service';
 
 export interface CallDetail extends CallListItem {
   transcript: string | null;
@@ -59,6 +75,10 @@ export interface CallsFilters {
   unknownOnly?: boolean;
   clientId?: string;
   phone?: string;
+  outcome?: CallOutcomeFilter;
+  numbers?: CallNumbersFilter;
+  minDuration?: number;
+  analysis?: 'analyzed' | 'not_analyzed';
   page?: number;
   pageSize?: number;
 }
@@ -206,6 +226,12 @@ export const callsApi = {
   reports: () => client.get<CallReportRow[]>('/calls/reports').then((r) => r.data),
   report: (id: string) => client.get<CallReportDetail>(`/calls/reports/${id}`).then((r) => r.data),
   removeReport: (id: string) => client.delete(`/calls/reports/${id}`).then((r) => r.data),
+  /** Все звонки с номером этого звонка (менеджер видит только свои) */
+  history: (id: string) => client.get<{ items: CallListItem[] }>(`/calls/${id}/history`).then((r) => r.data),
+  servicePhones: () => client.get<ServicePhone[]>('/calls/service-phones').then((r) => r.data),
+  addServicePhone: (data: { phone: string; name: string; note?: string }) =>
+    client.post<ServicePhone>('/calls/service-phones', data).then((r) => r.data),
+  removeServicePhone: (id: string) => client.delete(`/calls/service-phones/${id}`).then((r) => r.data),
   forClient: (clientId: string, page = 1, pageSize = 20) =>
     client.get<ClientCallsResponse>(`/clients/${clientId}/calls`, { params: { page, pageSize } }).then((r) => r.data),
 };

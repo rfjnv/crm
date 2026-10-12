@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { analyzeSalesCallTranscript, transcribeAudioFile } from '../ai-assistant/ai-assistant.service';
-import { getMobileSettings } from './mobile.settings';
+import { autoAnalysisSkipReason } from './mobile.auto-analysis';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -60,6 +60,7 @@ async function processOne(id: string): Promise<void> {
     select: {
       id: true, recordingPath: true, driveFileId: true, durationSec: true, transcript: true, managerUserId: true, clientId: true,
       analysisRequest: true,
+      phoneKey: true,
     },
   });
   if (!call || (!call.recordingPath && !call.driveFileId)) return;
@@ -67,17 +68,9 @@ async function processOne(id: string): Promise<void> {
   // Ручной запрос (кнопка «Проанализировать» или общий анализ) идёт всегда;
   // без него — только при включённом постоянном анализе и не короче порога
   const request = call.analysisRequest as 'AUDIT' | 'TRANSCRIPT' | null;
-  const settings = await getMobileSettings();
-  if (!request && (!settings.autoAuditEnabled || (call.durationSec ?? 0) < settings.minAuditDurationSec)) {
-    await prisma.callSession.update({
-      where: { id },
-      data: {
-        audioStatus: 'SKIPPED',
-        audioError: !settings.autoAuditEnabled
-          ? 'Анализ не запускали'
-          : `Звонок короче ${settings.minAuditDurationSec} с — не анализируем автоматически`,
-      },
-    });
+  const skip = request ? null : await autoAnalysisSkipReason(call);
+  if (skip) {
+    await prisma.callSession.update({ where: { id }, data: { audioStatus: 'SKIPPED', audioError: skip } });
     return;
   }
 

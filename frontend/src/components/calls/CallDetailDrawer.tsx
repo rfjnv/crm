@@ -7,9 +7,11 @@ import { callsApi } from '../../api/calls.api';
 import { formatUzPhone } from '../../utils/phone';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import CallAudioPlayer from './CallAudioPlayer';
-import { AudioStatusTag, apiErrorMessage, callTypeLabel, canSeeAllCalls, formatDuration } from './callsUi';
+import { AudioStatusTag, FollowUpTag, apiErrorMessage, callTypeLabel, canSeeAllCalls, formatDuration, isFailedCall } from './callsUi';
 import { useAuthStore } from '../../store/authStore';
 import ReassignCallsModal from './ReassignCallsModal';
+import { AddServicePhoneModal } from './ServicePhones';
+import type { CallDetail } from '../../api/calls.api';
 
 const STAGES: Record<string, string> = {
   greeting: 'Приветствие',
@@ -26,16 +28,20 @@ export default function CallDetailDrawer({
   onClose,
   onLinkClient,
   onCreateClient,
+  onOpenCall,
 }: {
   callId: string | null;
   onClose: () => void;
   onLinkClient: (call: { id: string; counterpart: string | null }) => void;
   onCreateClient: (call: { id: string; counterpart: string | null }) => void;
+  /** Открыть другой звонок (из истории номера) */
+  onOpenCall?: (id: string) => void;
 }) {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const isLeader = canSeeAllCalls(useAuthStore((s) => s.user));
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [serviceOpen, setServiceOpen] = useState(false);
   const { data: call, isLoading, error } = useQuery({
     queryKey: ['call', callId],
     queryFn: () => callsApi.get(callId!),
@@ -96,7 +102,9 @@ export default function CallDetailDrawer({
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="Клиент">
-              {call.client ? (
+              {call.service ? (
+                <Tag color="purple">Служебный: {call.service.name}</Tag>
+              ) : call.client ? (
                 <Link to={`/clients/${call.client.id}`}>{call.client.companyName}</Link>
               ) : (
                 <Space direction="vertical" size={4}>
@@ -109,9 +117,16 @@ export default function CallDetailDrawer({
             <Descriptions.Item label="Менеджер">{call.manager?.fullName ?? '—'}</Descriptions.Item>
             <Descriptions.Item label="Длительность">{formatDuration(call.durationSec)}</Descriptions.Item>
             {call.simSlot && <Descriptions.Item label="SIM">{call.simSlot}</Descriptions.Item>}
-            {missed && (
-              <Descriptions.Item label="Перезвонили">
-                {call.calledBackAt ? dayjs(call.calledBackAt).format('DD.MM HH:mm') : <Tag color="red">Ещё нет</Tag>}
+            {(call.status === 'MISSED' || call.status === 'FAILED') && !call.service && call.counterpart && (
+              <Descriptions.Item label="Результат">
+                <Space direction="vertical" size={4}>
+                  <FollowUpTag call={call} full />
+                  {call.followUp && onOpenCall && (
+                    <Button type="link" size="small" style={{ padding: 0 }} onClick={() => onOpenCall(call.followUp!.callId)}>
+                      Открыть тот разговор · {dayjs(call.followUp.at).format('DD.MM HH:mm')}
+                    </Button>
+                  )}
+                </Space>
               </Descriptions.Item>
             )}
             <Descriptions.Item label="Запись">
@@ -121,7 +136,7 @@ export default function CallDetailDrawer({
           </Descriptions>
 
           <Space wrap>
-            {!call.client && (
+            {!call.client && !call.service && (
               <>
                 <Button onClick={() => onLinkClient(call)}>Привязать к клиенту</Button>
                 <Button onClick={() => onCreateClient(call)}>Создать клиента</Button>
@@ -142,6 +157,9 @@ export default function CallDetailDrawer({
                 </Button>
               )}
               <Button onClick={() => setReassignOpen(true)}>Чей звонок</Button>
+              {call.counterpart && !call.service && (
+                <Button onClick={() => setServiceOpen(true)}>Служебный номер</Button>
+              )}
               <Popconfirm
                 title="Удалить звонок?"
                 description="Запись и аудит удалятся, звонок пропадёт из журнала и статистики."
@@ -154,6 +172,9 @@ export default function CallDetailDrawer({
             </Space>
           )}
           {callId && <ReassignCallsModal callIds={[callId]} open={reassignOpen} onClose={() => setReassignOpen(false)} />}
+
+          <AddServicePhoneModal phone={call.counterpart} open={serviceOpen} onClose={() => setServiceOpen(false)} />
+          {call.counterpart && <PhoneHistory call={call} onOpenCall={onOpenCall} />}
 
           {call.tasks.length > 0 && (
             <List
@@ -204,5 +225,39 @@ export default function CallDetailDrawer({
         </Space>
       )}
     </Drawer>
+  );
+}
+
+/** Все звонки с этим номером — видно, кто и когда перезванивал. */
+function PhoneHistory({ call, onOpenCall }: { call: CallDetail; onOpenCall?: (id: string) => void }) {
+  const { data, isLoading } = useQuery({ queryKey: ['call-history', call.id], queryFn: () => callsApi.history(call.id) });
+  const items = data?.items ?? [];
+  if (!isLoading && items.length <= 1) return null;
+  return (
+    <List
+      size="small"
+      loading={isLoading}
+      header={<Typography.Text strong>Все звонки с номером {formatUzPhone(call.counterpart)}</Typography.Text>}
+      dataSource={items}
+      renderItem={(c) => (
+        <List.Item
+          style={{ cursor: c.id === call.id || !onOpenCall ? undefined : 'pointer', opacity: c.id === call.id ? 0.6 : 1 }}
+          onClick={() => c.id !== call.id && onOpenCall?.(c.id)}
+        >
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            <Space wrap size={6}>
+              <Typography.Text type={isFailedCall(c) ? 'danger' : undefined}>
+                {dayjs(c.startedAt).format('DD.MM HH:mm')} · {callTypeLabel(c)} · {formatDuration(c.durationSec)}
+              </Typography.Text>
+              {c.id === call.id && <Tag>этот звонок</Tag>}
+            </Space>
+            <Space wrap size={6}>
+              <Typography.Text type="secondary">{c.manager?.fullName ?? '—'}</Typography.Text>
+              <FollowUpTag call={c} />
+            </Space>
+          </Space>
+        </List.Item>
+      )}
+    />
   );
 }

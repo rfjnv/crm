@@ -40,6 +40,7 @@ export function useCallActions(opts: { openCallId?: string | null; onOpenChange?
         onClose={() => setOpenId(null)}
         onLinkClient={(c) => setLinkFor(c)}
         onCreateClient={(c) => setCreateFor(c)}
+        onOpenCall={(id) => setOpenId(id)}
       />
       <LinkClientModal call={linkFor} open={!!linkFor} onClose={() => setLinkFor(null)} />
       <CreateClientModal call={createFor} open={!!createFor} onClose={() => setCreateFor(null)} />

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Alert, Button, Card, Checkbox, DatePicker, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography, message } from 'antd';
-import { FileSearchOutlined } from '@ant-design/icons';
+import { ContactsOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { callsApi, mobileApi, type CallsFilters } from '../api/calls.api';
+import { callsApi, mobileApi, type CallNumbersFilter, type CallOutcomeFilter, type CallsFilters } from '../api/calls.api';
+import { ServicePhonesDrawer } from '../components/calls/ServicePhones';
 import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -37,6 +38,10 @@ export default function CallsPage() {
     unknownOnly: params.get('unknownOnly') === '1' || undefined,
     clientId: params.get('clientId') ?? undefined,
     phone: params.get('phone') ?? undefined,
+    outcome: (params.get('outcome') as CallOutcomeFilter | null) ?? undefined,
+    numbers: (params.get('numbers') as CallNumbersFilter | null) ?? undefined,
+    minDuration: Number(params.get('minDuration')) || undefined,
+    analysis: (params.get('analysis') as CallsFilters['analysis'] | null) ?? undefined,
     page: Number(params.get('page')) || 1,
     pageSize: Number(params.get('pageSize')) || 30,
   }), [params]);
@@ -64,6 +69,7 @@ export default function CallsPage() {
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
   const [selected, setSelected] = useState<string[]>([]);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [serviceOpen, setServiceOpen] = useState(false);
 
   // Постоянный анализ — платный: переключатель на виду у админа
   const { data: settings } = useQuery({ queryKey: ['mobile-settings'], queryFn: mobileApi.settings, enabled: isAdmin });
@@ -142,6 +148,9 @@ export default function CallsPage() {
           {seeAll && (
             <Button icon={<FileSearchOutlined />} onClick={() => patch({ reports: '1' }, true)}>Общие анализы</Button>
           )}
+          {seeAll && (
+            <Button icon={<ContactsOutlined />} onClick={() => setServiceOpen(true)}>Служебные номера</Button>
+          )}
         </Space>
       </div>
       <Card size="small" style={{ marginBottom: 12 }}>
@@ -175,11 +184,60 @@ export default function CallsPage() {
             maxTagCount="responsive"
           />
           <Input.Search
+            // Номер подставляется и кнопкой фильтра в строке — поле пересоздаём под новое значение
+            key={filters.phone ?? ''}
             allowClear
             placeholder="Номер"
             style={{ ...full, width: isMobile ? undefined : 180 }}
             defaultValue={filters.phone}
             onSearch={(v) => patch({ phone: v.trim() || undefined })}
+          />
+          <Select
+            allowClear
+            placeholder="Перезвонили?"
+            style={{ ...full, width: isMobile ? undefined : 210 }}
+            value={filters.outcome}
+            onChange={(v) => patch({ outcome: v })}
+            options={[
+              { value: 'none', label: 'Не перезвонили' },
+              { value: 'manager', label: 'Перезвонил менеджер' },
+              { value: 'client', label: 'Клиент перезвонил сам' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="Номера"
+            style={{ ...full, width: isMobile ? undefined : 170 }}
+            value={filters.numbers}
+            onChange={(v) => patch({ numbers: v })}
+            options={[
+              { value: 'clients', label: 'Без служебных' },
+              { value: 'service', label: 'Только служебные' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="Длительность"
+            style={{ ...full, width: isMobile ? undefined : 150 }}
+            value={filters.minDuration}
+            onChange={(v) => patch({ minDuration: v ? String(v) : undefined })}
+            options={[
+              { value: 30, label: 'от 30 с' },
+              { value: 60, label: 'от 1 мин' },
+              { value: 180, label: 'от 3 мин' },
+              { value: 600, label: 'от 10 мин' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="Анализ"
+            style={{ ...full, width: isMobile ? undefined : 170 }}
+            value={filters.analysis}
+            onChange={(v) => patch({ analysis: v })}
+            options={[
+              { value: 'analyzed', label: 'Проанализированные' },
+              { value: 'not_analyzed', label: 'С записью без анализа' },
+            ]}
           />
           {flag('missedOnly', 'Только пропущенные')}
           {flag('withRecording', 'С записью')}
@@ -225,7 +283,15 @@ export default function CallsPage() {
         selectedIds={seeAll ? selected : undefined}
         onSelectionChange={seeAll ? setSelected : undefined}
         {...actions}
+        onPhoneFilter={(c) => patch({ phone: c.counterpart?.replace(/\D/g, '') || undefined })}
       />
+      {seeAll && (
+        <ServicePhonesDrawer
+          open={serviceOpen}
+          onClose={() => setServiceOpen(false)}
+          onShowCalls={(r) => { setServiceOpen(false); patch({ phone: r.phone.replace(/\D/g, '') }); }}
+        />
+      )}
       {elements}
       <ReassignCallsModal callIds={selected} open={reassignOpen} onClose={() => setReassignOpen(false)} onDone={() => setSelected([])} />
       {seeAll && (

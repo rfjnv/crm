@@ -94,6 +94,11 @@ export async function deleteCalls(user: ActingUser, callIds: string[]) {
   const auditIds = calls.map((c) => c.auditId).filter((v): v is string => !!v);
   if (auditIds.length > 0) await prisma.callAudit.deleteMany({ where: { id: { in: auditIds } } });
   await prisma.task.deleteMany({ where: { callSessionId: { in: ids }, status: { in: OPEN_TASK_STATUSES } } });
+  // Удалённый разговор больше не считается «перезвонили» для пропущенных до него
+  await prisma.callSession.updateMany({
+    where: { followUpCallId: { in: ids } },
+    data: { followUpCallId: null, followUpAt: null, followUpDirection: null },
+  });
   await prisma.callSession.updateMany({
     where: { id: { in: ids } },
     data: {

@@ -1,19 +1,21 @@
-import { Button, Card, Checkbox, Dropdown, Empty, Pagination, Space, Spin, Table, Tag, Typography, theme } from 'antd';
+import { Button, Card, Checkbox, Dropdown, Empty, Pagination, Space, Spin, Table, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { MoreOutlined } from '@ant-design/icons';
+import { FilterOutlined, MoreOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import type { CallListItem } from '../../api/calls.api';
 import { formatUzPhone } from '../../utils/phone';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import CallAudioPlayer from './CallAudioPlayer';
-import { AudioStatusTag, CallTypeIcon, callTypeLabel, formatDuration, isFailedCall } from './callsUi';
+import { AudioStatusTag, CallTypeIcon, FollowUpTag, callTypeLabel, formatDuration, isFailedCall } from './callsUi';
 
 export interface CallRowActions {
   onOpen: (call: CallListItem) => void;
   onLinkClient: (call: CallListItem) => void;
   onCreateClient: (call: CallListItem) => void;
   onCallbackTask: (call: CallListItem) => void;
+  /** Показать все звонки с этим номером (фильтр журнала) */
+  onPhoneFilter?: (call: CallListItem) => void;
 }
 
 interface Props extends CallRowActions {
@@ -31,15 +33,36 @@ interface Props extends CallRowActions {
 }
 
 function ClientCell({ call }: { call: CallListItem }) {
+  if (call.service) return <Tag color="purple" style={{ marginInlineEnd: 0 }}>Служебный: {call.service.name}</Tag>;
   if (call.client) return <Link to={`/clients/${call.client.id}`} onClick={(e) => e.stopPropagation()}>{call.client.companyName}</Link>;
   return <Tag style={{ marginInlineEnd: 0 }}>Неизвестный контакт</Tag>;
+}
+
+/** Номер + кнопка «все звонки с этим номером» */
+function PhoneCell({ call, onFilter }: { call: CallListItem; onFilter?: (call: CallListItem) => void }) {
+  const text = formatUzPhone(call.counterpart) || 'скрытый номер';
+  if (!call.counterpart || !onFilter) return <span>{text}</span>;
+  return (
+    <Space size={2}>
+      <span>{text}</span>
+      <Tooltip title="Все звонки с этим номером">
+        <Button
+          size="small"
+          type="text"
+          icon={<FilterOutlined />}
+          onClick={(e) => { e.stopPropagation(); onFilter(call); }}
+        />
+      </Tooltip>
+    </Space>
+  );
 }
 
 function rowMenu(call: CallListItem, a: CallRowActions) {
   return {
     items: [
       { key: 'open', label: 'Подробнее' },
-      ...(!call.client ? [{ key: 'link', label: 'Привязать к клиенту' }, { key: 'create', label: 'Создать клиента' }] : []),
+      ...(!call.client && !call.service ? [{ key: 'link', label: 'Привязать к клиенту' }, { key: 'create', label: 'Создать клиента' }] : []),
+      ...(call.counterpart && a.onPhoneFilter ? [{ key: 'phone', label: 'Все звонки с этим номером' }] : []),
       ...(call.counterpart ? [{ key: 'callback', label: 'Задача «перезвонить»' }] : []),
       ...(call.auditId ? [{ key: 'audit', label: <Link to={`/ai-assistant/call-audits?audit=${call.auditId}`}>Открыть аудит</Link> }] : []),
     ],
@@ -49,6 +72,7 @@ function rowMenu(call: CallListItem, a: CallRowActions) {
       if (key === 'link') a.onLinkClient(call);
       if (key === 'create') a.onCreateClient(call);
       if (key === 'callback') a.onCallbackTask(call);
+      if (key === 'phone') a.onPhoneFilter?.(call);
     },
   };
 }
@@ -92,7 +116,7 @@ export default function CallsList(props: Props) {
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div>{showClient ? <ClientCell call={call} /> : null}</div>
-                  <Typography.Text>{formatUzPhone(call.counterpart) || 'скрытый номер'}</Typography.Text>
+                  <PhoneCell call={call} onFilter={props.onPhoneFilter} />
                 </div>
                 <Dropdown menu={rowMenu(call, props)} trigger={['click']}>
                   <Button size="small" type="text" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
@@ -102,6 +126,7 @@ export default function CallsList(props: Props) {
                 {typeCell(call)}
                 <Typography.Text type="secondary">{dayjs(call.startedAt).format('DD.MM HH:mm')} · {formatDuration(call.durationSec)}</Typography.Text>
                 {showManager && call.manager && <Typography.Text type="secondary">{call.manager.fullName}</Typography.Text>}
+                <FollowUpTag call={call} />
               </div>
               {call.hasRecording && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
@@ -125,8 +150,17 @@ export default function CallsList(props: Props) {
     { title: 'Время', dataIndex: 'startedAt', width: 120, render: (v: string) => dayjs(v).format('DD.MM.YY HH:mm') },
     ...(showManager ? [{ title: 'Менеджер', key: 'manager', render: (_: unknown, c: CallListItem) => c.manager?.fullName ?? '—' }] : []),
     ...(showClient ? [{ title: 'Клиент', key: 'client', render: (_: unknown, c: CallListItem) => <ClientCell call={c} /> }] : []),
-    { title: 'Номер', key: 'phone', width: 160, render: (_, c) => formatUzPhone(c.counterpart) || 'скрыт' },
-    { title: 'Направление', key: 'type', render: (_, c) => typeCell(c) },
+    { title: 'Номер', key: 'phone', width: 190, render: (_, c) => <PhoneCell call={c} onFilter={props.onPhoneFilter} /> },
+    {
+      title: 'Направление',
+      key: 'type',
+      render: (_, c) => (
+        <Space direction="vertical" size={4}>
+          {typeCell(c)}
+          <FollowUpTag call={c} />
+        </Space>
+      ),
+    },
     { title: 'Длит.', dataIndex: 'durationSec', width: 70, render: (v: number | null) => formatDuration(v) },
     { title: 'Запись', key: 'rec', render: (_, c) => (c.hasRecording ? <CallAudioPlayer callId={c.id} /> : <Typography.Text type="secondary">—</Typography.Text>) },
     { title: 'Анализ', key: 'audio', width: 150, render: (_, c) => (c.hasRecording ? <AudioStatusTag call={c} /> : null) },

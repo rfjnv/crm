@@ -2,6 +2,7 @@ import { Prisma, type CallSession, type TaskStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { formatUzPhone } from '../../lib/phone';
 import { telegramService } from '../telegram/telegram.service';
+import { isServicePhone } from './mobile.service-phones';
 import {
   CALLBACK_TYPES,
   clientPhoneKeys,
@@ -76,14 +77,15 @@ export function phoneLabel(phone: string | null | undefined): string {
  * номера до момента `at` отработаны, открытые задачи «перезвонить» — в DONE.
  */
 export async function closeCallbacks(
-  managerId: string,
+  /** null — у всех менеджеров: с клиентом уже поговорили от компании, перезванивать никому не нужно */
+  managerId: string | null,
   phoneKey: string,
   at: Date,
   report: string,
 ): Promise<{ calls: number; tasks: number }> {
   const calls = await prisma.callSession.updateMany({
     where: {
-      managerUserId: managerId,
+      ...(managerId ? { managerUserId: managerId } : {}),
       phoneKey,
       mobileType: { in: CALLBACK_TYPES },
       calledBackAt: null,
@@ -93,7 +95,7 @@ export async function closeCallbacks(
   });
   const tasks = await prisma.task.updateMany({
     where: {
-      assigneeId: managerId,
+      ...(managerId ? { assigneeId: managerId } : {}),
       status: { in: OPEN_TASK_STATUSES },
       callSession: { phoneKey, startedAt: { lte: at } },
     },
@@ -108,11 +110,11 @@ function appendRawEvent(session: Pick<CallSession, 'rawEvents'>, event: Record<s
 }
 
 async function handleMissed(session: CallSession, managerId: string, phoneKey: string, clientName: string | null, now: Date) {
-  // Пачка может прийти не по порядку: если разговор с этим номером уже был позже — перезвонили
+  // Пачка может прийти не по порядку: если разговор с этим номером (у любого менеджера) уже был позже — перезвонили
   const later = await prisma.callSession.findFirst({
     where: {
-      managerUserId: managerId,
       phoneKey,
+      deletedAt: null,
       startedAt: { gt: session.startedAt },
       mobileType: { in: ['in', 'out'] },
       durationSec: { gt: 0 },
@@ -156,10 +158,59 @@ async function handleMissed(session: CallSession, managerId: string, phoneKey: s
   });
 }
 
+/** Несостоявшийся звонок: пропущенный, отклонённый, исходящий без ответа. */
+export const FAILED_CALL_STATUSES = ['MISSED', 'FAILED'] as const;
+
+/**
+ * Чем закончился несостоявшийся звонок: первый разговор с этим номером после него — любым
+ * менеджером компании. Разговор с нашей стороны (OUTBOUND) — «перезвонил менеджер», входящий
+ * (INBOUND) — «клиент перезвонил сам». Работает в обе стороны: пачка с телефона может прийти
+ * не по порядку, и разговор окажется записан раньше пропущенного.
+ */
+export async function linkFollowUps(session: Pick<CallSession, 'id' | 'phoneKey' | 'status' | 'startedAt' | 'direction'>): Promise<void> {
+  if (!session.phoneKey) return;
+  if (session.status === 'COMPLETED') {
+    await prisma.callSession.updateMany({
+      where: {
+        phoneKey: session.phoneKey,
+        status: { in: [...FAILED_CALL_STATUSES] },
+        startedAt: { lt: session.startedAt },
+        deletedAt: null,
+        OR: [{ followUpAt: null }, { followUpAt: { gt: session.startedAt } }],
+      },
+      data: { followUpCallId: session.id, followUpAt: session.startedAt, followUpDirection: session.direction },
+    });
+    return;
+  }
+  if ((FAILED_CALL_STATUSES as readonly string[]).includes(session.status)) {
+    const next = await prisma.callSession.findFirst({
+      where: { phoneKey: session.phoneKey, status: 'COMPLETED', startedAt: { gt: session.startedAt }, deletedAt: null },
+      orderBy: { startedAt: 'asc' },
+      select: { id: true, startedAt: true, direction: true },
+    });
+    if (next) {
+      await prisma.callSession.update({
+        where: { id: session.id },
+        data: { followUpCallId: next.id, followUpAt: next.startedAt, followUpDirection: next.direction },
+      });
+    }
+  }
+}
+
 /** Вызывается для каждого нового мобильного звонка, в порядке времени звонков. */
 export async function processNewMobileCall(session: CallSession, now: Date = new Date()): Promise<void> {
   const managerId = session.managerUserId;
   const phoneKey = session.phoneKey ?? '';
+
+  await linkFollowUps(session);
+
+  // Служебный номер (склад, сотрудник): не клиент, задач «перезвонить» по нему не ставим
+  if (await isServicePhone(phoneKey)) {
+    if (managerId && isConversation(session.mobileType, session.durationSec)) {
+      await closeCallbacks(null, phoneKey, session.startedAt, 'Закрыто автоматически: состоялся разговор с этим номером');
+    }
+    return;
+  }
 
   // 1. Клиент по номеру. Неизвестный номер клиентом автоматически не становится:
   //    мусорные клиенты из каждого звонка испортят аналитику. Это просто звонок без clientId.
@@ -194,6 +245,6 @@ export async function processNewMobileCall(session: CallSession, now: Date = new
 
   // 3. Состоялся разговор с этим номером — закрываем «перезвонить»
   if (isConversation(session.mobileType, session.durationSec)) {
-    await closeCallbacks(managerId, phoneKey, session.startedAt, 'Закрыто автоматически: состоялся разговор с этим номером');
+    await closeCallbacks(null, phoneKey, session.startedAt, 'Закрыто автоматически: состоялся разговор с этим номером');
   }
 }

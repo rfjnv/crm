@@ -11,6 +11,7 @@ import { CALLBACK_TYPES, MOBILE_CALL_TYPES, clientPhoneKeys } from './mobile.map
 import { callbackTitle, closeCallbacks, findOpenCallbackTask, OPEN_TASK_STATUSES, phoneLabel } from './mobile.processing';
 import { signedUrl } from './mobile.storage';
 import { publicServerUrl } from './mobile.public-url';
+import { notServiceWhere, onlyServiceWhere, servicePhoneMap, type ServicePhoneInfo } from './mobile.service-phones';
 
 interface CallsUser {
   userId: string;
@@ -38,6 +39,10 @@ const callListSelect = {
   audioError: true,
   auditId: true,
   calledBackAt: true,
+  phoneKey: true,
+  followUpCallId: true,
+  followUpAt: true,
+  followUpDirection: true,
   manager: { select: { id: true, fullName: true } },
   client: { select: { id: true, companyName: true, contactName: true } },
 } satisfies Prisma.CallSessionSelect;
@@ -56,13 +61,43 @@ async function auditScores(auditIds: (string | null)[]): Promise<Map<string, num
   return new Map(rows.map((r) => [r.id, r.score]));
 }
 
-function toListItem(row: CallListRow, scores: Map<string, number | null>) {
-  const { recordingPath, driveFileId, ...rest } = row;
+/** Что подмешиваем к строкам журнала: оценки аудитов, кто перезвонил, служебные номера. */
+interface ListExtras {
+  scores: Map<string, number | null>;
+  followUpManagers: Map<string, string | null>;
+  services: Map<string, ServicePhoneInfo>;
+}
+
+async function listExtras(rows: CallListRow[]): Promise<ListExtras> {
+  const followUpIds = [...new Set(rows.map((r) => r.followUpCallId).filter((v): v is string => !!v))];
+  const [scores, followUps, services] = await Promise.all([
+    auditScores(rows.map((r) => r.auditId)),
+    followUpIds.length > 0
+      ? prisma.callSession.findMany({ where: { id: { in: followUpIds } }, select: { id: true, manager: { select: { fullName: true } } } })
+      : Promise.resolve([]),
+    servicePhoneMap(),
+  ]);
+  return { scores, followUpManagers: new Map(followUps.map((f) => [f.id, f.manager?.fullName ?? null])), services };
+}
+
+function toListItem(row: CallListRow, extras: ListExtras) {
+  const { recordingPath, driveFileId, phoneKey, followUpCallId, followUpAt, followUpDirection, ...rest } = row;
   return {
     ...rest,
     counterpart: counterpart(row),
     hasRecording: !!recordingPath || !!driveFileId,
-    auditScore: row.auditId ? scores.get(row.auditId) ?? null : null,
+    auditScore: row.auditId ? extras.scores.get(row.auditId) ?? null : null,
+    /** Служебный номер (склад, сотрудник) — не клиент и не «неизвестный» */
+    service: phoneKey ? extras.services.get(phoneKey) ?? null : null,
+    /** Первый разговор с этим номером после несостоявшегося звонка */
+    followUp: followUpCallId && followUpAt && followUpDirection
+      ? {
+        callId: followUpCallId,
+        at: followUpAt,
+        by: followUpDirection === 'OUTBOUND' ? 'manager' as const : 'client' as const,
+        managerName: extras.followUpManagers.get(followUpCallId) ?? null,
+      }
+      : null,
   };
 }
 
@@ -97,11 +132,27 @@ export async function listCalls(user: CallsUser, q: ListCallsQuery) {
     if (types.length > 0) and.push({ mobileType: { in: types } });
   }
   if (q.missedOnly) and.push(MISSED_WHERE);
-  if (q.withRecording) and.push({ recordingPath: { not: null } });
-  if (q.unknownOnly) and.push({ clientId: null });
+  // Запись могла уже уйти из буфера Supabase на Google Drive
+  if (q.withRecording) and.push({ OR: [{ recordingPath: { not: null } }, { driveFileId: { not: null } }] });
+  // «Неизвестный» — не клиент и не служебный номер
+  if (q.unknownOnly) and.push({ clientId: null }, await notServiceWhere());
   if (q.clientId) and.push({ clientId: q.clientId });
   const digits = q.phone?.replace(/\D/g, '');
   if (digits) and.push({ phone: { contains: digits } });
+  if (q.numbers === 'clients') and.push(await notServiceWhere());
+  if (q.numbers === 'service') and.push(await onlyServiceWhere());
+  if (q.minDuration) and.push({ durationSec: { gte: q.minDuration } });
+  if (q.analysis === 'analyzed') and.push({ auditId: { not: null } });
+  if (q.analysis === 'not_analyzed') {
+    and.push({ auditId: null, OR: [{ recordingPath: { not: null } }, { driveFileId: { not: null } }] });
+  }
+  if (q.outcome) {
+    // Только несостоявшиеся звонки с известным номером; служебные не в счёт
+    and.push(FAILED_WHERE, await notServiceWhere());
+    if (q.outcome === 'none') and.push({ followUpAt: null, calledBackAt: null });
+    if (q.outcome === 'manager') and.push({ followUpDirection: 'OUTBOUND' });
+    if (q.outcome === 'client') and.push({ followUpDirection: 'INBOUND' });
+  }
 
   const where: Prisma.CallSessionWhereInput = { AND: and };
   const [rows, totalCount] = await Promise.all([
@@ -114,8 +165,29 @@ export async function listCalls(user: CallsUser, q: ListCallsQuery) {
     }),
     prisma.callSession.count({ where }),
   ]);
-  const scores = await auditScores(rows.map((r) => r.auditId));
-  return { items: rows.map((r) => toListItem(r, scores)), totalCount, page: q.page, pageSize: q.pageSize };
+  const extras = await listExtras(rows);
+  return { items: rows.map((r) => toListItem(r, extras)), totalCount, page: q.page, pageSize: q.pageSize };
+}
+
+/** Несостоявшийся звонок, по которому имеет смысл перезванивать: номер известен, не blocked/voicemail. */
+const FAILED_WHERE: Prisma.CallSessionWhereInput = {
+  status: { in: ['MISSED', 'FAILED'] },
+  phoneKey: { not: null },
+  OR: [{ mobileType: null }, { mobileType: { notIn: ['blocked', 'voicemail'] } }],
+};
+
+/** История по номеру: все звонки с этим номером (менеджер видит только свои), новые сверху. */
+export async function phoneHistory(user: CallsUser, id: string) {
+  const call = await findCallForUser(user, id, { phoneKey: true });
+  if (!call.phoneKey) return { items: [] };
+  const rows = await prisma.callSession.findMany({
+    where: { AND: [callScope(user), { phoneKey: call.phoneKey }] },
+    orderBy: { startedAt: 'desc' },
+    take: 50,
+    select: callListSelect,
+  });
+  const extras = await listExtras(rows);
+  return { items: rows.map((r) => toListItem(r, extras)) };
 }
 
 /** Звонок с проверкой доступа. Чужой звонок для менеджера — 404, как будто его нет. */
@@ -134,7 +206,7 @@ export async function getCall(user: CallsUser, id: string) {
     rawEvents: true,
     tasks: { select: { id: true, title: true, status: true, dueDate: true }, orderBy: { createdAt: 'desc' } },
   });
-  const scores = await auditScores([row.auditId]);
+  const extras = await listExtras([row]);
   // Итог аудита — прямо в карточке звонка: кто видит звонок, тот видит и разбор
   const audit = row.auditId
     ? await prisma.callAudit.findUnique({
@@ -147,7 +219,7 @@ export async function getCall(user: CallsUser, id: string) {
   const clientMatchNote = Array.isArray(rawEvents)
     ? (rawEvents as { event?: string; reason?: string }[]).filter((e) => e?.event === 'client_match').map((e) => e.reason).pop() ?? null
     : null;
-  return { ...toListItem(rest, scores), transcript: row.transcript, endedAt: row.endedAt, tasks: row.tasks, clientMatchNote, audit };
+  return { ...toListItem(rest, extras), transcript: row.transcript, endedAt: row.endedAt, tasks: row.tasks, clientMatchNote, audit };
 }
 
 const STREAM_PURPOSE = 'call-audio-stream';
@@ -264,7 +336,7 @@ const OVERDUE_MS = 2 * HOUR_MS;
 export async function missedToday(user: CallsUser, now: Date = new Date()) {
   const leader = canSeeAllCalls(user);
   const rows = await prisma.callSession.findMany({
-    where: { AND: [callScope(user), MISSED_WHERE, { startedAt: { gte: tashkentStartOfToday() } }] },
+    where: { AND: [callScope(user), MISSED_WHERE, await notServiceWhere(), { startedAt: { gte: tashkentStartOfToday() } }] },
     orderBy: { startedAt: 'desc' },
     select: {
       id: true,
@@ -273,6 +345,7 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
       phoneKey: true,
       fromNumber: true,
       calledBackAt: true,
+      followUpAt: true,
       managerUserId: true,
       manager: { select: { id: true, fullName: true } },
       client: { select: { id: true, companyName: true } },
@@ -298,13 +371,14 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
         missedCount: 1,
         lastAt: r.startedAt,
         firstAt: r.startedAt,
-        handled: !!r.calledBackAt,
+        // Отработан: нажали «Перезвонил» или с номером уже поговорили (любой менеджер, или клиент перезвонил сам)
+        handled: !!r.calledBackAt || !!r.followUpAt,
         overdue: false,
       });
     } else {
       g.missedCount += 1;
       g.firstAt = r.startedAt;
-      g.handled = g.handled && !!r.calledBackAt;
+      g.handled = g.handled && (!!r.calledBackAt || !!r.followUpAt);
       g.client = g.client ?? r.client;
     }
   }
@@ -363,9 +437,9 @@ export async function clientCalls(user: CallsUser, clientId: string, page = 1, p
       _avg: { durationSec: true },
     }),
   ]);
-  const scores = await auditScores(rows.map((r) => r.auditId));
+  const extras = await listExtras(rows);
   return {
-    items: rows.map((r) => toListItem(r, scores)),
+    items: rows.map((r) => toListItem(r, extras)),
     totalCount,
     page,
     pageSize,

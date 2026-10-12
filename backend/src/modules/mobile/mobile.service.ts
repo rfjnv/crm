@@ -12,6 +12,7 @@ import { processNewMobileCall } from './mobile.processing';
 import { getMobileSettings } from './mobile.settings';
 import { audioExt, audioMime, removeFiles, uploadFile } from './mobile.storage';
 import { publicServerUrl } from './mobile.public-url';
+import { autoAnalysisSkipReason } from './mobile.auto-analysis';
 import { canSeeAllCalls } from './mobile.access';
 import { auditLog } from '../../lib/logger';
 import type { z } from 'zod';
@@ -298,17 +299,13 @@ function storagePathFor(userId: string, at: Date, ext: string): string {
 }
 
 /** Ставим ли запись звонка в очередь на транскрибацию и аудит. */
-async function audioStatusFor(session: Pick<CallSession, 'durationSec'>): Promise<{ audioStatus: 'UPLOADED' | 'SKIPPED'; audioError: string | null }> {
-  const settings = await getMobileSettings();
-  // Постоянный анализ выключен — запись ждёт ручного запуска (кнопка «Проанализировать»)
-  if (!settings.autoAuditEnabled) return { audioStatus: 'SKIPPED', audioError: 'Анализ не запускали' };
-  if ((session.durationSec ?? 0) < settings.minAuditDurationSec) {
-    return { audioStatus: 'SKIPPED', audioError: `Звонок короче ${settings.minAuditDurationSec} с — не анализируем автоматически` };
-  }
-  return { audioStatus: 'UPLOADED', audioError: null };
+async function audioStatusFor(session: Pick<CallSession, 'durationSec' | 'phoneKey'>): Promise<{ audioStatus: 'UPLOADED' | 'SKIPPED'; audioError: string | null }> {
+  // Без постоянного анализа запись ждёт ручного запуска (кнопка «Проанализировать»)
+  const skip = await autoAnalysisSkipReason(session);
+  return skip ? { audioStatus: 'SKIPPED', audioError: skip } : { audioStatus: 'UPLOADED', audioError: null };
 }
 
-async function attachRecordingToCall(session: Pick<CallSession, 'id' | 'durationSec'>, storagePath: string | null) {
+async function attachRecordingToCall(session: Pick<CallSession, 'id' | 'durationSec' | 'phoneKey'>, storagePath: string | null) {
   await prisma.callSession.update({
     where: { id: session.id },
     data: { recordingPath: storagePath, audioAttempts: 0, ...(await audioStatusFor(session)) },
@@ -344,7 +341,7 @@ export async function receiveAudio(
     ? await prisma.callSession.findFirst({
       // Чей телефон — по externalCallId: менеджера у звонка руководитель мог сменить
       where: { id: callId, provider: 'MOBILE', deletedAt: null, externalCallId: { startsWith: `mobile:${device.userId}:` } },
-      select: { id: true, durationSec: true, startedAt: true },
+      select: { id: true, durationSec: true, startedAt: true, phoneKey: true },
     })
     : null;
   if (callId && !session) throw new AppError(404, 'Звонок не найден');
