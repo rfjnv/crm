@@ -227,6 +227,10 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/team" element={<TeamPage />} />
+                {/* Отчёт по звонкам — HR, ВЭД и админы (сервер пускает ещё РОП с правом use_rop_agent) */}
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'HR', 'FOREIGN_TRADE']} />}>
+                  <Route path="/call-reports" element={<CallReportsPage />} />
+                </Route>
                 {/* Кадры: HR ведёт сотрудников, посещаемость, оценки и KPI вместе с админами */}
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'HR']} />}>
                   <Route path="/users" element={<UsersPage />} />
@@ -234,7 +238,6 @@ export default function App() {
                   <Route path="/worker-audit" element={<Navigate to="/employee-cards" replace />} />
                   <Route path="/attendance" element={<AttendancePage />} />
                   <Route path="/kpi" element={<MoneyAccessGuard><KpiPage /></MoneyAccessGuard>} />
-                  <Route path="/call-reports" element={<CallReportsPage />} />
                   <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
                   <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
                 </Route>

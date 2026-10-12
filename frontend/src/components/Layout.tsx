@@ -613,6 +613,14 @@ export default function Layout() {
           icon: <DollarOutlined />,
           label: <Link to="/foreign-trade/exchange-rates">Курсы ЦБ</Link>,
         },
+        // У ВЭД нет раздела «Аналитика», поэтому отчёт по звонкам — здесь
+        ...(role === 'FOREIGN_TRADE'
+          ? [{
+            key: '/call-reports',
+            icon: <PhoneOutlined />,
+            label: <Link to="/call-reports">Отчёт по звонкам</Link>,
+          }]
+          : []),
       ]
       : []),
 

@@ -8,10 +8,10 @@ import { getCallReport, tkDayStart } from './call-reports.service';
 const router = Router();
 
 router.use(authenticate);
-/** HR, админы и РОП (право use_rop_agent). Только цифры — записи разговоров здесь не отдаются. */
+/** HR, ВЭД, админы и РОП (право use_rop_agent). Только цифры — записи разговоров здесь не отдаются. */
 router.use((req: Request, _res: Response, next: NextFunction) => {
   const u = req.user!;
-  const ok = ['SUPER_ADMIN', 'ADMIN', 'HR'].includes(u.role) || (u.permissions ?? []).includes(PERMISSIONS.USE_ROP_AGENT);
+  const ok = ['SUPER_ADMIN', 'ADMIN', 'HR', 'FOREIGN_TRADE'].includes(u.role) || (u.permissions ?? []).includes(PERMISSIONS.USE_ROP_AGENT);
   if (!ok) throw new AppError(403, 'Недостаточно прав');
   next();
 });
