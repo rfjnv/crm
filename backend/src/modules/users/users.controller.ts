@@ -6,12 +6,13 @@ import { monthlyGoalQueryDto } from './users.dto';
 export class UsersController {
   async findAll(req: Request, res: Response): Promise<void> {
     const role = req.user!.role;
-    const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+    // HR ведёт кадры: видит полный список, включая уволенных (деактивированных).
+    const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'HR';
 
     const raw = req.query.includeInactive;
     const includeInactive = raw === 'true' || raw === '1';
     if (includeInactive && !isAdmin) {
-      throw new AppError(403, 'Полный список пользователей доступен только администраторам');
+      throw new AppError(403, 'Полный список пользователей доступен только администраторам и HR');
     }
 
     const users = await usersService.findAll({ includeInactive });

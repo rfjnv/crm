@@ -145,7 +145,7 @@ noteAuditRoutes.post(
 
 noteAuditRoutes.get(
   '/reports',
-  authorize('SUPER_ADMIN', 'ADMIN'),
+  authorize('SUPER_ADMIN', 'ADMIN', 'HR'),
   asyncHandler(async (req, res) => {
     const weekOffset = req.query.weekOffset !== undefined ? Number(req.query.weekOffset) : -1;
     const managerId = req.query.managerId ? String(req.query.managerId) : undefined;
@@ -169,7 +169,7 @@ noteAuditRoutes.get(
 
 noteAuditRoutes.get(
   '/reports/:id',
-  authorize('SUPER_ADMIN', 'ADMIN'),
+  authorize('SUPER_ADMIN', 'ADMIN', 'HR'),
   asyncHandler(async (req, res) => {
     const report = await prisma.noteAuditReport.findUnique({
       where: { id: String(req.params.id) },

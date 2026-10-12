@@ -39,7 +39,7 @@ const upload = multer({
 });
 
 router.use(authenticate);
-router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'FOREIGN_TRADE'));
+router.use(authorize('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE'));
 
 // ==================== Training Rules (SUPER_ADMIN / ADMIN only) ====================
 // Must be defined BEFORE /:chatId routes to avoid "training-rules" matching as chatId
@@ -128,7 +128,7 @@ router.post(
 router.get(
   '/call-audits',
   asyncHandler(async (req: Request, res: Response) => {
-    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'HR'].includes(req.user!.role); // HR смотрит аудиты звонков всех менеджеров
     const audits = await listCallAudits(req.user!.userId, isAdmin);
     res.json(audits);
   }),
@@ -137,7 +137,7 @@ router.get(
 router.get(
   '/call-audits/stats',
   asyncHandler(async (req: Request, res: Response) => {
-    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'HR'].includes(req.user!.role); // HR смотрит аудиты звонков всех менеджеров
     const stats = await getCallAuditStats(isAdmin, req.user!.userId);
     res.json(stats);
   }),
@@ -146,7 +146,7 @@ router.get(
 router.get(
   '/call-audits/:auditId',
   asyncHandler(async (req: Request, res: Response) => {
-    const isAdmin = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN';
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'HR'].includes(req.user!.role); // HR смотрит аудиты звонков всех менеджеров
     const audit = await getCallAudit(req.params.auditId as string, req.user!.userId, isAdmin);
     res.json(audit);
   }),

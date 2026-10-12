@@ -10,7 +10,7 @@ import { TimePayAuthError } from './timepay.client';
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize('SUPER_ADMIN', 'ADMIN'));
+router.use(authorize('SUPER_ADMIN', 'ADMIN', 'HR'));
 
 router.get(
   '/status',

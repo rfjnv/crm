@@ -111,8 +111,8 @@ export function getMobileBottomNavItems(ctx: NavCtx): MobileNavItem[] {
   if (role === 'HR') {
     return [
       { path: '/dashboard', label: 'Главная', Icon: DashboardOutlined, rationale: 'Ежедневная сводка' },
-      { path: '/deals', label: 'Сделки', Icon: FundProjectionScreenOutlined, rationale: 'Помощь в продажах' },
-      { path: '/clients', label: 'Клиенты', Icon: TeamOutlined, rationale: 'Работа с базой клиентов' },
+      { path: '/users', label: 'Сотрудники', Icon: SolutionOutlined, rationale: 'Приём и увольнение' },
+      { path: '/kpi', label: 'KPI', Icon: BarChartOutlined, rationale: 'Результаты менеджеров' },
       { path: '/notes-board', label: 'Заметки', Icon: AuditOutlined, rationale: 'Контроль обзвонов' },
       { path: '/tasks', label: 'Задачи', Icon: ProjectOutlined, rationale: 'План на день' },
     ];

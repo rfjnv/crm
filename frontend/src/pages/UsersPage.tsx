@@ -68,7 +68,11 @@ const roleColors: Record<string, string> = {
   LOADER: 'volcano',
 };
 
-/** Управление учётными записями: ADMIN и SUPER_ADMIN. Полный список, в т.ч. неактивные. */
+/**
+ * Управление учётными записями: ADMIN, SUPER_ADMIN и HR. Полный список, в т.ч. неактивные.
+ * HR принимает, переводит и деактивирует сотрудников, но не трогает админов, права и
+ * доступ к деньгам и не удаляет навсегда (сервер проверяет то же самое).
+ */
 export default function UsersPage() {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -82,7 +86,10 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
-  const canManageTeam = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const isHr = currentUser?.role === 'HR';
+  const canManageTeam = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || isHr;
+  /** Админов HR не редактирует и не деактивирует. */
+  const isAdminRole = (role?: string) => role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'SITE_ADMIN';
   const badgeOptions = USER_BADGE_ICON_KEYS.map((k) => ({
     value: k,
     label: USER_BADGE_ICON_LABELS[k],
@@ -259,7 +266,7 @@ export default function UsersPage() {
       if (nextDept !== prevDept) data.department = nextDept;
       if (values.role !== editingUser.role) data.role = values.role;
       if (values.password) data.password = values.password;
-      data.permissions = values.permissions;
+      if (!isHr) data.permissions = values.permissions;
       if (canManageTeam) {
         data.badgeIcon = (values.badgeIcon as string | undefined) ?? null;
         const rawColor = values.badgeColor;
@@ -293,8 +300,13 @@ export default function UsersPage() {
       });
     } else {
       const dept = ((values.department as string | undefined) ?? '').trim();
+      const { permissions, moneyAccess, ...rest } = values as {
+        login: string; password: string; fullName: string; role: string; permissions?: Permission[]; moneyAccess?: MoneyAccess;
+      };
       createMut.mutate({
-        ...(values as { login: string; password: string; fullName: string; role: string; permissions?: Permission[] }),
+        ...rest,
+        // HR не выбирает права: сервер выдаст стандартный набор роли.
+        ...(isHr ? {} : { permissions, moneyAccess }),
         ...(dept ? { department: dept } : {}),
       });
     }
@@ -362,8 +374,8 @@ export default function UsersPage() {
         render: (_: unknown, r: User) => {
           const isSelf = r.id === currentUser?.id;
           const isTargetSuperAdmin = r.role === 'SUPER_ADMIN';
-          const canEdit = !isTargetSuperAdmin || isSuperAdmin;
-          const canToggle = !isSelf && (!isTargetSuperAdmin || isSuperAdmin);
+          const canEdit = (!isTargetSuperAdmin || isSuperAdmin) && !(isHr && isAdminRole(r.role));
+          const canToggle = !isSelf && (!isTargetSuperAdmin || isSuperAdmin) && !(isHr && isAdminRole(r.role));
 
           return (
             <Space size={4} wrap>
@@ -404,7 +416,7 @@ export default function UsersPage() {
                   <Button type="text" style={{ color: '#52c41a' }} icon={<CheckCircleOutlined />} size="small" />
                 </Popconfirm>
               )}
-              {canToggle && (
+              {canToggle && !isHr && (
                 <Popconfirm
                   title="Удалить пользователя навсегда?"
                   description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
@@ -421,7 +433,7 @@ export default function UsersPage() {
         },
       },
     ],
-    [currentUser?.id, isSuperAdmin],
+    [currentUser?.id, isSuperAdmin, isHr],
   );
 
   const isEditing = !!editingUser;
@@ -510,13 +522,18 @@ export default function UsersPage() {
                 { label: 'Зав. складом', value: 'WAREHOUSE_MANAGER' },
                 { label: 'Водитель', value: 'DRIVER' },
                 { label: 'Грузчик', value: 'LOADER' },
-                { label: 'Администратор', value: 'ADMIN' },
+                ...(isHr ? [] : [{ label: 'Администратор', value: 'ADMIN' }]),
               ]}
+              disabled={isHr && editingUser?.id === currentUser?.id}
               onChange={handleRoleChange}
             />
           </Form.Item>
-          <Form.Item name="permissions" label="Разрешения">
-            <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <Form.Item
+            name="permissions"
+            label="Разрешения"
+            extra={isHr ? 'Стандартный набор роли. Изменить права может администратор.' : undefined}
+          >
+            <Checkbox.Group disabled={isHr} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {ALL_PERMISSIONS.map((p) => (
                 <Checkbox key={p.key} value={p.key} disabled={p.key === 'use_rop_agent' && !isSuperAdmin}>
                   {p.label}
@@ -531,6 +548,7 @@ export default function UsersPage() {
             extra="Ограничение работает на сервере: закрытые разделы отдают 403, скрытые суммы в ответах вырезаются — через F12 их не достать."
           >
             <Select
+              disabled={isHr}
               options={[
                 { value: 'FULL', label: 'Полный — видит всё' },
                 { value: 'NO_STRATEGIC', label: 'Без стратегического — суммы сделок и долги видны; закупки, выручка, касса, KPI — нет' },
@@ -655,18 +673,20 @@ export default function UsersPage() {
                   </Button>
                 </Popconfirm>
               )}
-              <Popconfirm
-                title="Удалить пользователя навсегда?"
-                description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
-                onConfirm={() => deleteMut.mutate(dangerTarget.id)}
-                okText="Удалить"
-                cancelText="Отмена"
-                okButtonProps={{ danger: true }}
-              >
-                <Button danger icon={<DeleteOutlined />} loading={deleteMut.isPending}>
-                  Удалить навсегда
-                </Button>
-              </Popconfirm>
+              {!isHr && (
+                <Popconfirm
+                  title="Удалить пользователя навсегда?"
+                  description="Если у пользователя есть сделки или клиенты — используйте деактивацию"
+                  onConfirm={() => deleteMut.mutate(dangerTarget.id)}
+                  okText="Удалить"
+                  cancelText="Отмена"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger icon={<DeleteOutlined />} loading={deleteMut.isPending}>
+                    Удалить навсегда
+                  </Button>
+                </Popconfirm>
+              )}
             </div>
           </>
         )}
@@ -679,7 +699,7 @@ export default function UsersPage() {
         footer={null}
         width={isMobile ? '100%' : 640}
       >
-        {kpiUser && canManageTeam && (
+        {kpiUser && canManageTeam && !(isHr && isAdminRole(kpiUser.role)) && (
           <div style={{ marginBottom: 12 }}>
             <Button
               type="link"

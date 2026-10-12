@@ -206,7 +206,7 @@ export default function ClientsPage() {
 
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const canChangeStatus = isAdmin || user?.role === 'MANAGER' || user?.role === 'OPERATOR';
-  const canCreateClient = isAdmin || user?.role === 'OPERATOR' || user?.role === 'MANAGER' || user?.role === 'HR';
+  const canCreateClient = isAdmin || user?.role === 'OPERATOR' || user?.role === 'MANAGER';
   const canAssignManager = isAdmin || user?.role === 'OPERATOR';
 
   const { data: users } = useQuery({

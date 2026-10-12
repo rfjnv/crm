@@ -7,6 +7,9 @@ import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import { CreateUserDto, UpdateUserDto, UpsertMonthlyGoalDto } from './users.dto';
 
+/** Роли, которые HR не назначает и не трогает. */
+const ADMIN_ROLES: string[] = ['SUPER_ADMIN', 'ADMIN', 'SITE_ADMIN'];
+
 const userSelect = {
   id: true,
   login: true,
@@ -102,11 +105,46 @@ export class UsersService {
     }
   }
 
+  /**
+   * HR принимает, переводит и увольняет (деактивирует) сотрудников, но не раздаёт
+   * власть: не трогает администраторов, не назначает админ-роль, не меняет права и
+   * доступ к деньгам — иначе выдал бы их себе через второго сотрудника.
+   * Возвращает true, если действие выполняет HR.
+   */
+  private async assertHrLimits(
+    performedBy: string,
+    target: { id: string; role: string; permissions: string[]; moneyAccess: string } | null,
+    dto: { role?: string; permissions?: string[]; moneyAccess?: string },
+  ): Promise<boolean> {
+    const performer = await prisma.user.findUnique({ where: { id: performedBy }, select: { role: true } });
+    if (performer?.role !== 'HR') return false;
+
+    if (target && ADMIN_ROLES.includes(target.role)) {
+      throw new AppError(403, 'HR не может менять администраторов');
+    }
+    if (dto.role !== undefined && ADMIN_ROLES.includes(dto.role)) {
+      throw new AppError(403, 'Роль администратора назначает только администратор');
+    }
+    if (target && target.id === performedBy && dto.role !== undefined && dto.role !== target.role) {
+      throw new AppError(403, 'Нельзя менять роль самому себе');
+    }
+    const samePerms = (a: string[], b: string[]) => a.length === b.length && a.every((p) => b.includes(p));
+    if (dto.permissions !== undefined && !samePerms(dto.permissions, target?.permissions ?? DEFAULT_PERMISSIONS[dto.role ?? ''] ?? [])) {
+      throw new AppError(403, 'Права выдаёт администратор');
+    }
+    if (dto.moneyAccess !== undefined && dto.moneyAccess !== (target?.moneyAccess ?? 'FULL')) {
+      throw new AppError(403, 'Доступ к деньгам выдаёт администратор');
+    }
+    return true;
+  }
+
   async create(dto: CreateUserDto, performedBy: string) {
     const exists = await prisma.user.findUnique({ where: { login: dto.login } });
     if (exists) {
       throw new AppError(409, 'Пользователь с таким логином уже существует');
     }
+
+    await this.assertHrLimits(performedBy, null, dto);
 
     const hashed = await hashPassword(dto.password);
     const permissions = dto.permissions ?? DEFAULT_PERMISSIONS[dto.role] ?? [];
@@ -157,7 +195,13 @@ export class UsersService {
       }
     }
 
+    const byHr = await this.assertHrLimits(performedBy, user, dto);
+
     const data: Record<string, unknown> = {};
+    // Права HR не выбирает: при переводе на другую роль сотрудник получает её стандартный набор.
+    if (byHr && dto.role !== undefined && dto.role !== user.role) {
+      data.permissions = DEFAULT_PERMISSIONS[dto.role] ?? [];
+    }
     if (dto.login !== undefined) data.login = dto.login;
     if (dto.fullName !== undefined) data.fullName = dto.fullName;
     if (dto.department !== undefined) {
@@ -167,7 +211,7 @@ export class UsersService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.moneyAccess !== undefined) data.moneyAccess = dto.moneyAccess;
     if (dto.password !== undefined) data.password = await hashPassword(dto.password);
-    if (dto.permissions !== undefined) {
+    if (dto.permissions !== undefined && !byHr) {
       await this.assertRopAgentGrant(performedBy, user.permissions, dto.permissions);
       data.permissions = dto.permissions;
     }
@@ -284,6 +328,7 @@ export class UsersService {
         throw new AppError(403, 'Только суперадминистратор может деактивировать суперадминистратора');
       }
     }
+    await this.assertHrLimits(performedBy, user, {});
 
     const updated = await prisma.user.update({
       where: { id },
@@ -377,6 +422,7 @@ export class UsersService {
     if (user.isActive) {
       throw new AppError(400, 'Пользователь уже активен');
     }
+    await this.assertHrLimits(performedBy, user, {});
 
     const updated = await prisma.user.update({
       where: { id },
@@ -560,7 +606,7 @@ export class UsersService {
   }
 
   async listMedalHistory(targetUserId: string, actor: { userId: string; role: string }) {
-    const isAdmin = actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+    const isAdmin = actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN' || actor.role === 'HR';
     if (!isAdmin && actor.userId !== targetUserId) {
       throw new AppError(403, 'Нет доступа к истории медалей');
     }

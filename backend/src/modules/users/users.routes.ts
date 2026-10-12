@@ -104,7 +104,7 @@ router.get(
 
 router.get(
   '/monthly-goals',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'HR'),
   asyncHandler(usersController.listMonthlyGoals.bind(usersController)),
 );
 
@@ -116,16 +116,16 @@ router.delete(
 
 router.put(
   '/:id/monthly-goal',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'HR'),
   validate(upsertMonthlyGoalDto),
   asyncHandler(usersController.upsertMonthlyGoal.bind(usersController)),
 );
 
-// Management routes — ADMIN or SUPER_ADMIN only
-router.post('/', authorize('ADMIN', 'SUPER_ADMIN'), validate(createUserDto), asyncHandler(usersController.create.bind(usersController)));
-router.patch('/:id', authorize('ADMIN', 'SUPER_ADMIN'), validate(updateUserDto), asyncHandler(usersController.update.bind(usersController)));
-router.patch('/:id/activate', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.activate.bind(usersController)));
-router.delete('/:id', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.deactivate.bind(usersController)));
+// Management routes — ADMIN/SUPER_ADMIN; HR тоже, с ограничениями в usersService.assertHrLimits (удаление — только админ)
+router.post('/', authorize('ADMIN', 'SUPER_ADMIN', 'HR'), validate(createUserDto), asyncHandler(usersController.create.bind(usersController)));
+router.patch('/:id', authorize('ADMIN', 'SUPER_ADMIN', 'HR'), validate(updateUserDto), asyncHandler(usersController.update.bind(usersController)));
+router.patch('/:id/activate', authorize('ADMIN', 'SUPER_ADMIN', 'HR'), asyncHandler(usersController.activate.bind(usersController)));
+router.delete('/:id', authorize('ADMIN', 'SUPER_ADMIN', 'HR'), asyncHandler(usersController.deactivate.bind(usersController)));
 router.delete('/:id/permanent', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(usersController.deleteUser.bind(usersController)));
 
 export default router;

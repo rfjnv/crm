@@ -62,6 +62,7 @@ import {
   ReadOutlined,
   ExperimentOutlined,
   EnvironmentOutlined,
+  TrophyOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 
@@ -685,8 +686,13 @@ export default function Layout() {
           icon: <PhoneOutlined />,
           label: <Link to="/analytics/calls">Обзвоны</Link>,
         },
-        ...(hasRole('SUPER_ADMIN', 'ADMIN')
+        ...(hasRole('SUPER_ADMIN', 'ADMIN', 'HR')
           ? [{
+              key: '/kpi',
+              icon: <TrophyOutlined />,
+              label: <Link to="/kpi">KPI менеджеров</Link>,
+            },
+            {
               key: '/analytics/contact-matrix',
               icon: <NodeIndexOutlined />,
               label: <Link to="/analytics/contact-matrix">Матрица контактов</Link>,
@@ -695,8 +701,10 @@ export default function Layout() {
               key: '/analytics/note-audit',
               icon: <RobotOutlined />,
               label: <Link to="/analytics/note-audit">AI Аудит заметок</Link>,
-            },
-            {
+            }]
+          : []),
+        ...(hasRole('SUPER_ADMIN', 'ADMIN')
+          ? [{
               key: '/analytics/lamination-kg-usage',
               icon: <ExperimentOutlined />,
               label: <Link to="/analytics/lamination-kg-usage">Ввод кг (ламинация)</Link>,
@@ -749,7 +757,7 @@ export default function Layout() {
       icon: <TeamOutlined />,
       label: <Link to="/team">Команда</Link>,
     },
-    ...(isAdmin
+    ...(isAdmin || role === 'HR'
       ? [
           {
             key: '/users',
@@ -758,7 +766,7 @@ export default function Layout() {
           },
         ]
       : []),
-    ...(isAdmin
+    ...(isAdmin || role === 'HR'
       ? [
           {
             key: '/worker-audit',
@@ -776,7 +784,7 @@ export default function Layout() {
           },
         ]
       : []),
-    ...(isAdmin
+    ...(isAdmin || role === 'HR'
       ? [
           {
             key: '/attendance',

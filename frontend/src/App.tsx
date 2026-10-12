@@ -22,6 +22,7 @@ import type { ThemeMode } from './theme/tokens';
 // Страницы грузятся отдельными чанками: иначе весь CRM (~5 МБ JS) скачивается и разбирается при первом открытии.
 const RatePage = lazy(() => import('./pages/RatePage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const KpiPage = lazy(() => import('./pages/KpiPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
 const ClientsMapPage = lazy(() => import('./pages/ClientsMapPage'));
 const DeliveryRoutePage = lazy(() => import('./pages/DeliveryRoutePage'));
@@ -224,8 +225,14 @@ export default function App() {
                 <Route path="/inventory/movements" element={<MovementsPage />} />
                 <Route path="/inventory/approvals" element={<ApprovalsPage />} />
                 <Route path="/team" element={<TeamPage />} />
-                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                {/* Кадры: HR ведёт сотрудников, посещаемость, оценки и KPI вместе с админами */}
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'HR']} />}>
                   <Route path="/users" element={<UsersPage />} />
+                  <Route path="/worker-audit" element={<WorkerAuditPage />} />
+                  <Route path="/attendance" element={<AttendancePage />} />
+                  <Route path="/kpi" element={<MoneyAccessGuard><KpiPage /></MoneyAccessGuard>} />
+                  <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
+                  <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
                 {/* Звонки с рабочих телефонов (CallSync): доступ режет сервер — менеджер видит только свои */}
@@ -243,8 +250,6 @@ export default function App() {
                   <Route path="/analytics/calls" element={<CallActivityPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
-                  <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />
-                  <Route path="/analytics/note-audit" element={<NoteAuditPage />} />
                   <Route path="/analytics/lamination-kg-usage" element={<LaminationKgUsagePage />} />
                 </Route>
                 <Route element={<PrivateRoute permission="view_closed_deals_history" />}>
@@ -254,7 +259,6 @@ export default function App() {
                   <Route path="/admin/activity-log" element={<ActivityLogPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
-                  <Route path="/worker-audit" element={<WorkerAuditPage />} />
                   <Route path="/deals/audit-check" element={<AuditCheckPage />} />
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<MoneyAccessGuard><AnalyticsPage /></MoneyAccessGuard>} />
@@ -265,7 +269,6 @@ export default function App() {
                   <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/settings/company" element={<CompanySettingsPage />} />
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
-                  <Route path="/attendance" element={<AttendancePage />} />
                 </Route>
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
                 <Route path="/finance/expenses" element={<MoneyAccessGuard><ExpensesPage /></MoneyAccessGuard>} />

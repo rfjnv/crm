@@ -9,7 +9,7 @@ import { listAttendance, upsertAttendance, deleteAttendance } from './attendance
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize('SUPER_ADMIN', 'ADMIN'));
+router.use(authorize('SUPER_ADMIN', 'ADMIN', 'HR'));
 
 router.get(
   '/',

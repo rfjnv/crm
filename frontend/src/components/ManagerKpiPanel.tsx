@@ -44,7 +44,9 @@ function fmtMinutes(total: number): string {
 
 export default function ManagerKpiPanel() {
   const user = useAuthStore((s) => s.user);
-  const canEditPlan = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  /** План и оклад ставит и HR; схему бонуса (веса, ставки) — только админ. */
+  const canEditPlan = isAdmin || user?.role === 'HR';
   const queryClient = useQueryClient();
 
   const [month, setMonth] = useState<Dayjs>(dayjs().startOf('month'));
@@ -322,7 +324,7 @@ export default function ManagerKpiPanel() {
               allowClear={false}
               format="MMMM YYYY"
             />
-            {canEditPlan && (
+            {isAdmin && (
               <Tooltip title="Настроить расчёт бонуса: веса критериев, ступени ставки, цели">
                 <Button icon={<SettingOutlined />} onClick={() => setSchemeOpen(true)} />
               </Tooltip>

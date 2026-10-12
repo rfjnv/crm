@@ -9,7 +9,7 @@ import { createWorkerReviewDto, updateWorkerReviewDto } from './worker-reviews.d
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(authorize('ADMIN', 'SUPER_ADMIN', 'HR'));
 
 // GET /api/worker-reviews/analytics — full analytics with trends + chart data
 router.get(
