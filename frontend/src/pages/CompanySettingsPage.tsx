@@ -155,7 +155,7 @@ export default function CompanySettingsPage() {
 
           <Space.Compact style={{ width: '100%', maxWidth: 560 }}>
             <Input.Password
-              placeholder="Вставьте access_token из TimePay"
+              placeholder="Вставьте токен или весь JSON из TimePay ({&quot;state&quot;:{&quot;accessToken&quot;:…}})"
               value={timepayToken}
               onChange={(e) => setTimepayToken(e.target.value)}
             />
@@ -168,6 +168,9 @@ export default function CompanySettingsPage() {
               Сохранить токен
             </Button>
           </Space.Compact>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Можно вставить целиком значение из F12 → Application → Local Storage — токен извлечётся сам.
+          </Typography.Text>
 
           <Button
             icon={<SyncOutlined />}
