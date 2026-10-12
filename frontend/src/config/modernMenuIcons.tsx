@@ -126,6 +126,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/users': User,
   '/employee-cards': UserFocus,
   '/kpi': ChartLineUp,
+  '/revenue/today': CurrencyCircleDollar,
   '/attendance': Clock,
   '/admin/activity-log': Eye,
   '/settings/company': GearSix,

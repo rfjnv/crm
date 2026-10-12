@@ -688,6 +688,11 @@ export default function Layout() {
         },
         ...(hasRole('SUPER_ADMIN', 'ADMIN', 'HR')
           ? [{
+              key: '/revenue/today',
+              icon: <DollarOutlined />,
+              label: <Link to="/revenue/today">Продажи за день</Link>,
+            },
+            {
               key: '/kpi',
               icon: <TrophyOutlined />,
               label: <Link to="/kpi">KPI менеджеров</Link>,

@@ -737,6 +737,9 @@ export interface RevenueTodayPayment {
   deal: { id: string | null; title: string; isReceiptPunched?: boolean };
   client: { id: string; companyName: string; isSvip?: boolean };
   creator: { id: string; fullName: string };
+  productName?: string;
+  qty?: number | null;
+  unit?: string;
 }
 
 export interface RevenueTodayResponse {

@@ -385,6 +385,7 @@ router.get(
 );
 
 // ──── Revenue Today drilldown ────
+// ?date=YYYY-MM-DD — другой день (по календарю Ташкента); без параметра — сегодня.
 router.get(
   '/revenue-today',
   asyncHandler(async (req: Request, res: Response) => {
@@ -397,9 +398,10 @@ router.get(
 
     const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
     const nowTashkent = new Date(Date.now() + TASHKENT_OFFSET);
-    const y = nowTashkent.getUTCFullYear();
-    const mo = nowTashkent.getUTCMonth();
-    const dy = nowTashkent.getUTCDate();
+    const dateParam = typeof req.query.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(req.query.date) : null;
+    const y = dateParam ? Number(dateParam[1]) : nowTashkent.getUTCFullYear();
+    const mo = dateParam ? Number(dateParam[2]) - 1 : nowTashkent.getUTCMonth();
+    const dy = dateParam ? Number(dateParam[3]) : nowTashkent.getUTCDate();
     const startOfToday = new Date(Date.UTC(y, mo, dy) - TASHKENT_OFFSET);
     const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
 
@@ -420,6 +422,8 @@ router.get(
       manager_id: string;
       manager_name: string;
       product_name: string;
+      unit: string;
+      qty: string | null;
       is_receipt_punched: boolean;
     }[]>(
       Prisma.sql`
@@ -434,6 +438,8 @@ router.get(
                u.id as manager_id,
                u.full_name as manager_name,
                p.name as product_name,
+               COALESCE(p.unit, 'шт') as unit,
+               di.requested_qty::text as qty,
                d.is_receipt_punched
         FROM deal_items di
         JOIN deals d ON d.id = di.deal_id
@@ -456,6 +462,8 @@ router.get(
       client: { id: r.client_id, companyName: r.company_name, isSvip: !!r.is_svip },
       creator: { id: r.manager_id, fullName: r.manager_name },
       productName: r.product_name,
+      qty: r.qty !== null ? Number(r.qty) : null,
+      unit: r.unit,
     }));
 
     const total = items.reduce((sum, i) => sum + Number(i.amount), 0);

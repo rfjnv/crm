@@ -1,28 +1,36 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Typography, Spin, Button, Card, Space } from 'antd';
+import { Table, Typography, Spin, Button, Card, Space, DatePicker, Segmented } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { dashboardApi } from '../api/warehouse.api';
 import { formatUZS } from '../utils/currency';
 import type { RevenueTodayPayment } from '../types';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import { getFirstName } from '../lib/name-utils';
+import { useAuthStore } from '../store/authStore';
+import RevenueByManagers from '../components/RevenueByManagers';
+
+type View = 'managers' | 'lines';
 
 export default function RevenueTodayPage() {
   const isMobile = useIsMobile();
-  const { data, isLoading } = useQuery({
-    queryKey: ['revenue-today'],
-    queryFn: dashboardApi.revenueToday,
-    refetchInterval: 60_000,
-  });
+  const role = useAuthStore((s) => s.user?.role);
+  // HR смотрит, кто и что продал, — ей сразу разбивка по менеджерам.
+  const [view, setView] = useState<View>(role === 'HR' ? 'managers' : 'lines');
+  const [date, setDate] = useState<Dayjs>(dayjs());
+  const isToday = date.isSame(dayjs(), 'day');
+  const dateParam = isToday ? undefined : date.format('YYYY-MM-DD');
 
-  if (isLoading || !data) {
-    return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  }
+  const { data, isLoading } = useQuery({
+    queryKey: ['revenue-today', dateParam ?? 'today'],
+    queryFn: () => dashboardApi.revenueToday(dateParam),
+    refetchInterval: isToday ? 60_000 : false,
+  });
 
   const columns = [
     {
@@ -72,12 +80,35 @@ export default function RevenueTodayPage() {
           <Button type="text" icon={<ArrowLeftOutlined />} />
         </Link>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          Выручка за сегодня
+          Выручка за {isToday ? 'сегодня' : date.format('DD.MM.YYYY')}
         </Typography.Title>
       </div>
 
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Segmented<View>
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'managers', label: 'По менеджерам' },
+            { value: 'lines', label: 'Все продажи' },
+          ]}
+        />
+        <DatePicker
+          value={date}
+          onChange={(v) => v && setDate(v)}
+          format="DD.MM.YYYY"
+          allowClear={false}
+          disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+        />
+        {!isToday && <Button onClick={() => setDate(dayjs())}>Сегодня</Button>}
+      </Space>
+
       <Card bordered={false}>
-        {isMobile ? (
+        {isLoading || !data ? (
+          <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />
+        ) : view === 'managers' ? (
+          <RevenueByManagers payments={data.payments} total={data.total} />
+        ) : isMobile ? (
           <>
             <MobileCardList
               data={data.payments}

@@ -260,6 +260,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
             { key: '/manager/payment-overdue', to: '/manager/payment-overdue', text: 'Просрочка', show: managerAnalytics },
             { key: '/analytics/calls', to: '/analytics/calls', text: 'Обзвоны', show: managerAnalytics },
             { key: '/analytics/contact-matrix', to: '/analytics/contact-matrix', text: 'Матрица контактов', show: people },
+            { key: '/revenue/today', to: '/revenue/today', text: 'Продажи за день', show: people },
             { key: '/kpi', to: '/kpi', text: 'KPI менеджеров', show: people },
           ],
         },

@@ -110,5 +110,7 @@ export type DashboardPeriod = 'day' | 'week' | 'month' | 'quarter' | 'custom';
 export const dashboardApi = {
   summary: (params?: { period?: DashboardPeriod; from?: string; to?: string }) =>
     client.get<DashboardSummary>('/dashboard/analytics', { params }).then((r) => r.data),
-  revenueToday: () => client.get<RevenueTodayResponse>('/dashboard/revenue-today').then((r) => r.data),
+  /** date — YYYY-MM-DD; без него — сегодня. */
+  revenueToday: (date?: string) =>
+    client.get<RevenueTodayResponse>('/dashboard/revenue-today', { params: date ? { date } : undefined }).then((r) => r.data),
 };
