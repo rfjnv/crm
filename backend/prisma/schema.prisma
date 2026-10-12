@@ -1388,6 +1388,10 @@ model TimePayIntegration {
   /** JSON первой записи из последнего ответа дашборда TimePay — для подбора реальных названий полей. */
   lastSyncSample   String?   @map("last_sync_sample")
   lastTokenAlertAt DateTime? @map("last_token_alert_at")
+  /** Филиалы TimePay, чьих сотрудников синхронизируем (по названию; пусто — все). */
+  branches         String[]  @default(["Polygraph"])
+  /** ID сотрудников TimePay, скрытых в настройках: их отметки не синхронизируются. */
+  hiddenEmployeeIds String[] @default([]) @map("hidden_employee_ids")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@map("timepay_integration")

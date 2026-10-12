@@ -32,6 +32,18 @@ export const GRACE_MIN = 15;
 export const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
 export const WORK_END_MIN = 18 * 60;
 
+/**
+ * Ночная смена: приход с 15:00 и позже — человек пришёл на смену с 18:00, а не опоздал на день.
+ * Опоздание считаем от 18:00 с тем же допуском.
+ */
+export const NIGHT_SHIFT_FROM_MIN = 15 * 60;
+export const NIGHT_SHIFT_START_MIN = 18 * 60;
+
+/** Начало смены по минуте прихода: 09:00 для дневной, 18:00 для ночной. */
+export function shiftStartMin(checkInMin: number): number {
+  return checkInMin >= NIGHT_SHIFT_FROM_MIN ? NIGHT_SHIFT_START_MIN : WORK_START_MIN;
+}
+
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
 
 /** Минуты от начала дня по Ташкенту. */
@@ -68,11 +80,13 @@ export function judgeDay(rec: { checkIn: Date | null; checkOut?: Date | null; ma
 
   const minute = rec.checkIn ? minutesOfDayTashkent(rec.checkIn) : null;
   if (marks.includes('LATE')) {
-    return { kind: 'LATE', lateMinutes: minute !== null && minute > WORK_START_MIN ? minute - WORK_START_MIN : 0, earlyLeave };
+    const start = minute !== null ? shiftStartMin(minute) : WORK_START_MIN;
+    return { kind: 'LATE', lateMinutes: minute !== null && minute > start ? minute - start : 0, earlyLeave };
   }
   if (minute === null) return { kind: 'ABSENT', lateMinutes: 0, earlyLeave: false };
-  if (minute <= LATE_THRESHOLD_MIN) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeave };
-  return { kind: 'LATE', lateMinutes: minute - WORK_START_MIN, earlyLeave };
+  const start = shiftStartMin(minute);
+  if (minute <= start + GRACE_MIN) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeave };
+  return { kind: 'LATE', lateMinutes: minute - start, earlyLeave };
 }
 
 export interface AttendanceSummary {

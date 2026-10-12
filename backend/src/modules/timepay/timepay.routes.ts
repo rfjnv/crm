@@ -3,8 +3,15 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { setTimePayTokenDto } from './timepay.dto';
-import { getTimePayStatus, setTimePayToken, syncAttendanceFromTimePay, assertYmd, listUnmatchedTimePayEmployees } from './timepay.service';
+import { setTimePayTokenDto, updateTimePaySettingsDto } from './timepay.dto';
+import {
+  getTimePayStatus,
+  setTimePayToken,
+  syncAttendanceFromTimePay,
+  assertYmd,
+  listTimePayEmployees,
+  updateTimePaySettings,
+} from './timepay.service';
 import { TimePayAuthError } from './timepay.client';
 
 const router = Router();
@@ -27,20 +34,29 @@ router.put(
   }),
 );
 
-/** Кого из сотрудников TimePay не удалось сопоставить — для ручной привязки в настройках. */
+/** Сотрудники TimePay выбранных филиалов (привязанные и нет) и скрытые — для настроек. */
 router.get(
-  '/unmatched',
+  '/employees',
   asyncHandler(async (req: Request, res: Response) => {
     const date = assertYmd(req.query.date as string | undefined);
     try {
-      res.json(await listUnmatchedTimePayEmployees(date));
+      res.json(await listTimePayEmployees(date));
     } catch (err) {
       if (err instanceof TimePayAuthError) {
-        res.json({ status: 'AUTH_ERROR', employees: [] });
+        res.json({ status: 'AUTH_ERROR', employees: [], hidden: [] });
         return;
       }
       throw err;
     }
+  }),
+);
+
+/** Филиалы для синхронизации и скрытые сотрудники. */
+router.put(
+  '/settings',
+  validate(updateTimePaySettingsDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await updateTimePaySettings(req.body));
   }),
 );
 

@@ -100,27 +100,86 @@ async function buildEmployeeResolver() {
   return { resolve, activeUsers };
 }
 
-/** Сотрудники TimePay за день, которых не удалось сопоставить, — для ручной привязки в настройках. */
-export async function listUnmatchedTimePayEmployees(dateYmd: string = tashkentTodayYmd()) {
+/**
+ * Записи дашборда только по выбранным филиалам. TimePay фильтрует по названию филиала
+ * (branch=Polygraph), не по его id; пустой список филиалов — все сотрудники.
+ */
+async function fetchBranchEntries(accessToken: string, date: string, branches: string[]): Promise<TimePayDashboardEntry[]> {
+  if (!branches.length) return fetchDashboardList(accessToken, { date });
+  const byId = new Map<string, TimePayDashboardEntry>();
+  const withoutId: TimePayDashboardEntry[] = [];
+  for (const branch of branches) {
+    for (const entry of await fetchDashboardList(accessToken, { date, branch })) {
+      const id = extractEmployeeId(entry);
+      if (id) byId.set(id, entry);
+      else withoutId.push(entry);
+    }
+  }
+  return [...byId.values(), ...withoutId];
+}
+
+export interface TimePayEmployeeRow {
+  timepayId: string;
+  name: string;
+  /** Пользователь CRM, к которому привязан этот ID TimePay. */
+  boundUser: { id: string; fullName: string } | null;
+  /** Пользователь CRM, похожий по ФИО (если такой один) — подставляется в выбор по умолчанию. */
+  suggestedUserId: string | null;
+}
+
+/**
+ * Все сотрудники TimePay выбранных филиалов — для привязки и скрытия в настройках —
+ * и отдельно скрытые. Здесь только смотрим: без автопривязки, чтобы просмотр ничего не записывал.
+ */
+export async function listTimePayEmployees(dateYmd: string = tashkentTodayYmd()) {
   const integration = await getIntegration();
-  if (!integration.accessToken) return { status: 'NOT_CONFIGURED' as const, employees: [] };
-  const entries = await fetchDashboardList(integration.accessToken, { date: dateYmd });
-  // Здесь только смотрим: без автопривязки, чтобы просмотр списка ничего не записывал
+  if (!integration.accessToken) return { status: 'NOT_CONFIGURED' as const, employees: [], hidden: [] };
+  const hiddenIds = new Set(integration.hiddenEmployeeIds);
+  const [entries, allEntries] = await Promise.all([
+    fetchBranchEntries(integration.accessToken, dateYmd, integration.branches),
+    hiddenIds.size ? fetchDashboardList(integration.accessToken, { date: dateYmd }) : Promise.resolve([]),
+  ]);
+
   const [activeUsers, mappedUsers] = await Promise.all([
     prisma.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true } }),
-    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { timepayEmployeeId: true } }),
+    prisma.user.findMany({ where: { timepayEmployeeId: { not: null } }, select: { id: true, fullName: true, timepayEmployeeId: true } }),
   ]);
-  const boundIds = new Set(mappedUsers.map((u) => u.timepayEmployeeId as string));
+  const boundById = new Map(mappedUsers.map((u) => [u.timepayEmployeeId as string, { id: u.id, fullName: u.fullName }]));
   const matchName = createNameMatcher(activeUsers);
-  const employees: { timepayId: string; name: string; suggestedUserId: string | null }[] = [];
+
+  const employees: TimePayEmployeeRow[] = [];
   for (const entry of entries) {
     const timepayId = extractEmployeeId(entry);
+    if (!timepayId || hiddenIds.has(timepayId)) continue;
     const name = extractEmployeeName(entry);
-    if (!timepayId || boundIds.has(timepayId)) continue;
-    employees.push({ timepayId, name: name ?? `ID ${timepayId}`, suggestedUserId: name ? matchName(name) : null });
+    const boundUser = boundById.get(timepayId) ?? null;
+    employees.push({
+      timepayId,
+      name: name ?? `ID ${timepayId}`,
+      boundUser,
+      suggestedUserId: !boundUser && name ? matchName(name) : null,
+    });
   }
   employees.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  return { status: 'SUCCESS' as const, employees };
+
+  const nameById = new Map(allEntries.map((e) => [extractEmployeeId(e), extractEmployeeName(e)]));
+  const hidden = integration.hiddenEmployeeIds
+    .map((timepayId) => ({ timepayId, name: nameById.get(timepayId) ?? `ID ${timepayId}` }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+  return { status: 'SUCCESS' as const, employees, hidden };
+}
+
+export async function updateTimePaySettings(data: { branches?: string[]; hiddenEmployeeIds?: string[] }) {
+  await getIntegration();
+  await prisma.timePayIntegration.update({
+    where: { id: 'singleton' },
+    data: {
+      ...(data.branches && { branches: [...new Set(data.branches.map((b) => b.trim()).filter(Boolean))] }),
+      ...(data.hiddenEmployeeIds && { hiddenEmployeeIds: [...new Set(data.hiddenEmployeeIds)] }),
+    },
+  });
+  return getTimePayStatus();
 }
 
 const NAME_FIELD_CANDIDATES = ['full_name', 'fullname', 'fio', 'name', 'employee_name'];
@@ -190,6 +249,8 @@ export async function getTimePayStatus() {
     lastSyncMatched: row.lastSyncMatched,
     lastSyncUnmatched: row.lastSyncUnmatched,
     lastSyncSample: row.lastSyncSample,
+    branches: row.branches,
+    hiddenCount: row.hiddenEmployeeIds.length,
   };
 }
 
@@ -282,7 +343,10 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
 
   let entries: TimePayDashboardEntry[];
   try {
-    entries = await fetchDashboardList(integration.accessToken, { date: dateYmd });
+    const hiddenIds = new Set(integration.hiddenEmployeeIds);
+    entries = (await fetchBranchEntries(integration.accessToken, dateYmd, integration.branches)).filter(
+      (entry) => !hiddenIds.has(extractEmployeeId(entry) ?? ''),
+    );
   } catch (err) {
     if (err instanceof TimePayAuthError) {
       await prisma.timePayIntegration.update({

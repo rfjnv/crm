@@ -48,6 +48,18 @@ export const GRACE_MIN = 15;
 export const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
 export const WORK_END_MIN = 18 * 60;
 
+/**
+ * Ночная смена: приход с 15:00 и позже — человек пришёл на смену с 18:00, а не опоздал на день.
+ * Опоздание считаем от 18:00 с тем же допуском. Та же логика на сервере: backend/src/lib/attendanceMarks.ts.
+ */
+export const NIGHT_SHIFT_FROM_MIN = 15 * 60;
+export const NIGHT_SHIFT_START_MIN = 18 * 60;
+
+/** Начало смены по минуте прихода: 09:00 для дневной, 18:00 для ночной. */
+export function shiftStartMin(checkInMin: number): number {
+  return checkInMin >= NIGHT_SHIFT_FROM_MIN ? NIGHT_SHIFT_START_MIN : WORK_START_MIN;
+}
+
 export type DayKind = 'EXCLUDED' | 'ON_TIME' | 'LATE' | 'ABSENT';
 
 /**
@@ -69,9 +81,11 @@ export function judgeDay(
   if (worked) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeaveMinutes };
   if (marks.includes('ABSENT')) return { kind: 'ABSENT', lateMinutes: 0, earlyLeaveMinutes: null };
   if (marks.includes('LATE')) {
-    return { kind: 'LATE', lateMinutes: checkInMin !== null && checkInMin > WORK_START_MIN ? checkInMin - WORK_START_MIN : 0, earlyLeaveMinutes };
+    const start = checkInMin !== null ? shiftStartMin(checkInMin) : WORK_START_MIN;
+    return { kind: 'LATE', lateMinutes: checkInMin !== null && checkInMin > start ? checkInMin - start : 0, earlyLeaveMinutes };
   }
   if (checkInMin === null) return { kind: 'ABSENT', lateMinutes: 0, earlyLeaveMinutes: null };
-  if (checkInMin <= LATE_THRESHOLD_MIN) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeaveMinutes };
-  return { kind: 'LATE', lateMinutes: checkInMin - WORK_START_MIN, earlyLeaveMinutes };
+  const start = shiftStartMin(checkInMin);
+  if (checkInMin <= start + GRACE_MIN) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeaveMinutes };
+  return { kind: 'LATE', lateMinutes: checkInMin - start, earlyLeaveMinutes };
 }

@@ -1492,18 +1492,25 @@ export interface TimePayStatus {
   lastSyncMatched: number | null;
   lastSyncUnmatched: number | null;
   lastSyncSample?: string | null;
+  /** Филиалы TimePay, которые синхронизируются (пусто — все). */
+  branches: string[];
+  hiddenCount: number;
 }
 
-export interface TimePayUnmatchedEmployee {
+export interface TimePayEmployee {
   timepayId: string;
   name: string;
+  /** Пользователь CRM, к которому привязан этот ID TimePay. */
+  boundUser: { id: string; fullName: string } | null;
   /** Пользователь CRM, похожий по ФИО (если такой один) — подставляется в выбор по умолчанию. */
   suggestedUserId: string | null;
 }
 
-export interface TimePayUnmatchedResult {
+export interface TimePayEmployeesResult {
   status: 'SUCCESS' | 'NOT_CONFIGURED' | 'AUTH_ERROR';
-  employees: TimePayUnmatchedEmployee[];
+  employees: TimePayEmployee[];
+  /** Скрытые в настройках: не синхронизируются. */
+  hidden: { timepayId: string; name: string }[];
 }
 
 export interface TimePaySyncResult {

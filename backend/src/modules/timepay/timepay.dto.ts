@@ -28,3 +28,8 @@ export const setTimePayTokenDto = z.object({
 });
 
 export type SetTimePayTokenDto = z.infer<typeof setTimePayTokenDto>;
+
+export const updateTimePaySettingsDto = z.object({
+  branches: z.array(z.string().max(100)).max(50).optional(),
+  hiddenEmployeeIds: z.array(z.string().max(50)).max(1000).optional(),
+});
