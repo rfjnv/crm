@@ -802,7 +802,7 @@ export interface AnalyticsManagers {
 
 /** KPI менеджера за месяц — блоки «План», «Ассортимент», «Контакты», «Клиенты», «Посещаемость». */
 /** План продаж сюда не входит: он задаёт базу ставкой, а не вес среди критериев. */
-export type BonusCriterionKey = 'assortment' | 'contacts' | 'clients' | 'leads' | 'attendance';
+export type BonusCriterionKey = 'assortment' | 'contacts' | 'clients' | 'leads' | 'attendance' | 'hrReview';
 
 /** «От fromPercent процентов плана — ставка rate процентов от фактической выручки». */
 export interface BonusTier {
@@ -1244,8 +1244,82 @@ export interface AttendanceRecord {
   checkOut?: string | null;
   note?: string | null;
   enteredById?: string | null;
+  /** Плашки HR: ABSENT, LATE, SICK… — см. constants/attendanceMarks.ts */
+  marks?: string[];
+  markedAt?: string | null;
   user?: { id: string; fullName: string; department?: string | null; role?: UserRole };
   enteredBy?: { id: string; fullName: string } | null;
+  markedBy?: { id: string; fullName: string } | null;
+}
+
+// ──── Employee cards (карточка сотрудника за месяц) ────
+
+export interface EmployeeAttendanceSummary {
+  workdays: number;
+  excluded: number;
+  days: number;
+  onTime: number;
+  late: number;
+  lateMinutes: number;
+  absent: number;
+  earlyLeave: number;
+}
+
+export interface EmployeeReview {
+  id: string;
+  discipline: number | null;
+  quality: number | null;
+  initiative: number | null;
+  teamwork: number | null;
+  praise: string | null;
+  remarks: string | null;
+  improve: string | null;
+  score: number | null;
+  reviewer: { id: string; fullName: string };
+  updatedAt: string;
+}
+
+export interface EmployeeCardRow {
+  userId: string;
+  fullName: string;
+  role: UserRole;
+  department: string | null;
+  group: 'sales' | 'operations' | 'office';
+  attendance: EmployeeAttendanceSummary;
+  tasks: { dueInMonth: number; done: number; overdueOpen: number };
+  crmActions: number;
+  sales: {
+    revenueFact: number | null;
+    revenueTarget: number | null;
+    planPercent: number | null;
+    deals: number;
+    contacts: number;
+    callAudits: number;
+    callScore: number | null;
+  } | null;
+  operations: { itemsConfirmed: number; shipments: number; loadings: number; deliveries: number } | null;
+  review: EmployeeReview | null;
+}
+
+export interface EmployeeCardHistoryPoint {
+  year: number;
+  month: number;
+  reviewScore: number | null;
+  onTime: number;
+  workdays: number;
+  late: number;
+  absent: number;
+  planPercent: number | null;
+  overdueTasks: number;
+}
+
+export interface EmployeeCardDetail {
+  year: number;
+  month: number;
+  card: EmployeeCardRow;
+  attendanceDays: { id: string; date: string; checkIn: string | null; checkOut: string | null; marks: string[]; note: string | null }[];
+  history: EmployeeCardHistoryPoint[];
+  legacyReviews: { id: string; rating: number; comment: string | null; period: string; reviewer: { fullName: string } }[];
 }
 
 // ──── Tasks ────

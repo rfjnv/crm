@@ -769,9 +769,9 @@ export default function Layout() {
     ...(isAdmin || role === 'HR'
       ? [
           {
-            key: '/worker-audit',
+            key: '/employee-cards',
             icon: <AuditOutlined />,
-            label: <Link to="/worker-audit">Аудит сотрудников</Link>,
+            label: <Link to="/employee-cards">Карточки сотрудников</Link>,
           },
         ]
       : []),

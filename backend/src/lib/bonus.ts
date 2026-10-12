@@ -27,6 +27,7 @@ export const BONUS_CRITERIA = [
   'clients',
   'leads',
   'attendance',
+  'hrReview',
 ] as const;
 
 export type BonusCriterionKey = (typeof BONUS_CRITERIA)[number];
@@ -37,6 +38,7 @@ export const BONUS_CRITERION_LABELS: Record<BonusCriterionKey, string> = {
   clients: 'Привлечение клиентов',
   leads: 'Лиды',
   attendance: 'Посещаемость',
+  hrReview: 'Оценка HR',
 };
 
 /** Как показывать факт и цель критерия на фронте. */
@@ -46,6 +48,7 @@ export const BONUS_CRITERION_UNITS: Record<BonusCriterionKey, 'money' | 'count'>
   clients: 'count',
   leads: 'count',
   attendance: 'count',
+  hrReview: 'count',
 };
 
 /** «От fromPercent процентов плана — ставка rate процентов от факта». */
@@ -69,7 +72,8 @@ export interface BonusScheme {
 }
 
 export const DEFAULT_BONUS_SCHEME: BonusScheme = {
-  weights: { assortment: 25, contacts: 25, clients: 20, leads: 15, attendance: 15 },
+  // Оценка HR по умолчанию с весом 0: появилась позже, и включать её в премию решает админ.
+  weights: { assortment: 25, contacts: 25, clients: 20, leads: 15, attendance: 15, hrReview: 0 },
   tiers: [
     { fromPercent: 0, rate: 0 },
     { fromPercent: 50, rate: 0.5 },
@@ -127,7 +131,8 @@ export function validateBonusScheme(raw: unknown): BonusScheme {
   if (!weightsSrc) throw new AppError(400, 'Не заданы веса критериев');
   const weights = {} as Record<BonusCriterionKey, number>;
   for (const key of BONUS_CRITERIA) {
-    const v = num(weightsSrc[key]);
+    // Старый фронт не знает про hrReview — не ругаемся, считаем вес нулевым.
+    const v = key === 'hrReview' && weightsSrc[key] === undefined ? 0 : num(weightsSrc[key]);
     if (v === null || v < 0 || v > 100) {
       throw new AppError(400, `Вес критерия «${BONUS_CRITERION_LABELS[key]}» должен быть от 0 до 100`);
     }
@@ -190,6 +195,8 @@ export interface BonusFacts {
   leadsConverted: number;
   attendanceOnTime: number;
   workdays: number;
+  /** Средняя оценка HR за месяц по шкале 1–5; null — карточку не заполняли, критерий выпадает. */
+  hrScore?: number | null;
 }
 
 export interface BonusCriterionResult {
@@ -239,6 +246,7 @@ export function calculateBonus(scheme: BonusScheme, facts: BonusFacts): BonusRes
     { key: 'clients', fact: facts.clientsAcquired, target: scheme.targets.clients || null },
     { key: 'leads', fact: facts.leadsConverted, target: scheme.targets.leads || null },
     { key: 'attendance', fact: facts.attendanceOnTime, target: facts.workdays || null },
+    { key: 'hrReview', fact: facts.hrScore ?? 0, target: facts.hrScore != null ? 5 : null },
   ];
 
   // Критерий без цели измерить нечем. Обнулять его нечестно — вместо этого он

@@ -343,6 +343,9 @@ model User {
   noteAuditMemories      NoteAuditMemory[]      @relation("NoteAuditMemoryCreator")
   attendanceRecords      AttendanceRecord[]     @relation("AttendanceUser")
   attendanceRecordsEntered AttendanceRecord[]   @relation("AttendanceEnteredBy")
+  attendanceRecordsMarked  AttendanceRecord[]   @relation("AttendanceMarkedBy")
+  employeeReviewsReceived  EmployeeMonthlyReview[] @relation("EmployeeReviewUser")
+  employeeReviewsGiven     EmployeeMonthlyReview[] @relation("EmployeeReviewReviewer")
 
   @@map("users")
 }
@@ -357,16 +360,53 @@ model AttendanceRecord {
   checkIn     DateTime? @map("check_in")
   checkOut    DateTime? @map("check_out")
   note        String?
+  /** Плашки HR за день: ABSENT, LATE, SICK… (список — lib/attendanceMarks.ts). Синхронизация TimePay их не трогает. */
+  marks       String[]  @default([])
+  markedById  String?   @map("marked_by_id")
+  markedAt    DateTime? @map("marked_at")
   enteredById String?   @map("entered_by_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   user      User  @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
   enteredBy User? @relation("AttendanceEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
+  markedBy  User? @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
 
   @@unique([userId, date])
   @@index([date])
   @@map("attendance_records")
+}
+
+/**
+ * Карточка сотрудника за месяц — оценка HR по критериям (1–5) и комментарии.
+ * Автоматические показатели (посещаемость, задачи, продажи, отгрузки) не хранятся,
+ * а считаются на лету: см. modules/employee-cards.
+ */
+model EmployeeMonthlyReview {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  year       Int
+  month      Int
+  discipline Int?
+  quality    Int?
+  initiative Int?
+  teamwork   Int?
+  /** Похвала */
+  praise     String?
+  /** Замечания */
+  remarks    String?
+  /** Что улучшить в следующем месяце */
+  improve    String?
+  reviewerId String   @map("reviewer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User @relation("EmployeeReviewUser", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User @relation("EmployeeReviewReviewer", fields: [reviewerId], references: [id])
+
+  @@unique([userId, year, month])
+  @@index([year, month])
+  @@map("employee_monthly_reviews")
 }
 
 /** Запись в истории медали пользователя (суперадмин может скрыть запись). */

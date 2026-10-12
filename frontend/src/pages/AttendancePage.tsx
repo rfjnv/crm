@@ -21,6 +21,7 @@ import {
 import { Bar } from '@ant-design/charts';
 import {
   DeleteOutlined,
+  TagsOutlined,
   SyncOutlined,
   CheckCircleFilled,
   ClockCircleFilled,
@@ -35,32 +36,24 @@ import { timepayApi } from '../api/timepay.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
 import type { AttendanceRecord } from '../types';
-
-/** Рабочий день компании: начало 09:00, допуск на опоздание 15 минут, конец 18:00. */
-const WORK_START_MIN = 9 * 60;
-const GRACE_MIN = 15;
-const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
-const WORK_END_MIN = 18 * 60;
+import AttendanceMarkModal, { type AttendanceMarkTarget } from '../components/AttendanceMarkModal';
+import { ATTENDANCE_MARK_META, judgeDay, type AttendanceMark } from '../constants/attendanceMarks';
 
 function minutesOfDay(iso: string): number {
   const d = dayjs(iso);
   return d.hour() * 60 + d.minute();
 }
 
-type StatusKind = 'ON_TIME' | 'LATE' | 'ABSENT' | 'PENDING';
+/** Строка таблицы: запись из базы или «пустая» строка сотрудника без отметки за день. */
+type Row = AttendanceRecord & { virtual?: boolean };
 
-function checkInStatus(record: AttendanceRecord): { kind: StatusKind; lateBy?: number } {
-  if (!record.checkIn) return { kind: 'ABSENT' };
-  const m = minutesOfDay(record.checkIn);
-  if (m <= LATE_THRESHOLD_MIN) return { kind: 'ON_TIME' };
-  return { kind: 'LATE', lateBy: m - WORK_START_MIN };
-}
-
-function checkOutEarlyBy(record: AttendanceRecord): number | null {
-  if (!record.checkOut) return null;
-  const m = minutesOfDay(record.checkOut);
-  if (m >= WORK_END_MIN) return null;
-  return WORK_END_MIN - m;
+/** Итог дня с учётом плашек HR — те же правила, что в KPI и карточке сотрудника. */
+function dayVerdict(record: AttendanceRecord) {
+  return judgeDay(
+    record.checkIn ? minutesOfDay(record.checkIn) : null,
+    record.checkOut ? minutesOfDay(record.checkOut) : null,
+    record.marks,
+  );
 }
 
 const formatTime = (v?: string | null) => (v ? dayjs(v).format('HH:mm') : '—');
@@ -151,25 +144,57 @@ export default function AttendancePage() {
   );
 
   const data = records ?? [];
+  const [markTarget, setMarkTarget] = useState<AttendanceMarkTarget | null>(null);
+
+  /**
+   * За один день показываем и тех, у кого отметки нет вовсе: именно их HR отмечает
+   * «не пришёл» или «больничный». Иначе строки для плашки просто не было бы.
+   */
+  const rows: Row[] = useMemo(() => {
+    if (!isSingleDay || !users) return data;
+    const have = new Set(data.map((r) => r.userId));
+    const missing = users
+      .filter((u) => u.isActive && !have.has(u.id) && (!userFilter || u.id === userFilter))
+      .map((u): Row => ({
+        id: `none-${u.id}`,
+        userId: u.id,
+        date: dateRange[0].format('YYYY-MM-DD'),
+        checkIn: null,
+        checkOut: null,
+        marks: [],
+        note: null,
+        user: { id: u.id, fullName: u.fullName, department: u.department ?? null, role: u.role },
+        virtual: true,
+      }));
+    return [...data, ...missing];
+  }, [isSingleDay, users, data, userFilter, dateRange]);
 
   const summary = useMemo(() => {
     if (!isSingleDay || !users) return null;
     const activeUsers = users.filter((u) => u.isActive);
-    const presentIds = new Set(data.filter((r) => r.checkIn).map((r) => r.userId));
-    const late = data.filter((r) => checkInStatus(r).kind === 'LATE').length;
-    const onTime = data.filter((r) => checkInStatus(r).kind === 'ON_TIME').length;
-    // «Не пришли» — только среди тех, кого отмечает TimePay (есть привязка ID). Без привязки
-    // отсутствие отметки ничего не значит: раньше так в «не пришли» попадали 16 из 19.
-    const tracked = activeUsers.filter((u) => u.timepayEmployeeId || presentIds.has(u.id));
-    const absent = tracked.filter((u) => !presentIds.has(u.id)).length;
+    const verdicts = new Map(data.map((r) => [r.userId, dayVerdict(r)]));
+    const kindOf = (userId: string) => verdicts.get(userId)?.kind;
+    const presentIds = new Set(
+      data.filter((r) => kindOf(r.userId) === 'ON_TIME' || kindOf(r.userId) === 'LATE').map((r) => r.userId),
+    );
+    const late = data.filter((r) => kindOf(r.userId) === 'LATE').length;
+    const onTime = data.filter((r) => kindOf(r.userId) === 'ON_TIME').length;
+    const excused = data.filter((r) => kindOf(r.userId) === 'EXCLUDED').length;
+    // «Не пришли» — только среди тех, кого отмечает TimePay (есть привязка ID) или кого HR
+    // отметил плашкой. Без привязки отсутствие отметки ничего не значит: раньше так в
+    // «не пришли» попадали 16 из 19. Больничный и отпуск — не «не пришёл».
+    const markedIds = new Set(data.filter((r) => r.marks?.length).map((r) => r.userId));
+    const tracked = activeUsers.filter((u) => u.timepayEmployeeId || presentIds.has(u.id) || markedIds.has(u.id));
+    const absent = tracked.filter((u) => !presentIds.has(u.id) && kindOf(u.id) !== 'EXCLUDED').length;
     const untracked = activeUsers.length - tracked.length;
-    return { total: activeUsers.length, present: presentIds.size, onTime, late, absent, untracked };
+    return { total: activeUsers.length, present: presentIds.size, onTime, late, absent, untracked, excused };
   }, [isSingleDay, users, data]);
 
   const employeeStats: EmployeeStat[] = useMemo(() => {
     const map = new Map<string, EmployeeStat>();
     for (const r of data) {
-      if (!r.checkIn) continue;
+      const v = dayVerdict(r);
+      if (v.kind === 'EXCLUDED' || v.kind === 'ABSENT') continue;
       let stat = map.get(r.userId);
       if (!stat) {
         stat = {
@@ -184,15 +209,13 @@ export default function AttendancePage() {
         map.set(r.userId, stat);
       }
       stat.daysPresent += 1;
-      const status = checkInStatus(r);
-      if (status.kind === 'LATE') {
+      if (v.kind === 'LATE') {
         stat.lateCount += 1;
-        stat.totalLateMinutes += status.lateBy ?? 0;
+        stat.totalLateMinutes += v.lateMinutes;
       }
-      const earlyBy = checkOutEarlyBy(r);
-      if (earlyBy !== null) {
+      if (v.earlyLeaveMinutes !== null) {
         stat.earlyLeaveCount += 1;
-        stat.totalEarlyMinutes += earlyBy;
+        stat.totalEarlyMinutes += v.earlyLeaveMinutes;
       }
     }
     return Array.from(map.values()).sort((a, b) => b.lateCount - a.lateCount || b.earlyLeaveCount - a.earlyLeaveCount);
@@ -285,24 +308,60 @@ export default function AttendancePage() {
   ];
 
   const StatusTag = ({ record }: { record: AttendanceRecord }) => {
-    const status = checkInStatus(record);
-    const earlyBy = checkOutEarlyBy(record);
-    if (status.kind === 'ABSENT') {
-      return <Tag icon={<CloseCircleFilled />} color="default">Нет данных</Tag>;
+    const v = dayVerdict(record);
+    const hasMarks = !!record.marks?.length;
+    if (v.kind === 'EXCLUDED') {
+      return <Tag color="default">Не рабочий день</Tag>;
+    }
+    if (v.kind === 'ABSENT') {
+      return hasMarks
+        ? <Tag icon={<CloseCircleFilled />} color="error">Прогул</Tag>
+        : <Tag icon={<CloseCircleFilled />} color="default">Нет данных</Tag>;
     }
     return (
       <Space size={4} wrap>
-        {status.kind === 'ON_TIME' ? (
+        {v.kind === 'ON_TIME' ? (
           <Tag icon={<CheckCircleFilled />} color="success">Вовремя</Tag>
         ) : (
-          <Tag icon={<ClockCircleFilled />} color="error">Опоздание {formatMinutes(status.lateBy ?? 0)}</Tag>
+          <Tag icon={<ClockCircleFilled />} color="error">
+            Опоздание{v.lateMinutes ? ` ${formatMinutes(v.lateMinutes)}` : ''}
+          </Tag>
         )}
-        {earlyBy !== null && (
-          <Tag icon={<ClockCircleFilled />} color="warning">Ушёл раньше на {formatMinutes(earlyBy)}</Tag>
+        {v.earlyLeaveMinutes !== null && (
+          <Tag icon={<ClockCircleFilled />} color="warning">
+            Ушёл раньше{v.earlyLeaveMinutes ? ` на ${formatMinutes(v.earlyLeaveMinutes)}` : ''}
+          </Tag>
         )}
       </Space>
     );
   };
+
+  /** Плашки HR и комментарий к дню. */
+  const MarksCell = ({ record }: { record: AttendanceRecord }) => {
+    if (!record.marks?.length && !record.note) return <Typography.Text type="secondary">—</Typography.Text>;
+    return (
+      <Tooltip title={record.markedBy ? `Отметил(а): ${getFirstName(record.markedBy.fullName)}` : undefined}>
+        <Space size={4} wrap>
+          {(record.marks ?? []).map((m) => {
+            const meta = ATTENDANCE_MARK_META[m as AttendanceMark];
+            return <Tag key={m} color={meta?.color}>{meta?.label ?? m}</Tag>;
+          })}
+          {record.note && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{record.note}</Typography.Text>
+          )}
+        </Space>
+      </Tooltip>
+    );
+  };
+
+  const openMark = (r: AttendanceRecord) =>
+    setMarkTarget({
+      userId: r.userId,
+      userName: getFirstName(r.user?.fullName) || r.user?.fullName,
+      date: dayjs(r.date),
+      marks: r.marks ?? [],
+      note: r.note ?? null,
+    });
 
   const columns = [
     {
@@ -349,13 +408,25 @@ export default function AttendancePage() {
       render: (_: unknown, r: AttendanceRecord) => <StatusTag record={r} />,
     },
     {
+      title: 'Плашки и комментарий',
+      key: 'marks',
+      render: (_: unknown, r: AttendanceRecord) => <MarksCell record={r} />,
+    },
+    {
       title: '',
       key: 'actions',
-      width: 50,
-      render: (_: unknown, record: AttendanceRecord) => (
-        <Popconfirm title="Удалить запись?" onConfirm={() => deleteMutation.mutate(record.id)} okText="Да" cancelText="Нет">
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
+      width: 90,
+      render: (_: unknown, record: Row) => (
+        <Space size={0}>
+          <Tooltip title="Отметить: не пришёл, опоздал, больничный…">
+            <Button type="text" icon={<TagsOutlined />} size="small" onClick={() => openMark(record)} />
+          </Tooltip>
+          {!record.virtual && (
+            <Popconfirm title="Удалить запись?" onConfirm={() => deleteMutation.mutate(record.id)} okText="Да" cancelText="Нет">
+              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
+        </Space>
       ),
     },
   ];
@@ -366,19 +437,36 @@ export default function AttendancePage() {
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>Посещаемость</Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            Данные подтягиваются автоматически из TimePay · рабочий день 09:00–18:00, допуск на опоздание 15 мин
+            Данные подтягиваются автоматически из TimePay · рабочий день 09:00–18:00, допуск на опоздание 15 мин ·
+            плашки HR («не пришёл», «больничный»…) учитываются в KPI и карточке сотрудника
           </Typography.Text>
         </div>
-        <Button icon={<SyncOutlined />} loading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
-          {isMobile ? '' : 'Обновить из TimePay'}
-        </Button>
+        <Space>
+          <Button icon={<TagsOutlined />} onClick={() => setMarkTarget({ date: dateRange[1] })}>
+            {isMobile ? '' : 'Отметить'}
+          </Button>
+          <Button icon={<SyncOutlined />} loading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+            {isMobile ? '' : 'Обновить из TimePay'}
+          </Button>
+        </Space>
       </div>
 
       {summary && (
         <Row gutter={12} style={{ marginBottom: 16 }}>
           <Col xs={12} sm={6}>
             <Card size="small" bordered={false} style={{ background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.02))' }}>
-              <Statistic title="Пришли" value={summary.present} suffix={`/ ${summary.total}`} />
+              <Statistic
+                title="Пришли"
+                value={summary.present}
+                suffix={(
+                  <span>
+                    / {summary.total}
+                    {summary.excused > 0 && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}> · отпуск/больничный: {summary.excused}</Typography.Text>
+                    )}
+                  </span>
+                )}
+              />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
@@ -473,10 +561,10 @@ export default function AttendancePage() {
 
         {isMobile ? (
           <MobileCardList
-            data={data}
+            data={rows}
             rowKey="id"
             loading={isLoading}
-            renderCard={(item: AttendanceRecord) => (
+            renderCard={(item: Row) => (
               <Card size="small" bordered>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <Space size={10}>
@@ -488,9 +576,14 @@ export default function AttendancePage() {
                       <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{dayjs(item.date).format('DD.MM.YYYY')}</Typography.Text></div>
                     </div>
                   </Space>
-                  <Popconfirm title="Удалить запись?" onConfirm={() => deleteMutation.mutate(item.id)} okText="Да" cancelText="Нет">
-                    <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-                  </Popconfirm>
+                  <Space size={0}>
+                    <Button type="text" icon={<TagsOutlined />} size="small" onClick={() => openMark(item)} />
+                    {!item.virtual && (
+                      <Popconfirm title="Удалить запись?" onConfirm={() => deleteMutation.mutate(item.id)} okText="Да" cancelText="Нет">
+                        <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                      </Popconfirm>
+                    )}
+                  </Space>
                 </div>
                 <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography.Text>Приход {formatTime(item.checkIn)} · Уход {formatTime(item.checkOut)}</Typography.Text>
@@ -498,12 +591,17 @@ export default function AttendancePage() {
                 <div style={{ marginTop: 6 }}>
                   <StatusTag record={item} />
                 </div>
+                {(item.marks?.length || item.note) ? (
+                  <div style={{ marginTop: 6 }}>
+                    <MarksCell record={item} />
+                  </div>
+                ) : null}
               </Card>
             )}
           />
         ) : (
           <Table
-            dataSource={data}
+            dataSource={rows}
             columns={columns}
             rowKey="id"
             loading={isLoading}
@@ -513,6 +611,8 @@ export default function AttendancePage() {
           />
         )}
       </Card>
+
+      <AttendanceMarkModal target={markTarget} userOptions={userOptions} onClose={() => setMarkTarget(null)} />
     </div>
   );
 }

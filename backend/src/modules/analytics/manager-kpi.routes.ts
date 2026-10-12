@@ -16,6 +16,8 @@ import {
   DEFAULT_BONUS_SCHEME,
   type BonusScheme,
 } from '../../lib/bonus';
+import { summarizeAttendance, workdaysInMonth } from '../../lib/attendanceMarks';
+import { hrReviewScore } from '../employee-cards/employee-cards.service';
 
 const router = Router();
 router.use(authenticate);
@@ -37,15 +39,6 @@ async function loadBonusScheme(): Promise<BonusScheme> {
 }
 
 const TASHKENT_OFFSET = 5 * 60 * 60 * 1000;
-
-/**
- * Рабочий день компании — те же числа, что показывает страница «Посещаемость»:
- * начало 09:00, допуск 15 минут. Допуск не дробится: пришёл в 9:16 — опоздание
- * считается все 16 минут от 09:00, а не одна минута сверх допуска.
- */
-const WORK_START_MIN = 9 * 60;
-const GRACE_MIN = 15;
-const LATE_THRESHOLD_MIN = WORK_START_MIN + GRACE_MIN;
 
 /**
  * Перерыв, после которого покупка считается возвратом клиента.
@@ -84,23 +77,6 @@ function parsePeriod(req: Request): { year: number; month: number } {
   if (!Number.isInteger(year) || year < 2020 || year > 2099) throw new AppError(400, 'Некорректный год');
   if (!Number.isInteger(month) || month < 1 || month > 12) throw new AppError(400, 'Некорректный месяц');
   return { year, month };
-}
-
-/** Минуты от начала дня по Ташкенту. */
-function minutesOfDayTashkent(d: Date): number {
-  const t = new Date(d.getTime() + TASHKENT_OFFSET);
-  return t.getUTCHours() * 60 + t.getUTCMinutes();
-}
-
-/** Рабочих дней в месяце: понедельник–пятница, выходные не в счёт. */
-function workdaysInMonth(year: number, month: number): number {
-  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  let n = 0;
-  for (let d = 1; d <= days; d++) {
-    const dow = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
-    if (dow !== 0 && dow !== 6) n += 1;
-  }
-  return n;
 }
 
 /**
@@ -172,7 +148,7 @@ router.get(
 
     const deadCutoff = new Date(start.getTime() - DEAD_NO_SALES_DAYS * 86400000);
 
-    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance] =
+    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance, hrReviews] =
       await Promise.all([
         // ──── 1. План на месяц (модель уже есть — та же, что в «Пользователях») ────
         prisma.userMonthlyGoal.findMany({
@@ -369,7 +345,14 @@ router.get(
               lt: new Date(Date.UTC(year, month, 1)),
             },
           },
-          select: { userId: true, checkIn: true },
+          // Плашки HR: больничный и отпуск не прогул, «опоздал» без TimePay — опоздание.
+          select: { userId: true, checkIn: true, checkOut: true, marks: true },
+        }),
+
+        // ──── 7. Оценка HR из карточки сотрудника ────
+        prisma.employeeMonthlyReview.findMany({
+          where: { userId: { in: ids }, year, month },
+          select: { userId: true, discipline: true, quality: true, initiative: true, teamwork: true },
         }),
       ]);
 
@@ -385,6 +368,7 @@ router.get(
     const clientsByManager = groupBy(clientsRaw, (r) => r.manager_id);
     const attByManager = groupBy(attendance, (r) => r.userId);
     const leadsMap = new Map(leadsRaw.map((r) => [r.manager_id, r]));
+    const hrMap = new Map(hrReviews.map((r) => [r.userId, hrReviewScore(r)]));
     const workdays = workdaysInMonth(year, month);
 
     const rows = managers.map((m) => {
@@ -424,20 +408,7 @@ router.get(
       const served = newClients + returned + regular;
 
       const att = attByManager.get(m.id) ?? [];
-      let onTime = 0;
-      let late = 0;
-      let lateMinutes = 0;
-      let absent = 0;
-      for (const a of att) {
-        if (!a.checkIn) { absent += 1; continue; }
-        const minute = minutesOfDayTashkent(a.checkIn);
-        if (minute <= LATE_THRESHOLD_MIN) onTime += 1;
-        else {
-          late += 1;
-          // Допуск сгорает целиком: считаем от 09:00, а не от 09:15.
-          lateMinutes += minute - WORK_START_MIN;
-        }
-      }
+      const attSum = summarizeAttendance(att, workdays);
 
       const bonus = calculateBonus(scheme, {
         revenueFact,
@@ -447,8 +418,9 @@ router.get(
         contactsTotal: clientNotes + boardCalls,
         clientsAcquired: newClients + returned,
         leadsConverted: leads ? Number(leads.converted) : 0,
-        attendanceOnTime: onTime,
-        workdays,
+        attendanceOnTime: attSum.onTime,
+        workdays: attSum.workdays,
+        hrScore: hrMap.get(m.id) ?? null,
       });
 
       const ownSalary = goal?.fixedSalary != null ? Number(goal.fixedSalary) : null;
@@ -542,13 +514,13 @@ router.get(
           windowDays: LEAD_WINDOW_DAYS,
         },
         attendance: {
-          /** Рабочих дней в месяце (пн–пт), выходные исключены. */
-          workdays,
+          /** Рабочих дней в месяце (пн–пт) минус больничные, отпуска и отгулы. */
+          workdays: attSum.workdays,
           days: att.length,
-          onTime,
-          late,
-          lateMinutes,
-          absent,
+          onTime: attSum.onTime,
+          late: attSum.late,
+          lateMinutes: attSum.lateMinutes,
+          absent: attSum.absent,
         },
       };
     });

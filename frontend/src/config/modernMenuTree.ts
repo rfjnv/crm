@@ -97,6 +97,8 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
   const warehouseStaff = hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER');
   const productsAccess = hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER') || hasPermission('manage_products');
   const managerAnalytics = hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR');
+  /** Кадры и контроль работы сотрудников — админы и HR. */
+  const people = hasRole('SUPER_ADMIN', 'ADMIN', 'HR');
 
   return [
     {
@@ -257,7 +259,8 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
             { key: '/manager/dead-products', to: '/manager/dead-products', text: 'Мёртвые товары', show: managerAnalytics },
             { key: '/manager/payment-overdue', to: '/manager/payment-overdue', text: 'Просрочка', show: managerAnalytics },
             { key: '/analytics/calls', to: '/analytics/calls', text: 'Обзвоны', show: managerAnalytics },
-            { key: '/analytics/contact-matrix', to: '/analytics/contact-matrix', text: 'Матрица контактов', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
+            { key: '/analytics/contact-matrix', to: '/analytics/contact-matrix', text: 'Матрица контактов', show: people },
+            { key: '/kpi', to: '/kpi', text: 'KPI менеджеров', show: people },
           ],
         },
         {
@@ -276,7 +279,7 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           text: 'Контроль',
           icon: ShieldCheck,
           children: [
-            { key: '/analytics/note-audit', to: '/analytics/note-audit', text: 'AI-аудит заметок', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
+            { key: '/analytics/note-audit', to: '/analytics/note-audit', text: 'AI-аудит заметок', show: people },
             { key: '/analytics/lamination-kg-usage', to: '/analytics/lamination-kg-usage', text: 'Ввод кг (ламинация)', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
           ],
         },
@@ -319,9 +322,9 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           icon: Users,
           children: [
             { key: '/team', to: '/team', text: 'Команда', show: true },
-            { key: '/users', to: '/users', text: 'Сотрудники CRM', show: isAdmin },
-            { key: '/worker-audit', to: '/worker-audit', text: 'Аудит сотрудников', show: isAdmin },
-            { key: '/attendance', to: '/attendance', text: 'Посещаемость', show: isAdmin },
+            { key: '/users', to: '/users', text: 'Сотрудники CRM', show: people },
+            { key: '/employee-cards', to: '/employee-cards', text: 'Карточки сотрудников', show: people },
+            { key: '/attendance', to: '/attendance', text: 'Посещаемость', show: people },
           ],
         },
         {

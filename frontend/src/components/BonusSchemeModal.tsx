@@ -9,13 +9,14 @@ import type { BonusCriterionKey, BonusScheme } from '../types';
 
 const { Text } = Typography;
 
-// Пять критериев без плана продаж: план уже определил ставку и базу бонуса.
+// Критерии без плана продаж: план уже определил ставку и базу бонуса.
 const CRITERIA: { key: BonusCriterionKey; label: string; hint: string }[] = [
   { key: 'assortment', label: 'Ассортимент', hint: 'сколько разных позиций продал' },
   { key: 'contacts', label: 'Звонки и контакты', hint: 'заметки клиента + доска звонков' },
   { key: 'clients', label: 'Привлечение клиентов', hint: 'новые + вернувшиеся' },
   { key: 'leads', label: 'Лиды', hint: 'холодные контакты, которые купили' },
   { key: 'attendance', label: 'Посещаемость', hint: 'дней вовремя / рабочих дней' },
+  { key: 'hrReview', label: 'Оценка HR', hint: 'средний балл карточки сотрудника из 5' },
 ];
 
 const TARGETS: { key: keyof BonusScheme['targets']; label: string; suffix: string }[] = [

@@ -1,10 +1,11 @@
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
-import type { UpsertAttendanceDto } from './attendance.dto';
+import type { MarkAttendanceDto, UpsertAttendanceDto } from './attendance.dto';
 
 const attendanceInclude = {
   user: { select: { id: true, fullName: true, department: true, role: true } },
   enteredBy: { select: { id: true, fullName: true } },
+  markedBy: { select: { id: true, fullName: true } },
 };
 
 /** Компания работает в Ташкенте (UTC+5, без перехода на летнее время). */
@@ -81,6 +82,31 @@ export async function upsertAttendance(data: UpsertAttendanceDto, enteredById: s
       note: data.note ?? null,
       enteredById,
     },
+    include: attendanceInclude,
+  });
+}
+
+/**
+ * Плашки и комментарий HR. Запись создаётся и для дня без отметки TimePay — так
+ * отмечают «не пришёл» или «больничный». Сняли всё с пустого дня — запись удаляем.
+ */
+export async function markAttendance(data: MarkAttendanceDto, markedById: string) {
+  const date = parseDateOnly(data.date);
+  const marks = [...new Set(data.marks)];
+  const note = data.note?.trim() || null;
+  const existing = await prisma.attendanceRecord.findUnique({ where: { userId_date: { userId: data.userId, date } } });
+
+  if (marks.length === 0 && !note && existing && !existing.checkIn && !existing.checkOut) {
+    await prisma.attendanceRecord.delete({ where: { id: existing.id } });
+    return null;
+  }
+  if (marks.length === 0 && !note && !existing) return null;
+
+  const fields = { marks, note, markedById, markedAt: new Date() };
+  return prisma.attendanceRecord.upsert({
+    where: { userId_date: { userId: data.userId, date } },
+    create: { userId: data.userId, date, ...fields },
+    update: fields,
     include: attendanceInclude,
   });
 }

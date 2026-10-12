@@ -98,7 +98,7 @@ const ImportOrderDetailPage = lazy(() => import('./pages/ImportOrderDetailPage')
 const ExchangeRatesHistoryPage = lazy(() => import('./pages/ExchangeRatesHistoryPage'));
 const VedProcessBoardPage = lazy(() => import('./pages/VedProcessBoardPage'));
 const VedMapPage = lazy(() => import('./pages/VedMapPage'));
-const WorkerAuditPage = lazy(() => import('./pages/WorkerAuditPage'));
+const EmployeeCardsPage = lazy(() => import('./pages/EmployeeCardsPage'));
 const AuditCheckPage = lazy(() => import('./pages/AuditCheckPage'));
 const AuditStockPage = lazy(() => import('./pages/AuditStockPage'));
 const ActivityLogPage = lazy(() => import('./pages/ActivityLogPage'));
@@ -228,7 +228,8 @@ export default function App() {
                 {/* Кадры: HR ведёт сотрудников, посещаемость, оценки и KPI вместе с админами */}
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'HR']} />}>
                   <Route path="/users" element={<UsersPage />} />
-                  <Route path="/worker-audit" element={<WorkerAuditPage />} />
+                  <Route path="/employee-cards" element={<EmployeeCardsPage />} />
+                  <Route path="/worker-audit" element={<Navigate to="/employee-cards" replace />} />
                   <Route path="/attendance" element={<AttendancePage />} />
                   <Route path="/kpi" element={<MoneyAccessGuard><KpiPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/contact-matrix" element={<ContactMatrixPage />} />

@@ -3,8 +3,8 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { upsertAttendanceDto } from './attendance.dto';
-import { listAttendance, upsertAttendance, deleteAttendance } from './attendance.service';
+import { markAttendanceDto, upsertAttendanceDto } from './attendance.dto';
+import { listAttendance, upsertAttendance, deleteAttendance, markAttendance } from './attendance.service';
 
 const router = Router();
 
@@ -30,6 +30,16 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const record = await upsertAttendance(req.body, req.user!.userId);
     res.json(record);
+  }),
+);
+
+// PUT /api/attendance/mark — плашки («не пришёл», «больничный»…) и комментарий HR за день
+router.put(
+  '/mark',
+  validate(markAttendanceDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    const record = await markAttendance(req.body, req.user!.userId);
+    res.json({ record });
   }),
 );
 
