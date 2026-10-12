@@ -30,7 +30,6 @@ import {
   Boat,
   FlowArrow,
   GlobeHemisphereEast,
-  PhoneCall,
 } from '@phosphor-icons/react';
 import type { UserRole } from '../types';
 
@@ -232,8 +231,6 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
           { key: '/foreign-trade/process-board', to: '/foreign-trade/process-board', text: 'Трекинг и документы', icon: FlowArrow, show: ved },
           { key: '/foreign-trade/map', to: '/foreign-trade/map', text: 'Карта ВЭД', icon: GlobeHemisphereEast, show: ved },
           { key: '/foreign-trade/exchange-rates', to: '/foreign-trade/exchange-rates', text: 'Курсы ЦБ', icon: CurrencyCircleDollar, show: ved },
-          // У ВЭД нет раздела «Аналитика», поэтому отчёт по звонкам — здесь
-          { key: '/call-reports', to: '/call-reports', text: 'Отчёт по звонкам', icon: PhoneCall, show: role === 'FOREIGN_TRADE' },
         ];
       })(),
     },
