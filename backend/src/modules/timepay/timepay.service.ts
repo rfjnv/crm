@@ -6,6 +6,10 @@ import { createNameMatcher } from './timepay.matching';
 
 /** Компания работает в Ташкенте (UTC+5, без перехода на летнее время) — тот же принцип, что в attendance.service.ts. */
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Сколько последних дней пересинхронизировать после старта сервера и после смены токена. */
+export const BACKFILL_DAYS = 14;
 
 /** Не слать повторный алерт админам об истёкшем токене чаще, чем раз в это время. */
 const TOKEN_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
@@ -210,6 +214,8 @@ export async function setTimePayToken(accessToken: string, updatedById: string) 
       lastTokenAlertAt: null,
     },
   });
+  // Пока токен был просрочен, дни не синкались — догоняем их в фоне.
+  syncRecentDays(BACKFILL_DAYS).catch((err) => console.error('[timepay] backfill after token update failed:', err));
   return getTimePayStatus();
 }
 
@@ -231,6 +237,29 @@ async function alertAdminsTokenExpired() {
       severity: 'WARNING',
     })
     .catch(() => {});
+}
+
+/** Ночная смена длиннее этого не бывает — дальше уход без прихода к вчерашнему дню не относим. */
+const MAX_NIGHT_SHIFT_MS = 16 * 60 * 60 * 1000;
+
+/**
+ * Уход без прихода в записи дня D: если вчера человек пришёл и ещё не ушёл (или ушёл раньше),
+ * а этот уход укладывается в одну смену от вчерашнего прихода — это уход вчерашней смены.
+ * Пустую запись дня D, созданную из этого хвоста раньше, убираем.
+ */
+async function attachToPreviousNight(userId: string, dateOnly: Date, checkOut: Date): Promise<boolean> {
+  const prevDate = new Date(dateOnly.getTime() - DAY_MS);
+  const prev = await prisma.attendanceRecord.findUnique({ where: { userId_date: { userId, date: prevDate } } });
+  if (!prev?.checkIn) return false;
+  if (checkOut <= prev.checkIn || checkOut.getTime() - prev.checkIn.getTime() > MAX_NIGHT_SHIFT_MS) return false;
+
+  if (!prev.checkOut || prev.checkOut < checkOut) {
+    await prisma.attendanceRecord.update({ where: { id: prev.id }, data: { checkOut } });
+  }
+  await prisma.attendanceRecord.deleteMany({
+    where: { userId, date: dateOnly, checkIn: null, checkOut, marks: { isEmpty: true }, note: null },
+  });
+  return true;
 }
 
 export interface SyncResult {
@@ -295,13 +324,24 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
     }
 
     const checkIn = parseTimePayDateTime(pickField(entry, CHECK_IN_FIELD_CANDIDATES), dateYmd);
-    const checkOut = parseTimePayDateTime(pickField(entry, CHECK_OUT_FIELD_CANDIDATES), dateYmd);
+    let checkOut = parseTimePayDateTime(pickField(entry, CHECK_OUT_FIELD_CANDIDATES), dateYmd);
     if (!checkIn && !checkOut) continue;
 
+    // Ночная смена: TimePay отдаёт только время, и уход после полуночи ("02:11") — это уже следующие сутки.
+    if (checkIn && checkOut && checkOut <= checkIn) checkOut = new Date(checkOut.getTime() + DAY_MS);
+
+    // Уход без прихода — обычно хвост вчерашней ночной смены: TimePay иногда кладёт его на следующий день.
+    if (!checkIn && checkOut && (await attachToPreviousNight(userId, dateOnly, checkOut))) {
+      if (byId) matchedById += 1;
+      else matchedByName += 1;
+      continue;
+    }
+
+    // null не затирает уже известное время: уход ночной смены мог прийти из записи следующего дня.
     await prisma.attendanceRecord.upsert({
       where: { userId_date: { userId, date: dateOnly } },
       create: { userId, date: dateOnly, checkIn, checkOut },
-      update: { checkIn, checkOut },
+      update: { checkIn: checkIn ?? undefined, checkOut: checkOut ?? undefined },
     });
     if (byId) matchedById += 1;
     else matchedByName += 1;
@@ -326,6 +366,21 @@ export async function syncAttendanceFromTimePay(dateYmd: string = tashkentTodayY
   }
 
   return { status: 'SUCCESS', matched, matchedById, matchedByName, unmatched: unmatchedNames.length, unmatchedNames, sampleEntry };
+}
+
+/**
+ * Синк последних N дней по порядку, от старого к сегодняшнему: уход ночной смены появляется
+ * в TimePay уже после полуночи (в записи вчера или сегодня), поэтому один «сегодня» его теряет.
+ * Возвращает результат за сегодня; на ошибке токена дальше не идём.
+ */
+export async function syncRecentDays(days: number): Promise<SyncResult> {
+  const today = ymdToDateOnly(tashkentTodayYmd());
+  let result: SyncResult | null = null;
+  for (let i = days - 1; i >= 0; i -= 1) {
+    result = await syncAttendanceFromTimePay(new Date(today.getTime() - i * DAY_MS).toISOString().slice(0, 10));
+    if (result.status !== 'SUCCESS') break;
+  }
+  return result!;
 }
 
 export { tashkentTodayYmd };

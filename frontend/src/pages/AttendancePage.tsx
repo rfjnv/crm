@@ -47,16 +47,23 @@ function minutesOfDay(iso: string): number {
 /** Строка таблицы: запись из базы или «пустая» строка сотрудника без отметки за день. */
 type Row = AttendanceRecord & { virtual?: boolean };
 
+/** Уход после полуночи — ночная смена: по часам «до 18:00», но это следующие сутки. */
+function isOvernight(record: Pick<AttendanceRecord, 'checkIn' | 'checkOut'>): boolean {
+  return !!record.checkIn && !!record.checkOut && dayjs(record.checkOut).isAfter(dayjs(record.checkIn), 'day');
+}
+
 /** Итог дня с учётом плашек HR — те же правила, что в KPI и карточке сотрудника. */
 function dayVerdict(record: AttendanceRecord) {
   return judgeDay(
     record.checkIn ? minutesOfDay(record.checkIn) : null,
-    record.checkOut ? minutesOfDay(record.checkOut) : null,
+    record.checkOut && !isOvernight(record) ? minutesOfDay(record.checkOut) : null,
     record.marks,
   );
 }
 
 const formatTime = (v?: string | null) => (v ? dayjs(v).format('HH:mm') : '—');
+const formatCheckOut = (r: Pick<AttendanceRecord, 'checkIn' | 'checkOut'>) =>
+  formatTime(r.checkOut) + (isOvernight(r) ? ' (+1)' : '');
 
 function formatMinutes(total: number): string {
   if (total <= 0) return '0 мин';
@@ -399,7 +406,7 @@ export default function AttendancePage() {
       dataIndex: 'checkOut',
       width: 90,
       align: 'center' as const,
-      render: (v: string | null) => formatTime(v),
+      render: (_: string | null, r: AttendanceRecord) => formatCheckOut(r),
     },
     {
       title: 'Статус',
@@ -586,7 +593,7 @@ export default function AttendancePage() {
                   </Space>
                 </div>
                 <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography.Text>Приход {formatTime(item.checkIn)} · Уход {formatTime(item.checkOut)}</Typography.Text>
+                  <Typography.Text>Приход {formatTime(item.checkIn)} · Уход {formatCheckOut(item)}</Typography.Text>
                 </div>
                 <div style={{ marginTop: 6 }}>
                   <StatusTag record={item} />

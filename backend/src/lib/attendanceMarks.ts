@@ -40,6 +40,11 @@ export function minutesOfDayTashkent(d: Date): number {
   return t.getUTCHours() * 60 + t.getUTCMinutes();
 }
 
+/** Номер календарного дня по Ташкенту — чтобы сравнивать даты двух моментов. */
+function tashkentDay(d: Date): number {
+  return Math.floor((d.getTime() + TASHKENT_OFFSET) / (24 * 60 * 60 * 1000));
+}
+
 export type DayKind = 'EXCLUDED' | 'ON_TIME' | 'LATE' | 'ABSENT';
 
 export interface DayVerdict {
@@ -51,9 +56,11 @@ export interface DayVerdict {
 /** Итог одного дня с учётом плашек. Плашка HR важнее отметки TimePay. */
 export function judgeDay(rec: { checkIn: Date | null; checkOut?: Date | null; marks?: string[] | null }): DayVerdict {
   const marks = (rec.marks ?? []) as AttendanceMark[];
+  // Ушёл после полуночи (ночная смена) — по часам это «до 18:00», но раньше времени он не уходил.
+  const overnight = !!rec.checkIn && !!rec.checkOut && tashkentDay(rec.checkOut) > tashkentDay(rec.checkIn);
   const earlyLeave =
     marks.includes('EARLY_LEAVE') ||
-    (!!rec.checkOut && !marks.some((m) => WORKED.includes(m)) && minutesOfDayTashkent(rec.checkOut) < WORK_END_MIN);
+    (!!rec.checkOut && !overnight && !marks.some((m) => WORKED.includes(m)) && minutesOfDayTashkent(rec.checkOut) < WORK_END_MIN);
 
   if (marks.some((m) => EXCLUDED.includes(m))) return { kind: 'EXCLUDED', lateMinutes: 0, earlyLeave: false };
   if (marks.some((m) => WORKED.includes(m))) return { kind: 'ON_TIME', lateMinutes: 0, earlyLeave };

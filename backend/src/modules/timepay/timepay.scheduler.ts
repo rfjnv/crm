@@ -1,12 +1,15 @@
 import { config } from '../../lib/config';
-import { syncAttendanceFromTimePay } from './timepay.service';
+import { BACKFILL_DAYS, syncRecentDays } from './timepay.service';
 
-/** Раз в 10 минут подтягиваем посещаемость дня из TimePay. Тихо пропускаем, если токен не настроен. */
-async function tick(): Promise<void> {
+/**
+ * Раз в 10 минут подтягиваем посещаемость за вчера и сегодня из TimePay (вчера — ради ухода ночной
+ * смены после полуночи). Тихо пропускаем, если токен не настроен.
+ */
+async function tick(days: number): Promise<void> {
   try {
-    const result = await syncAttendanceFromTimePay();
+    const result = await syncRecentDays(days);
     if (result.status === 'SUCCESS') {
-      console.log(`[timepay] sync ok: matched=${result.matched} unmatched=${result.unmatched}`);
+      console.log(`[timepay] sync ok (${days}d): matched=${result.matched} unmatched=${result.unmatched}`);
     } else if (result.status === 'ERROR' || result.status === 'AUTH_ERROR') {
       console.error(`[timepay] sync failed (${result.status}): ${result.error}`);
     }
@@ -16,10 +19,11 @@ async function tick(): Promise<void> {
 }
 
 setInterval(() => {
-  tick().catch(() => {});
+  tick(2).catch(() => {});
 }, config.timepay.syncIntervalMs);
 
-// Первичный синк вскоре после старта сервера (не сразу, чтобы не мешать остальной инициализации).
+// Первичный синк вскоре после старта сервера (не сразу, чтобы не мешать остальной инициализации) —
+// сразу за последние дни, чтобы догнать пропущенное, пока сервер не работал.
 setTimeout(() => {
-  tick().catch(() => {});
+  tick(BACKFILL_DAYS).catch(() => {});
 }, 15000);
