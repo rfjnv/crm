@@ -969,3 +969,107 @@ html[data-design='modern'] .sider-menu-scroll .ant-menu-sub .ant-menu-item-selec
   border-radius: 999px;
   background: var(--glass-text, currentColor);
 }
+
+/* ── Блоки дашборда в новом дизайне ── */
+
+/* Цели: мягкие градиенты вместо ярких зелёного и синего antd */
+html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-track {
+  background: linear-gradient(90deg, #34d399, #10b981) !important;
+  border-radius: 999px;
+}
+
+html[data-design='modern'] .dashboard-page .dashboard-goal-card--today .ant-progress-track {
+  background: linear-gradient(90deg, #60a5fa, #6366f1) !important;
+}
+
+html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-rail {
+  background: var(--panel-bg) !important;
+}
+
+html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-indicator {
+  color: var(--ant-color-text) !important;
+  font-weight: 600;
+}
+
+/* ВЭД: плашки «Сегодня / 7 дней / Блокирующие» — стекло, цвет только у числа и точки */
+html[data-design='modern'] .dashboard-page .ved-stat {
+  position: relative;
+  background: var(--panel-bg) !important;
+  border-color: var(--panel-border) !important;
+}
+
+html[data-design='modern'] .dashboard-page .ved-stat::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ved-accent);
+  box-shadow: 0 0 10px var(--ved-accent);
+}
+
+html[data-design='modern'] .dashboard-page .ved-stat__value {
+  color: var(--ved-accent) !important;
+}
+
+/* Пустое состояние без огромной картинки */
+html[data-design='modern'] .dashboard-page .ant-empty-normal {
+  margin-block: 8px;
+}
+
+html[data-design='modern'] .dashboard-page .ant-empty-normal .ant-empty-image {
+  height: 28px;
+  opacity: 0.5;
+}
+
+/* Топы: название в одну строку, номер — кружок */
+html[data-design='modern'] .dashboard-page .dash-top-label {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-design='modern'] .dashboard-page .dash-top-row {
+  border-bottom-color: var(--panel-border) !important;
+}
+
+html[data-design='modern'] .dashboard-page .dash-top-rank {
+  border-radius: 999px !important;
+  background: var(--panel-bg) !important;
+  color: var(--ant-color-text-secondary) !important;
+}
+
+html[data-design='modern'] .dashboard-page .dash-top-row:first-child .dash-top-rank {
+  background: var(--chip-active-bg) !important;
+  color: var(--chip-active-text) !important;
+}
+
+/* Статусы сделок: тонкие скруглённые полосы */
+html[data-design='modern'] .dashboard-page .ant-progress-small .ant-progress-rail {
+  background: var(--panel-bg) !important;
+}
+
+/* Точка не налезает на подпись */
+html[data-design='modern'] .dashboard-page .ved-stat {
+  padding-right: 24px !important;
+}
+
+@media (max-width: 767px) {
+  /* Заголовок карточки и ссылка справа переносятся, а не обрезают друг друга */
+  html[data-design='modern'] .dashboard-page .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  html[data-design='modern'] .dashboard-page .ant-card-head-title {
+    white-space: normal;
+  }
+
+  html[data-design='modern'] .dashboard-page .ved-stat .ant-typography-secondary {
+    font-size: 11px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { CSSProperties } from 'react';
 import { Button, Card, Empty, List, Space, Tag, Typography, theme } from 'antd';
 import { CalendarOutlined, RightOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -220,7 +221,9 @@ export default function VedEventsQuickAccessCard() {
         ].map((item) => (
           <div
             key={item.label}
+            className="ved-stat"
             style={{
+              ...({ '--ved-accent': item.color } as CSSProperties),
               borderRadius: 12,
               padding: '10px 12px',
               background: `${item.color}12`,
@@ -230,7 +233,7 @@ export default function VedEventsQuickAccessCard() {
             <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
               {item.label}
             </Typography.Text>
-            <Typography.Text strong style={{ fontSize: 18 }}>
+            <Typography.Text strong className="ved-stat__value" style={{ fontSize: 18 }}>
               {item.value}
             </Typography.Text>
           </div>

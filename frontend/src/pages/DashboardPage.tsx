@@ -44,6 +44,18 @@ const PRODUCT_DAY_BAR_COLORS = [
   '#94a3b8',
 ] as const;
 
+/** Новый дизайн: та же последовательность, но спокойнее — на стекле насыщенные цвета режут глаз. */
+const PRODUCT_DAY_BAR_COLORS_MODERN = [
+  '#4ade80',
+  '#5eead4',
+  '#a5b4fc',
+  '#fcd34d',
+  '#d8b4fe',
+  '#7dd3fc',
+  '#fdba74',
+  '#cbd5e1',
+] as const;
+
 const PRODUCT_DAY_PAGE_SIZE = 5;
 
 /** G2 adds extra tooltip rows for color (hex) and raw y; keep only our formatted row. */
@@ -147,6 +159,10 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const design = useThemeStore((s) => s.design);
+  const modern = design === 'modern';
+  // Акцент графика выручки в новом дизайне — в тон стеклу, а не зелёный antd
+  const chartAccent = isDark ? '#7dd3fc' : '#2563eb';
+  const productDayColors = modern ? PRODUCT_DAY_BAR_COLORS_MODERN : PRODUCT_DAY_BAR_COLORS;
   const chartTheme = isDark ? 'classicDark' : 'classic';
   const isMobile = useIsMobile();
 
@@ -244,7 +260,7 @@ export default function DashboardPage() {
     const topRows = productDayItems.slice(0, 8);
     return topRows.map((item, index) => {
       const revenue = Number(item.revenue || 0);
-      const fill = PRODUCT_DAY_BAR_COLORS[index % PRODUCT_DAY_BAR_COLORS.length];
+      const fill = productDayColors[index % productDayColors.length];
       return {
         id: item.product.id,
         name: item.product.name || 'Товар',
@@ -252,7 +268,7 @@ export default function DashboardPage() {
         fill,
       };
     });
-  }, [productDayItems]);
+  }, [productDayItems, productDayColors]);
 
   const productDayChartYMax = useMemo(() => {
     const top8 = productDayItems.slice(0, 8).map((i) => Number(i.revenue || 0));
@@ -715,7 +731,7 @@ export default function DashboardPage() {
       {(isAdmin || role === 'MANAGER') && canSeeMoney && (
         <div className={isMobile ? 'section' : undefined}>
         <Card
-          className="dashboard-goal-card"
+          className="dashboard-goal-card dashboard-goal-card--today"
           bordered={false}
           hoverable
           style={{ ...card, marginTop: isMobile ? 0 : 16, cursor: 'pointer' }}
@@ -797,14 +813,19 @@ export default function DashboardPage() {
                   yField="total"
                   shapeField="smooth"
                   height={isMobile ? 220 : 240}
-                  padding={[16, 8, 12, 8]}
+                  padding={modern ? [16, 12, 12, 56] : [16, 8, 12, 8]}
                   theme={chartTheme}
-                  style={{ fill: isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)' }}
-                  line={{ style: { stroke: '#52c41a', strokeWidth: 2 } }}
+                  style={{
+                    fill: modern
+                      ? `l(90) 0:${chartAccent}55 1:${chartAccent}00`
+                      : (isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)'),
+                  }}
+                  line={{ style: { stroke: modern ? chartAccent : '#52c41a', strokeWidth: modern ? 2.5 : 2 } }}
                   axis={{
                     y: {
+                      // В новом дизайне подписи всегда короткие («40 млн»): длинные обрезались слева
                       labelFormatter: (v: number) =>
-                        chartRange.useShortYAxis ? formatShortNumber(v) : formatFullNumber(v),
+                        modern || chartRange.useShortYAxis ? formatShortNumber(v) : formatFullNumber(v),
                       labelFill: tk.colorTextSecondary,
                       grid: true,
                       gridLineWidth: 1,
@@ -817,7 +838,7 @@ export default function DashboardPage() {
                       labelFill: tk.colorTextSecondary,
                       labelAutoRotate: false,
                       labelAutoHide: true,
-                      tickCount: Math.min(8, chartRange.maxDays),
+                      tickCount: Math.min(modern ? 6 : 8, chartRange.maxDays),
                       title: false,
                     },
                   }}
@@ -846,7 +867,7 @@ export default function DashboardPage() {
                 styles={{ body: { padding: '16px 20px' } }}
                 title={<Typography.Text strong style={{ fontSize: 14 }}>Сделки по статусам</Typography.Text>}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 270, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, ...(modern ? null : { maxHeight: 270, overflowY: 'auto' as const }) }}>
                   {(data.dealsByStatusCounts || [])
                     .filter((d) => d.count > 0)
                     .sort((a, b) => b.count - a.count)
@@ -936,7 +957,7 @@ export default function DashboardPage() {
                           const rank = (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE + idx + 1;
                           const isActive = activeProductId === item.product.id;
                           const badgeColor =
-                            PRODUCT_DAY_BAR_COLORS[(rank - 1) % PRODUCT_DAY_BAR_COLORS.length];
+                            productDayColors[(rank - 1) % productDayColors.length];
                           return (
                             <div
                               key={item.product.id}
@@ -1045,7 +1066,7 @@ export default function DashboardPage() {
                           title: { field: 'name' },
                           items: [
                             (datum: { revenue?: number | string; fill?: string }) => ({
-                              color: datum.fill || PRODUCT_DAY_BAR_COLORS[0],
+                              color: datum.fill || productDayColors[0],
                               name: '',
                               value: formatUZS(Number(datum.revenue ?? 0)),
                             }),
@@ -1132,6 +1153,7 @@ export default function DashboardPage() {
                     {block.items.map((row, i) => (
                       <div
                         key={i}
+                        className="dash-top-row"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1142,7 +1164,7 @@ export default function DashboardPage() {
                         }}
                         onClick={() => navigate(row.href)}
                       >
-                        <span style={{
+                        <span className="dash-top-rank" style={{
                           width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 11, fontWeight: 600, flexShrink: 0,
                           background: i === 0 ? (isDark ? '#177ddc22' : '#e6f4ff') : tk.colorFillQuaternary,
@@ -1150,7 +1172,7 @@ export default function DashboardPage() {
                         }}>
                           {i + 1}
                         </span>
-                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', fontSize: 13 }}>
+                        <div className="dash-top-label" style={{ flex: 1, minWidth: 0, overflow: 'hidden', fontSize: 13 }}>
                           {row.label}
                         </div>
                         <Typography.Text strong style={{ fontSize: 13, flexShrink: 0 }}>{row.value}</Typography.Text>
