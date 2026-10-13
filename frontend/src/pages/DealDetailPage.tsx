@@ -94,6 +94,7 @@ export default function DealDetailPage() {
   const [transferType, setTransferType] = useState<'ONE_TIME' | 'ANNUAL'>('ONE_TIME');
   const [createContractModal, setCreateContractModal] = useState(false);
   const [attachContractModal, setAttachContractModal] = useState(false);
+  const [editContractModal, setEditContractModal] = useState(false);
   const [sendToGroupModal, setSendToGroupModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<'warehouse' | 'production' | 'finance'>('warehouse');
   const [overrideModal, setOverrideModal] = useState(false);
@@ -111,6 +112,7 @@ export default function DealDetailPage() {
   const [quantitiesForm] = Form.useForm();
   const [shipmentForm] = Form.useForm();
   const [contractForm] = Form.useForm();
+  const [editContractForm] = Form.useForm();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const role = user?.role as UserRole | undefined;
@@ -207,7 +209,13 @@ export default function DealDetailPage() {
   const { data: clientContracts } = useQuery({
     queryKey: ['client-contracts', dealData?.clientId],
     queryFn: () => contractsApi.list(dealData!.clientId),
-    enabled: !!dealData?.clientId && needsContract && canManageContract,
+    enabled: !!dealData?.clientId && (needsContract || !!dealData?.contractId) && canManageContract,
+  });
+
+  const { data: attachedContract } = useQuery({
+    queryKey: ['contract', dealData?.contractId],
+    queryFn: () => contractsApi.getById(dealData!.contractId!),
+    enabled: !!dealData?.contractId && canManageContract,
   });
 
   const { data: clientTransferInns } = useQuery({
@@ -522,6 +530,36 @@ export default function DealDetailPage() {
       message.error(msg);
     },
   });
+
+  // Contract: edit attached contract fields
+  const updateContractMut = useMutation({
+    mutationFn: (data: Parameters<typeof contractsApi.update>[1]) => contractsApi.update(dealData!.contractId!, data),
+    onSuccess: (contract) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['contract', contract.id] });
+      queryClient.invalidateQueries({ queryKey: ['client-contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      setEditContractModal(false);
+      message.success('Договор обновлён');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка сохранения договора';
+      message.error(msg);
+    },
+  });
+
+  const openEditContract = () => {
+    if (!attachedContract) return;
+    editContractForm.setFieldsValue({
+      contractNumber: attachedContract.contractNumber,
+      contractType: attachedContract.contractType,
+      amount: Number(attachedContract.amount) || 0,
+      startDate: dayjs(attachedContract.startDate),
+      endDate: attachedContract.endDate ? dayjs(attachedContract.endDate) : null,
+      notes: attachedContract.notes ?? '',
+    });
+    setEditContractModal(true);
+  };
 
   // Contract: detach
   const detachContractMut = useMutation({
@@ -1059,21 +1097,43 @@ export default function DealDetailPage() {
         />
       )}
 
-      {needsContract && deal.contractId && deal.contract && canManageContract && (
+      {deal.contractId && deal.contract && canManageContract && (
         <Card
           size="small"
           style={{ marginBottom: 16 }}
           title={<><FileTextOutlined /> Договор: {deal.contract.contractNumber}</>}
-          extra={!isReadOnly && (
-            <Popconfirm title="Открепить договор от сделки?" onConfirm={() => detachContractMut.mutate()}>
-              <Button size="small" danger type="text">Открепить</Button>
-            </Popconfirm>
-          )}
+          extra={
+            <Space size={4} wrap>
+              <Button size="small" type="text" icon={<EditOutlined />} disabled={!attachedContract} onClick={openEditContract}>
+                Изменить
+              </Button>
+              {!isReadOnly && (
+                <>
+                  <Button size="small" type="text" icon={<LinkOutlined />} onClick={() => setAttachContractModal(true)}>
+                    Заменить
+                  </Button>
+                  <Popconfirm title="Открепить договор от сделки?" onConfirm={() => detachContractMut.mutate()}>
+                    <Button size="small" danger type="text">Открепить</Button>
+                  </Popconfirm>
+                </>
+              )}
+            </Space>
+          }
         >
           <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
             <Descriptions.Item label="Номер">{deal.contract.contractNumber}</Descriptions.Item>
             <Descriptions.Item label="Клиент"><ClientCompanyDisplay client={deal.client} link /></Descriptions.Item>
             <Descriptions.Item label="Статус"><Tag color="green">Прикреплён</Tag></Descriptions.Item>
+            {attachedContract && (
+              <>
+                <Descriptions.Item label="Тип">{attachedContract.contractType === 'ANNUAL' ? 'Годовой' : 'Разовый'}</Descriptions.Item>
+                <Descriptions.Item label="Сумма">{formatUZS(attachedContract.amount)}</Descriptions.Item>
+                <Descriptions.Item label="Срок">
+                  {dayjs(attachedContract.startDate).format('DD.MM.YYYY')}
+                  {attachedContract.endDate ? ` — ${dayjs(attachedContract.endDate).format('DD.MM.YYYY')}` : ''}
+                </Descriptions.Item>
+              </>
+            )}
           </Descriptions>
         </Card>
       )}
@@ -2653,9 +2713,63 @@ export default function DealDetailPage() {
         </Form>
       </Modal>
 
+      {/* Edit Attached Contract Modal */}
+      <Modal
+        title="Изменить договор"
+        open={editContractModal}
+        onCancel={() => setEditContractModal(false)}
+        onOk={() => editContractForm.submit()}
+        confirmLoading={updateContractMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+      >
+        <Form form={editContractForm} layout="vertical" onFinish={(v) => {
+          updateContractMut.mutate({
+            contractNumber: v.contractNumber.trim(),
+            contractType: v.contractType,
+            amount: v.amount || 0,
+            startDate: v.startDate.format('YYYY-MM-DD'),
+            endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : null,
+            notes: v.notes?.trim() || null,
+          });
+        }}>
+          {(attachedContract?.deals?.length ?? 0) > 1 && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={`Договор прикреплён к ${attachedContract!.deals!.length} сделкам — изменения затронут их все.`}
+            />
+          )}
+          <Form.Item name="contractType" label="Тип договора">
+            <Radio.Group>
+              <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+              <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item name="contractNumber" label="Номер договора" rules={[{ required: true, whitespace: true, message: 'Укажите номер' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="amount" label="Сумма договора">
+            <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <Form.Item name="startDate" label="Дата начала" rules={[{ required: true, message: 'Обязательно' }]}>
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+            <Form.Item name="endDate" label="Дата окончания">
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+            </Form.Item>
+          </div>
+          <Form.Item name="notes" label="Примечание">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* Attach Existing Contract Modal */}
       <Modal
-        title="Прикрепить существующий договор"
+        title={deal.contractId ? 'Заменить договор' : 'Прикрепить существующий договор'}
         open={attachContractModal}
         onCancel={() => setAttachContractModal(false)}
         footer={null}
@@ -2670,15 +2784,19 @@ export default function DealDetailPage() {
             renderItem={(contract: ContractListItem) => (
               <List.Item
                 actions={[
-                  <Button
-                    key="attach"
-                    type="primary"
-                    size="small"
-                    loading={attachContractMut.isPending}
-                    onClick={() => attachContractMut.mutate(contract.id)}
-                  >
-                    Прикрепить
-                  </Button>,
+                  contract.id === deal.contractId ? (
+                    <Tag key="current" color="green">Текущий</Tag>
+                  ) : (
+                    <Button
+                      key="attach"
+                      type="primary"
+                      size="small"
+                      loading={attachContractMut.isPending}
+                      onClick={() => attachContractMut.mutate(contract.id)}
+                    >
+                      {deal.contractId ? 'Выбрать' : 'Прикрепить'}
+                    </Button>
+                  ),
                 ]}
               >
                 <List.Item.Meta
