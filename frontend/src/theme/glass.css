@@ -220,22 +220,52 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
 }
 
 @media (max-width: 767px) {
-  /* На телефоне прокручивается страница (так привычнее и прячется адресная строка),
-     но шапка с колокольчиком и аватаром прилипает к верху */
-  html[data-design='modern']:has(.app-shell) .ant-layout-header {
-    position: sticky !important;
-    top: 0;
-    z-index: 50;
-    background: var(--hdr-panel-bg) !important;
-    -webkit-backdrop-filter: blur(30px) saturate(170%);
-    backdrop-filter: blur(30px) saturate(170%);
-    border-bottom: 1px solid var(--win-border) !important;
+  /*
+   * На телефоне — как на компьютере: окно стоит между верхним краем и нижней
+   * панелью, прокручивается только содержимое внутри и мягко уходит под шапку.
+   * Шапка прозрачная — без отдельной тёмной полосы.
+   */
+  html[data-design='modern']:has(.app-shell),
+  html[data-design='modern']:has(.app-shell) body {
+    overflow: hidden;
   }
 
   html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
-    margin: 12px 12px 96px !important;
+    margin: calc(10px + env(safe-area-inset-top, 0px)) 10px calc(86px + env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(var(--app-vh, 100dvh) - 96px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    min-height: 0 !important;
+    display: flex;
+    flex-direction: column;
     border-radius: 28px;
-    overflow: clip;
+    overflow: hidden;
+  }
+
+  html[data-design='modern']:has(.app-shell) .ant-layout-header {
+    flex: none;
+    position: static !important;
+    padding-top: 0 !important;
+    min-height: 60px !important;
+  }
+
+  html[data-design='modern']:has(.app-shell) .ant-layout-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding-bottom: 16px !important;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  }
+
+  /* «Лист» мобильной вёрстки внутри стеклянного окна не нужен */
+  html[data-design='modern']:has(.app-shell) .top-hero {
+    display: none;
+  }
+
+  html[data-design='modern']:has(.app-shell) .main-container {
+    margin-top: 0;
+    padding-top: 4px;
   }
 }
 
