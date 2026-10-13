@@ -45,34 +45,89 @@ export async function onlyServiceWhere(): Promise<Prisma.CallSessionWhereInput> 
   return { phoneKey: { in: [...(await servicePhoneMap()).keys()] } };
 }
 
+const servicePhoneSelect = {
+  id: true,
+  phone: true,
+  name: true,
+  note: true,
+  createdAt: true,
+  updatedAt: true,
+  user: { select: { id: true, fullName: true } },
+  createdBy: { select: { fullName: true } },
+} satisfies Prisma.ServicePhoneSelect;
+
 export async function listServicePhones() {
-  return prisma.servicePhone.findMany({
-    orderBy: { name: 'asc' },
-    select: { id: true, phone: true, name: true, note: true, createdAt: true, createdBy: { select: { fullName: true } } },
-  });
+  return prisma.servicePhone.findMany({ orderBy: { name: 'asc' }, select: servicePhoneSelect });
 }
 
-export async function addServicePhone(userId: string, data: { phone: string; name: string; note?: string }) {
-  const phoneKey = callPhoneKey(data.phone);
+export interface ServicePhoneInput {
+  phone: string;
+  /** Подпись. Можно не писать, если выбран сотрудник CRM — тогда его ФИО */
+  name?: string;
+  note?: string;
+  /** Сотрудник CRM, чей это номер; null — не сотрудник CRM */
+  userId?: string | null;
+}
+
+/** Номер → «+998 …» и ключ для сравнения со звонками */
+function normalizePhone(raw: string): { phone: string; phoneKey: string } {
+  const phoneKey = callPhoneKey(raw);
   if (!phoneKey) throw new AppError(400, 'Номер слишком короткий — нужен полный номер телефона');
+  return { phone: formatUzPhone(raw) ?? raw.trim(), phoneKey };
+}
+
+async function employeeName(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+  if (!user) throw new AppError(404, 'Сотрудник не найден');
+  return user.fullName;
+}
+
+function rethrowDuplicate(err: unknown): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    throw new AppError(409, 'Этот номер уже в списке служебных');
+  }
+  throw err;
+}
+
+export async function addServicePhone(createdById: string, data: ServicePhoneInput) {
+  const { phone, phoneKey } = normalizePhone(data.phone);
+  const fullName = data.userId ? await employeeName(data.userId) : null;
+  const name = data.name?.trim() || fullName;
+  if (!name) throw new AppError(400, 'Выберите сотрудника или напишите, чей это номер');
   try {
     const row = await prisma.servicePhone.create({
-      data: {
-        phone: formatUzPhone(data.phone) ?? data.phone.trim(),
-        phoneKey,
-        name: data.name.trim(),
-        note: data.note?.trim() || null,
-        createdById: userId,
-      },
-      select: { id: true, phone: true, name: true, note: true },
+      data: { phone, phoneKey, name, note: data.note?.trim() || null, userId: data.userId || null, createdById },
+      select: servicePhoneSelect,
     });
     resetServicePhoneCache();
     return row;
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError(409, 'Этот номер уже в списке служебных');
-    }
-    throw err;
+    rethrowDuplicate(err);
+  }
+}
+
+/** Исправить номер, подпись, заметку или сотрудника. Звонки с новым номером станут служебными сразу. */
+export async function updateServicePhone(id: string, data: Partial<ServicePhoneInput>) {
+  const current = await prisma.servicePhone.findUnique({ where: { id }, select: { id: true } });
+  if (!current) throw new AppError(404, 'Номер не найден');
+  const update: Prisma.ServicePhoneUncheckedUpdateInput = {};
+  if (data.phone !== undefined) Object.assign(update, normalizePhone(data.phone));
+  if (data.userId !== undefined) update.userId = data.userId || null;
+  const fullName = data.userId ? await employeeName(data.userId) : null;
+  if (data.name !== undefined) {
+    const name = data.name.trim() || fullName;
+    if (!name) throw new AppError(400, 'Выберите сотрудника или напишите, чей это номер');
+    update.name = name;
+  } else if (fullName) {
+    update.name = fullName;
+  }
+  if (data.note !== undefined) update.note = data.note.trim() || null;
+  try {
+    const row = await prisma.servicePhone.update({ where: { id }, data: update, select: servicePhoneSelect });
+    resetServicePhoneCache();
+    return row;
+  } catch (err) {
+    rethrowDuplicate(err);
   }
 }
 

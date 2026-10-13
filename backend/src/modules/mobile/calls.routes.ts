@@ -26,7 +26,7 @@ import {
   phoneHistory,
   verifyAudioStreamToken,
 } from './calls.service';
-import { addServicePhone, listServicePhones, removeServicePhone } from './mobile.service-phones';
+import { addServicePhone, listServicePhones, removeServicePhone, updateServicePhone } from './mobile.service-phones';
 
 /** /api/calls — приём звонков с телефона (токен устройства) и журнал звонков в CRM (JWT). */
 const router = Router();
@@ -146,13 +146,19 @@ router.get('/service-phones', ...leader, asyncHandler(async (_req: Request, res:
   res.json(await listServicePhones());
 }));
 
+const servicePhoneDto = z.object({
+  phone: z.string().trim().min(1, 'Укажите номер').max(32),
+  name: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(500).optional(),
+  userId: z.string().trim().min(1).nullable().optional(),
+});
+
 router.post('/service-phones', ...leader, asyncHandler(async (req: Request, res: Response) => {
-  const dto = parseOr400(z.object({
-    phone: z.string().trim().min(1, 'Укажите номер').max(32),
-    name: z.string().trim().min(1, 'Укажите, чей это номер').max(120),
-    note: z.string().trim().max(500).optional(),
-  }), req.body);
-  res.status(201).json(await addServicePhone(req.user!.userId, dto));
+  res.status(201).json(await addServicePhone(req.user!.userId, parseOr400(servicePhoneDto, req.body)));
+}));
+
+router.put('/service-phones/:spId', ...leader, asyncHandler(async (req: Request, res: Response) => {
+  res.json(await updateServicePhone(String(req.params.spId), parseOr400(servicePhoneDto.partial(), req.body)));
 }));
 
 router.delete('/service-phones/:spId', ...leader, asyncHandler(async (req: Request, res: Response) => {

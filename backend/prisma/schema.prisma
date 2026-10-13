@@ -324,6 +324,7 @@ model User {
   mobilePairingCodes  MobilePairingCode[] @relation("MobilePairingCodeUser")
   callGroupReports    CallGroupReport[] @relation("CallGroupReportAuthor")
   servicePhones       ServicePhone[]    @relation("ServicePhoneAuthor")
+  ownServicePhones    ServicePhone[]    @relation("ServicePhoneEmployee")
   managedCallAudits   CallAudit[]      @relation("CallAuditManager")
   aiReports           AiReport[]       @relation("AiReportAuthor")
   medalHistory        UserMedalHistory[] @relation("MedalHistoryUser")
@@ -1910,13 +1911,19 @@ model ServicePhone {
   phone       String
   /// phoneMatchKey(phone) — по нему сравниваем со звонками
   phoneKey    String   @unique @map("phone_key")
+  /// Подпись в журнале: «Склад — Бахтиёр» или ФИО сотрудника
   name        String
   note        String?
+  /// Если это номер сотрудника CRM — ссылка на него (подпись тогда по умолчанию его ФИО)
+  userId      String?  @map("user_id")
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  createdBy User @relation("ServicePhoneAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy User  @relation("ServicePhoneAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+  user      User? @relation("ServicePhoneEmployee", fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@map("service_phones")
 }
 

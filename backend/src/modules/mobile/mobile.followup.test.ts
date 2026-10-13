@@ -14,7 +14,7 @@ vi.mock('./mobile.storage', () => ({ signedUrl: vi.fn(async () => 'https://signe
 
 import { processNewMobileCall } from './mobile.processing';
 import { listCalls, missedToday } from './calls.service';
-import { addServicePhone, resetServicePhoneCache } from './mobile.service-phones';
+import { addServicePhone, resetServicePhoneCache, updateServicePhone } from './mobile.service-phones';
 import { autoAnalysisSkipReason } from './mobile.auto-analysis';
 import { telegramService } from '../telegram/telegram.service';
 
@@ -170,5 +170,40 @@ describe('фильтры журнала', () => {
   it('пропущенные сегодня — без служебных', async () => {
     const r = await missedToday(boss, NOW);
     expect(r.items.map((i) => i.phone)).not.toContain('+998977778899');
+  });
+});
+
+describe('служебные номера: сотрудник CRM и правка', () => {
+  it('выбран сотрудник, подпись не написана — подпись = его ФИО', async () => {
+    const row = await addServicePhone('boss', { phone: '+998977778899', userId: 'm2' });
+    expect(row).toMatchObject({ name: 'Фарход Алиев' });
+    expect(state.fake.db.servicePhone[0].userId).toBe('m2');
+  });
+
+  it('не сотрудник CRM и без подписи — 400; несуществующий сотрудник — 404', async () => {
+    await expect(addServicePhone('boss', { phone: '+998977778899' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(addServicePhone('boss', { phone: '+998977778899', userId: 'nobody', name: 'Склад' })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('исправить подпись и номер: звонки с новым номером сразу служебные', async () => {
+    const row = await addServicePhone('boss', { phone: '+998977778899', name: 'Склад — Бахтияр' });
+    await arrive(missed({ phone: '+998935556677', phoneKey: '935556677' }), minAgo(10));
+    const fixed = await updateServicePhone(row!.id, { name: 'Склад — Бахтиёр', phone: '93 555 66 77' });
+    expect(fixed).toMatchObject({ name: 'Склад — Бахтиёр', phone: '+998 93 555 66 77' });
+    const r = await listCalls(boss, { page: 1, pageSize: 30, numbers: 'service' });
+    expect(r.items.map((i) => i.phone)).toEqual(['+998935556677']);
+  });
+
+  it('новый номер уже есть в списке — 409', async () => {
+    await addServicePhone('boss', { phone: '+998977778899', name: 'Склад' });
+    const other = await addServicePhone('boss', { phone: '+998935556677', name: 'Курьер' });
+    await expect(updateServicePhone(other!.id, { phone: '+998977778899' })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('привязать к сотруднику без подписи — подпись меняется на ФИО, отвязать — подпись остаётся', async () => {
+    const row = await addServicePhone('boss', { phone: '+998977778899', name: 'Склад' });
+    expect(await updateServicePhone(row!.id, { userId: 'm1' })).toMatchObject({ name: 'Дилноза Каримова' });
+    await updateServicePhone(row!.id, { userId: null });
+    expect(state.fake.db.servicePhone[0]).toMatchObject({ userId: null, name: 'Дилноза Каримова' });
   });
 });

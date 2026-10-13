@@ -37,7 +37,19 @@ export interface ServicePhone {
   name: string;
   note: string | null;
   createdAt: string;
+  updatedAt: string;
+  /** Сотрудник CRM, чей это номер */
+  user: { id: string; fullName: string } | null;
   createdBy: { fullName: string };
+}
+
+export interface ServicePhoneInput {
+  phone: string;
+  /** Сотрудник CRM; null — не сотрудник CRM */
+  userId?: string | null;
+  /** Подпись; можно не писать, если выбран сотрудник — будет его ФИО */
+  name?: string;
+  note?: string;
 }
 
 export type CallOutcomeFilter = 'none' | 'manager' | 'client';
@@ -229,8 +241,10 @@ export const callsApi = {
   /** Все звонки с номером этого звонка (менеджер видит только свои) */
   history: (id: string) => client.get<{ items: CallListItem[] }>(`/calls/${id}/history`).then((r) => r.data),
   servicePhones: () => client.get<ServicePhone[]>('/calls/service-phones').then((r) => r.data),
-  addServicePhone: (data: { phone: string; name: string; note?: string }) =>
+  addServicePhone: (data: ServicePhoneInput) =>
     client.post<ServicePhone>('/calls/service-phones', data).then((r) => r.data),
+  updateServicePhone: (id: string, data: Partial<ServicePhoneInput>) =>
+    client.put<ServicePhone>(`/calls/service-phones/${id}`, data).then((r) => r.data),
   removeServicePhone: (id: string) => client.delete(`/calls/service-phones/${id}`).then((r) => r.data),
   forClient: (clientId: string, page = 1, pageSize = 20) =>
     client.get<ClientCallsResponse>(`/clients/${clientId}/calls`, { params: { page, pageSize } }).then((r) => r.data),

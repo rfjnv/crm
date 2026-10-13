@@ -141,6 +141,11 @@ export function createFakePrisma() {
       update: async ({ where, data, select }: any) => {
         const r = rows().find((row) => matches(table, row, where));
         if (!r) throw new Error(`fakePrisma: ${table} не найден`);
+        for (const field of unique) {
+          if (data[field] != null && rows().some((o) => o !== r && o[field] === data[field])) {
+            throw new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on ${field}`, { code: 'P2002', clientVersion: 'test' });
+          }
+        }
         Object.assign(r, data, { updatedAt: new Date() });
         return pick(r, select);
       },
