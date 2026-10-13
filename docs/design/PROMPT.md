@@ -32,8 +32,9 @@ DebtsResponse), src/api/calls.api.ts, finance.api.ts, analytics.api.ts.
 не переделывать — она принята.
 
 Выполняй план DASHBOARD.md §8 шаг за шагом, в его порядке, за эту сессию — шаги <N>–<M>. После
-каждого шага: cd frontend && npm run lint && npm run build && npm run test; дальше не идти, пока
-не зелёные. Существующие запросы, их ключи и параметры не менять; разрешены ровно три изменения
+каждого шага: cd frontend && npm run build && npm run test — зелёные; npm run lint — без новых проблем
+относительно main (в старом коде 158 ошибок, их не чинить), новые и изменённые файлы чистые; дальше не
+идти, пока это не так. Существующие запросы, их ключи и параметры не менять; разрешены ровно три изменения
 из DASHBOARD.md §7. Гейты ролей (isAdmin, canSeeMoney, canViewVedEvents, canViewClosedDealsHistory,
 showExtras), маршруты кликов, ключи localStorage и URL-параметры — без изменений. Общие с классикой
 компоненты (MissedCallsWidget, VedEventsQuickAccessCard, DealStatusTag, ClientCompanyDisplay)
@@ -71,7 +72,8 @@ PROGRESS.md и QUESTIONS.md (ответы применить первыми).
    данных BRIEF §4: аудит полей (поле · P/S/N · куда ушло / что добавлено) покажи таблицей в ответе.
    Запросы, мутации, гейты ролей, URL-параметры (useUrlSearchDraft), формы — не менять.
    Презентационные куски ClientDetailPage выноси в components/clients/, поведение не трогай.
-3. Проверка: cd frontend && npm run lint && npm run build && npm run test; классика открывается без
+3. Проверка: cd frontend && npm run build && npm run test зелёные, npm run lint без новых проблем;
+   классика открывается без
    ошибок; если доступен браузер — скриншоты 1440 и 390, светлая и тёмная.
 4. Коммиты: отдельный на примитивы, отдельный на пилот (feat(ui): … in the new design, тело на
    английском). Обнови PROGRESS.md и QUESTIONS.md (≤5 вопросов с применённым дефолтом).
@@ -93,7 +95,7 @@ frontend/src/components/ui/ (расширять пропсами, не копи�
 данных §4, Definition of Done §10. Язык дизайна — DASHBOARD.md §2–§5.
 
 Логику страниц не менять. Вопросов не задавай — дефолты из брифа, спорное в QUESTIONS.md (≤5, с
-применённым дефолтом). Проверка: cd frontend && npm run lint && npm run build && npm run test;
+применённым дефолтом). Проверка: cd frontend && npm run build && npm run test зелёные, lint без новых проблем;
 классика открывается. Коммит на 2–4 страницы в стиле истории репозитория. Закончи с зелёной сборкой
 и обновлённым PROGRESS.md; семейство наполовину не оставляй — лучше меньше страниц, но до конца.
 ```
@@ -106,7 +108,7 @@ frontend/src/components/ui/ (расширять пропсами, не копи�
 Прочитай docs/design/BRIEF.md и DASHBOARD.md §2–§5. Приведи frontend/src/pages/<Файл>.tsx к
 Definition of Done BRIEF §10: аудит полей P/S/N таблицей в ответе, примитивы из components/ui,
 правила данных §4, без inline-стилей и hex, светлая/тёмная, 1440/390. Логику не менять. Проверка
-lint/build/test, коммит в стиле истории, строка в PROGRESS.md.
+build/test (lint без новых проблем), коммит в стиле истории, строка в PROGRESS.md.
 ```
 
 ---
