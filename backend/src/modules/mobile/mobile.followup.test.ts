@@ -107,7 +107,7 @@ describe('служебные номера', () => {
     await expect(addServicePhone('boss', { phone: '1050', name: 'короткий' })).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('пропущенный со служебного номера — без задачи, без Telegram и без клиента', async () => {
+  it('пропущенный со служебного номера — без Telegram и без клиента', async () => {
     state.fake.db.client.push({ id: 'c1', phone: '+998 90 123 45 67', managerId: 'm1', companyName: 'Print House', isArchived: false });
     await addServicePhone('boss', { phone: '+998901234567', name: 'Склад' });
     const m = await arrive(missed({ startedAt: minAgo(5) }), minAgo(5));

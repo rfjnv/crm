@@ -91,48 +91,51 @@ describe('поиск клиента по номеру', () => {
   });
 });
 
-describe('задача «перезвонить»', () => {
-  it('пропущенный — задача на менеджера со сроком 2 часа и сообщение в Telegram', async () => {
+describe('пропущенный звонок', () => {
+  it('задача не ставится — только сообщение менеджеру в Telegram', async () => {
     state.fake.db.client.push({ id: 'c1', phone: '+998 90 123 45 67', managerId: 'm1', companyName: 'Print House', isArchived: false });
     const s = await addCall({ startedAt: minutesAgo(10) });
     await processNewMobileCall(s, NOW);
 
     expect(state.fake.db.callSession[0].clientId).toBe('c1');
-    expect(state.fake.db.task).toHaveLength(1);
-    expect(state.fake.db.task[0]).toMatchObject({
-      title: 'Перезвонить: Print House',
-      assigneeId: 'm1',
-      createdById: 'm1',
-      callSessionId: s.id,
-      status: 'TODO',
-    });
-    expect(state.fake.db.task[0].dueDate).toEqual(new Date(minutesAgo(10).getTime() + 2 * 3600_000));
-    expect(telegramService.sendToUser).toHaveBeenCalledWith('m1', expect.objectContaining({ url: `/calls?call=${s.id}` }));
+    expect(state.fake.db.task).toHaveLength(0);
+    expect(telegramService.sendToUser).toHaveBeenCalledWith('m1', expect.objectContaining({
+      title: 'Пропущенный звонок',
+      url: `/calls?call=${s.id}`,
+      body: expect.stringContaining('Print House'),
+    }));
   });
 
-  it('неизвестный номер — в заголовке номер', async () => {
-    await processNewMobileCall(await addCall({}), NOW);
-    expect(state.fake.db.task[0].title).toBe('Перезвонить: +998 90 123 45 67');
-  });
-
-  it('rejected тоже требует перезвона, blocked и voicemail — нет', async () => {
+  it('rejected тоже сообщает, blocked и voicemail — нет', async () => {
     await processNewMobileCall(await addCall({ mobileType: 'blocked' }), NOW);
     await processNewMobileCall(await addCall({ mobileType: 'voicemail', phone: '+998911111111', phoneKey: '911111111' }), NOW);
-    expect(state.fake.db.task).toHaveLength(0);
+    expect(telegramService.sendToUser).not.toHaveBeenCalled();
     await processNewMobileCall(await addCall({ mobileType: 'rejected' }), NOW);
-    expect(state.fake.db.task).toHaveLength(1);
+    expect(telegramService.sendToUser).toHaveBeenCalledTimes(1);
+    expect(state.fake.db.task).toHaveLength(0);
   });
 
-  it('повторный пропущенный с того же номера — новая задача не создаётся, описание дополняется', async () => {
+  it('пачка не по порядку: пропущенный пришёл после разговора — без сообщения', async () => {
+    await addCall({ mobileType: 'out', direction: 'OUTBOUND', status: 'COMPLETED', durationSec: 60, startedAt: minutesAgo(20) });
     await processNewMobileCall(await addCall({ startedAt: minutesAgo(40) }), NOW);
-    await processNewMobileCall(await addCall({ startedAt: minutesAgo(5) }), NOW);
-    expect(state.fake.db.task).toHaveLength(1);
-    expect(state.fake.db.task[0].description).toContain('Ещё пропущенный');
+    expect(telegramService.sendToUser).not.toHaveBeenCalled();
   });
 
-  it('исходящий разговор с этим номером закрывает задачу и отмечает пропущенный отработанным', async () => {
+  it('старый пропущенный из импорта истории — без сообщения', async () => {
+    await processNewMobileCall(await addCall({ startedAt: minutesAgo(3 * 24 * 60) }), NOW);
+    expect(telegramService.sendToUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('задача «перезвонить», поставленная вручную', () => {
+  async function manualTask(callId: string, assigneeId = 'm1') {
+    state.fake.db.task.push({ id: `t-${callId}`, title: 'Перезвонить: Print House', status: 'TODO', assigneeId, callSessionId: callId });
+  }
+
+  it('исходящий разговор с этим номером закрывает её и отмечает пропущенный отработанным', async () => {
     const missed = await addCall({ startedAt: minutesAgo(40) });
     await processNewMobileCall(missed, NOW);
+    await manualTask(missed.id);
     const out = await addCall({ mobileType: 'out', direction: 'OUTBOUND', status: 'COMPLETED', durationSec: 95, startedAt: minutesAgo(20) });
     await processNewMobileCall(out, NOW);
 
@@ -140,30 +143,13 @@ describe('задача «перезвонить»', () => {
     expect(state.fake.db.callSession.find((c: any) => c.id === missed.id).calledBackAt).toEqual(out.startedAt);
   });
 
-  it('отвеченный входящий тоже закрывает; недозвон (длительность 0) — нет', async () => {
-    await processNewMobileCall(await addCall({ startedAt: minutesAgo(40) }), NOW);
+  it('недозвон (длительность 0) не закрывает, разговор другого менеджера — закрывает', async () => {
+    const missed = await addCall({ startedAt: minutesAgo(40) });
+    await processNewMobileCall(missed, NOW);
+    await manualTask(missed.id);
     await processNewMobileCall(await addCall({ mobileType: 'out_unanswered', direction: 'OUTBOUND', status: 'FAILED', startedAt: minutesAgo(30) }), NOW);
     expect(state.fake.db.task[0].status).toBe('TODO');
-    await processNewMobileCall(await addCall({ mobileType: 'in', status: 'COMPLETED', durationSec: 40, startedAt: minutesAgo(20) }), NOW);
-    expect(state.fake.db.task[0].status).toBe('DONE');
-  });
-
-  it('разговор другого менеджера с этим номером тоже закрывает: клиенту уже дозвонились', async () => {
-    await processNewMobileCall(await addCall({ startedAt: minutesAgo(40) }), NOW);
     await processNewMobileCall(await addCall({ managerUserId: 'm2', mobileType: 'out', direction: 'OUTBOUND', status: 'COMPLETED', durationSec: 60, startedAt: minutesAgo(20) }), NOW);
     expect(state.fake.db.task[0].status).toBe('DONE');
-  });
-
-  it('пачка не по порядку: пропущенный пришёл после разговора — задачи нет', async () => {
-    await addCall({ mobileType: 'out', direction: 'OUTBOUND', status: 'COMPLETED', durationSec: 60, startedAt: minutesAgo(20) });
-    await processNewMobileCall(await addCall({ startedAt: minutesAgo(40) }), NOW);
-    expect(state.fake.db.task).toHaveLength(0);
-    expect(telegramService.sendToUser).not.toHaveBeenCalled();
-  });
-
-  it('старый пропущенный из импорта истории — без задачи и без Telegram', async () => {
-    await processNewMobileCall(await addCall({ startedAt: minutesAgo(3 * 24 * 60) }), NOW);
-    expect(state.fake.db.task).toHaveLength(0);
-    expect(telegramService.sendToUser).not.toHaveBeenCalled();
   });
 });

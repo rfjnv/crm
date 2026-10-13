@@ -12,17 +12,16 @@ import {
 } from './mobile.mapping';
 
 /**
- * Что сервер делает со звонком после того, как он записан: ищет клиента по номеру,
- * ставит задачу «перезвонить» по пропущенному и закрывает её, когда разговор состоялся.
+ * Что сервер делает со звонком после того, как он записан: ищет клиента по номеру, отмечает,
+ * кто перезвонил после пропущенного, пишет менеджеру в Telegram о пропущенном и закрывает
+ * задачи «перезвонить» (их ставят только вручную), когда разговор с номером состоялся.
  * Приложению результат не нужен, поэтому ошибки здесь не роняют ответ на POST /api/calls.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
-/** Срок задачи «перезвонить» */
-const CALLBACK_DUE_MS = 2 * HOUR_MS;
 /**
- * Задачи и Telegram — только по свежим пропущенным. При первом входе приложение присылает
- * историю за 7 дней: неделю старых пропущенных в виде задач и сообщений никто не ждёт.
+ * Telegram — только по свежим пропущенным. При первом входе приложение присылает историю
+ * за 7 дней: сообщений о неделе старых пропущенных никто не ждёт.
  */
 const CALLBACK_MAX_AGE_MS = 24 * HOUR_MS;
 
@@ -128,31 +127,13 @@ async function handleMissed(session: CallSession, managerId: string, phoneKey: s
   }
   if (now.getTime() - session.startedAt.getTime() > CALLBACK_MAX_AGE_MS) return;
 
+  // Задачу не ставим: страница «Задачи» засорялась. Пропущенные видны в журнале («Не перезвонили»)
+  // и в виджете «Пропущенные сегодня»; менеджеру — сообщение в Telegram.
   const label = clientName ?? phoneLabel(session.phone);
-  const time = formatTashkentTime(session.startedAt, now);
-  const open = await findOpenCallbackTask(managerId, phoneKey);
-  if (open) {
-    await prisma.task.update({
-      where: { id: open.id },
-      data: { description: `${open.description ?? ''}\nЕщё пропущенный: ${time}`.trim() },
-    });
-  } else {
-    const due = new Date(Math.max(session.startedAt.getTime(), now.getTime() - CALLBACK_DUE_MS) + CALLBACK_DUE_MS);
-    await prisma.task.create({
-      data: {
-        title: callbackTitle(label),
-        description: `Пропущенный звонок ${time} с номера ${phoneLabel(session.phone)}.`,
-        assigneeId: managerId,
-        createdById: managerId,
-        dueDate: due,
-        callSessionId: session.id,
-      },
-    });
-  }
-
   await telegramService.sendToUser(managerId, {
-    title: open ? 'Снова пропущенный звонок' : 'Пропущенный звонок',
-    body: `${label} — ${time}.\nПерезвоните в течение 2 часов.`,
+    title: 'Пропущенный звонок',
+    body: `${label} — ${formatTashkentTime(session.startedAt, now)}.
+Перезвоните в течение 2 часов.`,
     url: `/calls?call=${session.id}`,
     severity: 'WARNING',
   });

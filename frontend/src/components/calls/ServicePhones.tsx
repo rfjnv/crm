@@ -119,8 +119,8 @@ function ServicePhoneModal({ open, onClose, editing, phone }: {
     >
       {!editing && (
         <Typography.Paragraph type="secondary">
-          Склад, сотрудник компании, курьер. Такие звонки помечаются «Служебный», по ним не ставятся задачи
-          «перезвонить» и не идёт автоматический анализ, а в журнале их можно скрыть.
+          Склад, сотрудник компании, курьер. Такие звонки помечаются «Служебный», по ним не приходят
+          уведомления о пропущенных и не идёт автоматический анализ, а в журнале их можно скрыть.
         </Typography.Paragraph>
       )}
       <Form form={form} layout="vertical" preserve={false} initialValues={initialValues} onFinish={(v) => save.mutate(v)}>
@@ -166,8 +166,8 @@ export function ServicePhonesDrawer({ open, onClose, onShowCalls }: {
       destroyOnHidden
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        Склад, сотрудники, курьеры — не клиенты. Их звонки помечаются «Служебный», по ним не ставятся задачи
-        «перезвонить» и не идёт автоматический анализ. В журнале: фильтр «Номера».
+        Склад, сотрудники, курьеры — не клиенты. Их звонки помечаются «Служебный», по ним не приходят
+        уведомления о пропущенных и не идёт автоматический анализ. В журнале: фильтр «Номера».
       </Typography.Paragraph>
       <Table<ServicePhone>
         size="small"
