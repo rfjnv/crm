@@ -1,5 +1,6 @@
 import { theme as antTheme } from 'antd';
 import type { ThemeConfig } from 'antd';
+import { glassPalette } from './glassPalette';
 
 /**
  * Single source of truth for theme colors (sync with theme-variables.css fallbacks).
@@ -87,7 +88,8 @@ export const modernCssVariablesByMode: Record<ThemeMode, Record<string, string>>
     '--bg-secondary': '#f6f7f9',
     '--card-bg': '#ffffff',
     '--text-primary': '#0f172a',
-    '--text-secondary': 'rgba(15, 23, 42, 0.6)',
+    // = --c-text-2 (glassPalette.ts): подписи на стекле контрастнее ≥ 4.5:1
+    '--text-secondary': glassPalette.light.text2,
     '--border-color': 'rgba(15, 23, 42, 0.08)',
     '--shadow-soft': '0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.04)',
     '--app-body-bg': '#f6f7f9',
@@ -97,7 +99,7 @@ export const modernCssVariablesByMode: Record<ThemeMode, Record<string, string>>
     '--bg-secondary': '#12151c',
     '--card-bg': '#12151c',
     '--text-primary': '#f1f5f9',
-    '--text-secondary': 'rgba(241, 245, 249, 0.6)',
+    '--text-secondary': glassPalette.dark.text2,
     '--border-color': 'rgba(255, 255, 255, 0.07)',
     '--shadow-soft': '0 1px 2px rgba(0, 0, 0, 0.3)',
     '--app-body-bg': '#0b0d12',

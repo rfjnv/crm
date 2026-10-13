@@ -19,11 +19,12 @@
 
 html[data-design='modern']:has(.app-shell) {
   --scene-dim: 0.42;
-  --win-bg: rgba(60, 64, 66, 0.32);
+  /* Плотность подобрана замером: подписи --c-text-2 ≥ 4.5:1 над самым светлым участком фото */
+  --win-bg: rgba(44, 48, 52, 0.52);
   --win-border: rgba(255, 255, 255, 0.22);
   --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
   --win-shadow: 0 40px 100px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.2);
-  --win-blur: blur(48px) saturate(160%);
+  --win-blur: blur(48px) saturate(115%);
   --panel-bg: rgba(255, 255, 255, 0.07);
   --panel-bg-hover: rgba(255, 255, 255, 0.11);
   --panel-border: rgba(255, 255, 255, 0.12);
@@ -35,11 +36,32 @@ html[data-design='modern']:has(.app-shell) {
   --glass-text: #ffffff;
   --table-solid: rgba(44, 48, 50, 0.82);
   --field-bg: rgba(255, 255, 255, 0.06);
+
+  /* Уровни материала внутри окна (DASHBOARD.md §3) и смысловые цвета (§5) — sync glassPalette.ts */
+  --fill-1: rgba(255, 255, 255, 0.05);
+  --fill-1-hover: rgba(255, 255, 255, 0.08);
+  --fill-2: rgba(255, 255, 255, 0.1);
+  --fill-3: rgba(255, 255, 255, 0.16);
+  --fill-3-rim: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  --c-text-1: #ffffff;
+  --c-text-2: rgba(255, 255, 255, 0.82);
+  --c-text-3: rgba(255, 255, 255, 0.55);
+  --c-accent-fg: #93c5fd;
+  --c-accent-fill: #4f8cff;
+  --c-pos-fg: #86efac;
+  --c-pos-bg: rgba(34, 197, 94, 0.16);
+  --c-warn-fg: #fcd34d;
+  --c-warn-bg: rgba(245, 158, 11, 0.16);
+  --c-neg-fg: #fca5a5;
+  --c-neg-bg: rgba(239, 68, 68, 0.16);
+  --c-alert: #ef4444;
+  --c-hairline: rgba(255, 255, 255, 0.08);
 }
 
 html[data-design='modern'][data-theme='light']:has(.app-shell) {
   --scene-dim: 0;
-  --win-bg: rgba(255, 255, 255, 0.38);
+  /* ≥ 4.5:1 для --c-text-2 над самым тёмным участком фото (лес) */
+  --win-bg: rgba(255, 255, 255, 0.6);
   --win-border: rgba(255, 255, 255, 0.45);
   --win-rim: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   --win-shadow: 0 40px 100px rgba(20, 40, 30, 0.2), 0 8px 24px rgba(20, 40, 30, 0.1);
@@ -56,6 +78,26 @@ html[data-design='modern'][data-theme='light']:has(.app-shell) {
   --glass-text: #1c1a17;
   --table-solid: rgba(246, 247, 248, 0.78);
   --field-bg: rgba(255, 255, 255, 0.3);
+
+  /* sync glassPalette.ts */
+  --fill-1: rgba(255, 255, 255, 0.18);
+  --fill-1-hover: rgba(255, 255, 255, 0.24);
+  --fill-2: rgba(28, 26, 23, 0.06);
+  --fill-3: rgba(28, 26, 23, 0.16);
+  --fill-3-rim: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --c-text-1: #1c1a17;
+  --c-text-2: rgba(28, 26, 23, 0.72);
+  --c-text-3: rgba(28, 26, 23, 0.5);
+  --c-accent-fg: #1d4ed8;
+  --c-accent-fill: #2563eb;
+  --c-pos-fg: #15803d;
+  --c-pos-bg: rgba(22, 163, 74, 0.14);
+  --c-warn-fg: #b45309;
+  --c-warn-bg: rgba(217, 119, 6, 0.12);
+  --c-neg-fg: #b91c1c;
+  --c-neg-bg: rgba(220, 38, 38, 0.12);
+  --c-alert: #dc2626;
+  --c-hairline: rgba(28, 26, 23, 0.08);
 }
 
 /* ── Сцена ── */
@@ -444,6 +486,13 @@ html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky
   html[data-design='modern']:has(.app-shell) {
     --win-bg: var(--card-bg);
     --panel-bg: var(--card-bg);
+    --fill-1: var(--card-bg);
+    --fill-1-hover: color-mix(in srgb, var(--text-primary) 4%, var(--card-bg));
+    --fill-2: color-mix(in srgb, var(--text-primary) 8%, var(--card-bg));
+    --fill-3: color-mix(in srgb, var(--text-primary) 14%, var(--card-bg));
+    --c-pos-bg: color-mix(in srgb, var(--c-pos-fg) 16%, var(--card-bg));
+    --c-warn-bg: color-mix(in srgb, var(--c-warn-fg) 16%, var(--card-bg));
+    --c-neg-bg: color-mix(in srgb, var(--c-neg-fg) 16%, var(--card-bg));
   }
 }
 
@@ -452,6 +501,13 @@ html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky
     --win-bg: var(--card-bg);
     --panel-bg: var(--card-bg);
     --win-blur: none;
+    --fill-1: var(--card-bg);
+    --fill-1-hover: color-mix(in srgb, var(--text-primary) 4%, var(--card-bg));
+    --fill-2: color-mix(in srgb, var(--text-primary) 8%, var(--card-bg));
+    --fill-3: color-mix(in srgb, var(--text-primary) 14%, var(--card-bg));
+    --c-pos-bg: color-mix(in srgb, var(--c-pos-fg) 16%, var(--card-bg));
+    --c-warn-bg: color-mix(in srgb, var(--c-warn-fg) 16%, var(--card-bg));
+    --c-neg-bg: color-mix(in srgb, var(--c-neg-fg) 16%, var(--card-bg));
   }
 }
 
