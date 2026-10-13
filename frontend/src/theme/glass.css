@@ -175,25 +175,63 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
     padding: 8px 0;
   }
 
+  /*
+   * Окно стоит на месте (как меню), а прокручивается только содержимое внутри:
+   * края окна и шапка с колокольчиком и аватаром всегда на экране — как окна в
+   * visionOS / macOS. Раньше уезжала вся страница вместе с верхом окна.
+   */
   html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
     margin: 24px 24px 24px calc(var(--app-sider-width) + 48px) !important;
-    min-height: calc(var(--app-vh, 100vh) - 48px);
+    height: calc(var(--app-vh, 100vh) - 48px);
+    min-height: 0 !important;
+    display: flex;
+    flex-direction: column;
     border-radius: 40px;
-    overflow: clip;
+    overflow: hidden;
   }
 
   html[data-design='modern']:has(.app-shell) .ant-layout-header {
+    flex: none;
     height: 72px !important;
     line-height: 72px !important;
     padding: 0 28px !important;
   }
 
   html[data-design='modern']:has(.app-shell) .ant-layout-content {
-    margin: 4px 28px 28px !important;
+    flex: 1;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 4px 28px 28px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hdr-sep) transparent;
+    /* Содержимое мягко растворяется у верхнего края, уходя под шапку */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  }
+
+  /* Сама страница больше не прокручивается — только окно */
+  html[data-design='modern']:has(.app-shell),
+  html[data-design='modern']:has(.app-shell) body {
+    overflow: hidden;
   }
 }
 
 @media (max-width: 767px) {
+  /* На телефоне прокручивается страница (так привычнее и прячется адресная строка),
+     но шапка с колокольчиком и аватаром прилипает к верху */
+  html[data-design='modern']:has(.app-shell) .ant-layout-header {
+    position: sticky !important;
+    top: 0;
+    z-index: 50;
+    background: var(--hdr-panel-bg) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(170%);
+    backdrop-filter: blur(30px) saturate(170%);
+    border-bottom: 1px solid var(--win-border) !important;
+  }
+
   html[data-design='modern']:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
     margin: 12px 12px 96px !important;
     border-radius: 28px;

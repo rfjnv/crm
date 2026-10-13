@@ -911,6 +911,13 @@ export default function Layout() {
   });
   const currentMenuGroup = design === 'modern' ? parentKeyOf(modernSections, selectedDilnoza) : undefined;
 
+  // В новом дизайне на компьютере прокручивается окно, а не страница: при переходе
+  // на другую страницу возвращаем его в начало, как браузер сделал бы со страницей
+  useEffect(() => {
+    if (design !== 'modern') return;
+    document.querySelector('.app-shell .ant-layout-content')?.scrollTo({ top: 0 });
+  }, [location.pathname, design]);
+
   // Группа, в которой открыта текущая страница, раскрывается сама
   useEffect(() => {
     if (!currentMenuGroup) return;

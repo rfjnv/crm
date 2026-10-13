@@ -33,6 +33,9 @@ import MissedCallsWidget from '../components/calls/MissedCallsWidget';
 const DEFAULT_GOAL = 250_000_000;
 
 /** Bar + rank badge colors for «Товар дня» (top-N order matches chart). */
+/** Сколько проблемных остатков показывать на дашборде в новом дизайне. */
+const STOCK_PREVIEW_LIMIT = 8;
+
 const PRODUCT_DAY_BAR_COLORS = [
   '#22c55e',
   '#14b8a6',
@@ -371,6 +374,10 @@ export default function DashboardPage() {
     ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
     ...(data.lowStockProducts || []).map((p) => ({ ...p, issue: 'low' as const })),
   ].filter((p) => !p.sku?.startsWith('TARGET'));
+  // Дашборд — сводка: в новом дизайне показываем самые критичные позиции, остальные — на складе.
+  // Нулевые остатки идут первыми, поэтому в превью попадают они.
+  const stockPreview = modern ? allStockIssues.slice(0, STOCK_PREVIEW_LIMIT) : allStockIssues;
+  const stockHidden = allStockIssues.length - stockPreview.length;
 
   /* ── shared styles ── */
   const card: CSSProperties = {
@@ -1201,6 +1208,9 @@ export default function DashboardPage() {
             )}
           </div>
         }
+        extra={stockHidden > 0 ? (
+          <Link to="/inventory/warehouse">Показать все {allStockIssues.length}</Link>
+        ) : undefined}
       >
         {allStockIssues.length === 0 ? (
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
@@ -1209,7 +1219,7 @@ export default function DashboardPage() {
           </Typography.Text>
         ) : isMobile ? (
           <div className="dashboard-stock-mobile" style={{ display: 'flex', flexDirection: 'column' }}>
-            {allStockIssues.map((item) => (
+            {stockPreview.map((item) => (
               <div
                 key={item.id}
                 style={{
@@ -1233,7 +1243,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <Table
-            dataSource={allStockIssues}
+            dataSource={stockPreview}
             rowKey="id"
             pagination={false}
             size="small"
