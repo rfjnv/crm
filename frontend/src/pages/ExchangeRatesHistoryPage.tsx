@@ -135,7 +135,7 @@ export default function ExchangeRatesHistoryPage() {
               width: 120,
               align: 'right',
               render: (v: number | undefined) => {
-                if (v === undefined) return <span style={{ color: 'rgba(0,0,0,0.35)' }}>—</span>;
+                if (v === undefined) return <span style={{ color: 'var(--ant-color-text-quaternary)' }}>—</span>;
                 const up = v > 0;
                 const down = v < 0;
                 const color = up ? '#cf1322' : down ? '#3f8600' : 'rgba(0,0,0,0.45)';

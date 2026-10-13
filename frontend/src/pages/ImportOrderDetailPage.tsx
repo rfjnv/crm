@@ -359,7 +359,7 @@ export default function ImportOrderDetailPage() {
           <Descriptions.Item label="Итог">
             <b>{Number(order.totalAmount).toLocaleString('ru-RU')} {order.currency}</b>
             {order.totalAmountUzs != null && order.currency !== 'UZS' ? (
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>
+              <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)' }}>
                 ≈ {Number(order.totalAmountUzs).toLocaleString('ru-RU')} UZS
               </div>
             ) : null}
@@ -718,7 +718,7 @@ function CbuRateHint(props: {
 
   if (!enabled) {
     return (
-      <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: -8, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)', marginTop: -8, marginBottom: 8 }}>
         Курс ЦБ подставится автоматически, когда выбрана дата и валюта (кроме UZS).
       </div>
     );
@@ -726,7 +726,7 @@ function CbuRateHint(props: {
 
   if (isFetching) {
     return (
-      <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: -8, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)', marginTop: -8, marginBottom: 8 }}>
         Ищу курс ЦБ на {dateIso}…
       </div>
     );
@@ -746,7 +746,7 @@ function CbuRateHint(props: {
     <div
       style={{
         fontSize: 12,
-        color: 'rgba(0,0,0,0.65)',
+        color: 'var(--ant-color-text-secondary)',
         marginTop: -8,
         marginBottom: 8,
         display: 'flex',

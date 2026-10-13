@@ -142,7 +142,12 @@ export function antThemeConfig(design: DesignMode, mode: ThemeMode): ThemeConfig
       colorSuccess: isDark ? '#22c55e' : '#16a34a',
       colorWarning: isDark ? '#f59e0b' : '#d97706',
       colorError: isDark ? '#f87171' : '#dc2626',
-      colorLink: primary,
+      // Ссылки на тёмном стекле — светлее основного синего, иначе «Сделка от…» и имена клиентов теряются
+      colorLink: isDark ? '#93c5fd' : '#1d4ed8',
+      colorLinkHover: isDark ? '#bfdbfe' : '#1e40af',
+      // Подсказки, плейсхолдеры и третичный текст на стекле нужно чуть контрастнее стандартных
+      colorTextTertiary: isDark ? 'rgba(241, 245, 249, 0.55)' : 'rgba(15, 23, 42, 0.55)',
+      colorTextQuaternary: isDark ? 'rgba(241, 245, 249, 0.42)' : 'rgba(15, 23, 42, 0.42)',
       // Новый дизайн — стекло (theme/glass.css): фон «контейнера» полупрозрачный, поэтому
       // и блоки, которым страницы задают этот фон прямо в коде, становятся стеклом,
       // а не сплошными плашками. Всплывающие окна берут colorBgElevated — он сплошной.

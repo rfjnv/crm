@@ -1259,3 +1259,123 @@ html[data-design='modern']:has(.app-shell) .ant-drawer-mask {
     background: var(--ant-color-bg-elevated) !important;
   }
 }
+
+/*
+ * Цветные теги в тёмной теме нового дизайна: яркий текст на полупрозрачной подложке
+ * того же цвета. Стандартная тёмная палитра antd давала тёмный текст на тёмном стекле.
+ */
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-green:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(134, 239, 172) !important;
+  background: rgba(134, 239, 172, 0.14) !important;
+  border-color: rgba(134, 239, 172, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-success:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(134, 239, 172) !important;
+  background: rgba(134, 239, 172, 0.14) !important;
+  border-color: rgba(134, 239, 172, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-lime:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(190, 242, 100) !important;
+  background: rgba(190, 242, 100, 0.14) !important;
+  border-color: rgba(190, 242, 100, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-red:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(252, 165, 165) !important;
+  background: rgba(252, 165, 165, 0.14) !important;
+  border-color: rgba(252, 165, 165, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-error:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(252, 165, 165) !important;
+  background: rgba(252, 165, 165, 0.14) !important;
+  border-color: rgba(252, 165, 165, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-volcano:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(253, 186, 140) !important;
+  background: rgba(253, 186, 140, 0.14) !important;
+  border-color: rgba(253, 186, 140, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-magenta:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(249, 168, 212) !important;
+  background: rgba(249, 168, 212, 0.14) !important;
+  border-color: rgba(249, 168, 212, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-pink:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(249, 168, 212) !important;
+  background: rgba(249, 168, 212, 0.14) !important;
+  border-color: rgba(249, 168, 212, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-orange:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(253, 186, 116) !important;
+  background: rgba(253, 186, 116, 0.14) !important;
+  border-color: rgba(253, 186, 116, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-gold:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(253, 224, 71) !important;
+  background: rgba(253, 224, 71, 0.14) !important;
+  border-color: rgba(253, 224, 71, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-yellow:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(253, 224, 71) !important;
+  background: rgba(253, 224, 71, 0.14) !important;
+  border-color: rgba(253, 224, 71, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-warning:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(253, 224, 71) !important;
+  background: rgba(253, 224, 71, 0.14) !important;
+  border-color: rgba(253, 224, 71, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-cyan:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(103, 232, 249) !important;
+  background: rgba(103, 232, 249, 0.14) !important;
+  border-color: rgba(103, 232, 249, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-blue:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(147, 197, 253) !important;
+  background: rgba(147, 197, 253, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-processing:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(147, 197, 253) !important;
+  background: rgba(147, 197, 253, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-geekblue:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(165, 180, 252) !important;
+  background: rgba(165, 180, 252, 0.14) !important;
+  border-color: rgba(165, 180, 252, 0.32) !important;
+}
+
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-purple:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: rgb(216, 180, 254) !important;
+  background: rgba(216, 180, 254, 0.14) !important;
+  border-color: rgba(216, 180, 254, 0.32) !important;
+}
+
+/* Обычный тег без цвета — тоже светлая подложка, а не тёмная плашка */
+html[data-design='modern'][data-theme='dark'] .ant-tag.ant-tag-default:not(.ant-tag-solid) {
+  color: rgba(241, 245, 249, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Плейсхолдеры в полях на стекле */
+html[data-design='modern'][data-theme='dark'] .ant-input::placeholder,
+html[data-design='modern'][data-theme='dark'] .ant-select-placeholder,
+html[data-design='modern'][data-theme='dark'] .ant-picker input::placeholder {
+  color: rgba(241, 245, 249, 0.5) !important;
+}
