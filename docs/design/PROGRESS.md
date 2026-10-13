@@ -9,11 +9,26 @@
 | Что | Файлы | Статус | Решения |
 |---|---|---|---|
 | Каркас: меню, шапка, нижняя панель | `components/Layout.tsx`, `ModernHeaderBar.tsx`, `BottomTabBar.tsx`, `theme/glass.css` | ✅ | эталон, не переделывать |
-| Дашборд | `DashboardPage.tsx`, `components/DashboardGreeting.tsx` | ✅ | эталон KPI-плиток и пилюль периода |
+| Дашборд | `DashboardPage.tsx`, `components/DashboardGreeting.tsx` | 🟡 | готовы только приветствие и пилюля периода; контент — классический JSX под стеклом; ТЗ — `DASHBOARD.md` |
 | Общие правила страниц (h4, кнопки, теги, модалки) | `theme/glass.css`, `theme/tokens.ts` | ✅ | дальше — только через примитивы |
-| Примитивы `components/ui/*` (§5 брифа) | `PageHeader`, `Toolbar`, `StatTile/StatGrid`, `DataTable`, `DetailLayout`, `FactList`, `Section`, `StatusPill`, `Money`, `DateText`, `EmptyState`, `Eyebrow` | ⬜ | |
+| Примитивы языка (пилот 0) | `Section`, `Eyebrow`, `StatTile/StatGrid`, `Money`, `EmptyState`, `StatusPill` в `components/ui/` | ⬜ | по `DASHBOARD.md` §8 шаг 3 |
+| Примитивы таблиц и деталей (пилот 1) | `PageHeader`, `Toolbar`, `DataTable`, `DetailLayout`, `FactList`, `DateText` | ⬜ | |
 
-## Пилот
+## Пилот 0 — Дашборд (язык дизайна)
+
+| Шаг (`DASHBOARD.md` §8) | Файлы | Статус | Решения |
+|---|---|---|---|
+| 1. Токены и материал | `theme/glass.css`, `theme/glassPalette.ts`, `theme/tokens.ts` | ⬜ | |
+| 2. Хелперы денег и чисел | `utils/currency.ts` + тесты | ⬜ | |
+| 3. Примитивы языка | `components/ui/*` | ⬜ | |
+| 4. Ветка `DashboardModern`, зоны 0 и A | `components/dashboard/DashboardModern.tsx`, `DashboardPage.css` | ⬜ | |
+| 5. Панель «Требует внимания» | `components/dashboard/useDashboardAttention.ts`, `MissedCallsWidget`, `VedEventsQuickAccessCard` | ⬜ | |
+| 6. Зона «Период» | график, бар цели, стековый бар | ⬜ | |
+| 7. Зона «Лидеры» | `Section` с тремя колонками, `ClientCompanyDisplay` | ⬜ | |
+| 8. Роли и мобильный вид | ветки manager / warehouse / accountant, `@media` | ⬜ | |
+| 9. Чистка и DoD | `glass.css`, `DashboardPage.tsx`, документы | ⬜ | |
+
+## Пилот 1 — Клиенты (таблицы и детали)
 
 | Маршрут | Файл | Статус | Решения |
 |---|---|---|---|
