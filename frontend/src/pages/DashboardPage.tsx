@@ -14,7 +14,7 @@ import { financeApi } from '../api/finance.api';
 import { analyticsApi, type AnalyticsPeriodQuery } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
 import { profileApi } from '../api/profile.api';
-import { formatUZS, formatFullNumber, formatShortNumber } from '../utils/currency';
+import { formatUZS, formatFullNumber, formatShortNumber, formatCount } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
@@ -74,12 +74,6 @@ function stripProductDayTooltipExtraRows(): void {
       (row as HTMLElement).style.display = 'none';
     }
   });
-}
-
-function formatCount(value: number | string): string {
-  const num = typeof value === 'string' ? Number(value) : value;
-  if (!Number.isFinite(num)) return '0';
-  return Math.round(num).toLocaleString('ru-RU');
 }
 
 function pctChange(curr: number, prev: number): number | null {
