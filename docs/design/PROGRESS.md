@@ -18,7 +18,7 @@
 
 | Шаг (`DASHBOARD.md` §8) | Файлы | Статус | Решения |
 |---|---|---|---|
-| 1. Токены и материал | `theme/glass.css`, `theme/glassPalette.ts`, `theme/tokens.ts` | ✅ | `--fill-1/2/3`, `--c-*`, `--c-hairline` + сплошные подмены в фолбэках; `--win-bg` по замеру контраста 0,52 dark / 0,60 light (≥ 4,58:1 для `--c-text-2` над всем фото), saturate 115 %; `--text-secondary` modern = `--c-text-2` (beb6860) |
+| 1. Токены и материал | `theme/glass.css`, `theme/glassPalette.ts`, `theme/tokens.ts` | ✅ | `--fill-1/2/3`, `--c-*`, `--c-hairline` + сплошные подмены в фолбэках; `--win-bg` по замеру контраста 0,52 dark / 0,60 light (≥ 4,58:1 для `--c-text-2` над всем фото), saturate 115 %; `--text-secondary` modern = `--c-text-2` (beb6860). Доработка по ответу на Q7: светлая тема — окно .50, `--c-text-2` .80, вуаль .15 на фото |
 | 2. Хелперы денег и чисел | `utils/currency.ts` + тесты | ✅ | `formatMoneyCompact`, `formatPercent` (signed), `formatCount` перенесён из дашборда без изменений; старые хелперы не тронуты; 22 теста (3f9ce5c) |
 | 3. Примитивы языка | `components/ui/*` | ✅ | 6 примитивов + `DealStatusTag` с `data-tone` (`components/dealStatusTone.ts`), правило тонов тегов в `glass.css` с `!important` поверх блока цветных тегов; 26 smoke-тестов (2247a4f) |
 | 4. Ветка `DashboardModern`, зоны 0 и A | `components/dashboard/DashboardModern.tsx`, `DashboardPage.css` | ⬜ | |
