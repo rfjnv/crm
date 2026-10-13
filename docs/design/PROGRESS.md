@@ -11,16 +11,16 @@
 | Каркас: меню, шапка, нижняя панель | `components/Layout.tsx`, `ModernHeaderBar.tsx`, `BottomTabBar.tsx`, `theme/glass.css` | ✅ | эталон, не переделывать |
 | Дашборд | `DashboardPage.tsx`, `components/DashboardGreeting.tsx` | 🟡 | готовы только приветствие и пилюля периода; контент — классический JSX под стеклом; ТЗ — `DASHBOARD.md` |
 | Общие правила страниц (h4, кнопки, теги, модалки) | `theme/glass.css`, `theme/tokens.ts` | ✅ | дальше — только через примитивы |
-| Примитивы языка (пилот 0) | `Section`, `Eyebrow`, `StatTile/StatGrid`, `Money`, `EmptyState`, `StatusPill` в `components/ui/` | ⬜ | по `DASHBOARD.md` §8 шаг 3 |
+| Примитивы языка (пилот 0) | `Section`, `Eyebrow`, `StatTile/StatGrid`, `Money`, `EmptyState`, `StatusPill` в `components/ui/` | ✅ | созданы на шаге 3 (2247a4f), smoke-тесты в обоих режимах; на страницах пока не используются |
 | Примитивы таблиц и деталей (пилот 1) | `PageHeader`, `Toolbar`, `DataTable`, `DetailLayout`, `FactList`, `DateText` | ⬜ | |
 
 ## Пилот 0 — Дашборд (язык дизайна)
 
 | Шаг (`DASHBOARD.md` §8) | Файлы | Статус | Решения |
 |---|---|---|---|
-| 1. Токены и материал | `theme/glass.css`, `theme/glassPalette.ts`, `theme/tokens.ts` | ⬜ | |
-| 2. Хелперы денег и чисел | `utils/currency.ts` + тесты | ⬜ | |
-| 3. Примитивы языка | `components/ui/*` | ⬜ | |
+| 1. Токены и материал | `theme/glass.css`, `theme/glassPalette.ts`, `theme/tokens.ts` | ✅ | `--fill-1/2/3`, `--c-*`, `--c-hairline` + сплошные подмены в фолбэках; `--win-bg` по замеру контраста 0,52 dark / 0,60 light (≥ 4,58:1 для `--c-text-2` над всем фото), saturate 115 %; `--text-secondary` modern = `--c-text-2` (beb6860) |
+| 2. Хелперы денег и чисел | `utils/currency.ts` + тесты | ✅ | `formatMoneyCompact`, `formatPercent` (signed), `formatCount` перенесён из дашборда без изменений; старые хелперы не тронуты; 22 теста (3f9ce5c) |
+| 3. Примитивы языка | `components/ui/*` | ✅ | 6 примитивов + `DealStatusTag` с `data-tone` (`components/dealStatusTone.ts`), правило тонов тегов в `glass.css` с `!important` поверх блока цветных тегов; 26 smoke-тестов (2247a4f) |
 | 4. Ветка `DashboardModern`, зоны 0 и A | `components/dashboard/DashboardModern.tsx`, `DashboardPage.css` | ⬜ | |
 | 5. Панель «Требует внимания» | `components/dashboard/useDashboardAttention.ts`, `MissedCallsWidget`, `VedEventsQuickAccessCard` | ⬜ | |
 | 6. Зона «Период» | график, бар цели, стековый бар | ⬜ | |
