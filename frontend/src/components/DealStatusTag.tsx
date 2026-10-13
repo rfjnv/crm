@@ -1,5 +1,6 @@
 import { type DealStatus } from '../types';
 import { Tag } from 'antd';
+import { dealStatusTone } from './dealStatusTone';
 
 const statusConfig: Record<DealStatus, { color: string; label: string }> = {
   NEW: { color: 'blue', label: 'Новая' },
@@ -25,7 +26,8 @@ const statusConfig: Record<DealStatus, { color: string; label: string }> = {
 
 export default function DealStatusTag({ status }: { status: DealStatus }) {
   const cfg = statusConfig[status] || { color: 'default', label: status };
-  return <Tag color={cfg.color}>{cfg.label}</Tag>;
+  // data-tone — для нового дизайна (окраска по смыслу); классика красит по color, как раньше
+  return <Tag color={cfg.color} data-tone={dealStatusTone(status)}>{cfg.label}</Tag>;
 }
 
 export { statusConfig };

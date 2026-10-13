@@ -1435,3 +1435,33 @@ html[data-design='modern'][data-theme='dark'] .ant-select-placeholder,
 html[data-design='modern'][data-theme='dark'] .ant-picker input::placeholder {
   color: rgba(241, 245, 249, 0.5) !important;
 }
+
+/*
+ * Теги с тоном (DealStatusTag и др., data-tone) в новом дизайне — по смыслу, а не по цвету
+ * antd (DASHBOARD.md §5). Перекрывают блок цветных тегов выше: у того !important и та же
+ * специфичность, поэтому здесь тоже !important — правило стоит ниже и побеждает.
+ */
+html[data-design='modern'] .ant-tag.ant-tag[data-tone]:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  height: 22px;
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: 999px;
+  line-height: 22px;
+  color: var(--c-text-2) !important;
+  background: var(--fill-2) !important;
+}
+
+html[data-design='modern'] .ant-tag.ant-tag[data-tone='positive']:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: var(--c-pos-fg) !important;
+  background: var(--c-pos-bg) !important;
+}
+
+html[data-design='modern'] .ant-tag.ant-tag[data-tone='warning']:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: var(--c-warn-fg) !important;
+  background: var(--c-warn-bg) !important;
+}
+
+html[data-design='modern'] .ant-tag.ant-tag[data-tone='negative']:not(.ant-tag-disabled):not(.ant-tag-solid) {
+  color: var(--c-neg-fg) !important;
+  background: var(--c-neg-bg) !important;
+}

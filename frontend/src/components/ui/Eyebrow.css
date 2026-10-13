@@ -1,0 +1,13 @@
+.ui-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+}
+
+html[data-design='modern'] .ui-eyebrow {
+  color: var(--c-text-3);
+}

@@ -1,0 +1,96 @@
+.ui-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--ant-color-bg-container);
+}
+
+.ui-section--flat {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ui-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  min-width: 0;
+}
+
+.ui-section__count {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+}
+
+.ui-section__count::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+.ui-section__spacer {
+  flex: 1;
+}
+
+.ui-section__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.ui-section__action:hover {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.ui-section__body {
+  min-width: 0;
+}
+
+/* Новый дизайн: уровень B — подложка на шаг светлее окна, без рамки и тени */
+html[data-design='modern'] .ui-section {
+  background: var(--fill-1);
+  box-shadow: none;
+  transition: background 0.15s ease;
+}
+
+html[data-design='modern'] .ui-section--flat {
+  background: transparent;
+}
+
+html[data-design='modern'] .ui-section__count {
+  color: var(--c-text-3);
+}
+
+html[data-design='modern'] .ui-section__action {
+  color: var(--c-text-2);
+}
+
+html[data-design='modern'] .ui-section__action:hover {
+  color: var(--c-text-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-section,
+  .ui-section__action {
+    transition: none;
+    animation: none;
+  }
+}
