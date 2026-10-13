@@ -13,7 +13,7 @@ vi.mock('./mobile.settings', () => ({
 vi.mock('./mobile.storage', () => ({ signedUrl: vi.fn(async () => 'https://signed') }));
 
 import { processNewMobileCall } from './mobile.processing';
-import { listCalls, missedToday } from './calls.service';
+import { callManagers, listCalls, missedToday } from './calls.service';
 import { addServicePhone, resetServicePhoneCache, updateServicePhone } from './mobile.service-phones';
 import { autoAnalysisSkipReason } from './mobile.auto-analysis';
 import { telegramService } from '../telegram/telegram.service';
@@ -205,5 +205,23 @@ describe('служебные номера: сотрудник CRM и правк�
     expect(await updateServicePhone(row!.id, { userId: 'm1' })).toMatchObject({ name: 'Дилноза Каримова' });
     await updateServicePhone(row!.id, { userId: null });
     expect(state.fake.db.servicePhone[0]).toMatchObject({ userId: null, name: 'Дилноза Каримова' });
+  });
+});
+
+describe('фильтр «Менеджер»', () => {
+  it('только сотрудники со звонками, с их числом; удалённые звонки не в счёт', async () => {
+    state.fake.db.user.push(
+      { id: 'w1', fullName: 'Склад Водитель', isActive: true },
+      { id: 'old', fullName: 'Уволенный Менеджер', isActive: false },
+    );
+    await arrive(inTalk(), minAgo(30));
+    await arrive(outTalk(), minAgo(20));
+    await arrive(inTalk({ managerUserId: 'old' }), minAgo(10));
+    await arrive(inTalk({ managerUserId: 'm2', deletedAt: new Date() }), minAgo(5));
+    const r = await callManagers();
+    expect(r).toEqual([
+      { id: 'm1', fullName: 'Дилноза Каримова', isActive: true, callsCount: 2 },
+      { id: 'old', fullName: 'Уволенный Менеджер', isActive: false, callsCount: 1 },
+    ]);
   });
 });

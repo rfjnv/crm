@@ -6,7 +6,6 @@ import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { callsApi, mobileApi, type CallNumbersFilter, type CallOutcomeFilter, type CallsFilters } from '../api/calls.api';
 import { ServicePhonesDrawer } from '../components/calls/ServicePhones';
-import { usersApi } from '../api/users.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import CallsList from '../components/calls/CallsList';
@@ -63,7 +62,8 @@ export default function CallsPage() {
     queryFn: () => callsApi.list(filters),
     placeholderData: keepPreviousData,
   });
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list(), enabled: seeAll });
+  // В фильтре — только те, у кого есть звонки, а не все сотрудники CRM
+  const { data: managers = [] } = useQuery({ queryKey: ['call-managers'], queryFn: callsApi.managers, enabled: seeAll, staleTime: 5 * 60_000 });
 
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
@@ -170,7 +170,10 @@ export default function CallsPage() {
               value={filters.managerId}
               onChange={(v) => patch({ managerId: v })}
               optionFilterProp="label"
-              options={users.filter((u) => u.isActive).map((u) => ({ value: u.id, label: u.fullName }))}
+              options={managers.map((m) => ({
+                value: m.id,
+                label: `${m.fullName}${m.isActive ? '' : ' (не работает)'} · ${m.callsCount}`,
+              }))}
             />
           )}
           <Select

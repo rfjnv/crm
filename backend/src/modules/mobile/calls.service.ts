@@ -176,6 +176,25 @@ const FAILED_WHERE: Prisma.CallSessionWhereInput = {
   OR: [{ mobileType: null }, { mobileType: { notIn: ['blocked', 'voicemail'] } }],
 };
 
+/**
+ * Для фильтра «Менеджер»: только сотрудники, у которых есть звонки в журнале, — а не все
+ * сотрудники CRM (склад, водители и т.д.). С числом звонков; уволенные — тоже, если звонки были.
+ */
+export async function callManagers() {
+  const groups = await prisma.callSession.groupBy({
+    by: ['managerUserId'],
+    where: { deletedAt: null, managerUserId: { not: null } },
+    _count: { _all: true },
+  });
+  const ids = groups.map((g) => g.managerUserId).filter((v): v is string => !!v);
+  if (ids.length === 0) return [];
+  const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, isActive: true } });
+  const counts = new Map(groups.map((g) => [g.managerUserId, g._count._all]));
+  return users
+    .map((u) => ({ id: u.id, fullName: u.fullName, isActive: u.isActive, callsCount: counts.get(u.id) ?? 0 }))
+    .sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.fullName.localeCompare(b.fullName, 'ru'));
+}
+
 /** История по номеру: все звонки с этим номером (менеджер видит только свои), новые сверху. */
 export async function phoneHistory(user: CallsUser, id: string) {
   const call = await findCallForUser(user, id, { phoneKey: true });

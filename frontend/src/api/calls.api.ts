@@ -238,6 +238,9 @@ export const callsApi = {
   reports: () => client.get<CallReportRow[]>('/calls/reports').then((r) => r.data),
   report: (id: string) => client.get<CallReportDetail>(`/calls/reports/${id}`).then((r) => r.data),
   removeReport: (id: string) => client.delete(`/calls/reports/${id}`).then((r) => r.data),
+  /** Сотрудники, у которых есть звонки в журнале (для фильтра «Менеджер») */
+  managers: () =>
+    client.get<{ id: string; fullName: string; isActive: boolean; callsCount: number }[]>('/calls/managers').then((r) => r.data),
   /** Все звонки с номером этого звонка (менеджер видит только свои) */
   history: (id: string) => client.get<{ items: CallListItem[] }>(`/calls/${id}/history`).then((r) => r.data),
   servicePhones: () => client.get<ServicePhone[]>('/calls/service-phones').then((r) => r.data),

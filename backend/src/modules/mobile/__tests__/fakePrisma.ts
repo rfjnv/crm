@@ -127,6 +127,17 @@ export function createFakePrisma() {
         return list.map((r) => pick(r, select));
       },
       count: async ({ where }: any = {}) => rows().filter((row) => matches(table, row, where)).length,
+      groupBy: async ({ by, where }: any) => {
+        const groups = new Map<string, { key: Row; n: number }>();
+        for (const row of rows().filter((r) => matches(table, r, where))) {
+          const key = Object.fromEntries((by as string[]).map((f) => [f, row[f] ?? null]));
+          const k = JSON.stringify(key);
+          const g = groups.get(k) ?? { key, n: 0 };
+          g.n += 1;
+          groups.set(k, g);
+        }
+        return [...groups.values()].map((g) => ({ ...g.key, _count: { _all: g.n } }));
+      },
       create: async ({ data, select }: any) => {
         for (const field of unique) {
           if (data[field] != null && rows().some((r) => r[field] === data[field])) {

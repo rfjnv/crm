@@ -15,6 +15,7 @@ import { callbackTaskDto, linkClientDto, listCallsQuery, parseOr400 } from './mo
 import { ingestCalls, MAX_AUDIO_BYTES, receiveAudio } from './mobile.service';
 import { removeTempUpload, singleFileUpload } from './mobile.upload';
 import {
+  callManagers,
   clientCalls,
   createCallbackTask,
   getAudioUrl,
@@ -138,6 +139,10 @@ router.get('/reports/:reportId', ...leader, asyncHandler(async (req: Request, re
 router.delete('/reports/:reportId', ...leader, asyncHandler(async (req: Request, res: Response) => {
   await prisma.callGroupReport.deleteMany({ where: { id: String(req.params.reportId) } });
   res.json({ ok: true });
+}));
+
+router.get('/managers', ...leader, asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await callManagers());
 }));
 
 // ─── Служебные номера (склад, сотрудники) ───────────────────────────────────
