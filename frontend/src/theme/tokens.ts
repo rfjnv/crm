@@ -143,8 +143,11 @@ export function antThemeConfig(design: DesignMode, mode: ThemeMode): ThemeConfig
       colorWarning: isDark ? '#f59e0b' : '#d97706',
       colorError: isDark ? '#f87171' : '#dc2626',
       colorLink: primary,
-      colorBgLayout: vars['--app-body-bg'],
-      colorBgContainer: vars['--card-bg'],
+      // Новый дизайн — стекло (theme/glass.css): фон «контейнера» полупрозрачный, поэтому
+      // и блоки, которым страницы задают этот фон прямо в коде, становятся стеклом,
+      // а не сплошными плашками. Всплывающие окна берут colorBgElevated — он сплошной.
+      colorBgLayout: 'transparent',
+      colorBgContainer: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.42)',
       colorBgElevated: isDark ? '#1a1e27' : '#ffffff',
       colorText: vars['--text-primary'],
       colorTextSecondary: vars['--text-secondary'],
