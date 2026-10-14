@@ -22,6 +22,7 @@ import {
 import { proposeTaskPlan } from './rop-agent.plans';
 import { describeTaskAction, listTasks, proposeTaskChanges, type ListTasksInput } from './rop-agent.task-actions';
 import { requestCallback } from './rop-agent.callback';
+import { managerCallReports, requestManagerCall } from './rop-agent.missions';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
@@ -450,6 +451,33 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'call_manager',
+    description: 'Белла сама звонит менеджеру в Telegram и выясняет то, что просит директор («свяжись с Дилнозой, узнай, как идут продажи», '
+      + '«спроси у Наргизы, что с Хумо Принт»). Отчёт о разговоре придёт директору в Telegram через несколько минут. '
+      + 'manager_id — из list_managers. goal — конкретно, что выяснить: клиенты, суммы, сроки, что мешает.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        manager_id: { type: 'string', description: 'Кому звонить (id из list_managers).' },
+        goal: { type: 'string', description: 'Что выяснить в разговоре, 1–3 предложения.' },
+      },
+      required: ['manager_id', 'goal'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'manager_call_reports',
+    description: 'Отчёты о звонках Беллы менеджерам: кому, зачем, дозвонилась ли и что менеджер сказал.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        manager_id: { type: 'string', description: 'Только этот менеджер.' },
+        limit: { type: 'number', description: 'Сколько последних звонков, до 30 (по умолчанию 10).' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_tasks',
     description: 'Задачи в CRM (раздел «Задачи»): кому, статус, срок, кто поставил, создана ли агентом, чек-лист. '
       + 'Без statuses — только незакрытые (TODO, IN_PROGRESS, DONE). Ищи здесь задачи перед propose_task_changes. '
@@ -716,6 +744,10 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Задачи в CRM';
     case 'call_me':
       return 'Звоню в Telegram';
+    case 'call_manager':
+      return 'Звоню менеджеру';
+    case 'manager_call_reports':
+      return 'Отчёты о звонках менеджерам';
     case 'propose_task_changes':
       return `Изменение задач: ${describeTaskAction(String(input.action))} (${Array.isArray(input.task_ids) ? input.task_ids.length : 0})`;
     case 'call_reviews':
@@ -787,6 +819,8 @@ export async function executeTool(
       case 'forget': result = await forgetTool(input); break;
       case 'list_tasks': result = await listTasks(input as ListTasksInput); break;
       case 'call_me': result = await callMeTool(ctx.userId, input.person_name); break;
+      case 'call_manager': result = await requestManagerCall(ctx.userId, input); break;
+      case 'manager_call_reports': result = await managerCallReports(input as { manager_id?: string; limit?: number }); break;
       case 'propose_task_changes': {
         const r = await proposeTaskChanges(ctx, input);
         actionId = r.action_id;

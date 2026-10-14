@@ -12,8 +12,21 @@ const REQUEST_TTL_MS = 2 * 60 * 1000;
 /** Мост опрашивает очередь каждые ~3 с; дольше минуты тишины — считаем, что он не запущен. */
 const BRIDGE_ALIVE_MS = 60 * 1000;
 
-const pending = new Map<string, number>();
+/** Что звонить: «перезвони мне» (только Telegram ID) или поручение менеджеру (missionId). */
+export type QueuedCall = { telegramId: string; missionId?: string; phone?: string; name?: string };
+
+const pending = new Map<string, QueuedCall & { expires: number }>();
 let lastPoll = 0;
+
+/** Мост опрашивал очередь недавно — значит, запущен. */
+export function bridgeAlive(): boolean {
+  return Date.now() - lastPoll <= BRIDGE_ALIVE_MS;
+}
+
+/** Поставить звонок в очередь (ключ — кому звоним: один звонок на человека за раз). */
+export function enqueueCall(call: QueuedCall): void {
+  pending.set(call.telegramId, { ...call, expires: Date.now() + REQUEST_TTL_MS });
+}
 
 /** Telegram ID сотрудника (HOS_USERS или привязанный Telegram), только из списка доступа. */
 export async function telegramIdOfUser(userId: string): Promise<string | null> {
@@ -32,10 +45,10 @@ export function callbackAvailable(): boolean {
 export function requestCallbackByTelegramId(telegramId: string): { ok: boolean; message: string } {
   if (!callbackAvailable()) return { ok: false, message: 'Звонки Беллы не настроены (нет моста звонков).' };
   if (!isAllowedTelegramId(telegramId)) return { ok: false, message: 'Этому человеку Белла звонить не может.' };
-  if (Date.now() - lastPoll > BRIDGE_ALIVE_MS) {
+  if (!bridgeAlive()) {
     return { ok: false, message: 'Мост звонков сейчас не на связи — позвонить не получится. Можно позвонить Белле самому или через кнопку «📞 Позвонить».' };
   }
-  pending.set(telegramId, Date.now() + REQUEST_TTL_MS);
+  enqueueCall({ telegramId });
   return { ok: true, message: 'Белла позвонит в Telegram через несколько секунд.' };
 }
 
@@ -46,12 +59,12 @@ export async function requestCallback(userId: string): Promise<{ ok: boolean; me
 }
 
 /** Для моста: забрать очередь (и отметить, что мост жив). */
-export function takePendingCallbacks(): string[] {
+export function takePendingCallbacks(): QueuedCall[] {
   lastPoll = Date.now();
   const now = Date.now();
-  const out: string[] = [];
-  for (const [id, expires] of pending) {
-    if (expires >= now) out.push(id);
+  const out: QueuedCall[] = [];
+  for (const [id, { expires, ...call }] of pending) {
+    if (expires >= now) out.push(call);
     pending.delete(id);
   }
   return out;

@@ -7,6 +7,7 @@ import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { verifyTelegramInitData } from '../../lib/telegramWebApp';
+import { el } from './rop-agent.elevenlabs';
 import { ROP_AGENT_TOOLS, executeTool } from './rop-agent.tools';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { crmUserByTelegramId, isAllowedTelegramId, type AgentUser } from './rop-agent.people';
@@ -17,6 +18,7 @@ import { transcribeVoiceNote } from './rop-agent.voice';
 import { agentBot } from './rop-agent.bot';
 import { broadcastTargets, markdownToTelegramHtml } from './rop-agent.telegram';
 import { takePendingCallbacks } from './rop-agent.callback';
+import { finishMission, startMissionSession } from './rop-agent.missions';
 
 /**
  * Живой голосовой звонок с РОП-агентом (мини-приложение в Telegram или страница CRM).
@@ -30,7 +32,6 @@ import { takePendingCallbacks } from './rop-agent.callback';
  * случайный ключ сессии: вебхук без живого ключа ничего не вернёт.
  */
 
-const API = 'https://api.elevenlabs.io/v1';
 const AGENT_NAME = 'Polygraph Business — РОП-агент (звонок)';
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_TOOL_RESULT_CHARS = 12_000;
@@ -44,6 +45,7 @@ const CALL_TOOLS = [
   'kpi_forecast', 'client_card', 'client_purchase_cycles', 'loss_reasons', 'list_managers',
   'task_plan_results', 'list_tasks', 'slow_stock', 'stocked_product_buyers', 'market_comparison',
   'product_economics', 'call_reviews', 'remember', 'propose_task_plan', 'assign_task_plan',
+  'call_manager', 'manager_call_reports',
 ];
 
 /** Раздать черновик плана — только в звонке (в чате это кнопка «Раздать» у директора). */
@@ -93,23 +95,6 @@ const FIRST_MESSAGE = { ru: '{{greeting}}', uz: 'Ha, {{user_name}}, Bella eshitm
 const greetingFor = (name: string, outbound: boolean) => (outbound
   ? `Алло, ${name}! Это Белла, вы просили перезвонить. Слушаю вас.`
   : `Да, ${name}, это Белла. Слушаю вас.`);
-
-// ─── ElevenLabs API ─────────────────────────────────────────────────────────
-
-async function el<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { 'xi-api-key': config.elevenlabs.apiKey, 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    console.error(`[rop-call] ElevenLabs ${method} ${path} → ${res.status}: ${text.slice(0, 1000)}`);
-    const hint = res.status === 401 || res.status === 403 ? ' — у ключа ElevenLabs нет доступа к Agents (нужно право «ElevenAgents» у API-ключа)' : '';
-    throw new AppError(502, `ElevenLabs ответил ${res.status}${hint}`);
-  }
-  return (text ? JSON.parse(text) : {}) as T;
-}
 
 // ─── Схемы инструментов ─────────────────────────────────────────────────────
 
@@ -320,6 +305,11 @@ ropCallPublicRouter.post('/session', asyncHandler(async (req: Request, res: Resp
  */
 ropCallPublicRouter.post('/bridge-session', asyncHandler(async (req: Request, res: Response) => {
   if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  // Звонок менеджеру по поручению: доступ даёт само поручение, а не список HOS.
+  if (typeof req.body?.missionId === 'string') {
+    res.json(await startMissionSession(req.body.missionId));
+    return;
+  }
   const telegramId = String(req.body?.telegramId ?? '');
   if (!isAllowedTelegramId(telegramId)) throw new AppError(403, 'Нет доступа к РОП-агенту');
   const user = await crmUserByTelegramId(telegramId);
@@ -382,7 +372,13 @@ async function answerBellaMessage(user: AgentUser, text: string, voiceBase64: un
   return { heard, parts: splitTelegramHtml(html) };
 }
 
-/** Мост забирает «перезвони мне» — список Telegram ID, кому звонить. */
+/** Мост сообщает, чем кончился звонок менеджеру: DONE / NO_ANSWER / FAILED и расшифровка. */
+ropCallPublicRouter.post('/bridge-call-ended', asyncHandler(async (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  res.json(await finishMission(String(req.body?.missionId ?? ''), String(req.body?.status ?? ''), req.body?.transcript));
+}));
+
+/** Мост забирает очередь: «перезвони мне» и звонки менеджерам. */
 ropCallPublicRouter.get('/bridge-queue', (req: Request, res: Response) => {
   if (!bridgeAuthorized(req.headers['x-bridge-secret'])) {
     res.status(401).json({ message: 'Неверный секрет моста' });

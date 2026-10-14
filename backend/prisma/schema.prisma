@@ -301,6 +301,8 @@ model User {
   productReservations ProductReservation[] @relation("ReservationManager")
   pushSubscriptions   PushSubscription[]
   telegramChatId      String?          @unique @map("telegram_chat_id")
+  ropCallsRequested   RopCallMission[] @relation("RopCallMissionRequester")
+  ropCallsReceived    RopCallMission[] @relation("RopCallMissionManager")
   /** ID сотрудника в TimePay — если задан, синк посещаемости сопоставляет по нему, а не по ФИО. */
   timepayEmployeeId   String?          @unique @map("timepay_employee_id")
   /** Значок в списке команды (задают ADMIN / SUPER_ADMIN): ключ иконки, например star, trophy */
@@ -1564,6 +1566,27 @@ model RopTaskPlan {
   @@index([chatId, createdAt])
   @@index([status, assignedAt])
   @@map("rop_task_plans")
+}
+
+/// Звонок Беллы менеджеру по поручению директора: QUEUED | CALLING | DONE | NO_ANSWER | FAILED.
+model RopCallMission {
+  id            String    @id @default(uuid())
+  requestedById String    @map("requested_by_id")
+  managerId     String    @map("manager_id")
+  goal          String    @db.Text
+  status        String    @default("QUEUED")
+  /// [{ role: "agent" | "manager", text }]
+  transcript    Json?
+  summary       String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+
+  requestedBy User @relation("RopCallMissionRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  manager     User @relation("RopCallMissionManager", fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@index([managerId, createdAt])
+  @@map("rop_call_missions")
 }
 
 /// Изменение задач, подготовленное РОП-агентом: выполняется после подтверждения директором или админом.

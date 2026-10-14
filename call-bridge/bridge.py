@@ -26,6 +26,12 @@ import aiohttp
 from telethon import TelegramClient
 from telethon import events
 from telethon.sessions import StringSession
+from telethon.tl.functions.contacts import ImportContactsRequest
+from telethon.tl.types import InputPhoneContact
+
+from pytgcalls.exceptions import CallBusy
+from pytgcalls.exceptions import CallDeclined
+from pytgcalls.exceptions import TimedOutAnswer
 
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as fl
@@ -68,9 +74,12 @@ http: aiohttp.ClientSession | None = None
 class Call:
     """Один звонок: WebSocket агента, буферы звука и фоновые задачи."""
 
-    def __init__(self, user_id: int, ws: aiohttp.ClientWebSocketResponse):
+    def __init__(self, user_id: int, ws: aiohttp.ClientWebSocketResponse, mission_id: str | None = None):
         self.user_id = user_id
         self.ws = ws
+        # Звонок менеджеру по поручению: расшифровку отдаём CRM для отчёта.
+        self.mission_id = mission_id
+        self.transcript: list[dict] = []
         self.agent_in_rate = 16000   # что агент принимает (уточняется в metadata)
         self.agent_out_rate = 16000  # что агент присылает
         self.to_agent = bytearray()  # 48 кГц из звонка
@@ -110,9 +119,15 @@ class Call:
                 log.info('call %s: conversation %s, in %s, out %s', self.user_id,
                          meta.get('conversation_id'), self.agent_in_rate, self.agent_out_rate)
             elif kind == 'user_transcript':
-                log.info('call %s user: %s', self.user_id, ev.get('user_transcription_event', {}).get('user_transcript'))
+                said = ev.get('user_transcription_event', {}).get('user_transcript') or ''
+                log.info('call %s user: %s', self.user_id, said)
+                if said.strip():
+                    self.transcript.append({'role': 'manager', 'text': said})
             elif kind == 'agent_response':
-                log.info('call %s agent: %s', self.user_id, ev.get('agent_response_event', {}).get('agent_response'))
+                said = ev.get('agent_response_event', {}).get('agent_response') or ''
+                log.info('call %s agent: %s', self.user_id, said)
+                if said.strip():
+                    self.transcript.append({'role': 'agent', 'text': said})
         # Агент завершил разговор (попрощался, лимит времени): звук приходит быстрее, чем
         # играет, — сначала доигрываем прощание (не дольше 15 с), потом кладём трубку.
         log.info('call %s: agent closed the conversation (%s)', self.user_id, self.ws.close_code)
@@ -170,10 +185,27 @@ async def bridge_session(user_id: int, outbound: bool = False) -> dict | None:
         return await r.json()
 
 
+async def report_mission(mission_id: str, status: str, transcript: list[dict]) -> None:
+    """Чем кончился звонок менеджеру — CRM пишет отчёт тому, кто поручил."""
+    assert http is not None
+    try:
+        async with http.post(
+            f'{BACKEND}/api/public/rop-call/bridge-call-ended',
+            json={'missionId': mission_id, 'status': status, 'transcript': transcript},
+            headers={'x-bridge-secret': SECRET},
+            timeout=aiohttp.ClientTimeout(total=120),
+        ) as r:
+            log.info('mission %s reported: %s (HTTP %s)', mission_id, status, r.status)
+    except Exception as e:
+        log.warning('mission %s report failed: %s', mission_id, e)
+
+
 async def hang_up(user_id: int) -> None:
     call = calls.pop(user_id, None)
     if call:
         await call.close()
+        if call.mission_id:
+            asyncio.create_task(report_mission(call.mission_id, 'DONE', call.transcript))
     try:
         await calls_py.leave_call(user_id)
     except Exception:
@@ -198,7 +230,7 @@ async def on_incoming(_: PyTgCalls, update: ChatUpdate) -> None:
     await connect(user_id, session, outbound=False)
 
 
-async def connect(user_id: int, session: dict, outbound: bool) -> None:
+async def connect(user_id: int, session: dict, outbound: bool, mission_id: str | None = None) -> None:
     """
     Соединить звонок с агентом. Входящий: play() снимает трубку. Исходящий: play() звонит
     и ждёт ответа (до 45 с) — агента подключаем только после ответа, чтобы приветствие
@@ -213,13 +245,22 @@ async def connect(user_id: int, session: dict, outbound: bool) -> None:
             'type': 'conversation_initiation_client_data',
             'dynamic_variables': session['dynamicVariables'],
         })
-        call = Call(user_id, ws)
+        call = Call(user_id, ws, mission_id)
         calls[user_id] = call
         call.tasks = [asyncio.create_task(call.read_agent()), asyncio.create_task(call.play_to_call())]
         log.info('call %s connected (%s, %s)', user_id, session.get('userName'), 'outgoing' if outbound else 'incoming')
     except Exception as e:
         log.warning('call %s: not connected (%s: %s)', user_id, type(e).__name__, e)
-        await hang_up(user_id)
+        if user_id in calls:
+            await hang_up(user_id)
+        else:
+            try:
+                await calls_py.leave_call(user_id)
+            except Exception:
+                pass
+            if mission_id:
+                status = 'NO_ANSWER' if isinstance(e, (TimedOutAnswer, CallDeclined, CallBusy)) else 'FAILED'
+                await report_mission(mission_id, status, [])
 
 
 async def refresh_peers() -> None:
@@ -234,14 +275,21 @@ async def refresh_peers() -> None:
         log.warning('refresh peers failed: %s', e)
 
 
-async def can_reach(user_id: int) -> bool:
-    for attempt in range(2):
+async def can_reach(user_id: int, phone: str | None = None, name: str | None = None) -> bool:
+    for attempt in range(3):
         try:
             await client.get_input_entity(user_id)
             return True
         except ValueError:
             if attempt == 0:
                 await refresh_peers()
+            elif attempt == 1 and phone:
+                # Менеджер Белле не писал и не в контактах — добавляем по служебному номеру из CRM.
+                try:
+                    await client(ImportContactsRequest([InputPhoneContact(
+                        client_id=0, phone=phone, first_name=name or str(user_id), last_name='')]))
+                except Exception as e:
+                    log.warning('import contact %s failed: %s', phone, e)
     log.warning('cannot call %s: not in Bella contacts and never wrote to her — add to contacts or write to Bella once', user_id)
     return False
 
@@ -295,8 +343,42 @@ async def on_private_message(event) -> None:
             await client.send_message(event.chat_id, html.unescape(re.sub(r'<[^>]+>', '', part)), link_preview=False)
 
 
+outgoing: list[dict] = []
+
+
+async def start_outgoing(job: dict) -> None:
+    """Один исходящий звонок: «перезвони мне» или поручение позвонить менеджеру."""
+    assert http is not None
+    user_id = int(job['telegramId'])
+    mission_id = job.get('missionId')
+    if not await can_reach(user_id, job.get('phone'), job.get('name')):
+        if mission_id:
+            await report_mission(mission_id, 'FAILED', [])
+        return
+    if mission_id:
+        async with http.post(
+            f'{BACKEND}/api/public/rop-call/bridge-session',
+            json={'missionId': mission_id},
+            headers={'x-bridge-secret': SECRET},
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as r:
+            session = await r.json() if r.status == 200 else None
+            if not session:
+                log.warning('mission %s: no session (HTTP %s)', mission_id, r.status)
+                return
+    else:
+        session = await bridge_session(user_id, outbound=True)
+        if not session:
+            return
+    log.info('calling %s (%s)', user_id, f'mission {mission_id}' if mission_id else 'callback')
+    await connect(user_id, session, outbound=True, mission_id=mission_id)
+
+
 async def poll_callbacks() -> None:
-    """«Белла, позвони мне»: раз в 3 с забираем очередь у CRM и звоним."""
+    """
+    Раз в 3 с забираем очередь у CRM. Аккаунт Telegram держит только один звонок, поэтому
+    исходящие ждут, пока закончится текущий разговор, и идут по одному.
+    """
     assert http is not None
     while True:
         try:
@@ -306,29 +388,27 @@ async def poll_callbacks() -> None:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
                 if r.status == 200:
-                    for tg_id in (await r.json()).get('calls', []):
-                        user_id = int(tg_id)
-                        if user_id in calls:
-                            continue
-                        if not await can_reach(user_id):
-                            continue
-                        session = await bridge_session(user_id, outbound=True)
-                        if session:
-                            log.info('calling %s back', user_id)
-                            asyncio.create_task(connect(user_id, session, outbound=True))
+                    for item in (await r.json()).get('calls', []):
+                        # Старый бэкенд присылал просто Telegram ID.
+                        outgoing.append(item if isinstance(item, dict) else {'telegramId': str(item)})
                 else:
                     log.warning('bridge-queue: HTTP %s', r.status)
         except Exception as e:
             log.warning('bridge-queue failed: %s', e)
+        if outgoing and not calls:
+            job = outgoing.pop(0)
+            try:
+                await start_outgoing(job)
+            except Exception as e:
+                log.warning('outgoing call failed: %s', e)
         await asyncio.sleep(3)
 
 
 @calls_py.on_update(fl.chat_update(ChatUpdate.Status.LEFT_CALL))
 async def on_left(_: PyTgCalls, update: ChatUpdate) -> None:
     if update.chat_id in calls:
-        log.info('call %s ended by caller', update.chat_id)
-        call = calls.pop(update.chat_id)
-        await call.close()
+        log.info('call %s ended by the other side', update.chat_id)
+        await hang_up(update.chat_id)
 
 
 @calls_py.on_update(fl.stream_frame(Direction.INCOMING, Device.MICROPHONE))
