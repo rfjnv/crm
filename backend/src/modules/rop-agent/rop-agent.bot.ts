@@ -121,7 +121,8 @@ class AgentBot {
       { command: 'menu', description: 'Быстрые кнопки' },
       ...common,
       { command: 'memory', description: 'Что помнит агент' },
-      { command: 'call', description: 'Позвонить агенту голосом' },
+      { command: 'call', description: 'Позвонить Белле голосом' },
+      { command: 'callme', description: 'Белла, позвони мне' },
       { command: 'new', description: 'Новый разговор' },
     ], { scope: { type: 'all_private_chats' } }).catch(() => {});
     await setMyCommands(common, { scope: { type: 'all_group_chats' } }).catch(() => {});

@@ -8,6 +8,7 @@ import { agentBot, type TgButton } from './rop-agent.bot';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
 import { assignPlan, discardPlan } from './rop-agent.plans';
 import { decideTaskAction } from './rop-agent.task-actions';
+import { callbackAvailable, requestCallbackByTelegramId } from './rop-agent.callback';
 import { activeMemories } from './rop-agent.memory';
 import { sendOpenAlerts } from './rop-agent.alerts';
 import { transcribeVoiceNote } from './rop-agent.voice';
@@ -478,6 +479,14 @@ async function onTaskActionButton(query: TelegramBot.CallbackQuery): Promise<voi
   await agentBot.clearButtons(chatId, messageId);
 }
 
+/** «📲 Белла, позвони мне» — звонит тому, кто нажал. */
+async function onCallMeButton(query: TelegramBot.CallbackQuery): Promise<void> {
+  const user = await callbackUser(query);
+  if (!user) return;
+  const r = requestCallbackByTelegramId(String(query.from.id));
+  await agentBot.answerCallback(query.id, r.message.slice(0, 190));
+}
+
 /** «Подробнее» / «Подготовь задачи» под ответом — следующий шаг в том же разговоре. */
 async function onFollowUp(query: TelegramBot.CallbackQuery): Promise<void> {
   const kind = (query.data ?? '').split(':')[2];
@@ -552,16 +561,17 @@ async function sendCallButton(chatId: number, isPrivate: boolean, replyTo: numbe
     await agentBot.sendHtmlToChat(chatId, '📞 Звонки агенту сейчас выключены.', undefined, isPrivate ? {} : { replyTo });
     return;
   }
+  const callMe: TgButton[][] = callbackAvailable() ? [[{ text: '📲 Белла, позвони мне', callback: 'rop:c' }]] : [];
   if (isPrivate) {
     await agentBot.sendHtmlToChat(chatId,
-      '📞 <b>Звонок РОП-агенту</b>\nНажмите кнопку и разрешите микрофон. Говорите по-русски или по-узбекски — агент ответит на том же языке. Звонок до '
-      + `${config.ropAgent.call.maxMinutes} минут.`,
-      [[{ text: '📞 Позвонить', webApp: '/rop-call' }]]);
+      '📞 <b>Звонок Белле</b>\nНажмите «Позвонить» и разрешите микрофон — или «Белла, позвони мне», и она наберёт вас в Telegram. '
+      + `Говорите по-русски или по-узбекски — Белла ответит на том же языке. Звонок до ${config.ropAgent.call.maxMinutes} минут.`,
+      [[{ text: '📞 Позвонить', webApp: '/rop-call' }], ...callMe]);
     return;
   }
   const bot = agentBot.username;
-  await agentBot.sendHtmlToChat(chatId, '📞 Звонок открывается в личке бота.',
-    bot ? [[{ text: '📞 Позвонить из лички', url: `https://t.me/${bot}?start=call` }]] : undefined, { replyTo });
+  await agentBot.sendHtmlToChat(chatId, '📞 Звонок — в личке бота, или Белла наберёт вас сама.',
+    [...(bot ? [[{ text: '📞 Позвонить из лички', url: `https://t.me/${bot}?start=call` }]] : []), ...callMe], { replyTo });
 }
 
 /** Команды и быстрые кнопки. true — обработано, дальше агенту не передаём. */
@@ -571,6 +581,11 @@ async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: st
   const command = text.startsWith('/') ? text.split(/\s|@/)[0].toLowerCase() : null;
 
   // Звонок — до /start: ссылка из группы открывает личку с /start call.
+  if (command === '/callme') {
+    const r = requestCallbackByTelegramId(String(msg.from?.id ?? ''));
+    await agentBot.sendHtmlToChat(chatId, `${r.ok ? '📲' : '⚠️'} ${esc(r.message)}`, undefined, isPrivate ? {} : { replyTo: msg.message_id });
+    return true;
+  }
   if (command === '/call' || text === QUICK.call || (command === '/start' && /\bcall\b/.test(text))) {
     await sendCallButton(chatId, isPrivate, msg.message_id);
     return true;
@@ -700,3 +715,4 @@ agentBot.onPrivateVoice(onPrivateVoice);
 agentBot.onCallback('rop:p:', onPlanButton);
 agentBot.onCallback('rop:x:', onTaskActionButton);
 agentBot.onCallback('rop:f:', onFollowUp);
+agentBot.onCallback('rop:c', onCallMeButton);

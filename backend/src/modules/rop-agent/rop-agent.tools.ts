@@ -21,6 +21,7 @@ import {
 } from './rop-agent.analysis';
 import { proposeTaskPlan } from './rop-agent.plans';
 import { describeTaskAction, listTasks, proposeTaskChanges, type ListTasksInput } from './rop-agent.task-actions';
+import { requestCallback } from './rop-agent.callback';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
 import { callReviews } from './rop-agent.call-reviews';
@@ -436,6 +437,19 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'call_me',
+    description: 'Белла звонит собеседнику в Telegram голосом (с аккаунта Беллы) — когда просят «позвони мне», «перезвони», «набери меня». '
+      + 'В группе вопрос подписан «[спрашивает …]» — передай имя спросившего в person_name, иначе позвонишь владельцу разговора. '
+      + 'Звонок придёт через несколько секунд; в ответе скажи коротко, что звонишь.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        person_name: { type: 'string', description: 'Кому звонить, если это не владелец разговора: имя из «[спрашивает …]».' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_tasks',
     description: 'Задачи в CRM (раздел «Задачи»): кому, статус, срок, кто поставил, создана ли агентом, чек-лист. '
       + 'Без statuses — только незакрытые (TODO, IN_PROGRESS, DONE). Ищи здесь задачи перед propose_task_changes. '
@@ -700,6 +714,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Проверка розданных задач';
     case 'list_tasks':
       return 'Задачи в CRM';
+    case 'call_me':
+      return 'Звоню в Telegram';
     case 'propose_task_changes':
       return `Изменение задач: ${describeTaskAction(String(input.action))} (${Array.isArray(input.task_ids) ? input.task_ids.length : 0})`;
     case 'call_reviews':
@@ -719,6 +735,20 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
     default:
       return name;
   }
+}
+
+/** «Позвони мне»: себе или тому, кто спросил в группе (по имени). */
+async function callMeTool(ownerId: string, personName: unknown) {
+  let userId = ownerId;
+  const name = typeof personName === 'string' ? personName.trim() : '';
+  if (name) {
+    const found = await prisma.user.findFirst({
+      where: { isActive: true, fullName: { contains: name, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (found) userId = found.id;
+  }
+  return requestCallback(userId);
 }
 
 /** Выполняет инструмент. Ошибка возвращается модели как текст — пусть исправит запрос сама. */
@@ -756,6 +786,7 @@ export async function executeTool(
         break;
       case 'forget': result = await forgetTool(input); break;
       case 'list_tasks': result = await listTasks(input as ListTasksInput); break;
+      case 'call_me': result = await callMeTool(ctx.userId, input.person_name); break;
       case 'propose_task_changes': {
         const r = await proposeTaskChanges(ctx, input);
         actionId = r.action_id;

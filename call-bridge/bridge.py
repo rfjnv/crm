@@ -26,6 +26,7 @@ from telethon.sessions import StringSession
 
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as fl
+from pytgcalls.types import CallConfig
 from pytgcalls.types import ChatUpdate
 from pytgcalls.types import Device
 from pytgcalls.types import Direction
@@ -150,12 +151,12 @@ class Call:
 calls: dict[int, Call] = {}
 
 
-async def bridge_session(user_id: int) -> dict | None:
+async def bridge_session(user_id: int, outbound: bool = False) -> dict | None:
     """Спросить CRM: можно ли этому человеку звонить, и получить адрес агента."""
     assert http is not None
     async with http.post(
         f'{BACKEND}/api/public/rop-call/bridge-session',
-        json={'telegramId': str(user_id)},
+        json={'telegramId': str(user_id), 'outbound': outbound},
         headers={'x-bridge-secret': SECRET},
         timeout=aiohttp.ClientTimeout(total=30),
     ) as r:
@@ -191,8 +192,19 @@ async def on_incoming(_: PyTgCalls, update: ChatUpdate) -> None:
         await hang_up(user_id)
         return
 
+    await connect(user_id, session, outbound=False)
+
+
+async def connect(user_id: int, session: dict, outbound: bool) -> None:
+    """
+    Соединить звонок с агентом. Входящий: play() снимает трубку. Исходящий: play() звонит
+    и ждёт ответа (до 45 с) — агента подключаем только после ответа, чтобы приветствие
+    не ушло в пустоту.
+    """
     assert http is not None
     try:
+        await calls_py.play(user_id, MediaStream(ExternalMedia.AUDIO, AUDIO), CallConfig(timeout=45))
+        await calls_py.record(user_id, RecordStream(True, AUDIO))
         ws = await http.ws_connect(session['signedUrl'], heartbeat=None, max_msg_size=0)
         await ws.send_json({
             'type': 'conversation_initiation_client_data',
@@ -200,14 +212,37 @@ async def on_incoming(_: PyTgCalls, update: ChatUpdate) -> None:
         })
         call = Call(user_id, ws)
         calls[user_id] = call
-        # play — отвечает на звонок и открывает «микрофон» для кадров агента; record — слышим звонящего.
-        await calls_py.play(user_id, MediaStream(ExternalMedia.AUDIO, AUDIO))
-        await calls_py.record(user_id, RecordStream(True, AUDIO))
         call.tasks = [asyncio.create_task(call.read_agent()), asyncio.create_task(call.play_to_call())]
-        log.info('call %s connected (%s)', user_id, session.get('userName'))
-    except Exception:
-        log.exception('call %s: failed to connect', user_id)
+        log.info('call %s connected (%s, %s)', user_id, session.get('userName'), 'outgoing' if outbound else 'incoming')
+    except Exception as e:
+        log.warning('call %s: not connected (%s: %s)', user_id, type(e).__name__, e)
         await hang_up(user_id)
+
+
+async def poll_callbacks() -> None:
+    """«Белла, позвони мне»: раз в 3 с забираем очередь у CRM и звоним."""
+    assert http is not None
+    while True:
+        try:
+            async with http.get(
+                f'{BACKEND}/api/public/rop-call/bridge-queue',
+                headers={'x-bridge-secret': SECRET},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as r:
+                if r.status == 200:
+                    for tg_id in (await r.json()).get('calls', []):
+                        user_id = int(tg_id)
+                        if user_id in calls:
+                            continue
+                        session = await bridge_session(user_id, outbound=True)
+                        if session:
+                            log.info('calling %s back', user_id)
+                            asyncio.create_task(connect(user_id, session, outbound=True))
+                else:
+                    log.warning('bridge-queue: HTTP %s', r.status)
+        except Exception as e:
+            log.warning('bridge-queue failed: %s', e)
+        await asyncio.sleep(3)
 
 
 @calls_py.on_update(fl.chat_update(ChatUpdate.Status.LEFT_CALL))
@@ -235,6 +270,7 @@ async def main() -> None:
     await calls_py.start()
     me = await client.get_me()
     log.info('call bridge is up as @%s (%s)', me.username, me.id)
+    asyncio.create_task(poll_callbacks())
     await client.run_until_disconnected()
 
 

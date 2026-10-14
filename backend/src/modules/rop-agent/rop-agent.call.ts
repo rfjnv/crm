@@ -12,6 +12,7 @@ import { assignPlan } from './rop-agent.plans';
 import { getTelegramChat } from './rop-agent.service';
 import { agentBot } from './rop-agent.bot';
 import { broadcastTargets } from './rop-agent.telegram';
+import { takePendingCallbacks } from './rop-agent.callback';
 
 /**
  * Живой голосовой звонок с РОП-агентом (мини-приложение в Telegram или страница CRM).
@@ -83,7 +84,11 @@ const CALL_PROMPT = `Тебя зовут Белла. Ты — РОП-агент 
 
 Когда разговор закончен (попрощались) — заверши звонок (end_call).`;
 
-const FIRST_MESSAGE = { ru: 'Да, {{user_name}}, это Белла. Слушаю вас.', uz: 'Ha, {{user_name}}, Bella eshitmoqda. Gapiring.' };
+/** Приветствие — из переменной звонка: на входящий и на «перезвони мне» Белла здоровается по-разному. */
+const FIRST_MESSAGE = { ru: '{{greeting}}', uz: 'Ha, {{user_name}}, Bella eshitmoqda. Gapiring.' };
+const greetingFor = (name: string, outbound: boolean) => (outbound
+  ? `Алло, ${name}! Это Белла, вы просили перезвонить. Слушаю вас.`
+  : `Да, ${name}, это Белла. Слушаю вас.`);
 
 // ─── ElevenLabs API ─────────────────────────────────────────────────────────
 
@@ -153,7 +158,9 @@ export function agentConfig(toolIds: string[]) {
         first_message: FIRST_MESSAGE.ru,
         language: 'ru',
         dynamic_variables: {
-          dynamic_variable_placeholders: { session_key: 'test', user_name: 'Фарход', today: '2026-10-14', memory: '—' },
+          dynamic_variable_placeholders: {
+            session_key: 'test', user_name: 'Фарход', today: '2026-10-14', memory: '—', greeting: 'Да, Фарход, это Белла. Слушаю вас.',
+          },
         },
         prompt: {
           prompt: CALL_PROMPT,
@@ -242,14 +249,16 @@ function tashkentToday(): string {
 }
 
 /** Переменные звонка и ключ сессии для вебхуков инструментов. */
-async function callVariables(user: AgentUser) {
+async function callVariables(user: AgentUser, outbound = false) {
   const key = randomBytes(24).toString('base64url');
   const now = Date.now();
   for (const [k, s] of sessions) if (s.expires < now) sessions.delete(k);
   sessions.set(hashKey(key), { userId: user.id, expires: now + SESSION_TTL_MS });
+  const firstName = user.fullName.split(' ')[0];
   return {
     session_key: key,
-    user_name: user.fullName.split(' ')[0],
+    greeting: greetingFor(firstName, outbound),
+    user_name: firstName,
     today: tashkentToday(),
     memory: memoryText(await activeMemories()) || '—',
   };
@@ -270,13 +279,13 @@ export async function startCallSession(user: AgentUser) {
 }
 
 /** Звонок через мост (обычный звонок Telegram): подписанный адрес WebSocket вместо WebRTC. */
-async function startBridgeSession(user: AgentUser) {
+async function startBridgeSession(user: AgentUser, outbound: boolean) {
   assertCallsEnabled();
   const agentId = await ensureCallAgent();
   const { signed_url } = await el<{ signed_url: string }>(
     'GET', `/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
   );
-  return { signedUrl: signed_url, userName: user.fullName, dynamicVariables: await callVariables(user) };
+  return { signedUrl: signed_url, userName: user.fullName, dynamicVariables: await callVariables(user, outbound) };
 }
 
 function bridgeAuthorized(header: unknown): boolean {
@@ -311,8 +320,17 @@ ropCallPublicRouter.post('/bridge-session', asyncHandler(async (req: Request, re
   if (!isAllowedTelegramId(telegramId)) throw new AppError(403, 'Нет доступа к РОП-агенту');
   const user = await crmUserByTelegramId(telegramId);
   if (!user) throw new AppError(403, 'Telegram не привязан к сотруднику CRM');
-  res.json(await startBridgeSession(user));
+  res.json(await startBridgeSession(user, req.body?.outbound === true));
 }));
+
+/** Мост забирает «перезвони мне» — список Telegram ID, кому звонить. */
+ropCallPublicRouter.get('/bridge-queue', (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) {
+    res.status(401).json({ message: 'Неверный секрет моста' });
+    return;
+  }
+  res.json({ calls: takePendingCallbacks() });
+});
 
 ropCallPublicRouter.post('/tool/:name', asyncHandler(async (req: Request, res: Response) => {
   const name = req.params.name as string;
