@@ -8,7 +8,7 @@ import { agentBot, type TgButton } from './rop-agent.bot';
 import { buildDigest, tashkentYesterday, type DigestData } from './rop-agent.digest';
 import { assignPlan, discardPlan } from './rop-agent.plans';
 import { decideTaskAction } from './rop-agent.task-actions';
-import { callbackAvailable, requestCallbackByTelegramId } from './rop-agent.callback';
+import { bridgeAlive, callbackAvailable, requestCallbackByTelegramId } from './rop-agent.callback';
 import { activeMemories } from './rop-agent.memory';
 import { sendOpenAlerts } from './rop-agent.alerts';
 import { transcribeVoiceNote } from './rop-agent.voice';
@@ -535,6 +535,11 @@ async function sendStatus(chatId: number, replyTo?: number, fromId?: number): Pr
     busy ? `🧠 Сейчас готовит ответов: ${busy}` : '🧠 Сейчас свободен',
     yes(!!config.claude.apiKey, config.claude.apiKey ? 'Claude подключён' : 'Нет ключа Claude — агент не ответит'),
     yes(!!(config.elevenlabs.apiKey || config.aisha.apiKey), config.elevenlabs.apiKey || config.aisha.apiKey ? 'Распознавание голоса и звонков подключено' : 'Нет ключей распознавания — голос и звонки не работают'),
+    ...(callbackAvailable()
+      ? [yes(bridgeAlive(), bridgeAlive()
+        ? 'Мост звонков на связи — Белла может звонить сама'
+        : 'Мост звонков НЕ на связи — Белла не сможет позвонить (проверьте сервис rop-call-bridge на Render)')]
+      : ['⚪ Мост звонков не настроен (нет ROP_CALL_BRIDGE_SECRET) — звонки только из бота']),
     lastDigest?.sentAt
       ? `📊 Последняя сводка: за ${lastDigest.date.split('-').reverse().join('.')}, отправлена ${new Date(lastDigest.sentAt.getTime() + 5 * 3600_000).toISOString().slice(11, 16)}`
       : '📊 Сводка ещё не отправлялась',

@@ -459,7 +459,7 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         manager_id: { type: 'string', description: 'Кому звонить (id из list_managers).' },
-        goal: { type: 'string', description: 'Что выяснить в разговоре, 1–3 предложения.' },
+        goal: { type: 'string', description: 'Что выяснить в разговоре, 1–3 предложения. Не сказали — «как идут продажи в этом месяце, что с задачами и что мешает».' },
       },
       required: ['manager_id', 'goal'],
       additionalProperties: false,
