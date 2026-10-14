@@ -26,6 +26,7 @@ import aiohttp
 from telethon import TelegramClient
 from telethon import events
 from telethon.sessions import StringSession
+from telethon.tl.functions.contacts import GetContactsRequest
 from telethon.tl.functions.contacts import ImportContactsRequest
 from telethon.tl.types import InputPhoneContact
 
@@ -302,10 +303,13 @@ async def refresh_peers() -> None:
     его нет — подгружаем контакты и диалоги: кто в контактах Беллы или писал ей, тому звоним.
     """
     try:
-        await client.get_contacts()
+        await client(GetContactsRequest(hash=0))
+    except Exception as e:
+        log.warning('load contacts failed: %s', e)
+    try:
         await client.get_dialogs(limit=200)
     except Exception as e:
-        log.warning('refresh peers failed: %s', e)
+        log.warning('load dialogs failed: %s', e)
 
 
 async def can_reach(user_id: int, phone: str | None = None, name: str | None = None) -> bool:
