@@ -4,7 +4,7 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
 import { el } from './rop-agent.elevenlabs';
-import { bridgeAlive, callbackAvailable, enqueueCall, telegramIdOfUser } from './rop-agent.callback';
+import { bridgeAlive, callbackAvailable, telegramIdOfUser, type QueuedCall } from './rop-agent.callback';
 import { directorUserIds } from './rop-agent.people';
 import { kpiForecast } from './rop-agent.kpi';
 import { clientPurchaseCycles } from './rop-agent.analysis';
@@ -114,14 +114,12 @@ export async function requestManagerCall(requesterId: string, input: { manager_i
   if (!manager.telegramChatId) {
     throw new AppError(400, `У сотрудника ${manager.fullName} не привязан Telegram в CRM — позвонить некуда. Привязка: «Уведомления → Привязать Telegram».`);
   }
-  const busy = await prisma.ropCallMission.findFirst({
-    where: { managerId: manager.id, status: { in: ['QUEUED', 'CALLING'] }, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
-  });
+  await expireStaleMissions();
+  const busy = await prisma.ropCallMission.findFirst({ where: { managerId: manager.id, status: { in: ACTIVE } } });
   if (busy) throw new AppError(409, `Белла уже звонит ${manager.fullName} — дождитесь отчёта`);
 
-  const phone = await prisma.servicePhone.findFirst({ where: { userId: manager.id }, select: { phone: true } });
+  // Очередь — сама таблица: мост забирает QUEUED через takeQueuedMissions, перезапуск сервера её не теряет.
   const mission = await prisma.ropCallMission.create({ data: { requestedById: requesterId, managerId: manager.id, goal } });
-  enqueueCall({ telegramId: manager.telegramChatId, missionId: mission.id, phone: phone?.phone, name: manager.fullName });
   return {
     mission_id: mission.id,
     status: 'QUEUED',
@@ -129,6 +127,45 @@ export async function requestManagerCall(requesterId: string, input: { manager_i
       + 'Отчёт о разговоре придёт тому, кто поручил, в Telegram; позже его можно посмотреть через manager_call_reports. '
       + 'Скажи об этом коротко и не выдумывай результат разговора.',
   };
+}
+
+/** QUEUED — ждёт моста, DISPATCHED — мост забрал, CALLING — идёт разговор. */
+const ACTIVE = ['QUEUED', 'DISPATCHED', 'CALLING'];
+/** Дольше — значит, звонок потерялся (мост перезапускался, сервер перезапускался). */
+const STALE_MS = 15 * 60_000;
+
+/** Зависшие поручения закрываем, чтобы они не блокировали новые звонки этому менеджеру. */
+async function expireStaleMissions(): Promise<void> {
+  await prisma.ropCallMission.updateMany({
+    where: { status: { in: ACTIVE }, createdAt: { lt: new Date(Date.now() - STALE_MS) } },
+    data: { status: 'FAILED', summary: 'Не дозвонилась: звонок так и не начался (мост звонков перезапускался) — поручите ещё раз.', finishedAt: new Date() },
+  });
+}
+
+/** Для моста: новые поручения из базы, каждое выдаётся один раз (QUEUED → DISPATCHED). */
+export async function takeQueuedMissions(): Promise<QueuedCall[]> {
+  await expireStaleMissions();
+  const queued = await prisma.ropCallMission.findMany({
+    where: { status: 'QUEUED' },
+    orderBy: { createdAt: 'asc' },
+    take: 10,
+    include: { manager: { select: { fullName: true, telegramChatId: true } } },
+  });
+  const out: QueuedCall[] = [];
+  for (const m of queued) {
+    const claimed = await prisma.ropCallMission.updateMany({ where: { id: m.id, status: 'QUEUED' }, data: { status: 'DISPATCHED' } });
+    if (!claimed.count) continue;
+    if (!m.manager.telegramChatId) {
+      await prisma.ropCallMission.update({
+        where: { id: m.id },
+        data: { status: 'FAILED', summary: 'Не дозвонилась: у сотрудника не привязан Telegram в CRM.', finishedAt: new Date() },
+      });
+      continue;
+    }
+    const phone = await prisma.servicePhone.findFirst({ where: { userId: m.managerId }, select: { phone: true } });
+    out.push({ telegramId: m.manager.telegramChatId, missionId: m.id, phone: phone?.phone, name: m.manager.fullName });
+  }
+  return out;
 }
 
 /** Сводка по менеджеру для разговора: план, задачи, кто из его клиентов пропал. */
@@ -166,7 +203,7 @@ export async function startMissionSession(missionId: string) {
     where: { id: missionId },
     include: { manager: { select: { fullName: true } }, requestedBy: { select: { fullName: true } } },
   });
-  if (!mission || mission.status !== 'QUEUED') throw new AppError(404, 'Поручение не найдено или уже выполнено');
+  if (!mission || !['QUEUED', 'DISPATCHED'].includes(mission.status)) throw new AppError(404, 'Поручение не найдено или уже выполнено');
   const agentId = await ensureManagerAgent();
   const { signed_url } = await el<{ signed_url: string }>('GET', `/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`);
   await prisma.ropCallMission.update({ where: { id: missionId }, data: { status: 'CALLING', startedAt: new Date() } });
@@ -248,7 +285,7 @@ export async function finishMission(missionId: string, status: string, transcrip
     where: { id: missionId },
     include: { manager: { select: { fullName: true } } },
   });
-  if (!mission || !['QUEUED', 'CALLING'].includes(mission.status)) return { ok: false };
+  if (!mission || !ACTIVE.includes(mission.status)) return { ok: false };
   const lines = (Array.isArray(transcript) ? transcript : [])
     .filter((l): l is Line => !!l && typeof l.text === 'string' && (l.role === 'agent' || l.role === 'manager'))
     .slice(0, 400);

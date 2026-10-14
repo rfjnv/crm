@@ -18,7 +18,7 @@ import { transcribeVoiceNote } from './rop-agent.voice';
 import { agentBot } from './rop-agent.bot';
 import { broadcastTargets, markdownToTelegramHtml } from './rop-agent.telegram';
 import { takePendingCallbacks } from './rop-agent.callback';
-import { callFailureText, finishMission, startMissionSession } from './rop-agent.missions';
+import { callFailureText, finishMission, startMissionSession, takeQueuedMissions } from './rop-agent.missions';
 
 /**
  * Живой голосовой звонок с РОП-агентом (мини-приложение в Telegram или страница CRM).
@@ -390,13 +390,11 @@ ropCallPublicRouter.post('/bridge-callback-failed', asyncHandler(async (req: Req
 }));
 
 /** Мост забирает очередь: «перезвони мне» и звонки менеджерам. */
-ropCallPublicRouter.get('/bridge-queue', (req: Request, res: Response) => {
-  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) {
-    res.status(401).json({ message: 'Неверный секрет моста' });
-    return;
-  }
-  res.json({ calls: takePendingCallbacks() });
-});
+ropCallPublicRouter.get('/bridge-queue', asyncHandler(async (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  // «Перезвони мне» — короткая очередь в памяти, поручения менеджерам — из базы.
+  res.json({ calls: [...takePendingCallbacks(), ...await takeQueuedMissions()] });
+}));
 
 ropCallPublicRouter.post('/tool/:name', asyncHandler(async (req: Request, res: Response) => {
   const name = req.params.name as string;
