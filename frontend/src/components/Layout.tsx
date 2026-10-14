@@ -819,6 +819,11 @@ export default function Layout() {
             icon: <EyeOutlined />,
             label: <Link to="/admin/activity-log">Журнал действий</Link>,
           },
+          {
+            key: '/admin/deals/backdated',
+            icon: <HistoryOutlined />,
+            label: <Link to="/admin/deals/backdated">Сделки задним числом</Link>,
+          },
         ]
       : []),
     ...(isAdmin && hasPermission('manage_users')

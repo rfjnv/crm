@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
-import { PlusOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined, WarningOutlined } from '@ant-design/icons';
+import { PlusOutlined, HistoryOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined, WarningOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
 import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
@@ -257,6 +257,11 @@ export default function DealsPage() {
               { label: <AppstoreOutlined />, value: 'kanban' },
             ]}
           />
+          {user?.role === 'SUPER_ADMIN' && !isMobile && (
+            <Button icon={<HistoryOutlined />} onClick={() => navigate('/admin/deals/backdated')}>
+              Задним числом
+            </Button>
+          )}
           {canCreate && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deals/new')}>
               {isMobile ? '' : isManager ? 'Новая заявка' : 'Создать'}

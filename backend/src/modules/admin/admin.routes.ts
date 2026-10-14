@@ -12,6 +12,7 @@ import { clientsService } from '../clients/clients.service';
 import { AuthUser } from '../../lib/scope';
 import { listAuditLogsForSuperAdmin } from './admin.audit-logs.service';
 import { getDailyActivityReport } from '../activity-tracking/activity-tracking.service';
+import { backdatedDealsDto, backdatedDealsService } from './backdatedDeals.service';
 
 const router = Router();
 
@@ -29,6 +30,24 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const result = await dealsService.overrideUpdate(req.params.id as string, req.body, getUser(req));
     res.json(result);
+  }),
+);
+
+// ──── SUPER_ADMIN: сделки задним числом по ведомости (по сделке на дату, со списанием склада) ────
+router.post(
+  '/deals/backdated/preview',
+  authorize('SUPER_ADMIN'),
+  validate(backdatedDealsDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await backdatedDealsService.preview(req.body));
+  }),
+);
+router.post(
+  '/deals/backdated',
+  authorize('SUPER_ADMIN'),
+  validate(backdatedDealsDto),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await backdatedDealsService.create(req.body, req.user!.userId));
   }),
 );
 

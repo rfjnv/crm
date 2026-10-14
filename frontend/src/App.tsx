@@ -104,6 +104,7 @@ const CallReportsPage = lazy(() => import('./pages/CallReportsPage'));
 const AuditCheckPage = lazy(() => import('./pages/AuditCheckPage'));
 const AuditStockPage = lazy(() => import('./pages/AuditStockPage'));
 const ActivityLogPage = lazy(() => import('./pages/ActivityLogPage'));
+const BackdatedDealsPage = lazy(() => import('./pages/BackdatedDealsPage'));
 const AlmanacSalesPage = lazy(() => import('./pages/AlmanacSalesPage'));
 const AlmanacClientsPage = lazy(() => import('./pages/AlmanacClientsPage'));
 const AlmanacProductsPage = lazy(() => import('./pages/AlmanacProductsPage'));
@@ -265,6 +266,7 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN']} />}>
                   <Route path="/admin/activity-log" element={<ActivityLogPage />} />
+                  <Route path="/admin/deals/backdated" element={<BackdatedDealsPage />} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/deals/audit-check" element={<AuditCheckPage />} />

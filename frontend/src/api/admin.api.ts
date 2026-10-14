@@ -81,7 +81,40 @@ export interface AuditLogListResponse {
   offset: number;
 }
 
+export interface BackdatedDealsPayload {
+  clientId: string;
+  managerId: string;
+  status: 'CLOSED' | 'NEW';
+  paymentMethod: string;
+  paymentState: 'UNPAID' | 'PAID';
+  deductStock: boolean;
+  reason: string;
+  items: { date: string; productId: string; qty: number; price: number; rollCount?: number | null }[];
+}
+
+export interface BackdatedPlan {
+  deals: {
+    date: string;
+    title: string;
+    amount: number;
+    items: {
+      productId: string; sku: string; name: string; unit: string;
+      qty: number; price: number; lineTotal: number;
+      rollCount: number | null; rollHow: string | null;
+    }[];
+  }[];
+  total: number;
+  warnings: string[];
+  stock: { sku: string; name: string; unit: string; before: number; after: number; rollsBefore: number | null; rollsAfter: number | null }[];
+}
+
 export const adminApi = {
+  /** SUPER_ADMIN: сделки задним числом — предпросмотр (ничего не пишет) и создание. */
+  previewBackdatedDeals: (data: BackdatedDealsPayload) =>
+    client.post<BackdatedPlan>('/admin/deals/backdated/preview', data).then((r) => r.data),
+  createBackdatedDeals: (data: BackdatedDealsPayload) =>
+    client.post<{ deals: { id: string; title: string; amount: number }[]; total: number; warnings: string[] }>('/admin/deals/backdated', data).then((r) => r.data),
+
   correctClientStockAdd: (clientId: string, eventId: string, data: CorrectClientStockAddPayload) =>
     client.patch<ClientStockResponse>(`/admin/clients/${clientId}/stock/events/${eventId}`, data).then((r) => r.data),
 
