@@ -220,7 +220,30 @@ async function writeReport(goal: string, lines: Line[]): Promise<string> {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Мост сообщает, чем кончился звонок: отчёт сохраняется и уходит тому, кто поручил. */
-export async function finishMission(missionId: string, status: string, transcript: unknown) {
+/**
+ * Почему звонок не состоялся — по коду от моста, с подсказкой, что сделать.
+ * who — имя в родительном падеже не склоняем: «у Дилноза Эргашева» читается нормально.
+ */
+export function callFailureText(reason: unknown, who: string): string {
+  switch (reason) {
+    case 'privacy':
+      return `у ${who} в Telegram звонки разрешены только контактам. Пусть ${who} добавит Беллу в контакты (или разрешит звонки от всех) — тогда дозвонюсь.`;
+    case 'not_found':
+      return `Белла не нашла ${who} в Telegram: её нет в контактах Беллы и она Белле не писала. Пусть ${who} напишет Белле в Telegram любое сообщение — после этого дозвонюсь.`;
+    case 'no_answer':
+      return `${who} не взяла трубку.`;
+    case 'declined':
+      return `${who} отклонила звонок.`;
+    case 'busy':
+      return `${who} была занята другим звонком.`;
+    case 'blocked':
+      return `${who} заблокировала аккаунт Беллы в Telegram.`;
+    default:
+      return typeof reason === 'string' && reason ? `не удалось соединиться (${reason}).` : 'не удалось соединиться.';
+  }
+}
+
+export async function finishMission(missionId: string, status: string, transcript: unknown, reason?: unknown) {
   const mission = await prisma.ropCallMission.findUnique({
     where: { id: missionId },
     include: { manager: { select: { fullName: true } } },
@@ -239,7 +262,7 @@ export async function finishMission(missionId: string, status: string, transcrip
 
   const head = final === 'DONE'
     ? `📞 <b>Белла поговорила с ${esc(mission.manager.fullName)}</b>`
-    : `📞 Белла не дозвонилась до ${esc(mission.manager.fullName)}${final === 'FAILED' ? ' (не удалось соединиться)' : ''}.`;
+    : `📞 Белла не дозвонилась до ${esc(mission.manager.fullName)}: ${esc(callFailureText(reason, mission.manager.fullName.split(' ')[0]))}`;
   const body = summary ? `\n<i>Цель: ${esc(mission.goal)}</i>\n\n${esc(summary)}` : '';
   const target = await telegramIdOfUser(mission.requestedById);
   if (agentBot.enabled) {

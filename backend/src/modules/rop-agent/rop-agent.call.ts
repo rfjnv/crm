@@ -18,7 +18,7 @@ import { transcribeVoiceNote } from './rop-agent.voice';
 import { agentBot } from './rop-agent.bot';
 import { broadcastTargets, markdownToTelegramHtml } from './rop-agent.telegram';
 import { takePendingCallbacks } from './rop-agent.callback';
-import { finishMission, startMissionSession } from './rop-agent.missions';
+import { callFailureText, finishMission, startMissionSession } from './rop-agent.missions';
 
 /**
  * Живой голосовой звонок с РОП-агентом (мини-приложение в Telegram или страница CRM).
@@ -375,7 +375,18 @@ async function answerBellaMessage(user: AgentUser, text: string, voiceBase64: un
 /** Мост сообщает, чем кончился звонок менеджеру: DONE / NO_ANSWER / FAILED и расшифровка. */
 ropCallPublicRouter.post('/bridge-call-ended', asyncHandler(async (req: Request, res: Response) => {
   if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
-  res.json(await finishMission(String(req.body?.missionId ?? ''), String(req.body?.status ?? ''), req.body?.transcript));
+  res.json(await finishMission(String(req.body?.missionId ?? ''), String(req.body?.status ?? ''), req.body?.transcript, req.body?.reason));
+}));
+
+/** «Позвони мне» не получилось — мост сообщает причину, человеку уходит сообщение в боте. */
+ropCallPublicRouter.post('/bridge-callback-failed', asyncHandler(async (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  const telegramId = String(req.body?.telegramId ?? '');
+  if (isAllowedTelegramId(telegramId) && agentBot.enabled) {
+    await agentBot.sendHtmlToChat(telegramId,
+      `📞 Белла не смогла вам позвонить: ${callFailureText(req.body?.reason, 'вы').replace(/&/g, '&amp;').replace(/</g, '&lt;')}`);
+  }
+  res.json({ ok: true });
 }));
 
 /** Мост забирает очередь: «перезвони мне» и звонки менеджерам. */

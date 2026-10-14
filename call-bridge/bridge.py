@@ -185,13 +185,43 @@ async def bridge_session(user_id: int, outbound: bool = False) -> dict | None:
         return await r.json()
 
 
-async def report_mission(mission_id: str, status: str, transcript: list[dict]) -> None:
+def failure_reason(e: BaseException) -> str:
+    """Код причины для CRM: она объяснит человеку, что сделать."""
+    if isinstance(e, TimedOutAnswer):
+        return 'no_answer'
+    if isinstance(e, CallDeclined):
+        return 'declined'
+    if isinstance(e, CallBusy):
+        return 'busy'
+    text = f'{type(e).__name__} {e}'.upper()
+    if 'PRIVACY' in text:
+        return 'privacy'
+    if 'BLOCKED' in text:
+        return 'blocked'
+    return f'{type(e).__name__}: {e}'[:200]
+
+
+async def report_callback_failed(user_id: int, reason: str) -> None:
+    assert http is not None
+    try:
+        async with http.post(
+            f'{BACKEND}/api/public/rop-call/bridge-callback-failed',
+            json={'telegramId': str(user_id), 'reason': reason},
+            headers={'x-bridge-secret': SECRET},
+            timeout=aiohttp.ClientTimeout(total=30),
+        ):
+            pass
+    except Exception as e:
+        log.warning('callback failure report for %s failed: %s', user_id, e)
+
+
+async def report_mission(mission_id: str, status: str, transcript: list[dict], reason: str | None = None) -> None:
     """Чем кончился звонок менеджеру — CRM пишет отчёт тому, кто поручил."""
     assert http is not None
     try:
         async with http.post(
             f'{BACKEND}/api/public/rop-call/bridge-call-ended',
-            json={'missionId': mission_id, 'status': status, 'transcript': transcript},
+            json={'missionId': mission_id, 'status': status, 'transcript': transcript, 'reason': reason},
             headers={'x-bridge-secret': SECRET},
             timeout=aiohttp.ClientTimeout(total=120),
         ) as r:
@@ -258,9 +288,12 @@ async def connect(user_id: int, session: dict, outbound: bool, mission_id: str |
                 await calls_py.leave_call(user_id)
             except Exception:
                 pass
+            reason = failure_reason(e)
             if mission_id:
-                status = 'NO_ANSWER' if isinstance(e, (TimedOutAnswer, CallDeclined, CallBusy)) else 'FAILED'
-                await report_mission(mission_id, status, [])
+                status = 'NO_ANSWER' if reason in ('no_answer', 'declined', 'busy') else 'FAILED'
+                await report_mission(mission_id, status, [], reason)
+            elif outbound:
+                await report_callback_failed(user_id, reason)
 
 
 async def refresh_peers() -> None:
@@ -353,7 +386,9 @@ async def start_outgoing(job: dict) -> None:
     mission_id = job.get('missionId')
     if not await can_reach(user_id, job.get('phone'), job.get('name')):
         if mission_id:
-            await report_mission(mission_id, 'FAILED', [])
+            await report_mission(mission_id, 'FAILED', [], 'not_found')
+        else:
+            await report_callback_failed(user_id, 'not_found')
         return
     if mission_id:
         async with http.post(
