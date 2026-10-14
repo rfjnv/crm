@@ -254,7 +254,10 @@ export async function finishMission(missionId: string, status: string, transcrip
     .slice(0, 400);
   const answered = lines.some((l) => l.role === 'manager');
   const final = status === 'DONE' && !answered ? 'NO_ANSWER' : ['DONE', 'NO_ANSWER', 'FAILED'].includes(status) ? status : 'FAILED';
-  const summary = final === 'DONE' ? await writeReport(mission.goal, lines) : null;
+  // Не дозвонилась — в отчёт причину и что сделать: агент потом сможет её назвать.
+  const summary = final === 'DONE'
+    ? await writeReport(mission.goal, lines)
+    : `Не дозвонилась: ${callFailureText(reason, mission.manager.fullName.split(' ')[0])}`;
   await prisma.ropCallMission.update({
     where: { id: missionId },
     data: { status: final, transcript: lines as unknown as Prisma.InputJsonValue, summary, finishedAt: new Date() },
@@ -263,7 +266,7 @@ export async function finishMission(missionId: string, status: string, transcrip
   const head = final === 'DONE'
     ? `📞 <b>Белла поговорила с ${esc(mission.manager.fullName)}</b>`
     : `📞 Белла не дозвонилась до ${esc(mission.manager.fullName)}: ${esc(callFailureText(reason, mission.manager.fullName.split(' ')[0]))}`;
-  const body = summary ? `\n<i>Цель: ${esc(mission.goal)}</i>\n\n${esc(summary)}` : '';
+  const body = final === 'DONE' && summary ? `\n<i>Цель: ${esc(mission.goal)}</i>\n\n${esc(summary)}` : '';
   const target = await telegramIdOfUser(mission.requestedById);
   if (agentBot.enabled) {
     for (const chat of target ? [target] : config.hos.groupId ? [config.hos.groupId] : []) {
