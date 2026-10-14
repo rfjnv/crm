@@ -86,10 +86,10 @@ export const config = {
   ropAgent: {
     /**
      * Главный выключатель РОП-агента: off — ни одного обращения к Claude и распознаванию
-     * (чат, голосовые, разбор звонков, сводка, сигналы, перевод задач). Сейчас по умолчанию
-     * выключен — агент на доработке; включить — ROP_AGENT=on на Render.
+     * (чат, голосовые, разбор звонков, сводка, сигналы, перевод задач). По умолчанию включён;
+     * выключить — ROP_AGENT=off на Render.
      */
-    enabled: (trimEnv(process.env.ROP_AGENT) || 'off').toLowerCase() === 'on',
+    enabled: (trimEnv(process.env.ROP_AGENT) || 'on').toLowerCase() !== 'off',
     /**
      * Живой голосовой звонок агенту (ElevenLabs Agents) — отдельно от ROP_AGENT: модель
      * звонка оплачивается в ElevenLabs. ROP_CALL=off — выключить.
@@ -98,8 +98,8 @@ export const config = {
       enabled: (trimEnv(process.env.ROP_CALL) || 'on').toLowerCase() !== 'off',
       /** Модель разговора на стороне ElevenLabs. */
       llm: trimEnv(process.env.ROP_CALL_LLM) || 'claude-sonnet-5-5',
-      /** Голос (id из библиотеки ElevenLabs); по умолчанию — стандартный «George». */
-      voiceId: trimEnv(process.env.ROP_CALL_VOICE_ID) || 'JBFqnCBsd6RMkjVDRZzb',
+      /** Голос (id из библиотеки ElevenLabs); по умолчанию — женский «Sarah»: агент — Белла. */
+      voiceId: trimEnv(process.env.ROP_CALL_VOICE_ID) || 'EXAVITQu4vr4xnSDxMaL',
       /** Готовый агент в ElevenLabs; пусто — найдётся или создастся по имени. */
       agentId: trimEnv(process.env.ROP_CALL_AGENT_ID),
       maxMinutes: Number(trimEnv(process.env.ROP_CALL_MAX_MINUTES)) || 10,

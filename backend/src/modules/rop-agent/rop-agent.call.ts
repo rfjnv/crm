@@ -8,6 +8,10 @@ import { verifyTelegramInitData } from '../../lib/telegramWebApp';
 import { ROP_AGENT_TOOLS, executeTool } from './rop-agent.tools';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { crmUserByTelegramId, isAllowedTelegramId, type AgentUser } from './rop-agent.people';
+import { assignPlan } from './rop-agent.plans';
+import { getTelegramChat } from './rop-agent.service';
+import { agentBot } from './rop-agent.bot';
+import { broadcastTargets } from './rop-agent.telegram';
 
 /**
  * Живой голосовой звонок с РОП-агентом (мини-приложение в Telegram или страница CRM).
@@ -26,20 +30,37 @@ const AGENT_NAME = 'Polygraph Business — РОП-агент (звонок)';
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const MAX_TOOL_RESULT_CHARS = 12_000;
 
-/** Инструменты для звонка: только чтение, без черновиков планов и изменений задач. */
+/**
+ * Инструменты для звонка: данные CRM на чтение, память и задачи менеджерам. Задачи —
+ * как в чате: сначала черновик (propose_task_plan), раздаёт assign_task_plan только после
+ * прямого «да» собеседника — в звонке это то же, что кнопка «Раздать».
+ */
 const CALL_TOOLS = [
   'kpi_forecast', 'client_card', 'client_purchase_cycles', 'loss_reasons', 'list_managers',
   'task_plan_results', 'list_tasks', 'slow_stock', 'stocked_product_buyers', 'market_comparison',
-  'product_economics', 'call_reviews', 'remember',
+  'product_economics', 'call_reviews', 'remember', 'propose_task_plan', 'assign_task_plan',
 ];
 
-const CALL_PROMPT = `Ты — РОП-агент компании Polygraph Business (Ташкент, расходники для типографий: бумага, картон, самоклейка, плёнка, фольга, краски, химия). Деньги — в сумах.
+/** Раздать черновик плана — только в звонке (в чате это кнопка «Раздать» у директора). */
+const ASSIGN_TOOL = {
+  name: 'assign_task_plan',
+  description: 'Раздаёт менеджерам черновик плана, сохранённый propose_task_plan в этом звонке: создаёт задачи в CRM. '
+    + 'Вызывай ТОЛЬКО после того, как зачитала собеседнику кому и что и он прямо ответил «да», «раздай», «ставь».',
+  input_schema: {
+    type: 'object' as const,
+    properties: { plan_id: { type: 'string', description: 'plan_id из ответа propose_task_plan.' } },
+    required: ['plan_id'],
+  },
+};
+
+const CALL_PROMPT = `Тебя зовут Белла. Ты — РОП-агент компании Polygraph Business (Ташкент, расходники для типографий: бумага, картон, самоклейка, плёнка, фольга, краски, химия), девушка, руководитель отдела продаж и помощница директора. Деньги — в сумах.
+О себе по-русски говори в женском роде: «посмотрела», «поставила», «я готова». Представляйся Беллой.
 Сейчас ГОЛОСОВОЙ звонок. С тобой говорит {{user_name}} — директор или администратор CRM. Сегодня {{today}} (Ташкент).
 
 Язык: отвечай на том языке, на котором с тобой говорят. Русский — по-русски. Узбекский — по-узбекски (латиница, простая разговорная речь). Если собеседник перешёл на другой язык — переключись (language_detection).
 
 Как говорить:
-- Коротко, как живой руководитель отдела продаж по телефону: 1–3 предложения, главное сначала. Подробности — только если попросят.
+- Коротко, как живая руководительница отдела продаж по телефону: 1–3 предложения, главное сначала. Подробности — только если попросят.
 - Без таблиц, списков, markdown и эмодзи. Числа округляй и говори словами удобно для слуха: «сто двадцать миллионов», «около двух миллиардов», «семьдесят процентов».
 - Перед поиском в данных скажи коротко «секунду, смотрю». Не выдумывай цифры — бери их из инструментов. Если данных нет — так и скажи.
 
@@ -49,14 +70,20 @@ const CALL_PROMPT = `Ты — РОП-агент компании Polygraph Busin
 - slow_stock и stocked_product_buyers — залежалый товар и кому его предложить; market_comparison и product_economics — цены и товары;
 - call_reviews — разборы звонков менеджеров; remember — запомнить решение директора («запомни: …»).
 Себестоимость и маржа тебе закрыты. Свои и союзные компании (Базис Принт, ППС) и конкуренты — не клиенты.
-В звонке ты не ставишь задачи и не меняешь данные: предложи написать агенту в чат, там он подготовит план.
+
+Задачи менеджерам:
+- Если просят поставить задачу («поставь Наргизе обзвонить пропавших», «пусть Дилноза позвонит Хумо Принт») — найди данные (list_managers, client_purchase_cycles, client_card), сохрани черновик через propose_task_plan: одна задача на менеджера, понятное название, что сделать, срок 1–3 рабочих дня, клиенты с причиной.
+- Потом коротко зачитай: кому, что, сколько клиентов, до какого числа — и спроси «раздаю?». Только на прямое «да» вызови assign_task_plan с plan_id. На «нет» или правки — поправь черновик новым propose_task_plan.
+- Директору (Фарходу) задачи не ставь: по его клиентам — совет. Задачи — только тем, у кого в list_managers can_take_tasks = true.
+- Задачи пиши по-русски: CRM сама переведёт их менеджерам на узбекский.
+- Закрыть, удалить или перенести задачи в звонке нельзя — предложи написать Белле в чат.
 
 Договорённости директора (память агента):
 {{memory}}
 
 Когда разговор закончен (попрощались) — заверши звонок (end_call).`;
 
-const FIRST_MESSAGE = { ru: 'Слушаю, {{user_name}}. Что посмотреть?', uz: 'Eshitaman, {{user_name}}. Nimani ko‘rib chiqamiz?' };
+const FIRST_MESSAGE = { ru: 'Да, {{user_name}}, это Белла. Слушаю вас.', uz: 'Ha, {{user_name}}, Bella eshitmoqda. Gapiring.' };
 
 // ─── ElevenLabs API ─────────────────────────────────────────────────────────
 
@@ -102,7 +129,7 @@ function toolUrl(name: string): string {
   return `${config.telegram.backendPublicUrl}/api/public/rop-call/tool/${name}`;
 }
 
-export function webhookToolConfig(tool: (typeof ROP_AGENT_TOOLS)[number]) {
+export function webhookToolConfig(tool: { name: string; description?: string; input_schema: unknown }) {
   const body = toElObject(tool.input_schema as JsonSchema, 'Параметры инструмента');
   // Ключ сессии подставляет ElevenLabs из переменной звонка — модель его не видит и не меняет.
   (body.properties as Record<string, unknown>).session = { type: 'string', dynamic_variable: 'session_key' };
@@ -175,7 +202,7 @@ async function syncAgent(): Promise<string> {
     .map((t) => [t.tool_config.name, t.id]));
 
   const toolIds: string[] = [];
-  for (const tool of ROP_AGENT_TOOLS.filter((t) => CALL_TOOLS.includes(t.name))) {
+  for (const tool of [...ROP_AGENT_TOOLS.filter((t) => CALL_TOOLS.includes(t.name)), ASSIGN_TOOL]) {
     const tool_config = webhookToolConfig(tool);
     const id = ours.get(tool.name);
     if (id) {
@@ -295,12 +322,35 @@ ropCallPublicRouter.post('/tool/:name', asyncHandler(async (req: Request, res: R
   if (!CALL_TOOLS.includes(name)) throw new AppError(404, 'Инструмент недоступен в звонке');
   // Пустые строки и null от модели — как «не задано».
   for (const k of Object.keys(input)) if (input[k] === '' || input[k] === null) delete input[k];
-  const r = await executeTool(name, input, { chatId: '', userId, allowCost: false });
+  if (name === 'assign_task_plan') {
+    res.json(await assignFromCall(userId, String(input.plan_id ?? '')));
+    return;
+  }
+  // Черновики планов из звонка живут в Telegram-разговоре собеседника — их видно и в CRM.
+  const chatId = name === 'propose_task_plan' ? (await getTelegramChat(userId)).id : '';
+  const r = await executeTool(name, input, { chatId, userId, allowCost: false });
   const text = r.content.length > MAX_TOOL_RESULT_CHARS
     ? `${r.content.slice(0, MAX_TOOL_RESULT_CHARS)}… [обрезано — уточни вопрос]`
     : r.content;
   res.json({ ok: !r.isError, result: text });
 }));
+
+/** «Раздаю» голосом = кнопка «Раздать»: задачи создаются, в Telegram уходит отметка, кто раздал. */
+async function assignFromCall(userId: string, planId: string) {
+  try {
+    const r = await assignPlan(planId, userId);
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+    const warn = r.warnings.length ? `\n⚠️ ${r.warnings.join('; ')}` : '';
+    const text = `✅ ${user?.fullName ?? ''} (по звонку с Беллой): план «${r.plan.title}» роздан, задач ${r.createdTasks}.${warn}`;
+    for (const target of agentBot.enabled ? broadcastTargets() : []) {
+      await agentBot.sendHtmlToChat(target, text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        [[{ text: 'Открыть задачи', url: '/tasks' }]]);
+    }
+    return { ok: true, result: JSON.stringify({ created_tasks: r.createdTasks, warnings: r.warnings }) };
+  } catch (err) {
+    return { ok: false, result: `Ошибка: ${(err as Error).message}` };
+  }
+}
 
 /** Для кнопки «Позвонить» в CRM: сотрудник уже вошёл и имеет право use_rop_agent. */
 export async function startCallForCrmUser(userId: string) {
