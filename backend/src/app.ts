@@ -51,6 +51,7 @@ import poaRoutes from './modules/power-of-attorney/power-of-attorney.routes';
 import { reviewsRoutes } from './modules/reviews/reviews.routes';
 import debugRoutes from './modules/debug/debug.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
+import { ropCallPublicRouter } from './modules/rop-agent/rop-agent.call';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
 import ropAgentRoutes from './modules/rop-agent/rop-agent.routes';
 import costAccessRoutes from './modules/cost-access/cost-access.routes';
@@ -203,6 +204,8 @@ app.use('/api/internal/mobile', mobileInternalRoutes);
 
 // Public routes (no auth)
 app.use('/api/public/rate', ratingsRoutes);
+// Звонок РОП-агенту: мини-приложение HOS-бота и вебхуки инструментов ElevenLabs (свой ключ сессии).
+app.use('/api/public/rop-call', ropCallPublicRouter);
 
 // Routes
 app.use('/api/auth', authRoutes);

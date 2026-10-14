@@ -5,7 +5,7 @@ import {
   Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Tooltip, Typography, message, theme,
 } from 'antd';
 import {
-  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, LockOutlined, MenuOutlined, PlusOutlined,
+  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, LockOutlined, MenuOutlined, PhoneOutlined, PlusOutlined,
   RobotOutlined, SendOutlined, UserOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -344,6 +344,7 @@ export default function RopAgentPage() {
           <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
           {costChat && <Tag icon={<LockOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>{isMobile ? null : 'себестоимость'}</Tag>}
           <Button icon={<BulbOutlined />} onClick={() => setMemoryOpen(true)} title="Что агент помнит">{isMobile ? null : 'Память'}</Button>
+          <Link to="/rop-call"><Button icon={<PhoneOutlined />}>{isMobile ? null : 'Позвонить'}</Button></Link>
           <Link to="/rop-agent/digest"><Button icon={<BarChartOutlined />}>{isMobile ? null : 'Сводка'}</Button></Link>
         </div>
 

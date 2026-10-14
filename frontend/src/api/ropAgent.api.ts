@@ -220,7 +220,19 @@ export interface RopAgentTurnStatus {
   steps: string[];
 }
 
+export interface RopCallSession {
+  conversationToken: string;
+  userName: string;
+  dynamicVariables: Record<string, string>;
+}
+
 export const ropAgentApi = {
+  /** Звонок агенту из CRM (сотрудник уже вошёл). */
+  callSession: () => client.post<RopCallSession>('/rop-agent/call/session').then((r) => r.data),
+  /** Звонок из мини-приложения HOS-бота: доступ по подписи Telegram. */
+  callSessionTelegram: (initData: string) =>
+    client.post<RopCallSession>('/public/rop-call/session', { initData }).then((r) => r.data),
+
   listChats: () => client.get<RopAgentChat[]>('/rop-agent/chats').then((r) => r.data),
   createChat: (costMode = false) =>
     client.post<RopAgentChat>('/rop-agent/chats', costMode ? { costMode: true } : {}).then((r) => r.data),

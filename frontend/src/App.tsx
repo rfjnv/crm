@@ -21,6 +21,7 @@ import type { ThemeMode } from './theme/tokens';
 
 // Страницы грузятся отдельными чанками: иначе весь CRM (~5 МБ JS) скачивается и разбирается при первом открытии.
 const RatePage = lazy(() => import('./pages/RatePage'));
+const RopCallPage = lazy(() => import('./pages/RopCallPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const KpiPage = lazy(() => import('./pages/KpiPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
@@ -186,6 +187,8 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/rate/:token" element={<RatePage />} />
+            {/* Звонок РОП-агенту: мини-приложение HOS-бота (своя подпись Telegram) или из CRM */}
+            <Route path="/rop-call" element={<RopCallPage />} />
             {/* Без авторизации: цифры нужны с панели и WebView, где нет консоли */}
             <Route path="/viewport" element={<ViewportInfoPage />} />
             <Route element={<PrivateRoute />}>

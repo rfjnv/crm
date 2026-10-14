@@ -22,6 +22,7 @@ import { buildDigest, getDigest, listDigests, tashkentYesterday } from './rop-ag
 import { sendDigestToUser } from './rop-agent.telegram';
 import { addMemory, deleteMemory, listMemories, updateMemory } from './rop-agent.memory';
 import { decideAlert, listAlerts } from './rop-agent.alerts';
+import { startCallForCrmUser } from './rop-agent.call';
 import { decideTaskAction, listChatTaskActions } from './rop-agent.task-actions';
 
 const askDto = z.object({ question: z.string().trim().min(1, 'Вопрос не может быть пустым').max(8000) });
@@ -126,6 +127,12 @@ router.post('/task-actions/:id/confirm', asyncHandler(async (req: Request, res: 
 router.post('/task-actions/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   const r = await decideTaskAction(req.params.id as string, req.user!.userId, false);
   res.json({ status: r.status, changed: r.changed });
+}));
+
+// ─── Голосовой звонок ───────────────────────────────────────────────────────
+
+router.post('/call/session', asyncHandler(async (req: Request, res: Response) => {
+  res.json(await startCallForCrmUser(req.user!.userId));
 }));
 
 // ─── Ежедневная сводка ──────────────────────────────────────────────────────

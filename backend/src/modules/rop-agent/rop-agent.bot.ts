@@ -12,7 +12,7 @@ import { createTelegramBot, registerWebhook } from '../telegram/telegram-transpo
  */
 
 /** Кнопка под сообщением: ссылка (относительный путь — в CRM) или действие с callback_data (до 64 байт). */
-export type TgButton = { text: string; url: string } | { text: string; callback: string };
+export type TgButton = { text: string; url: string } | { text: string; callback: string } | { text: string; webApp: string };
 
 type MessageHandler = (msg: TelegramBot.Message) => Promise<void>;
 
@@ -121,9 +121,15 @@ class AgentBot {
       { command: 'menu', description: 'Быстрые кнопки' },
       ...common,
       { command: 'memory', description: 'Что помнит агент' },
+      { command: 'call', description: 'Позвонить агенту голосом' },
       { command: 'new', description: 'Новый разговор' },
     ], { scope: { type: 'all_private_chats' } }).catch(() => {});
     await setMyCommands(common, { scope: { type: 'all_group_chats' } }).catch(() => {});
+  }
+
+  /** Имя бота (@...) — для ссылки t.me на личку из группы. */
+  get username(): string {
+    return this.me?.username ?? '';
   }
 
   isAllowed(telegramUserId: number | string | undefined): boolean {
@@ -190,9 +196,12 @@ class AgentBot {
   private inlineKeyboard(buttons?: TgButton[][]): TelegramBot.InlineKeyboardMarkup | undefined {
     if (!buttons?.length) return undefined;
     return {
-      inline_keyboard: buttons.map((row) => row.map((b) => ('url' in b
-        ? { text: b.text, url: b.url.startsWith('http') ? b.url : `${config.telegram.crmUrl}${b.url}` }
-        : { text: b.text, callback_data: b.callback }))),
+      inline_keyboard: buttons.map((row) => row.map((b) => {
+        if ('url' in b) return { text: b.text, url: b.url.startsWith('http') ? b.url : `${config.telegram.crmUrl}${b.url}` };
+        // Мини-приложение — только в личке; в группе такую кнопку Telegram не примет.
+        if ('webApp' in b) return { text: b.text, web_app: { url: b.webApp.startsWith('http') ? b.webApp : `${config.telegram.crmUrl}${b.webApp}` } };
+        return { text: b.text, callback_data: b.callback };
+      })),
     };
   }
 

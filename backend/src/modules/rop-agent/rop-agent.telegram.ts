@@ -264,6 +264,7 @@ const QUICK = {
   memory: '🧠 Память',
   last: '📂 Последний ответ',
   fresh: '🆕 Новый разговор',
+  call: '📞 Позвонить',
 } as const;
 
 const QUICK_KEYBOARD: string[][] = [
@@ -272,6 +273,7 @@ const QUICK_KEYBOARD: string[][] = [
   [QUICK.debts, QUICK.lapsed],
   [QUICK.stock, QUICK.memory],
   [QUICK.last, QUICK.fresh],
+  [QUICK.call],
 ];
 
 /** Кнопки-вопросы: агенту уходит готовое задание. */
@@ -295,6 +297,8 @@ const HELP = [
   '',
   '🎧 Запись звонка менеджера пришлите файлом — агент расшифрует и разберёт. Подпишите файл: «Дилноза, Print House».',
   '👥 В группе агент отвечает, если упомянуть его или ответить на его сообщение. Туда же приходят сводка в 9:00 и сигналы.',
+  '',
+  '📞 /call — живой разговор голосом: говорите по-русски или по-узбекски, агент ответит на том же языке.',
   '',
   '/status — проверить, что бот на месте',
   '/menu — быстрые кнопки',
@@ -539,12 +543,38 @@ async function sendStatus(chatId: number, replyTo?: number, fromId?: number): Pr
   await agentBot.sendHtmlToChat(chatId, lines.join('\n'), undefined, { replyTo });
 }
 
+/**
+ * Кнопка звонка: в личке — мини-приложение прямо в Telegram; в группе мини-приложение
+ * открыть нельзя, поэтому ссылка в личку бота, где придёт та же кнопка.
+ */
+async function sendCallButton(chatId: number, isPrivate: boolean, replyTo: number): Promise<void> {
+  if (!config.ropAgent.call.enabled) {
+    await agentBot.sendHtmlToChat(chatId, '📞 Звонки агенту сейчас выключены.', undefined, isPrivate ? {} : { replyTo });
+    return;
+  }
+  if (isPrivate) {
+    await agentBot.sendHtmlToChat(chatId,
+      '📞 <b>Звонок РОП-агенту</b>\nНажмите кнопку и разрешите микрофон. Говорите по-русски или по-узбекски — агент ответит на том же языке. Звонок до '
+      + `${config.ropAgent.call.maxMinutes} минут.`,
+      [[{ text: '📞 Позвонить', webApp: '/rop-call' }]]);
+    return;
+  }
+  const bot = agentBot.username;
+  await agentBot.sendHtmlToChat(chatId, '📞 Звонок открывается в личке бота.',
+    bot ? [[{ text: '📞 Позвонить из лички', url: `https://t.me/${bot}?start=call` }]] : undefined, { replyTo });
+}
+
 /** Команды и быстрые кнопки. true — обработано, дальше агенту не передаём. */
 async function handleCommand(msg: TelegramBot.Message, user: AgentUser, text: string): Promise<boolean> {
   const chatId = msg.chat.id;
   const isPrivate = msg.chat.type === 'private';
   const command = text.startsWith('/') ? text.split(/\s|@/)[0].toLowerCase() : null;
 
+  // Звонок — до /start: ссылка из группы открывает личку с /start call.
+  if (command === '/call' || text === QUICK.call || (command === '/start' && /\bcall\b/.test(text))) {
+    await sendCallButton(chatId, isPrivate, msg.message_id);
+    return true;
+  }
   if (command === '/start' || command === '/help' || command === '/menu') {
     await agentBot.sendHtmlToChat(chatId, HELP, undefined, isPrivate ? { replyKeyboard: QUICK_KEYBOARD } : { replyTo: msg.message_id });
     return true;

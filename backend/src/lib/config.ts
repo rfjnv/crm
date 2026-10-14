@@ -90,6 +90,20 @@ export const config = {
      * выключен — агент на доработке; включить — ROP_AGENT=on на Render.
      */
     enabled: (trimEnv(process.env.ROP_AGENT) || 'off').toLowerCase() === 'on',
+    /**
+     * Живой голосовой звонок агенту (ElevenLabs Agents) — отдельно от ROP_AGENT: модель
+     * звонка оплачивается в ElevenLabs. ROP_CALL=off — выключить.
+     */
+    call: {
+      enabled: (trimEnv(process.env.ROP_CALL) || 'on').toLowerCase() !== 'off',
+      /** Модель разговора на стороне ElevenLabs. */
+      llm: trimEnv(process.env.ROP_CALL_LLM) || 'claude-sonnet-5-5',
+      /** Голос (id из библиотеки ElevenLabs); по умолчанию — стандартный «George». */
+      voiceId: trimEnv(process.env.ROP_CALL_VOICE_ID) || 'JBFqnCBsd6RMkjVDRZzb',
+      /** Готовый агент в ElevenLabs; пусто — найдётся или создастся по имени. */
+      agentId: trimEnv(process.env.ROP_CALL_AGENT_ID),
+      maxMinutes: Number(trimEnv(process.env.ROP_CALL_MAX_MINUTES)) || 10,
+    },
     model: trimEnv(process.env.ROP_AGENT_MODEL) || 'claude-opus-5-5',
     effort: (trimEnv(process.env.ROP_AGENT_EFFORT) || 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
     /** Короткий комментарий к ежедневной сводке — рутина, хватает модели попроще. */
