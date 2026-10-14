@@ -15,13 +15,16 @@ CRM (POST /api/public/rop-call/bridge-session): остальным звонок 
 
 import asyncio
 import base64
+import html
 import json
 import logging
+import re
 import os
 import time
 
 import aiohttp
 from telethon import TelegramClient
+from telethon import events
 from telethon.sessions import StringSession
 
 from pytgcalls import PyTgCalls
@@ -219,6 +222,79 @@ async def connect(user_id: int, session: dict, outbound: bool) -> None:
         await hang_up(user_id)
 
 
+async def refresh_peers() -> None:
+    """
+    Чтобы позвонить, Telegram нужен «полный» собеседник (id + access_hash). У новой сессии
+    его нет — подгружаем контакты и диалоги: кто в контактах Беллы или писал ей, тому звоним.
+    """
+    try:
+        await client.get_contacts()
+        await client.get_dialogs(limit=200)
+    except Exception as e:
+        log.warning('refresh peers failed: %s', e)
+
+
+async def can_reach(user_id: int) -> bool:
+    for attempt in range(2):
+        try:
+            await client.get_input_entity(user_id)
+            return True
+        except ValueError:
+            if attempt == 0:
+                await refresh_peers()
+    log.warning('cannot call %s: not in Bella contacts and never wrote to her — add to contacts or write to Bella once', user_id)
+    return False
+
+
+MAX_VOICE_SEC = 5 * 60
+
+
+@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+async def on_private_message(event) -> None:
+    """Личка Беллы: текст или голосовое → агент CRM (тот же разговор, что в боте) → ответ."""
+    msg = event.message
+    voice = msg.voice
+    text = (msg.raw_text or '').strip()
+    if not text and not voice:
+        return
+    payload: dict = {'telegramId': str(event.sender_id)}
+    assert http is not None
+    try:
+        async with client.action(event.chat_id, 'typing'):
+            if voice:
+                if (msg.file.duration or 0) > MAX_VOICE_SEC:
+                    await event.reply('Голосовое длиннее 5 минут — разбейте на части или напишите текстом.')
+                    return
+                data = await msg.download_media(bytes)
+                payload['voiceBase64'] = base64.b64encode(data).decode()
+            else:
+                payload['text'] = text
+            async with http.post(
+                f'{BACKEND}/api/public/rop-call/bridge-message',
+                json=payload,
+                headers={'x-bridge-secret': SECRET},
+                timeout=aiohttp.ClientTimeout(total=15 * 60),
+            ) as r:
+                if r.status in (401, 403):
+                    log.info('message from %s ignored: %s', event.sender_id, r.status)
+                    return
+                r.raise_for_status()
+                answer = await r.json()
+    except Exception as e:
+        log.warning('message from %s failed: %s', event.sender_id, e)
+        await event.reply('Не получилось ответить — попробуйте ещё раз через минуту.')
+        return
+
+    if answer.get('heard'):
+        await event.reply(f'🎙 <i>{html.escape(answer["heard"])}</i>', parse_mode='html')
+    for part in answer.get('parts', []):
+        try:
+            await client.send_message(event.chat_id, part, parse_mode='html', link_preview=False)
+        except Exception:
+            # Telegram не принял разметку — лучше без оформления, чем без ответа.
+            await client.send_message(event.chat_id, html.unescape(re.sub(r'<[^>]+>', '', part)), link_preview=False)
+
+
 async def poll_callbacks() -> None:
     """«Белла, позвони мне»: раз в 3 с забираем очередь у CRM и звоним."""
     assert http is not None
@@ -233,6 +309,8 @@ async def poll_callbacks() -> None:
                     for tg_id in (await r.json()).get('calls', []):
                         user_id = int(tg_id)
                         if user_id in calls:
+                            continue
+                        if not await can_reach(user_id):
                             continue
                         session = await bridge_session(user_id, outbound=True)
                         if session:
@@ -270,6 +348,7 @@ async def main() -> None:
     await calls_py.start()
     me = await client.get_me()
     log.info('call bridge is up as @%s (%s)', me.username, me.id)
+    await refresh_peers()
     asyncio.create_task(poll_callbacks())
     await client.run_until_disconnected()
 

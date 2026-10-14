@@ -1,4 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import { Router, Request, Response } from 'express';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
@@ -9,9 +11,11 @@ import { ROP_AGENT_TOOLS, executeTool } from './rop-agent.tools';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { crmUserByTelegramId, isAllowedTelegramId, type AgentUser } from './rop-agent.people';
 import { assignPlan } from './rop-agent.plans';
-import { getTelegramChat } from './rop-agent.service';
+import { AGENT_OFF_TEXT, askInChat, getLastAssistantMessage, getTelegramChat, waitForTurn } from './rop-agent.service';
+import { splitTelegramHtml } from './rop-agent.bot';
+import { transcribeVoiceNote } from './rop-agent.voice';
 import { agentBot } from './rop-agent.bot';
-import { broadcastTargets } from './rop-agent.telegram';
+import { broadcastTargets, markdownToTelegramHtml } from './rop-agent.telegram';
 import { takePendingCallbacks } from './rop-agent.callback';
 
 /**
@@ -322,6 +326,61 @@ ropCallPublicRouter.post('/bridge-session', asyncHandler(async (req: Request, re
   if (!user) throw new AppError(403, 'Telegram не привязан к сотруднику CRM');
   res.json(await startBridgeSession(user, req.body?.outbound === true));
 }));
+
+/**
+ * Личка Беллы: мост присылает сообщение (текст или голосовое), агент отвечает в том же
+ * разговоре, что и в личке бота, — история общая. Ответ — частями HTML для Telegram.
+ */
+ropCallPublicRouter.post('/bridge-message', asyncHandler(async (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  const telegramId = String(req.body?.telegramId ?? '');
+  if (!isAllowedTelegramId(telegramId)) throw new AppError(403, 'Нет доступа к РОП-агенту');
+  const user = await crmUserByTelegramId(telegramId);
+  if (!user) throw new AppError(403, 'Telegram не привязан к сотруднику CRM');
+  res.json(await answerBellaMessage(user, String(req.body?.text ?? '').trim(), req.body?.voiceBase64));
+}));
+
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+async function answerBellaMessage(user: AgentUser, text: string, voiceBase64: unknown) {
+  if (!config.ropAgent.enabled) return { parts: [escHtml(AGENT_OFF_TEXT)] };
+  let question = text;
+  let heard: string | undefined;
+  if (typeof voiceBase64 === 'string' && voiceBase64) {
+    const dir = path.resolve(config.uploads.dir, 'tg-voice');
+    const file = path.join(dir, `bella-${randomBytes(6).toString('hex')}.ogg`);
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(file, Buffer.from(voiceBase64, 'base64'));
+      heard = await transcribeVoiceNote(file);
+      question = `🎙 ${heard}`;
+    } catch (err) {
+      return { parts: [`⚠️ ${escHtml(err instanceof AppError ? err.message : 'Не удалось распознать голосовое — напишите текстом.')}`] };
+    } finally {
+      await fs.unlink(file).catch(() => {});
+    }
+  }
+  if (!question) return { parts: [] };
+
+  const chat = await getTelegramChat(user.id, 'telegram');
+  try {
+    await askInChat(chat.id, user.id, question);
+  } catch (err) {
+    return { heard, parts: [`⚠️ ${escHtml((err as Error).message)}`] };
+  }
+  await waitForTurn(chat.id);
+  const reply = await getLastAssistantMessage(chat.id);
+  if (!reply) return { heard, parts: ['⚠️ Ответ не получился — попробуйте ещё раз.'] };
+  let html = reply.isError ? `⚠️ ${escHtml(reply.text)}` : markdownToTelegramHtml(reply.text);
+  // Кнопок у обычного аккаунта нет: черновики планов и изменений задач решаются в боте или CRM.
+  const calls = (reply.toolCalls as { planId?: string; actionId?: string }[] | null) ?? [];
+  if (calls.some((c) => c.planId || c.actionId)) {
+    const link = `${config.telegram.crmUrl}/rop-agent?chat=${chat.id}`;
+    const bot = agentBot.username ? ` или в боте @${agentBot.username} (/last)` : '';
+    html += `\n\n📝 Черновик ждёт решения — подтвердите <a href="${link}">в CRM</a>${bot}.`;
+  }
+  return { heard, parts: splitTelegramHtml(html) };
+}
 
 /** Мост забирает «перезвони мне» — список Telegram ID, кому звонить. */
 ropCallPublicRouter.get('/bridge-queue', (req: Request, res: Response) => {
