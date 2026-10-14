@@ -44,6 +44,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Общий секрет с мостом звонков РОП-агента (rop-call-bridge)
+      - key: ROP_CALL_BRIDGE_SECRET
+        sync: false
 
   # ──── Frontend: Vite Static Site ────
   - type: web
@@ -75,6 +78,29 @@ services:
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+
+  # ──── Мост звонков РОП-агента: аккаунт Telegram принимает звонки (call-bridge/README.md) ────
+  - type: worker
+    name: rop-call-bridge
+    runtime: python
+    region: oregon
+    plan: starter
+    rootDir: call-bridge
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bridge.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: TG_API_ID
+        sync: false
+      - key: TG_API_HASH
+        sync: false
+      - key: TG_SESSION
+        sync: false
+      - key: CRM_BACKEND_URL
+        sync: false
+      - key: ROP_CALL_BRIDGE_SECRET
         sync: false
 
 databases:

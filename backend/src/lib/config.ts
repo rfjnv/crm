@@ -103,6 +103,11 @@ export const config = {
       /** Готовый агент в ElevenLabs; пусто — найдётся или создастся по имени. */
       agentId: trimEnv(process.env.ROP_CALL_AGENT_ID),
       maxMinutes: Number(trimEnv(process.env.ROP_CALL_MAX_MINUTES)) || 10,
+      /**
+       * Общий секрет с «мостом» звонков (call-bridge): отдельный аккаунт Telegram принимает
+       * обычные звонки и соединяет их с агентом. Пусто — мост не пускается.
+       */
+      bridgeSecret: trimEnv(process.env.ROP_CALL_BRIDGE_SECRET),
     },
     model: trimEnv(process.env.ROP_AGENT_MODEL) || 'claude-opus-5-5',
     effort: (trimEnv(process.env.ROP_AGENT_EFFORT) || 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',

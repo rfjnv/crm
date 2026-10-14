@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import { Router, Request, Response } from 'express';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
@@ -214,27 +214,50 @@ function tashkentToday(): string {
   return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 }
 
-/** Начать звонок: токен WebRTC от ElevenLabs и переменные звонка для клиента. */
-export async function startCallSession(user: AgentUser) {
-  if (!config.ropAgent.call.enabled) throw new AppError(503, 'Звонки РОП-агенту выключены (ROP_CALL=off)');
-  const agentId = await ensureCallAgent();
-  const { token } = await el<{ token: string }>(
-    'GET', `/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}&participant_name=${encodeURIComponent(user.fullName)}`,
-  );
+/** Переменные звонка и ключ сессии для вебхуков инструментов. */
+async function callVariables(user: AgentUser) {
   const key = randomBytes(24).toString('base64url');
   const now = Date.now();
   for (const [k, s] of sessions) if (s.expires < now) sessions.delete(k);
   sessions.set(hashKey(key), { userId: user.id, expires: now + SESSION_TTL_MS });
   return {
-    conversationToken: token,
-    userName: user.fullName,
-    dynamicVariables: {
-      session_key: key,
-      user_name: user.fullName.split(' ')[0],
-      today: tashkentToday(),
-      memory: memoryText(await activeMemories()) || '—',
-    },
+    session_key: key,
+    user_name: user.fullName.split(' ')[0],
+    today: tashkentToday(),
+    memory: memoryText(await activeMemories()) || '—',
   };
+}
+
+function assertCallsEnabled(): void {
+  if (!config.ropAgent.call.enabled) throw new AppError(503, 'Звонки РОП-агенту выключены (ROP_CALL=off)');
+}
+
+/** Начать звонок в браузере / мини-приложении: токен WebRTC от ElevenLabs и переменные звонка. */
+export async function startCallSession(user: AgentUser) {
+  assertCallsEnabled();
+  const agentId = await ensureCallAgent();
+  const { token } = await el<{ token: string }>(
+    'GET', `/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}&participant_name=${encodeURIComponent(user.fullName)}`,
+  );
+  return { conversationToken: token, userName: user.fullName, dynamicVariables: await callVariables(user) };
+}
+
+/** Звонок через мост (обычный звонок Telegram): подписанный адрес WebSocket вместо WebRTC. */
+async function startBridgeSession(user: AgentUser) {
+  assertCallsEnabled();
+  const agentId = await ensureCallAgent();
+  const { signed_url } = await el<{ signed_url: string }>(
+    'GET', `/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
+  );
+  return { signedUrl: signed_url, userName: user.fullName, dynamicVariables: await callVariables(user) };
+}
+
+function bridgeAuthorized(header: unknown): boolean {
+  const secret = config.ropAgent.call.bridgeSecret;
+  if (!secret || typeof header !== 'string') return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 // ─── Маршруты ───────────────────────────────────────────────────────────────
@@ -249,6 +272,19 @@ ropCallPublicRouter.post('/session', asyncHandler(async (req: Request, res: Resp
   const user = await crmUserByTelegramId(tg.id);
   if (!user) throw new AppError(403, 'Ваш Telegram не привязан к сотруднику CRM');
   res.json(await startCallSession(user));
+}));
+
+/**
+ * Мост звонков спрашивает, кто звонит (Telegram ID): тот же список доступа, что у бота.
+ * 403 — мост сбрасывает звонок, не отвечая.
+ */
+ropCallPublicRouter.post('/bridge-session', asyncHandler(async (req: Request, res: Response) => {
+  if (!bridgeAuthorized(req.headers['x-bridge-secret'])) throw new AppError(401, 'Неверный секрет моста');
+  const telegramId = String(req.body?.telegramId ?? '');
+  if (!isAllowedTelegramId(telegramId)) throw new AppError(403, 'Нет доступа к РОП-агенту');
+  const user = await crmUserByTelegramId(telegramId);
+  if (!user) throw new AppError(403, 'Telegram не привязан к сотруднику CRM');
+  res.json(await startBridgeSession(user));
 }));
 
 ropCallPublicRouter.post('/tool/:name', asyncHandler(async (req: Request, res: Response) => {
