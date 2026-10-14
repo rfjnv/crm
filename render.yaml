@@ -6,7 +6,9 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: apt-get update -y && apt-get install -y ffmpeg && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build
+    # apt-get на Render больше нельзя (файловая система сборки только для чтения) — сборка падала
+    # с 13.10. ffmpeg нужен только для очистки звука при расшифровке; без него она пропускается.
+    buildCommand: npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:
