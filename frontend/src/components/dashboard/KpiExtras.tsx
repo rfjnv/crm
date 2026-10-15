@@ -1,20 +1,10 @@
 import { useId, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { statusConfig } from '../DealStatusTag';
+import { dealStatusTone } from '../dealStatusTone';
 import type { DealStatus } from '../../types';
-import { formatCount, formatMoneyCompact, formatUZS } from '../../utils/currency';
+import { formatCount } from '../../utils/currency';
 import './KpiExtras.css';
-
-/** «48,3 млн» вместо «48 250 000 so'm»; полная сумма — в подсказке при наведении. */
-export function CompactMoney({ value }: { value: number }) {
-  const m = formatMoneyCompact(value);
-  return (
-    <span title={formatUZS(value)}>
-      {m.text}
-      {m.unit && <span className="kpi-unit"> {m.unit}</span>}
-    </span>
-  );
-}
 
 /** Нижняя строка карточки: дельта (если есть) и база сравнения мелким шрифтом. */
 export function KpiFoot({ delta, children }: { delta?: ReactNode; children?: ReactNode }) {
@@ -52,33 +42,68 @@ export function KpiSparkline({ values }: { values: number[] }) {
 const FINAL: ReadonlySet<string> = new Set(['CLOSED', 'CANCELED', 'REJECTED']);
 
 /**
- * «У зав. склада 16 · Ожидает финансы 4 · Новая 3» — три самых больших этапа среди активных.
- * Каждый этап — переход в список сделок с этим фильтром (карточка сама остаётся ссылкой на все сделки).
+ * Где стоят активные сделки: полоса из всех этапов (ширина — доля, цвет — смысл этапа:
+ * жёлтые ждут чьего-то решения) и подписи трёх самых больших; остальные — «+ ещё N этапов».
+ * Этап и «ещё» ведут в список сделок (карточка сама остаётся ссылкой на все сделки).
  */
 export function ActiveStages({ counts }: { counts: { status: string; count: number }[] }) {
   const navigate = useNavigate();
-  const top = counts
+  const stages = counts
     .filter((d) => d.count > 0 && !FINAL.has(d.status))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-  if (top.length === 0) return null;
+    .sort((a, b) => b.count - a.count);
+  if (stages.length === 0) return null;
+  const total = stages.reduce((s, d) => s + d.count, 0);
+  const top = stages.slice(0, 3);
+  const rest = stages.slice(3);
+  const go = (to: string) => (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(to);
+  };
+  const label = (status: string) => statusConfig[status as DealStatus]?.label ?? status;
   return (
-    <span className="kpi-stages">
-      {top.map((d) => (
-        <button
-          key={d.status}
-          type="button"
-          className="kpi-stages__item"
-          onClick={(e) => {
-            // Карточка обёрнута ссылкой на все сделки — здесь ведём в отфильтрованный список
-            e.preventDefault();
-            e.stopPropagation();
-            navigate(`/deals?status=${d.status}`);
-          }}
-        >
-          {statusConfig[d.status as DealStatus]?.label ?? d.status} <b>{formatCount(d.count)}</b>
-        </button>
-      ))}
-    </span>
+    <div className="kpi-stages-block">
+      <div className="kpi-stagebar" role="img" aria-label="Активные сделки по этапам">
+        {stages.map((d) => (
+          <span
+            key={d.status}
+            className="kpi-stagebar__seg"
+            data-tone={dealStatusTone(d.status as DealStatus)}
+            // Ширина сегмента — доля этапа, зависит от данных
+            style={{ flexGrow: d.count }}
+            title={`${label(d.status)}: ${formatCount(d.count)}`}
+          />
+        ))}
+      </div>
+      <span className="kpi-stages">
+        {top.map((d) => (
+          <button key={d.status} type="button" className="kpi-stages__item" onClick={go(`/deals?status=${d.status}`)}>
+            {label(d.status)} <b>{formatCount(d.count)}</b>
+          </button>
+        ))}
+        {rest.length > 0 && (
+          <button
+            type="button"
+            className="kpi-stages__item"
+            title={rest.map((d) => `${label(d.status)}: ${d.count}`).join(', ')}
+            onClick={go('/deals')}
+          >
+            + ещё {rest.length} {rest.length === 1 ? 'этап' : rest.length < 5 ? 'этапа' : 'этапов'} · <b>{formatCount(total - top.reduce((s, d) => s + d.count, 0))}</b>
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** Доля: тонкая полоса «просрочено из всего долга». */
+export function KpiShareBar({ part, total, title }: { part: number; total: number; title: string }) {
+  if (total <= 0 || part <= 0) return null;
+  const pct = Math.min(100, (part / total) * 100);
+  return (
+    <div className="kpi-share" title={title}>
+      {/* Ширина — доля просрочки, зависит от данных */}
+      <span className="kpi-share__fill" style={{ width: `${pct}%` }} />
+    </div>
   );
 }

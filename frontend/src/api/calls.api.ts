@@ -213,6 +213,22 @@ export interface DriveStatus {
   failedCount: number;
 }
 
+export interface CallsCounters {
+  outgoing: number;
+  outgoingConnected: number;
+  incoming: number;
+  incomingMissed: number;
+  talkSec: number;
+}
+
+/** Звонки за сегодня и вчера; у руководителя — ещё по менеджерам за сегодня. */
+export interface CallsTodayStats {
+  scope: 'own' | 'all';
+  today: CallsCounters;
+  yesterday: CallsCounters;
+  managers?: (CallsCounters & { managerId: string; managerName: string })[];
+}
+
 export const callsApi = {
   list: (filters: CallsFilters) => client.get<CallsPage>('/calls', { params: filters }).then((r) => r.data),
   get: (id: string) => client.get<CallDetail>(`/calls/${id}`).then((r) => r.data),
@@ -228,6 +244,7 @@ export const callsApi = {
     client.post<{ taskId: string; existing: boolean }>(`/calls/${id}/callback-task`, {}).then((r) => r.data),
   calledBack: (id: string) => client.post<{ calls: number; tasks: number }>(`/calls/${id}/called-back`).then((r) => r.data),
   missed: () => client.get<MissedSummary>('/calls/missed').then((r) => r.data),
+  todayStats: () => client.get<CallsTodayStats>('/calls/today-stats').then((r) => r.data),
   analyze: (callIds: string[]) =>
     client.post<{ queued: number; alreadyDone: number; noRecording: number; inProgress: number }>('/calls/analyze', { callIds }).then((r) => r.data),
   reassign: (callIds: string[], managerId: string) =>

@@ -701,6 +701,8 @@ export interface DashboardSummary {
   lowStockProducts: { id: string; name: string; sku: string; stock: number; minStock: number }[];
   revenueLast30Days: { day: string; total: number }[];
   dealsByStatusCounts: { status: string; count: number }[];
+  /** Закрытые сделки по дням (по Ташкенту) за диапазон графика выручки. */
+  closedDealsByDay?: { day: string; count: number }[];
   productOfDay: {
     today: {
       product: { id: string; name: string; sku?: string | null; unit?: string | null };

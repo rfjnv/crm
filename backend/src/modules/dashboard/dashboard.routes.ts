@@ -9,7 +9,8 @@ import {
 } from '../../lib/analytics';
 import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { ownerScope } from '../../lib/scope';
+import { ownerScope } from '../../lib/scope';
+
 import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
@@ -197,6 +198,17 @@ router.get(
       ? thirtyDaysAgo
       : periodStart;
 
+    // Закрытые сделки по дням — мини-график в KPI-карточке «Закрыто сделок» (тот же диапазон, что у выручки)
+    const closedChartPromise = prisma.deal.findMany({
+      where: {
+        ...dealScope,
+        status: 'CLOSED',
+        isArchived: false,
+        closedAt: { gte: chartStart, lt: periodEnd },
+      },
+      select: { closedAt: true },
+    });
+
     const [
       revenuePeriodAgg,
       revenuePrevPeriodAgg,
@@ -343,6 +355,14 @@ router.get(
       custom: 'Период',
     };
 
+    const closedByDay = new Map<string, number>();
+    for (const d of await closedChartPromise) {
+      if (!d.closedAt) continue;
+      // День по Ташкенту (UTC+5), как у выручки по дням
+      const day = new Date(d.closedAt.getTime() + 5 * 3_600_000).toISOString().slice(0, 10);
+      closedByDay.set(day, (closedByDay.get(day) ?? 0) + 1);
+    }
+
     res.json({
       period: {
         key: period,
@@ -368,6 +388,9 @@ router.get(
         day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10),
         total: Number(r.total),
       })),
+      closedDealsByDay: [...closedByDay.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, count]) => ({ day, count })),
       dealsByStatusCounts: dealsByStatusCounts.map((d) => ({
         status: d.status,
         count: d._count,

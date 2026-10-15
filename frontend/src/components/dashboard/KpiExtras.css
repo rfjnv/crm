@@ -83,6 +83,64 @@
   stop-opacity: 0;
 }
 
+/* Под цифрой карточки на телефоне контейнер — строка: дополнения занимают всю её ширину */
+.kpi-foot,
+.kpi-share,
+.kpi-spark,
+.kpi-stages-block {
+  flex: 1 0 100%;
+}
+
+/* Полоса этапов активных сделок */
+.kpi-stages-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.kpi-stagebar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.kpi-stagebar__seg {
+  flex-basis: 0;
+  min-width: 3px;
+  background: var(--ant-color-primary);
+  opacity: 0.75;
+}
+
+.kpi-stagebar__seg[data-tone='warning'] {
+  background: var(--ant-color-warning);
+  opacity: 1;
+}
+
+.kpi-stagebar__seg[data-tone='negative'] {
+  background: var(--ant-color-error);
+  opacity: 1;
+}
+
+/* Доля просрочки в общем долге */
+.kpi-share {
+  height: 6px;
+  margin: 6px 0 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.kpi-share__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ant-color-error);
+}
+
 /* Новый дизайн: подписи и акцент — смысловыми цветами стекла */
 html[data-design='modern'] .kpi-foot__text,
 html[data-design='modern'] .kpi-stages__item {
@@ -98,6 +156,24 @@ html[data-design='modern'] .kpi-foot__text--risk {
   color: var(--c-neg-fg, var(--ant-color-error));
 }
 
+html[data-design='modern'] .kpi-stagebar,
+html[data-design='modern'] .kpi-share {
+  background: var(--fill-2, rgba(255, 255, 255, 0.1));
+}
+
+html[data-design='modern'] .kpi-stagebar__seg {
+  background: var(--c-accent-fill, var(--ant-color-primary));
+}
+
+html[data-design='modern'] .kpi-stagebar__seg[data-tone='warning'] {
+  background: var(--c-warn-fg, var(--ant-color-warning));
+}
+
+html[data-design='modern'] .kpi-stagebar__seg[data-tone='negative'],
+html[data-design='modern'] .kpi-share__fill {
+  background: var(--c-neg-fg, var(--ant-color-error));
+}
+
 html[data-design='modern'] .kpi-spark__line,
 html[data-design='modern'] .kpi-spark__stop-top,
 html[data-design='modern'] .kpi-spark__stop-bottom {
@@ -109,4 +185,136 @@ html[data-design='modern'] .kpi-spark__stop-bottom {
   .kpi-stages__item {
     transition: none;
   }
+}
+
+/* KPI «Звонки сегодня»: итоги слева, менеджеры справа (на узком — друг под другом) */
+.kpi-calls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (min-width: 1100px) {
+  .kpi-calls {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 32px;
+  }
+}
+
+.kpi-calls__totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpi-calls__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kpi-calls__label {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.kpi-calls__value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.kpi-calls__managers {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kpi-calls__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  cursor: pointer;
+}
+
+.kpi-calls__row > :first-child {
+  text-align: left;
+}
+
+button.kpi-calls__row:hover {
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.kpi-calls__row--head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+  cursor: default;
+}
+
+.kpi-calls__row > span {
+  white-space: nowrap;
+}
+
+/* Телефон: таблица менеджеров плотнее, имя занимает остаток */
+@media (max-width: 768px) {
+  .kpi-calls__totals {
+    gap: 8px;
+  }
+
+  .kpi-calls__value {
+    font-size: 17px;
+  }
+
+  .kpi-calls__row {
+    grid-template-columns: minmax(0, 1fr) repeat(4, 34px) 56px;
+    gap: 4px;
+    padding: 0 2px;
+    font-size: 12px;
+  }
+
+  .kpi-calls__row--head {
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+}
+
+.kpi-calls__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-design='modern'] .kpi-calls__label {
+  color: var(--c-text-2, inherit);
+}
+
+html[data-design='modern'] .kpi-calls__value,
+html[data-design='modern'] .kpi-calls__row {
+  color: var(--c-text-1, inherit);
+}
+
+html[data-design='modern'] .kpi-calls__row--head {
+  color: var(--c-text-3, inherit);
+}
+
+html[data-design='modern'] button.kpi-calls__row:hover {
+  background: var(--fill-2, rgba(255, 255, 255, 0.1));
 }

@@ -429,6 +429,83 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
   return { scope: 'all' as const, items, managers, pendingCount: items.filter((i) => !i.handled).length };
 }
 
+// ─── Звонки за сегодня: KPI-карточка дашборда ───────────────────────────────
+
+interface CallsCounters {
+  outgoing: number;
+  /** Исходящие, где собеседник ответил. */
+  outgoingConnected: number;
+  incoming: number;
+  /** Входящие пропущенные (как в «Пропущенных сегодня»). */
+  incomingMissed: number;
+  /** Секунд разговора (только состоявшиеся звонки). */
+  talkSec: number;
+}
+
+const emptyCounters = (): CallsCounters => ({ outgoing: 0, outgoingConnected: 0, incoming: 0, incomingMissed: 0, talkSec: 0 });
+
+/**
+ * Исходящие и входящие за сегодня и вчера (по Ташкенту): всего и — для руководителя —
+ * по менеджерам. Служебные номера и внутренние звонки не считаются; видимость — как у
+ * журнала звонков (менеджер — свои, руководитель — все).
+ */
+export async function callsToday(user: CallsUser) {
+  const todayStart = tashkentStartOfToday();
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+  const rows = await prisma.callSession.findMany({
+    where: {
+      AND: [
+        callScope(user),
+        await notServiceWhere(),
+        { direction: { in: ['INBOUND', 'OUTBOUND'] }, startedAt: { gte: yesterdayStart } },
+      ],
+    },
+    select: {
+      direction: true, status: true, mobileType: true, answeredAt: true, billSec: true, durationSec: true,
+      startedAt: true, managerUserId: true, manager: { select: { fullName: true } },
+    },
+  });
+
+  const today = emptyCounters();
+  const yesterday = emptyCounters();
+  const byManager = new Map<string, CallsCounters & { managerId: string; managerName: string }>();
+
+  for (const r of rows) {
+    const connected = (r.billSec ?? 0) > 0 || !!r.answeredAt || (r.mobileType === 'out' || r.mobileType === 'in') && (r.durationSec ?? 0) > 0;
+    const missed = r.direction === 'INBOUND' && r.status === 'MISSED'
+      && (r.mobileType == null || (CALLBACK_TYPES as readonly string[]).includes(r.mobileType));
+    const talk = connected ? (r.billSec ?? r.durationSec ?? 0) : 0;
+    const targets: CallsCounters[] = [r.startedAt >= todayStart ? today : yesterday];
+    if (r.startedAt >= todayStart && r.managerUserId) {
+      const m = byManager.get(r.managerUserId) ?? {
+        ...emptyCounters(), managerId: r.managerUserId, managerName: r.manager?.fullName ?? '—',
+      };
+      byManager.set(r.managerUserId, m);
+      targets.push(m);
+    }
+    for (const c of targets) {
+      if (r.direction === 'OUTBOUND') {
+        c.outgoing += 1;
+        if (connected) c.outgoingConnected += 1;
+      } else {
+        c.incoming += 1;
+        if (missed) c.incomingMissed += 1;
+      }
+      c.talkSec += talk;
+    }
+  }
+
+  const leader = canSeeAllCalls(user);
+  return {
+    scope: leader ? ('all' as const) : ('own' as const),
+    today,
+    yesterday,
+    ...(leader
+      ? { managers: [...byManager.values()].sort((a, b) => b.outgoing + b.incoming - (a.outgoing + a.incoming)) }
+      : {}),
+  };
+}
+
 // ─── Звонки клиента ─────────────────────────────────────────────────────────
 
 const STATS_DAYS = 30;

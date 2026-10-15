@@ -25,7 +25,9 @@ import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
-import { ActiveStages, CompactMoney, KpiFoot, KpiSparkline } from '../components/dashboard/KpiExtras';
+import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
+import CallsKpi from '../components/dashboard/CallsKpi';
+import { callsApi } from '../api/calls.api';
 import type { Permission, UserRole, DealStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
@@ -108,6 +110,16 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   quarter: 'за квартал',
   custom: 'за период',
 };
+
+/** Ряд по дням без пропусков: дни без данных — нули, чтобы линия не врала о тренде. */
+function fillDays(points: { day: string; value: number }[], from: string, to: string): number[] {
+  const byDay = new Map(points.map((p) => [p.day.slice(0, 10), p.value]));
+  const out: number[] = [];
+  for (let d = dayjs(from); !d.isAfter(dayjs(to), 'day') && out.length < 400; d = d.add(1, 'day')) {
+    out.push(byDay.get(d.format('YYYY-MM-DD')) ?? 0);
+  }
+  return out;
+}
 
 /** С чем сравниваем в подписи карточки: сервер отдаёт прошлый период в полях `*Yesterday`. */
 const PREV_BASE_LABELS: Record<DashboardPeriod, string> = {
@@ -210,6 +222,15 @@ export default function DashboardPage() {
   const { data: myGoal } = useQuery({
     queryKey: ['profile-monthly-goal'],
     queryFn: () => profileApi.monthlyGoal(),
+    refetchInterval: 60_000,
+  });
+
+  // KPI «Звонки сегодня» — тем, у кого есть рабочие звонки (менеджер видит свои, руководитель — всех)
+  const canSeeCallsKpi = isAdmin || role === 'MANAGER' || (user?.permissions ?? []).includes('use_rop_agent' as Permission);
+  const { data: callsStats } = useQuery({
+    queryKey: ['calls-today-stats'],
+    queryFn: callsApi.todayStats,
+    enabled: canSeeCallsKpi,
     refetchInterval: 60_000,
   });
 
@@ -385,6 +406,13 @@ export default function DashboardPage() {
   const stockHidden = allStockIssues.length - stockPreview.length;
 
   /* ── KPI-карточки: база сравнения, разбивка, подписи ── */
+  // Диапазон мини-графиков — как у графика выручки: 30 дней до сегодня или выбранный период
+  const chartTo = dayjs().format('YYYY-MM-DD');
+  const chartFrom = period === 'day' || !data.period
+    ? dayjs().subtract(30, 'day').format('YYYY-MM-DD')
+    : dayjs(data.period.from).format('YYYY-MM-DD');
+  const closedSeries = fillDays((data.closedDealsByDay ?? []).map((d) => ({ day: d.day, value: d.count })), chartFrom, chartTo);
+  const closedAvg = closedSeries.length ? closedSeries.reduce((s, v) => s + v, 0) / closedSeries.length : 0;
   const moneyShort = (v: number) => {
     const m = formatMoneyCompact(v);
     return m.unit ? `${m.text} ${m.unit}` : m.text;
@@ -403,30 +431,48 @@ export default function DashboardPage() {
           месяц {moneyShort(revenueMonth)} · {goalRemaining > 0 ? `до цели ${moneyShort(goalRemaining)}` : 'цель выполнена'}
         </KpiFoot>
       )}
-      {canSeeMoney && <KpiSparkline values={[...(data.revenueLast30Days ?? [])].sort((a, b) => a.day.localeCompare(b.day)).map((d) => Number(d.total) || 0)} />}
+      {canSeeMoney && <KpiSparkline values={fillDays((data.revenueLast30Days ?? []).map((d) => ({ day: d.day, value: Number(d.total) || 0 })), chartFrom, chartTo)} />}
     </>
   );
   const closedFoot = (
-    <KpiFoot delta={dealPct !== null ? <DeltaBadge value={dealPct} /> : undefined}>
-      {periodInProgress && !data.closedDealsToday ? 'пока нет · ' : ''}
-      {prevWord} {formatCount(data.closedDealsYesterday || 0)}
-    </KpiFoot>
+    <>
+      <KpiFoot delta={dealPct !== null ? <DeltaBadge value={dealPct} /> : undefined}>
+        {periodInProgress && !data.closedDealsToday ? 'пока нет · ' : ''}
+        {prevWord} {formatCount(data.closedDealsYesterday || 0)}
+      </KpiFoot>
+      {closedSeries.some((v) => v > 0) && (
+        <>
+          <KpiFoot>в среднем {closedAvg.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} в день за {closedSeries.length} дн.</KpiFoot>
+          <KpiSparkline values={closedSeries} />
+        </>
+      )}
+    </>
   );
   const activeFoot = <ActiveStages counts={data.dealsByStatusCounts ?? []} />;
   // Список просрочек в аналитике обрезан на 20 строк — при упоре без суммы
   const overdue = monthAnalytics?.finance?.overdueDebts ?? [];
   const debtorsCount = debtsData?.totals?.clientCount;
+  const overdueSum = overdue.reduce((sum, d) => sum + (Number(d.debt) || 0), 0);
+  const topDebtor = monthAnalytics?.finance?.topDebtors?.[0];
   const debtFoot = (
+    <>
     <KpiFoot>
       {debtorsCount != null && debtorsCount > 0 ? `${formatCount(debtorsCount)} ${pluralRu(debtorsCount, ['клиент', 'клиента', 'клиентов'])}` : null}
       {debtorsCount != null && debtorsCount > 0 && overdue.length > 0 ? ' · ' : ''}
       {overdue.length > 0 && (
         <span className="kpi-foot__text--risk">
           просрочено {overdue.length >= 20 ? '20+' : formatCount(overdue.length)} {pluralRu(overdue.length, ['сделка', 'сделки', 'сделок'])}
-          {overdue.length < 20 ? ` на ${moneyShort(overdue.reduce((sum, d) => sum + (Number(d.debt) || 0), 0))}` : ''}
+          {overdue.length < 20 ? ` на ${moneyShort(overdueSum)}` : ''}
         </span>
       )}
     </KpiFoot>
+    {overdue.length > 0 && overdue.length < 20 && (
+      <KpiShareBar part={overdueSum} total={totalDebt} title={`Просрочено ${formatUZS(overdueSum)} из ${formatUZS(totalDebt)}`} />
+    )}
+    {topDebtor && (
+      <KpiFoot>больше всех: {topDebtor.companyName} — {moneyShort(topDebtor.totalDebt)}</KpiFoot>
+    )}
+    </>
   );
 
   /* ── shared styles ── */
@@ -530,7 +576,7 @@ export default function DashboardPage() {
               <Typography.Text type="secondary" className="dashboard-card-label">
                 {revenueLabel}
               </Typography.Text>
-              <div className="dashboard-card-value"><CompactMoney value={data.revenueToday || 0} /></div>
+              <div className="dashboard-card-value">{formatUZS(data.revenueToday || 0)}</div>
               <div className="dashboard-card-delta">
                 {revenueFoot}
               </div>
@@ -575,12 +621,21 @@ export default function DashboardPage() {
               style={{ ...card, cursor: 'pointer', height: '100%' }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label">Общий долг</Typography.Text>
-              <div className="dashboard-card-value"><CompactMoney value={totalDebt} /></div>
+              <div className="dashboard-card-value">{formatUZS(totalDebt)}</div>
               <div className="dashboard-card-delta">
                 {debtFoot}
               </div>
             </Card>
           </Link>
+
+          {callsStats && (
+            <Link to="/calls" className="cards-grid__link cards-grid__link--full">
+              <Card className="dashboard-metric-card card card-full" bordered={false} hoverable style={{ ...card, cursor: 'pointer', height: '100%' }}>
+                <Typography.Text type="secondary" className="dashboard-card-label">Звонки сегодня</Typography.Text>
+                <CallsKpi stats={callsStats} />
+              </Card>
+            </Link>
+          )}
         </div>
       ) : (
       <Row className="dashboard-kpi-row" gutter={kpiGutter}>
@@ -601,7 +656,7 @@ export default function DashboardPage() {
                 className="dashboard-card-value"
                 style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
-                <CompactMoney value={data.revenueToday || 0} />
+                {formatUZS(data.revenueToday || 0)}
               </div>
               <div className="dashboard-card-delta">
                 {revenueFoot}
@@ -673,7 +728,7 @@ export default function DashboardPage() {
                 className="dashboard-card-value"
                 style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
-                <CompactMoney value={totalDebt} />
+                {formatUZS(totalDebt)}
               </div>
               <div className="dashboard-card-delta">
                 {debtFoot}
@@ -681,6 +736,16 @@ export default function DashboardPage() {
             </Card>
           </Link>
         </Col>
+        {callsStats && (
+          <Col xs={24}>
+            <Link to="/calls" style={{ display: 'block' }}>
+              <Card className="dashboard-metric-card" bordered={false} hoverable style={{ ...card, cursor: 'pointer' }} styles={{ body: cardBody }}>
+                <Typography.Text type="secondary" className="dashboard-card-label" style={{ fontSize: 13 }}>Звонки сегодня</Typography.Text>
+                <CallsKpi stats={callsStats} />
+              </Card>
+            </Link>
+          </Col>
+        )}
       </Row>
       )}
       </div>

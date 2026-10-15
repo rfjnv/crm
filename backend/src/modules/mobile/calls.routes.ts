@@ -24,6 +24,7 @@ import {
   listCalls,
   markCalledBack,
   missedToday,
+  callsToday,
   phoneHistory,
   verifyAudioStreamToken,
 } from './calls.service';
@@ -64,6 +65,11 @@ router.get('/', authenticate, asyncHandler(async (req: Request, res: Response) =
 
 router.get('/missed', authenticate, asyncHandler(async (req: Request, res: Response) => {
   res.json(await missedToday(req.user!));
+}));
+
+/** Исходящие и входящие за сегодня — KPI-карточка «Звонки» на дашборде. */
+router.get('/today-stats', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  res.json(await callsToday(req.user!));
 }));
 
 // ─── CRM: управление звонками (руководитель) ────────────────────────────────
