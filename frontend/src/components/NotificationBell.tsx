@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Badge, Button, Drawer, List, Typography, Tag, Space, theme, Modal } from 'antd';
+import { Badge, Button, Drawer, Dropdown, List, Typography, Tag, Space, theme, Modal } from 'antd';
 import {
   BellOutlined, InfoCircleOutlined, WarningOutlined, ExclamationCircleOutlined,
   CheckOutlined, RightOutlined,
@@ -13,7 +13,7 @@ import { APP_BUTTON } from './ui/AppClassNames';
 import type { AppNotification, NotificationSeverity } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import { canShowNotifications } from '../lib/notifications';
-import NotificationsDrawerModern from './NotificationsDrawerModern';
+import NotificationsPanel from './NotificationsPanel';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -166,31 +166,46 @@ export default function NotificationBell() {
 
   const unreadCount = countData?.count ?? 0;
 
+  // В новом дизайне колокольчик открывает панель сам (Dropdown), в классическом — шторку
+  const bell = (
+    <Badge count={unreadCount} size="small" offset={[-2, 4]} overflowCount={99}>
+      <Button
+        type="text"
+        className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
+        icon={modern ? <BellSimple size={19} /> : <BellOutlined style={{ fontSize: 18 }} />}
+        aria-label="Уведомления"
+        onClick={modern ? undefined : () => setOpen(true)}
+        style={unreadCount > 0 ? { animation: 'bellPulse 2s infinite' } : undefined}
+      />
+    </Badge>
+  );
+
   return (
     <>
-      <Badge count={unreadCount} size="small" offset={[-2, 4]} overflowCount={99}>
-        <Button
-          type="text"
-          className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
-          icon={modern ? <BellSimple size={19} /> : <BellOutlined style={{ fontSize: 18 }} />}
-          onClick={() => setOpen(true)}
-          style={unreadCount > 0 ? { animation: 'bellPulse 2s infinite' } : undefined}
-        />
-      </Badge>
-
       {modern ? (
-        <NotificationsDrawerModern
+        <Dropdown
           open={open}
-          onClose={() => setOpen(false)}
-          items={recentData?.items ?? []}
-          unreadCount={unreadCount}
-          onOpenItem={handleClick}
-          onMarkRead={(id) => markReadMut.mutate(id)}
-          onMarkAll={() => markAllReadMut.mutate()}
-          markAllPending={markAllReadMut.isPending}
-          onOpenAll={() => { setOpen(false); navigate('/notifications'); }}
-        />
+          onOpenChange={setOpen}
+          trigger={['click']}
+          placement="bottomRight"
+          rootClassName="ntf-dropdown"
+          popupRender={() => (
+            <NotificationsPanel
+              items={recentData?.items ?? []}
+              unreadCount={unreadCount}
+              onOpenItem={handleClick}
+              onMarkRead={(id) => markReadMut.mutate(id)}
+              onMarkAll={() => markAllReadMut.mutate()}
+              onOpenAll={() => { setOpen(false); navigate('/notifications'); }}
+            />
+          )}
+        >
+          {bell}
+        </Dropdown>
       ) : (
+      <>
+      {bell}
+
       <Drawer
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -286,6 +301,7 @@ export default function NotificationBell() {
           </Button>
         </div>
       </Drawer>
+      </>
       )}
 
       <style>{`

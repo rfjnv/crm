@@ -1,0 +1,315 @@
+/* Панель уведомлений нового дизайна. Стекло, радиус и анимацию даёт .hdr-panel (glass.css). */
+html[data-design='modern'] .hdr-panel.ntf-panel {
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  max-height: min(640px, calc(100dvh - 96px));
+}
+
+.ntf-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 10px;
+}
+
+.ntf-panel__count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--c-alert, #ef4444);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ntf-panel__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hdr-btn);
+  box-shadow: var(--hdr-rim);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ntf-panel__all:hover {
+  background: var(--hdr-btn-hover);
+}
+
+/* Фильтр — те же «таблетки», что у переключателей на страницах */
+.ntf-chips {
+  display: flex;
+  gap: 6px;
+  padding: 0 8px 10px;
+  border-bottom: 1px solid var(--hdr-sep);
+}
+
+.ntf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ntf-chip:hover {
+  background: var(--hdr-btn);
+}
+
+.ntf-chip--active,
+.ntf-chip--active:hover {
+  border-color: transparent;
+  background: var(--chip-active-bg);
+  color: var(--chip-active-text);
+}
+
+.ntf-chip__count {
+  font-size: 12px;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Список прокручивается без полосы: края мягко растворяются */
+.ntf-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 16px), transparent 100%);
+}
+
+.ntf-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ntf-scroll > :not(.hover-glider) {
+  position: relative;
+  z-index: 1;
+}
+
+.ntf-group {
+  padding: 12px 10px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.55;
+}
+
+.ntf-row {
+  --ntf-tone: var(--c-accent-fg);
+  --ntf-tone-bg: color-mix(in srgb, var(--c-accent-fill) 18%, transparent);
+  position: relative;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border-radius: 12px;
+  outline: none;
+}
+
+.ntf-row[data-severity='WARNING'] {
+  --ntf-tone: var(--c-warn-fg);
+  --ntf-tone-bg: var(--c-warn-bg);
+}
+
+.ntf-row[data-severity='URGENT'] {
+  --ntf-tone: var(--c-neg-fg);
+  --ntf-tone-bg: var(--c-neg-bg);
+}
+
+.ntf-row--link {
+  cursor: pointer;
+}
+
+.ntf-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--c-accent-fill);
+}
+
+.ntf-row__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ntf-tone-bg);
+  color: var(--ntf-tone);
+}
+
+.ntf-row:not(.ntf-row--unread) .ntf-row__icon {
+  opacity: 0.55;
+}
+
+.ntf-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ntf-row__title {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  opacity: 0.75;
+}
+
+.ntf-row--unread .ntf-row__title {
+  font-weight: 600;
+  opacity: 1;
+}
+
+.ntf-row__time {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.ntf-row__body {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.7;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ntf-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+.ntf-row__sev {
+  font-weight: 600;
+  color: var(--ntf-tone);
+}
+
+.ntf-row--unread .ntf-row__meta {
+  opacity: 0.7;
+}
+
+.ntf-row__read {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ntf-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-accent-fill);
+}
+
+.ntf-row__check {
+  display: none;
+}
+
+/* Точка под курсором превращается в «прочитано» */
+.ntf-row__read:hover,
+.ntf-row__read:focus-visible {
+  background: var(--hdr-btn-hover);
+}
+
+.ntf-row__read:hover .ntf-row__dot,
+.ntf-row__read:focus-visible .ntf-row__dot {
+  display: none;
+}
+
+.ntf-row__read:hover .ntf-row__check,
+.ntf-row__read:focus-visible .ntf-row__check {
+  display: block;
+}
+
+.ntf-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 16px;
+  font-size: 14px;
+  opacity: 0.55;
+}
+
+.ntf-panel__foot {
+  position: relative;
+}
+
+.ntf-panel__caret {
+  opacity: 0.55;
+}
+
+/* На телефоне наведения нет: «прочитано» сразу видно галочкой */
+@media (hover: none) {
+  .ntf-row__dot {
+    display: none;
+  }
+
+  .ntf-row__check {
+    display: block;
+    opacity: 0.6;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Колокольчик не у самого края: панель ставим по ширине экрана, а не от кнопки */
+  .ntf-dropdown {
+    left: 12px !important;
+    right: 12px !important;
+  }
+
+  html[data-design='modern'] .hdr-panel.ntf-panel {
+    width: 100%;
+    max-width: none;
+  }
+
+  .ntf-panel__all span {
+    display: none;
+  }
+
+  .ntf-panel__all {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+}
