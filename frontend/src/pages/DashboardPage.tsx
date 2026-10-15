@@ -14,7 +14,7 @@ import { financeApi } from '../api/finance.api';
 import { analyticsApi, type AnalyticsPeriodQuery } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
 import { profileApi } from '../api/profile.api';
-import { formatUZS, formatFullNumber, formatShortNumber, formatCount } from '../utils/currency';
+import { formatUZS, formatFullNumber, formatShortNumber, formatCount, formatMoneyCompact } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +25,7 @@ import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
+import { ActiveStages, CompactMoney, KpiFoot, KpiSparkline } from '../components/dashboard/KpiExtras';
 import type { Permission, UserRole, DealStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
@@ -108,13 +109,24 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   custom: 'за период',
 };
 
-const PREV_PERIOD_LABELS: Record<DashboardPeriod, string> = {
-  day: 'к вчера',
-  week: 'к пр. нед.',
-  month: 'к пр. мес.',
-  quarter: 'к пр. кв.',
-  custom: 'к пр. пер.',
+/** С чем сравниваем в подписи карточки: сервер отдаёт прошлый период в полях `*Yesterday`. */
+const PREV_BASE_LABELS: Record<DashboardPeriod, string> = {
+  day: 'вчера',
+  week: 'пр. неделя',
+  month: 'пр. месяц',
+  quarter: 'пр. квартал',
+  custom: 'пр. период',
 };
+
+/** Склонение по числу: pluralRu(5, ['клиент', 'клиента', 'клиентов']) → «клиентов». */
+function pluralRu(n: number, forms: [string, string, string]): string {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return forms[2];
+  if (last === 1) return forms[0];
+  if (last >= 2 && last <= 4) return forms[1];
+  return forms[2];
+}
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState<DashboardPeriod>('day');
@@ -330,7 +342,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const deltaLabel = PREV_PERIOD_LABELS[period];
   const revenueLabel = period === 'day' ? 'Выручка сегодня' : `Выручка ${PERIOD_LABELS[period]}`;
   const closedDealsLabel = period === 'day' ? 'Закрыто сделок' : `Закрыто сделок ${PERIOD_LABELS[period]}`;
 
@@ -372,6 +383,51 @@ export default function DashboardPage() {
   // Нулевые остатки идут первыми, поэтому в превью попадают они.
   const stockPreview = modern ? allStockIssues.slice(0, STOCK_PREVIEW_LIMIT) : allStockIssues;
   const stockHidden = allStockIssues.length - stockPreview.length;
+
+  /* ── KPI-карточки: база сравнения, разбивка, подписи ── */
+  const moneyShort = (v: number) => {
+    const m = formatMoneyCompact(v);
+    return m.unit ? `${m.text} ${m.unit}` : m.text;
+  };
+  const prevWord = PREV_BASE_LABELS[period];
+  const goalVisible = (isAdmin || role === 'MANAGER') && canSeeMoney && period === 'day';
+  // Утром продаж ещё нет: вместо «−100 % к вчера» — «пока нет · вчера …»
+  const revenueFoot = (
+    <>
+      <KpiFoot delta={revPct !== null ? <DeltaBadge value={revPct} /> : undefined}>
+        {periodInProgress && !data.revenueToday ? 'пока нет · ' : ''}
+        {prevWord} {moneyShort(data.revenueYesterday || 0)}
+      </KpiFoot>
+      {goalVisible && (
+        <KpiFoot>
+          месяц {moneyShort(revenueMonth)} · {goalRemaining > 0 ? `до цели ${moneyShort(goalRemaining)}` : 'цель выполнена'}
+        </KpiFoot>
+      )}
+      {canSeeMoney && <KpiSparkline values={[...(data.revenueLast30Days ?? [])].sort((a, b) => a.day.localeCompare(b.day)).map((d) => Number(d.total) || 0)} />}
+    </>
+  );
+  const closedFoot = (
+    <KpiFoot delta={dealPct !== null ? <DeltaBadge value={dealPct} /> : undefined}>
+      {periodInProgress && !data.closedDealsToday ? 'пока нет · ' : ''}
+      {prevWord} {formatCount(data.closedDealsYesterday || 0)}
+    </KpiFoot>
+  );
+  const activeFoot = <ActiveStages counts={data.dealsByStatusCounts ?? []} />;
+  // Список просрочек в аналитике обрезан на 20 строк — при упоре без суммы
+  const overdue = monthAnalytics?.finance?.overdueDebts ?? [];
+  const debtorsCount = debtsData?.totals?.clientCount;
+  const debtFoot = (
+    <KpiFoot>
+      {debtorsCount != null && debtorsCount > 0 ? `${formatCount(debtorsCount)} ${pluralRu(debtorsCount, ['клиент', 'клиента', 'клиентов'])}` : null}
+      {debtorsCount != null && debtorsCount > 0 && overdue.length > 0 ? ' · ' : ''}
+      {overdue.length > 0 && (
+        <span className="kpi-foot__text--risk">
+          просрочено {overdue.length >= 20 ? '20+' : formatCount(overdue.length)} {pluralRu(overdue.length, ['сделка', 'сделки', 'сделок'])}
+          {overdue.length < 20 ? ` на ${moneyShort(overdue.reduce((sum, d) => sum + (Number(d.debt) || 0), 0))}` : ''}
+        </span>
+      )}
+    </KpiFoot>
+  );
 
   /* ── shared styles ── */
   const card: CSSProperties = {
@@ -474,9 +530,9 @@ export default function DashboardPage() {
               <Typography.Text type="secondary" className="dashboard-card-label">
                 {revenueLabel}
               </Typography.Text>
-              <div className="dashboard-card-value">{formatUZS(data.revenueToday || 0)}</div>
+              <div className="dashboard-card-value"><CompactMoney value={data.revenueToday || 0} /></div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={revPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {revenueFoot}
               </div>
             </Card>
           </Link>
@@ -491,7 +547,7 @@ export default function DashboardPage() {
               <Typography.Text type="secondary" className="dashboard-card-label">{closedDealsLabel}</Typography.Text>
               <div className="dashboard-card-value">{data.closedDealsToday}</div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={dealPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {closedFoot}
               </div>
             </Card>
           </Link>
@@ -506,7 +562,7 @@ export default function DashboardPage() {
               <Typography.Text type="secondary" className="dashboard-card-label">Активные сделки</Typography.Text>
               <div className="dashboard-card-value">{data.activeDealsCount}</div>
               <div className="dashboard-card-delta">
-                <span className="dashboard-card-delta-placeholder" aria-hidden />
+                {activeFoot}
               </div>
             </Card>
           </Link>
@@ -519,9 +575,9 @@ export default function DashboardPage() {
               style={{ ...card, cursor: 'pointer', height: '100%' }}
             >
               <Typography.Text type="secondary" className="dashboard-card-label">Общий долг</Typography.Text>
-              <div className="dashboard-card-value">{formatUZS(totalDebt)}</div>
+              <div className="dashboard-card-value"><CompactMoney value={totalDebt} /></div>
               <div className="dashboard-card-delta">
-                <span className="dashboard-card-delta-placeholder" aria-hidden />
+                {debtFoot}
               </div>
             </Card>
           </Link>
@@ -545,10 +601,10 @@ export default function DashboardPage() {
                 className="dashboard-card-value"
                 style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
-                {formatUZS(data.revenueToday || 0)}
+                <CompactMoney value={data.revenueToday || 0} />
               </div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={revPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {revenueFoot}
               </div>
             </Card>
           </Link>
@@ -572,7 +628,7 @@ export default function DashboardPage() {
                 {data.closedDealsToday}
               </div>
               <div className="dashboard-card-delta">
-                {isAdmin ? <DeltaBadge value={dealPct} suffix={deltaLabel} /> : <span className="dashboard-card-delta-placeholder" aria-hidden />}
+                {closedFoot}
               </div>
             </Card>
           </Link>
@@ -596,7 +652,7 @@ export default function DashboardPage() {
                 {data.activeDealsCount}
               </div>
               <div className="dashboard-card-delta">
-                <span className="dashboard-card-delta-placeholder" aria-hidden />
+                {activeFoot}
               </div>
             </Card>
           </Link>
@@ -617,10 +673,10 @@ export default function DashboardPage() {
                 className="dashboard-card-value"
                 style={{ fontSize: 20, fontWeight: 500, marginTop: 4, lineHeight: 1.3 }}
               >
-                {formatUZS(totalDebt)}
+                <CompactMoney value={totalDebt} />
               </div>
               <div className="dashboard-card-delta">
-                <span className="dashboard-card-delta-placeholder" aria-hidden />
+                {debtFoot}
               </div>
             </Card>
           </Link>

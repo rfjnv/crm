@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Table, Button, Select, Typography, message, Space, Popconfirm, Segmented, Card, Tag, theme } from 'antd';
 import { PlusOutlined, HistoryOutlined, InboxOutlined, UnorderedListOutlined, AppstoreOutlined, LinkOutlined, WarningOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
@@ -108,11 +108,16 @@ const STORAGE_KEY_STATUS = 'dealsStatusFilter';
 
 export default function DealsPage() {
   const navigate = useNavigate();
+  // ?status=… — переход с дашборда по этапу: открываем таблицу сразу с этим фильтром
+  const [searchParams] = useSearchParams();
+  const statusFromUrl = searchParams.get('status') as DealStatus | null;
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(() => {
+    if (statusFromUrl) return 'table';
     const saved = localStorage.getItem(STORAGE_KEY_VIEW);
     return saved === 'kanban' ? 'kanban' : 'table';
   });
   const [statusFilter, setStatusFilter] = useState<DealStatus | undefined>(() => {
+    if (statusFromUrl) return statusFromUrl;
     const saved = localStorage.getItem(STORAGE_KEY_STATUS);
     return saved ? (saved as DealStatus) : undefined;
   });

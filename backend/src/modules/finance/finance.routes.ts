@@ -9,7 +9,8 @@ import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/payment-kind';
 import { tashkentDayKey, tashkentStartOfToday } from '../../lib/tz';
-import { buildSearchVariants } from '../../lib/translit';import { responseCache } from '../../lib/responseCache';
+import { buildSearchVariants } from '../../lib/translit';
+import { responseCache } from '../../lib/responseCache';
 
 function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
   if (paid <= 0) return 'UNPAID';
@@ -241,16 +242,20 @@ router.get(
     if (req.query.totalsOnly === '1' && minDebt === undefined && !paymentStatus) {
       const balances = await prisma.deal.findMany({
         where: { ...dealScope, status: 'CLOSED', isArchived: false, ...(managerId ? { managerId } : {}) },
-        select: { amount: true, paidAmount: true },
+        select: { amount: true, paidAmount: true, clientId: true },
       });
       let totalDebt = 0;
       let prepayments = 0;
+      // Сколько клиентов должны — для карточки «Общий долг» на дашборде
+      const debtors = new Set<string>();
       for (const d of balances) {
         const balance = Number(d.amount) - Number(d.paidAmount);
-        if (balance > 0) totalDebt += balance;
-        else if (balance < 0) prepayments += -balance;
+        if (balance > 0) {
+          totalDebt += balance;
+          debtors.add(d.clientId);
+        } else if (balance < 0) prepayments += -balance;
       }
-      res.json({ totals: { totalDebtGiven: totalDebt, totalDebtOwed: totalDebt, prepayments } });
+      res.json({ totals: { totalDebtGiven: totalDebt, totalDebtOwed: totalDebt, prepayments, clientCount: debtors.size } });
       return;
     }
 
