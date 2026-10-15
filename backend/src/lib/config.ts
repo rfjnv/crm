@@ -86,10 +86,10 @@ export const config = {
   ropAgent: {
     /**
      * Главный выключатель РОП-агента: off — ни одного обращения к Claude и распознаванию
-     * (чат, голосовые, разбор звонков, сводка, сигналы, перевод задач). По умолчанию включён;
-     * выключить — ROP_AGENT=off на Render.
+     * (чат, голосовые, разбор звонков, сводка, сигналы, перевод задач). Сейчас по умолчанию
+     * выключен — пользователь попросил не тратить токены; включить — ROP_AGENT=on на Render.
      */
-    enabled: (trimEnv(process.env.ROP_AGENT) || 'on').toLowerCase() !== 'off',
+    enabled: (trimEnv(process.env.ROP_AGENT) || 'off').toLowerCase() === 'on',
     /**
      * Живой голосовой звонок агенту (ElevenLabs Agents) — отдельно от ROP_AGENT: модель
      * звонка оплачивается в ElevenLabs. ROP_CALL=off — выключить.
