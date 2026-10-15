@@ -1,7 +1,7 @@
 import type { MenuProps } from 'antd';
 import { Badge } from 'antd';
 import { Link } from 'react-router-dom';
-import { isParent, type MenuLeaf, type MenuSection } from './modernMenuTree';
+import { FIXED_MAIN_KEYS, isParent, type MenuLeaf, type MenuSection } from './modernMenuTree';
 
 type Items = NonNullable<MenuProps['items']>;
 
@@ -12,7 +12,13 @@ function leafItem(leaf: MenuLeaf, unread: number, withIcon: boolean): Items[numb
     icon: withIcon && Icon ? <Icon size={18} /> : undefined,
     disabled: !leaf.to,
     label: leaf.to ? (
-      <Link to={leaf.to}>
+      // data-menu-* — для перетаскивания в «Главное» (hooks/useMenuDragPin.ts)
+      <Link
+        to={leaf.to}
+        data-menu-key={leaf.key}
+        data-menu-pinned={leaf.pinned ? '1' : undefined}
+        data-menu-fixed={FIXED_MAIN_KEYS.includes(leaf.key) ? '1' : undefined}
+      >
         <span>{leaf.text}</span>
         {leaf.unreadBadge && unread > 0 && <Badge count={unread} size="small" style={{ marginLeft: 8 }} />}
       </Link>
@@ -38,7 +44,14 @@ export function toModernMenuItems(sections: MenuSection[], unread: number): Menu
       };
     });
     if (section.title) {
-      items.push({ type: 'group', key: `section:${section.key}`, label: section.title, children });
+      items.push({
+        type: 'group',
+        key: `section:${section.key}`,
+        label: section.title,
+        children,
+        // «Главное» — место, куда перетаскивают пункты
+        className: section.sourceKey === 'main' ? 'sider-section-main' : undefined,
+      });
     } else {
       if (index > 0) items.push({ type: 'divider', key: `divider:${section.key}` });
       items.push(...children);

@@ -43,6 +43,10 @@ import type { UserRole } from '../types';
  *  - пункт со стрелкой с одним подпунктом становится обычным пунктом;
  *  - раздел без пунктов убирается, раздел с одним пунктом — без заголовка,
  *    а соседние такие разделы сливаются в один блок.
+ *
+ * «Главное» настраивается: человек долгим нажатием перетаскивает туда пункты из
+ * других разделов (`pins`, хранятся в браузере — hooks/useMenuPins.ts). Закреплённый
+ * пункт переезжает, а не дублируется: в своей группе его больше нет.
  */
 
 export interface MenuAccess {
@@ -68,7 +72,12 @@ export interface MenuLeaf {
   icon?: Icon;
   /** Показать счётчик непрочитанных (сообщения). */
   unreadBadge?: boolean;
+  /** Пункт закреплён человеком в «Главном» — его можно вытащить обратно. */
+  pinned?: boolean;
 }
+
+/** Пункты «Главного», которые всегда на месте и не перетаскиваются. */
+export const FIXED_MAIN_KEYS: readonly string[] = ['/dashboard', '/tasks'];
 
 export interface MenuParent {
   key: string;
@@ -83,6 +92,8 @@ export interface MenuSection {
   key: string;
   /** Заголовок раздела; пустой, если в разделе остался один пункт. */
   title?: string;
+  /** Тот же раздел до сборки (`main` — «Главное», куда закрепляют пункты). */
+  sourceKey?: string;
   items: MenuNode[];
 }
 
@@ -92,7 +103,7 @@ type Draft<T> = T & { show: boolean };
 type DraftParent = Omit<MenuParent, 'children'> & { children: Draft<MenuLeaf>[] };
 type DraftNode = Draft<MenuLeaf> | DraftParent;
 
-function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }[] {
+function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] }[] {
   const { hasRole, hasPermission, isAdmin, role } = a;
   const warehouseStaff = hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE', 'WAREHOUSE_MANAGER');
   const productsAccess = hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER') || hasPermission('manage_products');
@@ -107,16 +118,6 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
       items: [
         { key: '/dashboard', to: '/dashboard', text: 'Дашборд', icon: Gauge, show: true },
         { key: '/tasks', to: '/tasks', text: 'Задачи', icon: Kanban, show: true },
-        { key: '/messages', to: '/messages', text: 'Сообщения', icon: ChatCircle, unreadBadge: true, show: role !== 'OPERATOR' },
-        {
-          key: 'notifications-group',
-          text: 'Уведомления',
-          icon: BellSimple,
-          children: [
-            { key: '/notifications', to: '/notifications', text: 'Лента', soloText: 'Уведомления', show: true },
-            { key: '/notifications/broadcast', to: '/notifications/broadcast', text: 'Рассылка', show: isAdmin },
-          ],
-        },
       ],
     },
     {
@@ -343,13 +344,70 @@ function tree(a: MenuAccess): { key: string; title: string; items: DraftNode[] }
         { key: '/changelog', to: '/changelog', text: 'Обновления', icon: Newspaper, show: true },
       ],
     },
+    // Сообщения и уведомления — не для быстрого захода, поэтому в самом низу, без заголовка
+    {
+      key: 'inbox',
+      items: [
+        { key: '/messages', to: '/messages', text: 'Сообщения', icon: ChatCircle, unreadBadge: true, show: role !== 'OPERATOR' },
+        {
+          key: 'notifications-group',
+          text: 'Уведомления',
+          icon: BellSimple,
+          children: [
+            { key: '/notifications', to: '/notifications', text: 'Лента', soloText: 'Уведомления', show: true },
+            { key: '/notifications/broadcast', to: '/notifications/broadcast', text: 'Рассылка', show: isAdmin },
+          ],
+        },
+      ],
+    },
   ];
 }
 
+/**
+ * Переносит закреплённые пункты в «Главное» (после постоянных), в порядке `pins`.
+ * Скрытые для человека и уже стоящие в «Главном» пункты пропускаются.
+ */
+function applyPins(sections: ReturnType<typeof tree>, pins: string[]): void {
+  const main = sections.find((s) => s.key === 'main');
+  if (!main || pins.length === 0) return;
+  for (const pin of pins) {
+    if (FIXED_MAIN_KEYS.includes(pin)) continue;
+    for (const section of sections) {
+      if (section === main) continue;
+      let found: Draft<MenuLeaf> | undefined;
+      let parentIcon: MenuLeaf['icon'];
+      section.items = section.items.filter((node) => {
+        if (found) return true;
+        if ('children' in node) {
+          const leaf = node.children.find((c) => c.key === pin && c.show);
+          if (leaf) {
+            found = leaf;
+            parentIcon = node.icon;
+            node.children = node.children.filter((c) => c !== leaf);
+          }
+          return true;
+        }
+        if (node.key === pin && node.show) {
+          found = node;
+          return false;
+        }
+        return true;
+      });
+      if (found) {
+        // В «Главном» пункт стоит один, без своей группы: берём «одиночное» название и иконку группы
+        main.items.push({ ...found, text: found.soloText ?? found.text, icon: found.icon ?? parentIcon, pinned: true });
+        break;
+      }
+    }
+  }
+}
+
 /** Меню для конкретного человека: только видимое, без пустых и одиночных группировок. */
-export function buildModernMenu(access: MenuAccess): MenuSection[] {
+export function buildModernMenu(access: MenuAccess, pins: string[] = []): MenuSection[] {
   const sections: MenuSection[] = [];
-  for (const section of tree(access)) {
+  const drafts = tree(access);
+  applyPins(drafts, pins);
+  for (const section of drafts) {
     const items: MenuNode[] = [];
     for (const node of section.items) {
       if ('children' in node) {
@@ -371,7 +429,7 @@ export function buildModernMenu(access: MenuAccess): MenuSection[] {
     // чтобы одинокие пункты не шли каждый отдельной «группой»
     const prev = sections[sections.length - 1];
     if (!title && prev && !prev.title) prev.items.push(...items);
-    else sections.push({ key: section.key, title, items });
+    else sections.push({ key: section.key, title, items, sourceKey: section.key });
   }
   return sections;
 }

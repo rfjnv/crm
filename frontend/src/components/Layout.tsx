@@ -84,6 +84,8 @@ import ModernHeaderBar from './ModernHeaderBar';
 import { buildModernMenu, parentKeyOf } from '../config/modernMenuTree';
 import { toModernMenuItems } from '../config/modernMenuItems';
 import { useHoverGlider } from '../hooks/useHoverGlider';
+import { useMenuPins } from '../hooks/useMenuPins';
+import { useMenuDragPin } from '../hooks/useMenuDragPin';
 import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
@@ -149,6 +151,14 @@ export default function Layout() {
   const { mode, toggle, design, toggleDesign } = useThemeStore();
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const menuGlider = useHoverGlider<HTMLDivElement>('.ant-menu-item, .ant-menu-submenu-title', design === 'modern');
+  // Новый дизайн: пункты меню можно долгим нажатием перетащить в «Главное»
+  const menuPins = useMenuPins(user?.id);
+  useMenuDragPin(menuGlider.ref, {
+    enabled: design === 'modern',
+    onPin: menuPins.pin,
+    onUnpin: menuPins.unpin,
+    remountKey: mobileMenuOpen,
+  });
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
   const mainScrollRef = useRef<HTMLDivElement>(null);
@@ -913,7 +923,7 @@ export default function Layout() {
     canViewClients: !!canViewClients,
     canViewClosedDealsHistory,
     moneyFull: (user?.moneyAccess ?? 'FULL') === 'FULL',
-  });
+  }, menuPins.pins);
   const currentMenuGroup = design === 'modern' ? parentKeyOf(modernSections, selectedDilnoza) : undefined;
 
   // В новом дизайне на компьютере прокручивается окно, а не страница: при переходе

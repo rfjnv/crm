@@ -980,6 +980,64 @@ html[data-design='modern'][data-theme='light'] {
   --glider-bg: rgba(255, 255, 255, 0.5);
 }
 
+/* ── Перетаскивание пунктов меню в «Главное» (hooks/useMenuDragPin.ts) ── */
+
+/* Долгое нажатие не выделяет текст и не открывает системное меню ссылки */
+html[data-design='modern'] .sider-menu-scroll .ant-menu-item {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+html[data-design='modern'].sider-dragging,
+html[data-design='modern'].sider-dragging * {
+  cursor: grabbing;
+}
+
+/* Поднятый пункт остаётся на месте полупрозрачным */
+html[data-design='modern'] .sider-menu-scroll .ant-menu-item.sider-item--lifted {
+  opacity: 0.35;
+}
+
+/* «Главное» подсвечивается, когда пункт держат над ним */
+html[data-design='modern'] .sider-section-main {
+  border-radius: 14px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+html[data-design='modern'] .sider-section-main.sider-section-main--target {
+  background: var(--fill-2);
+  box-shadow: inset 0 0 0 1px var(--c-accent-fg);
+}
+
+/* Пункт, который едет за указателем */
+.sider-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2000;
+  max-width: 240px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+  color: var(--c-text-1, var(--ant-color-text));
+  background: var(--win-bg, var(--ant-color-bg-elevated));
+  backdrop-filter: var(--win-blur, none);
+  -webkit-backdrop-filter: var(--win-blur, none);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), var(--win-rim, none);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-design='modern'] .sider-section-main {
+    transition: none;
+  }
+}
+
 html[data-design='modern'] .hover-glider {
   position: absolute;
   top: 0;
