@@ -111,11 +111,15 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   custom: 'за период',
 };
 
-/** Ряд по дням без пропусков: дни без данных — нули, чтобы линия не врала о тренде. */
+/**
+ * Ряд по дням без пропусков: дни без данных — нули, чтобы линия не врала о тренде.
+ * Воскресенье — выходной, его в ряду нет: иначе каждую неделю провал до нуля.
+ */
 function fillDays(points: { day: string; value: number }[], from: string, to: string): { day: string; value: number }[] {
   const byDay = new Map(points.map((p) => [p.day.slice(0, 10), p.value]));
   const out: { day: string; value: number }[] = [];
   for (let d = dayjs(from); !d.isAfter(dayjs(to), 'day') && out.length < 400; d = d.add(1, 'day')) {
+    if (d.day() === 0) continue;
     const day = d.format('YYYY-MM-DD');
     out.push({ day, value: byDay.get(day) ?? 0 });
   }
@@ -449,7 +453,7 @@ export default function DashboardPage() {
       </KpiFoot>
       {closedSeries.some((p) => p.value > 0) && (
         <>
-          <KpiFoot>в среднем {closedAvg.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} в день за {closedSeries.length} дн.</KpiFoot>
+          <KpiFoot>в среднем {closedAvg.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} в рабочий день за {closedSeries.length} дн.</KpiFoot>
           <KpiSparkline
             label="Закрытые сделки по дням"
             format={(v) => `${formatCount(v)} ${pluralRu(v, ['сделка', 'сделки', 'сделок'])}`}
