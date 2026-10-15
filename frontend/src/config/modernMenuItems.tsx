@@ -15,6 +15,7 @@ function leafItem(leaf: MenuLeaf, unread: number, withIcon: boolean): Items[numb
       // data-menu-* — для перетаскивания в «Главное» (hooks/useMenuDragPin.ts)
       <Link
         to={leaf.to}
+        draggable={false}
         data-menu-key={leaf.key}
         data-menu-pinned={leaf.pinned ? '1' : undefined}
         data-menu-fixed={FIXED_MAIN_KEYS.includes(leaf.key) ? '1' : undefined}
@@ -47,7 +48,10 @@ export function toModernMenuItems(sections: MenuSection[], unread: number): Menu
       items.push({
         type: 'group',
         key: `section:${section.key}`,
-        label: section.title,
+        // Подсказка, как закрепить пункт: Alt + перетащить (на телефоне — долгое нажатие)
+        label: section.sourceKey === 'main'
+          ? <span title="Перетащите сюда любой пункт меню с зажатым Alt (на телефоне — долгим нажатием)">{section.title}</span>
+          : section.title,
         children,
         // «Главное» — место, куда перетаскивают пункты
         className: section.sourceKey === 'main' ? 'sider-section-main' : undefined,

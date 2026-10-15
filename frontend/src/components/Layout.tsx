@@ -157,7 +157,6 @@ export default function Layout() {
     enabled: design === 'modern',
     onPin: menuPins.pin,
     onUnpin: menuPins.unpin,
-    remountKey: mobileMenuOpen,
   });
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
