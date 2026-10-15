@@ -56,11 +56,69 @@
 }
 
 .kpi-spark {
+  position: relative;
   display: block;
   width: 100%;
   height: 36px;
   margin-top: 8px;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+
+.kpi-spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
+}
+
+.kpi-spark__guide {
+  stroke: var(--ant-color-text-quaternary);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.kpi-spark__dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--ant-color-primary);
+  box-shadow: 0 0 0 2px var(--ant-color-bg-container);
+  pointer-events: none;
+}
+
+.kpi-spark__tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--ant-color-bg-spotlight, rgba(0, 0, 0, 0.85));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.kpi-spark__tip--start {
+  transform: translateX(-8px);
+}
+
+.kpi-spark__tip--end {
+  transform: translateX(calc(-100% + 8px));
+}
+
+.kpi-spark__tip-day {
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .kpi-spark__line {
@@ -172,6 +230,10 @@ html[data-design='modern'] .kpi-stagebar__seg[data-tone='warning'] {
 html[data-design='modern'] .kpi-stagebar__seg[data-tone='negative'],
 html[data-design='modern'] .kpi-share__fill {
   background: var(--c-neg-fg, var(--ant-color-error));
+}
+
+html[data-design='modern'] .kpi-spark__dot {
+  background: var(--c-accent-fill, var(--ant-color-primary));
 }
 
 html[data-design='modern'] .kpi-spark__line,

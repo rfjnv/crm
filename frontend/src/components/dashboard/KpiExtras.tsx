@@ -1,4 +1,6 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import dayjs from 'dayjs';
+import 'dayjs/locale/ru';
 import { useNavigate } from 'react-router-dom';
 import { statusConfig } from '../DealStatusTag';
 import { dealStatusTone } from '../dealStatusTone';
@@ -16,26 +18,83 @@ export function KpiFoot({ delta, children }: { delta?: ReactNode; children?: Rea
   );
 }
 
-/** Мини-график за 30 дней без осей — тренд выручки прямо в карточке. */
-export function KpiSparkline({ values }: { values: number[] }) {
+export interface SparkPoint {
+  day: string;
+  value: number;
+}
+
+/**
+ * Мини-график без осей — тренд прямо в карточке. Наведение (на телефоне — касание или
+ * ведение пальцем) показывает день и значение; касание не открывает карточку-ссылку.
+ */
+export function KpiSparkline({ points, label, format }: { points: SparkPoint[]; label: string; format: (v: number) => string }) {
   const id = `kpi-spark-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  if (values.length < 2 || values.every((v) => v === 0)) return null;
+  const [active, setActive] = useState<number | null>(null);
+  const touchRef = useRef(false);
+  if (points.length < 2 || points.every((p) => p.value === 0)) return null;
   const W = 200;
   const H = 36;
-  const max = Math.max(...values, 1);
-  const pts = values.map((v, i) => `${((i / (values.length - 1)) * W).toFixed(1)} ${(H - 2 - (v / max) * (H - 4)).toFixed(1)}`);
+  const max = Math.max(...points.map((p) => p.value), 1);
+  const x = (i: number) => (i / (points.length - 1)) * W;
+  const y = (v: number) => H - 2 - (v / max) * (H - 4);
+  const pts = points.map((p, i) => `${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`);
   const line = `M${pts.join(' L')}`;
+
+  const pick = (e: PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width) return;
+    const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    setActive(Math.round(ratio * (points.length - 1)));
+  };
+  const cur = active !== null ? points[active] : null;
+  const leftPct = active !== null ? (active / (points.length - 1)) * 100 : 0;
+
   return (
-    <svg className="kpi-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Выручка за 30 дней">
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" className="kpi-spark__stop-top" />
-          <stop offset="1" className="kpi-spark__stop-bottom" />
-        </linearGradient>
-      </defs>
-      <path d={`${line} L${W} ${H} L0 ${H} Z`} fill={`url(#${id})`} />
-      <path d={line} className="kpi-spark__line" vectorEffect="non-scaling-stroke" />
-    </svg>
+    <div
+      className="kpi-spark"
+      onPointerDown={(e) => {
+        touchRef.current = e.pointerType !== 'mouse';
+        pick(e);
+      }}
+      onPointerMove={pick}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'mouse') setActive(null);
+      }}
+      onClick={(e) => {
+        // Палец смотрит значения, а не открывает карточку
+        if (touchRef.current) e.preventDefault();
+      }}
+    >
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label}>
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" className="kpi-spark__stop-top" />
+            <stop offset="1" className="kpi-spark__stop-bottom" />
+          </linearGradient>
+        </defs>
+        <path d={`${line} L${W} ${H} L0 ${H} Z`} fill={`url(#${id})`} />
+        <path d={line} className="kpi-spark__line" vectorEffect="non-scaling-stroke" />
+        {active !== null && (
+          <line x1={x(active)} x2={x(active)} y1={0} y2={H} className="kpi-spark__guide" vectorEffect="non-scaling-stroke" />
+        )}
+      </svg>
+      {cur && (
+        <>
+          <span
+            className="kpi-spark__dot"
+            style={{ left: `${leftPct}%`, top: `${(y(cur.value) / H) * 100}%` }}
+          />
+          <span
+            className={`kpi-spark__tip${leftPct < 25 ? ' kpi-spark__tip--start' : leftPct > 75 ? ' kpi-spark__tip--end' : ''}`}
+            style={{ left: `${leftPct}%` }}
+            role="status"
+          >
+            <span className="kpi-spark__tip-day">{dayjs(cur.day).locale('ru').format('DD.MM, dd')}</span>
+            {format(cur.value)}
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 

@@ -112,11 +112,12 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
 };
 
 /** Ряд по дням без пропусков: дни без данных — нули, чтобы линия не врала о тренде. */
-function fillDays(points: { day: string; value: number }[], from: string, to: string): number[] {
+function fillDays(points: { day: string; value: number }[], from: string, to: string): { day: string; value: number }[] {
   const byDay = new Map(points.map((p) => [p.day.slice(0, 10), p.value]));
-  const out: number[] = [];
+  const out: { day: string; value: number }[] = [];
   for (let d = dayjs(from); !d.isAfter(dayjs(to), 'day') && out.length < 400; d = d.add(1, 'day')) {
-    out.push(byDay.get(d.format('YYYY-MM-DD')) ?? 0);
+    const day = d.format('YYYY-MM-DD');
+    out.push({ day, value: byDay.get(day) ?? 0 });
   }
   return out;
 }
@@ -412,7 +413,7 @@ export default function DashboardPage() {
     ? dayjs().subtract(30, 'day').format('YYYY-MM-DD')
     : dayjs(data.period.from).format('YYYY-MM-DD');
   const closedSeries = fillDays((data.closedDealsByDay ?? []).map((d) => ({ day: d.day, value: d.count })), chartFrom, chartTo);
-  const closedAvg = closedSeries.length ? closedSeries.reduce((s, v) => s + v, 0) / closedSeries.length : 0;
+  const closedAvg = closedSeries.length ? closedSeries.reduce((s, p) => s + p.value, 0) / closedSeries.length : 0;
   const moneyShort = (v: number) => {
     const m = formatMoneyCompact(v);
     return m.unit ? `${m.text} ${m.unit}` : m.text;
@@ -431,7 +432,13 @@ export default function DashboardPage() {
           месяц {moneyShort(revenueMonth)} · {goalRemaining > 0 ? `до цели ${moneyShort(goalRemaining)}` : 'цель выполнена'}
         </KpiFoot>
       )}
-      {canSeeMoney && <KpiSparkline values={fillDays((data.revenueLast30Days ?? []).map((d) => ({ day: d.day, value: Number(d.total) || 0 })), chartFrom, chartTo)} />}
+      {canSeeMoney && (
+        <KpiSparkline
+          label="Выручка по дням"
+          format={formatUZS}
+          points={fillDays((data.revenueLast30Days ?? []).map((d) => ({ day: d.day, value: Number(d.total) || 0 })), chartFrom, chartTo)}
+        />
+      )}
     </>
   );
   const closedFoot = (
@@ -440,10 +447,14 @@ export default function DashboardPage() {
         {periodInProgress && !data.closedDealsToday ? 'пока нет · ' : ''}
         {prevWord} {formatCount(data.closedDealsYesterday || 0)}
       </KpiFoot>
-      {closedSeries.some((v) => v > 0) && (
+      {closedSeries.some((p) => p.value > 0) && (
         <>
           <KpiFoot>в среднем {closedAvg.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} в день за {closedSeries.length} дн.</KpiFoot>
-          <KpiSparkline values={closedSeries} />
+          <KpiSparkline
+            label="Закрытые сделки по дням"
+            format={(v) => `${formatCount(v)} ${pluralRu(v, ['сделка', 'сделки', 'сделок'])}`}
+            points={closedSeries}
+          />
         </>
       )}
     </>
