@@ -13,6 +13,7 @@ import { APP_BUTTON } from './ui/AppClassNames';
 import type { AppNotification, NotificationSeverity } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import { canShowNotifications } from '../lib/notifications';
+import NotificationsDrawerModern from './NotificationsDrawerModern';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
@@ -177,6 +178,19 @@ export default function NotificationBell() {
         />
       </Badge>
 
+      {modern ? (
+        <NotificationsDrawerModern
+          open={open}
+          onClose={() => setOpen(false)}
+          items={recentData?.items ?? []}
+          unreadCount={unreadCount}
+          onOpenItem={handleClick}
+          onMarkRead={(id) => markReadMut.mutate(id)}
+          onMarkAll={() => markAllReadMut.mutate()}
+          markAllPending={markAllReadMut.isPending}
+          onOpenAll={() => { setOpen(false); navigate('/notifications'); }}
+        />
+      ) : (
       <Drawer
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -272,6 +286,7 @@ export default function NotificationBell() {
           </Button>
         </div>
       </Drawer>
+      )}
 
       <style>{`
         @keyframes bellPulse {
