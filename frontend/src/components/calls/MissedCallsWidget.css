@@ -1,0 +1,405 @@
+/* «Пропущенные сегодня» на главной. Цвета — из нового дизайна, в классическом — токены antd. */
+.missed-widget {
+  --mw-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --mw-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --mw-fill: var(--fill-1, var(--ant-color-fill-quaternary));
+  --mw-fill-2: var(--fill-2, var(--ant-color-fill-tertiary));
+  --mw-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --mw-calm-fg: var(--c-accent-fg, var(--ant-color-primary));
+  --mw-calm-bg: color-mix(in srgb, var(--c-accent-fill, var(--ant-color-primary)) 15%, transparent);
+  --mw-warn-fg: var(--c-warn-fg, var(--ant-color-warning-text));
+  --mw-warn-bg: var(--c-warn-bg, var(--ant-color-warning-bg));
+  --mw-risk-fg: var(--c-neg-fg, var(--ant-color-error-text));
+  --mw-risk-bg: var(--c-neg-bg, var(--ant-color-error-bg));
+  --mw-ok-fg: var(--c-pos-fg, var(--ant-color-success-text));
+  --mw-ok-bg: var(--c-pos-bg, var(--ant-color-success-bg));
+}
+
+.missed-widget__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.missed-widget__badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--c-alert, var(--ant-color-error));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Итог: четыре цифры в ряд */
+.missed-sum {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.missed-sum__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--mw-fill);
+}
+
+.missed-sum__value {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-sum__cell[data-tone='warn'] .missed-sum__value {
+  color: var(--mw-warn-fg);
+}
+
+.missed-sum__cell[data-tone='risk'] .missed-sum__value {
+  color: var(--mw-risk-fg);
+}
+
+.missed-sum__label {
+  font-size: 12px;
+  color: var(--mw-text-3);
+}
+
+.missed-sum--done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--mw-ok-bg);
+  color: var(--mw-ok-fg);
+  font-weight: 600;
+}
+
+.missed-sum__muted {
+  font-weight: 400;
+  color: var(--mw-text-2);
+}
+
+.missed-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Строка звонка */
+.missed-row {
+  --mw-tone-fg: var(--mw-calm-fg);
+  --mw-tone-bg: var(--mw-calm-bg);
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+
+.missed-row:hover {
+  background: var(--mw-fill);
+}
+
+.missed-row[data-tone='warn'] {
+  --mw-tone-fg: var(--mw-warn-fg);
+  --mw-tone-bg: var(--mw-warn-bg);
+}
+
+.missed-row[data-tone='risk'] {
+  --mw-tone-fg: var(--mw-risk-fg);
+  --mw-tone-bg: var(--mw-risk-bg);
+}
+
+.missed-row--done {
+  --mw-tone-fg: var(--mw-ok-fg);
+  --mw-tone-bg: var(--mw-ok-bg);
+}
+
+.missed-row__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--mw-tone-bg);
+  color: var(--mw-tone-fg);
+}
+
+.missed-row__main {
+  min-width: 0;
+}
+
+.missed-row__who {
+  display: block;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+.missed-row__who:hover {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.missed-row--done .missed-row__who {
+  font-weight: 500;
+  color: var(--mw-text-2);
+}
+
+.missed-row__sub {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--mw-text-3);
+}
+
+.missed-row__times {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mw-tone-bg);
+  color: var(--mw-tone-fg);
+  font-weight: 600;
+}
+
+.missed-row__wait {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--mw-tone-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-row__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.missed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mw-fill-2);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, filter 0.15s ease;
+}
+
+.missed-btn:hover {
+  background: var(--fill-3, var(--ant-color-fill-secondary));
+  color: inherit;
+}
+
+.missed-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.missed-btn--primary,
+.missed-btn--primary:hover {
+  background: var(--c-accent-fill, var(--ant-color-primary));
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+/* Свёрнутые отработанные */
+.missed-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mw-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.missed-fold:hover {
+  background: var(--mw-fill);
+}
+
+/* Руководитель: строка менеджера */
+.missed-mgr + .missed-mgr {
+  border-top: 1px solid var(--mw-hair);
+}
+
+.missed-mgr__row {
+  --mw-tone-fg: var(--mw-ok-fg);
+  display: grid;
+  grid-template-columns: 16px minmax(120px, 1fr) 150px minmax(0, 1.2fr) 120px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.missed-mgr__row:hover {
+  background: var(--mw-fill);
+}
+
+.missed-mgr__row[data-tone='calm'] {
+  --mw-tone-fg: var(--mw-calm-fg);
+}
+
+.missed-mgr__row[data-tone='warn'] {
+  --mw-tone-fg: var(--mw-warn-fg);
+}
+
+.missed-mgr__row[data-tone='risk'] {
+  --mw-tone-fg: var(--mw-risk-fg);
+}
+
+.missed-mgr__caret {
+  display: grid;
+  place-items: center;
+  color: var(--mw-text-3);
+}
+
+.missed-mgr__name {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.missed-mgr__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.missed-mgr__bar {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--mw-fill-2);
+}
+
+.missed-mgr__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mw-ok-fg);
+}
+
+.missed-mgr__ratio {
+  min-width: 34px;
+  font-size: 12px;
+  color: var(--mw-text-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-mgr__state {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mw-tone-fg);
+}
+
+.missed-mgr__avg {
+  font-size: 12px;
+  color: var(--mw-text-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.missed-mgr__items {
+  margin: 0 0 8px 28px;
+  padding-left: 12px;
+  border-left: 2px solid var(--mw-hair);
+}
+
+.missed-mgr__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 8px;
+  font-size: 13px;
+  color: var(--mw-text-2);
+}
+
+@media (max-width: 767px) {
+  .missed-sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .missed-row {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .missed-row__actions {
+    grid-column: 2 / -1;
+  }
+
+  .missed-row__actions .missed-btn {
+    flex: 1;
+    justify-content: center;
+    height: 36px;
+  }
+
+  .missed-mgr__row {
+    grid-template-columns: 16px minmax(0, 1fr) 110px;
+    row-gap: 4px;
+  }
+
+  .missed-mgr__state {
+    grid-column: 2 / -1;
+  }
+
+  /* Среднее по компании уже в итоге сверху — в строке на телефоне не помещается */
+  .missed-mgr__avg {
+    display: none;
+  }
+
+  .missed-mgr__items {
+    margin-left: 8px;
+    padding-left: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .missed-row,
+  .missed-btn,
+  .missed-mgr__row {
+    transition: none;
+  }
+}

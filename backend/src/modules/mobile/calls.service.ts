@@ -349,6 +349,8 @@ export async function markCalledBack(user: CallsUser, id: string) {
 
 // ─── Пропущенные сегодня ────────────────────────────────────────────────────
 
+type HandledVia = 'callback' | 'client' | 'manual';
+
 /** Не отработан дольше этого — подсветка у руководителя */
 const OVERDUE_MS = 2 * HOUR_MS;
 
@@ -365,22 +367,33 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
       fromNumber: true,
       calledBackAt: true,
       followUpAt: true,
+      followUpDirection: true,
       managerUserId: true,
       manager: { select: { id: true, fullName: true } },
       client: { select: { id: true, companyName: true } },
     },
   });
 
+  /** Как отработан: перезвонили сами, клиент дозвонился сам, отметили кнопкой. */
+  const resolution = (r: (typeof rows)[number]) =>
+    r.followUpAt
+      ? { at: r.followUpAt, via: (r.followUpDirection === 'INBOUND' ? 'client' : 'callback') as HandledVia }
+      : r.calledBackAt
+        ? { at: r.calledBackAt, via: 'manual' as HandledVia }
+        : null;
+
   // Один номер звонил несколько раз — одна строка
   const groups = new Map<string, {
     callId: string; managerId: string | null; managerName: string | null; phone: string | null;
     client: { id: string; companyName: string } | null; missedCount: number; lastAt: Date; firstAt: Date;
-    handled: boolean; overdue: boolean;
+    handled: boolean; overdue: boolean; handledAt: Date | null; handledVia: HandledVia | null;
   }>();
   for (const r of rows) {
     const key = `${r.managerUserId ?? ''}:${r.phoneKey || r.id}`;
     const g = groups.get(key);
     if (!g) {
+      // Строки идут от новых к старым: первая — последний пропущенный, его отработка и есть итог
+      const res = resolution(r);
       groups.set(key, {
         callId: r.id,
         managerId: r.managerUserId,
@@ -391,8 +404,10 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
         lastAt: r.startedAt,
         firstAt: r.startedAt,
         // Отработан: нажали «Перезвонил» или с номером уже поговорили (любой менеджер, или клиент перезвонил сам)
-        handled: !!r.calledBackAt || !!r.followUpAt,
+        handled: !!res,
         overdue: false,
+        handledAt: res?.at ?? null,
+        handledVia: res?.via ?? null,
       });
     } else {
       g.missedCount += 1;
@@ -405,19 +420,40 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
     ...g,
     overdue: !g.handled && now.getTime() - g.firstAt.getTime() > OVERDUE_MS,
   }));
-  items.sort((a, b) => Number(a.handled) - Number(b.handled) || b.lastAt.getTime() - a.lastAt.getTime());
+  // Ждущие — сначала те, кто ждёт дольше; отработанные — от свежих к старым
+  items.sort((a, b) => Number(a.handled) - Number(b.handled)
+    || (a.handled ? b.lastAt.getTime() - a.lastAt.getTime() : a.firstAt.getTime() - b.firstAt.getTime()));
+  /** Минут от первого пропущенного до отработки (среднее по отработанным). */
+  const avgReaction = (list: typeof items) => {
+    const done = list.filter((i) => i.handledAt);
+    if (done.length === 0) return null;
+    const total = done.reduce((s, i) => s + Math.max(0, i.handledAt!.getTime() - i.firstAt.getTime()), 0);
+    return Math.round(total / done.length / 60_000);
+  };
+  const stats = {
+    missedCount: items.reduce((s, i) => s + i.missedCount, 0),
+    pendingCount: items.filter((i) => !i.handled).length,
+    overdueCount: items.filter((i) => i.overdue).length,
+    handledCount: items.filter((i) => i.handled).length,
+    avgReactionMin: avgReaction(items),
+  };
 
   if (!leader) {
-    return { scope: 'own' as const, items, pendingCount: items.filter((i) => !i.handled).length };
+    return { scope: 'own' as const, items, stats, pendingCount: stats.pendingCount };
   }
 
-  const byManager = new Map<string, { managerId: string; managerName: string; missedCount: number; pendingCount: number; overdueCount: number; oldestPendingAt: Date | null }>();
+  const byManager = new Map<string, {
+    managerId: string; managerName: string; missedCount: number; pendingCount: number; overdueCount: number;
+    handledCount: number; oldestPendingAt: Date | null; avgReactionMin: number | null;
+  }>();
   for (const i of items) {
     if (!i.managerId) continue;
     const m = byManager.get(i.managerId) ?? {
-      managerId: i.managerId, managerName: i.managerName ?? '—', missedCount: 0, pendingCount: 0, overdueCount: 0, oldestPendingAt: null,
+      managerId: i.managerId, managerName: i.managerName ?? '—', missedCount: 0, pendingCount: 0, overdueCount: 0,
+      handledCount: 0, oldestPendingAt: null, avgReactionMin: null,
     };
     m.missedCount += i.missedCount;
+    if (i.handled) m.handledCount += 1;
     if (!i.handled) {
       m.pendingCount += 1;
       if (!m.oldestPendingAt || i.firstAt < m.oldestPendingAt) m.oldestPendingAt = i.firstAt;
@@ -425,8 +461,9 @@ export async function missedToday(user: CallsUser, now: Date = new Date()) {
     if (i.overdue) m.overdueCount += 1;
     byManager.set(i.managerId, m);
   }
+  for (const m of byManager.values()) m.avgReactionMin = avgReaction(items.filter((i) => i.managerId === m.managerId));
   const managers = [...byManager.values()].sort((a, b) => b.overdueCount - a.overdueCount || b.pendingCount - a.pendingCount);
-  return { scope: 'all' as const, items, managers, pendingCount: items.filter((i) => !i.handled).length };
+  return { scope: 'all' as const, items, managers, stats, pendingCount: stats.pendingCount };
 }
 
 // ─── Звонки за сегодня: KPI-карточка дашборда ───────────────────────────────

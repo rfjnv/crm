@@ -98,6 +98,24 @@ describe('кто перезвонил после несостоявшегося 
   });
 });
 
+describe('пропущенные сегодня: как и когда отработаны', () => {
+  it('перезвонил сам, клиент дозвонился, ждёт — способ, время и среднее время реакции', async () => {
+    await arrive(missed(), minAgo(40));
+    await arrive(outTalk(), minAgo(20));
+    await arrive(missed({ phone: '+998912223344', phoneKey: '912223344' }), minAgo(30));
+    await arrive(inTalk({ phone: '+998912223344', phoneKey: '912223344' }), minAgo(20));
+    await arrive(missed({ phone: '+998935556677', phoneKey: '935556677' }), minAgo(15));
+    const r = await missedToday(boss, NOW);
+    const by = (phone: string) => r.items.find((i) => i.phone === phone)!;
+    expect(r.items[0].phone).toBe('+998935556677');
+    expect(by('+998901234567')).toMatchObject({ handled: true, handledVia: 'callback', handledAt: minAgo(20) });
+    expect(by('+998912223344')).toMatchObject({ handled: true, handledVia: 'client' });
+    expect(by('+998935556677')).toMatchObject({ handled: false, handledVia: null, handledAt: null });
+    expect(r.stats).toMatchObject({ missedCount: 3, pendingCount: 1, handledCount: 2, avgReactionMin: 15 });
+    expect(r.scope === 'all' && r.managers[0]).toMatchObject({ handledCount: 2, avgReactionMin: 15 });
+  });
+});
+
 describe('служебные номера', () => {
   it('добавить: номер в любом виде, дубль — 409, короткий — 400', async () => {
     const row = await addServicePhone('boss', { phone: '90 123 45 67', name: 'Склад — Бахтиёр' });

@@ -106,19 +106,35 @@ export interface MissedGroup {
   firstAt: string;
   handled: boolean;
   overdue: boolean;
+  /** Когда отработан: разговор после пропущенного или нажали «Перезвонил». */
+  handledAt?: string | null;
+  /** callback — перезвонили сами, client — клиент дозвонился сам, manual — отметили кнопкой. */
+  handledVia?: 'callback' | 'client' | 'manual' | null;
+}
+
+export interface MissedStats {
+  missedCount: number;
+  pendingCount: number;
+  overdueCount: number;
+  handledCount: number;
+  /** Среднее время от первого пропущенного до отработки, мин. */
+  avgReactionMin: number | null;
 }
 
 export interface MissedSummary {
   scope: 'own' | 'all';
   items: MissedGroup[];
   pendingCount: number;
+  stats?: MissedStats;
   managers?: {
     managerId: string;
     managerName: string;
     missedCount: number;
     pendingCount: number;
     overdueCount: number;
+    handledCount?: number;
     oldestPendingAt: string | null;
+    avgReactionMin?: number | null;
   }[];
 }
 
