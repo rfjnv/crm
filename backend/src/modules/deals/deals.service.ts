@@ -345,6 +345,21 @@ function parseOptionalDate(value?: string | null): Date | null | undefined {
  * Нужно, чтобы отличить кассовую операцию от настоящего редактирования условий
  * сделки: первая допустима и после закрытия, второе — нет.
  */
+/** Точка доставки сделки — что нужно складу и водителю, чтобы знать, куда везти. */
+const DELIVERY_LOCATION_SELECT = {
+  id: true, name: true, address: true, latitude: true, longitude: true, contactName: true, phone: true,
+} as const;
+
+/** Точка доставки должна принадлежать клиенту сделки, иначе товар уедет чужой компании. */
+async function assertDeliveryLocationOfClient(
+  db: Pick<Prisma.TransactionClient, 'clientLocation'>,
+  locationId: string,
+  clientId: string,
+): Promise<void> {
+  const loc = await db.clientLocation.findFirst({ where: { id: locationId, clientId }, select: { id: true } });
+  if (!loc) throw new AppError(400, 'Точка доставки не найдена у этого клиента');
+}
+
 function touchedFields(dto: UpdateDealDto): string[] {
   return Object.keys(dto).filter((k) => (dto as Record<string, unknown>)[k] !== undefined);
 }
@@ -654,11 +669,12 @@ export class DealsService {
     const deal = await prisma.deal.findFirst({
       where: { id, ...ownerScope(user) },
       include: {
-        client: { select: { id: true, companyName: true, contactName: true, inn: true, isSvip: true, creditStatus: true } },
+        client: { select: { id: true, companyName: true, contactName: true, inn: true, address: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
         contract: { select: { id: true, contractNumber: true } },
         loadingAssignee: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         items: {
           include: {
             product: { select: { id: true, name: true, sku: true, unit: true, stock: true, salePrice: true } },
@@ -694,6 +710,9 @@ export class DealsService {
     });
     if (!client) {
       throw new AppError(404, 'Клиент не найден');
+    }
+    if (dto.deliveryLocationId && dto.deliveryType === 'DELIVERY') {
+      await assertDeliveryLocationOfClient(prisma, dto.deliveryLocationId, dto.clientId);
     }
 
     // Кол-во рулонов резолвим ДО транзакции: для рулонного товара его отсутствие — ошибка ввода,
@@ -839,6 +858,7 @@ export class DealsService {
           ...(dto.vehicleNumber ? { vehicleNumber: dto.vehicleNumber } : {}),
           ...(dto.vehicleType ? { vehicleType: dto.vehicleType } : {}),
           ...(dto.deliveryComment ? { deliveryComment: dto.deliveryComment } : {}),
+          ...(dto.deliveryLocationId && dto.deliveryType === 'DELIVERY' ? { deliveryLocationId: dto.deliveryLocationId } : {}),
           ...(dto.dueDate ? { dueDate: new Date(dto.dueDate) } : {}),
           ...(dto.paymentType ? { paymentType: dto.paymentType as any } : {}),
           ...(dilnozaTerms != null ? { terms: dilnozaTerms } : {}),
@@ -1030,6 +1050,14 @@ export class DealsService {
     if (dto.isReceiptPunched !== undefined) {
       before.isReceiptPunched = deal.isReceiptPunched;
       data.isReceiptPunched = dto.isReceiptPunched;
+    }
+
+    if (dto.deliveryLocationId !== undefined && dto.deliveryLocationId !== deal.deliveryLocationId) {
+      if (dto.deliveryLocationId !== null) {
+        await assertDeliveryLocationOfClient(prisma, dto.deliveryLocationId, deal.clientId);
+      }
+      before.deliveryLocationId = deal.deliveryLocationId;
+      data.deliveryLocationId = dto.deliveryLocationId;
     }
 
     // Status change handling with strict workflow enforcement
@@ -2322,6 +2350,7 @@ export class DealsService {
           client: { select: { id: true, companyName: true, isSvip: true, creditStatus: true } },
           manager: { select: { id: true, fullName: true } },
           deliveryDriver: { select: { id: true, fullName: true } },
+          deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
           loadingAssignee: { select: { id: true, fullName: true } },
           items: {
             include: {
@@ -3856,6 +3885,15 @@ export class DealsService {
       if (dto.vehicleNumber !== undefined) data.vehicleNumber = dto.vehicleNumber;
       if (dto.vehicleType !== undefined) data.vehicleType = dto.vehicleType;
       if (dto.deliveryComment !== undefined) data.deliveryComment = dto.deliveryComment;
+      if (dto.deliveryLocationId !== undefined) {
+        if (dto.deliveryLocationId !== null) {
+          await assertDeliveryLocationOfClient(tx, dto.deliveryLocationId, (data.clientId as string | undefined) ?? deal.clientId);
+        }
+        data.deliveryLocationId = dto.deliveryLocationId;
+      } else if (data.clientId !== undefined && deal.deliveryLocationId) {
+        // Сменили клиента — филиал прежнего клиента к сделке больше не относится
+        data.deliveryLocationId = null;
+      }
       if (dto.loadingAssigneeId !== undefined) data.loadingAssigneeId = dto.loadingAssigneeId;
       if (dto.deliveryDriverId !== undefined) data.deliveryDriverId = dto.deliveryDriverId;
 
@@ -4610,6 +4648,7 @@ export class DealsService {
       where: { status: 'WAITING_WAREHOUSE_MANAGER', isArchived: false },
       include: {
         client: { select: { id: true, companyName: true, contactName: true, isSvip: true, creditStatus: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         manager: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },
@@ -4624,6 +4663,7 @@ export class DealsService {
         client: { select: { id: true, companyName: true, contactName: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'asc' },
@@ -4635,6 +4675,7 @@ export class DealsService {
       where: { status: 'READY_FOR_DELIVERY', isArchived: false },
       include: {
         client: { select: { id: true, companyName: true, contactName: true, address: true, isSvip: true, creditStatus: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         manager: { select: { id: true, fullName: true } },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
       },
@@ -4655,6 +4696,7 @@ export class DealsService {
         manager: { select: { id: true, fullName: true } },
         loadingAssignee: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
         rating: { select: { token: true, rating: true, ratedAt: true } },
       },
@@ -4674,6 +4716,7 @@ export class DealsService {
         client: { select: { id: true, companyName: true, contactName: true, address: true, isSvip: true, creditStatus: true } },
         manager: { select: { id: true, fullName: true } },
         deliveryDriver: { select: { id: true, fullName: true } },
+        deliveryLocation: { select: DELIVERY_LOCATION_SELECT },
         items: { include: { product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'asc' } },
         rating: { select: { token: true, rating: true, ratedAt: true } },
       },

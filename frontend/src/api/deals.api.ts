@@ -92,6 +92,8 @@ export const dealsApi = {
     vehicleNumber?: string;
     vehicleType?: string;
     deliveryComment?: string;
+    /** Филиал клиента; не указан — основной адрес */
+    deliveryLocationId?: string;
     paymentMethod?: PaymentMethod;
     paymentNote?: string;
     cashNote?: string;
@@ -108,7 +110,7 @@ export const dealsApi = {
   }) =>
     client.post<Deal>('/deals', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ title: string; status: DealStatus; contractId: string | null; discount: number; terms: string | null; managerId: string; isSessionDeal: boolean; isReceiptPunched: boolean }>) =>
+  update: (id: string, data: Partial<{ title: string; status: DealStatus; contractId: string | null; discount: number; terms: string | null; managerId: string; isSessionDeal: boolean; isReceiptPunched: boolean; deliveryLocationId: string | null }>) =>
     client.patch<Deal>(`/deals/${id}`, data).then((r) => r.data),
 
   updatePayment: (id: string, data: { paidAmount: number; paymentType?: 'FULL' | 'PARTIAL' | 'INSTALLMENT'; dueDate?: string | null; terms?: string | null }) =>

@@ -279,6 +279,33 @@ export interface Client {
   manager?: { id: string; fullName: string };
   deals?: DealShort[];
   contracts?: Contract[];
+  /** Филиалы и другие точки доставки (из GET /clients/:id). Основная точка — address выше. */
+  locations?: ClientLocation[];
+}
+
+/** Дополнительная точка доставки клиента: филиал, второй склад, объект. */
+export interface ClientLocation {
+  id: string;
+  clientId: string;
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contactName: string | null;
+  phone: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+/** Куда везёт сделка, если не на основной адрес клиента. */
+export interface DealDeliveryLocation {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contactName: string | null;
+  phone: string | null;
 }
 
 export interface ClientStockPosition {
@@ -509,6 +536,9 @@ export interface Deal {
   deliveryDriverId?: string | null;
   loadingAssignee?: { id: string; fullName: string } | null;
   deliveryDriver?: { id: string; fullName: string } | null;
+  /** Филиал клиента, куда везти; null — основной адрес клиента. */
+  deliveryLocationId?: string | null;
+  deliveryLocation?: DealDeliveryLocation | null;
   isArchived: boolean;
   /** Сессионная: выручка по дате позиций до закрытия */
   isSessionDeal?: boolean;
@@ -1479,7 +1509,20 @@ export interface ClientMapPoint {
   longitude: number | null;
   isSvip: boolean;
   manager: { id: string; fullName: string };
-  /** Незакрытые сделки с доставкой — кого пора везти. */
+  /** Незакрытые сделки с доставкой на основной адрес — кого пора везти. */
+  pendingDeliveryDeals: number;
+  /** Филиалы клиента; у каждого свои сделки на доставку. */
+  locations: ClientMapLocation[];
+}
+
+export interface ClientMapLocation {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contactName: string | null;
+  phone: string | null;
   pendingDeliveryDeals: number;
 }
 
@@ -2638,7 +2681,11 @@ export const INCOTERMS_LIST: Incoterms[] = ['EXW', 'FCA', 'FOB', 'CFR', 'CIF', '
 
 /** Общий маршрут доставки (GET/PUT /delivery-route). */
 export interface DeliveryRouteStop {
+  /** id клиента (основной адрес) или id его точки доставки */
   id: string;
+  clientId: string;
+  /** Название филиала; null — основной адрес клиента */
+  locationName: string | null;
   companyName: string;
   contactName: string;
   phone: string | null;
@@ -2654,12 +2701,13 @@ export interface DeliveredMark {
 }
 
 export interface DeliveryRoute {
-  clientIds: string[];
+  /** Остановки по порядку: id клиента или id его точки доставки. */
+  stopIds: string[];
   startBase: 'WAREHOUSE' | 'OFFICE';
   roundtrip: boolean;
   updatedAt: string | null;
   updatedByName: string | null;
-  /** Отметки водителя «доставлено» по id клиента. */
+  /** Отметки водителя «доставлено» по id остановки. */
   delivered: Record<string, DeliveredMark>;
   /** Остановки в порядке объезда; клиенты без точки и архивные сюда не попадают. */
   stops: DeliveryRouteStop[];

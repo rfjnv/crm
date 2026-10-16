@@ -541,15 +541,40 @@ model Client {
   reservations ProductReservation[]
   callAudits  CallAudit[]
   calls       CallSession[]
+  locations   ClientLocation[]
 
   @@index([managerId, isArchived])
   @@index([isArchived])
   @@map("clients")
 }
 
+/// Дополнительная точка доставки клиента: филиал, второй склад, объект. Основная точка — адрес в самом Client.
+model ClientLocation {
+  id          String   @id @default(uuid())
+  clientId    String   @map("client_id")
+  /// Как называют точку: «Филиал Чиланзар», «Склад на Сергели»
+  name        String
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  /// Кого спросить на месте, если не тот же человек, что в карточке клиента
+  contactName String?  @map("contact_name")
+  phone       String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  deals  Deal[]
+
+  @@index([clientId])
+  @@map("client_locations")
+}
+
 /// Общий маршрут доставки: менеджеры копят клиентов на карте, водитель видит тот же набор. Одна строка id="current".
 model DeliveryRoute {
   id          String   @id @default("current")
+  /// Остановки по порядку: id клиента (его основной адрес) или id ClientLocation (филиал)
   clientIds   String[] @map("client_ids")
   /// WAREHOUSE | OFFICE — откуда выезжаем
   startBase   String   @default("WAREHOUSE") @map("start_base")
@@ -711,8 +736,11 @@ model Deal {
   deliveryComment    String?           @map("delivery_comment")
   loadingAssigneeId  String?           @map("loading_assignee_id")
   deliveryDriverId   String?           @map("delivery_driver_id")
+  /// Куда везти, если не на основной адрес клиента (филиал, другая точка)
+  deliveryLocationId String?           @map("delivery_location_id")
 
   client             Client              @relation(fields: [clientId], references: [id])
+  deliveryLocation   ClientLocation?     @relation(fields: [deliveryLocationId], references: [id], onDelete: SetNull)
   manager            User                @relation("DealManager", fields: [managerId], references: [id])
   contract           Contract?           @relation(fields: [contractId], references: [id])
   archivedBy         User?               @relation("DealArchivedBy", fields: [archivedById], references: [id])
@@ -737,6 +765,7 @@ model Deal {
   @@index([paymentStatus])
   @@index([loadingAssigneeId])
   @@index([deliveryDriverId])
+  @@index([deliveryLocationId])
   @@map("deals")
 }
 

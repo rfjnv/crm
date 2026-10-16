@@ -14,6 +14,7 @@ import {
   SuperCorrectClientStockAddDto,
   SuperDeleteClientStockAddDto,
 } from './clients.dto';
+import { clientLocationSelect } from './client-locations.service';
 import {
   SQL_DEALS_REVENUE_BASE_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_DATE_TASHKENT,
@@ -191,7 +192,9 @@ export class ClientsService {
 
   /**
    * Клиенты для карты: у кого есть координаты — точкой, у кого нет — списком, чтобы поставить вручную.
+   * У клиента может быть несколько точек: основной адрес и филиалы (locations).
    * pendingDeliveryDeals — незакрытые сделки с доставкой: их копят, а потом развозят одним маршрутом.
+   * Считаются по точке, куда едет сделка: без deliveryLocationId — на основной адрес.
    */
   async findForMap(user: AuthUser) {
     const rows = await prisma.client.findMany({
@@ -206,13 +209,19 @@ export class ClientsService {
         longitude: true,
         isSvip: true,
         manager: { select: { id: true, fullName: true } },
+        locations: {
+          select: {
+            id: true, name: true, address: true, latitude: true, longitude: true, contactName: true, phone: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { companyName: 'asc' },
     });
     if (rows.length === 0) return [];
 
     const pending = await prisma.deal.groupBy({
-      by: ['clientId'],
+      by: ['clientId', 'deliveryLocationId'],
       where: {
         clientId: { in: rows.map((r) => r.id) },
         isArchived: false,
@@ -221,9 +230,14 @@ export class ClientsService {
       },
       _count: { _all: true },
     });
-    const pendingByClient = new Map(pending.map((p) => [p.clientId, p._count._all]));
+    // Ключ — id точки остановки: клиента (основной адрес) или его филиала
+    const pendingByStop = new Map(pending.map((p) => [p.deliveryLocationId ?? p.clientId, p._count._all]));
 
-    return rows.map((r) => ({ ...r, pendingDeliveryDeals: pendingByClient.get(r.id) ?? 0 }));
+    return rows.map((r) => ({
+      ...r,
+      pendingDeliveryDeals: pendingByStop.get(r.id) ?? 0,
+      locations: r.locations.map((l) => ({ ...l, pendingDeliveryDeals: pendingByStop.get(l.id) ?? 0 })),
+    }));
   }
 
   async findById(id: string, user: AuthUser, filters?: DealFilters) {
@@ -255,6 +269,7 @@ export class ClientsService {
           select: { id: true, contractNumber: true },
           orderBy: { createdAt: 'desc' },
         },
+        locations: { select: clientLocationSelect, orderBy: { createdAt: 'asc' } },
         deals: {
           where: dealsWhere,
           select: {
@@ -1556,6 +1571,9 @@ export class ClientsService {
       }
       // Delete leftover mergeId positions (the ones we incremented instead of moved)
       await tx.clientStockPosition.deleteMany({ where: { clientId: mergeId } });
+
+      // 6b. Точки доставки дубликата — тоже адреса этого клиента
+      await tx.clientLocation.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } });
 
       // 7. Reassign call sessions if present
       await tx.callSession.updateMany({ where: { clientId: mergeId }, data: { clientId: keepId } }).catch(() => {});

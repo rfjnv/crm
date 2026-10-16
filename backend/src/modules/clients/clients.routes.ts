@@ -15,6 +15,8 @@ import {
   sendClientStockAllDto,
   sendClientStockPartialDto,
   mergeClientsDto,
+  clientLocationDto,
+  updateClientLocationDto,
 } from './clients.dto';
 import { authorize } from '../../middleware/authorize';
 
@@ -53,6 +55,15 @@ router.get('/:id/stock', asyncHandler(clientsController.getStock.bind(clientsCon
 router.post('/:id/stock/add', validate(addClientStockDto), asyncHandler(clientsController.addStock.bind(clientsController)));
 router.post('/:id/stock/send-partial', validate(sendClientStockPartialDto), asyncHandler(clientsController.sendStockPartial.bind(clientsController)));
 router.post('/:id/stock/send-all', validate(sendClientStockAllDto), asyncHandler(clientsController.sendStockAll.bind(clientsController)));
+
+router.get('/:id/locations', asyncHandler(clientsController.listLocations.bind(clientsController)));
+router.post('/:id/locations', validate(clientLocationDto), asyncHandler(clientsController.createLocation.bind(clientsController)));
+router.patch(
+  '/:id/locations/:locationId',
+  validate(updateClientLocationDto),
+  asyncHandler(clientsController.updateLocation.bind(clientsController)),
+);
+router.delete('/:id/locations/:locationId', asyncHandler(clientsController.deleteLocation.bind(clientsController)));
 
 router.get('/:id/notes', asyncHandler(clientsController.listNotes.bind(clientsController)));
 router.post('/:id/notes', validate(createClientNoteDto), asyncHandler(clientsController.createNote.bind(clientsController)));

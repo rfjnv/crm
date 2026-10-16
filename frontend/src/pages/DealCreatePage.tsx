@@ -142,6 +142,9 @@ export default function DealCreatePage() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [deliveryComment, setDeliveryComment] = useState('');
+  /** Филиал клиента, куда везти; нет — основной адрес. Запоминаем, чей он: сменили клиента — сброс. */
+  const [deliveryLocation, setDeliveryLocation] = useState<{ clientId: string; id: string }>();
+  const deliveryLocationId = deliveryLocation && deliveryLocation.clientId === clientId ? deliveryLocation.id : undefined;
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [paymentNote, setPaymentNote] = useState('');
   const [transferInn, setTransferInn] = useState('');
@@ -221,6 +224,12 @@ export default function DealCreatePage() {
   });
 
   const selectedClient = useMemo(() => clients?.find((c) => c.id === clientId), [clients, clientId]);
+
+  const { data: clientLocations } = useQuery({
+    queryKey: ['client-locations', clientId],
+    queryFn: () => clientsApi.locations(clientId!),
+    enabled: !!clientId && deliveryType === 'DELIVERY',
+  });
   const selectedClientInn = (selectedClient?.inn || '').trim();
 
   // Auto-fill transfer INN from client requisites, falling back to the client's most
@@ -358,6 +367,7 @@ export default function DealCreatePage() {
       ...(isSessionDeal ? { isSessionDeal: true } : {}),
       ...(isDebt ? { paymentType: debtPaymentType, ...(dueDate ? { dueDate: dueDate.format('YYYY-MM-DD') } : {}) } : {}),
       deliveryType,
+      ...(deliveryType === 'DELIVERY' && deliveryLocationId ? { deliveryLocationId } : {}),
       ...(deliveryType !== 'DELIVERY' ? {
         vehicleNumber: vehicleNumber.trim() || undefined,
         vehicleType: vehicleType.trim() || undefined,
@@ -738,6 +748,31 @@ export default function DealCreatePage() {
               <Radio.Button value="YANDEX">Яндекс</Radio.Button>
               <Radio.Button value="DELIVERY">Доставка</Radio.Button>
             </Radio.Group>
+            {deliveryType === 'DELIVERY' && clientId && (
+              <div style={{ marginTop: 12, maxWidth: 520 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Куда везти</Typography.Text>
+                <Select
+                  style={{ width: '100%' }}
+                  value={deliveryLocationId ?? ''}
+                  onChange={(v) => setDeliveryLocation(v ? { clientId, id: v } : undefined)}
+                  options={[
+                    {
+                      value: '',
+                      label: `Основной адрес${selectedClient?.address ? ` — ${selectedClient.address}` : ''}`,
+                    },
+                    ...(clientLocations ?? []).map((l) => ({
+                      value: l.id,
+                      label: `📍 ${l.name}${l.address ? ` — ${l.address}` : ''}`,
+                    })),
+                  ]}
+                />
+                {clientLocations && clientLocations.length === 0 && (
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    Везти в филиал или на другой склад клиента? Добавьте точку в карточке клиента → «Адреса доставки».
+                  </Typography.Text>
+                )}
+              </div>
+            )}
             {deliveryType !== 'DELIVERY' && (
               <div className={isMobile ? 'deal-create-grid deal-create-grid--single deal-create-grid--compact' : 'deal-create-grid deal-create-grid--triple'}>
                 <div>

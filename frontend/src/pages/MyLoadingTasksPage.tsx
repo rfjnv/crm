@@ -11,6 +11,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import DeliveryLocationTag from '../components/DeliveryLocationTag';
 import { getFirstName } from '../lib/name-utils';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 
@@ -67,6 +68,7 @@ export default function MyLoadingTasksPage() {
           <div style={{ marginTop: 4 }}>
             <Space size={4} wrap>
               <DeliveryTag type={r.deliveryType} />
+              <DeliveryLocationTag deal={r} />
               <TargetTag deal={r} />
               <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
             </Space>
@@ -162,7 +164,7 @@ export default function MyLoadingTasksPage() {
               { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
               {
                 title: 'Доставка', dataIndex: 'deliveryType', width: 110,
-                render: (v: string) => <DeliveryTag type={v} />,
+                render: (v: string, r: Deal) => <Space size={4} wrap><DeliveryTag type={v} /><DeliveryLocationTag deal={r} /></Space>,
               },
               ...(seeAll ? [{
                 title: 'Исполнитель', key: 'assignee', width: 140,

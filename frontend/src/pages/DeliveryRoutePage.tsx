@@ -119,7 +119,9 @@ export default function DeliveryRoutePage() {
     }
     stops.forEach((s, i) => {
       L.marker([s.latitude, s.longitude], { icon: stopIcon(i + 1, s.id === selectedId, !!delivered[s.id]) })
-        .bindTooltip(`<b>${escapeHtml(s.companyName)}</b>${s.address ? `<br/>${escapeHtml(s.address)}` : ''}`, {
+        .bindTooltip(`<b>${escapeHtml(s.companyName)}</b>`
+          + (s.locationName ? `<br/>📍 ${escapeHtml(s.locationName)}` : '')
+          + (s.address ? `<br/>${escapeHtml(s.address)}` : ''), {
           direction: 'top', offset: [0, -12],
         })
         .on('click', () => setSelectedId(s.id))
@@ -193,6 +195,7 @@ export default function DeliveryRoutePage() {
         Следующая остановка · №{nextIndex}
       </Typography.Text>
       <Typography.Title level={4} style={{ margin: '2px 0 4px' }}>{next.companyName}</Typography.Title>
+      {next.locationName && <div style={{ fontSize: 15, fontWeight: 600 }}>📍 {next.locationName}</div>}
       {next.address && <div style={{ fontSize: 15 }}>{next.address}</div>}
       <div style={{ fontSize: 14, color: 'var(--ant-color-text-secondary, #8c8c8c)' }}>
         {next.contactName}{next.phone ? ` · ${next.phone}` : ''}
@@ -288,7 +291,7 @@ export default function DeliveryRoutePage() {
               onClick={() => showStop(s.id, [s.latitude, s.longitude])}
             >
               <Typography.Text strong={isNext} delete={!!mark} style={{ display: 'block' }}>
-                {s.companyName}{isNext ? ' — следующая' : ''}
+                {s.companyName}{s.locationName ? ` · ${s.locationName}` : ''}{isNext ? ' — следующая' : ''}
               </Typography.Text>
               {mark ? (
                 <Typography.Text type="success" style={{ display: 'block', fontSize: 12 }}>

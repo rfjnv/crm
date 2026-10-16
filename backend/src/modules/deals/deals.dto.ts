@@ -16,6 +16,8 @@ export const createDealDto = z.object({
   vehicleNumber: z.string().optional(),
   vehicleType: z.string().optional(),
   deliveryComment: z.string().optional(),
+  /** Филиал / другая точка клиента для доставки; не указано — основной адрес клиента. */
+  deliveryLocationId: z.string().uuid().optional(),
   paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'DEBT']).optional(),
   /** Dilnoza: комментарий / номер операции для способов без перечисления (в terms) */
   paymentNote: z.string().optional(),
@@ -65,6 +67,8 @@ export const updateDealDto = z.object({
   managerId: z.string().uuid('Некорректный ID менеджера').optional(),
   isSessionDeal: z.boolean().optional(),
   isReceiptPunched: z.boolean().optional(),
+  /** Куда везти: точка клиента; null — на основной адрес. */
+  deliveryLocationId: z.string().uuid().nullable().optional(),
 });
 
 export const paymentDto = z.object({
@@ -220,6 +224,7 @@ export const superOverrideDealDto = z.object({
   vehicleNumber: z.string().nullable().optional(),
   vehicleType: z.string().nullable().optional(),
   deliveryComment: z.string().nullable().optional(),
+  deliveryLocationId: z.string().uuid().nullable().optional(),
   loadingAssigneeId: z.string().uuid().nullable().optional(),
   deliveryDriverId: z.string().uuid().nullable().optional(),
   items: z.array(z.object({

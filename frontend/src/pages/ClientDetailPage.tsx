@@ -25,6 +25,7 @@ import DealStatusTag from '../components/DealStatusTag';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import ClientAuditHistoryPanel from '../components/ClientAuditHistoryPanel';
 import ClientNotesPanel from '../components/ClientNotesPanel';
+import ClientLocationsCard from '../components/ClientLocationsCard';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ClientLossReasonMenu from '../components/ClientLossReasonMenu';
 import { CLIENT_LOSS_REASON_META, type ClientLossDetails, type ClientLossReason } from '../constants/clientLossReasons';
@@ -1303,6 +1304,13 @@ export default function ClientDetailPage() {
                     </Typography.Paragraph>
                   </Card>
                 ) : null}
+
+                <ClientLocationsCard
+                  clientId={client.id}
+                  mainAddress={client.address}
+                  locations={client.locations ?? []}
+                  canEdit={!!canEdit || client.managerId === user?.id}
+                />
 
                 <Card title="Договоры" extra={<Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setContractModal(true)}>Создать</Button>} bordered={false}>
                   <Table
