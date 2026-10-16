@@ -148,23 +148,52 @@ export const FAILED_CALL_STATUSES = ['MISSED', 'FAILED'] as const;
  * (INBOUND) — «клиент перезвонил сам». Работает в обе стороны: пачка с телефона может прийти
  * не по порядку, и разговор окажется записан раньше пропущенного.
  */
-export async function linkFollowUps(session: Pick<CallSession, 'id' | 'phoneKey' | 'status' | 'startedAt' | 'direction'>): Promise<void> {
+/**
+ * Разговор, который уже шёл в момент неудачного звонка (или закончился совсем недавно), тоже
+ * его итог: клиент дважды не дозвонился до Дилнозы, позвонил Фарходу, и пока они говорили,
+ * Дилноза перезвонила — клиент не взял, потому что был на линии. Такой недозвон не «не перезвонили».
+ * Запас — и на расхождение часов на разных телефонах.
+ */
+export const BUSY_GRACE_MS = 5 * 60 * 1000;
+
+function conversationEnd(c: Pick<CallSession, 'startedAt' | 'endedAt' | 'durationSec'>): Date {
+  return c.endedAt ?? new Date(c.startedAt.getTime() + (c.durationSec ?? 0) * 1000);
+}
+
+export async function linkFollowUps(
+  session: Pick<CallSession, 'id' | 'phoneKey' | 'status' | 'startedAt' | 'direction' | 'endedAt' | 'durationSec'>,
+): Promise<void> {
   if (!session.phoneKey) return;
   if (session.status === 'COMPLETED') {
+    const link = { followUpCallId: session.id, followUpAt: session.startedAt, followUpDirection: session.direction };
+    // Несостоявшиеся звонки до разговора — и те, что пришлись на сам разговор (клиент был занят)
     await prisma.callSession.updateMany({
       where: {
         phoneKey: session.phoneKey,
         status: { in: [...FAILED_CALL_STATUSES] },
-        startedAt: { lt: session.startedAt },
+        startedAt: { lte: new Date(conversationEnd(session).getTime() + BUSY_GRACE_MS) },
+        id: { not: session.id },
         deletedAt: null,
         OR: [{ followUpAt: null }, { followUpAt: { gt: session.startedAt } }],
       },
-      data: { followUpCallId: session.id, followUpAt: session.startedAt, followUpDirection: session.direction },
+      data: link,
     });
     return;
   }
   if ((FAILED_CALL_STATUSES as readonly string[]).includes(session.status)) {
-    const next = await prisma.callSession.findFirst({
+    // Клиент в этот момент уже разговаривал с кем-то из наших
+    const busy = await prisma.callSession.findFirst({
+      where: {
+        phoneKey: session.phoneKey,
+        status: 'COMPLETED',
+        startedAt: { lte: session.startedAt },
+        endedAt: { gte: new Date(session.startedAt.getTime() - BUSY_GRACE_MS) },
+        deletedAt: null,
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true, startedAt: true, direction: true },
+    });
+    const next = busy ?? await prisma.callSession.findFirst({
       where: { phoneKey: session.phoneKey, status: 'COMPLETED', startedAt: { gt: session.startedAt }, deletedAt: null },
       orderBy: { startedAt: 'asc' },
       select: { id: true, startedAt: true, direction: true },

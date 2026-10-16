@@ -28,7 +28,15 @@ export interface CallListItem {
   /** Служебный номер (склад, сотрудник) */
   service: { id: string; name: string } | null;
   /** Первый разговор с этим номером после несостоявшегося звонка */
-  followUp: { callId: string; at: string; by: 'manager' | 'client'; managerName: string | null } | null;
+  followUp: {
+    callId: string;
+    at: string;
+    by: 'manager' | 'client';
+    managerId: string | null;
+    managerName: string | null;
+    /** Клиент в этот момент уже разговаривал с нашим менеджером */
+    busy: boolean;
+  } | null;
 }
 
 export interface ServicePhone {

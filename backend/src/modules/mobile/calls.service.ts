@@ -64,7 +64,7 @@ async function auditScores(auditIds: (string | null)[]): Promise<Map<string, num
 /** Что подмешиваем к строкам журнала: оценки аудитов, кто перезвонил, служебные номера. */
 interface ListExtras {
   scores: Map<string, number | null>;
-  followUpManagers: Map<string, string | null>;
+  followUpManagers: Map<string, { id: string; fullName: string } | null>;
   services: Map<string, ServicePhoneInfo>;
 }
 
@@ -73,11 +73,11 @@ async function listExtras(rows: CallListRow[]): Promise<ListExtras> {
   const [scores, followUps, services] = await Promise.all([
     auditScores(rows.map((r) => r.auditId)),
     followUpIds.length > 0
-      ? prisma.callSession.findMany({ where: { id: { in: followUpIds } }, select: { id: true, manager: { select: { fullName: true } } } })
+      ? prisma.callSession.findMany({ where: { id: { in: followUpIds } }, select: { id: true, manager: { select: { id: true, fullName: true } } } })
       : Promise.resolve([]),
     servicePhoneMap(),
   ]);
-  return { scores, followUpManagers: new Map(followUps.map((f) => [f.id, f.manager?.fullName ?? null])), services };
+  return { scores, followUpManagers: new Map(followUps.map((f) => [f.id, f.manager ?? null])), services };
 }
 
 function toListItem(row: CallListRow, extras: ListExtras) {
@@ -95,7 +95,10 @@ function toListItem(row: CallListRow, extras: ListExtras) {
         callId: followUpCallId,
         at: followUpAt,
         by: followUpDirection === 'OUTBOUND' ? 'manager' as const : 'client' as const,
-        managerName: extras.followUpManagers.get(followUpCallId) ?? null,
+        managerId: extras.followUpManagers.get(followUpCallId)?.id ?? null,
+        managerName: extras.followUpManagers.get(followUpCallId)?.fullName ?? null,
+        /** Разговор уже шёл, когда был этот звонок: клиент был занят с нашим менеджером */
+        busy: followUpAt <= row.startedAt,
       }
       : null,
   };

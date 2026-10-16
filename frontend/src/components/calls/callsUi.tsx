@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import type { CallAudioStatus, CallListItem, MobileCallType } from '../../api/calls.api';
 import type { Permission, User } from '../../types';
+import { getFirstName } from '../../lib/name-utils';
 
 export const CALL_TYPE_LABELS: Record<MobileCallType, string> = {
   in: 'Входящий',
@@ -60,20 +61,24 @@ export function delayText(from: string, to: string): string {
  * перезвонил клиент или никто. По разговорам — у любого менеджера компании.
  */
 export function FollowUpTag({ call, full }: {
-  call: Pick<CallListItem, 'status' | 'mobileType' | 'startedAt' | 'counterpart' | 'calledBackAt' | 'followUp' | 'service'>;
+  call: Pick<CallListItem, 'status' | 'mobileType' | 'startedAt' | 'counterpart' | 'calledBackAt' | 'followUp' | 'service' | 'manager'>;
   full?: boolean;
 }) {
   if (call.status !== 'MISSED' && call.status !== 'FAILED') return null;
   if (!call.counterpart || call.service || call.mobileType === 'blocked' || call.mobileType === 'voicemail') return null;
   const f = call.followUp;
   if (f) {
-    const who = f.by === 'manager' ? 'Перезвонил менеджер' : 'Клиент перезвонил';
-    const detail = `${who}${f.managerName ? ` (${f.by === 'manager' ? '' : 'говорил '}${f.managerName})` : ''} ${delayText(call.startedAt, f.at)}`;
+    // Помог другой менеджер — называем его; тот же — «менеджер»/«клиент перезвонил»
+    const other = f.managerId && f.managerId !== call.manager?.id ? f.managerName : null;
+    const name = (n: string) => (full ? n : getFirstName(n) || n);
+    const short = f.busy
+      ? `Клиент в это время говорил${other ? ` с ${name(other)}` : ''}`
+      : f.by === 'manager'
+        ? `${other ? `Перезвонил ${name(other)}` : 'Перезвонил менеджер'} ${delayText(call.startedAt, f.at)}`
+        : `${other ? `Клиент дозвонился до ${name(other)}` : 'Клиент перезвонил'} ${delayText(call.startedAt, f.at)}`;
     return (
-      <Tooltip title={full ? undefined : detail}>
-        <Tag color={f.by === 'manager' ? 'green' : 'blue'} style={{ marginInlineEnd: 0 }}>
-          {full ? detail : `${who} ${delayText(call.startedAt, f.at)}`}
-        </Tag>
+      <Tooltip title={full || !f.managerName ? undefined : `Разговор: ${f.managerName}`}>
+        <Tag color={f.by === 'manager' && !f.busy ? 'green' : 'blue'} style={{ marginInlineEnd: 0 }}>{short}</Tag>
       </Tooltip>
     );
   }

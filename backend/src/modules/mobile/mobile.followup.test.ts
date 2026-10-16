@@ -243,3 +243,42 @@ describe('фильтр «Менеджер»', () => {
     ]);
   });
 });
+
+describe('клиент не дозвонился до одного менеджера, поговорил с другим', () => {
+  // 10:00 и 10:05 — пропущенные у Дилнозы; 10:10–10:20 клиент говорит с Фарходом;
+  // 10:15 Дилноза перезванивает — клиент не берёт, он на линии с Фарходом
+  const at = (min: number) => minAgo(120 - min);
+
+  async function scenario(fahrodFirst: boolean) {
+    const talk = () => arrive(inTalk({ managerUserId: 'm2', durationSec: 600, endedAt: new Date(at(10).getTime() + 600_000) }), at(10));
+    let fahrod;
+    if (fahrodFirst) fahrod = await talk();
+    const m1 = await arrive(missed(), at(0));
+    const m2 = await arrive(missed(), at(5));
+    const back = await arrive(unanswered(), at(15));
+    if (!fahrodFirst) fahrod = await talk();
+    const row = (id: string) => state.fake.db.callSession.find((c: any) => c.id === id);
+    return { fahrod: fahrod!, m1: row(m1.id), m2: row(m2.id), back: row(back.id) };
+  }
+
+  it.each([
+    ['телефон Фархода синхронизировался позже', false],
+    ['телефон Фархода синхронизировался раньше', true],
+  ])('%s — все три звонка Дилнозы отработаны разговором Фархода', async (_name, fahrodFirst) => {
+    const { fahrod, m1, m2, back } = await scenario(fahrodFirst);
+    for (const c of [m1, m2, back]) expect(c).toMatchObject({ followUpCallId: fahrod.id, followUpDirection: 'INBOUND' });
+
+    const none = await listCalls(boss, { page: 1, pageSize: 30, outcome: 'none' });
+    expect(none.totalCount).toBe(0);
+    const list = await listCalls(boss, { page: 1, pageSize: 30 });
+    const tags = Object.fromEntries(list.items.map((i) => [i.id, i.followUp]));
+    expect(tags[back.id]).toMatchObject({ busy: true, managerId: 'm2', managerName: 'Фарход Алиев' });
+    expect(tags[m1.id]).toMatchObject({ busy: false, by: 'client', managerId: 'm2' });
+  });
+
+  it('недозвон через час после разговора — уже «не перезвонили»', async () => {
+    await arrive(inTalk({ managerUserId: 'm2', durationSec: 60, endedAt: new Date(at(10).getTime() + 60_000) }), at(10));
+    const late = await arrive(unanswered(), at(80));
+    expect(state.fake.db.callSession.find((c: any) => c.id === late.id).followUpAt).toBeNull();
+  });
+});
