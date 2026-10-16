@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import { callsApi, type MissedGroup, type MissedSummary } from '../../api/calls.api';
 import { formatUzPhone } from '../../utils/phone';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useThemeStore } from '../../store/themeStore';
 import { apiErrorMessage } from './callsUi';
 import './MissedCallsWidget.css';
 
@@ -56,17 +57,23 @@ function handledText(g: MissedGroup): string {
 export default function MissedCallsWidget() {
   const { data } = useQuery({ queryKey: ['calls-missed'], queryFn: callsApi.missed, refetchInterval: 60_000 });
   const now = useNow();
+  const isMobile = useIsMobile();
+  const modern = useThemeStore((s) => s.design) === 'modern';
 
   if (!data || data.items.length === 0) return null;
 
   const pending = data.items.filter((g) => !g.handled);
   const leader = data.scope === 'all' && !!data.managers;
 
-  return (
+  // Отступы — как у соседних карточек главной; на телефоне — общий ритм секций.
+  // В классическом дизайне под заголовком линия — от неё нужен воздух.
+  const pad = isMobile ? 16 : 20;
+  const card = (
     <Card
       className="missed-widget"
-      size="small"
-      style={{ marginTop: 16 }}
+      bordered={false}
+      style={{ marginTop: isMobile ? 0 : 16 }}
+      styles={{ header: { padding: `0 ${pad}px` }, body: { padding: `${modern ? (isMobile ? 4 : 8) : 16}px ${pad}px ${pad}px` } }}
       title={(
         <span className="missed-widget__title">
           Пропущенные сегодня
@@ -79,6 +86,7 @@ export default function MissedCallsWidget() {
       {leader ? <LeaderView data={data} now={now} /> : <OwnView items={data.items} now={now} />}
     </Card>
   );
+  return isMobile ? <div className="section">{card}</div> : card;
 }
 
 function Summary({ data }: { data: MissedSummary }) {

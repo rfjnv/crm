@@ -40,7 +40,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .missed-sum__cell {
@@ -92,6 +92,8 @@
 .missed-list {
   display: flex;
   flex-direction: column;
+  /* Подсветка строк выходит за край, а текст стоит ровно под итогом */
+  margin-inline: -8px;
 }
 
 /* Строка звонка */
@@ -343,7 +345,7 @@
 }
 
 .missed-mgr__items {
-  margin: 0 0 8px 28px;
+  margin: 0 0 8px 16px;
   padding-left: 12px;
   border-left: 2px solid var(--mw-hair);
 }
