@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Role, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { lastCallByClient } from '../../lib/clientLastCall';
 import {
   SQL_ANALYTICS_TZ,
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
@@ -356,22 +357,29 @@ router.get(
       ORDER BY (tm.client_id IS NOT NULL) DESC, COALESCE(tm.revenue, 0) DESC, c.company_name ASC`,
     );
 
+    const lastCalls = await lastCallByClient(rows.map((r) => r.client_id));
+
     res.json({
       cohortMonth,
       monthOffset,
       mode,
-      clients: rows.map((r) => ({
-        clientId: r.client_id,
-        companyName: r.company_name,
-        contactName: r.contact_name,
-        phone: r.phone,
-        email: r.email,
-        active: r.is_active,
-        revenueThisMonth: Number(r.revenue_this_month),
-        lastPurchaseAt: r.last_purchase_at ? r.last_purchase_at.toISOString() : null,
-        lastContactAt: r.last_contact_at ? r.last_contact_at.toISOString() : null,
-        lastContactByName: r.last_contact_by,
-      })),
+      clients: rows.map((r) => {
+        const call = lastCalls.get(r.client_id);
+        // Последний контакт — заметка или звонок (телефония / «Заметки обзвонов»), что позже
+        const callIsLater = !!call && (!r.last_contact_at || call.at > r.last_contact_at);
+        return {
+          clientId: r.client_id,
+          companyName: r.company_name,
+          contactName: r.contact_name,
+          phone: r.phone,
+          email: r.email,
+          active: r.is_active,
+          revenueThisMonth: Number(r.revenue_this_month),
+          lastPurchaseAt: r.last_purchase_at ? r.last_purchase_at.toISOString() : null,
+          lastContactAt: callIsLater ? call!.at.toISOString() : r.last_contact_at ? r.last_contact_at.toISOString() : null,
+          lastContactByName: callIsLater ? call!.authorName : r.last_contact_by,
+        };
+      }),
     });
   }),
 );

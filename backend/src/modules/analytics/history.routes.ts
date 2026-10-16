@@ -1,6 +1,7 @@
 ﻿import { Router, Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { lastCallByClient } from '../../lib/clientLastCall';
 import {
   SQL_DEALS_REVENUE_ANALYTICS_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
@@ -10,7 +11,8 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { getSnapshot, saveSnapshot, isPastMonth, isPastYear } from '../../lib/snapshots';
-import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+
 import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
@@ -603,12 +605,16 @@ router.get(
       }
     }
 
+    const lastCalls = await lastCallByClient(activityClientIds);
     const clientActivity = Array.from(activityMap.values()).map((row) => {
       const note = lastNoteByClient.get(row.clientId);
+      const call = lastCalls.get(row.clientId);
+      // Последний контакт — заметка или звонок (телефония / «Заметки обзвонов»), что позже
+      const last = call && (!note || call.at > note.at) ? { at: call.at, authorName: call.authorName } : note;
       return {
         ...row,
-        lastContactAt: note ? note.at.toISOString() : null,
-        lastContactByName: note?.authorName ?? null,
+        lastContactAt: last ? last.at.toISOString() : null,
+        lastContactByName: last?.authorName ?? null,
       };
     });
 

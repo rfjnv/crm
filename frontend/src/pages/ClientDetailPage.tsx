@@ -357,7 +357,7 @@ export default function ClientDetailPage() {
 
   const { data: weeklyPhoneCallsData, isLoading: weeklyPhoneCallsLoading } = useQuery({
     queryKey: ['client-calls', id, 'week', currentWeekStart, currentWeekEnd],
-    queryFn: () => callsApi.forClient(id!, 1, 100, { from: currentWeekStart, to: currentWeekEnd }),
+    queryFn: () => callsApi.forClient(id!, 1, 100, { from: currentWeekStart, to: currentWeekEnd, team: true }),
     enabled: !!id,
   });
 

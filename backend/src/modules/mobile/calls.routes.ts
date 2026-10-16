@@ -232,11 +232,13 @@ const clientCallsQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(30),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /** Звонки всех менеджеров с этим клиентом (блок «Обзвоны за текущую неделю») */
+  team: z.enum(['1', 'true']).optional(),
 });
 
 export const clientCallsRouter = Router();
 
 clientCallsRouter.get('/:id/calls', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const q = parseOr400(clientCallsQuery, req.query);
-  res.json(await clientCalls(req.user!, String(req.params.id), q.page, q.pageSize, { from: q.from, to: q.to }));
+  res.json(await clientCalls(req.user!, String(req.params.id), q.page, q.pageSize, { from: q.from, to: q.to, team: !!q.team }));
 }));

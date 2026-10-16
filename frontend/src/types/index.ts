@@ -893,6 +893,8 @@ export interface ManagerKpiRow {
     clientNotes: number;
     /** Строки доски звонков. */
     boardCalls: number;
+    /** Состоявшиеся звонки с клиентами из телефонии (в total не входят). */
+    phoneCalls?: number;
     total: number;
     uniqueClients: number;
     lastContactAt: string | null;

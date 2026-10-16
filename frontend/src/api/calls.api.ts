@@ -290,9 +290,9 @@ export const callsApi = {
   updateServicePhone: (id: string, data: Partial<ServicePhoneInput>) =>
     client.put<ServicePhone>(`/calls/service-phones/${id}`, data).then((r) => r.data),
   removeServicePhone: (id: string) => client.delete(`/calls/service-phones/${id}`).then((r) => r.data),
-  forClient: (clientId: string, page = 1, pageSize = 20, range?: { from?: string; to?: string }) =>
+  forClient: (clientId: string, page = 1, pageSize = 20, range?: { from?: string; to?: string; team?: boolean }) =>
     client
-      .get<ClientCallsResponse>(`/clients/${clientId}/calls`, { params: { page, pageSize, ...range } })
+      .get<ClientCallsResponse>(`/clients/${clientId}/calls`, { params: { page, pageSize, ...range, team: range?.team ? '1' : undefined } })
       .then((r) => r.data),
 };
 

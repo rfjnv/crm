@@ -603,7 +603,7 @@ export default function ManagerKpiPanel() {
                 <Col span={6}><Statistic title="Клиентов" value={detail.contacts.uniqueClients} /></Col>
               </Row>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Последний контакт: {detail.contacts.lastContactAt
+                Звонков с клиентами по телефонии: {detail.contacts.phoneCalls ?? 0} · Последний контакт: {detail.contacts.lastContactAt
                   ? dayjs(detail.contacts.lastContactAt).format('DD.MM.YYYY HH:mm')
                   : '—'}
               </Text>

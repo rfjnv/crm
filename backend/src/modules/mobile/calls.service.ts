@@ -555,7 +555,7 @@ export async function clientCalls(
   clientId: string,
   page = 1,
   pageSize = 30,
-  range: { from?: Date; to?: Date } = {},
+  range: { from?: Date; to?: Date; team?: boolean } = {},
 ) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, phone: true } });
   if (!client) throw new AppError(404, 'Клиент не найден');
@@ -565,7 +565,10 @@ export async function clientCalls(
   const byClient: Prisma.CallSessionWhereInput = {
     OR: [{ clientId }, ...(keys.length > 0 ? [{ clientId: null, phoneKey: { in: keys } }] : [])],
   };
-  const where: Prisma.CallSessionWhereInput = { AND: [callScope(user), byClient] };
+  // team — кто и когда звонил клиенту, у всех менеджеров. Запись и разбор чужого звонка
+  // по-прежнему закрыты: getCall/getAudioUrl проверяют доступ сами.
+  const scope: Prisma.CallSessionWhereInput = range.team ? { deletedAt: null } : callScope(user);
+  const where: Prisma.CallSessionWhereInput = { AND: [scope, byClient] };
   // Период (например, текущая неделя) — только для списка, статистика всегда за STATS_DAYS
   const listWhere: Prisma.CallSessionWhereInput = range.from || range.to
     ? { AND: [where, { startedAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }] }

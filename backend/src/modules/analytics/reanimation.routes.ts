@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import XLSX from 'xlsx';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
+import { lastCallByClient } from '../../lib/clientLastCall';
 import {
   SQL_ANALYTICS_LINE_REVENUE_DI,
   SQL_EFFECTIVE_ITEM_TS,
@@ -257,7 +258,7 @@ async function enrichClientRows(
   const clientIds = baseRows.map((row) => row.client_id);
   const dealFilter = getDealFilter(user);
 
-  const [lastDealRows, lastNoteRows, debtRows, productNameRows, productRows] = await Promise.all([
+  const [lastDealRows, lastNoteRows, debtRows, productNameRows, productRows, lastCalls] = await Promise.all([
     // Last deal per client — LEFT JOIN so deals without items are visible;
     // revenue = d.amount (same source as loadBaseClientRows for consistency).
     prisma.$queryRaw<LastDealRow[]>(
@@ -348,6 +349,7 @@ async function enrichClientRows(
           ORDER BY d.client_id ASC, SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) DESC, p.name ASC`,
         )
       : Promise.resolve([] as ProductAggRow[]),
+    lastCallByClient(clientIds),
   ]);
 
   const lastDealByClient = new Map(lastDealRows.map((row) => [row.client_id, row]));
@@ -411,8 +413,15 @@ async function enrichClientRows(
   return baseRows.map((row) => {
     const lastDeal = lastDealByClient.get(row.client_id);
     const lastNote = lastNoteByClient.get(row.client_id);
+    const lastCall = lastCalls.get(row.client_id);
+    // Последний контакт — заметка клиента или звонок (телефония / «Заметки обзвонов»), что позже
+    const lastContact = lastCall && (!lastNote || lastCall.at > lastNote.created_at)
+      ? { at: lastCall.at, authorName: lastCall.authorName, content: lastCall.preview }
+      : lastNote
+        ? { at: lastNote.created_at, authorName: lastNote.author_name, content: lastNote.content }
+        : null;
     const daysSinceLastPurchase = daysSince(row.last_purchase_at);
-    const daysSinceLastContact = daysSince(lastNote?.created_at);
+    const daysSinceLastContact = daysSince(lastContact?.at);
     const closedDealsCount = Number(row.closed_deals_count);
 
     return {
@@ -446,9 +455,9 @@ async function enrichClientRows(
             isReceiptPunched: lastDeal.is_receipt_punched,
           }
         : null,
-      lastContactAt: lastNote?.created_at ? lastNote.created_at.toISOString() : null,
-      lastContactByName: lastNote?.author_name ?? null,
-      lastContactPreview: lastNote?.content ? (lastNote.content.length > 180 ? `${lastNote.content.slice(0, 180)}...` : lastNote.content) : null,
+      lastContactAt: lastContact ? lastContact.at.toISOString() : null,
+      lastContactByName: lastContact?.authorName ?? null,
+      lastContactPreview: lastContact?.content ? (lastContact.content.length > 180 ? `${lastContact.content.slice(0, 180)}...` : lastContact.content) : null,
       daysSinceLastContact,
       topProducts: (topProductsByClient.get(row.client_id) ?? []).slice(0, 5),
       lastDealProducts: lastDeal ? (lastDealProductsByDeal.get(lastDeal.deal_id) ?? []).slice(0, 6) : [],

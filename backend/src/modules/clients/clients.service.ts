@@ -1,5 +1,6 @@
 import { DealStatus, Client, ClientCreditStatus, ClientLossReason, Prisma, DeliveryType } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { lastCallByClient } from '../../lib/clientLastCall';
 import { resolveDealOwnerId } from '../../lib/dealOwner';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
@@ -108,7 +109,7 @@ export class ClientsService {
       return [];
     }
 
-    const [noteRows, dealsAgg, paysAgg, latestDealManagers] = await Promise.all([
+    const [noteRows, dealsAgg, paysAgg, latestDealManagers, lastCalls] = await Promise.all([
       prisma.$queryRaw<LatestNoteRow[]>(Prisma.sql`
         SELECT DISTINCT ON (cn.client_id)
           cn.id,
@@ -143,6 +144,7 @@ export class ClientsService {
           AND d.client_id IN (${Prisma.join(ids)})
         ORDER BY d.client_id, d.created_at DESC
       `),
+      lastCallByClient(ids),
     ]);
 
     const noteByClient = new Map(noteRows.map((n) => [n.clientId, n]));
@@ -165,6 +167,7 @@ export class ClientsService {
         dealMaxByClient.get(client.id) ?? 0,
         payMaxByClient.get(client.id) ?? 0,
         noteMs,
+        lastCalls.get(client.id)?.at.getTime() ?? 0,
       );
       const preview =
         latestNote && latestNote.content.length > 140

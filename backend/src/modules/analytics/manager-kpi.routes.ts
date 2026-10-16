@@ -148,7 +148,7 @@ router.get(
 
     const deadCutoff = new Date(start.getTime() - DEAD_NO_SALES_DAYS * 86400000);
 
-    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance, hrReviews] =
+    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, phoneRaw, clientsRaw, leadsRaw, attendance, hrReviews] =
       await Promise.all([
         // ──── 1. План на месяц (модель уже есть — та же, что в «Пользователях») ────
         prisma.userMonthlyGoal.findMany({
@@ -254,6 +254,17 @@ router.get(
            WHERE nb.last_call_at >= ${start} AND nb.last_call_at < ${end}
              AND nb.author_id IN (${Prisma.join(ids)})
            GROUP BY nb.author_id`,
+        ),
+        // Состоявшиеся звонки с клиентами из телефонии — для информации, в бонус не входят
+        prisma.$queryRaw<{ manager_user_id: string; total: string; last_at: Date | null }[]>(
+          Prisma.sql`SELECT cs.manager_user_id, COUNT(*)::text as total, MAX(cs.started_at) as last_at
+           FROM call_sessions cs
+           WHERE cs.deleted_at IS NULL
+             AND cs.client_id IS NOT NULL
+             AND cs.status IN ('ANSWERED', 'COMPLETED')
+             AND cs.started_at >= ${start} AND cs.started_at < ${end}
+             AND cs.manager_user_id IN (${Prisma.join(ids)})
+           GROUP BY cs.manager_user_id`,
         ),
 
         // ──── 4. Привлечение: когда этот клиент покупал в предыдущий раз ────
@@ -365,6 +376,7 @@ router.get(
     const deadByManager = groupBy(deadRaw, (r) => r.manager_id);
     const notesMap = new Map(clientNotesRaw.map((r) => [r.user_id, r]));
     const boardMap = new Map(boardRaw.map((r) => [r.author_id, r]));
+    const phoneMap = new Map(phoneRaw.map((r) => [r.manager_user_id, r]));
     const clientsByManager = groupBy(clientsRaw, (r) => r.manager_id);
     const attByManager = groupBy(attendance, (r) => r.userId);
     const leadsMap = new Map(leadsRaw.map((r) => [r.manager_id, r]));
@@ -392,7 +404,9 @@ router.get(
       const board = boardMap.get(m.id);
       const clientNotes = notes ? Number(notes.total) : 0;
       const boardCalls = board ? Number(board.total) : 0;
-      const lastContact = [notes?.last_at, board?.last_at]
+      const phone = phoneMap.get(m.id);
+      const phoneCalls = phone ? Number(phone.total) : 0;
+      const lastContact = [notes?.last_at, board?.last_at, phone?.last_at]
         .filter((d): d is Date => !!d)
         .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
@@ -499,6 +513,8 @@ router.get(
         contacts: {
           clientNotes,
           boardCalls,
+          /** Состоявшиеся звонки с клиентами из телефонии (в «Всего» и бонус не входят). */
+          phoneCalls,
           total: clientNotes + boardCalls,
           uniqueClients: Math.max(
             notes ? Number(notes.clients) : 0,
