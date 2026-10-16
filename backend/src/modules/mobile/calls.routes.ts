@@ -230,11 +230,13 @@ export default router;
 const clientCallsQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(30),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 export const clientCallsRouter = Router();
 
 clientCallsRouter.get('/:id/calls', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const q = parseOr400(clientCallsQuery, req.query);
-  res.json(await clientCalls(req.user!, String(req.params.id), q.page, q.pageSize));
+  res.json(await clientCalls(req.user!, String(req.params.id), q.page, q.pageSize, { from: q.from, to: q.to }));
 }));

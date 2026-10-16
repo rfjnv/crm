@@ -55,6 +55,8 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import ClientCallsTab from '../components/calls/ClientCallsTab';
+import { callsApi } from '../api/calls.api';
+import { callTypeLabel, formatDuration, isFailedCall } from '../components/calls/callsUi';
 
 dayjs.extend(isoWeek);
 
@@ -142,6 +144,20 @@ function parseCoordinatesText(raw: string): { latitude: number; longitude: numbe
   if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
   return { latitude, longitude };
 }
+
+/** Строка блока «Обзвоны за текущую неделю»: звонок из телефонии или заметка обзвона */
+type WeeklyContactRow = {
+  key: string;
+  source: 'call' | 'note';
+  at: string;
+  answered: boolean;
+  typeLabel: string | null;
+  durationSec: number | null;
+  status: string | null;
+  phone: string | null;
+  comment: string | null;
+  authorName: string | null;
+};
 
 const CALL_RESULT_LABELS: Record<'ANSWERED' | 'NO_ANSWER', string> = {
   ANSWERED: 'Взял трубку',
@@ -339,7 +355,40 @@ export default function ClientDetailPage() {
     enabled: !!id && canSeeNotesBoardCalls,
   });
 
-  const weeklyCallRows = weeklyCallBoardData?.items ?? [];
+  const { data: weeklyPhoneCallsData, isLoading: weeklyPhoneCallsLoading } = useQuery({
+    queryKey: ['client-calls', id, 'week', currentWeekStart, currentWeekEnd],
+    queryFn: () => callsApi.forClient(id!, 1, 100, { from: currentWeekStart, to: currentWeekEnd }),
+    enabled: !!id,
+  });
+
+  // Звонки из телефонии (CallSync) и заметки обзвонов — одним списком, новые сверху
+  const weeklyCallRows = useMemo<WeeklyContactRow[]>(() => {
+    const fromCalls: WeeklyContactRow[] = (weeklyPhoneCallsData?.items ?? []).map((c) => ({
+      key: `call-${c.id}`,
+      source: 'call',
+      at: c.startedAt,
+      answered: !isFailedCall(c),
+      typeLabel: callTypeLabel(c),
+      durationSec: c.durationSec,
+      status: null,
+      phone: c.phone ?? c.counterpart,
+      comment: null,
+      authorName: c.manager?.fullName ?? null,
+    }));
+    const fromNotes: WeeklyContactRow[] = (weeklyCallBoardData?.items ?? []).map((n) => ({
+      key: `note-${n.id}`,
+      source: 'note',
+      at: n.lastCallAt,
+      answered: n.callResult === 'ANSWERED',
+      typeLabel: null,
+      durationSec: null,
+      status: n.status,
+      phone: n.phoneNumber,
+      comment: n.comment,
+      authorName: n.author.fullName,
+    }));
+    return [...fromCalls, ...fromNotes].sort((a, b) => dayjs(b.at).valueOf() - dayjs(a.at).valueOf());
+  }, [weeklyPhoneCallsData, weeklyCallBoardData]);
 
   const { data: clientCardBoardData, isLoading: clientCardBoardLoading } = useQuery({
     queryKey: [
@@ -372,48 +421,65 @@ export default function ClientDetailPage() {
     enabled: !!id && canSeeNotesBoardCalls,
   });
 
-  const callBoardColumns: ColumnsType<NotesBoardRow> = useMemo(
+  const callBoardColumns: ColumnsType<WeeklyContactRow> = useMemo(
     () => [
       {
+        title: 'Источник',
+        key: 'source',
+        width: 170,
+        render: (_: unknown, r: WeeklyContactRow) =>
+          r.source === 'call' ? (
+            <Tag color="blue">{r.typeLabel ?? 'Звонок'}</Tag>
+          ) : (
+            <Tag>Заметка обзвона</Tag>
+          ),
+      },
+      {
         title: 'Дозвон',
-        key: 'callResult',
-        width: 120,
-        render: (_: unknown, r: NotesBoardRow) => (
-          <Tag color={r.callResult === 'ANSWERED' ? 'green' : 'orange'}>
-            {CALL_RESULT_LABELS[r.callResult]}
+        key: 'answered',
+        width: 110,
+        render: (_: unknown, r: WeeklyContactRow) => (
+          <Tag color={r.answered ? 'green' : 'orange'}>
+            {CALL_RESULT_LABELS[r.answered ? 'ANSWERED' : 'NO_ANSWER']}
           </Tag>
         ),
       },
       {
-        title: 'Дата обзвона',
-        key: 'lastCallAt',
-        width: 150,
-        render: (_: unknown, r: NotesBoardRow) => dayjs(r.lastCallAt).format('DD.MM.YYYY HH:mm'),
+        title: 'Дата',
+        key: 'at',
+        width: 140,
+        render: (_: unknown, r: WeeklyContactRow) => dayjs(r.at).format('DD.MM.YYYY HH:mm'),
+      },
+      {
+        title: 'Длительность',
+        key: 'duration',
+        width: 110,
+        render: (_: unknown, r: WeeklyContactRow) => (r.source === 'call' ? formatDuration(r.durationSec) : '—'),
       },
       {
         title: 'Статус',
         key: 'status',
         width: 130,
-        render: (_: unknown, r: NotesBoardRow) =>
+        render: (_: unknown, r: WeeklyContactRow) =>
           r.status ? <Tag color={noteStatusColor(r.status)}>{r.status}</Tag> : '—',
       },
       {
         title: 'Номер',
-        dataIndex: 'phoneNumber',
-        width: 120,
-        render: (v: string | null) => v?.trim() || '—',
+        key: 'phone',
+        width: 140,
+        render: (_: unknown, r: WeeklyContactRow) => r.phone?.trim() || '—',
       },
       {
         title: 'Комментарий',
-        dataIndex: 'comment',
         key: 'comment',
         ellipsis: true,
+        render: (_: unknown, r: WeeklyContactRow) => r.comment?.trim() || '—',
       },
       {
         title: 'Кто связался',
         key: 'author',
-        width: 160,
-        render: (_: unknown, r: NotesBoardRow) => getFirstName(r.author.fullName),
+        width: 140,
+        render: (_: unknown, r: WeeklyContactRow) => (r.authorName ? getFirstName(r.authorName) : '—'),
       },
     ],
     [],
@@ -1251,29 +1317,31 @@ export default function ClientDetailPage() {
                     }]} />
                   )}
                 </Card>
-                {canSeeNotesBoardCalls ? (
-                  <Card bordered={false} title="Обзвоны за текущую неделю" loading={weeklyCallBoardLoading}>
-                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                      Данные из «Заметки обзвонов»: дозвон, дата обзвона, статус, номер (если указан), комментарий и автор.
-                      Отображаются только записи с датой обзвона в текущей календарной неделе (понедельник–воскресенье). При наступлении новой недели блок пересчитывается; если звонков не было — показывается текст ниже.
-                    </Typography.Paragraph>
-                    {weeklyCallRows.length === 0 ? (
-                      <Typography.Text type="secondary">
-                        За эту неделю никто не связался с клиентом по данным заметок обзвонов.
-                      </Typography.Text>
-                    ) : (
-                      <Table<NotesBoardRow>
-                        rowKey="id"
-                        size="small"
-                        pagination={false}
-                        dataSource={weeklyCallRows}
-                        columns={callBoardColumns}
-                        locale={{ emptyText: 'Нет записей' }}
-                        scroll={{ x: 900 }}
-                      />
-                    )}
-                  </Card>
-                ) : null}
+                <Card
+                  bordered={false}
+                  title="Обзвоны за текущую неделю"
+                  loading={weeklyPhoneCallsLoading || (canSeeNotesBoardCalls && weeklyCallBoardLoading)}
+                >
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                    Звонки по номерам клиента (телефония) и записи из «Заметки обзвонов» за текущую календарную неделю
+                    (понедельник–воскресенье). При наступлении новой недели блок пересчитывается.
+                  </Typography.Paragraph>
+                  {weeklyCallRows.length === 0 ? (
+                    <Typography.Text type="secondary">
+                      За эту неделю звонков с клиентом не было.
+                    </Typography.Text>
+                  ) : (
+                    <Table<WeeklyContactRow>
+                      rowKey="key"
+                      size="small"
+                      pagination={false}
+                      dataSource={weeklyCallRows}
+                      columns={callBoardColumns}
+                      locale={{ emptyText: 'Нет записей' }}
+                      scroll={{ x: 1000 }}
+                    />
+                  )}
+                </Card>
                 {(client.latitude != null && client.longitude != null) || client.address?.trim() ? (
                   <Card title="Местоположение" bordered={false}>
                     <iframe

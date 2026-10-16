@@ -550,7 +550,13 @@ export async function callsToday(user: CallsUser) {
 
 const STATS_DAYS = 30;
 
-export async function clientCalls(user: CallsUser, clientId: string, page = 1, pageSize = 30) {
+export async function clientCalls(
+  user: CallsUser,
+  clientId: string,
+  page = 1,
+  pageSize = 30,
+  range: { from?: Date; to?: Date } = {},
+) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, phone: true } });
   if (!client) throw new AppError(404, 'Клиент не найден');
   const keys = clientPhoneKeys(client.phone);
@@ -560,12 +566,16 @@ export async function clientCalls(user: CallsUser, clientId: string, page = 1, p
     OR: [{ clientId }, ...(keys.length > 0 ? [{ clientId: null, phoneKey: { in: keys } }] : [])],
   };
   const where: Prisma.CallSessionWhereInput = { AND: [callScope(user), byClient] };
+  // Период (например, текущая неделя) — только для списка, статистика всегда за STATS_DAYS
+  const listWhere: Prisma.CallSessionWhereInput = range.from || range.to
+    ? { AND: [where, { startedAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }] }
+    : where;
   const since = new Date(Date.now() - STATS_DAYS * 24 * HOUR_MS);
   const statsWhere: Prisma.CallSessionWhereInput = { AND: [where, { startedAt: { gte: since } }] };
 
   const [rows, totalCount, callsCount, missedCount, avg] = await Promise.all([
-    prisma.callSession.findMany({ where, orderBy: { startedAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: callListSelect }),
-    prisma.callSession.count({ where }),
+    prisma.callSession.findMany({ where: listWhere, orderBy: { startedAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: callListSelect }),
+    prisma.callSession.count({ where: listWhere }),
     prisma.callSession.count({ where: statsWhere }),
     prisma.callSession.count({ where: { AND: [statsWhere, MISSED_WHERE] } }),
     prisma.callSession.aggregate({
