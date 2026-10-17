@@ -4,6 +4,7 @@ import { DealStatus, Role } from '@prisma/client';
 import { z } from 'zod';
 import { clientsService } from './clients.service';
 import { clientNotesService } from './client-notes.service';
+import { clientLocationsService } from './client-locations.service';
 import type { AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 
@@ -131,6 +132,25 @@ export class ClientsController {
   async sendStockAll(req: Request, res: Response): Promise<void> {
     const result = await clientsService.sendStockAll(req.params.id as string, req.body, getUser(req));
     res.status(201).json(result);
+  }
+
+  async listLocations(req: Request, res: Response): Promise<void> {
+    res.json(await clientLocationsService.list(req.params.id as string, getUser(req)));
+  }
+
+  async createLocation(req: Request, res: Response): Promise<void> {
+    res.status(201).json(await clientLocationsService.create(req.params.id as string, req.body, getUser(req)));
+  }
+
+  async updateLocation(req: Request, res: Response): Promise<void> {
+    res.json(await clientLocationsService.update(
+      req.params.id as string, req.params.locationId as string, req.body, getUser(req),
+    ));
+  }
+
+  async deleteLocation(req: Request, res: Response): Promise<void> {
+    await clientLocationsService.remove(req.params.id as string, req.params.locationId as string, getUser(req));
+    res.status(204).end();
   }
 
   async listNotes(req: Request, res: Response): Promise<void> {

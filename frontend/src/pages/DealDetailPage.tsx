@@ -26,6 +26,7 @@ import SuperOverridePanel from '../components/SuperOverridePanel';
 import WarehouseOverridePanel from '../components/WarehouseOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import BackButton from '../components/BackButton';
+import DealDeliveryLocationSelect from '../components/DealDeliveryLocationSelect';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
@@ -1174,6 +1175,9 @@ export default function DealDetailPage() {
                 <Descriptions.Item label="Скидка">{formatUZS(deal.discount)}</Descriptions.Item>
               )}
               <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
+              {deal.deliveryType === 'DELIVERY' && (
+                <Descriptions.Item label="Куда везти"><DealDeliveryLocationSelect deal={deal} /></Descriptions.Item>
+              )}
               {deal.contract && (
                 <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
               )}
@@ -1660,6 +1664,9 @@ export default function DealDetailPage() {
                         <Descriptions.Item label="Скидка">{formatUZS(deal.discount)}</Descriptions.Item>
                       )}
                       <Descriptions.Item label="Создана">{dayjs(deal.createdAt).format('DD.MM.YYYY HH:mm')}</Descriptions.Item>
+                      {deal.deliveryType === 'DELIVERY' && (
+                        <Descriptions.Item label="Куда везти"><DealDeliveryLocationSelect deal={deal} /></Descriptions.Item>
+                      )}
                       {deal.contract && (
                         <Descriptions.Item label="Договор">{deal.contract.contractNumber}</Descriptions.Item>
                       )}

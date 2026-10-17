@@ -1,6 +1,6 @@
 import client from './client';
 import type { ClientLossDetails, ClientLossReason } from '../constants/clientLossReasons';
-import type { Client, ClientMapPoint, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
+import type { Client, ClientLocation, ClientMapPoint, AuditLog, PaymentRecord, ClientAnalytics, ClientNote, ClientStockResponse, Deal } from '../types';
 
 export interface CreateClientData {
   companyName: string;
@@ -57,6 +57,16 @@ export interface SendClientStockAllPayload {
   deliveryComment?: string;
 }
 
+export interface ClientLocationData {
+  name?: string;
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  contactName?: string;
+  phone?: string;
+  notes?: string;
+}
+
 export const clientsApi = {
   list: () => client.get<Client[]>('/clients').then((r) => r.data),
   mapPoints: () => client.get<ClientMapPoint[]>('/clients/map').then((r) => r.data),
@@ -68,6 +78,15 @@ export const clientsApi = {
 
   update: (id: string, data: Partial<CreateClientData>) =>
     client.patch<Client>(`/clients/${id}`, data).then((r) => r.data),
+
+  locations: (clientId: string) =>
+    client.get<ClientLocation[]>(`/clients/${clientId}/locations`).then((r) => r.data),
+  createLocation: (clientId: string, data: ClientLocationData & { name: string }) =>
+    client.post<ClientLocation>(`/clients/${clientId}/locations`, data).then((r) => r.data),
+  updateLocation: (clientId: string, locationId: string, data: ClientLocationData) =>
+    client.patch<ClientLocation>(`/clients/${clientId}/locations/${locationId}`, data).then((r) => r.data),
+  deleteLocation: (clientId: string, locationId: string) =>
+    client.delete(`/clients/${clientId}/locations/${locationId}`).then(() => undefined),
 
   archive: (id: string) => client.patch<Client>(`/clients/${id}/archive`).then((r) => r.data),
 

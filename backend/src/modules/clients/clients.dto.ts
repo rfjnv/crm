@@ -61,6 +61,22 @@ export const updateClientDto = z.object({
   portraitObjections: z.string().max(20000).optional(),
 });
 
+/** Филиал / другая точка доставки клиента. Пустая строка в необязательном поле — стереть его. */
+export const clientLocationDto = z.object({
+  name: z.string().trim().min(1, 'Назовите точку: например, «Филиал Чиланзар»').max(200),
+  address: z.string().trim().max(500).optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  contactName: z.string().trim().max(200).optional(),
+  phone: phoneSchema,
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export const updateClientLocationDto = clientLocationDto.partial();
+
+export type ClientLocationDto = z.infer<typeof clientLocationDto>;
+export type UpdateClientLocationDto = z.infer<typeof updateClientLocationDto>;
+
 export const setClientRelationDto = z.object({
   relation: z.enum(['CUSTOMER', 'AFFILIATE', 'COMPETITOR']),
 });

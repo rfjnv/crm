@@ -83,8 +83,52 @@ function takeLegacyRouteIds(): string[] {
   }
 }
 
+/**
+ * Точка доставки на карте: основной адрес клиента (id = id клиента) или его филиал (id = id точки).
+ * В маршрут попадают именно они — у одного клиента может быть несколько остановок.
+ */
+interface MapStop {
+  id: string;
+  client: ClientMapPoint;
+  /** Название филиала; null — основной адрес */
+  locationName: string | null;
+  contactName: string;
+  phone: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  pendingDeliveryDeals: number;
+}
+
+type LocatedStop = MapStop & { latitude: number; longitude: number };
+
+function toStops(c: ClientMapPoint): MapStop[] {
+  return [
+    {
+      id: c.id, client: c, locationName: null, contactName: c.contactName, phone: c.phone,
+      address: c.address, latitude: c.latitude, longitude: c.longitude, pendingDeliveryDeals: c.pendingDeliveryDeals,
+    },
+    ...(c.locations ?? []).map((l) => ({
+      id: l.id,
+      client: c,
+      locationName: l.name,
+      contactName: l.contactName || c.contactName,
+      phone: l.phone || c.phone,
+      address: l.address,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      pendingDeliveryDeals: l.pendingDeliveryDeals,
+    })),
+  ];
+}
+
+/** «Компания · Филиал» — чтобы в маршруте было видно, в какую из точек клиента едем. */
+function stopTitle(s: MapStop): string {
+  return s.locationName ? `${s.client.companyName} · ${s.locationName}` : s.client.companyName;
+}
+
 type Placing =
-  | { kind: 'client'; client: ClientMapPoint }
+  | { kind: 'stop'; stop: MapStop }
   | { kind: 'base'; base: BaseKind };
 
 interface PendingPlacement {
@@ -93,8 +137,8 @@ interface PendingPlacement {
   address: string;
 }
 
-function hasCoords(c: ClientMapPoint): c is ClientMapPoint & { latitude: number; longitude: number } {
-  return c.latitude != null && c.longitude != null;
+function hasCoords(s: MapStop): s is LocatedStop {
+  return s.latitude != null && s.longitude != null;
 }
 
 function round6(n: number): number {
@@ -151,12 +195,13 @@ export default function ClientsMapPage() {
 
   settingsRef.current = settings;
 
-  const byId = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
-  const located = useMemo(() => clients.filter(hasCoords), [clients]);
+  const stops = useMemo(() => clients.flatMap(toStops), [clients]);
+  const byId = useMemo(() => new Map(stops.map((s) => [s.id, s])), [stops]);
+  const located = useMemo(() => stops.filter(hasCoords), [stops]);
 
-  // Клиенты, которых удалили, заархивировали или убрали с карты, выпадают из маршрута
+  // Клиенты и филиалы, которых удалили, заархивировали или убрали с карты, выпадают из маршрута
   const routeClients = useMemo(
-    () => routeIds.map((id) => byId.get(id)).filter((c): c is ClientMapPoint & { latitude: number; longitude: number } => !!c && hasCoords(c)),
+    () => routeIds.map((id) => byId.get(id)).filter((s): s is LocatedStop => !!s && hasCoords(s)),
     [routeIds, byId],
   );
   const routeOrder = useMemo(() => new Map(routeClients.map((c, i) => [c.id, i + 1])), [routeClients]);
@@ -178,12 +223,12 @@ export default function ClientsMapPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return clients.filter((c) => {
-      if (onlyPending && c.pendingDeliveryDeals === 0) return false;
+    return stops.filter((s) => {
+      if (onlyPending && s.pendingDeliveryDeals === 0) return false;
       if (!q) return true;
-      return [c.companyName, c.contactName, c.address, c.phone].some((v) => v?.toLowerCase().includes(q));
+      return [s.client.companyName, s.locationName, s.contactName, s.address, s.phone].some((v) => v?.toLowerCase().includes(q));
     });
-  }, [clients, search, onlyPending]);
+  }, [stops, search, onlyPending]);
   const filteredLocated = filtered.filter(hasCoords);
   const filteredUnlocated = filtered.filter((c) => !hasCoords(c));
 
@@ -222,7 +267,7 @@ export default function ClientsMapPage() {
     if (!shared || dirtyRef.current) return;
     if (!routeReady) {
       setRouteReady(true);
-      const legacy = shared.clientIds.length === 0 ? takeLegacyRouteIds() : [];
+      const legacy = shared.stopIds.length === 0 ? takeLegacyRouteIds() : [];
       if (legacy.length) {
         markEdited();
         setRouteIds(legacy);
@@ -231,7 +276,7 @@ export default function ClientsMapPage() {
         return;
       }
     }
-    setRouteIds(shared.clientIds);
+    setRouteIds(shared.stopIds);
     setStart(shared.startBase);
     setRoundtrip(shared.roundtrip);
   }, [shared, routeReady]);
@@ -240,7 +285,7 @@ export default function ClientsMapPage() {
     if (!dirtyRef.current) return undefined;
     const seq = editSeqRef.current;
     const t = window.setTimeout(() => {
-      saveRouteMut.mutate({ payload: { clientIds: routeIds, startBase: start, roundtrip }, seq });
+      saveRouteMut.mutate({ payload: { stopIds: routeIds, startBase: start, roundtrip }, seq });
     }, 600);
     return () => window.clearTimeout(t);
     // saveRouteMut меняется каждый рендер, сохранять нужно только по правкам
@@ -258,7 +303,7 @@ export default function ClientsMapPage() {
     editRouteIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= MAX_ROUTE_POINTS - 2) {
-        message.warning(`В одном маршруте не больше ${MAX_ROUTE_POINTS - 2} клиентов`);
+        message.warning(`В одном маршруте не больше ${MAX_ROUTE_POINTS - 2} остановок`);
         return prev;
       }
       return [...prev, id];
@@ -283,7 +328,7 @@ export default function ClientsMapPage() {
         if (next.length >= MAX_ROUTE_POINTS - 2) break;
         if (!next.includes(c.id)) next.push(c.id);
       }
-      message.success(`В маршруте ${next.length} клиентов`);
+      message.success(`В маршруте ${next.length} остановок`);
       return next;
     });
   };
@@ -308,11 +353,15 @@ export default function ClientsMapPage() {
   };
 
   const updateClientMut = useMutation({
-    mutationFn: ({ id, latLng }: { id: string; latLng: LatLng }) =>
-      clientsApi.update(id, { latitude: latLng[0], longitude: latLng[1] }),
-    onSuccess: () => {
+    mutationFn: async ({ stop, latLng }: { stop: MapStop; latLng: LatLng }) => {
+      const coords = { latitude: latLng[0], longitude: latLng[1] };
+      if (stop.locationName != null) await clientsApi.updateLocation(stop.client.id, stop.id, coords);
+      else await clientsApi.update(stop.id, coords);
+    },
+    onSuccess: (_data, { stop }) => {
       qc.invalidateQueries({ queryKey: ['clients-map'] });
-      message.success('Клиент отмечен на карте');
+      if (stop.locationName != null) qc.invalidateQueries({ queryKey: ['client', stop.client.id] });
+      message.success(stop.locationName != null ? 'Филиал отмечен на карте' : 'Клиент отмечен на карте');
     },
     onError: (err: unknown) => {
       message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Не удалось сохранить');
@@ -342,7 +391,7 @@ export default function ClientsMapPage() {
     setPending({
       placing: p,
       latLng: [round6(latlng.lat), round6(latlng.lng)],
-      address: (p.kind === 'base' ? settingsRef.current?.[BASES[p.base].address] : p.client.address) ?? '',
+      address: (p.kind === 'base' ? settingsRef.current?.[BASES[p.base].address] : p.stop.address) ?? '',
     });
     return true;
   };
@@ -351,9 +400,9 @@ export default function ClientsMapPage() {
     setPlacing(p);
     setPending(null);
     const map = mapInstance.current;
-    const label = p.kind === 'client' ? p.client.companyName : BASES[p.base].title;
+    const label = p.kind === 'stop' ? stopTitle(p.stop) : BASES[p.base].title;
     message.info(`Кликните на карте, где находится: ${label}`);
-    const address = p.kind === 'client' ? p.client.address : settings?.[BASES[p.base].address];
+    const address = p.kind === 'stop' ? p.stop.address : settings?.[BASES[p.base].address];
     // Подлетаем к адресу, если он находится — дальше человек ставит точку сам
     if (map && address?.trim()) {
       const hit = await geocodeAddress(address, 'Uzbekistan').catch(() => null);
@@ -364,9 +413,9 @@ export default function ClientsMapPage() {
   const confirmPlacement = () => {
     if (!pending) return;
     const { placing: p, latLng, address } = pending;
-    if (p.kind === 'client') {
-      updateClientMut.mutate({ id: p.client.id, latLng });
-      setSelectedId(p.client.id);
+    if (p.kind === 'stop') {
+      updateClientMut.mutate({ stop: p.stop, latLng });
+      setSelectedId(p.stop.id);
     } else {
       updateBaseMut.mutate({ base: p.base, latLng, address: address.trim() || null });
     }
@@ -422,7 +471,9 @@ export default function ClientsMapPage() {
       const inRoute = routeOrder.get(c.id);
       if (!visible.has(c.id) && !inRoute) continue;
       const isSel = c.id === selectedId;
-      const tip = `<b>${escapeHtml(c.companyName)}</b>${c.address ? `<br/>${escapeHtml(c.address)}` : ''}`
+      const tip = `<b>${escapeHtml(c.client.companyName)}</b>`
+        + (c.locationName ? `<br/>📍 ${escapeHtml(c.locationName)}` : '')
+        + (c.address ? `<br/>${escapeHtml(c.address)}` : '')
         + (c.pendingDeliveryDeals ? `<br/>Ждёт доставку: ${c.pendingDeliveryDeals}` : '');
       const marker = inRoute
         ? L.marker([c.latitude, c.longitude], { icon: stopIcon(inRoute, isSel, !!delivered[c.id]), zIndexOffset: 500 })
@@ -492,7 +543,7 @@ export default function ClientsMapPage() {
     if (p) mapInstance.current?.flyTo(p, Math.max(zoom, mapInstance.current.getZoom()));
   };
 
-  const selectClient = (c: ClientMapPoint) => {
+  const selectClient = (c: MapStop) => {
     setSelectedId(c.id);
     if (hasCoords(c)) flyTo([c.latitude, c.longitude]);
   };
@@ -503,7 +554,7 @@ export default function ClientsMapPage() {
 
 
   const placingLabel = placing
-    ? placing.kind === 'client' ? placing.client.companyName : BASES[placing.base].title
+    ? placing.kind === 'stop' ? stopTitle(placing.stop) : BASES[placing.base].title
     : '';
 
   const step = (n: number, title: string, children: ReactNode, hint?: string) => (
@@ -652,7 +703,7 @@ export default function ClientsMapPage() {
                 color: '#fff', fontSize: 12, fontWeight: 700, lineHeight: '22px', textAlign: 'center',
               }}>{delivered[c.id] ? '✓' : i + 1}</span>
               <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => selectClient(c)}>
-                <Typography.Text ellipsis delete={!!delivered[c.id]} style={{ display: 'block' }}>{c.companyName}</Typography.Text>
+                <Typography.Text ellipsis delete={!!delivered[c.id]} style={{ display: 'block' }}>{stopTitle(c)}</Typography.Text>
                 {delivered[c.id] ? (
                   <Typography.Text type="success" ellipsis style={{ display: 'block', fontSize: 12 }}>
                     Доставлено {formatTime(delivered[c.id].at)}{delivered[c.id].byName ? ` · ${delivered[c.id].byName}` : ''}
@@ -723,7 +774,7 @@ export default function ClientsMapPage() {
     </div>
   );
 
-  const clientRow = (c: ClientMapPoint) => {
+  const clientRow = (c: MapStop) => {
     const onMap = hasCoords(c);
     const inRoute = routeOrder.has(c.id);
     return (
@@ -736,7 +787,10 @@ export default function ClientsMapPage() {
         }}
       >
         <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => selectClient(c)}>
-          <Typography.Text ellipsis style={{ display: 'block' }}>{c.companyName}</Typography.Text>
+          <Typography.Text ellipsis style={{ display: 'block' }}>
+            {c.client.companyName}
+            {c.locationName && <Tag style={{ marginLeft: 6 }}>📍 {c.locationName}</Tag>}
+          </Typography.Text>
           <Typography.Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12 }}>
             {c.address || 'адрес не указан'}
           </Typography.Text>
@@ -755,7 +809,7 @@ export default function ClientsMapPage() {
             </Button>
           )
         ) : canEditClient ? (
-          <Button size="small" onClick={() => void startPlacing({ kind: 'client', client: c })}>Отметить на карте</Button>
+          <Button size="small" onClick={() => void startPlacing({ kind: 'stop', stop: c })}>Отметить на карте</Button>
         ) : (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>нет точки</Typography.Text>
         )}
@@ -816,13 +870,13 @@ export default function ClientsMapPage() {
     <Card
       size="small"
       style={{ borderColor: '#faad14', marginBottom: 8 }}
-      title={<Typography.Text ellipsis>{selected.companyName}</Typography.Text>}
+      title={<Typography.Text ellipsis>{stopTitle(selected)}</Typography.Text>}
       extra={<Button size="small" type="text" icon={<CloseOutlined />} onClick={() => setSelectedId(null)} />}
     >
       <div style={{ fontSize: 13 }}>
         <div>{selected.contactName}{selected.phone ? ` · ${selected.phone}` : ''}</div>
         {selected.address && <div style={{ color: 'var(--ant-color-text-secondary, #8c8c8c)' }}>{selected.address}</div>}
-        <div>Менеджер: {selected.manager.fullName}</div>
+        <div>Менеджер: {selected.client.manager.fullName}</div>
         {selected.pendingDeliveryDeals > 0 && (
           <Tag color="orange" style={{ marginTop: 4 }}>заказ на доставку: {selected.pendingDeliveryDeals}</Tag>
         )}
@@ -839,9 +893,9 @@ export default function ClientsMapPage() {
             </Button>
           )
         )}
-        <Link to={`/clients/${selected.id}`}><Button>Карточка клиента</Button></Link>
+        <Link to={`/clients/${selected.client.id}`}><Button>Карточка клиента</Button></Link>
         {canEditClient && (
-          <Button type="link" onClick={() => void startPlacing({ kind: 'client', client: selected })}>
+          <Button type="link" onClick={() => void startPlacing({ kind: 'stop', stop: selected })}>
             {hasCoords(selected) ? 'Поправить точку' : 'Отметить на карте'}
           </Button>
         )}
@@ -933,7 +987,7 @@ export default function ClientsMapPage() {
         open={!!pending}
         title={pending?.placing.kind === 'base'
           ? `${BASES[pending.placing.base].emoji} ${BASES[pending.placing.base].title} — сохранить точку здесь?`
-          : `Отметить «${pending?.placing.kind === 'client' ? pending.placing.client.companyName : ''}» здесь?`}
+          : `Отметить «${pending?.placing.kind === 'stop' ? stopTitle(pending.placing.stop) : ''}» здесь?`}
         okText="Сохранить"
         cancelText="Выбрать другое место"
         onOk={confirmPlacement}

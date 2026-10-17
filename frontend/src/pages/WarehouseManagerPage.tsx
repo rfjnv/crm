@@ -9,6 +9,7 @@ import type { Deal, DeliveryType } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import DeliveryLocationTag from '../components/DeliveryLocationTag';
 import { useAuthStore } from '../store/authStore';
 import MobileCardList from '../components/MobileCardList';
 import { getFirstName } from '../lib/name-utils';
@@ -91,7 +92,7 @@ export default function WarehouseManagerPage() {
 
   const expandedRow = (r: Deal) => (
     <Descriptions size="small" column={isMobile ? 1 : 3} bordered>
-      {r.deliveryType && <Descriptions.Item label="Доставка"><DeliveryTag type={r.deliveryType} /></Descriptions.Item>}
+      {r.deliveryType && <Descriptions.Item label="Доставка"><DeliveryTag type={r.deliveryType} /> <DeliveryLocationTag deal={r} /></Descriptions.Item>}
       {r.vehicleNumber && <Descriptions.Item label="Номер машины">{r.vehicleNumber}</Descriptions.Item>}
       {r.vehicleType && <Descriptions.Item label="Тип машины">{r.vehicleType}</Descriptions.Item>}
       {r.deliveryComment && <Descriptions.Item label="Комментарий">{r.deliveryComment}</Descriptions.Item>}
@@ -132,6 +133,7 @@ export default function WarehouseManagerPage() {
 
         <Space size={6} wrap className="wm-mobile-card__chips">
           <DeliveryTag type={r.deliveryType} />
+          <DeliveryLocationTag deal={r} />
           <Tag color={isPickup ? 'geekblue' : 'cyan'}>{isPickup ? 'Ждет клиента' : 'Ждет машину'}</Tag>
           {r.vehicleNumber && <Tag>{`${r.vehicleType || ''} ${r.vehicleNumber}`.trim()}</Tag>}
           <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
@@ -202,6 +204,7 @@ export default function WarehouseManagerPage() {
 
         <Space size={6} wrap className="wm-mobile-card__chips">
           <DeliveryTag type={r.deliveryType} />
+          <DeliveryLocationTag deal={r} />
           <Tag color={needsDriver ? 'red' : 'green'}>{summaryStatus}</Tag>
           {r.deliveryDriver && <Tag color="green">{getFirstName(r.deliveryDriver.fullName)}</Tag>}
           <ReceiptPunchedTag isReceiptPunched={r.isReceiptPunched} />
@@ -282,7 +285,7 @@ export default function WarehouseManagerPage() {
               key: 'client',
               render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
             },
-            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
+            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType, r: Deal) => <Space size={4} wrap><DeliveryTag type={v} /><DeliveryLocationTag deal={r} /></Space>, width: 110 },
             { title: 'Машина', key: 'vehicle', render: (_: unknown, r: Deal) => r.vehicleNumber ? `${r.vehicleType || ''} ${r.vehicleNumber}`.trim() : '—', width: 160 },
             { title: 'Сумма', dataIndex: 'amount', render: (v: string) => formatUZS(Number(v)), width: 130 },
             {
@@ -336,7 +339,7 @@ export default function WarehouseManagerPage() {
               key: 'client',
               render: (_: unknown, r: Deal) => <ClientCompanyDisplay client={r.client} link />,
             },
-            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType) => <DeliveryTag type={v} />, width: 110 },
+            { title: 'Доставка', dataIndex: 'deliveryType', render: (v: DeliveryType, r: Deal) => <Space size={4} wrap><DeliveryTag type={v} /><DeliveryLocationTag deal={r} /></Space>, width: 110 },
             {
               title: 'Водитель', key: 'driver', width: 140,
               render: (_: unknown, r: Deal) => r.deliveryDriver
