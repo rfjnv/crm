@@ -22,6 +22,7 @@ import {
 import { proposeTaskPlan } from './rop-agent.plans';
 import { describeTaskAction, listTasks, proposeTaskChanges, type ListTasksInput } from './rop-agent.task-actions';
 import { requestCallback } from './rop-agent.callback';
+import { phoneCallsTool, type PhoneCallsInput } from './rop-agent.phone-calls';
 import { managerCallReports, requestManagerCall } from './rop-agent.missions';
 import { taskPlanResults } from './rop-agent.control';
 import { forgetTool, rememberTool } from './rop-agent.memory';
@@ -438,6 +439,22 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'phone_calls',
+    description: 'Звонки менеджеров с рабочих телефонов (раздел «Звонки» в CRM): по каждому менеджеру — сколько звонков, '
+      + 'сколько состоялось разговоров, минуты, со сколькими клиентами говорили, пропущенные и кому так и не перезвонили '
+      + '(со списком). Для вопросов «кто сколько звонил», «как работает Наргиза на телефоне», «кому не перезвонили».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date_from: { type: 'string', description: 'С какого дня, YYYY-MM-DD (по Ташкенту).' },
+        date_to: { type: 'string', description: 'По какой день включительно, YYYY-MM-DD; по умолчанию сегодня.' },
+        days: { type: 'number', description: 'Если без date_from: сколько последних дней, по умолчанию 7 (до 92).' },
+        manager_id: { type: 'string', description: 'Только этот менеджер (id из list_managers).' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'call_me',
     description: 'Белла звонит собеседнику в Telegram голосом (с аккаунта Беллы) — когда просят «позвони мне», «перезвони», «набери меня». '
       + 'В группе вопрос подписан «[спрашивает …]» — передай имя спросившего в person_name, иначе позвонишь владельцу разговора. '
@@ -742,6 +759,8 @@ export function describeToolCall(name: string, input: Record<string, unknown>): 
       return 'Проверка розданных задач';
     case 'list_tasks':
       return 'Задачи в CRM';
+    case 'phone_calls':
+      return 'Звонки менеджеров с телефонов';
     case 'call_me':
       return 'Звоню в Telegram';
     case 'call_manager':
@@ -818,6 +837,7 @@ export async function executeTool(
         break;
       case 'forget': result = await forgetTool(input); break;
       case 'list_tasks': result = await listTasks(input as ListTasksInput); break;
+      case 'phone_calls': result = await phoneCallsTool(input as PhoneCallsInput); break;
       case 'call_me': result = await callMeTool(ctx.userId, input.person_name); break;
       case 'call_manager': result = await requestManagerCall(ctx.userId, input); break;
       case 'manager_call_reports': result = await managerCallReports(input as { manager_id?: string; limit?: number }); break;

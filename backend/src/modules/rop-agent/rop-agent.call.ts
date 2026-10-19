@@ -45,7 +45,7 @@ const CALL_TOOLS = [
   'kpi_forecast', 'client_card', 'client_purchase_cycles', 'loss_reasons', 'list_managers',
   'task_plan_results', 'list_tasks', 'slow_stock', 'stocked_product_buyers', 'market_comparison',
   'product_economics', 'call_reviews', 'remember', 'propose_task_plan', 'assign_task_plan',
-  'call_manager', 'manager_call_reports',
+  'call_manager', 'manager_call_reports', 'phone_calls',
 ];
 
 /** Раздать черновик плана — только в звонке (в чате это кнопка «Раздать» у директора). */

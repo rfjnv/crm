@@ -129,6 +129,13 @@ export function digestToTelegramHtml(d: DigestData, commentary: string | null): 
     lines.push('', '<b>Не успевают план (прогноз)</b>');
     for (const b of d.forecast.behind.slice(0, 6)) lines.push(`${esc(b.manager)}: ${ruPct(b.forecastPct)} · не хватает ${shortMoney(b.gap)}`);
   }
+  if (d.phoneCalls?.length) {
+    lines.push('', '<b>Звонки с телефонов (разговоры / всего · мин)</b>');
+    for (const c of d.phoneCalls.slice(0, 6)) {
+      const missed = c.missedNotCalledBack ? ` · не перезвонили: ${c.missedNotCalledBack}` : '';
+      lines.push(`${esc(c.manager)}: ${c.talked} / ${c.calls} · ${c.talkMin} мин${missed}`);
+    }
+  }
   if (d.plans.length) {
     // По менеджеру одной строкой: сколько клиентов отработал из розданных и сколько задач просрочено.
     const byManager = new Map<string, { touched: number; clients: number; tasks: number; late: number; allOk: boolean }>();

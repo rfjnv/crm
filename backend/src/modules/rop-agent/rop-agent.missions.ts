@@ -9,6 +9,7 @@ import { directorUserIds } from './rop-agent.people';
 import { kpiForecast } from './rop-agent.kpi';
 import { clientPurchaseCycles } from './rop-agent.analysis';
 import { agentBot } from './rop-agent.bot';
+import { managerCallsLine } from './rop-agent.phone-calls';
 
 /**
  * Белла звонит менеджеру по поручению директора: «свяжись с Дилнозой, узнай, как идут
@@ -188,6 +189,10 @@ async function managerContext(managerId: string): Promise<string> {
   if (tasks.length) {
     lines.push(`Открытые задачи: ${tasks.map((t) => `«${t.title.slice(0, 80)}»${t.dueDate ? ` до ${t.dueDate.toISOString().slice(5, 10).split('-').reverse().join('.')}` : ''}`).join('; ')}.`);
   }
+  try {
+    const calls = await managerCallsLine(managerId);
+    if (calls) lines.push(calls);
+  } catch { /* не страшно */ }
   try {
     const lapsed = await clientPurchaseCycles({ status: 'overdue', manager_id: managerId, limit: 5 });
     if (lapsed.clients.length) {

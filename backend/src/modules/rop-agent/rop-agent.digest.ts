@@ -13,6 +13,7 @@ import { clientPurchaseCycles, slowStock } from './rop-agent.analysis';
 import { taskPlanResults } from './rop-agent.control';
 import { activeMemories, memoryText } from './rop-agent.memory';
 import { kpiForecast } from './rop-agent.kpi';
+import { managerCallStats } from './rop-agent.phone-calls';
 import { dayOffNote } from './rop-agent.calendar';
 import { assignableManagerIds } from './rop-agent.people';
 
@@ -70,6 +71,10 @@ export type DigestData = {
     daysPassed?: number;
     behind: { manager: string; plan: number; forecastPct: number; gap: number }[];
   };
+  /** Звонки с рабочих телефонов за день (может отсутствовать в старых сводках). */
+  phoneCalls?: {
+    manager: string; calls: number; talked: number; talkMin: number; missed: number; missedNotCalledBack: number;
+  }[];
   plans: {
     planId: string;
     title: string;
@@ -268,13 +273,24 @@ async function forecastBlock(date: string): Promise<DigestData['forecast']> {
   };
 }
 
+async function phoneCallsBlock(date: string): Promise<DigestData['phoneCalls']> {
+  const { managers } = await managerCallStats({ date_from: date, date_to: date });
+  return managers.map((m) => ({
+    manager: m.manager, calls: m.calls, talked: m.talked, talkMin: m.talk_min, missed: m.missed, missedNotCalledBack: m.missed_not_called_back,
+  }));
+}
+
 export async function collectDigestData(date: string): Promise<DigestData> {
   const [revenue, deals, managers, debts, clients, slow, plans, forecast] = await Promise.all([
     revenueBlock(date), dealsBlock(date), managersBlock(date), debtsBlock(date),
     clientsBlock(), slowStockBlock(), plansBlock(date),
     forecastBlock(date).catch((err) => { console.error('[rop-digest] forecast failed:', (err as Error).message); return undefined; }),
   ]);
-  return { date, dayOff: dayOffNote(date), revenue, deals, managers, debts, clients, slowStock: slow, plans, forecast };
+  const phoneCalls = await phoneCallsBlock(date).catch((err) => {
+    console.error('[rop-digest] phone calls failed:', (err as Error).message);
+    return undefined;
+  });
+  return { date, dayOff: dayOffNote(date), revenue, deals, managers, debts, clients, slowStock: slow, plans, forecast, phoneCalls };
 }
 
 // ─── Комментарий агента ─────────────────────────────────────────────────────
