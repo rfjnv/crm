@@ -10,7 +10,8 @@ import { authenticate } from '../../middleware/authenticate';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ownerScope } from '../../lib/scope';
 import { getSnapshot, saveSnapshot, isPastMonth, isPastYear } from '../../lib/snapshots';
-import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+import { assignRevenueBasedSegments, sortSegmentSummaryKeys } from '../../lib/clientRevenueSegments';
+
 import { responseCache } from '../../lib/responseCache';
 
 const router = Router();
@@ -2181,6 +2182,108 @@ router.get(
         companyName: r.company_name,
         revenue: Number(r.revenue),
         dealsCount: Number(r.deals_count),
+      })),
+    });
+  }),
+);
+
+// ── Категории товаров по месяцам за все годы ──
+// Отдаём сразу всю историю: экран сравнивает годы и строит прогноз по прошлым сезонам.
+// Выручка — та же, что в «Выручке по месяцам» (строки сделок по эффективной дате), поэтому
+// сумма по категориям за месяц совпадает с графиком на вкладке «Обзор».
+
+/** Первый год, с которого в CRM есть история продаж. */
+const HISTORY_FIRST_YEAR = 2024;
+const NO_CATEGORY = 'Без категории';
+
+const SQL_ITEM_MONTH = Prisma.sql`EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int`;
+const SQL_ITEM_YEAR = Prisma.sql`EXTRACT(YEAR FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int`;
+
+router.get(
+  '/categories',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+    const { yearStart } = getYearBounds(HISTORY_FIRST_YEAR);
+
+    const rows = await prisma.$queryRaw<
+      { year: number; month: number; category: string; revenue: string; qty: string; deals: string; products: string }[]
+    >(
+      Prisma.sql`SELECT
+        ${SQL_ITEM_YEAR} as year,
+        ${SQL_ITEM_MONTH} as month,
+        COALESCE(NULLIF(TRIM(p.category), ''), ${NO_CATEGORY}) as category,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
+        COALESCE(SUM(di.requested_qty), 0)::text as qty,
+        COUNT(DISTINCT d.id)::text as deals,
+        COUNT(DISTINCT di.product_id)::text as products
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      LEFT JOIN products p ON p.id = di.product_id
+      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}${dealFilter}
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 2`,
+    );
+
+    res.json({
+      rows: rows.map((r) => ({
+        year: Number(r.year),
+        month: Number(r.month),
+        category: r.category,
+        revenue: Number(r.revenue),
+        qty: Math.round(Number(r.qty) * 100) / 100,
+        deals: Number(r.deals),
+        products: Number(r.products),
+      })),
+    });
+  }),
+);
+
+router.get(
+  '/categories/products',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const category = typeof req.query.category === 'string' ? req.query.category : '';
+    if (!category) {
+      res.status(400).json({ error: 'Не указана категория' });
+      return;
+    }
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+    const { yearStart } = getYearBounds(HISTORY_FIRST_YEAR);
+    const categoryFilter = category === NO_CATEGORY
+      ? Prisma.sql`(p.category IS NULL OR TRIM(p.category) = '')`
+      : Prisma.sql`TRIM(p.category) = ${category}`;
+
+    const rows = await prisma.$queryRaw<
+      { year: number; month: number; product_id: string; name: string; unit: string; revenue: string; qty: string; buyers: string }[]
+    >(
+      Prisma.sql`SELECT
+        ${SQL_ITEM_YEAR} as year,
+        ${SQL_ITEM_MONTH} as month,
+        p.id as product_id, p.name, p.unit,
+        COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
+        COALESCE(SUM(di.requested_qty), 0)::text as qty,
+        COUNT(DISTINCT d.client_id)::text as buyers
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      JOIN products p ON p.id = di.product_id
+      WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+        AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}${dealFilter}
+        AND ${categoryFilter}
+      GROUP BY 1, 2, p.id, p.name, p.unit
+      ORDER BY 1, 2`,
+    );
+
+    res.json({
+      category,
+      rows: rows.map((r) => ({
+        year: Number(r.year),
+        month: Number(r.month),
+        productId: r.product_id,
+        name: r.name,
+        unit: r.unit,
+        revenue: Number(r.revenue),
+        qty: Math.round(Number(r.qty) * 100) / 100,
+        buyers: Number(r.buyers),
       })),
     });
   }),

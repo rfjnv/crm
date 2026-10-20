@@ -1708,6 +1708,29 @@ export interface HistoryTopClient {
   debt: number;
 }
 
+/** Продажи категории за месяц (GET /analytics/history/categories). */
+export interface HistoryCategoryMonthRow {
+  year: number;
+  month: number;
+  category: string;
+  revenue: number;
+  qty: number;
+  deals: number;
+  products: number;
+}
+
+/** Продажи товара категории за месяц (GET /analytics/history/categories/products). */
+export interface HistoryCategoryProductMonthRow {
+  year: number;
+  month: number;
+  productId: string;
+  name: string;
+  unit: string;
+  revenue: number;
+  qty: number;
+  buyers: number;
+}
+
 export interface HistoryTopProduct {
   id: string;
   name: string;

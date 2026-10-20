@@ -10,6 +10,8 @@ import type {
   HistoryClientDaysData,
   HistoryClientPeriodData,
   HistoryProductBuyersData,
+  HistoryCategoryMonthRow,
+  HistoryCategoryProductMonthRow,
   HistoryCashflowData,
   DataQualityData,
   ExchangeData,
@@ -186,6 +188,13 @@ export const analyticsApi = {
     client.get<IntelligenceData>('/analytics/intelligence', { params: analyticsPeriodParams(query) }).then((r) => r.data),
   getHistory: (year: number = new Date().getFullYear()) =>
     client.get<HistoryData>('/analytics/history', { params: { year } }).then((r) => r.data),
+  /** Вся история продаж по категориям товаров, по месяцам. */
+  getHistoryCategories: () =>
+    client.get<{ rows: HistoryCategoryMonthRow[] }>('/analytics/history/categories').then((r) => r.data.rows),
+  getHistoryCategoryProducts: (category: string) =>
+    client.get<{ category: string; rows: HistoryCategoryProductMonthRow[] }>(
+      '/analytics/history/categories/products', { params: { category } },
+    ).then((r) => r.data.rows),
   getHistoryExtended: (year: number = new Date().getFullYear()) =>
     client.get<HistoryExtendedData>('/analytics/history/extended', { params: { year } }).then((r) => r.data),
   getHistoryDrilldown: (type: string, filters?: { managerId?: string; method?: string }, year: number = new Date().getFullYear()) =>
