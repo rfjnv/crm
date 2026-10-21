@@ -1,14 +1,15 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, Col, Empty, Row, Segmented, Spin, Statistic, Table, Tag, Tooltip, Typography, theme,
+  Breadcrumb, Card, Col, Empty, Row, Segmented, Select, Spin, Statistic, Table, Tag, Tooltip, Typography, theme,
 } from 'antd';
-import { CloseOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { Bar, Column } from '@ant-design/charts';
+import { BarChartOutlined, InfoCircleOutlined, LineChartOutlined, PieChartOutlined } from '@ant-design/icons';
+import { Bar, Column, Line, Pie } from '@ant-design/charts';
 import { analyticsApi } from '../api/analytics.api';
 import { useThemeStore } from '../store/themeStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatShortNumber } from '../utils/currency';
+import { smartFilterOption } from '../utils/translit';
 import {
   bestMonth, buildSeries, emptyMonths, forecastYear, seasonalPeakMonth, yearOverYear,
   type ForecastContext, type YearForecast, type YearSeries,
@@ -18,15 +19,32 @@ const { Text, Paragraph } = Typography;
 
 const MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const MONTHS_FULL = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-/** Столько категорий на общем графике, остальные — «Прочее». */
-const TOP_CATEGORIES = 8;
+/** Столько категорий / товаров на графике, остальные — «Прочее». */
+const TOP_ON_CHART = 8;
 const OTHER = 'Прочее';
-const TOP_PRODUCTS_CHART = 15;
+const TOP_PRODUCTS_BAR = 15;
 
 const PALETTE = ['#5B8FF9', '#5AD8A6', '#F6BD16', '#E86452', '#6DC8EC', '#945FB9', '#FF9845', '#1E9493', '#BFBFBF'];
 const COLOR_FORECAST = '#FA8C16';
+/** Месяцы по сезонам: зима — синие, весна — зелёные, лето — оранжевые, осень — красные. */
+const MONTH_COLORS = [
+  '#2F54EB', '#597EF7', '#389E0D', '#52C41A', '#13A8A8', '#FA8C16',
+  '#D46B08', '#D4B106', '#CF1322', '#F5222D', '#AD4E00', '#1D39C4',
+];
 
 type Metric = 'revenue' | 'qty';
+type ChartType = 'bar' | 'line' | 'pie';
+
+const CHART_TYPE_KEY = 'historyCategories.chartType';
+
+function loadChartType(): ChartType {
+  try {
+    const v = localStorage.getItem(CHART_TYPE_KEY);
+    return v === 'line' || v === 'pie' ? v : 'bar';
+  } catch {
+    return 'bar';
+  }
+}
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ru-RU');
@@ -85,38 +103,257 @@ function statsFor(
   };
 }
 
-/**
- * Помесячный график одной категории или товара: факт за все годы рядом и прогноз
- * на оставшиеся месяцы текущего года.
- */
-function YearsChart({ series, ctx, metric, unit }: {
+/** Элемент графика уровня: категория (на уровне «все») или товар (внутри категории). */
+interface ChartItem {
+  key: string;
+  name: string;
   series: YearSeries | undefined;
-  ctx: ForecastContext;
-  metric: Metric;
-  unit?: string;
-}) {
+}
+
+function useChartBase() {
   const { token } = theme.useToken();
   const isDark = useThemeStore((s) => s.mode) === 'dark';
+  return {
+    token,
+    chartTheme: isDark ? 'classicDark' : 'classic',
+    isDark,
+    axis: (yFormatter: (v: number) => string) => ({
+      x: { labelFill: token.colorTextSecondary, title: false, tick: false },
+      y: {
+        labelFill: token.colorTextSecondary,
+        title: false,
+        grid: true,
+        gridStroke: token.colorBorderSecondary,
+        gridLineDash: [0, 0],
+        labelFormatter: yFormatter,
+      },
+    }),
+    legend: { color: { itemLabelFill: token.colorText, position: 'top' as const } },
+  };
+}
+
+/**
+ * Главный график уровня: несколько категорий или товаров по месяцам выбранного года.
+ * Столбцы — стопкой с бледным прогнозом, линии — по факту, круговая — доли за год.
+ */
+function ItemsChart({ items, ctx, type, valueFmt, axisFmt, onPick, height }: {
+  items: ChartItem[];
+  ctx: ForecastContext;
+  type: ChartType;
+  valueFmt: (v: number) => string;
+  axisFmt: (v: number) => string;
+  onPick: (key: string) => void;
+  height: number;
+}) {
+  const base = useChartBase();
+
+  // Топ по году, остальное — «Прочее»
+  const prepared = useMemo(() => {
+    const withTotals = items.map((it) => {
+      const fc = forecastYear(it.series, ctx);
+      return { ...it, fc, total: fc.actual.reduce((s, v) => s + v, 0) };
+    }).filter((it) => it.total > 0 || it.fc.restOfYear > 0)
+      .sort((a, b) => b.total - a.total);
+    const top = withTotals.slice(0, TOP_ON_CHART);
+    const rest = withTotals.slice(TOP_ON_CHART);
+    const groups = top.map((t) => ({ key: t.key, name: t.name, fcs: [t.fc] }));
+    if (rest.length) groups.push({ key: OTHER, name: OTHER, fcs: rest.map((r) => r.fc) });
+    return groups.map((g) => {
+      const actual = emptyMonths();
+      const expected = emptyMonths();
+      for (const fc of g.fcs) {
+        fc.actual.forEach((v, i) => { actual[i] += v; });
+        fc.forecast.forEach((f, i) => { if (f != null) expected[i] += Math.max(0, f - fc.actual[i]); });
+      }
+      return { key: g.key, name: g.name, actual, expected, total: actual.reduce((s, v) => s + v, 0) };
+    });
+  }, [items, ctx]);
+
+  if (prepared.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`В ${ctx.year} продаж не было`} />;
+
+  const keyByName = new Map(prepared.map((p) => [p.name, p.key]));
+  const domain = prepared.map((p) => p.name);
+  const color = { color: { domain, range: PALETTE.slice(0, domain.length) } };
+  const pick = (name?: string) => {
+    const key = name ? keyByName.get(name) : undefined;
+    if (key && key !== OTHER) onPick(key);
+  };
+  const onReady = ({ chart }: { chart: { on: (e: string, cb: (ev: { data?: { data?: { name?: string } } }) => void) => void } }) => {
+    chart.on('element:click', (ev) => pick(ev?.data?.data?.name));
+  };
+
+  if (type === 'pie') {
+    const total = prepared.reduce((s, p) => s + p.total, 0);
+    return (
+      <Pie
+        data={prepared.filter((p) => p.total > 0).map((p) => ({ name: p.name, value: p.total }))}
+        angleField="value"
+        colorField="name"
+        innerRadius={0.55}
+        height={height}
+        theme={base.chartTheme}
+        scale={color}
+        legend={{ color: { itemLabelFill: base.token.colorText, position: 'right' as const } }}
+        label={{
+          text: (d: { value: number }) => (total > 0 && d.value / total >= 0.04 ? `${Math.round((d.value / total) * 100)}%` : ''),
+          style: { fontWeight: 600, fill: '#fff' },
+        }}
+        tooltip={{ title: 'name', items: [{ field: 'value', name: `За ${ctx.year}`, valueFormatter: valueFmt }] }}
+        style={{ cursor: 'pointer', stroke: base.isDark ? '#141414' : '#fff', lineWidth: 1 }}
+        onReady={onReady}
+      />
+    );
+  }
+
+  if (type === 'line') {
+    // У текущего года рисуем только прошедшие месяцы — будущие не «падают в ноль»
+    const lastMonth = ctx.year === ctx.nowYear ? ctx.nowMonth : 12;
+    const data = prepared.flatMap((p) => MONTHS.slice(0, lastMonth).map((month, i) => ({ month, name: p.name, value: p.actual[i] })));
+    return (
+      <Line
+        data={data}
+        xField="month"
+        yField="value"
+        colorField="name"
+        height={height}
+        theme={base.chartTheme}
+        scale={{ ...color, x: { domain: MONTHS } }}
+        shapeField="smooth"
+        point={{ shapeField: 'circle', sizeField: 3 }}
+        style={{ lineWidth: 2.5 }}
+        axis={base.axis(axisFmt)}
+        legend={base.legend}
+        tooltip={{ title: 'month', items: [{ field: 'value', channel: 'y', valueFormatter: valueFmt }] }}
+        onReady={onReady}
+      />
+    );
+  }
+
+  const data = MONTHS.flatMap((month, i) => prepared.flatMap((p) => [
+    { month, name: p.name, value: p.actual[i], kind: 'fact' },
+    ...(p.expected[i] > 0 ? [{ month, name: p.name, value: p.expected[i], kind: 'forecast' }] : []),
+  ]));
+  return (
+    <Column
+      data={data}
+      xField="month"
+      yField="value"
+      colorField="name"
+      stack
+      height={height}
+      theme={base.chartTheme}
+      scale={color}
+      style={{ inset: 1, cursor: 'pointer', fillOpacity: (d: { kind: string }) => (d.kind === 'forecast' ? 0.3 : 1) }}
+      axis={base.axis(axisFmt)}
+      legend={base.legend}
+      tooltip={{
+        title: 'month',
+        items: [(d: { name: string; value: number; kind: string }) => ({
+          name: d.kind === 'forecast' ? `${d.name} — ещё ожидается` : d.name,
+          value: valueFmt(d.value),
+        })],
+      }}
+      onReady={onReady}
+    />
+  );
+}
+
+/**
+ * Один ряд (категория или товар) по месяцам за все годы и прогноз текущего года.
+ * Круговая — как делится выбранный год по месяцам.
+ */
+function YearsChart({ series, ctx, type, valueFmt, axisFmt, height = 280 }: {
+  series: YearSeries | undefined;
+  ctx: ForecastContext;
+  type: ChartType;
+  valueFmt: (v: number) => string;
+  axisFmt: (v: number) => string;
+  height?: number;
+}) {
+  const base = useChartBase();
   const years = [...(series?.keys() ?? [])].filter((y) => y <= ctx.year).sort((a, b) => a - b);
   const forecast = forecastYear(series, ctx);
   const fcLabel = `Прогноз ${ctx.year}`;
   const hasForecast = forecast.forecast.some((v) => v != null && v > 0);
+  if (years.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Продаж не было" />;
+
+  if (type === 'pie') {
+    const yearValues = series?.get(ctx.year) ?? emptyMonths();
+    const total = yearValues.reduce((s, v) => s + v, 0);
+    if (total <= 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`В ${ctx.year} продаж не было`} />;
+    return (
+      <Pie
+        data={MONTHS.map((month, i) => ({ month, value: yearValues[i] })).filter((d) => d.value > 0)}
+        angleField="value"
+        colorField="month"
+        innerRadius={0.55}
+        height={height}
+        theme={base.chartTheme}
+        scale={{ color: { domain: MONTHS, range: MONTH_COLORS } }}
+        legend={{ color: { itemLabelFill: base.token.colorText, position: 'right' as const } }}
+        label={{
+          text: (d: { month: string; value: number }) => (d.value / total >= 0.05 ? d.month : ''),
+          style: { fontWeight: 600, fill: '#fff' },
+        }}
+        tooltip={{
+          title: 'month',
+          items: [(d: { value: number }) => ({
+            name: `Доля ${ctx.year}`,
+            value: `${valueFmt(d.value)} · ${Math.round((d.value / total) * 100)}%`,
+          })],
+        }}
+        style={{ stroke: base.isDark ? '#141414' : '#fff', lineWidth: 1 }}
+      />
+    );
+  }
+
+  // Прошлые годы — серым (чем ближе, тем темнее), выбранный — основным цветом
+  const older = base.isDark ? ['#8c8c8c', '#595959', '#434343'] : ['#8c8c8c', '#bfbfbf', '#d9d9d9'];
+  const domain = [...years.map(String), ...(hasForecast ? [fcLabel] : [])];
+  const range = [
+    ...years.map((y) => (y === ctx.year ? base.token.colorPrimary : older[Math.min(older.length - 1, ctx.year - y - 1)])),
+    ...(hasForecast ? [COLOR_FORECAST] : []),
+  ];
+  const tooltip = { title: 'month', items: [{ field: 'value', channel: 'y', valueFormatter: valueFmt }] };
+
+  if (type === 'line') {
+    const lastMonth = ctx.year === ctx.nowYear ? ctx.nowMonth : 12;
+    const data = [
+      ...years.flatMap((y) => MONTHS
+        .slice(0, y === ctx.year ? lastMonth : 12)
+        .map((month, i) => ({ month, series: String(y), value: series?.get(y)?.[i] ?? 0 }))),
+      // Прогноз продолжает линию года с текущего месяца
+      ...(hasForecast ? MONTHS.flatMap((month, i) => {
+        const f = forecast.forecast[i];
+        return f == null ? [] : [{ month, series: fcLabel, value: f }];
+      }) : []),
+    ];
+    return (
+      <Line
+        data={data}
+        xField="month"
+        yField="value"
+        colorField="series"
+        height={height}
+        theme={base.chartTheme}
+        scale={{ color: { domain, range }, x: { domain: MONTHS } }}
+        shapeField="smooth"
+        point={{ shapeField: 'circle', sizeField: 3 }}
+        style={{
+          lineWidth: (d: { series: string }[]) => (d[0]?.series === String(ctx.year) ? 3 : 2),
+          lineDash: (d: { series: string }[]) => (d[0]?.series === fcLabel ? [6, 4] : [0, 0]),
+        }}
+        axis={base.axis(axisFmt)}
+        legend={base.legend}
+        tooltip={tooltip}
+      />
+    );
+  }
 
   const data = MONTHS.flatMap((month, i) => [
     ...years.map((y) => ({ month, series: String(y), value: series?.get(y)?.[i] ?? 0 })),
     ...(hasForecast ? [{ month, series: fcLabel, value: forecast.forecast[i] ?? 0 }] : []),
   ]);
-  if (years.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Продаж не было" />;
-
-  // Прошлые годы — серым (чем ближе, тем темнее), выбранный — основным цветом
-  const older = isDark ? ['#8c8c8c', '#595959', '#434343'] : ['#8c8c8c', '#bfbfbf', '#d9d9d9'];
-  const domain = [...years.map(String), ...(hasForecast ? [fcLabel] : [])];
-  const range = [
-    ...years.map((y) => (y === ctx.year ? token.colorPrimary : older[Math.min(older.length - 1, ctx.year - y - 1)])),
-    ...(hasForecast ? [COLOR_FORECAST] : []),
-  ];
-  const valueFmt = (v: number) => (metric === 'revenue' ? fmt(v) : `${fmtQty(v)}${unit ? ` ${unit}` : ''}`);
-
   return (
     <Column
       data={data}
@@ -124,35 +361,25 @@ function YearsChart({ series, ctx, metric, unit }: {
       yField="value"
       colorField="series"
       group
-      height={280}
-      theme={isDark ? 'classicDark' : 'classic'}
+      height={height}
+      theme={base.chartTheme}
       scale={{ color: { domain, range } }}
       style={{
         radiusTopLeft: 3,
         radiusTopRight: 3,
         fillOpacity: (d: { series: string }) => (d.series === fcLabel ? 0.55 : 1),
       }}
-      axis={{
-        x: { labelFill: token.colorTextSecondary, title: false, tick: false },
-        y: {
-          labelFill: token.colorTextSecondary,
-          title: false,
-          grid: true,
-          gridStroke: token.colorBorderSecondary,
-          gridLineDash: [0, 0],
-          labelFormatter: (v: number) => (metric === 'revenue' ? formatShortNumber(v) : fmtQty(v)),
-        },
-      }}
-      legend={{ color: { itemLabelFill: token.colorText, position: 'top' } }}
-      tooltip={{ title: 'month', items: [{ field: 'value', channel: 'y', valueFormatter: valueFmt }] }}
+      axis={base.axis(axisFmt)}
+      legend={base.legend}
+      tooltip={tooltip}
       interaction={{ elementHighlightByX: true }}
     />
   );
 }
 
 /**
- * Аналитика (история) → «Категории»: что и в каком месяце продаётся лучше всего,
- * с переходом от категории к её товарам и прогнозом по прошлым годам.
+ * Аналитика (история) → «Категории»: что и в каком месяце продаётся лучше всего.
+ * Уровни: все категории → товары категории → один товар по годам; тип графика на выбор.
  */
 export default function HistoryCategoriesPanel({ year }: { year: number }) {
   const { token } = theme.useToken();
@@ -160,7 +387,17 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
   const isMobile = useIsMobile();
   const [category, setCategory] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
-  const [productMetric, setProductMetric] = useState<Metric>('revenue');
+  const [metric, setMetric] = useState<Metric>('revenue');
+  const [chartType, setChartTypeState] = useState<ChartType>(loadChartType);
+
+  const setChartType = (t: ChartType) => {
+    setChartTypeState(t);
+    try {
+      localStorage.setItem(CHART_TYPE_KEY, t);
+    } catch {
+      // без памяти о выборе — не страшно
+    }
+  };
 
   const now = new Date();
   const ctx: ForecastContext = useMemo(
@@ -193,49 +430,10 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
   const categories = useMemo(
     () => [...catSeries.keys()]
       .map((name) => statsFor(name, name, catSeries.get(name), catQty.get(name), yearTotal, ctx))
-      .filter((c) => c.total > 0 || (c.forecast.restOfYear > 0))
+      .filter((c) => c.total > 0 || c.forecast.restOfYear > 0)
       .sort((a, b) => b.total - a.total),
     [catSeries, catQty, yearTotal, ctx],
   );
-  const chartCategories = categories.slice(0, TOP_CATEGORIES).map((c) => c.name);
-  const hasOther = categories.length > TOP_CATEGORIES;
-
-  /** Общий график: факт по категориям стопкой, сверху бледным — сколько ещё ожидается. */
-  const stackData = useMemo(() => {
-    const top = new Set(chartCategories);
-    const out: { month: string; category: string; value: number; kind: 'fact' | 'forecast' }[] = [];
-    MONTHS.forEach((month, i) => {
-      const fact = new Map<string, number>();
-      const expected = new Map<string, number>();
-      for (const c of categories) {
-        const key = top.has(c.name) ? c.name : OTHER;
-        fact.set(key, (fact.get(key) ?? 0) + c.forecast.actual[i]);
-        const f = c.forecast.forecast[i];
-        if (f != null) expected.set(key, (expected.get(key) ?? 0) + Math.max(0, f - c.forecast.actual[i]));
-      }
-      for (const key of [...chartCategories, ...(hasOther ? [OTHER] : [])]) {
-        out.push({ month, category: key, value: fact.get(key) ?? 0, kind: 'fact' });
-        const e = expected.get(key) ?? 0;
-        if (e > 0) out.push({ month, category: key, value: e, kind: 'forecast' });
-      }
-    });
-    return out;
-  }, [categories, chartCategories, hasOther]);
-
-  /** Какая категория была первой в каждом месяце выбранного года. */
-  const leaders = useMemo(() => MONTHS.map((_, i) => {
-    let best: SeriesStats | null = null;
-    for (const c of categories) {
-      if (c.forecast.actual[i] > 0 && (!best || c.forecast.actual[i] > best.forecast.actual[i])) best = c;
-    }
-    return best ? { name: best.name, value: best.forecast.actual[i] } : null;
-  }), [categories]);
-
-  const selectCategory = (name: string | null) => {
-    if (name === OTHER) return;
-    setCategory(name);
-    setProductId(null);
-  };
 
   // ── Товары выбранной категории ──
   const prodSeries = useMemo(() => buildSeries(productRows ?? [], (r) => r.productId, (r) => r.revenue), [productRows]);
@@ -251,23 +449,72 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
     const catTotal = selectedCategory?.total ?? 0;
     return [...productMeta.entries()]
       .map(([id, meta]) => statsFor(id, meta.name, prodSeries.get(id), prodQty.get(id), catTotal, ctx, meta.unit))
-      .filter((p) => p.total > 0 || p.forecast.restOfYear > 0)
+      .filter((p) => p.total > 0 || p.qty > 0 || p.forecast.restOfYear > 0)
       .sort((a, b) => b.total - a.total);
   }, [productMeta, prodSeries, prodQty, selectedCategory, ctx]);
-  const selectedProduct = products.find((p) => p.key === productId) ?? null;
+  // Список для выбора — все товары категории, даже без продаж в этом году
+  const productOptions = useMemo(
+    () => [...productMeta.entries()]
+      .map(([id, meta]) => ({ value: id, label: meta.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
+    [productMeta],
+  );
+  const selectedProduct = productId
+    ? (products.find((p) => p.key === productId)
+      ?? (productMeta.has(productId)
+        ? statsFor(productId, productMeta.get(productId)!.name, prodSeries.get(productId), prodQty.get(productId), selectedCategory?.total ?? 0, ctx, productMeta.get(productId)!.unit)
+        : null))
+    : null;
 
-  const productBarData = products
-    .filter((p) => (productMetric === 'revenue' ? p.total : p.qty) > 0)
-    .sort((a, b) => (productMetric === 'revenue' ? b.total - a.total : b.qty - a.qty))
-    .slice(0, TOP_PRODUCTS_CHART)
-    .map((p) => ({ id: p.key, name: p.name, value: productMetric === 'revenue' ? p.total : p.qty, unit: p.unit ?? '' }));
+  /** Какая категория (или товар внутри категории) была первой в каждом месяце. */
+  const levelStats = category ? products : categories;
+  const leaders = useMemo(() => MONTHS.map((_, i) => {
+    let best: SeriesStats | null = null;
+    for (const c of levelStats) {
+      if (c.forecast.actual[i] > 0 && (!best || c.forecast.actual[i] > best.forecast.actual[i])) best = c;
+    }
+    return best ? { key: best.key, name: best.name, value: best.forecast.actual[i] } : null;
+  }), [levelStats]);
+
+  const selectCategory = (name: string | null) => {
+    setCategory(name);
+    setProductId(null);
+    if (!name) setMetric('revenue');
+  };
 
   if (isLoading) return <Spin style={{ display: 'block', margin: '60px auto' }} />;
   if (!rows || rows.length === 0) return <Empty description="Продаж пока нет" />;
 
   const chartTheme = isDark ? 'classicDark' : 'classic';
-  const colorDomain = [...chartCategories, ...(hasOther ? [OTHER] : [])];
-  const prevYearTotal = (totalSeries?.get(year - 1) ?? emptyMonths()).reduce((s, v) => s + v, 0);
+  // Количество складывать можно только внутри категории — у разных категорий разные единицы
+  const useQty = metric === 'qty' && !!category;
+  const unit = selectedProduct?.unit;
+  const valueFmt = (v: number) => (useQty ? `${fmtQty(v)}${unit ? ` ${unit}` : ''}` : fmt(v));
+  const axisFmt = (v: number) => (useQty ? fmtQty(v) : formatShortNumber(v));
+
+  // ── Что сейчас в фокусе: всё / категория / товар ──
+  const scope = selectedProduct ?? selectedCategory;
+  const scopeSeries = selectedProduct
+    ? (useQty ? prodQty : prodSeries).get(selectedProduct.key)
+    : selectedCategory
+      ? (useQty ? undefined : catSeries.get(selectedCategory.key))
+      : totalSeries;
+  const scopeForecast = selectedProduct || selectedCategory
+    ? (scope?.forecast ?? totalForecast)
+    : totalForecast;
+  const scopeTotal = scope ? scope.total : yearTotal;
+  const scopePrevTotal = ((selectedProduct ? prodSeries.get(selectedProduct.key) : selectedCategory ? catSeries.get(selectedCategory.key) : totalSeries)
+    ?.get(year - 1) ?? emptyMonths()).reduce((s, v) => s + v, 0);
+
+  const chartItems: ChartItem[] = category
+    ? products.map((p) => ({ key: p.key, name: p.name, series: (useQty ? prodQty : prodSeries).get(p.key) }))
+    : categories.map((c) => ({ key: c.key, name: c.name, series: catSeries.get(c.key) }));
+
+  const productBarData = products
+    .filter((p) => (useQty ? p.qty : p.total) > 0)
+    .sort((a, b) => (useQty ? b.qty - a.qty : b.total - a.total))
+    .slice(0, TOP_PRODUCTS_BAR)
+    .map((p) => ({ id: p.key, name: p.name, value: useQty ? p.qty : p.total, unit: p.unit ?? '' }));
 
   const statsColumns = (kind: 'category' | 'product') => [
     {
@@ -343,30 +590,104 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
   ];
 
   const nextMonthIdx = ctx.nowMonth; // индекс следующего месяца (0-based)
-  const nextMonthForecast = isCurrentYear && nextMonthIdx < 12 ? totalForecast.forecast[nextMonthIdx] : null;
+  const nextMonthForecast = isCurrentYear && nextMonthIdx < 12 ? scopeForecast.forecast[nextMonthIdx] : null;
+  const chartHeight = isMobile ? 300 : 380;
+  const levelTitle = selectedProduct
+    ? `${selectedProduct.name} — по месяцам и годам`
+    : category
+      ? `Товары категории «${category}» по месяцам — ${year}`
+      : `Категории по месяцам — ${year}`;
+
+  const toolbar = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+      <Select
+        showSearch
+        allowClear
+        placeholder="Все категории"
+        style={{ width: isMobile ? '100%' : 240 }}
+        value={category ?? undefined}
+        onChange={(v?: string) => selectCategory(v ?? null)}
+        filterOption={smartFilterOption}
+        options={categories.map((c) => ({ value: c.key, label: c.name }))}
+      />
+      <Select
+        showSearch
+        allowClear
+        disabled={!category}
+        loading={!!category && productsLoading}
+        placeholder={category ? 'Все товары категории' : 'Сначала выберите категорию'}
+        style={{ width: isMobile ? '100%' : 280 }}
+        value={productId ?? undefined}
+        onChange={(v?: string) => setProductId(v ?? null)}
+        filterOption={smartFilterOption}
+        options={productOptions}
+      />
+      <Segmented
+        value={chartType}
+        onChange={(v) => setChartType(v as ChartType)}
+        options={[
+          { value: 'bar', label: <Tooltip title="Столбцы"><BarChartOutlined /> {!isMobile && 'Столбцы'}</Tooltip> },
+          { value: 'line', label: <Tooltip title="Линии"><LineChartOutlined /> {!isMobile && 'Линии'}</Tooltip> },
+          { value: 'pie', label: <Tooltip title="Круговая"><PieChartOutlined /> {!isMobile && 'Круговая'}</Tooltip> },
+        ]}
+      />
+      {category && (
+        <Segmented
+          value={metric}
+          onChange={(v) => setMetric(v as Metric)}
+          options={[{ label: 'Выручка', value: 'revenue' }, { label: 'Количество', value: 'qty' }]}
+        />
+      )}
+    </div>
+  );
+
+  const chartHint = selectedProduct
+    ? (chartType === 'pie'
+      ? `Как продажи ${year} года делятся по месяцам.`
+      : `Каждый год — своим цветом${isCurrentYear && scopeForecast.basedOnYears.length ? ', оранжевым — прогноз на оставшиеся месяцы' : ''}.`)
+    : chartType === 'pie'
+      ? `Доли за ${year} год. Нажмите на сектор, чтобы открыть ${category ? 'товар' : 'категорию'}.`
+      : chartType === 'line'
+        ? `Каждая линия — ${category ? 'товар' : 'категория'}. Нажмите на линию, чтобы открыть её.`
+        : `Столбец — месяц, цвета — ${category ? 'товары' : 'категории'}${isCurrentYear ? '; бледная часть — сколько ещё ожидается по прошлым годам' : ''}. Нажмите на цвет, чтобы открыть.`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {toolbar}
+
+      <Breadcrumb
+        items={[
+          { title: <a onClick={() => selectCategory(null)}>Все категории</a> },
+          ...(category ? [{ title: selectedProduct ? <a onClick={() => setProductId(null)}>{category}</a> : <b>{category}</b> }] : []),
+          ...(selectedProduct ? [{ title: <b>{selectedProduct.name}</b> }] : []),
+        ]}
+      />
+
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}>
           <Card size="small">
-            <Statistic title={`Выручка ${year}`} value={fmt(yearTotal)} />
-            {prevYearTotal > 0 && !isCurrentYear && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {year - 1}: {fmt(prevYearTotal)} ({pct(yearTotal / prevYearTotal - 1)})
-              </Text>
-            )}
+            <Statistic title={`Выручка ${year}`} value={fmt(scopeTotal)} />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {selectedProduct
+                ? `${fmtQty(selectedProduct.qty)} ${selectedProduct.unit ?? ''}`
+                : scopePrevTotal > 0 && !isCurrentYear
+                  ? <>{year - 1}: {fmt(scopePrevTotal)} ({pct(scopeTotal / scopePrevTotal - 1)})</>
+                  : scope ? `${(scope.share * 100).toFixed(1)}% ${selectedCategory && !selectedProduct ? 'всех продаж' : ''}` : ''}
+            </Text>
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card size="small">
-            <Statistic title="Категорий продавалось" value={categories.filter((c) => c.total > 0).length} />
+            <Statistic
+              title={category ? 'Товаров продавалось' : 'Категорий продавалось'}
+              value={(category ? products : categories).filter((c) => c.total > 0).length}
+            />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              лидер: {categories[0]?.name ?? '—'}
+              {scope?.peak ? `пик сезона: ${monthName(scope.peak)}` : `лидер: ${(category ? products : categories)[0]?.name ?? '—'}`}
             </Text>
           </Card>
         </Col>
-        {isCurrentYear && totalForecast.basedOnYears.length > 0 && (
+        {isCurrentYear && scopeForecast.basedOnYears.length > 0 && (
           <>
             <Col xs={12} md={6}>
               <Card size="small">
@@ -374,16 +695,16 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
                   title={(
                     <span>
                       Ожидается до конца года{' '}
-                      <Tooltip title={`Среднее по ${totalForecast.basedOnYears.join(', ')} по каждому месяцу × темп этого года${totalForecast.trend != null ? ` (${totalForecast.trend.toFixed(2)})` : ''}. Это ориентир, а не обещание.`}>
+                      <Tooltip title={`Среднее по ${scopeForecast.basedOnYears.join(', ')} по каждому месяцу × темп этого года${scopeForecast.trend != null ? ` (${scopeForecast.trend.toFixed(2)})` : ''}. Это ориентир, а не обещание.`}>
                         <InfoCircleOutlined style={{ fontSize: 12, opacity: 0.6 }} />
                       </Tooltip>
                     </span>
                   )}
-                  value={`≈ ${fmt(totalForecast.restOfYear)}`}
+                  value={`≈ ${fmt(scopeForecast.restOfYear)}`}
                   styles={{ content: { color: COLOR_FORECAST } }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  итого за год ≈ {fmt(yearTotal + totalForecast.restOfYear)}
+                  итого за год ≈ {fmt(scopeTotal + scopeForecast.restOfYear)}
                 </Text>
               </Card>
             </Col>
@@ -391,8 +712,8 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
               <Card size="small">
                 <Statistic
                   title="Темп года к прошлым"
-                  value={totalForecast.trend != null ? `${totalForecast.trend >= 1 ? '+' : ''}${Math.round((totalForecast.trend - 1) * 100)}%` : '—'}
-                  styles={{ content: { color: totalForecast.trend == null ? undefined : totalForecast.trend >= 1 ? token.colorSuccess : token.colorError } }}
+                  value={scopeForecast.trend != null ? `${scopeForecast.trend >= 1 ? '+' : ''}${Math.round((scopeForecast.trend - 1) * 100)}%` : '—'}
+                  styles={{ content: { color: scopeForecast.trend == null ? undefined : scopeForecast.trend >= 1 ? token.colorSuccess : token.colorError } }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {nextMonthForecast != null ? `${MONTHS_FULL[nextMonthIdx]}: ≈ ${fmt(nextMonthForecast)}` : 'по закрытым месяцам'}
@@ -403,193 +724,137 @@ export default function HistoryCategoriesPanel({ year }: { year: number }) {
         )}
       </Row>
 
-      <Card size="small" title={`Что продаётся по месяцам — ${year}`}>
-        <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 12 }}>
-          Выручка строк сделок по категориям товаров (как в «Выручке по месяцам»).
-          {isCurrentYear && totalForecast.basedOnYears.length > 0 && ' Бледная часть столбца — сколько ещё ожидается по прошлым годам.'}
-          {' '}Нажмите на категорию в столбце или в таблице ниже, чтобы открыть её товары.
-        </Paragraph>
-        <Column
-          data={stackData}
-          xField="month"
-          yField="value"
-          colorField="category"
-          stack
-          height={isMobile ? 280 : 360}
-          theme={chartTheme}
-          scale={{ color: { domain: colorDomain, range: PALETTE.slice(0, colorDomain.length) } }}
-          style={{
-            inset: 1,
-            fillOpacity: (d: { kind: string }) => (d.kind === 'forecast' ? 0.3 : 1),
-            cursor: 'pointer',
-          }}
-          axis={{
-            x: { labelFill: token.colorTextSecondary, title: false, tick: false },
-            y: {
-              labelFill: token.colorTextSecondary,
-              title: false,
-              grid: true,
-              gridStroke: token.colorBorderSecondary,
-              gridLineDash: [0, 0],
-              labelFormatter: (v: number) => formatShortNumber(v),
-            },
-          }}
-          legend={{ color: { itemLabelFill: token.colorText, position: 'top' } }}
-          tooltip={{
-            title: 'month',
-            items: [(d: { category: string; value: number; kind: string }) => ({
-              name: d.kind === 'forecast' ? `${d.category} — ещё ожидается` : d.category,
-              value: fmt(d.value),
-            })],
-          }}
-          onReady={({ chart }) => {
-            chart.on('element:click', (ev: { data?: { data?: { category?: string } } }) => {
-              const name = ev?.data?.data?.category;
-              if (name) selectCategory(name);
-            });
-          }}
-        />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <Text type="secondary" style={{ fontSize: 12, marginRight: 4 }}>Лидер месяца:</Text>
-          {leaders.map((l, i) => l && (
-            <Tooltip key={i} title={`${MONTHS_FULL[i]}: ${l.name} — ${fmt(l.value)}`}>
-              <Tag style={{ cursor: 'pointer', margin: 0 }} onClick={() => selectCategory(l.name)}>
-                <b>{MONTHS[i]}</b> {l.name}
-              </Tag>
-            </Tooltip>
-          ))}
-        </div>
+      <Card size="small" title={levelTitle}>
+        <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 12 }}>{chartHint}</Paragraph>
+        {category && productsLoading ? <Spin style={{ display: 'block', margin: '60px auto' }} /> : selectedProduct ? (
+          <YearsChart
+            series={scopeSeries}
+            ctx={ctx}
+            type={chartType}
+            valueFmt={valueFmt}
+            axisFmt={axisFmt}
+            height={chartHeight}
+          />
+        ) : (
+          <ItemsChart
+            items={chartItems}
+            ctx={ctx}
+            type={chartType}
+            valueFmt={useQty ? (v) => fmtQty(v) : fmt}
+            axisFmt={axisFmt}
+            height={chartHeight}
+            onPick={(key) => (category ? setProductId(key) : selectCategory(key))}
+          />
+        )}
+        {!selectedProduct && chartType !== 'pie' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12, marginRight: 4 }}>Лидер месяца:</Text>
+            {leaders.map((l, i) => l && (
+              <Tooltip key={i} title={`${MONTHS_FULL[i]}: ${l.name} — ${fmt(l.value)}`}>
+                <Tag
+                  style={{ cursor: 'pointer', margin: 0, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  onClick={() => (category ? setProductId(l.key) : selectCategory(l.key))}
+                >
+                  <b>{MONTHS[i]}</b> {l.name}
+                </Tag>
+              </Tooltip>
+            ))}
+          </div>
+        )}
       </Card>
 
-      <Card size="small" title="Категории">
+      {selectedCategory && !selectedProduct && (
+        <Row gutter={[16, 16]}>
+          <Col xs={24} lg={12}>
+            <Card size="small" title={`«${category}» по месяцам и годам`}>
+              <YearsChart
+                series={(useQty ? undefined : catSeries.get(selectedCategory.key))}
+                ctx={ctx}
+                type={chartType === 'pie' ? 'bar' : chartType}
+                valueFmt={fmt}
+                axisFmt={formatShortNumber}
+              />
+              {useQty && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  У товаров категории разные единицы — по годам категория показана только в выручке.
+                </Text>
+              )}
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card size="small" title={`Товары — ${useQty ? 'количество' : 'выручка'} за ${year}`}>
+              {productBarData.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`В ${year} не продавались`} />
+              ) : (
+                <Bar
+                  data={productBarData}
+                  xField="name"
+                  yField="value"
+                  height={Math.max(200, productBarData.length * 28 + 40)}
+                  theme={chartTheme}
+                  style={{ radiusTopRight: 3, radiusBottomRight: 3, fill: token.colorPrimary, cursor: 'pointer' }}
+                  axis={{
+                    x: { labelFill: token.colorText, title: false, tick: false },
+                    y: {
+                      labelFill: token.colorTextSecondary,
+                      title: false,
+                      grid: true,
+                      gridStroke: token.colorBorderSecondary,
+                      gridLineDash: [0, 0],
+                      labelAutoRotate: false,
+                      labelAutoHide: true,
+                      labelFormatter: axisFmt,
+                    },
+                  }}
+                  tooltip={{
+                    title: 'name',
+                    items: [(d: { value: number; unit: string }) => ({
+                      name: useQty ? 'Количество' : 'Выручка',
+                      value: useQty ? `${fmtQty(d.value)} ${d.unit}` : fmt(d.value),
+                    })],
+                  }}
+                  onReady={({ chart }) => {
+                    chart.on('element:click', (ev: { data?: { data?: { id?: string } } }) => {
+                      const id = ev?.data?.data?.id;
+                      if (id) setProductId(id);
+                    });
+                  }}
+                />
+              )}
+              {products.length > TOP_PRODUCTS_BAR && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Топ-{TOP_PRODUCTS_BAR}, все {products.length} — в таблице ниже.
+                </Text>
+              )}
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      <Card
+        size="small"
+        title={category ? `Товары категории «${category}»` : 'Категории'}
+        extra={<Text type="secondary" style={{ fontSize: 12 }}>нажмите на строку, чтобы открыть</Text>}
+      >
         <Table<SeriesStats>
           rowKey="key"
           size="small"
-          dataSource={categories}
-          columns={statsColumns('category')}
-          pagination={false}
-          scroll={{ x: 900 }}
+          loading={!!category && productsLoading}
+          dataSource={category ? products : categories}
+          columns={statsColumns(category ? 'product' : 'category')}
+          pagination={(category ? products : categories).length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
+          scroll={{ x: category ? 1000 : 900 }}
           onRow={(r) => ({
-            onClick: () => selectCategory(r.name === category ? null : r.name),
-            style: { cursor: 'pointer', background: r.name === category ? token.colorPrimaryBg : undefined },
+            onClick: () => (category
+              ? setProductId(r.key === productId ? null : r.key)
+              : selectCategory(r.key)),
+            style: {
+              cursor: 'pointer',
+              background: (category ? r.key === productId : r.key === category) ? token.colorPrimaryBg : undefined,
+            },
           })}
         />
       </Card>
-
-      {category && (
-        <Card
-          size="small"
-          title={<span>Категория: <b>{category}</b></span>}
-          extra={<Button size="small" type="text" icon={<CloseOutlined />} onClick={() => selectCategory(null)} />}
-          styles={{ body: { display: 'flex', flexDirection: 'column', gap: 16 } }}
-        >
-          <div>
-            <Text strong>По месяцам и годам</Text>
-            <YearsChart series={catSeries.get(category)} ctx={ctx} metric="revenue" />
-          </div>
-
-          {productsLoading ? <Spin style={{ display: 'block', margin: '24px auto' }} /> : (
-            <>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Text strong>Товары категории — {year}</Text>
-                  <Segmented
-                    size="small"
-                    value={productMetric}
-                    onChange={(v) => setProductMetric(v as Metric)}
-                    options={[{ label: 'Выручка', value: 'revenue' }, { label: 'Количество', value: 'qty' }]}
-                  />
-                </div>
-                {productBarData.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`В ${year} не продавались`} />
-                ) : (
-                  <Bar
-                    data={productBarData}
-                    xField="name"
-                    yField="value"
-                    height={Math.max(160, productBarData.length * 30 + 40)}
-                    theme={chartTheme}
-                    style={{
-                      radiusTopRight: 3,
-                      radiusBottomRight: 3,
-                      fill: (d: { id: string }) => (d.id === productId ? COLOR_FORECAST : token.colorPrimary),
-                      cursor: 'pointer',
-                    }}
-                    axis={{
-                      x: { labelFill: token.colorText, title: false, tick: false },
-                      y: {
-                        labelFill: token.colorTextSecondary,
-                        title: false,
-                        grid: true,
-                        gridStroke: token.colorBorderSecondary,
-                        gridLineDash: [0, 0],
-                        labelAutoRotate: false,
-                        labelAutoHide: true,
-                        labelFormatter: (v: number) => (productMetric === 'revenue' ? formatShortNumber(v) : fmtQty(v)),
-                      },
-                    }}
-                    tooltip={{
-                      title: 'name',
-                      items: [(d: { value: number; unit: string }) => ({
-                        name: productMetric === 'revenue' ? 'Выручка' : 'Количество',
-                        value: productMetric === 'revenue' ? fmt(d.value) : `${fmtQty(d.value)} ${d.unit}`,
-                      })],
-                    }}
-                    onReady={({ chart }) => {
-                      chart.on('element:click', (ev: { data?: { data?: { id?: string } } }) => {
-                        const id = ev?.data?.data?.id;
-                        if (id) setProductId(id);
-                      });
-                    }}
-                  />
-                )}
-                {products.length > TOP_PRODUCTS_CHART && (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    На графике топ-{TOP_PRODUCTS_CHART}, все {products.length} — в таблице ниже.
-                  </Text>
-                )}
-              </div>
-
-              {selectedProduct && (
-                <Alert
-                  type="info"
-                  showIcon={false}
-                  closable
-                  onClose={() => setProductId(null)}
-                  title={(
-                    <div>
-                      <Text strong>{selectedProduct.name}</Text>
-                      <Text type="secondary">
-                        {' '}· {fmt(selectedProduct.total)} · {fmtQty(selectedProduct.qty)} {selectedProduct.unit}
-                        {selectedProduct.peak ? ` · пик сезона: ${monthName(selectedProduct.peak)}` : ''}
-                      </Text>
-                      <YearsChart
-                        series={(productMetric === 'revenue' ? prodSeries : prodQty).get(selectedProduct.key)}
-                        ctx={ctx}
-                        metric={productMetric}
-                        unit={selectedProduct.unit}
-                      />
-                    </div>
-                  )}
-                />
-              )}
-
-              <Table<SeriesStats>
-                rowKey="key"
-                size="small"
-                dataSource={products}
-                columns={statsColumns('product')}
-                pagination={products.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
-                scroll={{ x: 1000 }}
-                onRow={(r) => ({
-                  onClick: () => setProductId(r.key === productId ? null : r.key),
-                  style: { cursor: 'pointer', background: r.key === productId ? token.colorPrimaryBg : undefined },
-                })}
-              />
-            </>
-          )}
-        </Card>
-      )}
     </div>
   );
 }
