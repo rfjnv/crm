@@ -1630,10 +1630,11 @@ export default function HistoryAnalyticsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+      {/* На телефоне годы уходят под заголовок, а не сжимают его в столбик */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: isMobile ? 16 : 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: '1 1 260px' }}>
           <BackButton fallback="/analytics" />
-          <Title level={4} style={{ margin: 0 }}>
+          <Title level={4} style={{ margin: 0, minWidth: 0 }}>
             <BarChartOutlined /> Аналитика {year} (Исторические данные)
           </Title>
         </div>

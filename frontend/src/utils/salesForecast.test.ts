@@ -59,12 +59,23 @@ describe('forecastYear', () => {
     expect(forecastYear(new Map([[2026, months({ 1: 10 })]]), ctx).forecast.every((v) => v === null)).toBe(true);
   });
 
-  it('ограничивает темп, чтобы один выброс не раздул прогноз', () => {
+  it('один огромный месяц не раздувает темп года', () => {
     const series: YearSeries = new Map([
-      [2025, months({ 1: 1, 2: 1, 3: 1, 4: 10 })],
-      [2026, months({ 1: 1000 })],
+      [2025, months({ 1: 100, 2: 100, 3: 100, 4: 100 })],
+      // Март — разовая сделка в 50 раз больше обычного
+      [2026, months({ 1: 100, 2: 100, 3: 5000 })],
     ]);
-    expect(forecastYear(series, ctx).trend).toBe(4);
+    const f = forecastYear(series, ctx);
+    expect(f.trend).toBeCloseTo((100 + 100 + 300) / 300);
+    expect(f.forecast[3]).toBe(167);
+  });
+
+  it('темп не выше чем втрое', () => {
+    const series: YearSeries = new Map([
+      [2025, months({ 1: 10, 2: 10, 3: 10, 4: 10 })],
+      [2026, months({ 1: 50, 2: 60, 3: 70 })],
+    ]);
+    expect(forecastYear(series, ctx).trend).toBe(3);
   });
 });
 

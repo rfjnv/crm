@@ -33,7 +33,11 @@ export interface YearForecast {
 }
 
 const TREND_MIN = 0.25;
-const TREND_MAX = 4;
+/**
+ * Во сколько раз месяц может быть выше обычного, чтобы целиком войти в темп года.
+ * Заодно это и потолок темпа: год не может идти «выше обычного» больше чем втрое.
+ */
+const MONTH_SPIKE_LIMIT = 3;
 
 export function emptyMonths(): MonthValues {
   return Array.from({ length: 12 }, () => 0);
@@ -96,11 +100,18 @@ export function forecastYear(series: YearSeries | undefined, ctx: ForecastContex
   ));
 
   const done = completedMonths(ctx.year, ctx);
-  const baseDone = sum(base, 0, done);
-  const actualDone = sum(actual, 0, done);
+  // Разовый огромный месяц (крупная сделка, ошибка ввода) не должен раздувать прогноз
+  // на весь остаток года: месяц выше обычного больше чем втрое считаем «втрое выше»
+  let baseDone = 0;
+  let actualDone = 0;
+  for (let m = 0; m < done; m++) {
+    if (base[m] <= 0) continue;
+    baseDone += base[m];
+    actualDone += Math.min(actual[m], base[m] * MONTH_SPIKE_LIMIT);
+  }
   let trend: number | null = null;
   if (done > 0 && baseDone > 0) {
-    trend = Math.min(TREND_MAX, Math.max(TREND_MIN, actualDone / baseDone));
+    trend = Math.max(TREND_MIN, actualDone / baseDone);
   }
   const k = trend ?? 1;
 
