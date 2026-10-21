@@ -1,4 +1,5 @@
 import client from './client';
+import type { LtvClientInput, LtvMonthRow } from '../utils/clientLtv';
 import type {
   AnalyticsData,
   IntelligenceData,
@@ -12,6 +13,7 @@ import type {
   HistoryProductBuyersData,
   HistoryCategoryMonthRow,
   HistoryCategoryProductMonthRow,
+  HistoryClientLtvDetail,
   HistoryCashflowData,
   DataQualityData,
   ExchangeData,
@@ -195,6 +197,11 @@ export const analyticsApi = {
     client.get<{ category: string; rows: HistoryCategoryProductMonthRow[] }>(
       '/analytics/history/categories/products', { params: { category } },
     ).then((r) => r.data.rows),
+  /** Все клиенты с покупками и их выручка по месяцам — для LTV. */
+  getHistoryClientsLtv: () =>
+    client.get<{ clients: LtvClientInput[]; rows: LtvMonthRow[] }>('/analytics/history/clients-ltv').then((r) => r.data),
+  getHistoryClientLtv: (clientId: string) =>
+    client.get<HistoryClientLtvDetail>(`/analytics/history/clients-ltv/${clientId}`).then((r) => r.data),
   getHistoryExtended: (year: number = new Date().getFullYear()) =>
     client.get<HistoryExtendedData>('/analytics/history/extended', { params: { year } }).then((r) => r.data),
   getHistoryDrilldown: (type: string, filters?: { managerId?: string; method?: string }, year: number = new Date().getFullYear()) =>

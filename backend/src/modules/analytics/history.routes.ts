@@ -2289,4 +2289,131 @@ router.get(
   }),
 );
 
+// ── LTV клиентов: сколько каждый клиент принёс за всё время, по месяцам ──
+// Та же выручка, что и в категориях (строки сделок по эффективной дате, с 2024 года).
+// Метрики — LTV, средний чек, частота, когорты — считаются на экране из этих строк.
+
+router.get(
+  '/clients-ltv',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+    const { yearStart } = getYearBounds(HISTORY_FIRST_YEAR);
+
+    const [clients, monthly] = await Promise.all([
+      prisma.$queryRaw<
+        { id: string; company_name: string; manager_name: string | null; first_at: Date; last_at: Date; deals: string }[]
+      >(
+        Prisma.sql`SELECT c.id, c.company_name, m.full_name as manager_name,
+          MIN(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) as first_at,
+          MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) as last_at,
+          COUNT(DISTINCT d.id)::text as deals
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        JOIN clients c ON c.id = d.client_id
+        LEFT JOIN users m ON m.id = c.manager_id
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}${dealFilter}
+        GROUP BY c.id, c.company_name, m.full_name`,
+      ),
+      prisma.$queryRaw<{ client_id: string; year: number; month: number; revenue: string; deals: string }[]>(
+        Prisma.sql`SELECT d.client_id,
+          ${SQL_ITEM_YEAR} as year,
+          ${SQL_ITEM_MONTH} as month,
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
+          COUNT(DISTINCT d.id)::text as deals
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+          AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}${dealFilter}
+        GROUP BY 1, 2, 3`,
+      ),
+    ]);
+
+    res.json({
+      clients: clients.map((c) => ({
+        id: c.id,
+        companyName: c.company_name,
+        managerName: c.manager_name,
+        firstAt: c.first_at,
+        lastAt: c.last_at,
+        deals: Number(c.deals),
+      })),
+      rows: monthly.map((r) => ({
+        clientId: r.client_id,
+        year: Number(r.year),
+        month: Number(r.month),
+        revenue: Number(r.revenue),
+        deals: Number(r.deals),
+      })),
+    });
+  }),
+);
+
+router.get(
+  '/clients-ltv/:clientId',
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const clientId = req.params.clientId as string;
+    const { dealFilter } = buildAclFragments(extractDealScope(req));
+    const { yearStart } = getYearBounds(HISTORY_FIRST_YEAR);
+    const base = Prisma.sql`${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+      AND d.client_id = ${clientId}
+      AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}${dealFilter}`;
+
+    const [products, monthly] = await Promise.all([
+      prisma.$queryRaw<
+        {
+          year: number; product_id: string; name: string; unit: string; category: string;
+          revenue: string; qty: string; deals: string; first_at: Date; last_at: Date;
+        }[]
+      >(
+        Prisma.sql`SELECT ${SQL_ITEM_YEAR} as year,
+          p.id as product_id, p.name, p.unit,
+          COALESCE(NULLIF(TRIM(p.category), ''), ${NO_CATEGORY}) as category,
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
+          COALESCE(SUM(di.requested_qty), 0)::text as qty,
+          COUNT(DISTINCT d.id)::text as deals,
+          MIN(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) as first_at,
+          MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) as last_at
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        JOIN products p ON p.id = di.product_id
+        WHERE ${base}
+        GROUP BY 1, p.id, p.name, p.unit, p.category`,
+      ),
+      prisma.$queryRaw<{ year: number; month: number; revenue: string; deals: string }[]>(
+        Prisma.sql`SELECT ${SQL_ITEM_YEAR} as year, ${SQL_ITEM_MONTH} as month,
+          COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text as revenue,
+          COUNT(DISTINCT d.id)::text as deals
+        FROM deal_items di
+        JOIN deals d ON d.id = di.deal_id
+        WHERE ${base}
+        GROUP BY 1, 2
+        ORDER BY 1, 2`,
+      ),
+    ]);
+
+    res.json({
+      clientId,
+      monthly: monthly.map((r) => ({
+        year: Number(r.year),
+        month: Number(r.month),
+        revenue: Number(r.revenue),
+        deals: Number(r.deals),
+      })),
+      products: products.map((r) => ({
+        year: Number(r.year),
+        productId: r.product_id,
+        name: r.name,
+        unit: r.unit,
+        category: r.category,
+        revenue: Number(r.revenue),
+        qty: Math.round(Number(r.qty) * 100) / 100,
+        deals: Number(r.deals),
+        firstAt: r.first_at,
+        lastAt: r.last_at,
+      })),
+    });
+  }),
+);
+
 export { router as historyRoutes };

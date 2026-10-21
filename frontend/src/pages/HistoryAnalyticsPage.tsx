@@ -26,6 +26,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import BackButton from '../components/BackButton';
 import HistoryCohortPanel from '../components/HistoryCohortPanel';
 import HistoryCategoriesPanel from '../components/HistoryCategoriesPanel';
+import HistoryClientsPanel from '../components/HistoryClientsPanel';
 import ActivityPeriodBar, { ActivityLegend } from '../components/activity/ActivityPeriodBar';
 import ClientPeriodDrawer, { type ClientPeriodTarget } from '../components/activity/ClientPeriodDrawer';
 import { buildActivityColumns, heatColor, heatTooltip } from '../components/activity/activityColumns';
@@ -1652,12 +1653,14 @@ export default function HistoryAnalyticsPage() {
         { key: 'overview', label: 'Обзор' },
         { key: 'analytics', label: 'Аналитика' },
         { key: 'categories', label: 'Категории' },
+        { key: 'clientsLtv', label: 'Клиенты · LTV' },
         { key: 'segments', label: 'Сегменты' },
         { key: 'dataQuality', label: 'Качество данных' },
       ]} />
       {activeTab === 'overview' && overviewTab}
       {activeTab === 'analytics' && analyticsTab}
       {activeTab === 'categories' && <HistoryCategoriesPanel year={year} />}
+      {activeTab === 'clientsLtv' && <HistoryClientsPanel year={year} />}
       {activeTab === 'segments' && segmentsTab}
       {activeTab === 'dataQuality' && dataQualityTab}
 

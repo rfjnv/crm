@@ -1731,6 +1731,26 @@ export interface HistoryCategoryProductMonthRow {
   buyers: number;
 }
 
+/** Покупки клиента по товарам за год (GET /analytics/history/clients-ltv/:id). */
+export interface HistoryClientProductYearRow {
+  year: number;
+  productId: string;
+  name: string;
+  unit: string;
+  category: string;
+  revenue: number;
+  qty: number;
+  deals: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+export interface HistoryClientLtvDetail {
+  clientId: string;
+  monthly: { year: number; month: number; revenue: number; deals: number }[];
+  products: HistoryClientProductYearRow[];
+}
+
 export interface HistoryTopProduct {
   id: string;
   name: string;
