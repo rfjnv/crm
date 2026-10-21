@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker, Checkbox, Tag, Tooltip } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker, Checkbox, Tag, Tooltip, message } from 'antd';
+import { FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
@@ -12,6 +12,7 @@ import ActivityPeriodBar, { ActivityLegend } from './activity/ActivityPeriodBar'
 import { buildActivityColumns } from './activity/activityColumns';
 import { formatUZS, isStrategicHidden } from '../utils/currency';
 import { safeStorage } from '../lib/safeStorage';
+import { downloadBlob } from '../utils/download';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   bucketKeyOf, buildBuckets, daysBetween, tashkentDay, todayTashkent,
@@ -739,6 +740,57 @@ export default function HierarchyClientsAnalyticsPanel({
     },
   ];
 
+  const [exporting, setExporting] = useState(false);
+  /** Excel: товары, сводка по клиентам и исходные строки — без исключённых клиентов. */
+  const exportExcel = async () => {
+    const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
+    if (rows.length === 0) {
+      message.info('За выбранный период продаж нет — выгружать нечего');
+      return;
+    }
+    setExporting(true);
+    try {
+      const bounds = getPeriodBoundsByPreset(
+        hierarchyPeriodPreset,
+        hierarchyCustomDays,
+        hierarchyRange[0].format('YYYY-MM-DD'),
+        hierarchyRange[1].format('YYYY-MM-DD'),
+      );
+      const from = dayjs(bounds.start);
+      const to = bounds.end ? dayjs(bounds.end) : dayjs();
+      const scopeLabel = clientScopeLevel === 'category'
+        ? `Категория «${clientScopeCategory ?? '—'}»`
+        : clientScopeLevel === 'type'
+          ? `Категория «${clientScopeCategory ?? '—'}», тип «${clientScopeType ?? '—'}»`
+          : `Товар «${(clientScopeProductId && productsById.get(clientScopeProductId)?.name) || '—'}»`;
+      const { buildHierarchyXlsx } = await import('../lib/hierarchyExcelExport');
+      const blob = await buildHierarchyXlsx({
+        rows,
+        product: (id) => {
+          const p = productsById.get(id);
+          return {
+            name: p?.name ?? id,
+            sku: p?.sku ?? '',
+            unit: p?.unit ?? '',
+            category: p ? normalizedCategory(p) : '',
+            type: p ? inferTypeLabel(p) : '',
+          };
+        },
+        scopeLabel,
+        periodLabel: `${from.format('DD.MM.YYYY')} — ${to.format('DD.MM.YYYY')}`,
+        moneyHidden,
+      });
+      // В имени файла не должно быть символов, запрещённых в Windows
+      const fileScope = scopeLabel.replace(/[«»]/g, '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+      downloadBlob(blob, `Клиенты по иерархии — ${fileScope} — ${from.format('DD.MM.YYYY')}-${to.format('DD.MM.YYYY')}.xlsx`);
+    } catch (err) {
+      console.error(err);
+      message.error('Не удалось собрать Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const clientSummaryColumns: ColumnsType<ClientPurchaseSummaryRow> = [
     {
       title: (
@@ -1077,6 +1129,11 @@ export default function HierarchyClientsAnalyticsPanel({
                   { label: 'Выручка ≥ 10 млн', value: 'gte_10m' },
                 ]}
               />}
+              <Tooltip title="Три листа: товары и проданное количество, сводка по клиентам, исходные строки продаж. Исключённых клиентов в файле нет.">
+                <Button icon={<FileExcelOutlined />} loading={exporting} onClick={() => void exportExcel()}>
+                  Скачать Excel
+                </Button>
+              </Tooltip>
             </div>
 
             {excludedCount > 0 && (
