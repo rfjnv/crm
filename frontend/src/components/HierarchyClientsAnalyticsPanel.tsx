@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker } from 'antd';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker, Checkbox, Tag, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
@@ -11,6 +11,7 @@ import ReceiptPunchedTag from './ReceiptPunchedTag';
 import ActivityPeriodBar, { ActivityLegend } from './activity/ActivityPeriodBar';
 import { buildActivityColumns } from './activity/activityColumns';
 import { formatUZS, isStrategicHidden } from '../utils/currency';
+import { safeStorage } from '../lib/safeStorage';
 import { smartFilterOption, matchesSearch } from '../utils/translit';
 import {
   bucketKeyOf, buildBuckets, daysBetween, tashkentDay, todayTashkent,
@@ -58,6 +59,22 @@ type MatrixClientRow = {
   /** Выручка по колонкам матрицы (ключ — `ActivityBucket.key`). */
   cells: Map<string, number>;
 };
+
+/** Клиенты, которых по просьбе не учитываем: id → название (чтобы показать список без загрузки). */
+type ExcludedClients = Record<string, string>;
+
+function loadExcluded(key: string): ExcludedClients {
+  try {
+    const raw = safeStorage.getItem(key);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'),
+    );
+  } catch {
+    return {};
+  }
+}
 
 /** По дням матрица читается, пока колонок не больше двух месяцев. */
 const MATRIX_MAX_DAYS = 62;
@@ -144,6 +161,21 @@ export default function HierarchyClientsAnalyticsPanel({
   const [internalClientSearch, setInternalClientSearch] = useState(readPersist('clientSearch') || '');
   const [clientListSort, setClientListSort] = useState<ClientListSort>(() => (isStrategicHidden() ? 'qty_desc' : 'revenue_desc'));
   const [clientRevenueFilter, setClientRevenueFilter] = useState<'all' | 'gt_0' | 'gte_1m' | 'gte_10m'>('all');
+
+  // Исключённые клиенты запоминаются в браузере, отдельно для каждой страницы
+  const excludedStorageKey = `hierarchyClients.excluded.${persistPrefix ?? 'default'}`;
+  const [excluded, setExcluded] = useState<ExcludedClients>(() => loadExcluded(excludedStorageKey));
+  const updateExcluded = (next: ExcludedClients) => {
+    setExcluded(next);
+    safeStorage.setItem(excludedStorageKey, JSON.stringify(next));
+  };
+  const setClientExcluded = (clientId: string, clientName: string, exclude: boolean) => {
+    const next = { ...excluded };
+    if (exclude) next[clientId] = clientName;
+    else delete next[clientId];
+    updateExcluded(next);
+  };
+  const excludedCount = Object.keys(excluded).length;
 
   const effectiveClientSearch = (clientSearchTerm ?? internalClientSearch).trim();
 
@@ -271,7 +303,12 @@ export default function HierarchyClientsAnalyticsPanel({
   });
 
   // useMemo: иначе `?? []` даёт новый массив на каждом рендере, и все зависящие useMemo пересчитываются впустую.
-  const purchaseRows = useMemo(() => hierarchyClientContext?.purchaseRows ?? [], [hierarchyClientContext]);
+  const allPurchaseRows = useMemo(() => hierarchyClientContext?.purchaseRows ?? [], [hierarchyClientContext]);
+  /** Продажи без исключённых клиентов — из них считается всё: графики, топы, матрица, таблица. */
+  const purchaseRows = useMemo(
+    () => (excludedCount ? allPurchaseRows.filter((row) => !excluded[row.clientId]) : allPurchaseRows),
+    [allPurchaseRows, excluded, excludedCount],
+  );
 
   /**
    * Сколько продаж (строк сделок) за период в каждой категории. Считаем штуками строк,
@@ -444,8 +481,8 @@ export default function HierarchyClientsAnalyticsPanel({
     return clientScopeProductId ? new Set([clientScopeProductId]) : new Set<string>();
   }, [clientScopeCategory, clientScopeLevel, clientScopeProductId, clientScopeType, visibleProducts]);
 
-  const clientPurchaseSummaryRows = useMemo<ClientPurchaseSummaryRow[]>(() => {
-    const rows = purchaseRows.filter((row) => selectedClientScopeProductIds.has(row.productId));
+  const buildClientSummaryRows = useCallback((source: typeof allPurchaseRows): ClientPurchaseSummaryRow[] => {
+    const rows = source.filter((row) => selectedClientScopeProductIds.has(row.productId));
     const map = new Map<string, Omit<ClientPurchaseSummaryRow, 'dealsCount' | 'purchasedInfo'>>();
 
     for (const row of rows) {
@@ -528,9 +565,18 @@ export default function HierarchyClientsAnalyticsPanel({
     clientRevenueFilter,
     effectiveClientSearch,
     productsById,
-    purchaseRows,
     selectedClientScopeProductIds,
   ]);
+
+  const clientPurchaseSummaryRows = useMemo(
+    () => buildClientSummaryRows(purchaseRows),
+    [buildClientSummaryRows, purchaseRows],
+  );
+  /** Исключённые — внизу таблицы бледными, чтобы их можно было вернуть галочкой. */
+  const excludedSummaryRows = useMemo(
+    () => (excludedCount ? buildClientSummaryRows(allPurchaseRows.filter((row) => excluded[row.clientId])) : []),
+    [buildClientSummaryRows, allPurchaseRows, excluded, excludedCount],
+  );
 
   const scopeUnitLabel = useMemo(() => {
     const units = new Set<string>();
@@ -695,6 +741,22 @@ export default function HierarchyClientsAnalyticsPanel({
 
   const clientSummaryColumns: ColumnsType<ClientPurchaseSummaryRow> = [
     {
+      title: (
+        <Tooltip title="Снимите галочку — клиент перестанет учитываться в графиках, топах, матрице и суммах">
+          Учитывать
+        </Tooltip>
+      ),
+      key: 'include',
+      width: 96,
+      align: 'center',
+      render: (_: unknown, r: BasicClientRow & { clientName: string }) => (
+        <Checkbox
+          checked={!excluded[r.clientId]}
+          onChange={(e) => setClientExcluded(r.clientId, r.clientName, !e.target.checked)}
+        />
+      ),
+    },
+    {
       title: 'Клиент',
       dataIndex: 'clientName',
       key: 'clientName',
@@ -736,6 +798,23 @@ export default function HierarchyClientsAnalyticsPanel({
   ];
 
   const matrixColumns: ColumnsType<MatrixClientRow> = [
+    {
+      title: (
+        <Tooltip title="Снимите галочку — клиент перестанет учитываться в графиках, топах, матрице и суммах">
+          Учитывать
+        </Tooltip>
+      ),
+      key: 'include',
+      width: 96,
+      align: 'center',
+      fixed: 'left',
+      render: (_: unknown, r: BasicClientRow & { clientName: string }) => (
+        <Checkbox
+          checked={!excluded[r.clientId]}
+          onChange={(e) => setClientExcluded(r.clientId, r.clientName, !e.target.checked)}
+        />
+      ),
+    },
     {
       title: 'Клиент',
       dataIndex: 'clientName',
@@ -1000,12 +1079,40 @@ export default function HierarchyClientsAnalyticsPanel({
               />}
             </div>
 
+            {excludedCount > 0 && (
+              <div
+                style={{
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 12,
+                  padding: '8px 12px', borderRadius: 10, background: token.colorWarningBg,
+                }}
+              >
+                <Typography.Text style={{ marginRight: 4 }}>
+                  Не учитываются в аналитике ({excludedCount}):
+                </Typography.Text>
+                {Object.entries(excluded).map(([id, name]) => (
+                  <Tag
+                    key={id}
+                    closable
+                    style={{ margin: 0 }}
+                    onClose={(e) => {
+                      e.preventDefault();
+                      setClientExcluded(id, name, false);
+                    }}
+                  >
+                    {name}
+                  </Tag>
+                ))}
+                <Button size="small" type="link" onClick={() => updateExcluded({})}>Вернуть всех</Button>
+              </div>
+            )}
+
             {clientViewMode === 'table' ? (
               <Table
                 size="small"
                 rowKey="clientId"
                 pagination={false}
-                dataSource={clientPurchaseSummaryRows}
+                dataSource={[...clientPurchaseSummaryRows, ...excludedSummaryRows]}
+                onRow={(r) => (excluded[r.clientId] ? { style: { opacity: 0.45 } } : {})}
                 locale={{ emptyText: renderNoSales() }}
                 expandable={{
                   expandedRowRender: (record) => (
