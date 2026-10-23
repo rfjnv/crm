@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { Card, Table, Tooltip, Select, Space, Typography, Spin, Drawer, theme } from 'antd';
 import { analyticsApi } from '../api/analytics.api';
+import CohortClientsList from './CohortClientsList';
 
 const MONTH_LABELS: Record<number, string> = {
   1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
@@ -13,7 +13,13 @@ function fmtNum(n: number): string {
   return Math.round(n).toLocaleString('ru-RU');
 }
 
-const clickableRow = { cursor: 'pointer' };
+type CohortCell = { cohortMonth: number; activeMonth: number; lost: boolean };
+
+/** Открытая ячейка в URL (`cohortCell=1-10-lost`): после «Назад» из карточки клиента список открыт снова. */
+function parseCell(raw: string | null): CohortCell | null {
+  const m = raw?.match(/^(\d{1,2})-(\d{1,2})(-lost)?$/);
+  return m ? { cohortMonth: Number(m[1]), activeMonth: Number(m[2]), lost: !!m[3] } : null;
+}
 
 const currentYear = new Date().getFullYear();
 const YEAR_OPTIONS = [currentYear, currentYear - 1, currentYear - 2].map((y) => ({ label: String(y), value: y }));
@@ -30,10 +36,24 @@ const YEAR_OPTIONS = [currentYear, currentYear - 1, currentYear - 2].map((y) => 
  */
 export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled = true }: { year?: number; fetchEnabled?: boolean }) {
   const { token } = theme.useToken();
-  const navigate = useNavigate();
-  const [internalYear, setInternalYear] = useState(currentYear);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const internalYear = Number(searchParams.get('cohortYear')) || currentYear;
   const year = controlledYear ?? internalYear;
-  const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number; lost: boolean } | null>(null);
+  const cohortDrawer = parseCell(searchParams.get('cohortCell'));
+
+  const patchUrl = (patch: Record<string, string | null>) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null) next.delete(k);
+        else next.set(k, v);
+      }
+      return next;
+    }, { replace: true });
+  const setInternalYear = (y: number) => patchUrl({ cohortYear: y === currentYear ? null : String(y), cohortCell: null });
+  const setCohortDrawer = (cell: CohortCell | null) =>
+    patchUrl({ cohortCell: cell ? `${cell.cohortMonth}-${cell.activeMonth}${cell.lost ? '-lost' : ''}` : null });
+  const cohortClientsKey = ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, cohortDrawer?.lost, year];
 
   const { data: extended, isLoading } = useQuery({
     queryKey: ['analytics-history-extended-cohort', year],
@@ -43,7 +63,7 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
   });
 
   const { data: cohortClientsData, isLoading: cohortClientsLoading } = useQuery({
-    queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, cohortDrawer?.lost, year],
+    queryKey: cohortClientsKey,
     queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year, cohortDrawer!.lost),
     enabled: !!cohortDrawer,
   });
@@ -170,19 +190,7 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
         open={!!cohortDrawer} onClose={() => setCohortDrawer(null)} width="100%"
       >
         {cohortClientsLoading ? <Spin /> : cohortClientsData?.clients ? (
-          <Table dataSource={cohortClientsData.clients} rowKey="clientId" size="small"
-            pagination={false} scroll={{ x: 500 }}
-            columns={[
-              { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
-              { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
-              ...(cohortDrawer?.lost
-                ? [{ title: 'Последняя покупка', dataIndex: 'lastMonth', key: 'lastMonth', width: 150, render: (v?: number) => (v ? MONTH_LABELS[v] : '—') }]
-                : []),
-              { title: cohortDrawer?.lost ? 'Сделок за год' : 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 120 },
-              { title: cohortDrawer?.lost ? 'Выручка за год' : 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 140, render: (v: number) => fmtNum(v) },
-            ]}
-            onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })}
-          />
+          <CohortClientsList clients={cohortClientsData.clients} lost={!!cohortDrawer?.lost} queryKey={cohortClientsKey} />
         ) : null}
       </Drawer>
     </Card>

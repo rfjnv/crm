@@ -2223,6 +2223,19 @@ export interface HistoryCohortClient {
   dealsCount: number;
   /** Только для ?inactive=1: последний месяц покупки в году. */
   lastMonth?: number;
+  contactName?: string | null;
+  phone?: string | null;
+  managerName?: string | null;
+  /** Последняя покупка за всё время. */
+  lastPurchaseAt?: string | null;
+  lastNoteAt?: string | null;
+  lastNoteBy?: string | null;
+  lastNote?: string | null;
+  lastCallAt?: string | null;
+  lastCallBy?: string | null;
+  lastCallDirection?: string | null;
+  /** Разговор состоялся (bill_sec > 0). */
+  lastCallAnswered?: boolean;
 }
 
 export interface HistoryCohortClientsData {

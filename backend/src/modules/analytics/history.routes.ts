@@ -2172,6 +2172,7 @@ router.get(
           AND NOT BOOL_OR(ls.active_month = ${activeMonth})
         ORDER BY SUM(ls.rev) DESC NULLS LAST`,
       );
+      const contacts = await loadCohortClientContacts(lostRows.map((r) => r.client_id), dealFilter);
       res.json({
         cohortMonth,
         activeMonth,
@@ -2181,6 +2182,7 @@ router.get(
           revenue: Number(r.revenue),
           dealsCount: Number(r.deals_count),
           lastMonth: r.last_month,
+          ...contacts.get(r.client_id),
         })),
       });
       return;
@@ -2217,6 +2219,7 @@ router.get(
       ORDER BY SUM(ls.rev) DESC NULLS LAST`,
     );
 
+    const contacts = await loadCohortClientContacts(rows.map((r) => r.client_id), dealFilter);
     res.json({
       cohortMonth,
       activeMonth,
@@ -2225,10 +2228,81 @@ router.get(
         companyName: r.company_name,
         revenue: Number(r.revenue),
         dealsCount: Number(r.deals_count),
+        ...contacts.get(r.client_id),
       })),
     });
   }),
 );
+
+/**
+ * Чтобы из списка когорты можно было сразу звонить: контакт, телефон, менеджер,
+ * последняя покупка за всё время, последняя заметка и последний звонок (CallSync / АТС).
+ */
+async function loadCohortClientContacts(clientIds: string[], dealFilter: Prisma.Sql) {
+  const map = new Map<string, {
+    contactName: string | null;
+    phone: string | null;
+    managerName: string | null;
+    lastPurchaseAt: string | null;
+    lastNoteAt: string | null;
+    lastNoteBy: string | null;
+    lastNote: string | null;
+    lastCallAt: string | null;
+    lastCallBy: string | null;
+    lastCallDirection: string | null;
+    lastCallAnswered: boolean;
+  }>();
+  if (clientIds.length === 0) return map;
+
+  const rows = await prisma.$queryRaw<{
+    client_id: string; contact_name: string | null; phone: string | null; manager_name: string | null;
+    last_purchase_at: Date | null;
+    note_at: Date | null; note_by: string | null; note: string | null;
+    call_at: Date | null; call_by: string | null; call_direction: string | null; call_bill_sec: number | null;
+  }[]>(Prisma.sql`
+    SELECT c.id AS client_id, c.contact_name, c.phone, u.full_name AS manager_name,
+      lp.last_purchase_at,
+      n.created_at AS note_at, nu.full_name AS note_by, LEFT(n.content, 300) AS note,
+      cs.started_at AS call_at, cu.full_name AS call_by, cs.direction::text AS call_direction, cs.bill_sec AS call_bill_sec
+    FROM clients c
+    LEFT JOIN users u ON u.id = c.manager_id
+    LEFT JOIN LATERAL (
+      SELECT MAX(${SQL_EFFECTIVE_REVENUE_ITEM_TS}) AS last_purchase_at
+      FROM deal_items di
+      JOIN deals d ON d.id = di.deal_id
+      WHERE d.client_id = c.id AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}${dealFilter}
+    ) lp ON true
+    LEFT JOIN LATERAL (
+      SELECT x.created_at, x.content, x.user_id FROM client_notes x
+      WHERE x.client_id = c.id AND x.deleted_at IS NULL
+      ORDER BY x.created_at DESC LIMIT 1
+    ) n ON true
+    LEFT JOIN users nu ON nu.id = n.user_id
+    LEFT JOIN LATERAL (
+      SELECT x.started_at, x.direction, x.bill_sec, x.manager_user_id FROM call_sessions x
+      WHERE x.client_id = c.id AND x.deleted_at IS NULL
+      ORDER BY x.started_at DESC LIMIT 1
+    ) cs ON true
+    LEFT JOIN users cu ON cu.id = cs.manager_user_id
+    WHERE c.id IN (${Prisma.join(clientIds)})`);
+
+  for (const r of rows) {
+    map.set(r.client_id, {
+      contactName: r.contact_name,
+      phone: r.phone,
+      managerName: r.manager_name,
+      lastPurchaseAt: r.last_purchase_at ? r.last_purchase_at.toISOString() : null,
+      lastNoteAt: r.note_at ? r.note_at.toISOString() : null,
+      lastNoteBy: r.note_by,
+      lastNote: r.note,
+      lastCallAt: r.call_at ? r.call_at.toISOString() : null,
+      lastCallBy: r.call_by,
+      lastCallDirection: r.call_direction,
+      lastCallAnswered: (r.call_bill_sec ?? 0) > 0,
+    });
+  }
+  return map;
+}
 
 // ── Категории товаров по месяцам за все годы ──
 // Отдаём сразу всю историю: экран сравнивает годы и строит прогноз по прошлым сезонам.

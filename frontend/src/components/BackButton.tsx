@@ -17,7 +17,10 @@ export default function BackButton({ fallback }: Props) {
 
   const handleClick = () => {
     const returnTo = (location.state as BackNavigationState | null)?.from;
-    if (window.history.length > 2) {
+    // key 'default' — страницу открыли напрямую (новая вкладка, ссылка): позади нет страницы CRM.
+    // Раньше смотрели на window.history.length, и из вкладки, открытой сразу на аналитике,
+    // «Назад» выкидывал в общий список клиентов.
+    if (location.key !== 'default') {
       navigate(-1);
       return;
     }
