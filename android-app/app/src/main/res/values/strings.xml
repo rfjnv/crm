@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Polygraph CRM</string>
+    <string name="offline">Нет подключения к интернету</string>
+    <string name="retry">Повторить</string>
+</resources>

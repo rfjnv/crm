@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.PolygraphCRM" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#22609A</item>
+        <item name="android:colorAccent">#22609A</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
