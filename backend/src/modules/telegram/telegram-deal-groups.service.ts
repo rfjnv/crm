@@ -1,6 +1,7 @@
 import { DealStatus, PaymentMethod, PaymentStatus, PaymentType } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
+import { getLegalNames } from '../inn-registry/inn-registry.service';
 import { getFirstName } from '../../lib/name-utils';
 import { isRollTrackedProduct, parseRollCountFromComment } from '../../lib/lamination';
 import { telegramService } from './telegram.service';
@@ -946,7 +947,7 @@ type DealForFinanceTg = {
   comments: Array<{ text: string; createdAt: Date; author: { fullName: string } }>;
 };
 
-export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
+export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg, legalName?: string | null): string {
   const docs = parseTransferDocumentsJson(deal.transferDocuments);
   const docsBlock = docs.length ? docs.map((d) => `☑ ${esc(d)}`).join('\n') : '—';
 
@@ -963,7 +964,7 @@ export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
-    `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>`,
+    `ИНН (перечисление): <b>${esc(deal.transferInn?.trim() || deal.client.inn?.trim() || '—')}</b>${legalName ? ` — ${esc(legalName)}` : ''}`,
     `Способ оплаты: <b>${paymentMethodLabel(deal.paymentMethod)}</b>`,
     `Тип доставки: <b>${deliveryTypeLabel(deal.deliveryType)}</b>`,
     `Тип машины: <b>${esc(deal.vehicleType?.trim() || '—')}</b>`,
@@ -990,10 +991,22 @@ export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg): string {
   ].join('\n');
 }
 
+/** Юр. название ИНН перечисления (или ИНН клиента) из справочника — бухгалтерии сразу видно, кто платит. */
+async function financeLegalName(deal: { transferInn: string | null; client: { inn: string | null } }): Promise<string | null> {
+  const inn = deal.transferInn?.trim() || deal.client.inn?.trim();
+  if (!inn) return null;
+  try {
+    return Object.values(await getLegalNames([inn]))[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function buildFinanceHtmlWithAppendix(
   deal: DealForFinanceTg & { financeTelegramAppendix: string | null },
+  legalName?: string | null,
 ): string {
-  const base = buildFinanceQueueTelegramHtml(deal);
+  const base = buildFinanceQueueTelegramHtml(deal, legalName);
   const apx = deal.financeTelegramAppendix?.trim();
   if (!apx) return base;
   const lines = apx.split('\n').filter(Boolean).map((l) => `• ${esc(l)}`);
@@ -1072,7 +1085,7 @@ export async function appendFinanceTelegramLog(dealId: string, plainLine: string
   });
   if (!deal) return;
 
-  const html = buildFinanceHtmlWithAppendix(deal);
+  const html = buildFinanceHtmlWithAppendix(deal, await financeLegalName(deal));
   const ok = await telegramService.editGroupHtmlMessage(chatId, msgId, html, dealLinkPath(dealId));
   if (!ok) {
     console.warn('[Telegram deal groups] appendFinanceTelegramLog: editMessage failed dealId=', dealId);
@@ -1115,7 +1128,7 @@ export async function trySendFinanceTelegram(dealId: string): Promise<void> {
     return;
   }
 
-  const body = buildFinanceQueueTelegramHtml(deal);
+  const body = buildFinanceQueueTelegramHtml(deal, await financeLegalName(deal));
 
   const messageId = await telegramService.sendGroupHtmlMessage(chatId, body, dealLinkPath(dealId));
   if (messageId != null) {
@@ -1422,7 +1435,7 @@ export async function syncDealTelegramGroupMessages(
   if (chatFi && deal.financeTelegramMessageId?.trim()) {
     const mid = parseStoredTelegramMessageId(deal.financeTelegramMessageId);
     if (mid != null) {
-      const html = appendSyncFootnote(buildFinanceHtmlWithAppendix(deal), opts?.footnote);
+      const html = appendSyncFootnote(buildFinanceHtmlWithAppendix(deal, await financeLegalName(deal)), opts?.footnote);
       await refreshGroupMessage(chatFi, mid, html, 'financeTelegramMessageId', 'finance');
     }
   }
@@ -1706,7 +1719,7 @@ export async function sendDealToGroupManually(
     const { header } = productionSyncHeaderForEdit(deal.status, deal.items);
     body = buildProductionGroupHtml(deal, header, itemsHavePositiveQty(deal.items));
   } else {
-    body = buildFinanceQueueTelegramHtml(deal);
+    body = buildFinanceQueueTelegramHtml(deal, await financeLegalName(deal));
   }
 
   const manualLine = `📤 <b>Ручная отправка</b> — ${esc(senderName)}\n\n`;

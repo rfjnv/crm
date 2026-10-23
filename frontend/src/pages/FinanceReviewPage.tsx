@@ -7,6 +7,7 @@ import {
 import type { Dayjs } from 'dayjs';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import { innRegistryApi } from '../api/innRegistry.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/MobileCardList';
@@ -64,12 +65,25 @@ export default function FinanceReviewPage() {
 
   const list = deals ?? [];
 
+  // Юр. названия ИНН перечисления из справочника «ИНН и сверка»
+  const transferInns = useMemo(
+    () => [...new Set(list.map((d) => d.transferInn?.trim()).filter((v): v is string => !!v))].sort(),
+    [list],
+  );
+  const { data: innNames } = useQuery({
+    queryKey: ['inn-names', transferInns],
+    queryFn: () => innRegistryApi.names(transferInns),
+    enabled: transferInns.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const renderTransferInfo = (deal: FinanceDeal, compact = false) => {
     if (deal.paymentMethod !== 'TRANSFER') {
       return <Typography.Text type="secondary" style={{ fontSize: compact ? 12 : 13 }}>Нет доп. данных</Typography.Text>;
     }
 
     const documents = Array.isArray(deal.transferDocuments) ? deal.transferDocuments : [];
+    const legalName = deal.transferInn ? innNames?.[deal.transferInn.replace(/\D/g, '')] : undefined;
 
     return (
       <div style={{ display: 'grid', gap: compact ? 4 : 6, minWidth: compact ? 0 : 220 }}>
@@ -84,6 +98,10 @@ export default function FinanceReviewPage() {
             </Tag>
           )}
         </div>
+
+        {legalName && (
+          <Typography.Text strong style={{ fontSize: compact ? 12 : 13 }}>{legalName}</Typography.Text>
+        )}
 
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {documents.length > 0 ? documents.map((doc) => (
