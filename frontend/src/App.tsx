@@ -30,6 +30,7 @@ const ClientsMapPage = lazy(() => import('./pages/ClientsMapPage'));
 const DeliveryRoutePage = lazy(() => import('./pages/DeliveryRoutePage'));
 const ClientDetailPage = lazy(() => import('./pages/ClientDetailPage'));
 const DuplicateClientsPage = lazy(() => import('./pages/DuplicateClientsPage'));
+const InnRegistryPage = lazy(() => import('./pages/InnRegistryPage'));
 const DealsPage = lazy(() => import('./pages/DealsPage'));
 const DealCreatePage = lazy(() => import('./pages/DealCreatePage'));
 const DealDetailPage = lazy(() => import('./pages/DealDetailPage'));
@@ -216,6 +217,7 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/clients/duplicates" element={<DuplicateClientsPage />} />
+                  <Route path="/clients/inns" element={<InnRegistryPage />} />
                 </Route>
                 <Route path="/reviews" element={<ReviewsPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />

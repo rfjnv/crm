@@ -375,6 +375,10 @@ export default function Layout() {
         key: '/clients/duplicates',
         icon: <MergeCellsOutlined />,
         label: <Link to="/clients/duplicates">Дубликаты</Link>,
+      }, {
+        key: '/clients/inns',
+        icon: <IdcardOutlined />,
+        label: <Link to="/clients/inns">ИНН и сверка</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR')

@@ -74,6 +74,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/dashboard': Gauge,
   '/clients': UsersThree,
   '/clients/duplicates': Copy,
+  '/clients/inns': IdentificationCard,
   '/reviews': Star,
   '/contracts': FileText,
   '/power-of-attorney': Signature,

@@ -2316,3 +2316,21 @@ model AiReport {
 
   @@map("ai_reports")
 }
+
+// ==================== INN REGISTRY ====================
+
+/// Справочник «ИНН → юр. название» для сверки ИНН клиентов и перечислений.
+model InnRegistry {
+  /// Только цифры (нормализованный ИНН)
+  inn          String    @id
+  legalName    String?   @map("legal_name")
+  address      String?
+  /// 'orginfo' — подтянуто автоматически, 'manual' — вписано вручную
+  source       String    @default("manual")
+  /// Результат последнего автопоиска: 'found' | 'not_found' | 'error'
+  lookupStatus String?   @map("lookup_status")
+  lookedUpAt   DateTime? @map("looked_up_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("inn_registry")
+}

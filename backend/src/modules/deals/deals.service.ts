@@ -1,3 +1,4 @@
+import { lookupInBackgroundIfUnknown } from '../inn-registry/inn-registry.service';
 import { DealStatus, PaymentStatus as PrismaPaymentStatus, PaymentMethod, PaymentKind, Role } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
@@ -818,6 +819,8 @@ export class DealsService {
       }
     }
 
+    if (dto.paymentMethod === 'TRANSFER') lookupInBackgroundIfUnknown(dto.transferInn ?? dilnozaTransferInn);
+
     // Non-Dilnoza auto-route: if payment method is set + all items have qty+price,
     // skip IN_PROGRESS and route directly (same as sendToFinance would do).
     // TRANSFER with INN provided → also auto-route (save INN, go to WAITING_WAREHOUSE_MANAGER).
@@ -1284,6 +1287,7 @@ export class DealsService {
       }
 
       updateData.transferInn = transferInn;
+      lookupInBackgroundIfUnknown(transferInn);
       updateData.transferDocuments = JSON.stringify(transferDocuments);
       updateData.transferType = dto.transferType ?? 'ONE_TIME';
     } else {
@@ -1349,6 +1353,7 @@ export class DealsService {
       }
 
       updateData.transferInn = transferInn;
+      lookupInBackgroundIfUnknown(transferInn);
       updateData.transferDocuments = JSON.stringify(transferDocuments);
       updateData.transferType = dto.transferType ?? 'ONE_TIME';
     } else {

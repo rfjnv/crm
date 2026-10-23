@@ -54,6 +54,7 @@ import ratingsRoutes from './modules/ratings/ratings.routes';
 import { ropCallPublicRouter } from './modules/rop-agent/rop-agent.call';
 import aiAssistantRoutes from './modules/ai-assistant/ai-assistant.routes';
 import ropAgentRoutes from './modules/rop-agent/rop-agent.routes';
+import innRegistryRoutes from './modules/inn-registry/inn-registry.routes';
 import costAccessRoutes from './modules/cost-access/cost-access.routes';
 import marketRoutes from './modules/market/market.routes';
 import { internalReportsRoutes } from './modules/internal/reports.routes';
@@ -217,6 +218,7 @@ app.use('/api/cost-access', costAccessRoutes);
 // /api/clients/:id/calls — раньше общего роутера клиентов
 app.use('/api/clients', clientCallsRouter);
 app.use('/api/clients', clientsRoutes);
+app.use('/api/inn-registry', innRegistryRoutes);
 app.use('/api/deals', dealsRoutes);
 app.use('/api/contracts', contractsRoutes);
 app.use('/api/inventory', warehouseRoutes);

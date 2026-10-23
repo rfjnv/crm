@@ -11,6 +11,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
+import { innRegistryApi } from '../api/innRegistry.api';
 import { inventoryApi } from '../api/warehouse.api';
 import DealStatusTag from '../components/DealStatusTag';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -222,6 +223,13 @@ export default function DealCreatePage() {
     queryFn: () => clientsApi.getTransferInns(clientId!),
     enabled: !!clientId && paymentMethod === 'TRANSFER',
   });
+  const { data: innNames } = useQuery({
+    queryKey: ['inn-names', clientTransferInns],
+    queryFn: () => innRegistryApi.names(clientTransferInns ?? []),
+    enabled: (clientTransferInns?.length ?? 0) > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const innLegalName = (inn: string) => innNames?.[inn.replace(/\D/g, '')];
 
   const selectedClient = useMemo(() => clients?.find((c) => c.id === clientId), [clients, clientId]);
 
@@ -846,7 +854,7 @@ export default function DealCreatePage() {
                         style={{ width: '100%', marginTop: 4 }}
                         value={transferInn || undefined}
                         onChange={(v) => { autoFilledInnRef.current = v; setTransferInn(v); }}
-                        options={clientTransferInns!.map((inn) => ({ value: inn, label: inn }))}
+                        options={clientTransferInns!.map((inn) => ({ value: inn, label: innLegalName(inn) ? `${inn} — ${innLegalName(inn)}` : inn }))}
                         placeholder="Выберите ИНН из истории"
                       />
                     </div>

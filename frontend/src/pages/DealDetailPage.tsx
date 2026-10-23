@@ -17,6 +17,7 @@ import { adminApi } from '../api/admin.api';
 import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
+import { innRegistryApi } from '../api/innRegistry.api';
 import { contractsApi } from '../api/contracts.api';
 import { financeApi } from '../api/finance.api';
 import DealStatusTag from '../components/DealStatusTag';
@@ -224,6 +225,14 @@ export default function DealDetailPage() {
     queryFn: () => clientsApi.getTransferInns(dealData!.clientId),
     enabled: !!dealData?.clientId,
   });
+  const innNamesKey = [...(clientTransferInns ?? []), dealData?.transferInn ?? ''].filter(Boolean);
+  const { data: innNames } = useQuery({
+    queryKey: ['inn-names', innNamesKey],
+    queryFn: () => innRegistryApi.names(innNamesKey),
+    enabled: innNamesKey.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const innLegalName = (inn: string) => innNames?.[inn.replace(/\D/g, '')];
 
   const openTransferPaymentModal = () => {
     setSendToFinanceModal(false);
@@ -1208,6 +1217,7 @@ export default function DealDetailPage() {
                 <>
                   <Descriptions.Item label="ИНН (перечисление)">
                     <Typography.Text code>{deal.transferInn}</Typography.Text>
+                    {innLegalName(deal.transferInn) && <Typography.Text style={{ marginLeft: 8 }}>{innLegalName(deal.transferInn)}</Typography.Text>}
                   </Descriptions.Item>
                   {deal.transferDocuments && Array.isArray(deal.transferDocuments) && (
                     <Descriptions.Item label="Документы">
@@ -2536,7 +2546,7 @@ export default function DealDetailPage() {
                   style={{ width: '100%', marginTop: 4 }}
                   value={transferInn || undefined}
                   onChange={(v) => setTransferInn(v)}
-                  options={clientTransferInns!.map((inn) => ({ value: inn, label: inn }))}
+                  options={clientTransferInns!.map((inn) => ({ value: inn, label: innLegalName(inn) ? `${inn} — ${innLegalName(inn)}` : inn }))}
                   placeholder="Выберите ИНН из истории"
                 />
               </div>
