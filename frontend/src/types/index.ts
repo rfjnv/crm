@@ -2221,6 +2221,8 @@ export interface HistoryCohortClient {
   companyName: string;
   revenue: number;
   dealsCount: number;
+  /** Только для ?inactive=1: последний месяц покупки в году. */
+  lastMonth?: number;
 }
 
 export interface HistoryCohortClientsData {

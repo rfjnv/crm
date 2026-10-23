@@ -215,8 +215,10 @@ export const analyticsApi = {
     client.get<HistoryClientDaysData>('/analytics/history/client-days', { params: { from, to } }).then((r) => r.data),
   getHistoryClientPeriod: (clientId: string, from: string, to: string) =>
     client.get<HistoryClientPeriodData>(`/analytics/history/client-period/${clientId}`, { params: { from, to } }).then((r) => r.data),
-  getHistoryCohortClients: (cohortMonth: number, activeMonth: number, year: number = new Date().getFullYear()) =>
-    client.get<HistoryCohortClientsData>(`/analytics/history/cohort-clients/${cohortMonth}/${activeMonth}`, { params: { year } }).then((r) => r.data),
+  getHistoryCohortClients: (cohortMonth: number, activeMonth: number, year: number = new Date().getFullYear(), inactive = false) =>
+    client.get<HistoryCohortClientsData>(`/analytics/history/cohort-clients/${cohortMonth}/${activeMonth}`, {
+      params: { year, ...(inactive ? { inactive: 1 } : {}) },
+    }).then((r) => r.data),
   getHistoryProductBuyers: (productId: string, year: number = new Date().getFullYear()) =>
     client.get<HistoryProductBuyersData>(`/analytics/history/product-buyers/${productId}`, { params: { year } }).then((r) => r.data),
   getHistoryCashflow: (year: number = new Date().getFullYear()) =>

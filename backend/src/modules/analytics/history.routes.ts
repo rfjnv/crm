@@ -2133,6 +2133,7 @@ router.get(
 );
 
 // ── Cohort drill-down: clients who first bought in cohortMonth and were active in activeMonth ──
+// ?inactive=1 — наоборот: клиенты когорты, которые в activeMonth НЕ покупали (выручка/сделки — за весь год).
 router.get(
   '/cohort-clients/:cohortMonth/:activeMonth',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -2142,6 +2143,48 @@ router.get(
     const { yearStart, yearEnd } = getYearBounds(year);
     const cohortMonth = Number(req.params.cohortMonth);
     const activeMonth = Number(req.params.activeMonth);
+    const inactive = req.query.inactive === '1';
+
+    if (inactive) {
+      const lostRows = await prisma.$queryRaw<
+        { client_id: string; company_name: string; revenue: string; deals_count: string; last_month: number }[]
+      >(
+        Prisma.sql`WITH line_scope AS (
+          SELECT d.client_id,
+            d.id as deal_id,
+            EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})::int as active_month,
+            SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}) as rev
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+            AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${yearStart}
+            AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${yearEnd}${dealFilter}
+          GROUP BY d.client_id, d.id, EXTRACT(MONTH FROM (${SQL_EFFECTIVE_REVENUE_ITEM_TS} AT TIME ZONE 'UTC') AT TIME ZONE ${TZ})
+        )
+        SELECT c.id as client_id, c.company_name,
+          COALESCE(SUM(ls.rev), 0)::text as revenue,
+          COUNT(DISTINCT ls.deal_id)::text as deals_count,
+          MAX(ls.active_month)::int as last_month
+        FROM line_scope ls
+        JOIN clients c ON c.id = ls.client_id
+        GROUP BY c.id, c.company_name
+        HAVING MIN(ls.active_month) = ${cohortMonth}
+          AND NOT BOOL_OR(ls.active_month = ${activeMonth})
+        ORDER BY SUM(ls.rev) DESC NULLS LAST`,
+      );
+      res.json({
+        cohortMonth,
+        activeMonth,
+        clients: lostRows.map((r) => ({
+          clientId: r.client_id,
+          companyName: r.company_name,
+          revenue: Number(r.revenue),
+          dealsCount: Number(r.deals_count),
+          lastMonth: r.last_month,
+        })),
+      });
+      return;
+    }
 
     const rows = await prisma.$queryRaw<
       { client_id: string; company_name: string; revenue: string; deals_count: string }[]

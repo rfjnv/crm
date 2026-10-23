@@ -23,13 +23,17 @@ const YEAR_OPTIONS = [currentYear, currentYear - 1, currentYear - 2].map((y) => 
  * Общий для «Аналитика история», «Аналитика» и «Аналитика для менеджеров» — если `year` не передан,
  * панель сама показывает свой селектор года. Данные скоупятся по менеджеру автоматически на бэкенде
  * (ownerScope) — для роли MANAGER видна только своя когорта.
+ *
+ * Верхняя «лесенка» (строка = когорта, столбец = месяц) — сколько клиентов когорты купили.
+ * Нижняя «лесенка» зеркальная (столбец = когорта, строка = месяц) — сколько клиентов когорты
+ * в этом месяце НЕ купили: размер когорты минус купившие.
  */
 export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled = true }: { year?: number; fetchEnabled?: boolean }) {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [internalYear, setInternalYear] = useState(currentYear);
   const year = controlledYear ?? internalYear;
-  const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number } | null>(null);
+  const [cohortDrawer, setCohortDrawer] = useState<{ cohortMonth: number; activeMonth: number; lost: boolean } | null>(null);
 
   const { data: extended, isLoading } = useQuery({
     queryKey: ['analytics-history-extended-cohort', year],
@@ -39,8 +43,8 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
   });
 
   const { data: cohortClientsData, isLoading: cohortClientsLoading } = useQuery({
-    queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, year],
-    queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year),
+    queryKey: ['analytics-history-cohort-clients', cohortDrawer?.cohortMonth, cohortDrawer?.activeMonth, cohortDrawer?.lost, year],
+    queryFn: () => analyticsApi.getHistoryCohortClients(cohortDrawer!.cohortMonth, cohortDrawer!.activeMonth, year, cohortDrawer!.lost),
     enabled: !!cohortDrawer,
   });
 
@@ -65,21 +69,38 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
           const activeMonths = [...new Set(extended.cohort.map((r) => r.activeMonth))].sort((a, b) => a - b);
           const cohortMap = new Map<string, number>();
           for (const r of extended.cohort) cohortMap.set(`${r.cohortMonth}-${r.activeMonth}`, r.clientCount);
+          const maxCount = Math.max(...Array.from(cohortMap.values()));
+
+          const renderLost = (cohort: number, month: number) => {
+            const size = cohortMap.get(`${cohort}-${cohort}`) || 0;
+            if (!size) return <span style={{ color: token.colorTextDisabled }}>—</span>;
+            const lost = size - (cohortMap.get(`${cohort}-${month}`) || 0);
+            const share = lost / size;
+            return (
+              <Tooltip title={`Когорта ${MONTH_LABELS[cohort]}: в ${MONTH_LABELS[month]} не купили ${lost} из ${size} (${Math.round(share * 100)}%)`}>
+                <div
+                  style={{ backgroundColor: `rgba(245,34,45,${0.08 + share * 0.5})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: share > 0.6 ? '#fff' : token.colorText, cursor: lost ? 'pointer' : undefined }}
+                  onClick={lost ? () => setCohortDrawer({ cohortMonth: cohort, activeMonth: month, lost: true }) : undefined}
+                >{lost}</div>
+              </Tooltip>
+            );
+          };
 
           const columns = [
             { title: 'Когорта', key: 'cohort', width: 80, render: (_: unknown, record: { cohort: number }) => MONTH_LABELS[record.cohort] },
             ...activeMonths.map((am) => ({
               title: MONTH_LABELS[am], key: `a${am}`, width: 60, align: 'center' as const,
               render: (_: unknown, record: { cohort: number }) => {
+                // Ниже диагонали: столбец am — когорта, строка — месяц, в котором она не купила.
+                if (am < record.cohort) return renderLost(am, record.cohort);
                 const count = cohortMap.get(`${record.cohort}-${am}`) || 0;
                 if (!count) return <span style={{ color: token.colorTextDisabled }}>—</span>;
-                const maxCount = Math.max(...Array.from(cohortMap.values()));
                 const intensity = maxCount > 0 ? count / maxCount : 0;
                 return (
                   <Tooltip title={`${MONTH_LABELS[record.cohort]} → ${MONTH_LABELS[am]}: ${count} клиентов`}>
                     <div
                       style={{ backgroundColor: `rgba(22,119,255,${0.1 + intensity * 0.8})`, borderRadius: 3, padding: '4px 0', textAlign: 'center', fontWeight: 600, color: intensity > 0.5 ? '#fff' : token.colorText, cursor: 'pointer' }}
-                      onClick={() => setCohortDrawer({ cohortMonth: record.cohort, activeMonth: am })}
+                      onClick={() => setCohortDrawer({ cohortMonth: record.cohort, activeMonth: am, lost: false })}
                     >{count}</div>
                   </Tooltip>
                 );
@@ -128,7 +149,11 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
                 )}
               />
               <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-                Итого: новых клиентов за год — {fmtNum(totalClients)}, суммарная выручка когорт — {fmtNum(totalRevenue)}
+                Синие ячейки (строка — когорта): сколько клиентов когорты купили в месяце. Красные ячейки (столбец — когорта,
+                строка — месяц): сколько клиентов этой когорты в том месяце не купили. Когорта — месяц первой покупки в {year} году.
+              </Typography.Paragraph>
+              <Typography.Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0 }}>
+                Итого: клиентов за год — {fmtNum(totalClients)}, суммарная выручка когорт — {fmtNum(totalRevenue)}
                 {avgRetention !== null ? `, среднее удержание на месяц+1 — ${avgRetention}%` : ''}.
               </Typography.Paragraph>
             </>
@@ -137,7 +162,11 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
       )}
 
       <Drawer
-        title={cohortDrawer ? `Когорта ${MONTH_LABELS[cohortDrawer.cohortMonth]} → ${MONTH_LABELS[cohortDrawer.activeMonth]} ${year}` : ''}
+        title={cohortDrawer
+          ? cohortDrawer.lost
+            ? `Когорта ${MONTH_LABELS[cohortDrawer.cohortMonth]}: не купили в ${MONTH_LABELS[cohortDrawer.activeMonth]} ${year}`
+            : `Когорта ${MONTH_LABELS[cohortDrawer.cohortMonth]} → ${MONTH_LABELS[cohortDrawer.activeMonth]} ${year}`
+          : ''}
         open={!!cohortDrawer} onClose={() => setCohortDrawer(null)} width="100%"
       >
         {cohortClientsLoading ? <Spin /> : cohortClientsData?.clients ? (
@@ -146,8 +175,11 @@ export default function HistoryCohortPanel({ year: controlledYear, fetchEnabled 
             columns={[
               { title: '#', key: 'idx', width: 40, render: (_: unknown, __: unknown, i: number) => i + 1 },
               { title: 'Компания', dataIndex: 'companyName', key: 'companyName', ellipsis: true },
-              { title: 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 80 },
-              { title: 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 140, render: (v: number) => fmtNum(v) },
+              ...(cohortDrawer?.lost
+                ? [{ title: 'Последняя покупка', dataIndex: 'lastMonth', key: 'lastMonth', width: 150, render: (v?: number) => (v ? MONTH_LABELS[v] : '—') }]
+                : []),
+              { title: cohortDrawer?.lost ? 'Сделок за год' : 'Сделок', dataIndex: 'dealsCount', key: 'dealsCount', width: 120 },
+              { title: cohortDrawer?.lost ? 'Выручка за год' : 'Выручка', dataIndex: 'revenue', key: 'revenue', width: 140, render: (v: number) => fmtNum(v) },
             ]}
             onRow={(record) => ({ onClick: () => navigate(`/clients/${record.clientId}`), style: clickableRow })}
           />
