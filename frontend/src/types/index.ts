@@ -383,6 +383,9 @@ export type DealStatus =
   | 'ADMIN_APPROVED'
   | 'READY_FOR_SHIPMENT'
   | 'SHIPMENT_ON_HOLD'
+  // Старые этапы: в базе такие сделки ещё есть
+  | 'SHIPPED'
+  | 'PENDING_APPROVAL'
   | 'CLOSED'
   | 'CANCELED'
   | 'REJECTED'

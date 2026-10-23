@@ -12,6 +12,8 @@ const statusConfig: Record<DealStatus, { color: string; label: string }> = {
   ADMIN_APPROVED: { color: 'geekblue', label: 'Ожидает потв. Админа' },
   READY_FOR_SHIPMENT: { color: 'purple', label: 'Отгрузка' },
   SHIPMENT_ON_HOLD: { color: 'warning', label: 'Отгрузка приостановлена' },
+  SHIPPED: { color: 'cyan', label: 'Отгружена' },
+  PENDING_APPROVAL: { color: 'geekblue', label: 'Ожидает одобрения' },
   CLOSED: { color: 'success', label: 'Закрыта' },
   CANCELED: { color: 'volcano', label: 'Отменена' },
   REJECTED: { color: 'red', label: 'Отклонена' },

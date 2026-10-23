@@ -14,6 +14,7 @@ const TONE: Partial<Record<DealStatus, StatusTone>> = {
   WAITING_FINANCE: 'warning',
   WAITING_WAREHOUSE_MANAGER: 'warning',
   PENDING_ADMIN: 'warning',
+  PENDING_APPROVAL: 'warning',
   SHIPMENT_ON_HOLD: 'warning',
   REOPENED: 'warning',
 };

@@ -597,10 +597,10 @@ export default function ManagerKpiPanel() {
 
             <Card size="small" title="3. Звонки и контакты" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
-                <Col span={6}><Statistic title="Всего" value={detail.contacts.total} /></Col>
-                <Col span={6}><Statistic title="Заметки клиента" value={detail.contacts.clientNotes} /></Col>
-                <Col span={6}><Statistic title="Доска звонков" value={detail.contacts.boardCalls} /></Col>
-                <Col span={6}><Statistic title="Клиентов" value={detail.contacts.uniqueClients} /></Col>
+                <Col xs={12} md={6}><Statistic title="Всего" value={detail.contacts.total} /></Col>
+                <Col xs={12} md={6}><Statistic title="Заметки клиента" value={detail.contacts.clientNotes} /></Col>
+                <Col xs={12} md={6}><Statistic title="Доска звонков" value={detail.contacts.boardCalls} /></Col>
+                <Col xs={12} md={6}><Statistic title="Клиентов" value={detail.contacts.uniqueClients} /></Col>
               </Row>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Последний контакт: {detail.contacts.lastContactAt
@@ -611,22 +611,22 @@ export default function ManagerKpiPanel() {
 
             <Card size="small" title="4. Привлечение клиентов" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
-                <Col span={6}><Statistic title="Обслужено" value={detail.clients.served} /></Col>
-                <Col span={6}>
+                <Col xs={12} md={6}><Statistic title="Обслужено" value={detail.clients.served} /></Col>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Новых"
                     value={unit === 'pct' ? pct(detail.clients.new, detail.clients.served) : detail.clients.new}
                     valueStyle={{ color: '#52c41a' }}
                   />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Вернувшихся"
                     value={unit === 'pct' ? pct(detail.clients.returned, detail.clients.served) : detail.clients.returned}
                     valueStyle={{ color: '#1677ff' }}
                   />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Постоянных"
                     value={unit === 'pct' ? pct(detail.clients.regular, detail.clients.served) : detail.clients.regular}
@@ -666,8 +666,8 @@ export default function ManagerKpiPanel() {
 
             <Card size="small" title="6. Посещаемость">
               <Row gutter={[12, 12]}>
-                <Col span={6}><Statistic title="Рабочих дней" value={detail.attendance.workdays} /></Col>
-                <Col span={6}>
+                <Col xs={12} md={6}><Statistic title="Рабочих дней" value={detail.attendance.workdays} /></Col>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Вовремя"
                     value={unit === 'pct'
@@ -676,7 +676,7 @@ export default function ManagerKpiPanel() {
                     valueStyle={{ color: '#52c41a' }}
                   />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Опозданий"
                     value={unit === 'pct'
@@ -685,7 +685,7 @@ export default function ManagerKpiPanel() {
                     valueStyle={{ color: detail.attendance.late > 0 ? '#ff4d4f' : undefined }}
                   />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                   <Statistic
                     title="Нет отметки"
                     value={unit === 'pct'

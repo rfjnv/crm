@@ -149,7 +149,7 @@ export default function AlmanacProductDetailPage() {
 
       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* LEFT — Photo 4:3 */}
-        <div style={{ flex: '0 0 340px', maxWidth: 340 }}>
+        <div style={{ flex: '0 1 340px', maxWidth: '100%', minWidth: 0 }}>
           <div
             style={{
               width: '100%',

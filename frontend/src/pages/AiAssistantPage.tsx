@@ -6,7 +6,7 @@ import {
 import {
   SendOutlined, UserOutlined, CodeOutlined, DeleteOutlined,
   PlusOutlined, EditOutlined, CheckOutlined, CloseOutlined,
-  MenuOutlined, MessageOutlined, SettingOutlined, AudioOutlined,
+  MessageOutlined, SettingOutlined, AudioOutlined,
 } from '@ant-design/icons';
 import Icon from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -399,7 +399,7 @@ export default function AiAssistantPage() {
       {/* Header */}
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${themeToken.colorBorderSecondary}` }}>
         {isMobile && (
-          <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />
+          <Button type="text" icon={<MessageOutlined />} onClick={() => setSidebarOpen(true)}>Чаты</Button>
         )}
         <OpenAiIcon style={{ fontSize: 22, color: themeToken.colorPrimary }} />
         <div style={{ flex: 1 }}>

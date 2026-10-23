@@ -31,6 +31,7 @@ import type {
   SupportedVedCountry,
   VedCountryCode,
 } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { normalizeVedCountry } from '../utils/vedBlockingCalendar';
 
 const MANUAL_STORAGE_KEY = 'crm-ved-manual-calendar-events-v1';
@@ -343,6 +344,7 @@ function getBlockingHitsForOrderDate(
 }
 
 export default function ImportBlockingCalendarCard({ orders }: { orders: ImportOrderListItem[] }) {
+  const isMobile = useIsMobile();
   const { token } = theme.useToken();
   const [panelValue, setPanelValue] = useState(() => dayjs().startOf('year'));
   const [selectedDate, setSelectedDate] = useState(() => dayjs().startOf('day'));
@@ -725,9 +727,10 @@ export default function ImportBlockingCalendarCard({ orders }: { orders: ImportO
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+                  // На телефоне — по два месяца в ряд, без прокрутки вбок
+                  gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))',
                   gap: 10,
-                  minWidth: 1080,
+                  minWidth: isMobile ? 0 : 1080,
                 }}
               >
                 {yearMonths.map((month) => {

@@ -1282,7 +1282,7 @@ export default function DealDetailPage() {
                   </Tooltip>
                   {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
                     <>
-                      <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>+</Button>
+                      <Button size="small" icon={<PlusOutlined />} aria-label="Добавить платёж" onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Платёж</Button>
                       <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
                     </>
                   )}
@@ -1431,7 +1431,7 @@ export default function DealDetailPage() {
             size="small"
             extra={
               <Space>
-                {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>+</Button>}
+                {canEditItems && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setItemModal(true)}>Товар</Button>}
               </Space>
             }
             bordered={false}

@@ -5,7 +5,7 @@ import {
   Button, Collapse, Drawer, Empty, Input, Popconfirm, Spin, Tag, Tooltip, Typography, message, theme,
 } from 'antd';
 import {
-  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, LockOutlined, MenuOutlined, PhoneOutlined, PlusOutlined,
+  BarChartOutlined, BulbOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, LockOutlined, HistoryOutlined, PhoneOutlined, PlusOutlined,
   RobotOutlined, SendOutlined, UserOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -339,7 +339,8 @@ export default function RopAgentPage() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-          {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setSidebarOpen(true)} />}
+          {/* Список чатов — свой значок, чтобы не путать с меню приложения */}
+          {isMobile && <Button type="text" icon={<HistoryOutlined />} aria-label="Чаты" title="Чаты" onClick={() => setSidebarOpen(true)} />}
           <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
           <Text strong ellipsis style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{activeTitle}</Text>
           {costChat && <Tag icon={<LockOutlined />} color="warning" style={{ marginInlineEnd: 0 }}>{isMobile ? null : 'себестоимость'}</Tag>}

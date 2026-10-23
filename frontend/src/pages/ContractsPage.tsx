@@ -311,16 +311,16 @@ export default function ContractsPage() {
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small"><Statistic title="Договоров" value={totals.count} /></Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small"><Statistic title="Общая сумма" value={totals.total} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" /></Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small"><Statistic title="Оплачено" value={totals.paid} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} /></Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small"><Statistic title="Остаток" value={totals.remaining} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: totals.remaining > 0 ? '#ff4d4f' : undefined }} /></Card>
         </Col>
       </Row>
@@ -502,23 +502,23 @@ function ContractDetailView({ detail, onPay }: { detail: ContractDetail; onPay: 
         {detail.notes && <Descriptions.Item label="Примечание" span={2}>{detail.notes}</Descriptions.Item>}
       </Descriptions>
 
-      <Row gutter={12}>
-        <Col span={6}>
+      <Row gutter={[12, 12]}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title="Сумма договора" value={Number(detail.amount)} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title="Сумма сделок" value={detail.totalAmount} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title="Оплачено" value={detail.totalPaid} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: '#52c41a' }} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title="Остаток" value={detail.remaining} formatter={(v) => moneyFormatter(Number(v))} suffix="so'm" valueStyle={{ color: detail.remaining > 0 ? '#ff4d4f' : '#52c41a' }} />
           </Card>

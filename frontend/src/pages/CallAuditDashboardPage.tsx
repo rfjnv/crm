@@ -140,9 +140,9 @@ export default function CallAuditDashboardPage() {
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 40px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/ai-assistant/transcribe')} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <Title level={4} style={{ margin: 0 }}>
             <PhoneOutlined style={{ marginRight: 8 }} />
             Аудиты звонков — Ментор менеджеров

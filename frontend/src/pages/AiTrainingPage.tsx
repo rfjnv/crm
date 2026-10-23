@@ -91,13 +91,13 @@ export default function AiTrainingPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <Button
           type="text"
           icon={<ArrowLeftOutlined />}
           onClick={() => navigate('/ai-assistant')}
         />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
           <Title level={4} style={{ margin: 0 }}>
             <BookOutlined style={{ marginRight: 8 }} />
             Обучение AI ассистента

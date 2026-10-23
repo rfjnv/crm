@@ -44,7 +44,7 @@ function DebtTag({ deal }: { deal: Deal }) {
 }
 
 function DealCard({ deal, openLabel }: { deal: Deal; openLabel: string }) {
-  const cfg = statusConfig[deal.status];
+  const cfg = statusConfig[deal.status] ?? { color: 'default', label: deal.status };
   const { token } = theme.useToken();
   const isDebt = deal.paymentType === 'PARTIAL' || deal.paymentType === 'INSTALLMENT';
   const overdue = isDebt && deal.paymentStatus !== 'PAID' && deal.dueDate && dayjs(deal.dueDate).isBefore(dayjs(), 'day');

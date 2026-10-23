@@ -632,8 +632,9 @@ export default function ClientsPage() {
           }}
           renderCard={(client: Client) => (
             <Card size="small" style={{ marginBottom: 0, ...(client.isSvip ? { borderLeft: '3px solid #faad14' } : {}) }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Кнопки уходят под данные клиента, если рядом с названием им тесно */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                   <ClientCompanyDisplay
                     client={{
                       id: client.id,
@@ -673,7 +674,7 @@ export default function ClientsPage() {
                   )}
                 </div>
                 {(isAdmin || canChangeStatus || user?.permissions?.includes('edit_client')) && (
-                  <Space size={4}>
+                  <Space size={4} wrap>
                     {isAdmin && (
                       <Button
                         type="text"

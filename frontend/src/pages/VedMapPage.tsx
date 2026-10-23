@@ -50,6 +50,7 @@ import { vedMapApi } from '../api/ved-map.api';
 import { suppliersApi } from '../api/suppliers.api';
 import { uploadsUrl } from '../lib/uploadsUrl';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type {
   SupplierSite,
   SupplierSitePayload,
@@ -107,6 +108,7 @@ function makeSiteIcon(
 }
 
 export default function VedMapPage() {
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -649,7 +651,7 @@ export default function VedMapPage() {
         .ved-map-route-modal-wrap { pointer-events: none !important; }
         .ved-map-route-modal { pointer-events: auto !important; margin: 24px 0 0 24px !important; }
       `}</style>
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 480 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : 'calc(100vh - 120px)', minHeight: 480 }}>
       <Space style={{ marginBottom: 12 }} wrap>
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>
@@ -700,10 +702,11 @@ export default function VedMapPage() {
         )}
       </Space>
 
-      <div style={{ display: 'flex', flex: 1, gap: 12, minHeight: 0 }}>
+      {/* На телефоне список и карта друг под другом: рядом карта сжималась до нуля */}
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flex: 1, gap: 12, minHeight: 0 }}>
         <Card
           size="small"
-          style={{ width: 340, flexShrink: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}
+          style={{ width: isMobile ? '100%' : 340, maxHeight: isMobile ? 360 : undefined, flexShrink: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}
           bodyStyle={{ padding: 0, flex: 1, overflow: 'auto' }}
         >
           <Tabs
@@ -825,7 +828,7 @@ export default function VedMapPage() {
 
         <Card
           size="small"
-          style={{ flex: 1, minWidth: 0, position: 'relative' }}
+          style={{ flex: isMobile ? '0 0 420px' : 1, minWidth: 0, position: 'relative' }}
           bodyStyle={{ padding: 0, height: '100%' }}
         >
           <div

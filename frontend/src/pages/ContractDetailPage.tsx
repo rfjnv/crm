@@ -10,7 +10,7 @@ import {
 import {
   FilePdfOutlined, UploadOutlined, DeleteOutlined,
   FileTextOutlined, FileImageOutlined, FileZipOutlined,
-  ArrowLeftOutlined, ExclamationCircleOutlined, DownOutlined,
+  ExclamationCircleOutlined, DownOutlined,
   OrderedListOutlined, DollarOutlined, SolutionOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined,
   PlusOutlined, PrinterOutlined,
@@ -220,7 +220,6 @@ export default function ContractDetailPage() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Link to="/contracts"><Button icon={<ArrowLeftOutlined />}>Договоры</Button></Link>
         <Dropdown.Button
           icon={<DownOutlined />}
           type="primary"

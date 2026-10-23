@@ -2311,7 +2311,7 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <Space>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} />
           <Typography.Title level={4} style={{ margin: 0 }}>Аналитика</Typography.Title>

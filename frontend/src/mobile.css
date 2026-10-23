@@ -108,12 +108,24 @@ body {
     line-height: 1.5;
   }
 
+  /*
+   * Длинное слово переносится, только если иначе не влезает. `word-break: break-word`
+   * здесь было нельзя: оно разрешает сжать колонку до одной буквы, и шапки таблиц,
+   * заголовки и названия в карточках вставали столбиком по букве.
+   */
   .app-main-content {
     min-width: 0;
     max-width: 100%;
     text-align: left;
     overflow-wrap: break-word;
-    word-break: break-word;
+  }
+
+  /* У текстов antd свой break-word — та же беда, снимаем и его */
+  .app-main-content .ant-typography,
+  .app-main-content .ant-descriptions-item-label,
+  .app-main-content .ant-descriptions-item-content {
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   /* Mobile shell: breathing room + floating sheet (see Layout.tsx) */
@@ -437,4 +449,104 @@ body {
 
 .login-page .app-button.ant-btn-primary:not(:disabled):hover {
   box-shadow: 0 10px 22px rgba(34, 96, 154, 0.38);
+}
+
+/*
+ * Телефон: ничто не шире экрана. Контент нового дизайна обрезает всё, что вылезло
+ * вправо, поэтому лишняя ширина не прокручивалась, а просто пропадала.
+ */
+@media (max-width: 768px) {
+  /* Переключатели (периоды, фильтры) — листаются пальцем внутри себя */
+  .app-main-content .ant-segmented {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-main-content .ant-segmented::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-main-content .ant-segmented-group {
+    min-width: max-content;
+  }
+
+  /* Подписи пунктов целиком, без «Сего…» */
+  .app-main-content .ant-segmented-item {
+    flex-shrink: 0;
+  }
+
+  .app-main-content .ant-segmented-item-label {
+    text-overflow: clip;
+  }
+
+  /* Ряды фильтров и кнопок переносятся на новую строку, а не уезжают за край */
+  .app-main-content .ant-space-horizontal {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  .app-main-content .ant-space-horizontal > .ant-space-item {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /*
+   * Шапки страниц и блоков из разметки «заголовок слева — кнопки справа»
+   * (inline flex + space-between): на телефоне переносятся, а не сжимаются.
+   */
+  .app-main-content div[style*='justify-content: space-between'] {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* Заголовок карточки не сжимается в столбик: действие справа уходит под него */
+  .app-main-content .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .app-main-content .ant-card-head-title {
+    flex: 1 0 auto;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .app-main-content .ant-card-extra {
+    margin-inline-start: 0;
+  }
+
+  /* Крупные суммы в плитках по две в ряд: поменьше, и число не рвётся по разрядам */
+  .app-main-content .ant-statistic .ant-statistic-content {
+    font-size: 20px;
+  }
+
+  .app-main-content .ant-statistic .ant-statistic-content-value {
+    white-space: nowrap;
+  }
+
+  /*
+   * Закреплённые справа колонки (обычно «Действия») на узком экране занимали полтаблицы
+   * и налезали на соседние — на телефоне они прокручиваются вместе с таблицей.
+   */
+  .app-main-content .ant-table-cell-fix-right,
+  .app-main-content .ant-table-cell-fix-end {
+    position: static !important;
+  }
+
+  .app-main-content .ant-table-cell-fix-right::after,
+  .app-main-content .ant-table-cell-fix-end::after {
+    display: none;
+  }
+
+  /* Поля с фиксированной шириной из разметки (width: 260 и т. п.) */
+  .app-main-content .ant-input-affix-wrapper,
+  .app-main-content .ant-input,
+  .app-main-content .ant-select,
+  .app-main-content .ant-picker,
+  .app-main-content .ant-input-number {
+    max-width: 100%;
+  }
 }
