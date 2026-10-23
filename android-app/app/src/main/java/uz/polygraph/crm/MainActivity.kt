@@ -41,6 +41,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var offlineView: View
 
+    /** Адрес открытой страницы — мост кэша отвечает только своему домену. */
+    @Volatile private var pageUrl: String? = null
+
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -108,6 +111,10 @@ class MainActivity : ComponentActivity() {
             userAgentString = "$userAgentString PolygraphCRMApp/${BuildConfig.VERSION_NAME}"
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        addJavascriptInterface(
+            EncryptedCache(context) { pageUrl?.let { isCrmUrl(Uri.parse(it)) } == true },
+            "PolygraphNative",
+        )
 
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -118,6 +125,7 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                pageUrl = url
                 progressBar.visibility = View.VISIBLE
             }
 

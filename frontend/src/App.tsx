@@ -18,6 +18,7 @@ import { useThemeStore } from './store/themeStore';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import { antThemeConfig } from './theme/tokens';
 import type { ThemeMode } from './theme/tokens';
+import { setupAppCache } from './lib/appCache';
 
 // Страницы грузятся отдельными чанками: иначе весь CRM (~5 МБ JS) скачивается и разбирается при первом открытии.
 const RatePage = lazy(() => import('./pages/RatePage'));
@@ -129,6 +130,7 @@ const queryClient = new QueryClient({
 // Справочник товаров (~250 КБ) нужен на многих страницах и меняется редко; после правок
 // товаров он и так инвалидируется — иначе каждая страница перекачивала его заново.
 queryClient.setQueryDefaults(['products'], { staleTime: 5 * 60_000 });
+setupAppCache(queryClient);
 
 export default function App() {
   const mode = useThemeStore((s) => s.mode);
