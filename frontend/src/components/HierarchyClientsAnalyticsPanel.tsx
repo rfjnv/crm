@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker, Checkbox, Tag, Tooltip, message } from 'antd';
-import { FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import { Bar } from '@ant-design/charts';
@@ -25,6 +25,7 @@ import {
   loadSalesContext,
   type HierarchyPeriodPreset,
 } from '../lib/analyticsHierarchySales';
+import { PALLET_FORMATS, SHEETS_PER_PALLET, formatPallets, palletFormatOf, sheetsPerPalletOf } from '../lib/pallets';
 
 type CompareLevel = 'category' | 'type' | 'product';
 type ClientViewMode = 'table' | 'matrix';
@@ -80,6 +81,34 @@ function loadExcluded(key: string): ExcludedClients {
 /** По дням матрица читается, пока колонок не больше двух месяцев. */
 const MATRIX_MAX_DAYS = 62;
 type BasicClientRow = { clientId: string; clientIsSvip: boolean };
+
+/** Строка сводки «Самоклейка в палетах»: один формат листа. */
+type PalletFormatRow = {
+  format: string;
+  perPallet: number;
+  soldSheets: number;
+  stockSheets: number;
+  clientsCount: number;
+  products: { id: string; name: string; soldSheets: number; stockSheets: number }[];
+};
+
+/**
+ * Высота верхней панели приложения: она сама липкая, и шапка таблицы,
+ * прилипшая к top:0, ушла бы под неё.
+ */
+function useAppHeaderHeight() {
+  const [height, setHeight] = useState(56);
+  useEffect(() => {
+    const header = document.querySelector('.ant-layout-header');
+    if (!header) return;
+    const update = () => setHeight(header.getBoundingClientRect().height);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+  return height;
+}
 
 type CategorySummary = {
   name: string;
@@ -630,6 +659,65 @@ export default function HierarchyClientsAnalyticsPanel({
       .map((p) => ({ name: p.name, value: p.soldQty }));
   }, [productsById, purchaseRows, selectedClientScopeProductIds]);
 
+  /**
+   * Самоклейка в листах по форматам: продано и остаток в листах и палетах.
+   * Считаем только товары выбранного среза, у которых формат известен (50×35, 50×70, 70×100).
+   */
+  const palletFormatRows = useMemo<PalletFormatRow[]>(() => {
+    type Acc = PalletFormatRow & { clients: Set<string>; byProduct: Map<string, PalletFormatRow['products'][number]> };
+    const byFormat = new Map<string, Acc>();
+    const rowFor = (format: string) => {
+      let row = byFormat.get(format);
+      if (!row) {
+        row = {
+          format, perPallet: SHEETS_PER_PALLET[format], soldSheets: 0, stockSheets: 0, clientsCount: 0,
+          products: [], clients: new Set(), byProduct: new Map(),
+        };
+        byFormat.set(format, row);
+      }
+      return row;
+    };
+    for (const id of selectedClientScopeProductIds) {
+      const product = productsById.get(id);
+      const format = palletFormatOf(product);
+      if (!product || !format) continue;
+      const row = rowFor(format);
+      row.stockSheets += product.stock || 0;
+      row.byProduct.set(id, { id, name: product.name, soldSheets: 0, stockSheets: product.stock || 0 });
+    }
+    for (const sale of purchaseRows) {
+      if (!selectedClientScopeProductIds.has(sale.productId)) continue;
+      const format = palletFormatOf(productsById.get(sale.productId));
+      if (!format) continue;
+      const row = rowFor(format);
+      row.soldSheets += sale.soldQty;
+      row.clients.add(sale.clientId);
+      const item = row.byProduct.get(sale.productId);
+      if (item) item.soldSheets += sale.soldQty;
+    }
+    return PALLET_FORMATS.filter((f) => byFormat.has(f)).map((f) => {
+      const { clients, byProduct, ...row } = byFormat.get(f)!;
+      return {
+        ...row,
+        clientsCount: clients.size,
+        products: [...byProduct.values()].sort((a, b) => b.soldSheets - a.soldSheets || a.name.localeCompare(b.name, 'ru')),
+      };
+    });
+  }, [productsById, purchaseRows, selectedClientScopeProductIds]);
+  const hasPalletProducts = palletFormatRows.length > 0;
+  const palletsCardRef = useRef<HTMLDivElement>(null);
+  const appHeaderHeight = useAppHeaderHeight();
+
+  /** Сколько палет взял клиент: листы каждого товара делим на его норму палета. */
+  const palletsOfMetrics = (metrics: ClientPurchaseSummaryRow['productMetrics']) => {
+    let pallets = 0;
+    for (const [productId, m] of metrics) {
+      const perPallet = sheetsPerPalletOf(productsById.get(productId));
+      if (perPallet) pallets += m.soldQty / perPallet;
+    }
+    return pallets;
+  };
+
   /** Календарные границы выбранного периода (Ташкент) — колонки матрицы. */
   const matrixPeriod = useMemo(() => {
     const bounds = getPeriodBoundsByPreset(
@@ -723,11 +811,22 @@ export default function HierarchyClientsAnalyticsPanel({
       title: scopeUnitLabel ?? 'Шт.',
       dataIndex: 'soldQty',
       key: 'soldQty',
-      width: 72,
+      width: hasPalletProducts ? 110 : 72,
       align: 'right',
       render: (v: number, line) => {
-        const unit = productsById.get(line.productId)?.unit;
-        return unit ? `${v.toLocaleString('ru-RU')} ${unit}` : v.toLocaleString('ru-RU');
+        const product = productsById.get(line.productId);
+        const unit = product?.unit;
+        const text = unit ? `${v.toLocaleString('ru-RU')} ${unit}` : v.toLocaleString('ru-RU');
+        const perPallet = sheetsPerPalletOf(product);
+        if (!perPallet) return text;
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {text}
+            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+              {formatPallets(v / perPallet)}
+            </Typography.Text>
+          </span>
+        );
       },
     },
     {
@@ -801,6 +900,7 @@ export default function HierarchyClientsAnalyticsPanel({
       key: 'include',
       width: 96,
       align: 'center',
+      fixed: 'left',
       render: (_: unknown, r: BasicClientRow & { clientName: string }) => (
         <Checkbox
           checked={!excluded[r.clientId]}
@@ -812,6 +912,8 @@ export default function HierarchyClientsAnalyticsPanel({
       title: 'Клиент',
       dataIndex: 'clientName',
       key: 'clientName',
+      width: 240,
+      fixed: 'left',
       render: (v, r: BasicClientRow) => (
         <Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/clients/${r.clientId}`)}>
           {r.clientIsSvip ? `👑 ${v}` : v}
@@ -833,6 +935,20 @@ export default function HierarchyClientsAnalyticsPanel({
       align: 'right',
       render: (v: number) => v.toLocaleString('ru-RU'),
     },
+    ...(hasPalletProducts ? [{
+      title: (
+        <Tooltip title={`Самоклейка в листах, пересчитанная в палеты. В палете: ${PALLET_FORMATS.map((f) => `${f} — ${SHEETS_PER_PALLET[f].toLocaleString('ru-RU')} л.`).join(', ')}`}>
+          Палет
+        </Tooltip>
+      ),
+      key: 'pallets',
+      width: 100,
+      align: 'right' as const,
+      render: (_: unknown, r: ClientPurchaseSummaryRow) => {
+        const pallets = palletsOfMetrics(r.productMetrics);
+        return pallets > 0 ? formatPallets(pallets) : '—';
+      },
+    }] : []),
     {
       title: 'Выручка',
       dataIndex: 'salesRevenue',
@@ -845,6 +961,7 @@ export default function HierarchyClientsAnalyticsPanel({
       title: 'Что купил',
       dataIndex: 'purchasedInfo',
       key: 'purchasedInfo',
+      width: 360,
       render: (v: string) => v || '-',
     },
   ];
@@ -1002,6 +1119,77 @@ export default function HierarchyClientsAnalyticsPanel({
           <Spin style={{ display: 'block', margin: '16px auto' }} />
         ) : (
           <>
+            {hasPalletProducts && (
+              <div ref={palletsCardRef} style={{ scrollMarginTop: appHeaderHeight + 12 }}>
+                <Card
+                  size="small"
+                  style={{ marginBottom: 12 }}
+                  title={<Space size={6}><AppstoreOutlined />Самоклейка в палетах</Space>}
+                  extra={(
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      В палете: {PALLET_FORMATS.map((f) => `${f} — ${SHEETS_PER_PALLET[f].toLocaleString('ru-RU')} л.`).join(' · ')}
+                    </Typography.Text>
+                  )}
+                >
+                  <Table<PalletFormatRow>
+                    size="small"
+                    rowKey="format"
+                    pagination={false}
+                    dataSource={palletFormatRows}
+                    scroll={{ x: 'max-content' }}
+                    expandable={{
+                      expandedRowRender: (row) => (
+                        <Table
+                          size="small"
+                          rowKey="id"
+                          pagination={false}
+                          dataSource={row.products}
+                          scroll={{ x: 'max-content' }}
+                          columns={[
+                            { title: 'Товар', dataIndex: 'name', key: 'name' },
+                            {
+                              title: 'Продано', key: 'sold', align: 'right', width: 190,
+                              render: (_: unknown, p: PalletFormatRow['products'][number]) =>
+                                `${formatPallets(p.soldSheets / row.perPallet)} (${p.soldSheets.toLocaleString('ru-RU')} л.)`,
+                            },
+                            {
+                              title: 'Остаток', key: 'stock', align: 'right', width: 190,
+                              render: (_: unknown, p: PalletFormatRow['products'][number]) =>
+                                `${formatPallets(p.stockSheets / row.perPallet)} (${p.stockSheets.toLocaleString('ru-RU')} л.)`,
+                            },
+                          ]}
+                        />
+                      ),
+                    }}
+                    columns={[
+                      { title: 'Формат', dataIndex: 'format', key: 'format', width: 90, render: (v: string) => <Typography.Text strong>{v}</Typography.Text> },
+                      {
+                        title: 'Листов в палете', dataIndex: 'perPallet', key: 'perPallet', width: 130, align: 'right',
+                        render: (v: number) => v.toLocaleString('ru-RU'),
+                      },
+                      {
+                        title: 'Продано, палет', key: 'soldPallets', width: 130, align: 'right',
+                        render: (_: unknown, r) => <Typography.Text strong>{formatPallets(r.soldSheets / r.perPallet)}</Typography.Text>,
+                      },
+                      {
+                        title: 'Продано, листов', dataIndex: 'soldSheets', key: 'soldSheets', width: 130, align: 'right',
+                        render: (v: number) => v.toLocaleString('ru-RU'),
+                      },
+                      {
+                        title: 'Остаток, палет', key: 'stockPallets', width: 130, align: 'right',
+                        render: (_: unknown, r) => <Typography.Text strong>{formatPallets(r.stockSheets / r.perPallet)}</Typography.Text>,
+                      },
+                      {
+                        title: 'Остаток, листов', dataIndex: 'stockSheets', key: 'stockSheets', width: 130, align: 'right',
+                        render: (v: number) => v.toLocaleString('ru-RU'),
+                      },
+                      { title: 'Клиентов', dataIndex: 'clientsCount', key: 'clientsCount', width: 90, align: 'right' },
+                    ]}
+                  />
+                </Card>
+              </div>
+            )}
+
             <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
               <Col xs={24}>
                 <Card
@@ -1171,6 +1359,10 @@ export default function HierarchyClientsAnalyticsPanel({
                 dataSource={[...clientPurchaseSummaryRows, ...excludedSummaryRows]}
                 onRow={(r) => (excluded[r.clientId] ? { style: { opacity: 0.45 } } : {})}
                 locale={{ emptyText: renderNoSales() }}
+                // Широкая таблица прокручивается вбок, а полоса прокрутки прилипает к низу экрана —
+                // не нужно листать до конца списка, чтобы увидеть правые колонки.
+                scroll={{ x: 'max-content' }}
+                sticky={{ offsetHeader: appHeaderHeight }}
                 expandable={{
                   expandedRowRender: (record) => (
                     <Table
@@ -1199,6 +1391,7 @@ export default function HierarchyClientsAnalyticsPanel({
                   dataSource={matrixRows.clients}
                   locale={{ emptyText: renderNoSales() }}
                   scroll={{ x: 'max-content' }}
+                  sticky={{ offsetHeader: appHeaderHeight }}
                   columns={matrixColumns}
                 />
               </>
@@ -1224,6 +1417,15 @@ export default function HierarchyClientsAnalyticsPanel({
                         { label: 'Матрица', value: 'matrix' },
                       ]}
                     />
+                    {hasPalletProducts && (
+                      <Button
+                        size="small"
+                        icon={<AppstoreOutlined />}
+                        onClick={() => palletsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      >
+                        Палеты
+                      </Button>
+                    )}
                   </Space>
                 </Card>
               </div>
