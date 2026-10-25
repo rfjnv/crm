@@ -1,104 +1,40 @@
 /*
- * Экран входа: светлое небо, стеклянная карточка по центру. Тема приложения сюда не
- * доходит (пользователь ещё не выбран), поэтому цвета заданы здесь же.
+ * Экран входа — материалы нового дизайна (theme/glass.css): то же фото за интерфейсом,
+ * притемнённое, и дымчатое стеклянное окно, как в тёмной теме приложения. Тема сюда
+ * не доходит (пользователь ещё не выбран), поэтому цвета заданы здесь же.
  */
 .auth-page {
-  --auth-text: #14161a;
-  --auth-muted: #6b7280;
-  --auth-field: #eef1f5;
-  --auth-field-hover: #e6eaf0;
-  --auth-accent: #2563eb;
+  --auth-text: #ffffff;
+  --auth-text-2: rgba(255, 255, 255, 0.78);
+  --auth-text-3: rgba(255, 255, 255, 0.55);
+  --auth-field: rgba(255, 255, 255, 0.07);
+  --auth-field-hover: rgba(255, 255, 255, 0.11);
+  --auth-field-border: rgba(255, 255, 255, 0.14);
+  --auth-cream: #f4f0e6;
+  --auth-ink: #1c1a17;
 
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: var(--app-vh, 100vh);
-  padding: 88px 16px 48px;
-  overflow: hidden;
+  padding: 96px 16px 48px;
   color: var(--auth-text);
-  background: linear-gradient(180deg, #8cbfe9 0%, #b5d6f2 38%, #dcecf8 68%, #f4f8fc 100%);
+  /* Свой фон с этого устройства (store/backgroundStore.ts) или стандартное фото */
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.42)),
+    var(--glass-bg-image, url('../assets/glass-bg.webp')) center / cover no-repeat;
+  background-color: #2c3034;
   /* Тот же шрифт, что у приложения (theme/tokens.ts): сюда antd его не пробрасывает */
   font-family: Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Небо ── */
-.auth-sky {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.auth-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 50%;
-  transform: translate(-50%, -38%);
-}
-
-.auth-ring--1 {
-  width: 760px;
-  height: 760px;
-}
-
-.auth-ring--2 {
-  width: 1080px;
-  height: 1080px;
-  border-color: rgba(255, 255, 255, 0.38);
-}
-
-.auth-ring--3 {
-  width: 1400px;
-  height: 1400px;
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-.auth-cloud {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
-  filter: blur(6px);
-}
-
-.auth-cloud--1 {
-  bottom: -120px;
-  left: -160px;
-  width: 720px;
-  height: 360px;
-}
-
-.auth-cloud--2 {
-  bottom: -160px;
-  right: -200px;
-  width: 820px;
-  height: 400px;
-}
-
-.auth-cloud--3 {
-  bottom: 60px;
-  left: 8%;
-  width: 380px;
-  height: 160px;
-  opacity: 0.8;
-}
-
-.auth-cloud--4 {
-  bottom: 120px;
-  right: 6%;
-  width: 420px;
-  height: 170px;
-  opacity: 0.7;
-}
-
-/* ── Бренд ── */
+/* ── Бренд в углу экрана ── */
 .auth-brand {
   position: absolute;
   top: 24px;
   left: 28px;
-  z-index: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -107,11 +43,11 @@
 .auth-brand__tile {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .auth-brand__tile img {
@@ -122,42 +58,26 @@
 
 .auth-brand__name {
   font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--auth-text);
 }
 
-/* ── Карточка ── */
+/* ── Окно ── */
 .auth-card {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   width: 100%;
   max-width: 400px;
-  padding: 32px 28px 26px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
-  background: linear-gradient(180deg, rgba(204, 238, 252, 0.88) 0%, rgba(255, 255, 255, 0.94) 42%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  backdrop-filter: blur(24px) saturate(160%);
+  background: rgba(44, 48, 52, 0.52);
+  -webkit-backdrop-filter: blur(48px) saturate(115%);
+  backdrop-filter: blur(48px) saturate(115%);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 24px 60px -18px rgba(30, 64, 120, 0.35),
-    0 2px 8px rgba(30, 64, 120, 0.06);
-  animation: auth-in 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-
-.auth-card__icon {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 18px;
-  border-radius: 14px;
-  background: #fff;
-  color: var(--auth-text);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 8px 18px -8px rgba(30, 64, 120, 0.35);
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 40px 100px rgba(0, 0, 0, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.2);
+  animation: auth-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .auth-card__title {
@@ -167,30 +87,35 @@
   letter-spacing: -0.02em;
   line-height: 1.25;
   color: var(--auth-text);
-  text-align: center;
 }
 
 .auth-card__subtitle {
-  margin: 6px 0 22px;
+  margin: 4px 0 22px;
   font-size: 14px;
-  line-height: 1.45;
-  color: var(--auth-muted);
-  text-align: center;
+  color: var(--auth-text-3);
 }
 
 /* ── Поля ── */
-.auth-form {
-  width: 100%;
-}
-
 .auth-form .ant-form-item {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.auth-form .ant-input-affix-wrapper {
+.auth-form .ant-form-item-label {
+  padding-bottom: 6px;
+}
+
+.auth-page .auth-form .ant-form-item-label > label {
+  height: auto;
+  margin-left: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--auth-text-2);
+}
+
+.auth-page .auth-form .ant-input-affix-wrapper {
   height: 46px;
   padding: 0 14px;
-  border: 1px solid transparent;
+  border: 1px solid var(--auth-field-border);
   border-radius: 12px;
   background: var(--auth-field);
   box-shadow: none;
@@ -198,104 +123,89 @@
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.auth-form .ant-input-affix-wrapper:hover {
-  border-color: transparent;
+.auth-page .auth-form .ant-input-affix-wrapper:hover {
+  border-color: rgba(255, 255, 255, 0.22);
   background: var(--auth-field-hover);
 }
 
-.auth-form .ant-input-affix-wrapper-focused,
-.auth-form .ant-input-affix-wrapper:focus-within {
-  border-color: rgba(37, 99, 235, 0.45);
-  background: #fff;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+.auth-page .auth-form .ant-input-affix-wrapper-focused,
+.auth-page .auth-form .ant-input-affix-wrapper:focus-within {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: var(--auth-field-hover);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
 }
 
-.auth-form .ant-input-affix-wrapper-status-error:not(.ant-input-affix-wrapper-disabled) {
-  border-color: rgba(220, 38, 38, 0.5);
-  background: #fff;
+.auth-page .auth-form .ant-input-affix-wrapper-status-error:not(.ant-input-affix-wrapper-disabled) {
+  border-color: rgba(252, 165, 165, 0.7);
 }
 
-/* Тёмная тема antd красит текст полей белым — экран входа всегда светлый */
+/* Светлая тема antd красит текст полей тёмным — на стекле он всегда белый */
 .auth-page .auth-form .ant-input-affix-wrapper .ant-input {
   background: transparent;
   color: var(--auth-text);
   font-size: 15px;
 }
 
-/* Автозаполнение браузера: без жёлто-голубой заливки поверх поля */
-.auth-form .ant-input:-webkit-autofill {
+.auth-page .auth-form .ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Автозаполнение браузера: без светлой заливки поверх стекла */
+.auth-page .auth-form .ant-input:-webkit-autofill {
   -webkit-text-fill-color: var(--auth-text);
-  box-shadow: 0 0 0 40px var(--auth-field) inset;
+  box-shadow: 0 0 0 40px #3a3f44 inset;
+  caret-color: var(--auth-text);
   transition: background-color 9999s ease-out;
 }
 
-.auth-form .ant-input::placeholder {
-  color: #9aa1ad;
-}
-
-.auth-form .ant-input-prefix {
+.auth-page .auth-form .ant-input-prefix {
   margin-inline-end: 10px;
-  color: #8a93a1;
+  color: var(--auth-text-3);
 }
 
-.auth-form .ant-input-password-icon {
+.auth-page .auth-form .ant-input-password-icon,
+.auth-page .auth-form .ant-input-password-icon:hover {
   display: grid;
   place-items: center;
-  color: #8a93a1;
+  color: var(--auth-text-3);
 }
 
-.auth-form .ant-form-item-explain-error {
+.auth-page .auth-form .ant-form-item-explain-error {
   margin: 4px 2px 0;
   font-size: 13px;
+  color: #fca5a5;
 }
 
-/* ── Кнопка ── */
+/* ── Кнопка: кремовая, как выбранные «таблетки» в тёмной теме ── */
 .auth-submit.ant-btn {
   height: 46px;
-  margin-top: 6px;
+  margin-top: 8px;
   border: 0;
   border-radius: 12px;
-  background: linear-gradient(180deg, #2b2f37 0%, #121418 100%);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 8px 18px -8px rgba(15, 23, 42, 0.6);
-  color: #fff;
+  background: var(--auth-cream);
+  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.6);
+  color: var(--auth-ink);
   font-size: 15px;
   font-weight: 600;
 }
 
 .auth-submit.ant-btn:not(:disabled):hover,
 .auth-submit.ant-btn:not(:disabled):focus-visible {
-  background: linear-gradient(180deg, #353a44 0%, #1a1d22 100%);
-  color: #fff;
+  background: #fffaf0;
+  color: var(--auth-ink);
 }
 
 .auth-submit.ant-btn:not(:disabled):active {
   transform: translateY(1px);
 }
 
-/* ── Подсказка снизу ── */
-.auth-card__divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin: 22px 0 8px;
-  font-size: 12px;
-  color: var(--auth-muted);
-  white-space: nowrap;
-}
-
-.auth-card__divider::before,
-.auth-card__divider::after {
-  content: '';
-  flex: 1;
-  border-top: 1px dashed rgba(107, 114, 128, 0.35);
-}
-
 .auth-card__hint {
-  margin: 0;
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 13px;
   line-height: 1.45;
-  color: var(--auth-muted);
+  color: var(--auth-text-3);
   text-align: center;
 }
 
@@ -312,22 +222,32 @@
 
 @media (max-width: 480px) {
   .auth-page {
-    align-items: flex-start;
-    padding-top: 92px;
+    padding-top: 88px;
   }
 
   .auth-brand {
+    top: 20px;
     left: 20px;
   }
 
   .auth-card {
-    padding: 28px 20px 22px;
+    padding: 24px 20px;
     border-radius: 22px;
   }
+}
 
-  .auth-ring--1 {
-    width: 560px;
-    height: 560px;
+/* Без размытия (старый браузер или «меньше прозрачности») — сплошное окно */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .auth-card {
+    background: rgba(44, 48, 52, 0.94);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .auth-card {
+    background: rgba(44, 48, 52, 0.94);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
