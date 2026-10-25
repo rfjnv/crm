@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Card, Typography, message, Space, theme } from 'antd';
-import { LockOutlined, UserOutlined, IdcardOutlined } from '@ant-design/icons';
+import { Form, Input, Button, message } from 'antd';
+import { Eye, EyeSlash, LockSimple, SignIn, User } from '@phosphor-icons/react';
 import { authApi } from '../api/auth.api';
 import { useAuthStore } from '../store/authStore';
 import { homePathForUser } from '../lib/authUser';
-import { APP_BUTTON, APP_INPUT } from '../components/ui/AppClassNames';
+import miniLogo from '../assets/mini-logo.webp';
+import './LoginPage.css';
 
 /** Ответа от сервера не пришло вовсе: обрыв связи или таймаут просыпающегося бэкенда. */
 function loginErrorMessage(err: unknown, fallback: string): string {
@@ -22,7 +23,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
-  const { token } = theme.useToken();
 
   const onCrmLogin = async (values: { login: string; password: string }) => {
     setLoading(true);
@@ -59,35 +59,54 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      className="login-page"
-      style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-    >
-      <Card style={{ width: '100%', maxWidth: 420 }} bordered={false}>
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Space direction="vertical" size={12} style={{ width: '100%', alignItems: 'center' }}>
-            <div className="login-logo">
-              <IdcardOutlined />
-            </div>
-            <Typography.Title level={3} style={{ textAlign: 'center', margin: 0, color: token.colorTextHeading }}>
-              CRM System
-            </Typography.Title>
-          </Space>
-          <Form layout="vertical" onFinish={onCrmLogin} autoComplete="off" requiredMark={false}>
-            <Form.Item label="Логин" name="login" rules={[{ required: true, message: 'Введите логин' }]}>
-              <Input className={APP_INPUT} prefix={<UserOutlined />} placeholder="Введите логин" size="large" />
-            </Form.Item>
-            <Form.Item label="Пароль" name="password" rules={[{ required: true, message: 'Введите пароль' }]}>
-              <Input.Password className={APP_INPUT} prefix={<LockOutlined />} placeholder="Введите пароль" size="large" />
-            </Form.Item>
-            <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
-              <Button type="primary" className={APP_BUTTON} htmlType="submit" loading={loading} block size="large">
-                Войти
-              </Button>
-            </Form.Item>
-          </Form>
-        </Space>
-      </Card>
+    <div className="auth-page">
+      {/* Небо: облака и тонкие кольца вокруг карточки — чистый CSS, без картинок */}
+      <div className="auth-sky" aria-hidden>
+        <span className="auth-ring auth-ring--1" />
+        <span className="auth-ring auth-ring--2" />
+        <span className="auth-ring auth-ring--3" />
+        <span className="auth-cloud auth-cloud--1" />
+        <span className="auth-cloud auth-cloud--2" />
+        <span className="auth-cloud auth-cloud--3" />
+        <span className="auth-cloud auth-cloud--4" />
+      </div>
+
+      <header className="auth-brand">
+        <span className="auth-brand__tile"><img src={miniLogo} alt="" /></span>
+        <span className="auth-brand__name">Polygraph Business</span>
+      </header>
+
+      <main className="auth-card">
+        <span className="auth-card__icon" aria-hidden><SignIn size={22} weight="bold" /></span>
+        <h1 className="auth-card__title">Вход в CRM</h1>
+        <p className="auth-card__subtitle">Продажи, склад и деньги — в одном месте</p>
+
+        <Form className="auth-form" onFinish={onCrmLogin} requiredMark={false}>
+          <Form.Item name="login" rules={[{ required: true, message: 'Введите логин' }]}>
+            <Input
+              prefix={<User size={17} />}
+              placeholder="Логин"
+              autoComplete="username"
+              aria-label="Логин"
+            />
+          </Form.Item>
+          <Form.Item name="password" rules={[{ required: true, message: 'Введите пароль' }]}>
+            <Input.Password
+              prefix={<LockSimple size={17} />}
+              placeholder="Пароль"
+              autoComplete="current-password"
+              aria-label="Пароль"
+              iconRender={(visible) => (visible ? <Eye size={17} /> : <EyeSlash size={17} />)}
+            />
+          </Form.Item>
+          <Button className="auth-submit" htmlType="submit" loading={loading} block>
+            Войти
+          </Button>
+        </Form>
+
+        <div className="auth-card__divider"><span>Нет доступа или забыли пароль?</span></div>
+        <p className="auth-card__hint">Обратитесь к администратору компании — он создаст учётную запись или сбросит пароль.</p>
+      </main>
     </div>
   );
 }
