@@ -1166,25 +1166,6 @@ html[data-design='modern'] .sider-menu-scroll .ant-menu-sub .ant-menu-item-selec
 
 /* ── Блоки дашборда в новом дизайне ── */
 
-/* Цели: мягкие градиенты вместо ярких зелёного и синего antd */
-html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-track {
-  background: linear-gradient(90deg, #34d399, #10b981) !important;
-  border-radius: 999px;
-}
-
-html[data-design='modern'] .dashboard-page .dashboard-goal-card--today .ant-progress-track {
-  background: linear-gradient(90deg, #60a5fa, #6366f1) !important;
-}
-
-html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-rail {
-  background: var(--panel-bg) !important;
-}
-
-html[data-design='modern'] .dashboard-page .dashboard-goal-card .ant-progress-indicator {
-  color: var(--ant-color-text) !important;
-  font-weight: 600;
-}
-
 /* ВЭД: плашки «Сегодня / 7 дней / Блокирующие» — стекло, цвет только у числа и точки */
 html[data-design='modern'] .dashboard-page .ved-stat {
   position: relative;

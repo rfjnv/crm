@@ -1,0 +1,211 @@
+/* «Цели по выручке». Синяя шкала: акцент нового дизайна, в классике — primary antd. */
+.goals-block {
+  --gb-accent: var(--c-accent-fill, var(--ant-color-primary));
+  --gb-done: var(--gb-accent);
+  --gb-mid: color-mix(in srgb, var(--gb-accent) 62%, transparent);
+  --gb-low: color-mix(in srgb, var(--gb-accent) 36%, transparent);
+  --gb-empty: var(--fill-2, var(--ant-color-fill-tertiary));
+  --gb-text-1: var(--c-text-1, var(--ant-color-text));
+  --gb-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --gb-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --gb-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  color: var(--gb-text-1);
+}
+
+.goals-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-bottom: 4px;
+}
+
+.goals-block__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.goals-block__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--gb-text-3);
+}
+
+.goals-block__legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 6px;
+  border-radius: 3px;
+}
+
+.goals-block__legend i:first-child {
+  margin-left: 0;
+}
+
+.goals-block__legend i[data-tone='done'] { background: var(--gb-done); }
+.goals-block__legend i[data-tone='mid'] { background: var(--gb-mid); }
+.goals-block__legend i[data-tone='low'] { background: var(--gb-low); }
+
+.goals-block__edit {
+  font-size: 13px;
+  color: var(--gb-text-2);
+}
+
+.goals-block__edit:hover {
+  color: var(--gb-text-1);
+}
+
+.goals-row {
+  padding: 14px 0 2px;
+}
+
+.goals-row + .goals-row {
+  margin-top: 10px;
+  border-top: 1px solid var(--gb-hair);
+}
+
+.goals-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.goals-row__title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.goals-row__nums {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.goals-row__nums b {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.goals-row__nums span {
+  font-size: 13px;
+  color: var(--gb-text-3);
+}
+
+.goals-pace {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--gb-empty);
+  color: var(--gb-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.goals-pace--ahead {
+  background: color-mix(in srgb, var(--gb-accent) 14%, transparent);
+  color: var(--c-accent-fg, var(--ant-color-primary));
+}
+
+/* Сегодня — сплошная полоса */
+.goals-bar {
+  height: 26px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--gb-empty);
+}
+
+.goals-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gb-accent) 60%, #fff), var(--gb-accent));
+  transition: width 0.5s ease;
+}
+
+/* Клетки: дни месяца, месяцы года */
+.goals-cells {
+  display: grid;
+  gap: 3px;
+  height: 26px;
+}
+
+.goals-cell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--gb-empty);
+}
+
+.goals-cell > i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.goals-cell[data-tone='done'] > i { background: var(--gb-done); }
+.goals-cell[data-tone='mid'] > i { background: var(--gb-mid); }
+.goals-cell[data-tone='low'] > i { background: var(--gb-low); }
+
+/* Воскресенье — выходной: штриховка вместо пустой клетки */
+.goals-cell--off {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--gb-empty) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.goals-cell--current {
+  overflow: visible;
+  box-shadow: 0 0 0 2px var(--gb-text-1);
+}
+
+.goals-cell--current > i {
+  border-radius: 4px;
+}
+
+.goals-caps {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--gb-text-3);
+}
+
+@media (max-width: 767px) {
+  .goals-block__legend {
+    display: none;
+  }
+
+  .goals-block__edit {
+    margin-left: auto;
+  }
+
+  .goals-cells {
+    gap: 2px;
+    height: 24px;
+  }
+
+  .goals-cell {
+    border-radius: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goals-bar > i {
+    transition: none;
+  }
+}

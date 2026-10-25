@@ -186,74 +186,6 @@
     width: 100%;
   }
 
-  /* Monthly goal (mobile) */
-  .dashboard-page .dashboard-goal-card .ant-card-body {
-    padding: 16px !important;
-  }
-
-  .dashboard-page .goal-card {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 0;
-    min-width: 0;
-  }
-
-  .dashboard-page .goal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .dashboard-page .goal-title {
-    font-size: 13px;
-    opacity: 0.85;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .dashboard-page .goal-percent {
-    font-size: 18px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .dashboard-page .goal-progress {
-    width: 100%;
-    margin: 0 !important;
-  }
-
-  .dashboard-page .goal-progress .ant-progress-inner {
-    height: 8px !important;
-    border-radius: 6px;
-  }
-
-  .dashboard-page .goal-progress .ant-progress-bg {
-    height: 8px !important;
-    border-radius: 6px;
-  }
-
-  .dashboard-page .goal-remaining {
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.35;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .dashboard-page .goal-meta {
-    font-size: 13px;
-    opacity: 0.7;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
   .dashboard-page .dashboard-top-list {
     gap: var(--space-2) !important;
   }
@@ -288,20 +220,3 @@
   color: var(--text-secondary) !important;
 }
 
-[data-theme='dark'] .dashboard-page .goal-title {
-  color: var(--text-secondary);
-  opacity: 1;
-}
-
-[data-theme='dark'] .dashboard-page .goal-meta {
-  color: var(--text-secondary);
-  opacity: 1;
-}
-
-[data-theme='dark'] .dashboard-page .goal-percent {
-  color: var(--text-primary);
-}
-
-[data-theme='dark'] .dashboard-page .goal-remaining {
-  color: var(--text-secondary);
-}

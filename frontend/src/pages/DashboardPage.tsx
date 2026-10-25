@@ -27,6 +27,7 @@ import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
 import CallsKpi from '../components/dashboard/CallsKpi';
+import GoalsBlock from '../components/dashboard/GoalsBlock';
 import { callsApi } from '../api/calls.api';
 import type { Permission, UserRole, DealStatus } from '../types';
 import { getFirstName } from '../lib/name-utils';
@@ -386,15 +387,10 @@ export default function DashboardPage() {
     : null;
   const revenueGoal = companySettings?.monthlyRevenueGoal || DEFAULT_GOAL;
   const revenueMonth = data.revenueMonth || 0;
-  const goalPct = revenueGoal > 0 ? Math.floor((revenueMonth / revenueGoal) * 100) : 0;
-  const goalBarPct = Math.min(100, goalPct);
   const goalRemaining = Math.max(0, revenueGoal - revenueMonth);
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const dailyGoal = companySettings?.dailyRevenueGoal || (revenueGoal / daysInMonth);
   const revenueTodayForGoal = data.revenueToday || 0;
-  const dailyGoalPct = dailyGoal > 0 ? Math.floor((revenueTodayForGoal / dailyGoal) * 100) : 0;
-  const dailyGoalBarPct = Math.min(100, dailyGoalPct);
-  const dailyGoalRemaining = Math.max(0, dailyGoal - revenueTodayForGoal);
   const hasMyGoal = !!myGoal && (
     myGoal.targets.deals != null ||
     myGoal.targets.revenue != null ||
@@ -813,107 +809,26 @@ export default function DashboardPage() {
       {/* Пропущенные звонки с рабочих телефонов: менеджеру свои, руководителю сводка */}
       <MissedCallsWidget />
 
+      {/* Цели по выручке: сегодня, месяц по дням, год по месяцам (год — только админам) */}
       {(isAdmin || role === 'MANAGER') && canSeeMoney && (
         <div className={isMobile ? 'section' : undefined}>
-        <Card
-          className="dashboard-goal-card"
-          bordered={false}
-          hoverable
-          style={{ ...card, marginTop: isMobile ? 0 : 16, cursor: 'pointer' }}
-          styles={{ body: isMobile ? undefined : { padding: '12px 20px' } }}
-          onClick={() => navigate('/settings/company')}
-        >
-          {isMobile ? (
-            <div className="goal-card">
-              <div className="goal-header">
-                <Typography.Text className="goal-title">Цель месяца</Typography.Text>
-                <span className="goal-percent">{goalPct}%</span>
-              </div>
-              <Progress
-                className="goal-progress"
-                percent={goalBarPct}
-                showInfo={false}
-                strokeWidth={8}
-                strokeColor={isDark ? '#52c41a' : '#389e0d'}
-                trailColor={tk.colorFillSecondary}
-              />
-              <div className="goal-remaining">
-                Осталось: {formatUZS(goalRemaining)}
-              </div>
-              <div className="goal-meta">
-                {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                Цель месяца
-              </Typography.Text>
-              <Progress
-                percent={goalBarPct}
-                strokeColor={isDark ? '#52c41a' : '#389e0d'}
-                trailColor={tk.colorFillSecondary}
-                style={{ flex: 1, minWidth: 120, margin: 0 }}
-                format={() => `${goalPct}%`}
-              />
-              <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                {formatUZS(revenueMonth)} / {formatUZS(revenueGoal)}
-              </Typography.Text>
-            </div>
-          )}
-        </Card>
-        </div>
-      )}
-
-      {(isAdmin || role === 'MANAGER') && canSeeMoney && (
-        <div className={isMobile ? 'section' : undefined}>
-        <Card
-          className="dashboard-goal-card dashboard-goal-card--today"
-          bordered={false}
-          hoverable
-          style={{ ...card, marginTop: isMobile ? 0 : 16, cursor: 'pointer' }}
-          styles={{ body: isMobile ? undefined : { padding: '12px 20px' } }}
-          onClick={() => navigate('/settings/company')}
-        >
-          {isMobile ? (
-            <div className="goal-card">
-              <div className="goal-header">
-                <Typography.Text className="goal-title">Цель на сегодня</Typography.Text>
-                <span className="goal-percent">{dailyGoalPct}%</span>
-              </div>
-              <Progress
-                className="goal-progress"
-                percent={dailyGoalBarPct}
-                showInfo={false}
-                strokeWidth={8}
-                strokeColor={isDark ? '#1890ff' : '#096dd9'}
-                trailColor={tk.colorFillSecondary}
-              />
-              <div className="goal-remaining">
-                Осталось: {formatUZS(dailyGoalRemaining)}
-              </div>
-              <div className="goal-meta">
-                {formatUZS(revenueTodayForGoal)} / {formatUZS(dailyGoal)}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                Цель на сегодня
-              </Typography.Text>
-              <Progress
-                percent={dailyGoalBarPct}
-                strokeColor={isDark ? '#1890ff' : '#096dd9'}
-                trailColor={tk.colorFillSecondary}
-                style={{ flex: 1, minWidth: 120, margin: 0 }}
-                format={() => `${dailyGoalPct}%`}
-              />
-              <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                {formatUZS(revenueTodayForGoal)} / {formatUZS(dailyGoal)}
-              </Typography.Text>
-            </div>
-          )}
-        </Card>
+          <Card
+            className="dashboard-goals-card"
+            bordered={false}
+            style={{ ...card, marginTop: isMobile ? 0 : 16 }}
+            styles={{ body: { padding: isMobile ? 16 : '18px 20px' } }}
+          >
+            <GoalsBlock
+              revenueToday={revenueTodayForGoal}
+              revenueMonth={revenueMonth}
+              monthlyGoal={revenueGoal}
+              dailyGoal={dailyGoal}
+              yearlyGoal={companySettings?.yearlyRevenueGoal || revenueGoal * 12}
+              goals={data.goals}
+              showYear={isAdmin}
+              canEdit={isAdmin}
+            />
+          </Card>
         </div>
       )}
 

@@ -14,6 +14,7 @@ export const updateCompanySettingsDto = z.object({
   oked: z.string().optional(),
   monthlyRevenueGoal: z.coerce.number().min(0).optional(),
   dailyRevenueGoal: z.coerce.number().min(0).nullable().optional(),
+  yearlyRevenueGoal: z.coerce.number().min(0).nullable().optional(),
   balanceStartDate: z.coerce.date().nullable().optional(),
   initialBalance: z.coerce.number().min(0).optional(),
   officeAddress: z.string().nullable().optional(),

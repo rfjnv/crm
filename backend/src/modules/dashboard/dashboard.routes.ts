@@ -13,6 +13,32 @@ import { ownerScope } from '../../lib/scope';
 
 import { responseCache } from '../../lib/responseCache';
 
+
+/** День выручки по Ташкенту → 'YYYY-MM-DD'. */
+function dayKey(day: Date | string): string {
+  return day instanceof Date ? day.toISOString().slice(0, 10) : String(day).slice(0, 10);
+}
+
+/**
+ * Данные блока «Цели»: выручка с начала года, по дням текущего месяца и по месяцам года.
+ * `month` — номер месяца с нуля, как у Date.
+ */
+function buildGoals(rows: { day: Date | string; total: string }[], year: number, month: number) {
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0 }));
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  const days: { day: string; total: number }[] = [];
+  let revenueYear = 0;
+  for (const r of rows) {
+    const key = dayKey(r.day);
+    const total = Number(r.total) || 0;
+    revenueYear += total;
+    const m = Number(key.slice(5, 7));
+    if (m >= 1 && m <= 12) months[m - 1].total += total;
+    if (key.startsWith(monthPrefix)) days.push({ day: key, total });
+  }
+  return { year, month: month + 1, revenueYear, days, months };
+}
+
 const router = Router();
 
 router.use(authenticate);
@@ -39,6 +65,7 @@ router.get(
     const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
     const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
     const startOfMonth = new Date(Date.UTC(y, mo, 1) - TASHKENT_OFFSET);
+    const startOfYear = new Date(Date.UTC(y, 0, 1) - TASHKENT_OFFSET);
     const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
 
     const period = (req.query.period as string) || 'day';
@@ -197,6 +224,11 @@ router.get(
     const chartStart = period === 'day'
       ? thirtyDaysAgo
       : periodStart;
+
+    // Блок «Цели»: выручка по дням с начала года — из неё клетки дней месяца и месяцев года
+    // Сбой здесь не должен ронять весь дашборд (и висеть необработанным отказом) — цели просто пустые
+    const goalsDaysPromise = revenueByDayInRange(startOfYear, startOfTomorrow)
+      .catch(() => [] as { day: Date; total: string }[]);
 
     // Закрытые сделки по дням — мини-график в KPI-карточке «Закрыто сделок» (тот же диапазон, что у выручки)
     const closedChartPromise = prisma.deal.findMany({
@@ -374,6 +406,7 @@ router.get(
       revenueToday: revenuePeriodAgg[0] ? Number(revenuePeriodAgg[0].total) : 0,
       revenueYesterday: revenuePrevPeriodAgg[0] ? Number(revenuePrevPeriodAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
+      goals: buildGoals(await goalsDaysPromise, y, mo),
       activeDealsCount,
       totalDebt: grossDebt,
       closedDealsToday: closedDealsPeriod,

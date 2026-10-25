@@ -725,6 +725,14 @@ export interface DashboardSummary {
   revenueToday: number;
   revenueYesterday: number;
   revenueMonth: number;
+  /** Блок «Цели»: выручка с начала года, по дням текущего месяца и по месяцам */
+  goals?: {
+    year: number;
+    month: number;
+    revenueYear: number;
+    days: { day: string; total: number }[];
+    months: { month: number; total: number }[];
+  };
   activeDealsCount: number;
   totalDebt: number;
   closedDealsToday: number;
@@ -1490,6 +1498,8 @@ export interface CompanySettings {
   logoPath: string | null;
   monthlyRevenueGoal: number;
   dailyRevenueGoal: number | null;
+  /** Цель за год; null — месячная × 12 */
+  yearlyRevenueGoal?: number | null;
   balanceStartDate: string | null;
   initialBalance: number;
   officeAddress: string | null;
