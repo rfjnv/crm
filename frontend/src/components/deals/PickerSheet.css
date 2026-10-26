@@ -1,0 +1,161 @@
+/* Лист выбора снизу (клиент, товар). Цвета — токены нового дизайна, в классике — antd. */
+.picker-sheet .ant-drawer-content {
+  border-radius: 22px 22px 0 0;
+}
+
+.picker-sheet {
+  --ps-text-1: var(--c-text-1, var(--ant-color-text));
+  --ps-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --ps-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --ps-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --ps-accent: var(--c-accent-fill, var(--ant-color-primary));
+}
+
+.picker-sheet__grab {
+  flex: none;
+  width: 40px;
+  height: 5px;
+  margin: 8px auto 2px;
+  border-radius: 3px;
+  background: var(--ps-fill);
+}
+
+.picker-sheet__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px 10px;
+}
+
+.picker-sheet__head b {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ps-text-1);
+}
+
+.picker-sheet__done {
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--ps-accent);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.picker-sheet__search {
+  flex: none;
+  padding: 0 16px 10px;
+}
+
+.picker-sheet__search .ant-input-affix-wrapper {
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ps-fill);
+  box-shadow: none;
+  font-size: 16px;
+}
+
+.picker-sheet__search .ant-input {
+  background: transparent;
+  font-size: 16px;
+}
+
+.picker-sheet__groups {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  padding: 0 16px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.picker-sheet__groups::-webkit-scrollbar {
+  display: none;
+}
+
+.picker-sheet__groups button {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ps-fill);
+  color: var(--ps-text-1);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.picker-sheet__groups button.is-on {
+  background: var(--chip-active-bg, var(--ant-color-text));
+  color: var(--chip-active-text, var(--ant-color-bg-container));
+}
+
+.picker-sheet__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px calc(16px + env(safe-area-inset-bottom));
+}
+
+.picker-sheet__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ps-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-sheet__row + .picker-sheet__row {
+  border-top: 1px solid var(--ps-hair);
+}
+
+.picker-sheet__row:active {
+  background: var(--ps-fill);
+}
+
+.picker-sheet__row.is-selected {
+  background: color-mix(in srgb, var(--ps-accent) 10%, transparent);
+}
+
+.picker-sheet__row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.picker-sheet__check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ps-accent);
+  color: #fff;
+}
+
+.picker-sheet__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-sheet__empty {
+  padding: 28px 16px;
+  font-size: 14px;
+  color: var(--ps-text-3);
+  text-align: center;
+}

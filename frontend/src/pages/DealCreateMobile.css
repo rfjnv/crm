@@ -1,0 +1,630 @@
+/*
+ * Новая сделка — телефон. Цвета из токенов нового дизайна (glass.css), в классике — antd.
+ * Порядок: клиент → товары → оплата → доставка → дополнительно; итог и кнопка — внизу.
+ */
+.dcm {
+  --dcm-text-1: var(--c-text-1, var(--ant-color-text));
+  --dcm-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --dcm-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --dcm-panel: var(--panel-bg, var(--ant-color-bg-container));
+  --dcm-panel-border: var(--panel-border, var(--ant-color-border-secondary));
+  --dcm-field: var(--field-bg, var(--ant-color-bg-container));
+  --dcm-field-border: var(--c-hairline, var(--ant-color-border));
+  --dcm-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --dcm-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --dcm-accent: var(--c-accent-fill, var(--ant-color-primary));
+  --dcm-accent-fg: var(--c-accent-fg, var(--ant-color-primary));
+  --dcm-neg-fg: var(--c-neg-fg, var(--ant-color-error));
+  --dcm-neg-bg: var(--c-neg-bg, var(--ant-color-error-bg));
+  --dcm-active-bg: var(--chip-active-bg, var(--ant-color-text));
+  --dcm-active-text: var(--chip-active-text, var(--ant-color-bg-container));
+
+  /* Место под панель «Создать сделку» */
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  color: var(--dcm-text-1);
+}
+
+/* Нижние вкладки приложения на время создания сделки не нужны — на их месте панель */
+html.deal-create-open .bottom-tab-bar {
+  display: none;
+}
+
+.dcm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dcm-head__t {
+  flex: 1;
+  min-width: 0;
+}
+
+.dcm-head h1 {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--dcm-text-1);
+}
+
+.dcm-head__draft {
+  display: block;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--dcm-text-3);
+}
+
+.dcm-draft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--dcm-accent) 10%, transparent);
+}
+
+.dcm-draft__t {
+  flex: 1;
+  min-width: 0;
+}
+
+.dcm-draft__t b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.dcm-draft__t small {
+  font-size: 12px;
+  color: var(--dcm-text-3);
+}
+
+/* ── Секции ── */
+.dcm-sec {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--dcm-panel-border);
+  border-radius: 18px;
+  background: var(--dcm-panel);
+}
+
+.dcm-sec__h {
+  margin-bottom: 8px;
+}
+
+.dcm-sec__h b {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dcm-text-3);
+}
+
+.dcm-lbl {
+  display: block;
+  margin: 0 0 4px 2px;
+  font-size: 11.5px;
+  color: var(--dcm-text-3);
+}
+
+.dcm-lbl i {
+  font-style: normal;
+  opacity: 0.8;
+}
+
+/* Поля: одинаковая высота 42px, мягкая подложка */
+.dcm .dcm-input,
+.dcm .dcm-input.ant-input-number,
+.dcm .dcm-input.ant-picker,
+.dcm .dcm-input.ant-select .ant-select-selector {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.dcm .dcm-input.ant-input-number .ant-input-number-input {
+  height: 40px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcm .dcm-input.ant-select {
+  width: 100%;
+}
+
+/* ── Клиент ── */
+.dcm-client {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dcm-client--empty {
+  padding: 12px;
+  border: 1.5px dashed var(--dcm-field-border);
+  border-radius: 14px;
+}
+
+.dcm-client__t {
+  flex: 1;
+  min-width: 0;
+}
+
+.dcm-client__t b,
+.dcm-pick-row__t b {
+  display: block;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+}
+
+.dcm-client__t small,
+.dcm-pick-row__t small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--dcm-text-3);
+}
+
+.dcm-chev {
+  flex: none;
+  color: var(--dcm-text-3);
+}
+
+.dcm-ava {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--dcm-active-bg);
+  color: var(--dcm-active-text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+/* Строки в листе выбора */
+.dcm-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.dcm-pick-row__t {
+  flex: 1;
+  min-width: 0;
+}
+
+.dcm-pick-row__t b {
+  font-size: 14px;
+  white-space: normal;
+}
+
+.dcm-stock {
+  flex: none;
+  text-align: right;
+  font-size: 12px;
+  color: var(--dcm-text-3);
+}
+
+.dcm-stock b {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcm-stock--ok b { color: var(--c-pos-fg, var(--ant-color-success)); }
+.dcm-stock--low b { color: var(--c-warn-fg, var(--ant-color-warning)); }
+.dcm-stock--zero b { color: var(--dcm-neg-fg); }
+
+/* ── Товары ── */
+.dcm-item {
+  padding: 10px 0;
+}
+
+.dcm-item + .dcm-item {
+  border-top: 1px solid var(--dcm-hair);
+}
+
+.dcm-item__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dcm-item__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.dcm-icon-btn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: -4px -6px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--dcm-text-3);
+  cursor: pointer;
+}
+
+.dcm-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 3px 0 8px;
+  font-size: 12px;
+  color: var(--dcm-text-3);
+}
+
+.dcm-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--dcm-fill);
+  font-weight: 600;
+}
+
+.dcm-pill--accent {
+  background: color-mix(in srgb, var(--dcm-accent) 14%, transparent);
+  color: var(--dcm-accent-fg);
+}
+
+.dcm-pill--neg {
+  background: var(--dcm-neg-bg);
+  color: var(--dcm-neg-fg);
+}
+
+.dcm-item__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.dcm-item__row--lam {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.2fr);
+}
+
+.dcm-item__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dcm-item__row label {
+  min-width: 0;
+}
+
+.dcm-item__sum {
+  font-size: 14.5px;
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcm-stepper {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  overflow: hidden;
+  border: 1px solid var(--dcm-field-border);
+  border-radius: 12px;
+  background: var(--dcm-field);
+}
+
+.dcm-stepper > button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--dcm-text-2);
+  cursor: pointer;
+}
+
+.dcm-stepper > button:active {
+  background: var(--dcm-fill);
+}
+
+.dcm-stepper .ant-input-number {
+  flex: 1;
+  min-width: 0;
+}
+
+.dcm-stepper .ant-input-number-input {
+  padding: 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcm-micron {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dcm-micron .dcm-chip {
+  flex: 1;
+}
+
+.dcm-item__comment {
+  margin-top: 8px;
+}
+
+.dcm-link {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--dcm-accent-fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dcm-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 44px;
+  margin-top: 6px;
+  border: 1.5px dashed color-mix(in srgb, var(--dcm-accent) 50%, transparent);
+  border-radius: 12px;
+  background: none;
+  color: var(--dcm-accent-fg);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Оплата ── */
+.dcm-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dcm-chip {
+  height: 40px;
+  padding: 0 2px;
+  overflow: hidden;
+  border: 1px solid var(--dcm-field-border);
+  border-radius: 11px;
+  background: var(--dcm-field);
+  color: var(--dcm-text-1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.dcm-chip.is-on {
+  border-color: transparent;
+  background: var(--dcm-active-bg);
+  color: var(--dcm-active-text);
+  font-weight: 600;
+}
+
+.dcm-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--dcm-fill);
+}
+
+.dcm-seg--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.dcm-seg > button {
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--dcm-text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dcm-seg > button.is-on {
+  background: var(--ant-color-bg-container);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+  color: var(--dcm-text-1);
+  font-weight: 600;
+}
+
+html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dcm-sub {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dcm-sub--2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dcm-span {
+  grid-column: 1 / -1;
+}
+
+.dcm-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dcm-doc {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dcm-field-border);
+  border-radius: 999px;
+  background: var(--dcm-field);
+  color: var(--dcm-text-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dcm-doc.is-on {
+  border-color: color-mix(in srgb, var(--dcm-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--dcm-accent) 13%, transparent);
+  color: var(--dcm-accent-fg);
+  font-weight: 600;
+}
+
+.dcm-inn-name {
+  max-width: 140px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--dcm-text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dcm-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--dcm-text-2);
+}
+
+.dcm-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dcm-accent);
+}
+
+/* Свёрнутые блоки */
+.dcm-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 10px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--dcm-text-2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dcm-fold--top {
+  margin-top: 0;
+}
+
+.dcm-fold__r {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--dcm-text-3);
+}
+
+.dcm-check-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--dcm-text-3);
+}
+
+/* ── Панель снизу ── */
+.dcm-bar {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+  z-index: 1000;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--dcm-panel-border);
+  border-radius: 20px;
+  background: var(--hdr-panel-bg, var(--ant-color-bg-elevated));
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.dcm-bar__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.dcm-bar__line span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--dcm-text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dcm-bar__line .dcm-bar__missing {
+  color: var(--c-warn-fg, var(--ant-color-warning-text));
+  font-weight: 600;
+}
+
+.dcm-bar__line b {
+  flex: none;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcm .dcm-bar__cta.ant-btn {
+  height: 50px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 650;
+}

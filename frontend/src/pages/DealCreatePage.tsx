@@ -8,6 +8,8 @@ import {
 } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { CaretDown, CaretRight, Minus, Plus, X } from '@phosphor-icons/react';
+import PickerSheet, { type PickerRow } from '../components/deals/PickerSheet';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
@@ -24,6 +26,7 @@ import { LAMINATION_CATEGORY } from '../utils/lamination';
 import type { Product, DealStatus, PaymentMethod } from '../types';
 import dayjs from 'dayjs';
 import './DealCreatePage.css';
+import './DealCreateMobile.css';
 
 interface DraftItem {
   key: string;
@@ -155,6 +158,12 @@ export default function DealCreatePage() {
   const [isDebt, setIsDebt] = useState(false);
   const [debtPaymentType, setDebtPaymentType] = useState<'PARTIAL' | 'INSTALLMENT'>('PARTIAL');
   const [dueDate, setDueDate] = useState<Dayjs | null>(null);
+  /** Телефон: листы выбора и свёрнутые блоки */
+  const [clientSheet, setClientSheet] = useState(false);
+  const [productSheet, setProductSheet] = useState(false);
+  const [showVehicle, setShowVehicle] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
+  const [openComments, setOpenComments] = useState<Set<string>>(() => new Set());
 
   const restoreDraft = useCallback((draft: DraftData) => {
     setClientId(draft.clientId);
@@ -482,12 +491,6 @@ export default function DealCreatePage() {
     return <InputNumber {...qtyInputProps(item, intUnit)} />;
   }
 
-  function primaryControlLabel(p: Product | null | undefined) {
-    if (p?.category === LAMINATION_CATEGORY) return '';
-    if (p?.name === SPRAY_POWDER_NAME) return 'Микрон / Кол-во (кг)';
-    return 'Кол-во';
-  }
-
   /** Цветной бейдж типа товара рядом с выбором — чтобы особая строка (ламинация/тальк) была
    * видна с первого взгляда, не читая все ячейки ряда. */
   function productTypeBadge(p: Product | null | undefined) {
@@ -514,95 +517,490 @@ export default function DealCreatePage() {
     );
   }
 
-  const renderItemMobileCard = (item: DraftItem) => {
-    const p = item.productId ? productMap.get(item.productId) : null;
-    const lineTotal = (item.requestedQty && item.price) ? item.requestedQty * item.price : 0;
-    const intUnit = isIntegerUnit(p?.unit);
+  /* ── Телефон: отдельная раскладка (клиент → товары → оплата → доставка, итог снизу) ── */
 
-    return (
-      <Card key={item.key} size="small" className="deal-create-item-card">
-        <div className="deal-create-item-card__top">
-          <Typography.Text strong>
-            {p?.name || 'Позиция'}
-          </Typography.Text>
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => removeItemRow(item.key)}
-            className="deal-create-item-card__remove"
-          />
-        </div>
+  // Форма на весь экран: нижние вкладки приложения прячем, на их месте — панель «Создать сделку»
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    document.documentElement.classList.add('deal-create-open');
+    return () => document.documentElement.classList.remove('deal-create-open');
+  }, [isMobile]);
 
-        <div>
-          <Typography.Text type="secondary" className="deal-create-field-label">Товар</Typography.Text>
-          <Select
-            showSearch
-            filterOption={smartFilterOption}
-            placeholder="Выберите товар"
-            style={{ width: '100%' }}
-            value={item.productId}
-            onChange={(v) => handleProductChange(item.key, v)}
-            options={(products ?? []).filter((pr: Product) => pr.isActive).map((pr: Product) => ({
-              label: `${pr.name} (${pr.sku}) — ${stockLabel(pr)}`,
-              value: pr.id,
-              disabled: usedProductIds.has(pr.id) && pr.id !== item.productId,
-            }))}
-          />
-          {p && (
-            <div className="deal-create-item-card__stock" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span>Остаток: {stockLabel(p)}</span>
-              {productTypeBadge(p)}
-              {item.requestedQty && item.requestedQty > Number(p.stock) && (
-                <Tag color="red" style={{ margin: 0 }}>Не хватает на складе</Tag>
-              )}
-            </div>
-          )}
-        </div>
+  const pickedItems = useMemo(() => draftItems.filter((i) => i.productId), [draftItems]);
 
-        <div className="deal-create-item-card__grid">
-          <div>
-            <Typography.Text type="secondary" className="deal-create-field-label">{primaryControlLabel(p)}</Typography.Text>
-            {renderPrimaryControl(item, p, intUnit)}
-          </div>
-          <div>
-            <Typography.Text type="secondary" className="deal-create-field-label">Цена</Typography.Text>
-            <InputNumber
-              min={0}
-              placeholder="Цена"
-              style={{ width: '100%' }}
-              formatter={moneyFormatter}
-              parser={(v) => moneyParser(v) as unknown as number}
-              value={item.price}
-              onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
-            />
-          </div>
-        </div>
+  /** Чего не хватает, чтобы создать сделку — пишем на кнопке, а не после нажатия */
+  const missing = useMemo(() => {
+    if (!clientId) return 'выберите клиента';
+    if (pickedItems.length === 0) return 'добавьте товар';
+    for (const item of pickedItems) {
+      const p = productMap.get(item.productId!);
+      if (p?.category === LAMINATION_CATEGORY && !(item.rollCount && item.rollCount > 0)) return `рулоны — ${p.name}`;
+      if (p && item.requestedQty && item.requestedQty > Number(p.stock)) return `не хватает на складе — ${p.name}`;
+      if (item.requestedQty && item.requestedQty > 0 && !(item.price && item.price > 0)) return `цена — ${p?.name ?? 'товар'}`;
+    }
+    if (paymentMethod === 'TRANSFER' && transferInn.trim() && transferDocuments.length === 0) return 'документы для перечисления';
+    return null;
+  }, [clientId, pickedItems, productMap, paymentMethod, transferInn, transferDocuments]);
 
-        <div className="deal-create-item-card__summary">
-          <Typography.Text type="secondary">Сумма</Typography.Text>
-          <Typography.Text strong>{lineTotal > 0 ? formatUZS(lineTotal) : '—'}</Typography.Text>
-        </div>
-
-        {renderSecondaryControl(item, p) != null && (
-          <div>
-            {renderSecondaryControl(item, p)}
-          </div>
-        )}
-      </Card>
-    );
+  const routeHint: Partial<Record<DealStatus, string>> = {
+    WAITING_WAREHOUSE_MANAGER: 'Сразу уйдёт к зав. склада',
+    WAITING_FINANCE: 'С ИНН сразу уйдёт к бухгалтеру',
+    WAITING_STOCK_CONFIRMATION: 'Без количества — сначала подтверждение склада',
+    IN_PROGRESS: paymentMethod === 'TRANSFER'
+      ? 'Без ИНН — сначала «В работе», ИНН можно добавить позже'
+      : 'Останется «В работе» до уточнения оплаты',
   };
 
+  const clientRows: PickerRow[] = useMemo(() => (clients ?? []).map((c) => ({
+    id: c.id,
+    haystack: buildClientSearchHaystack({
+      companyName: c.companyName, contactName: c.contactName, phone: c.phone, email: c.email, inn: c.inn, managerName: c.manager?.fullName,
+    }),
+    render: (
+      <span className="dcm-pick-row">
+        <span className="dcm-ava">{(c.companyName || '?').slice(0, 2).toUpperCase()}</span>
+        <span className="dcm-pick-row__t">
+          <b><ClientCompanyDisplay client={c} /></b>
+          <small>{[c.contactName, c.phone, c.manager && getFirstName(c.manager.fullName)].filter(Boolean).join(' · ')}</small>
+        </span>
+      </span>
+    ),
+  })), [clients]);
+
+  const productRows: PickerRow[] = useMemo(() => (products ?? []).filter((p: Product) => p.isActive).map((p: Product) => {
+    const stock = Number(p.stock);
+    const level = stock <= 0 ? 'zero' : stock < Number(p.minStock || 0) ? 'low' : 'ok';
+    return {
+      id: p.id,
+      haystack: `${p.name} ${p.sku} ${p.category ?? ''}`,
+      group: p.category,
+      render: (
+        <span className="dcm-pick-row">
+          <span className="dcm-pick-row__t">
+            <b>{p.name}</b>
+            <small>{[p.sku, p.salePrice ? formatUZS(Number(p.salePrice)) : null, p.category === LAMINATION_CATEGORY ? 'рулоны + кг' : null].filter(Boolean).join(' · ')}</small>
+          </span>
+          <span className={`dcm-stock dcm-stock--${level}`}>
+            <b>{formatQty(p.stock)}</b>
+            <small>{p.rollStock != null ? `${formatQty(p.rollStock)} рул.` : level === 'zero' ? 'нет' : level === 'low' ? 'мало' : p.unit}</small>
+          </span>
+        </span>
+      ),
+    };
+  }), [products]);
+
+  function addProduct(productId: string) {
+    const product = productMap.get(productId);
+    const autoPrice = product?.salePrice ? Number(product.salePrice) : undefined;
+    // Пустая заготовка строки (её создаёт форма для компьютера) на телефоне не нужна
+    setDraftItems((prev) => [
+      ...prev.filter((i) => i.productId),
+      { key: makeKey(), productId, price: autoPrice || undefined, requestComment: '' },
+    ]);
+  }
+
+  /** Тот же выбор оплаты, что и на компьютере: «Долг» включает режим «В долг», другой способ — выключает */
+  function setPayment(method: PaymentMethod) {
+    setPaymentMethod(method);
+    if (method === 'DEBT') {
+      setIsDebt(true);
+    } else if (paymentMethod === 'DEBT' || isDebt) {
+      setIsDebt(false);
+      setDueDate(null);
+    }
+  }
+
+  const PAYMENT_CHIPS: { value: PaymentMethod; label: string }[] = [
+    { value: 'CASH', label: 'Наличные' },
+    { value: 'CLICK', label: 'Click' },
+    { value: 'PAYME', label: 'Payme' },
+    { value: 'QR', label: 'QR' },
+    { value: 'TERMINAL', label: 'Терминал' },
+    { value: 'TRANSFER', label: 'Перечисл.' },
+    { value: 'INSTALLMENT', label: 'Рассрочка' },
+    { value: 'DEBT', label: 'Долг' },
+  ];
+  const DOCUMENTS = ['Договор', 'Спецификация', 'Счет', 'Счет-фактура', 'Накладная'];
+
+  function renderQtyStepper(item: DraftItem, intUnit: boolean) {
+    const value = item.requestedQty ?? 0;
+    return (
+      <div className="dcm-stepper">
+        <button
+          type="button"
+          aria-label="Меньше"
+          onClick={() => updateItem(item.key, { requestedQty: Math.max(0, +(value - 1).toFixed(3)) || undefined })}
+        >
+          <Minus size={15} weight="bold" />
+        </button>
+        <InputNumber {...qtyInputProps(item, intUnit)} precision={intUnit ? 0 : undefined} placeholder="0" controls={false} inputMode="decimal" variant="borderless" />
+        <button type="button" aria-label="Больше" onClick={() => updateItem(item.key, { requestedQty: +(value + 1).toFixed(3) })}>
+          <Plus size={15} weight="bold" />
+        </button>
+      </div>
+    );
+  }
+
+  function renderPriceInput(item: DraftItem) {
+    return (
+      <InputNumber
+        className="dcm-input"
+        min={0}
+        placeholder="Цена"
+        controls={false}
+        inputMode="numeric"
+        formatter={moneyFormatter}
+        parser={(v) => moneyParser(v) as unknown as number}
+        value={item.price}
+        onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+      />
+    );
+  }
+
+  function renderMobileItem(item: DraftItem) {
+    const p = productMap.get(item.productId!);
+    const intUnit = isIntegerUnit(p?.unit);
+    const lineTotal = item.requestedQty && item.price ? item.requestedQty * item.price : 0;
+    const short = !!p && !!item.requestedQty && item.requestedQty > Number(p.stock);
+    const isLam = p?.category === LAMINATION_CATEGORY;
+    const isSpray = p?.name === SPRAY_POWDER_NAME;
+    const commentOpen = openComments.has(item.key) || !!item.requestComment;
+    return (
+      <div key={item.key} className="dcm-item">
+        <div className="dcm-item__top">
+          <span className="dcm-item__name">{p?.name ?? 'Товар'}</span>
+          <button type="button" className="dcm-icon-btn" aria-label="Убрать товар" onClick={() => removeItemRow(item.key)}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="dcm-item__meta">
+          {p?.sku && <span>{p.sku}</span>}
+          {p && <span className="dcm-pill">на складе {stockLabel(p)}</span>}
+          {isLam && <span className="dcm-pill dcm-pill--accent">рулоны + кг</span>}
+          {short && <span className="dcm-pill dcm-pill--neg">не хватает на складе</span>}
+        </div>
+
+        {isSpray && (
+          <div className="dcm-micron">
+            {MICRON_OPTIONS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`dcm-chip${item.requestComment === m ? ' is-on' : ''}`}
+                onClick={() => updateItem(item.key, { requestComment: m })}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isLam ? (
+          <div className="dcm-item__row dcm-item__row--lam">
+            <label>
+              <span className="dcm-lbl">Рулоны *</span>
+              <InputNumber
+                className="dcm-input"
+                min={1}
+                precision={0}
+                controls={false}
+                inputMode="numeric"
+                placeholder="0"
+                value={item.rollCount}
+                onChange={(v) => updateItem(item.key, { rollCount: v ?? undefined })}
+              />
+            </label>
+            <label>
+              <span className="dcm-lbl">Кг</span>
+              <InputNumber {...qtyInputProps(item, intUnit)} precision={intUnit ? 0 : undefined} className="dcm-input" placeholder="0" controls={false} inputMode="decimal" />
+            </label>
+            <label><span className="dcm-lbl">Цена</span>{renderPriceInput(item)}</label>
+          </div>
+        ) : (
+          <div className="dcm-item__row">
+            <label>
+              <span className="dcm-lbl">Кол-во{isSpray ? ', кг' : p?.unit ? `, ${p.unit}` : ''}</span>
+              {renderQtyStepper(item, intUnit)}
+            </label>
+            <label><span className="dcm-lbl">Цена</span>{renderPriceInput(item)}</label>
+          </div>
+        )}
+
+        {!isSpray && commentOpen && (
+          <Input
+            className="dcm-input dcm-item__comment"
+            placeholder="Комментарий к позиции"
+            value={item.requestComment}
+            autoFocus={!item.requestComment}
+            onChange={(e) => updateItem(item.key, { requestComment: e.target.value })}
+          />
+        )}
+        <div className="dcm-item__foot">
+          {!isSpray && !commentOpen ? (
+            <button type="button" className="dcm-link" onClick={() => setOpenComments((prev) => new Set(prev).add(item.key))}>
+              + комментарий
+            </button>
+          ) : <span />}
+          <span className="dcm-item__sum">{lineTotal > 0 ? formatUZS(lineTotal) : '—'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  function renderMobile() {
+    const draftSaved = !!clientId || pickedItems.length > 0;
+    const vehicleOpen = showVehicle || !!vehicleNumber || !!vehicleType || !!deliveryComment;
+    const extraOpen = showExtra || !!title || !!commentText || isSessionDeal;
+    const n = pickedItems.length;
+    return (
+      <div className="dcm">
+        <div className="dcm-head">
+          <BackButton fallback="/deals" />
+          <div className="dcm-head__t">
+            <h1>Новая сделка</h1>
+            {draftSaved && <span className="dcm-head__draft">черновик сохраняется</span>}
+          </div>
+        </div>
+
+        {draftBanner && (
+          <div className="dcm-draft">
+            <div className="dcm-draft__t">
+              <b>Есть незавершённый черновик</b>
+              <small>от {dayjs(draftBanner.savedAt).format('DD.MM HH:mm')}</small>
+            </div>
+            <Button size="small" type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
+            <Button size="small" type="text" danger onClick={discardDraft}>Удалить</Button>
+          </div>
+        )}
+
+        <section className="dcm-sec">
+          <div className="dcm-sec__h"><b>Клиент</b></div>
+          <button type="button" className={`dcm-client${selectedClient ? '' : ' dcm-client--empty'}`} onClick={() => setClientSheet(true)}>
+            {selectedClient ? (
+              <>
+                <span className="dcm-ava">{(selectedClient.companyName || '?').slice(0, 2).toUpperCase()}</span>
+                <span className="dcm-client__t">
+                  <b><ClientCompanyDisplay client={selectedClient} /></b>
+                  <small>
+                    {[selectedClient.contactName, selectedClient.manager && `менеджер ${getFirstName(selectedClient.manager.fullName)}`]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </small>
+                </span>
+              </>
+            ) : (
+              <span className="dcm-client__t"><b>Выберите клиента</b><small>поиск по названию, контакту, телефону, ИНН</small></span>
+            )}
+            <CaretRight size={16} className="dcm-chev" />
+          </button>
+        </section>
+
+        <section className="dcm-sec">
+          <div className="dcm-sec__h"><b>Товары{n ? ` · ${n}` : ''}</b></div>
+          {pickedItems.map((item) => renderMobileItem(item))}
+          <button type="button" className="dcm-add" onClick={() => setProductSheet(true)}>
+            <Plus size={16} weight="bold" /> {n ? 'Добавить ещё товар' : 'Добавить товар'}
+          </button>
+        </section>
+
+        <section className="dcm-sec">
+          <div className="dcm-sec__h"><b>Оплата</b></div>
+          <div className="dcm-chips">
+            {PAYMENT_CHIPS.map((c) => (
+              <button key={c.value} type="button" className={`dcm-chip${paymentMethod === c.value ? ' is-on' : ''}`} onClick={() => setPayment(c.value)}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+
+          {paymentMethod === 'DEBT' && (
+            <div className="dcm-sub">
+              <div className="dcm-seg">
+                <button type="button" className={debtPaymentType === 'PARTIAL' ? 'is-on' : ''} onClick={() => setDebtPaymentType('PARTIAL')}>Есть аванс</button>
+                <button type="button" className={debtPaymentType === 'INSTALLMENT' ? 'is-on' : ''} onClick={() => setDebtPaymentType('INSTALLMENT')}>Полностью в долг</button>
+              </div>
+              <label>
+                <span className="dcm-lbl">Срок оплаты</span>
+                <DatePicker className="dcm-input" value={dueDate} onChange={setDueDate} format="DD.MM.YYYY" placeholder="Выберите дату" inputReadOnly allowClear />
+              </label>
+            </div>
+          )}
+
+          {paymentMethod === 'TRANSFER' && (
+            <div className="dcm-sub">
+              <label>
+                <span className="dcm-lbl">ИНН компании <i>· можно позже</i></span>
+                <Input
+                  className="dcm-input"
+                  inputMode="numeric"
+                  placeholder="ИНН клиента"
+                  value={transferInn}
+                  onChange={(e) => { autoFilledInnRef.current = null; setTransferInn(e.target.value); }}
+                  maxLength={50}
+                  allowClear
+                  suffix={transferInn && innLegalName(transferInn) ? <span className="dcm-inn-name">{innLegalName(transferInn)}</span> : undefined}
+                />
+              </label>
+              {!selectedClientInn && (clientTransferInns?.length || 0) > 1 && (
+                <label>
+                  <span className="dcm-lbl">ИНН из прошлых сделок</span>
+                  <Select
+                    className="dcm-input"
+                    value={transferInn || undefined}
+                    onChange={(v) => { autoFilledInnRef.current = v; setTransferInn(v); }}
+                    options={clientTransferInns!.map((inn) => ({ value: inn, label: innLegalName(inn) ? `${inn} — ${innLegalName(inn)}` : inn }))}
+                    placeholder="Выберите ИНН"
+                  />
+                </label>
+              )}
+              <div>
+                <span className="dcm-lbl">Документы{transferInn.trim() ? ' *' : ''}</span>
+                <div className="dcm-docs">
+                  {DOCUMENTS.map((d) => {
+                    const on = transferDocuments.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`dcm-doc${on ? ' is-on' : ''}`}
+                        onClick={() => setTransferDocuments((prev) => (on ? prev.filter((x) => x !== d) : [...prev, d]))}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <span className="dcm-lbl">Договор</span>
+                <div className="dcm-seg">
+                  <button type="button" className={transferType === 'ONE_TIME' ? 'is-on' : ''} onClick={() => setTransferType('ONE_TIME')}>Разовый</button>
+                  <button type="button" className={transferType === 'ANNUAL' ? 'is-on' : ''} onClick={() => setTransferType('ANNUAL')}>Годовой</button>
+                </div>
+              </div>
+              <label>
+                <span className="dcm-lbl">Номер операции / комментарий</span>
+                <Input.TextArea className="dcm-input" autoSize={{ minRows: 1, maxRows: 4 }} placeholder="необязательно" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
+              </label>
+            </div>
+          )}
+
+          {routeHint[previewStatus] && <div className="dcm-hint"><span className="dcm-dot" />{routeHint[previewStatus]}</div>}
+        </section>
+
+        <section className="dcm-sec">
+          <div className="dcm-sec__h"><b>Доставка</b></div>
+          <div className="dcm-seg dcm-seg--3">
+            {([['SELF_PICKUP', 'Самовывоз'], ['YANDEX', 'Яндекс'], ['DELIVERY', 'Доставка']] as const).map(([v, l]) => (
+              <button key={v} type="button" className={deliveryType === v ? 'is-on' : ''} onClick={() => setDeliveryType(v)}>{l}</button>
+            ))}
+          </div>
+          {deliveryType === 'DELIVERY' ? (
+            clientId ? (
+              <div className="dcm-sub">
+                <label>
+                  <span className="dcm-lbl">Куда везти</span>
+                  <Select
+                    className="dcm-input"
+                    value={deliveryLocationId ?? ''}
+                    onChange={(v) => setDeliveryLocation(v ? { clientId, id: v } : undefined)}
+                    options={[
+                      { value: '', label: `Основной адрес${selectedClient?.address ? ` — ${selectedClient.address}` : ''}` },
+                      ...(clientLocations ?? []).map((l) => ({ value: l.id, label: `${l.name}${l.address ? ` — ${l.address}` : ''}` })),
+                    ]}
+                  />
+                </label>
+              </div>
+            ) : <div className="dcm-hint">Сначала выберите клиента — подставим его адрес</div>
+          ) : (
+            <>
+              <button type="button" className="dcm-fold" onClick={() => setShowVehicle((v) => !v)}>
+                <span>Машина и примечание</span>
+                <span className="dcm-fold__r">{vehicleOpen ? <CaretDown size={14} /> : <>необязательно <CaretRight size={14} /></>}</span>
+              </button>
+              {vehicleOpen && (
+                <div className="dcm-sub dcm-sub--2">
+                  <label><span className="dcm-lbl">Номер машины</span><Input className="dcm-input" placeholder="01 A 123 AA" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} /></label>
+                  <label><span className="dcm-lbl">Тип машины</span><Input className="dcm-input" placeholder="Газель…" value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} /></label>
+                  <label className="dcm-span"><span className="dcm-lbl">Примечание</span><Input className="dcm-input" placeholder="Например: заехать со двора" value={deliveryComment} onChange={(e) => setDeliveryComment(e.target.value)} /></label>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="dcm-sec">
+          <button type="button" className="dcm-fold dcm-fold--top" onClick={() => setShowExtra((v) => !v)}>
+            <span>Название, комментарий, сессионная</span>
+            {extraOpen ? <CaretDown size={14} /> : <CaretRight size={14} />}
+          </button>
+          {extraOpen && (
+            <div className="dcm-sub">
+              <label>
+                <span className="dcm-lbl">Название</span>
+                <Input className="dcm-input" placeholder={`Авто: Сделка от ${dayjs().format('DD.MM.YYYY')}`} value={title} onChange={(e) => setTitle(e.target.value)} />
+              </label>
+              <label>
+                <span className="dcm-lbl">Комментарий к сделке</span>
+                <Input.TextArea className="dcm-input" autoSize={{ minRows: 2, maxRows: 6 }} placeholder="необязательно" value={commentText} onChange={(e) => setCommentText(e.target.value)} />
+              </label>
+              <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>
+                Сессионная сделка
+                <span className="dcm-check-hint">выручка в отчётах по дню позиции, до закрытия сделки</span>
+              </Checkbox>
+            </div>
+          )}
+        </section>
+
+        <div className="dcm-bar">
+          <div className="dcm-bar__line">
+            <span className={missing ? 'dcm-bar__missing' : undefined}>
+              {missing ? `Не хватает: ${missing}` : `Итого · ${n} ${n === 1 ? 'позиция' : n > 1 && n < 5 ? 'позиции' : 'позиций'}`}
+            </span>
+            <b>{formatUZS(totalAmount)}</b>
+          </div>
+          <Button type="primary" block className="dcm-bar__cta" loading={createMut.isPending} disabled={!!missing} onClick={handleSubmit}>
+            Создать сделку
+          </Button>
+        </div>
+
+        <PickerSheet
+          open={clientSheet}
+          title="Клиент"
+          placeholder="Название, контакт, телефон, ИНН"
+          rows={clientRows}
+          selected={clientId ? new Set([clientId]) : undefined}
+          onPick={(id) => setClientId(id)}
+          onClose={() => setClientSheet(false)}
+          emptyText="Клиент не найден"
+        />
+        <PickerSheet
+          open={productSheet}
+          title="Добавить товар"
+          placeholder="Название или артикул (можно латиницей)"
+          rows={productRows}
+          selected={usedProductIds}
+          multi
+          onPick={addProduct}
+          onClose={() => setProductSheet(false)}
+          emptyText="Товар не найден"
+        />
+      </div>
+    );
+  }
+
+  if (isMobile) return renderMobile();
+
   return (
-    <div className={isMobile ? 'deal-create-page deal-create-page--mobile' : 'deal-create-page'}>
-      <div className={isMobile ? 'deal-create-header deal-create-header--mobile' : 'deal-create-header'}>
+    <div className="deal-create-page">
+      <div className="deal-create-header">
         <Space align="center" className="deal-create-header__title">
           <BackButton fallback="/deals" />
           <Typography.Title level={4} style={{ margin: 0 }}>Новая сделка</Typography.Title>
         </Space>
-        <Space className={isMobile ? 'deal-create-header__actions deal-create-header__actions--mobile' : 'deal-create-header__actions'}>
-          <Button onClick={() => navigate('/deals')} className={isMobile ? 'deal-create-action-btn' : undefined}>Отмена</Button>
-          <Button type="primary" loading={createMut.isPending} onClick={handleSubmit} className={isMobile ? 'deal-create-action-btn' : undefined}>Сохранить сделку</Button>
+        <Space className="deal-create-header__actions">
+          <Button onClick={() => navigate('/deals')}>Отмена</Button>
+          <Button type="primary" loading={createMut.isPending} onClick={handleSubmit}>Сохранить сделку</Button>
         </Space>
       </div>
 
@@ -613,19 +1011,18 @@ export default function DealCreatePage() {
           message="Найден незавершённый черновик сделки"
           description={`Сохранён ${dayjs(draftBanner.savedAt).format('DD.MM.YYYY HH:mm')}`}
           action={
-            <Space className={isMobile ? 'deal-create-draft-actions' : undefined}>
-              <Button size={isMobile ? 'middle' : 'small'} type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
-              <Button size={isMobile ? 'middle' : 'small'} danger onClick={discardDraft}>Удалить</Button>
+            <Space>
+              <Button size="small" type="primary" onClick={() => restoreDraft(draftBanner)}>Восстановить</Button>
+              <Button size="small" danger onClick={discardDraft}>Удалить</Button>
             </Space>
           }
           style={{ marginBottom: 16 }}
-          className={isMobile ? 'deal-create-draft-alert' : undefined}
         />
       )}
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Card title="Основное" bordered={false} className={isMobile ? 'deal-create-section-card' : undefined}>
-          <div className={isMobile ? 'deal-create-grid deal-create-grid--single' : 'deal-create-grid'}>
+        <Card title="Основное" bordered={false}>
+          <div className="deal-create-grid">
             <div>
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Клиент *</Typography.Text>
               <Select
@@ -674,7 +1071,7 @@ export default function DealCreatePage() {
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Статус</Typography.Text>
               <DealStatusTag status={previewStatus} />
             </div>
-            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }}>
+            <div style={{ gridColumn: '1 / -1' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -708,7 +1105,7 @@ export default function DealCreatePage() {
                     {isDebt && <Tag color="red" style={{ margin: 0 }}>Клиент платит позже</Tag>}
                   </div>
                   {isDebt && (
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
                         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
                           Тип оплаты *
@@ -741,7 +1138,7 @@ export default function DealCreatePage() {
                 </div>
               </div>
             </div>
-            <div style={{ gridColumn: isMobile ? undefined : '1 / -1' }} className={isMobile ? 'deal-create-checkbox-row' : undefined}>
+            <div style={{ gridColumn: '1 / -1' }}>
               <Checkbox checked={isSessionDeal} onChange={(e) => setIsSessionDeal(e.target.checked)}>
                 Сессионная сделка (выручка в отчётах по дню позиции, до закрытия сделки)
               </Checkbox>
@@ -751,7 +1148,7 @@ export default function DealCreatePage() {
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
               Как доставим? *
             </Typography.Text>
-            <Radio.Group value={deliveryType} onChange={(e) => setDeliveryType(e.target.value)} className={isMobile ? 'deal-create-delivery-group' : undefined}>
+            <Radio.Group value={deliveryType} onChange={(e) => setDeliveryType(e.target.value)}>
               <Radio.Button value="SELF_PICKUP">Самовывоз</Radio.Button>
               <Radio.Button value="YANDEX">Яндекс</Radio.Button>
               <Radio.Button value="DELIVERY">Доставка</Radio.Button>
@@ -782,7 +1179,7 @@ export default function DealCreatePage() {
               </div>
             )}
             {deliveryType !== 'DELIVERY' && (
-              <div className={isMobile ? 'deal-create-grid deal-create-grid--single deal-create-grid--compact' : 'deal-create-grid deal-create-grid--triple'}>
+              <div className="deal-create-grid deal-create-grid--triple">
                 <div>
                   <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>Номер машины</Typography.Text>
                   <Input placeholder="01 A 123 AA" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} />
@@ -909,30 +1306,13 @@ export default function DealCreatePage() {
         <Card
           title={`Товары (${draftItems.filter((i) => i.productId).length})`}
           extra={
-            <Space className={isMobile ? 'deal-create-items-extra' : undefined}>
+            <Space>
               {totalAmount > 0 && <Typography.Text strong>Итого: {formatUZS(totalAmount)}</Typography.Text>}
             </Space>
           }
           bordered={false}
-          className={isMobile ? 'deal-create-section-card deal-create-items-card' : undefined}
         >
-          {isMobile ? (
-            <div className="deal-create-items-mobile">
-              <div className="deal-create-items-mobile__list">
-                {draftItems.map((item) => renderItemMobileCard(item))}
-              </div>
-              {totalAmount > 0 && (
-                <div className="deal-create-items-total">
-                  <Typography.Text type="secondary">Итого</Typography.Text>
-                  <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
-                </div>
-              )}
-              <Button type="dashed" block icon={<PlusOutlined />} className="deal-create-add-btn" onClick={addItemRow}>
-                Добавить позицию
-              </Button>
-            </div>
-          ) : (
-            <>
+          <>
               <table className="deal-create-items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
@@ -1025,10 +1405,9 @@ export default function DealCreatePage() {
                 Добавить позицию
               </Button>
             </>
-          )}
         </Card>
 
-        <Card title="Комментарий" bordered={false} className={isMobile ? 'deal-create-section-card' : undefined}>
+        <Card title="Комментарий" bordered={false}>
           <Input.TextArea
             rows={3}
             placeholder="Комментарий к сделке (необязательно)..."
