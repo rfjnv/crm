@@ -60,7 +60,8 @@ function sentToken(config: { headers?: unknown }): string | null {
 function isFreshToken(token: string): boolean {
   try {
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now() + 30_000;
+    // Без exp — бессрочный пропуск (у всех, кроме суперадмина).
+    return payload.exp == null || (typeof payload.exp === 'number' && payload.exp * 1000 > Date.now() + 30_000);
   } catch {
     return false;
   }

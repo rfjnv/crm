@@ -20,10 +20,17 @@ export interface RefreshTokenPayload {
   userId: string;
 }
 
+/**
+ * Пропуск суперадмина живёт 15 минут и продлевается; у остальных — бессрочный, чтобы
+ * сотрудника не выкидывало из CRM, когда браузер режет стороннюю cookie продления
+ * (сайт и API на разных доменах). Бессрочный пропуск отзывается вместе с сессией входа
+ * и деактивацией пользователя — это проверяет authenticate.
+ */
 export function signAccessToken(payload: AccessTokenPayload): string {
-  return jwt.sign(payload, config.jwt.accessSecret, {
-    expiresIn: config.jwt.accessExpiresIn,
-  } as jwt.SignOptions);
+  const options: jwt.SignOptions = payload.role === 'SUPER_ADMIN'
+    ? { expiresIn: config.jwt.accessExpiresIn } as jwt.SignOptions
+    : {};
+  return jwt.sign(payload, config.jwt.accessSecret, options);
 }
 
 export function signRefreshToken(payload: RefreshTokenPayload): string {

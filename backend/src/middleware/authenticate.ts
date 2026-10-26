@@ -18,6 +18,23 @@ declare global {
 }
 
 /**
+ * Жива ли сессия входа. При продлении старая сессия закрывается, а новая хранит её id
+ * в replacedBySessionId — поэтому закрытую идём по цепочке до последней.
+ */
+async function isSessionAlive(sessionId: string): Promise<boolean> {
+  let id = sessionId;
+  for (let hop = 0; hop < 50; hop++) {
+    const s = await prisma.session.findUnique({ where: { id }, select: { revokedAt: true } });
+    if (!s) return false;
+    if (!s.revokedAt) return true;
+    const next = await prisma.session.findFirst({ where: { replacedBySessionId: id }, select: { id: true } });
+    if (!next) return false;
+    id = next.id;
+  }
+  return false;
+}
+
+/**
  * Проверяет JWT, затем подставляет актуальные role и permissions из БД,
  * чтобы смена прав в «Пользователях» применялась без перелогина.
  */
@@ -42,6 +59,15 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       if (!row?.isActive) {
         next(new AppError(401, 'Пользователь не найден или деактивирован'));
         return;
+      }
+
+      // Бессрочный пропуск (см. signAccessToken): суперадмину не положен, остальным
+      // действует, пока жива сессия входа — выход и «завершить сеанс» его отзывают.
+      if ((payload as { exp?: number }).exp == null) {
+        if (row.role === 'SUPER_ADMIN' || (payload.sessionId && !(await isSessionAlive(payload.sessionId)))) {
+          next(new AppError(401, 'Сессия завершена — войдите снова'));
+          return;
+        }
       }
 
       // Себестоимость открыта только админам с введённым ПИН — срок живёт в сессии входа.
