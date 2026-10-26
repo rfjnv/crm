@@ -2,7 +2,8 @@
  * Новая сделка — телефон. Цвета из токенов нового дизайна (glass.css), в классике — antd.
  * Порядок: клиент → товары → оплата → доставка → дополнительно; итог и кнопка — внизу.
  */
-.dcm {
+.dcm,
+.dcm-bar {
   --dcm-text-1: var(--c-text-1, var(--ant-color-text));
   --dcm-text-2: var(--c-text-2, var(--ant-color-text-secondary));
   --dcm-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
@@ -18,7 +19,17 @@
   --dcm-neg-bg: var(--c-neg-bg, var(--ant-color-error-bg));
   --dcm-active-bg: var(--chip-active-bg, var(--ant-color-text));
   --dcm-active-text: var(--chip-active-text, var(--ant-color-bg-container));
+}
 
+/* Панель живёт в body, вне antd: его CSS-переменных там нет — в классике берём глобальные */
+.dcm-bar {
+  --dcm-text-1: var(--c-text-1, var(--text-primary, #0f172a));
+  --dcm-text-2: var(--c-text-2, var(--text-secondary, rgba(15, 23, 42, 0.65)));
+  --dcm-text-3: var(--c-text-3, var(--text-secondary, rgba(15, 23, 42, 0.5)));
+  --dcm-accent: var(--c-accent-fill, #22609a);
+}
+
+.dcm {
   /* Место под панель «Создать сделку» */
   padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
   color: var(--dcm-text-1);
@@ -27,6 +38,18 @@
 /* Нижние вкладки приложения на время создания сделки не нужны — на их месте панель */
 html.deal-create-open .bottom-tab-bar {
   display: none;
+}
+
+/* …и место под них внизу тоже: окно доходит до низа экрана, панель плавает поверх */
+@media (max-width: 767px) {
+  html[data-design='modern'].deal-create-open:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
+    margin-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(var(--app-vh, 100dvh) - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  html.deal-create-open .app-main-content--mobile-shell {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 .dcm-head {
@@ -575,22 +598,54 @@ html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
   color: var(--dcm-text-3);
 }
 
-/* ── Панель снизу ── */
+/* ── Панель снизу: liquid glass ── */
 .dcm-bar {
+  --dcm-glass: linear-gradient(140deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.12));
+  --dcm-glass-border: rgba(255, 255, 255, 0.3);
   position: fixed;
   right: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   left: 12px;
-  z-index: 1000;
+  z-index: 900;
+  isolation: isolate;
   max-width: 560px;
   margin: 0 auto;
   padding: 12px 14px 14px;
-  border: 1px solid var(--dcm-panel-border);
-  border-radius: 20px;
-  background: var(--hdr-panel-bg, var(--ant-color-bg-elevated));
-  -webkit-backdrop-filter: blur(30px) saturate(160%);
-  backdrop-filter: blur(30px) saturate(160%);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  border: 1px solid var(--dcm-glass-border);
+  border-radius: 28px;
+  background: var(--dcm-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(14px) saturate(190%) brightness(1.04);
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.5),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -12px 24px rgba(255, 255, 255, 0.05),
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  color: var(--dcm-text-1);
+  /* Панель живёт в body (вне antd) — шрифт приложения задаём сами, как в theme/tokens.ts */
+  font-family: Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Блик: свет падает сверху слева, как на стекле */
+.dcm-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 70% at 18% -10%, rgba(255, 255, 255, 0.32), transparent 55%),
+    radial-gradient(80% 60% at 100% 120%, rgba(255, 255, 255, 0.1), transparent 60%);
+  pointer-events: none;
+}
+
+/* Светлая тема: стекло плотнее, иначе текст теряется на снежном фото */
+html[data-theme='light'] .dcm-bar {
+  --dcm-glass: linear-gradient(140deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.2) 45%, rgba(255, 255, 255, 0.34));
+  --dcm-glass-border: rgba(255, 255, 255, 0.7);
 }
 
 .dcm-bar__line {
@@ -598,20 +653,20 @@ html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  margin: 0 4px 10px;
 }
 
 .dcm-bar__line span {
   min-width: 0;
   overflow: hidden;
   font-size: 12.5px;
-  color: var(--dcm-text-3);
+  color: var(--dcm-text-2);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .dcm-bar__line .dcm-bar__missing {
-  color: var(--c-warn-fg, var(--ant-color-warning-text));
+  color: var(--c-warn-fg, #d97706);
   font-weight: 600;
 }
 
@@ -622,9 +677,47 @@ html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
   font-variant-numeric: tabular-nums;
 }
 
-.dcm .dcm-bar__cta.ant-btn {
+/* Кнопка — тоже стекло, тонированное акцентом: объём сверху, тень снизу */
+.dcm-bar .dcm-bar__cta.ant-btn {
   height: 50px;
-  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dcm-accent) 78%, #fff) 0%,
+    var(--dcm-accent) 52%,
+    color-mix(in srgb, var(--dcm-accent) 82%, #000) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.18),
+    0 10px 22px -8px color-mix(in srgb, var(--dcm-accent) 75%, transparent);
+  color: #fff;
   font-size: 16px;
   font-weight: 650;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.dcm-bar .dcm-bar__cta.ant-btn:not(:disabled):active {
+  transform: scale(0.985);
+}
+
+/* Неактивная — прозрачное стекло, без цвета */
+.dcm-bar .dcm-bar__cta.ant-btn:disabled {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: var(--dcm-text-3);
+  text-shadow: none;
+}
+
+html[data-theme='light'] .dcm-bar .dcm-bar__cta.ant-btn:disabled {
+  background: rgba(28, 26, 23, 0.06);
+}
+
+/* Без поддержки размытия — плотная подложка, чтобы текст читался */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dcm-bar {
+    background: var(--ant-color-bg-elevated);
+  }
 }

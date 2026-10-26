@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -952,17 +953,22 @@ export default function DealCreatePage() {
           )}
         </section>
 
-        <div className="dcm-bar">
-          <div className="dcm-bar__line">
-            <span className={missing ? 'dcm-bar__missing' : undefined}>
-              {missing ? `Не хватает: ${missing}` : `Итого · ${n} ${n === 1 ? 'позиция' : n > 1 && n < 5 ? 'позиции' : 'позиций'}`}
-            </span>
-            <b>{formatUZS(totalAmount)}</b>
-          </div>
-          <Button type="primary" block className="dcm-bar__cta" loading={createMut.isPending} disabled={!!missing} onClick={handleSubmit}>
-            Создать сделку
-          </Button>
-        </div>
+        {/* В body: у стеклянного окна есть backdrop-filter, и fixed-элемент внутри него
+            прилипал к низу окна, а не экрана */}
+        {createPortal(
+          <div className="dcm-bar">
+            <div className="dcm-bar__line">
+              <span className={missing ? 'dcm-bar__missing' : undefined}>
+                {missing ? `Не хватает: ${missing}` : `Итого · ${n} ${n === 1 ? 'позиция' : n > 1 && n < 5 ? 'позиции' : 'позиций'}`}
+              </span>
+              <b>{formatUZS(totalAmount)}</b>
+            </div>
+            <Button type="primary" block className="dcm-bar__cta" loading={createMut.isPending} disabled={!!missing} onClick={handleSubmit}>
+              Создать сделку
+            </Button>
+          </div>,
+          document.body,
+        )}
 
         <PickerSheet
           open={clientSheet}
