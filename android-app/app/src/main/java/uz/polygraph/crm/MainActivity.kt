@@ -26,6 +26,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
@@ -44,6 +45,14 @@ class MainActivity : ComponentActivity() {
     /** Адрес открытой страницы — мост кэша отвечает только своему домену. */
     @Volatile private var pageUrl: String? = null
 
+    /**
+     * Старый WebView не отдаёт странице env(safe-area-inset-*) — тогда сами отступаем
+     * под системные панели, иначе шапка CRM уедет под статус-бар.
+     */
+    private var padTop = false
+    private var padBottom = false
+    private var systemBars = Insets.NONE
+
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -54,7 +63,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Нельзя сделать скриншот или запись экрана, превью в списке приложений скрыто.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // В debug-сборке снято, чтобы проверять вёрстку скриншотами.
+        if (!BuildConfig.DEBUG) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
 
         val root = FrameLayout(this)
@@ -69,11 +79,20 @@ class MainActivity : ComponentActivity() {
         root.addView(progressBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
         setContentView(root)
 
-        // Не залезаем под статус-бар, навигацию и клавиатуру.
+        // CRM рисуется на весь экран и сама отступает под статус-бар и нижнюю панель
+        // (viewport-fit=cover + env(safe-area-inset-*) во фронте). Здесь — только клавиатура.
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            WindowInsetsCompat.CONSUMED
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            systemBars = bars
+            v.setPadding(
+                if (padTop) bars.left else 0,
+                if (padTop) bars.top else 0,
+                if (padTop) bars.right else 0,
+                maxOf(if (padBottom) bars.bottom else 0, ime.bottom),
+            )
+            progressBar.translationY = if (padTop) 0f else bars.top.toFloat()
+            insets
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -131,6 +150,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 progressBar.visibility = View.GONE
+                checkSafeAreaSupport()
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -156,6 +176,24 @@ class MainActivity : ComponentActivity() {
                     fileCallback = null
                     false
                 }
+            }
+        }
+    }
+
+    private fun checkSafeAreaSupport() {
+        if ((padTop || systemBars.top == 0) && (padBottom || systemBars.bottom == 0)) return
+        val probe = "(function(){var d=document.createElement('div');" +
+            "d.style.cssText='position:fixed;visibility:hidden;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)';" +
+            "document.documentElement.appendChild(d);var c=getComputedStyle(d);" +
+            "var r=(parseFloat(c.paddingTop)||0)+','+(parseFloat(c.paddingBottom)||0);d.remove();return r;})()"
+        webView.evaluateJavascript(probe) { result ->
+            val (top, bottom) = result.trim('"').split(',').map { it.toFloatOrNull() ?: 0f } + listOf(0f, 0f)
+            val newTop = padTop || (systemBars.top > 0 && top == 0f)
+            val newBottom = padBottom || (systemBars.bottom > 0 && bottom == 0f)
+            if (newTop != padTop || newBottom != padBottom) {
+                padTop = newTop
+                padBottom = newBottom
+                ViewCompat.requestApplyInsets(webView.rootView)
             }
         }
     }
