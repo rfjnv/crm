@@ -1,0 +1,51 @@
+/* Жидкое стекло: ::before — то, что за стеклом (преломление + лёгкое размытие), ::after — кайма и блики */
+.liquid-glass {
+  position: relative;
+  isolation: isolate;
+}
+
+.liquid-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  background: var(--lg-tint, rgba(255, 255, 255, 0.04));
+  -webkit-backdrop-filter: blur(4px) saturate(165%) brightness(1.06);
+  backdrop-filter: blur(4px) saturate(165%) brightness(1.06);
+  pointer-events: none;
+}
+
+.liquid-glass--refract::before {
+  backdrop-filter: var(--lg-filter) blur(1.5px) saturate(175%) brightness(1.08);
+}
+
+.liquid-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 40%, rgba(255, 255, 255, 0.06));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+    inset 2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+    inset -2px -2px 1px -1px rgba(255, 255, 255, 0.5),
+    inset 0 0 16px rgba(255, 255, 255, 0.16),
+    0 14px 34px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.liquid-glass__defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Без размытия — плотная подложка, чтобы текст читался */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .liquid-glass::before {
+    background: rgba(44, 48, 52, 0.92);
+  }
+}

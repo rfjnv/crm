@@ -11,6 +11,7 @@ import type { Dayjs } from 'dayjs';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { CaretDown, CaretRight, Minus, Plus, X } from '@phosphor-icons/react';
 import PickerSheet, { type PickerRow } from '../components/deals/PickerSheet';
+import LiquidGlass from '../components/ui/LiquidGlass';
 import { theme } from 'antd';
 import { dealsApi } from '../api/deals.api';
 import { clientsApi } from '../api/clients.api';
@@ -956,7 +957,7 @@ export default function DealCreatePage() {
         {/* В body: у стеклянного окна есть backdrop-filter, и fixed-элемент внутри него
             прилипал к низу окна, а не экрана */}
         {createPortal(
-          <div className="dcm-bar">
+          <LiquidGlass className="dcm-bar" radius={28}>
             <div className="dcm-bar__line">
               <span className={missing ? 'dcm-bar__missing' : undefined}>
                 {missing ? `Не хватает: ${missing}` : `Итого · ${n} ${n === 1 ? 'позиция' : n > 1 && n < 5 ? 'позиции' : 'позиций'}`}
@@ -966,7 +967,7 @@ export default function DealCreatePage() {
             <Button type="primary" block className="dcm-bar__cta" loading={createMut.isPending} disabled={!!missing} onClick={handleSubmit}>
               Создать сделку
             </Button>
-          </div>,
+          </LiquidGlass>,
           document.body,
         )}
 
