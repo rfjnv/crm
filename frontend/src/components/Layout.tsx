@@ -82,6 +82,7 @@ import { useThemeStore } from '../store/themeStore';
 import BackgroundPickerModal from './BackgroundPickerModal';
 import ModernHeaderBar from './ModernHeaderBar';
 import { buildModernMenu, parentKeyOf } from '../config/modernMenuTree';
+import { userHasRole } from '../lib/roles';
 import { toModernMenuItems } from '../config/modernMenuItems';
 import { useHoverGlider } from '../hooks/useHoverGlider';
 import { useMenuPins } from '../hooks/useMenuPins';
@@ -288,7 +289,7 @@ export default function Layout() {
     || role === 'ADMIN'
     || (user?.permissions ?? []).includes('view_closed_deals_history' as Permission);
 
-  const hasRole = (...roles: UserRole[]) => role ? roles.includes(role) : false;
+  const hasRole = (...roles: UserRole[]) => userHasRole(user, ...roles);
 
   // Presence ping: раз в минуту и сразу при возврате на вкладку («в сети» на сервере — 2,5 минуты)
   useEffect(() => {

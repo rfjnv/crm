@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { isSiteAdminUser, homePathForUser } from '../lib/authUser';
+import { userHasRole } from '../lib/roles';
 import type { Permission, UserRole } from '../types';
 
 interface Props {
@@ -29,7 +30,7 @@ export default function PrivateRoute({ roles, permission, supabaseAuthOnly, crmS
     return <Navigate to="/admin" replace />;
   }
 
-  if (roles && roles.length > 0 && !roles.includes(user.role as UserRole)) {
+  if (roles && roles.length > 0 && !userHasRole(user, ...roles)) {
     return <Navigate to={home} replace />;
   }
 

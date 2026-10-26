@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
+import { hasRole, userRolesWhere } from '../../lib/roles';
 import { resolveUsdPart, usdPartData } from '../../lib/paymentUsd';
 import { buildSearchVariants } from '../../lib/translit';
 import { auditLog } from '../../lib/logger';
@@ -323,15 +324,15 @@ function isDilnozaIdentity(login?: string | null, fullName?: string | null): boo
   return l === 'dilnoza' || f === 'dilnoza' || f.includes('дилноза');
 }
 
-function validateStatusTransition(from: DealStatus, to: DealStatus, userRole: Role): void {
+function validateStatusTransition(from: DealStatus, to: DealStatus, user: { role: Role; permissions?: string[] }): void {
   const allowed = STATUS_TRANSITIONS[from];
   if (!allowed || !allowed.includes(to)) {
     throw new AppError(400, `Нельзя перейти из статуса "${from}" в "${to}"`);
   }
 
   const rolesAllowed = STATUS_ROLE_PERMISSIONS[to];
-  if (rolesAllowed && !rolesAllowed.includes(userRole)) {
-    throw new AppError(403, `Роль "${userRole}" не может установить статус "${to}"`);
+  if (rolesAllowed && !hasRole(user, ...rolesAllowed)) {
+    throw new AppError(403, `Роль "${user.role}" не может установить статус "${to}"`);
   }
 }
 
@@ -989,7 +990,7 @@ export class DealsService {
       // подсвечиваются в «Финансы на проверке» именно для того, чтобы договор
       // добавили постфактум.
       const contractOnly = isContractAttachOnlyUpdate(dto);
-      const mayAttachContract = isAdmin || user.role === 'ACCOUNTANT';
+      const mayAttachContract = isAdmin || hasRole(user, 'ACCOUNTANT');
 
       if (!isAdmin && !hasPermission && !(receiptOnly && mayPunchReceipt) && !(contractOnly && mayAttachContract)) {
         throw new AppError(
@@ -1065,7 +1066,7 @@ export class DealsService {
 
     // Status change handling with strict workflow enforcement
     if (dto.status !== undefined && dto.status !== deal.status) {
-      validateStatusTransition(deal.status, dto.status as DealStatus, user.role);
+      validateStatusTransition(deal.status, dto.status as DealStatus, user);
 
       before.status = deal.status;
       data.status = dto.status;
@@ -1174,7 +1175,7 @@ export class DealsService {
 
     if (targetStatus === 'WAITING_FINANCE') {
       const accountants = await prisma.user.findMany({
-        where: { role: 'ACCOUNTANT', isActive: true },
+        where: { ...userRolesWhere(['ACCOUNTANT']), isActive: true },
         select: { id: true },
       });
 
@@ -1263,7 +1264,7 @@ export class DealsService {
       ? 'WAITING_FINANCE'
       : 'WAITING_WAREHOUSE_MANAGER';
 
-    validateStatusTransition(deal.status, targetStatus, user.role);
+    validateStatusTransition(deal.status, targetStatus, user);
 
     // Build update data
     const updateData: Record<string, unknown> = {
@@ -1322,7 +1323,7 @@ export class DealsService {
   /** Смена способа оплаты сделки (в т.ч. уточнение «Долга» и после закрытия сделки). */
   async changePaymentMethod(dealId: string, dto: ChangePaymentMethodDto, user: AuthUser) {
     const allowedRoles: Role[] = ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
-    if (!allowedRoles.includes(user.role)) {
+    if (!hasRole(user, ...allowedRoles)) {
       throw new AppError(403, 'Недостаточно прав для изменения способа оплаты');
     }
 
@@ -1396,7 +1397,7 @@ export class DealsService {
 
     if (targetStatus === 'WAITING_FINANCE') {
       const accountants = await prisma.user.findMany({
-        where: { role: 'ACCOUNTANT', isActive: true },
+        where: { ...userRolesWhere(['ACCOUNTANT']), isActive: true },
         select: { id: true },
       });
       if (accountants.length > 0) {
@@ -1829,7 +1830,7 @@ export class DealsService {
 
     // Verify user is manager of this deal or admin
     const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
-    const canFinanceEdit = user.role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE';
+    const canFinanceEdit = hasRole(user, 'ACCOUNTANT') && deal.status === 'WAITING_FINANCE';
     const canManagerEdit = deal.managerId === user.userId;
     if (!isAdmin && !canFinanceEdit && !canManagerEdit) {
       throw new AppError(403, 'Только менеджер сделки или администратор может установить количества');
@@ -2096,7 +2097,7 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает финансы" для отклонения');
     }
 
-    validateStatusTransition(deal.status, 'REJECTED', user.role);
+    validateStatusTransition(deal.status, 'REJECTED', user);
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2492,7 +2493,7 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка" для приостановки');
     }
 
-    validateStatusTransition(deal.status, 'SHIPMENT_ON_HOLD', user.role);
+    validateStatusTransition(deal.status, 'SHIPMENT_ON_HOLD', user);
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2536,7 +2537,7 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Отгрузка приостановлена"');
     }
 
-    validateStatusTransition(deal.status, 'READY_FOR_SHIPMENT', user.role);
+    validateStatusTransition(deal.status, 'READY_FOR_SHIPMENT', user);
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2667,7 +2668,7 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает потв. Админа"');
     }
 
-    validateStatusTransition(deal.status, 'READY_FOR_LOADING', user.role);
+    validateStatusTransition(deal.status, 'READY_FOR_LOADING', user);
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2741,7 +2742,7 @@ export class DealsService {
 
     // Notify accountants about admin approval
     const accountants = await prisma.user.findMany({
-      where: { role: 'ACCOUNTANT', isActive: true },
+      where: { ...userRolesWhere(['ACCOUNTANT']), isActive: true },
       select: { id: true },
     });
 
@@ -2787,7 +2788,7 @@ export class DealsService {
       throw new AppError(400, 'Сделка должна быть в статусе "Ожидает потв. Админа"');
     }
 
-    validateStatusTransition(deal.status, 'IN_PROGRESS', user.role);
+    validateStatusTransition(deal.status, 'IN_PROGRESS', user);
 
     await prisma.deal.update({
       where: { id: dealId },
@@ -2837,7 +2838,7 @@ export class DealsService {
 
     // Notify accountants about admin rejection
     const accountants = await prisma.user.findMany({
-      where: { role: 'ACCOUNTANT', isActive: true },
+      where: { ...userRolesWhere(['ACCOUNTANT']), isActive: true },
       select: { id: true },
     });
 
@@ -3097,7 +3098,7 @@ export class DealsService {
       },
     });
 
-    if (user.role === 'ACCOUNTANT' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+    if (hasRole(user, 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN')) {
       const [actor, dealRow] = await Promise.all([
         prisma.user.findUnique({ where: { id: user.userId }, select: { fullName: true } }),
         prisma.deal.findUnique({
@@ -4154,7 +4155,7 @@ export class DealsService {
    */
   async warehouseOverrideUpdate(id: string, dto: WarehouseOverrideDealDto, user: AuthUser) {
     const allowedRoles: Role[] = ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'];
-    if (!allowedRoles.includes(user.role)) {
+    if (!hasRole(user, ...allowedRoles)) {
       throw new AppError(403, 'Недостаточно прав для оверрайда сделки');
     }
 
@@ -4288,7 +4289,7 @@ export class DealsService {
   /** Удаление внесённого платежа заведующим складом — требует причины, пишется в аудит как OVERRIDE_DELETE. */
   async warehouseDeletePayment(dealId: string, paymentId: string, reason: string, user: AuthUser) {
     const allowedRoles: Role[] = ['WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'];
-    if (!allowedRoles.includes(user.role)) {
+    if (!hasRole(user, ...allowedRoles)) {
       throw new AppError(403, 'Недостаточно прав для удаления платежа');
     }
 
@@ -4736,7 +4737,7 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    validateStatusTransition(deal.status, 'CLOSED', user.role);
+    validateStatusTransition(deal.status, 'CLOSED', user);
 
     const closedAt = new Date();
     const title = retitleOnCloseIfDefault(deal, closedAt);
@@ -4759,7 +4760,7 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    validateStatusTransition(deal.status, 'CLOSED', user.role);
+    validateStatusTransition(deal.status, 'CLOSED', user);
 
     const closedAt = new Date();
     const title = retitleOnCloseIfDefault(deal, closedAt);
@@ -4782,7 +4783,7 @@ export class DealsService {
     });
     if (!deal) throw new AppError(404, 'Сделка не найдена или не в нужном статусе');
 
-    validateStatusTransition(deal.status, 'REJECTED', user.role);
+    validateStatusTransition(deal.status, 'REJECTED', user);
 
     await prisma.deal.update({ where: { id: dealId }, data: { status: 'REJECTED' } });
     await prisma.dealComment.create({ data: { dealId, authorId: user.userId, text: `Отклонено админом: ${reason}` } });

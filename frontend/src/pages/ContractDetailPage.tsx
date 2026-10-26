@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { userHasRole } from '../lib/roles';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -54,7 +55,7 @@ export default function ContractDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
+  const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || userHasRole(user, 'ACCOUNTANT');
   const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const { token: tk } = theme.useToken();

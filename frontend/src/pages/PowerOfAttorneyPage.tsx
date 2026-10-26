@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { userHasRole } from '../lib/roles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography, Table, Tag, Space, Button, Popconfirm, message, Modal, Form, Input,
@@ -19,7 +20,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 export default function PowerOfAttorneyPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
+  const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || userHasRole(user, 'ACCOUNTANT');
   const canDelete = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 
   const [createOpen, setCreateOpen] = useState(false);

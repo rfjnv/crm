@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { userHasRole } from '../lib/roles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message, Tag,
@@ -32,7 +33,7 @@ export default function ContractsPage() {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const canManageContracts = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
+  const canManageContracts = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || userHasRole(user, 'ACCOUNTANT');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractListItem | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);

@@ -2,6 +2,7 @@ import { ConversationType, Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { AuthUser } from '../../lib/scope';
+import { effectiveRoles } from '../../lib/roles';
 import { SendMessageDto } from './conversations.dto';
 import { escapeLike } from '../../lib/translit';
 
@@ -23,12 +24,12 @@ const CONVERSATION_LABELS: Record<ConversationType, string> = {
   SHIPMENT: 'Отгрузки',
 };
 
-function getAccessibleTypes(role: string): ConversationType[] {
-  return ROLE_CONVERSATIONS[role] || [];
+function getAccessibleTypes(user: { role: string; permissions?: string[] }): ConversationType[] {
+  return [...new Set(effectiveRoles(user).flatMap((r) => ROLE_CONVERSATIONS[r] || []))];
 }
 
-function verifyAccess(role: string, type: ConversationType): void {
-  const accessible = getAccessibleTypes(role);
+function verifyAccess(user: { role: string; permissions?: string[] }, type: ConversationType): void {
+  const accessible = getAccessibleTypes(user);
   if (!accessible.includes(type)) {
     throw new AppError(403, 'Нет доступа к данному каналу');
   }
@@ -52,7 +53,7 @@ const messageInclude = {
 
 export class ConversationsService {
   async getConversations(user: AuthUser) {
-    const types = getAccessibleTypes(user.role);
+    const types = getAccessibleTypes(user);
 
     // Get last read timestamps
     const reads = await prisma.conversationRead.findMany({
@@ -93,7 +94,7 @@ export class ConversationsService {
   }
 
   async getMessages(type: ConversationType, user: AuthUser, cursor?: string, limit = 50) {
-    verifyAccess(user.role, type);
+    verifyAccess(user, type);
 
     const where: Record<string, unknown> = { conversationType: type };
     if (cursor) {
@@ -122,7 +123,7 @@ export class ConversationsService {
     files: Express.Multer.File[] | undefined,
     user: AuthUser,
   ) {
-    verifyAccess(user.role, type);
+    verifyAccess(user, type);
 
     // Verify replyToId belongs to the same conversation type
     if (dto.replyToId) {
@@ -250,7 +251,7 @@ export class ConversationsService {
   }
 
   async searchMessages(query: string, user: AuthUser) {
-    const types = getAccessibleTypes(user.role);
+    const types = getAccessibleTypes(user);
 
     const messages = await prisma.message.findMany({
       where: {
@@ -269,7 +270,7 @@ export class ConversationsService {
   }
 
   async getLatestReadAt(type: ConversationType, user: AuthUser) {
-    verifyAccess(user.role, type);
+    verifyAccess(user, type);
 
     const reads = await prisma.conversationRead.findMany({
       where: {
@@ -293,13 +294,13 @@ export class ConversationsService {
       throw new AppError(404, 'Вложение не найдено');
     }
 
-    verifyAccess(user.role, attachment.message.conversationType);
+    verifyAccess(user, attachment.message.conversationType);
 
     return attachment;
   }
 
   async markRead(type: ConversationType, user: AuthUser) {
-    verifyAccess(user.role, type);
+    verifyAccess(user, type);
 
     await prisma.conversationRead.upsert({
       where: {
@@ -313,7 +314,7 @@ export class ConversationsService {
   }
 
   async getUnreadCounts(user: AuthUser) {
-    const types = getAccessibleTypes(user.role);
+    const types = getAccessibleTypes(user);
 
     const reads = await prisma.conversationRead.findMany({
       where: { userId: user.userId, conversationType: { in: types } },

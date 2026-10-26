@@ -1,4 +1,5 @@
 import { Role } from '@prisma/client';
+import { hasRole } from './roles';
 
 export interface AuthUser {
   userId: string;
@@ -12,7 +13,7 @@ const FULL_ACCESS_ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHO
 const CLIENT_BLOCKED_ROLES: Role[] = ['DRIVER', 'LOADER', 'WAREHOUSE', 'WAREHOUSE_MANAGER'];
 
 export function ownerScope(user: AuthUser): { managerId?: string } {
-  if (FULL_ACCESS_ROLES.includes(user.role) || user.permissions.includes('view_all_deals')) {
+  if (hasRole(user, ...FULL_ACCESS_ROLES) || user.permissions.includes('view_all_deals')) {
     return {};
   }
   return { managerId: user.userId };

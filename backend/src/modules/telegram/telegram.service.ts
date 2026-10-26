@@ -5,6 +5,7 @@ import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { getFirstName } from '../../lib/name-utils';
 import type { PushPayload } from '../push/push.service';
+import { userRolesWhere } from '../../lib/roles';
 import { registerTelegramAdminCallbacks } from './telegram-admin-callback.handler';
 import { registerTelegramWarehouseWeighHandlers } from './telegram-warehouse-weigh.handler';
 import { createTelegramBot, registerWebhook } from './telegram-transport';
@@ -510,7 +511,7 @@ class TelegramService {
     if (!this.bot) return;
 
     const users = await prisma.user.findMany({
-      where: { role: { in: roles }, isActive: true, telegramChatId: { not: null } },
+      where: { ...userRolesWhere(roles), isActive: true, telegramChatId: { not: null } },
       select: { telegramChatId: true },
     });
 

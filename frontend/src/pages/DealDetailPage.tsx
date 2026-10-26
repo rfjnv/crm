@@ -27,6 +27,7 @@ import SuperOverridePanel from '../components/SuperOverridePanel';
 import WarehouseOverridePanel from '../components/WarehouseOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
 import BackButton from '../components/BackButton';
+import { userHasRole } from '../lib/roles';
 import DealDeliveryLocationSelect from '../components/DealDeliveryLocationSelect';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -118,6 +119,7 @@ export default function DealDetailPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const role = user?.role as UserRole | undefined;
+  const actsAsAccountant = userHasRole(user, 'ACCOUNTANT');
   const isMobile = useIsMobile();
 
   const invalidate = () => {
@@ -195,7 +197,7 @@ export default function DealDetailPage() {
 
   // Contracts for the deal's client (for attach modal)
   const needsContract = !!dealData?.paymentMethod && CONTRACT_REQUIRED_METHODS.includes(dealData.paymentMethod);
-  const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ACCOUNTANT';
+  const canManageContract = role === 'SUPER_ADMIN' || role === 'ADMIN' || actsAsAccountant;
 
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const canSuperOverride = role === 'SUPER_ADMIN' || role === 'ADMIN';
@@ -629,12 +631,12 @@ export default function DealDetailPage() {
   // Способ оплаты правят менеджер, зав. склада, бухгалтер и админ — для любой сделки,
   // не только оформленной в долг (после сохранения пост перепостится в группы Telegram).
   const canChangePaymentMethod =
-    isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER';
+    isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER';
   const changePaymentMethodLabel =
     deal.paymentMethod === 'DEBT' ? 'Уточнить способ оплаты' : 'Изменить способ оплаты';
   // Manager/admin can add or remove deal items in any status until the deal is closed or canceled
   const canEditItems = !isDealClosed && (isAdmin || role === 'MANAGER');
-  const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || role === 'ACCOUNTANT');
+  const canAdjustFinanceItems = deal.status === 'WAITING_FINANCE' && (isAdmin || actsAsAccountant);
   // Manager keeps price-edit access ("Изменить цены") through every post-warehouse stage
   // (finance review, approvals, shipment, delivery — any status not already covered by the
   // STOCK_CONFIRMED/IN_PROGRESS "количества" buttons) — it disappears once the deal is CLOSED/CANCELED.
@@ -643,7 +645,7 @@ export default function DealDetailPage() {
   const STATUSES_WITH_OWN_QUANTITIES_BUTTON = ['NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS'];
   const canEditPrices = !isDealClosed && !STATUSES_WITH_OWN_QUANTITIES_BUTTON.includes(deal.status) && (
     isAdmin
-    || (role === 'ACCOUNTANT' && deal.status === 'WAITING_FINANCE')
+    || (actsAsAccountant && deal.status === 'WAITING_FINANCE')
     || role === 'MANAGER'
   );
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
@@ -1245,7 +1247,7 @@ export default function DealDetailPage() {
                   ) : (
                     <Tag>Не пробит</Tag>
                   )}
-                  {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                  {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                     <Button
                       size="small"
                       type="link"
@@ -1280,7 +1282,7 @@ export default function DealDetailPage() {
                       Чек PDF
                     </Button>
                   </Tooltip>
-                  {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                  {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} aria-label="Добавить платёж" onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Платёж</Button>
                       <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
@@ -1294,7 +1296,7 @@ export default function DealDetailPage() {
               {(() => {
                 const isOverdue = deal.dueDate && deal.paymentStatus !== 'PAID' && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
                 const isDueSoon = deal.dueDate && deal.paymentStatus !== 'PAID' && !isOverdue && dayjs(deal.dueDate).diff(dayjs(), 'day') <= 3;
-                const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
+                const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER');
                 return (
                   <div style={{
                     display: 'flex',
@@ -1394,7 +1396,7 @@ export default function DealDetailPage() {
                                 Сторнировать
                               </Button>
                             )
-                          ) : !isReadOnly && (isAdmin || role === 'ACCOUNTANT') && (
+                          ) : !isReadOnly && (isAdmin || actsAsAccountant) && (
                             <>
                               <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
                                 setEditingPayment({ id: p.id });
@@ -1713,7 +1715,7 @@ export default function DealDetailPage() {
                           ) : (
                             <Tag>Не пробит</Tag>
                           )}
-                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                             <Button
                               size="small"
                               type="link"
@@ -1746,7 +1748,7 @@ export default function DealDetailPage() {
                               Чек PDF
                             </Button>
                           </Tooltip>
-                          {!isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER') && (
+                          {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                             <>
                               <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
                               <Button size="small" onClick={() => { paymentForm.setFieldsValue({ paidAmount: Number(deal.paidAmount), paymentType: deal.paymentType, dueDate: deal.dueDate ? dayjs(deal.dueDate) : null, terms: deal.terms || '' }); setPaymentModal(true); }}>Изменить</Button>
@@ -1760,7 +1762,7 @@ export default function DealDetailPage() {
                       {(() => {
                         const isOverdue = deal.dueDate && deal.paymentStatus !== 'PAID' && dayjs(deal.dueDate).isBefore(dayjs(), 'day');
                         const isDueSoon = deal.dueDate && deal.paymentStatus !== 'PAID' && !isOverdue && dayjs(deal.dueDate).diff(dayjs(), 'day') <= 3;
-                        const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || role === 'ACCOUNTANT' || role === 'WAREHOUSE_MANAGER');
+                        const canEditDueDate = !isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER');
                         return (
                           <div style={{
                             display: 'flex',
@@ -1868,7 +1870,7 @@ export default function DealDetailPage() {
                             { title: 'Дата оплаты', dataIndex: 'paidAt', render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm') },
                             { title: 'Кем внесено', dataIndex: ['creator', 'fullName'], render: (v: string) => getFirstName(v) || '—' },
                             { title: 'Примечание', dataIndex: 'note', render: (v: string | null) => v || '—' },
-                            ...(!isReadOnly && (isAdmin || role === 'ACCOUNTANT' || isSuperAdmin) ? [{
+                            ...(!isReadOnly && (isAdmin || actsAsAccountant || isSuperAdmin) ? [{
                               title: '', key: 'actions', width: 100,
                               render: (_: unknown, record: PaymentRecord) => (
                                 record.kind === 'CREDIT_TRANSFER' ? (
@@ -1877,7 +1879,7 @@ export default function DealDetailPage() {
                                       Сторнировать
                                     </Button>
                                   )
-                                ) : (isAdmin || role === 'ACCOUNTANT') && (
+                                ) : (isAdmin || actsAsAccountant) && (
                                   <Space size={0}>
                                     <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
                                       setEditingPayment({ id: record.id });

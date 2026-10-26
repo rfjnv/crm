@@ -31,6 +31,8 @@ export const PERMISSIONS = {
   VIEW_IMPORT_ORDERS: 'view_import_orders',
   /** РОП-агент: видит всю выручку, маржу и работу менеджеров — выдаётся поимённо. */
   USE_ROP_AGENT: 'use_rop_agent',
+  /** Менеджер, который ещё и помогает бухгалтеру: везде, где пускают бухгалтера, пускают и его (lib/roles.ts). */
+  ACCOUNTANT_ASSISTANT: 'accountant_assistant',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

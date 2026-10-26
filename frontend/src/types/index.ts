@@ -39,7 +39,8 @@ export type Permission =
   | 'manage_suppliers'
   | 'manage_import_orders'
   | 'view_import_orders'
-  | 'use_rop_agent';
+  | 'use_rop_agent'
+  | 'accountant_assistant';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -72,6 +73,7 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_import_orders', label: 'Управление импорт-заказами (ВЭД)' },
   { key: 'view_import_orders', label: 'Просмотр импорт-заказов (ВЭД)' },
   { key: 'use_rop_agent', label: 'РОП-агент (выдаётся поимённо)' },
+  { key: 'accountant_assistant', label: 'Помощник бухгалтера (доступ как у бухгалтера)' },
 ];
 
 const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history', 'use_rop_agent'];

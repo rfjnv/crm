@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { Role } from '@prisma/client';
 import prisma from '../../lib/prisma';
+import { userRolesWhere } from '../../lib/roles';
 import { config } from '../../lib/config';
 
 if (config.vapid.publicKey && config.vapid.privateKey) {
@@ -110,7 +111,7 @@ export class PushService {
     if (!config.vapid.publicKey || !config.vapid.privateKey) return;
 
     const subscriptions = await prisma.pushSubscription.findMany({
-      where: { user: { role: { in: roles }, isActive: true } },
+      where: { user: { ...userRolesWhere(roles), isActive: true } },
     });
 
     const jsonPayload = JSON.stringify(payload);

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Role } from '@prisma/client';
 import { AppError } from '../lib/errors';
+import { hasRole } from '../lib/roles';
 
 export function authorize(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -8,7 +9,7 @@ export function authorize(...roles: Role[]) {
       throw new AppError(401, 'Не авторизован');
     }
 
-    if (!roles.includes(req.user.role as Role)) {
+    if (!hasRole(req.user, ...roles)) {
       throw new AppError(403, 'Недостаточно прав');
     }
 
