@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Worksheet } from 'exceljs';
+// Модуль грузит exceljs лениво (await import). Холодная загрузка библиотеки под нагрузкой
+// полного прогона занимает 5–7 с и засчитывалась первому тесту — он падал по таймауту 5 с.
+// Статический импорт переносит загрузку в сбор файла (без таймаута), тесты берут из кэша.
+import 'exceljs';
 import { buildHierarchyWorkbook, type ExportProductInfo } from './hierarchyExcelExport';
 import type { ProductPurchaseRow } from './analyticsHierarchySales';
 
