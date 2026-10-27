@@ -70,6 +70,62 @@ export default function DuplicateClientsPage() {
     },
   });
 
+  // ── Ручное объединение: любой основной клиент + любые присоединяемые ──
+  const [manualKeepId, setManualKeepId] = useState<string | undefined>();
+  const [manualMergeIds, setManualMergeIds] = useState<string[]>([]);
+  const [manualRunning, setManualRunning] = useState(false);
+
+  const { data: allClients, isLoading: clientsLoading } = useQuery({
+    queryKey: ['clients', 'list'],
+    queryFn: () => clientsApi.list(),
+    staleTime: 60 * 1000,
+  });
+
+  const clientOptions = useMemo(
+    () =>
+      (allClients ?? [])
+        .filter((c) => !mergedIds.has(c.id))
+        .sort((a, b) => a.companyName.localeCompare(b.companyName, 'ru'))
+        .map((c) => ({
+          value: c.id,
+          label: [c.companyName, c.contactName, c.phone].filter(Boolean).join(' · '),
+        })),
+    [allClients, mergedIds],
+  );
+
+  const clientNameById = useMemo(
+    () => new Map((allClients ?? []).map((c) => [c.id, c.companyName])),
+    [allClients],
+  );
+
+  async function runManualMerge() {
+    if (!manualKeepId || manualMergeIds.length === 0) return;
+    setManualRunning(true);
+    const done: string[] = [];
+    try {
+      for (const mergeId of manualMergeIds) {
+        await clientsApi.merge(manualKeepId, mergeId);
+        done.push(mergeId);
+      }
+      message.success(`Объединено клиентов: ${done.length}`);
+      setManualMergeIds([]);
+    } catch (err: any) {
+      const name = clientNameById.get(manualMergeIds[done.length]) ?? '';
+      message.error(
+        `${done.length > 0 ? `Объединено ${done.length}, затем ошибка` : 'Ошибка'} на «${name}»: ${
+          err?.response?.data?.message || 'не удалось объединить'
+        }`,
+      );
+      setManualMergeIds((ids) => ids.filter((id) => !done.includes(id)));
+    } finally {
+      if (done.length > 0) {
+        setMergedIds((prev) => new Set([...prev, ...done]));
+        qc.invalidateQueries({ queryKey: ['clients'] });
+      }
+      setManualRunning(false);
+    }
+  }
+
   const filtered = useMemo(() => {
     if (!data?.pairs) return [];
     return data.pairs.filter((p) => {
@@ -239,6 +295,85 @@ export default function DuplicateClientsPage() {
             </Col>
           </Row>
         )}
+
+        <Card
+          size="small"
+          title={
+            <Space>
+              <MergeCellsOutlined />
+              Объединить вручную
+            </Space>
+          }
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Если система не нашла дубль — выберите сами: основного клиента и тех, кого к нему
+              присоединить. Их сделки, платежи, договоры и заметки перейдут на основного, а сами
+              они будут заархивированы.
+            </Text>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={10}>
+                <Text style={{ fontSize: 12 }}>Основной клиент (оставить)</Text>
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder="Найдите клиента..."
+                  style={{ width: '100%' }}
+                  loading={clientsLoading}
+                  value={manualKeepId}
+                  onChange={(v) => {
+                    setManualKeepId(v);
+                    setManualMergeIds((ids) => ids.filter((id) => id !== v));
+                  }}
+                  options={clientOptions}
+                  optionFilterProp="label"
+                />
+              </Col>
+              <Col xs={24} md={14}>
+                <Text style={{ fontSize: 12 }}>Присоединить к нему (можно несколько)</Text>
+                <Select
+                  mode="multiple"
+                  showSearch
+                  allowClear
+                  placeholder="Выберите клиентов..."
+                  style={{ width: '100%' }}
+                  loading={clientsLoading}
+                  value={manualMergeIds}
+                  onChange={setManualMergeIds}
+                  options={clientOptions.filter((o) => o.value !== manualKeepId)}
+                  optionFilterProp="label"
+                />
+              </Col>
+            </Row>
+            <Popconfirm
+              title="Подтвердите объединение"
+              description={
+                <span>
+                  {manualMergeIds.map((id) => `«${clientNameById.get(id) ?? id}»`).join(', ')} будут
+                  объединены с «{manualKeepId ? clientNameById.get(manualKeepId) : ''}» и
+                  заархивированы. Это действие нельзя отменить.
+                </span>
+              }
+              okText="Объединить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              overlayStyle={{ maxWidth: 420 }}
+              placement="topLeft"
+              disabled={!manualKeepId || manualMergeIds.length === 0}
+              onConfirm={runManualMerge}
+            >
+              <Button
+                type="primary"
+                danger
+                icon={<MergeCellsOutlined />}
+                loading={manualRunning}
+                disabled={!manualKeepId || manualMergeIds.length === 0}
+              >
+                Объединить{manualMergeIds.length > 0 ? ` (${manualMergeIds.length})` : ''}
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Card>
 
         <Space wrap>
           <Input
