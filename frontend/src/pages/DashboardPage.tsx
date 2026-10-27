@@ -14,22 +14,22 @@ import { financeApi } from '../api/finance.api';
 import { analyticsApi, type AnalyticsPeriodQuery } from '../api/analytics.api';
 import { settingsApi } from '../api/settings.api';
 import { profileApi } from '../api/profile.api';
-import { formatUZS, formatFullNumber, formatShortNumber, formatCount, formatMoneyCompact } from '../utils/currency';
+import { formatUZS, formatCount, formatMoneyCompact } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { useDashboardChartRange } from '../hooks/useDashboardChartRange';
 import { useAuthStore } from '../store/authStore';
 import { SHOW_MY_MONTHLY_GOALS } from '../constants/featureFlags';
 import { useThemeStore } from '../store/themeStore';
-import { Area, Column } from '@ant-design/charts';
-import DealStatusTag, { statusConfig } from '../components/DealStatusTag';
+import { Column } from '@ant-design/charts';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
 import CallsKpi from '../components/dashboard/CallsKpi';
+import RevenueBlock from '../components/dashboard/RevenueBlock';
+import DealStagesBlock from '../components/dashboard/DealStagesBlock';
 import GoalsBlock from '../components/dashboard/GoalsBlock';
 import { callsApi } from '../api/calls.api';
-import type { Permission, UserRole, DealStatus } from '../types';
+import type { Permission, UserRole } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
 import MissedCallsWidget from '../components/calls/MissedCallsWidget';
@@ -187,10 +187,7 @@ export default function DashboardPage() {
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const design = useThemeStore((s) => s.design);
   const modern = design === 'modern';
-  // Акцент графика выручки в новом дизайне — в тон стеклу, а не зелёный antd
-  const chartAccent = isDark ? '#7dd3fc' : '#2563eb';
   const productDayColors = modern ? PRODUCT_DAY_BAR_COLORS_MODERN : PRODUCT_DAY_BAR_COLORS;
-  const chartTheme = isDark ? 'classicDark' : 'classic';
   const isMobile = useIsMobile();
 
   const role = user?.role as UserRole | undefined;
@@ -261,7 +258,6 @@ export default function DashboardPage() {
     return (monthAnalytics?.sales?.topClients ?? []).slice(0, 5);
   }, [monthAnalytics]);
 
-  const chartRange = useDashboardChartRange();
   const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
   const [productDayPage, setProductDayPage] = useState(1);
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
@@ -327,28 +323,6 @@ export default function DashboardPage() {
     ro?.observe(el);
     return () => ro?.disconnect();
   }, [productDayItems.length, productDayPage, pagedProductDayItems.length, isMobile]);
-  const revenueChartSlice = useMemo(() => {
-    const raw = data?.revenueLast30Days;
-    if (!raw?.length) {
-      return {
-        rows: [] as { day: string; total: number }[],
-        xLabelFormatter: (v: string) => (v ? v.slice(5) : ''),
-      };
-    }
-    const sorted = [...raw].sort((a, b) => a.day.localeCompare(b.day));
-    const maxDays = period === 'day' ? chartRange.maxDays : sorted.length;
-    const sliced = sorted.slice(-maxDays);
-    const step = period === 'day'
-      ? chartRange.tickStep
-      : Math.max(1, Math.floor(sliced.length / 8));
-    const xLabelFormatter = (v: string) => {
-      const idx = sliced.findIndex((d) => d.day === v);
-      if (idx < 0) return v.slice(5);
-      if (idx === sliced.length - 1 || idx % step === 0) return v.slice(5);
-      return '';
-    };
-    return { rows: sliced, xLabelFormatter };
-  }, [data?.revenueLast30Days, chartRange.maxDays, chartRange.tickStep, period]);
   const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / PRODUCT_DAY_PAGE_SIZE));
   useEffect(() => {
     if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
@@ -840,120 +814,36 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Chart + Statuses ── */}
+      {/* ── Выручка за 30 дней + сделки в работе ── */}
       {isAdmin && (
         <div className={isMobile ? 'section' : undefined}>
-        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 24 }}>
-          <Col xs={24} lg={14}>
-            <Card
-              bordered={false}
-              style={card}
-              styles={{ body: { padding: '16px 12px 8px' } }}
-              title={(
-                <Typography.Text strong style={{ fontSize: 14 }}>
-                  {period === 'day'
-                    ? `Выручка за ${chartRange.titleLabel} дн.`
-                    : `Выручка ${PERIOD_LABELS[period]}`
-                  }
-                </Typography.Text>
-              )}
-            >
-              <div className="chart-container">
-                <Area
-                  data={revenueChartSlice.rows}
-                  xField="day"
-                  yField="total"
-                  shapeField="smooth"
-                  height={isMobile ? 220 : 240}
-                  padding={modern ? [16, 12, 12, 56] : [16, 8, 12, 8]}
-                  theme={chartTheme}
-                  style={{
-                    fill: modern
-                      ? `l(90) 0:${chartAccent}55 1:${chartAccent}00`
-                      : (isDark ? 'rgba(82,196,26,0.15)' : 'rgba(82,196,26,0.12)'),
-                  }}
-                  line={{ style: { stroke: modern ? chartAccent : '#52c41a', strokeWidth: modern ? 2.5 : 2 } }}
-                  axis={{
-                    y: {
-                      // В новом дизайне подписи всегда короткие («40 млн»): длинные обрезались слева
-                      labelFormatter: (v: number) =>
-                        modern || chartRange.useShortYAxis ? formatShortNumber(v) : formatFullNumber(v),
-                      labelFill: tk.colorTextSecondary,
-                      grid: true,
-                      gridLineWidth: 1,
-                      gridLineDash: [4, 4],
-                      gridStroke: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
-                      title: false,
-                    },
-                    x: {
-                      labelFormatter: revenueChartSlice.xLabelFormatter,
-                      labelFill: tk.colorTextSecondary,
-                      labelAutoRotate: false,
-                      labelAutoHide: true,
-                      tickCount: Math.min(modern ? 6 : 8, chartRange.maxDays),
-                      title: false,
-                    },
-                  }}
-                  tooltip={{
-                    title: { channel: 'x' },
-                    items: [
-                      {
-                        channel: 'y',
-                        name: 'Выручка',
-                        valueFormatter: (v: unknown) =>
-                          formatFullNumber(
-                            typeof v === 'number' && Number.isFinite(v) ? v : Number(v),
-                          ),
-                      },
-                    ],
-                  }}
-                />
-              </div>
+        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }} align="stretch">
+          <Col xs={24} lg={14} style={{ display: 'flex' }}>
+            <Card bordered={false} style={{ ...card, width: '100%' }} styles={{ body: { padding: isMobile ? 16 : '18px 20px', height: '100%' } }}>
+              <RevenueBlock
+                title={period === 'day' ? 'Выручка за 30 дней' : `Выручка ${PERIOD_LABELS[period]}`}
+                points={fillDays((data.revenueLast30Days ?? []).map((d) => ({ day: d.day, value: Number(d.total) || 0 })), chartFrom, chartTo)}
+                total={(data.revenueLast30Days ?? [])
+                  .filter((d) => d.day.slice(0, 10) >= chartFrom && d.day.slice(0, 10) <= chartTo)
+                  .reduce((sum, d) => sum + (Number(d.total) || 0), 0)}
+                prevTotal={data.chartPrevTotal ?? 0}
+                dailyGoal={dailyGoal}
+                showGoal={canSeeMoney}
+              />
             </Card>
           </Col>
-          <Col xs={24} lg={10}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Card
-                bordered={false}
-                style={card}
-                styles={{ body: { padding: '16px 20px' } }}
-                title={<Typography.Text strong style={{ fontSize: 14 }}>Сделки по статусам</Typography.Text>}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, ...(modern ? null : { maxHeight: 270, overflowY: 'auto' as const }) }}>
-                  {(data.dealsByStatusCounts || [])
-                    .filter((d) => d.count > 0)
-                    .sort((a, b) => b.count - a.count)
-                    .map((d) => {
-                      const cfg = statusConfig[d.status as DealStatus];
-                      const hex: Record<string, string> = {
-                        blue: '#1677ff', processing: '#1677ff', gold: '#faad14', cyan: '#13c2c2',
-                        orange: '#fa8c16', lime: '#a0d911', geekblue: '#2f54eb', purple: '#722ed1',
-                        warning: '#faad14', success: '#52c41a', volcano: '#ff7a45', red: '#ff4d4f',
-                      };
-                      const maxC = Math.max(1, ...(data.dealsByStatusCounts || []).map((x) => x.count));
-                      return (
-                        <div
-                          key={d.status}
-                          style={{ cursor: 'pointer', padding: '6px 0' }}
-                          onClick={() => navigate(`/deals?status=${d.status}`)}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <DealStatusTag status={d.status as DealStatus} />
-                            <Typography.Text strong style={{ fontSize: 13 }}>{d.count}</Typography.Text>
-                          </div>
-                          <Progress
-                            percent={Math.round((d.count / maxC) * 100)}
-                            showInfo={false}
-                            size="small"
-                            strokeColor={hex[cfg?.color || ''] || tk.colorPrimary}
-                            trailColor={tk.colorFillSecondary}
-                          />
-                        </div>
-                      );
-                    })}
-                </div>
-              </Card>
-            </div>
+          <Col xs={24} lg={10} style={{ display: 'flex' }}>
+            <Card
+              bordered={false}
+              style={{ ...card, width: '100%' }}
+              styles={{ body: { padding: isMobile ? 16 : '18px 20px', height: '100%' } }}
+            >
+              <DealStagesBlock
+                counts={data.dealsByStatusCounts ?? []}
+                closedInPeriod={data.closedInChart ?? 0}
+                closedLabel={period === 'day' ? 'за 30 дней' : PERIOD_LABELS[period]}
+              />
+            </Card>
           </Col>
         </Row>
         </div>
@@ -962,7 +852,7 @@ export default function DashboardPage() {
       {/* ── Product of the day ── */}
       {(isAdmin || role === 'MANAGER') && (
         <div className={isMobile ? 'section' : undefined}>
-        <Row gutter={blockGutter} style={{ marginTop: isAdmin ? 12 : (isMobile ? 0 : 24) }}>
+        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }}>
           <Col xs={24}>
             <Card
               bordered={false}
@@ -1162,7 +1052,7 @@ export default function DashboardPage() {
       {/* ── Tops ── */}
       {showExtras && (
         <div className={isMobile ? 'section' : undefined}>
-        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 24 }}>
+        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }}>
           {[
             {
               title: 'Топ товаров',
@@ -1243,7 +1133,7 @@ export default function DashboardPage() {
       <div className={isMobile ? 'section' : undefined}>
       <Card
         bordered={false}
-        style={{ ...card, marginTop: isMobile ? 0 : 24 }}
+        style={{ ...card, marginTop: isMobile ? 0 : 16 }}
         styles={{ body: { padding: '16px 20px' } }}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

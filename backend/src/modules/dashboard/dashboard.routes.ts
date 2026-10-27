@@ -230,6 +230,11 @@ router.get(
     const goalsDaysPromise = revenueByDayInRange(startOfYear, startOfTomorrow)
       .catch(() => [] as { day: Date; total: string }[]);
 
+    // Блок «Выручка за 30 дней»: тот же отрезок прямо перед графиком — для «+N% к прошлым»
+    const chartLenMs = periodEnd.getTime() - chartStart.getTime();
+    const chartPrevPromise = revenueDealTotalInRange(new Date(chartStart.getTime() - chartLenMs), chartStart)
+      .catch(() => [] as { total: string }[]);
+
     // Закрытые сделки по дням — мини-график в KPI-карточке «Закрыто сделок» (тот же диапазон, что у выручки)
     const closedChartPromise = prisma.deal.findMany({
       where: {
@@ -387,8 +392,10 @@ router.get(
       custom: 'Период',
     };
 
+    const closedChartRows = await closedChartPromise;
+    const chartPrevAgg = await chartPrevPromise;
     const closedByDay = new Map<string, number>();
-    for (const d of await closedChartPromise) {
+    for (const d of closedChartRows) {
       if (!d.closedAt) continue;
       // День по Ташкенту (UTC+5), как у выручки по дням
       const day = new Date(d.closedAt.getTime() + 5 * 3_600_000).toISOString().slice(0, 10);
@@ -406,6 +413,9 @@ router.get(
       revenueToday: revenuePeriodAgg[0] ? Number(revenuePeriodAgg[0].total) : 0,
       revenueYesterday: revenuePrevPeriodAgg[0] ? Number(revenuePrevPeriodAgg[0].total) : 0,
       revenueMonth: revenueMonthAgg[0] ? Number(revenueMonthAgg[0].total) : 0,
+      /** Выручка за такой же отрезок перед графиком и закрытые за время графика */
+      chartPrevTotal: chartPrevAgg[0] ? Number(chartPrevAgg[0].total) : 0,
+      closedInChart: closedChartRows.length,
       goals: buildGoals(await goalsDaysPromise, y, mo),
       activeDealsCount,
       totalDebt: grossDebt,

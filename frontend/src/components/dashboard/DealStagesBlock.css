@@ -1,0 +1,176 @@
+/* «Сделки в работе». Токены нового дизайна, в классике — antd. */
+.stages-block {
+  --sb-text-1: var(--c-text-1, var(--ant-color-text));
+  --sb-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --sb-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --sb-accent: var(--c-accent-fill, var(--ant-color-primary));
+  --sb-warn: var(--c-warn-fg, var(--ant-color-warning));
+  --sb-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --sb-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--sb-text-1);
+}
+
+.stages-block__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.stages-block__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.stages-block__sub {
+  font-size: 12.5px;
+  color: var(--sb-text-3);
+}
+
+.stages-block__link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--sb-text-2);
+}
+
+.stages-block__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stages-block__waiting {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--c-warn-bg, var(--ant-color-warning-bg));
+  color: var(--sb-warn);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stages-block__hint {
+  margin: 2px 0 10px;
+  font-size: 13px;
+  color: var(--sb-text-2);
+}
+
+.stages-block__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.stages-block__row {
+  --sb-tone: var(--sb-accent);
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stages-block__row:hover {
+  background: var(--fill-1, var(--ant-color-fill-quaternary));
+}
+
+.stages-block__row--wait {
+  --sb-tone: var(--sb-warn);
+}
+
+.stages-block__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stages-block__name i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sb-tone);
+}
+
+.stages-block__bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--sb-fill);
+}
+
+.stages-block__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sb-tone);
+}
+
+.stages-block__count {
+  font-size: 14px;
+  font-weight: 650;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Пустой этап — серый, но на месте: видно весь путь сделки */
+.stages-block__row--empty .stages-block__name,
+.stages-block__row--empty .stages-block__count {
+  color: var(--sb-text-3);
+  font-weight: 400;
+}
+
+.stages-block__row--empty .stages-block__name i {
+  background: var(--sb-fill);
+}
+
+.stages-block__legacy {
+  margin: 8px 6px 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sb-hair);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sb-text-3);
+}
+
+.stages-block__foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--sb-hair);
+  font-size: 13px;
+  color: var(--sb-text-2);
+}
+
+.stages-block__foot b {
+  color: var(--sb-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  .stages-block__row {
+    grid-template-columns: minmax(0, 1fr) 64px 28px;
+    gap: 10px;
+  }
+}

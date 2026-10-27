@@ -727,6 +727,10 @@ export interface DashboardSummary {
   revenueToday: number;
   revenueYesterday: number;
   revenueMonth: number;
+  /** Выручка за такой же отрезок перед графиком */
+  chartPrevTotal?: number;
+  /** Закрыто сделок за время графика */
+  closedInChart?: number;
   /** Блок «Цели»: выручка с начала года, по дням текущего месяца и по месяцам */
   goals?: {
     year: number;

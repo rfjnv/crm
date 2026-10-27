@@ -1,0 +1,197 @@
+/* «Выручка за 30 дней». Токены нового дизайна, в классике — antd. */
+.rev-block {
+  --rb-text-1: var(--c-text-1, var(--ant-color-text));
+  --rb-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --rb-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --rb-accent: var(--c-accent-fill, var(--ant-color-primary));
+  --rb-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --rb-fill: var(--fill-1, var(--ant-color-fill-quaternary));
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--rb-text-1);
+}
+
+.rev-block__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.rev-block__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.rev-block__sub {
+  font-size: 12.5px;
+  color: var(--rb-text-3);
+}
+
+.rev-block__link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--rb-text-2);
+}
+
+.rev-block__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rev-block__delta {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--c-pos-bg, var(--ant-color-success-bg));
+  color: var(--c-pos-fg, var(--ant-color-success-text));
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.rev-block__delta--down {
+  background: var(--c-neg-bg, var(--ant-color-error-bg));
+  color: var(--c-neg-fg, var(--ant-color-error-text));
+}
+
+.rev-block__avg {
+  margin: 2px 0 12px;
+  font-size: 13px;
+  color: var(--rb-text-2);
+}
+
+.rev-block__chart {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 200px;
+}
+
+.rev-block__chart svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+}
+
+.rev-block__grid {
+  stroke: var(--rb-hair);
+}
+
+.rev-block__axis {
+  fill: var(--rb-text-3);
+  font-size: 10.5px;
+}
+
+.rev-block__bar {
+  fill: color-mix(in srgb, var(--rb-accent) 42%, transparent);
+  transition: fill 0.12s ease;
+}
+
+.rev-block__bar--hit {
+  fill: var(--rb-accent);
+}
+
+.rev-block__bar--today {
+  stroke: var(--rb-text-1);
+  stroke-width: 1.5;
+}
+
+.rev-block__bar--hover {
+  fill: color-mix(in srgb, var(--rb-accent) 75%, #fff);
+}
+
+.rev-block__goal {
+  stroke: var(--c-warn-fg, #d97706);
+  stroke-width: 1.3;
+  stroke-dasharray: 5 4;
+}
+
+.rev-block__goal-text {
+  fill: var(--c-warn-fg, #d97706);
+  font-size: 10.5px;
+}
+
+.rev-block__tip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ant-color-bg-spotlight, rgba(0, 0, 0, 0.85));
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+.rev-block__tip span {
+  opacity: 0.75;
+}
+
+.rev-block__tip b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rev-block__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.rev-block__stats > div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--rb-fill);
+}
+
+.rev-block__stats b {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.rev-block__stats small {
+  font-size: 12px;
+  color: var(--rb-text-3);
+}
+
+@media (max-width: 767px) {
+  .rev-block__sub {
+    display: none;
+  }
+
+  .rev-block__total {
+    font-size: 22px;
+  }
+
+  .rev-block__stats {
+    gap: 6px;
+  }
+
+  .rev-block__stats > div {
+    padding: 8px 10px;
+  }
+
+  .rev-block__stats b {
+    font-size: 14px;
+  }
+
+  .rev-block__stats small {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+}
