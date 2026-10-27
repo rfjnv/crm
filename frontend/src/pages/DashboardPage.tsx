@@ -24,6 +24,7 @@ import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
 import CallsKpi from '../components/dashboard/CallsKpi';
+import { TopCard, TopList, MyRank, QuietClients } from '../components/dashboard/TopsRow';
 import SalesOfDayBlock from '../components/dashboard/SalesOfDayBlock';
 import RevenueBlock from '../components/dashboard/RevenueBlock';
 import DealStagesBlock from '../components/dashboard/DealStagesBlock';
@@ -144,7 +145,6 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const { token: tk } = theme.useToken();
   const navigate = useNavigate();
-  const isDark = useThemeStore((s) => s.mode) === 'dark';
   const design = useThemeStore((s) => s.design);
   const modern = design === 'modern';
   const isMobile = useIsMobile();
@@ -216,6 +216,23 @@ export default function DashboardPage() {
   const topClients = useMemo(() => {
     return (monthAnalytics?.sales?.topClients ?? []).slice(0, 5);
   }, [monthAnalytics]);
+
+  // «Пора позвонить» — только менеджеру: его постоянные клиенты, которые пропали
+  const { data: reanimation, isLoading: reanimationLoading } = useQuery({
+    queryKey: ['dashboard-quiet-clients'],
+    queryFn: analyticsApi.getReanimationClients,
+    enabled: showExtras && role === 'MANAGER',
+    staleTime: 10 * 60_000,
+  });
+  // Сначала постоянные, которые пропали (самые ценные сверху), потом купившие один раз и не вернувшиеся
+  const quietAll = useMemo(() => {
+    const lost = (reanimation ?? []).filter((c) => c.status !== 'ACTIVE');
+    const regular = lost.filter((c) => c.closedDealsCount > 1).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const once = lost.filter((c) => c.closedDealsCount <= 1).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    return [...regular, ...once];
+  }, [reanimation]);
+  const quietClients = quietAll.slice(0, 5);
+  const quietCount = quietAll.length;
 
   const handlePeriodChange = useCallback((val: string | number) => {
     const v = val as DashboardPeriod;
@@ -753,85 +770,81 @@ export default function DashboardPage() {
         </Row>
         </div>
       )}
-      {/* ── Tops ── */}
-      {showExtras && (
-        <div className={isMobile ? 'section' : undefined}>
-        <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }}>
-          {[
-            {
-              title: 'Топ товаров',
-              items: topProducts.map((p) => ({ label: p.name, value: formatUZS(p.revenue), href: `/inventory/products/${p.entityId}` })),
-            },
-            ...(isAdmin ? [
-              {
-                title: 'Топ менеджеров',
-                items: topManagers.map((m) => ({ label: getFirstName(m.fullName), value: formatUZS(m.totalRevenue), href: `/analytics` })),
-              },
-              {
-                title: 'Топ клиентов',
-                items: topClients.map((c) => ({
-                  label: (
-                    <ClientCompanyDisplay
-                      client={{ id: c.clientId, companyName: c.companyName, isSvip: c.isSvip }}
-                    />
-                  ),
-                  value: formatUZS(c.totalRevenue),
-                  href: `/clients/${c.clientId}`,
-                })),
-              },
-            ] : []),
-          ].map((block) => (
-            <Col xs={24} md={8} key={block.title}>
-              <Card
-                bordered={false}
-                style={{ ...card, height: '100%' }}
-                styles={{ body: { padding: '16px 20px' } }}
-                title={<Typography.Text strong style={{ fontSize: 14 }}>{block.title}</Typography.Text>}
-              >
-                {extLoading ? <Spin size="small" /> : (
-                  <div
-                    className={isMobile ? 'dashboard-top-list' : undefined}
-                    style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? undefined : 2 }}
-                  >
-                    {block.items.length === 0 && (
-                      <Typography.Text type="secondary" style={{ fontSize: 13 }}>Нет данных</Typography.Text>
-                    )}
-                    {block.items.map((row, i) => (
-                      <div
-                        key={i}
-                        className="dash-top-row"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '7px 0',
-                          borderBottom: i < block.items.length - 1 ? `1px solid ${tk.colorBorderSecondary}` : undefined,
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => navigate(row.href)}
-                      >
-                        <span className="dash-top-rank" style={{
-                          width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 11, fontWeight: 600, flexShrink: 0,
-                          background: i === 0 ? (isDark ? '#177ddc22' : '#e6f4ff') : tk.colorFillQuaternary,
-                          color: i === 0 ? tk.colorPrimary : tk.colorTextSecondary,
-                        }}>
-                          {i + 1}
-                        </span>
-                        <div className="dash-top-label" style={{ flex: 1, minWidth: 0, overflow: 'hidden', fontSize: 13 }}>
-                          {row.label}
-                        </div>
-                        <Typography.Text strong style={{ fontSize: 13, flexShrink: 0 }}>{row.value}</Typography.Text>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </Col>
-          ))}
-        </Row>
-        </div>
-      )}
+      {/* ── Топы: админу — товары, менеджеры, клиенты; менеджеру — его товары, клиенты и «пора позвонить» ── */}
+      {showExtras && (() => {
+        const productsTotal = (abcData?.products ?? []).reduce((sum, p) => sum + p.revenue, 0);
+        const clientsTotal = (abcData?.clients ?? []).reduce((sum, c) => sum + c.revenue, 0);
+        const managerRows = monthAnalytics?.managers?.rows ?? [];
+        const managersTotal = managerRows.reduce((sum, m) => sum + m.totalRevenue, 0);
+        const sortedManagers = [...managerRows].sort((x, z) => z.totalRevenue - x.totalRevenue);
+        const myIdx = sortedManagers.findIndex((m) => m.managerId === user?.id);
+        const share = (v: number, total: number) => (total > 0 ? `${Math.round((v / total) * 100)}%` : '');
+        const productRows = topProducts.map((p) => ({ key: p.entityId, label: p.name, value: p.revenue, note: share(p.revenue, productsTotal), href: `/inventory/products/${p.entityId}` }));
+        const clientRows = topClients.map((c) => ({
+          key: c.clientId,
+          label: <ClientCompanyDisplay client={{ id: c.clientId, companyName: c.companyName, isSvip: c.isSvip }} />,
+          value: c.totalRevenue,
+          note: share(c.totalRevenue, clientsTotal),
+          href: `/clients/${c.clientId}`,
+        }));
+        const periodSub = period === 'day' ? 'за месяц' : PERIOD_LABELS[period];
+        const top5Share = (rows: { value: number }[], total: number) => (total > 0 ? Math.round((rows.reduce((x, r) => x + r.value, 0) / total) * 100) : 0);
+        const cards = isAdmin ? [
+          <TopCard key="p" title="Топ товаров" sub={periodSub} link={{ to: '/analytics', label: 'Все' }}
+            summary={productRows.length > 0 && <>топ-{productRows.length} — <b>{top5Share(productRows, productsTotal)}%</b> выручки</>}>
+            <TopList rows={productRows} loading={extLoading} />
+          </TopCard>,
+          <TopCard key="m" title="Топ менеджеров" sub={periodSub} link={{ to: '/analytics', label: 'Аналитика' }}
+            summary={managerRows.length > 0 && <>в среднем <b>{formatUZS(Math.round(managersTotal / managerRows.length))}</b> на менеджера</>}>
+            <TopList
+              loading={extLoading}
+              rows={topManagers.map((m) => ({
+                key: m.managerId,
+                label: getFirstName(m.fullName) || m.fullName,
+                value: m.totalRevenue,
+                note: `${share(m.totalRevenue, managersTotal)} · ${m.completedCount} ${pluralRu(m.completedCount, ['сделка', 'сделки', 'сделок'])}`,
+                href: '/analytics',
+              }))}
+            />
+          </TopCard>,
+          <TopCard key="c" title="Топ клиентов" sub={periodSub} link={{ to: '/clients', label: 'Клиенты' }}
+            summary={clientRows.length > 0 && <>топ-{clientRows.length} — <b>{top5Share(clientRows, clientsTotal)}%</b> выручки</>}>
+            <TopList rows={clientRows} loading={extLoading} />
+          </TopCard>,
+        ] : [
+          <TopCard key="p" title="Мои товары" sub={periodSub} link={{ to: '/analytics', label: 'Все' }}
+            summary={productsTotal > 0 && <>продано на <b>{formatUZS(productsTotal)}</b> · {(abcData?.products ?? []).length} {pluralRu((abcData?.products ?? []).length, ['товар', 'товара', 'товаров'])}</>}>
+            <TopList rows={productRows} loading={extLoading} />
+          </TopCard>,
+          <TopCard key="c" title="Мои клиенты" sub={periodSub} link={{ to: '/clients', label: 'Клиенты' }}
+            extra={myIdx >= 0 && (
+              <MyRank
+                place={myIdx + 1}
+                of={sortedManagers.length}
+                gap={myIdx > 0 ? sortedManagers[myIdx - 1].totalRevenue - sortedManagers[myIdx].totalRevenue : null}
+              />
+            )}>
+            <TopList rows={clientRows} loading={extLoading} />
+          </TopCard>,
+          <TopCard key="q" title="Пора позвонить" sub="кого вернуть" link={{ to: '/manager/reanimation', label: 'Реанимация' }}
+            summary={quietCount > 0 && <>давно не покупали — <b>{quietCount} {pluralRu(quietCount, ['клиент', 'клиента', 'клиентов'])}</b>, самые ценные сверху</>}>
+            <QuietClients rows={quietClients} loading={reanimationLoading} />
+          </TopCard>,
+        ];
+        return (
+          <div className={isMobile ? 'section' : undefined}>
+          <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }}>
+            {cards.map((node) => (
+              <Col xs={24} md={8} key={node.key} style={{ display: 'flex' }}>
+                <Card bordered={false} style={{ ...card, width: '100%' }} styles={{ body: { padding: isMobile ? 16 : '16px 18px' } }}>
+                  {node}
+                </Card>
+              </Col>
+            ))}
+          </Row>
+          </div>
+        );
+      })()}
 
       {/* ── Stock issues ── */}
       <div className={isMobile ? 'section' : undefined}>

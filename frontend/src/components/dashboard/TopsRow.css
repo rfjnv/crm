@@ -1,0 +1,175 @@
+/* Топы на главной. Токены нового дизайна, в классике — antd. */
+.tops-card {
+  --tc-text-1: var(--c-text-1, var(--ant-color-text));
+  --tc-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --tc-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --tc-accent: var(--c-accent-fill, var(--ant-color-primary));
+  --tc-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --tc-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  display: flex;
+  flex-direction: column;
+  color: var(--tc-text-1);
+}
+
+.tops-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tops-card__title {
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tops-card__sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--tc-text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tops-card__link {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--tc-text-2);
+  white-space: nowrap;
+}
+
+.tops-card__summary {
+  margin: 2px 0 10px;
+  font-size: 12.5px;
+  color: var(--tc-text-2);
+}
+
+.tops-card__summary b {
+  color: var(--tc-text-1);
+}
+
+.tops-card__empty {
+  padding: 18px 0;
+  font-size: 13px;
+  color: var(--tc-text-3);
+}
+
+.tops-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tops-row + .tops-row {
+  border-top: 1px solid var(--tc-hair);
+}
+
+.tops-row:hover {
+  background: var(--fill-1, var(--ant-color-fill-quaternary));
+}
+
+.tops-row__rank {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--tc-text-3);
+  text-align: center;
+}
+
+.tops-row__rank--first {
+  color: var(--c-accent-fg, var(--ant-color-primary));
+}
+
+.tops-row__rank--warn {
+  color: var(--c-warn-fg, var(--ant-color-warning));
+}
+
+.tops-row__rank--risk {
+  color: var(--c-neg-fg, var(--ant-color-error));
+}
+
+.tops-row__main {
+  min-width: 0;
+}
+
+.tops-row__label {
+  display: block;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tops-row__bar {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tc-fill);
+}
+
+.tops-row__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tc-accent);
+}
+
+.tops-row__meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--tc-text-3);
+}
+
+.tops-row__value {
+  font-size: 13.5px;
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tops-row__value small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--tc-text-3);
+}
+
+.tops-rank {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--fill-1, var(--ant-color-fill-quaternary));
+}
+
+.tops-rank b {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tops-rank span {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--tc-text-2);
+}
+
+.tops-rank strong {
+  color: var(--tc-text-1);
+}
