@@ -1,0 +1,306 @@
+/* «Склад: что заканчивается». Токены нового дизайна, в классике — antd. */
+.stock-block {
+  --sk-text-1: var(--c-text-1, var(--ant-color-text));
+  --sk-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --sk-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --sk-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --sk-fill-1: var(--fill-1, var(--ant-color-fill-quaternary));
+  --sk-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --sk-risk: var(--c-neg-fg, var(--ant-color-error));
+  --sk-warn: var(--c-warn-fg, var(--ant-color-warning));
+  --sk-accent: var(--c-accent-fg, var(--ant-color-primary));
+  color: var(--sk-text-1);
+}
+
+.stock-block__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.stock-block__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.stock-block__link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--sk-text-2);
+}
+
+.stock-block__ok {
+  padding: 14px 0 4px;
+  font-size: 13.5px;
+  color: var(--sk-text-2);
+}
+
+.stock-block__tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.stock-block__tile {
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--sk-fill-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stock-block__tile:hover {
+  background: var(--sk-fill);
+}
+
+.stock-block__tile.is-on {
+  border-color: var(--sk-text-3);
+  background: var(--sk-fill);
+}
+
+.stock-block__tile b {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-block__tile[data-tone='risk'] b {
+  color: var(--sk-risk);
+}
+
+.stock-block__tile[data-tone='muted'] b {
+  color: var(--sk-text-3);
+}
+
+.stock-block__tile small {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--sk-text-2);
+}
+
+.stock-block__row {
+  --sk-tone: var(--sk-text-3);
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) 200px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stock-block__row + .stock-block__row {
+  border-top: 1px solid var(--sk-hair);
+}
+
+.stock-block__row:not(.stock-block__row--head):hover {
+  background: var(--sk-fill-1);
+}
+
+.stock-block__row[data-p='0'] { --sk-tone: var(--sk-risk); }
+.stock-block__row[data-p='1'] { --sk-tone: var(--sk-warn); }
+.stock-block__row[data-p='2'] { --sk-tone: var(--sk-accent); }
+
+.stock-block__row--head {
+  padding-bottom: 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sk-text-3);
+  cursor: default;
+}
+
+.stock-block__row--head span:last-child {
+  text-align: right;
+}
+
+.stock-block__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sk-tone);
+}
+
+.stock-block__main {
+  min-width: 0;
+}
+
+.stock-block__name {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stock-block__sku {
+  display: block;
+  font-size: 12px;
+  color: var(--sk-text-3);
+}
+
+.stock-block__stock b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-block__stock .is-zero {
+  color: var(--sk-risk);
+}
+
+.stock-block__stock .is-low {
+  color: var(--sk-warn);
+}
+
+.stock-block__stock small {
+  font-size: 12px;
+  color: var(--sk-text-3);
+}
+
+.stock-block__bar {
+  display: block;
+  height: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--sk-fill);
+}
+
+.stock-block__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sk-tone);
+}
+
+.stock-block__sales {
+  font-size: 13px;
+}
+
+.stock-block__sales small {
+  display: block;
+  font-size: 12px;
+  color: var(--sk-text-3);
+}
+
+.stock-block__sales .is-muted {
+  color: var(--sk-text-3);
+}
+
+.stock-block__act {
+  text-align: right;
+}
+
+.stock-block__pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--sk-fill);
+  color: var(--sk-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stock-block__pill[data-tone='risk'] {
+  background: var(--c-neg-bg, var(--ant-color-error-bg));
+  color: var(--sk-risk);
+}
+
+.stock-block__pill[data-tone='warn'] {
+  background: var(--c-warn-bg, var(--ant-color-warning-bg));
+  color: var(--sk-warn);
+}
+
+.stock-block__pill[data-tone='transit'] {
+  background: color-mix(in srgb, var(--c-accent-fill, var(--ant-color-primary)) 16%, transparent);
+  color: var(--sk-accent);
+}
+
+.stock-block__more {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--sk-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stock-block__more:hover {
+  background: var(--sk-fill-1);
+}
+
+@media (max-width: 991px) {
+  .stock-block__tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .stock-block__row--head {
+    display: none;
+  }
+
+  /* Плитки на телефоне — число слева от подписи, чтобы не растягивались по высоте */
+  .stock-block__tile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .stock-block__tile b {
+    flex: none;
+    font-size: 18px;
+  }
+
+  .stock-block__tile small {
+    font-size: 11.5px;
+    line-height: 1.3;
+  }
+
+  .stock-block__row {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+
+  .stock-block__main {
+    grid-column: 2 / -1;
+  }
+
+  .stock-block__name {
+    white-space: normal;
+  }
+
+  .stock-block__stock {
+    grid-column: 2;
+  }
+
+  .stock-block__sales {
+    grid-column: 3;
+    grid-row: 2;
+    text-align: right;
+  }
+
+  .stock-block__act {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+}

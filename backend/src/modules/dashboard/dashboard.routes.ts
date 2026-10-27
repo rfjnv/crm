@@ -431,12 +431,68 @@ router.get(
       enrichProductsOfDay(mapProductsOfDay(productsOfDayYesterdayRaw), prevPeriodStart, prevPeriodEnd),
     ]);
 
+    /**
+     * «Склад: что заканчивается»: единица, средняя продажа в рабочий день за 30 дней
+     * (по всей компании — склад общий) и что уже едет в импортных заказах.
+     */
+    const stockIssueIds = [...zeroStockProducts.map((p) => p.id), ...lowStockProducts.map((p) => p.id)];
+    const stockExtras = await (async () => {
+      const empty = { units: new Map<string, string>(), avg: new Map<string, number>(), transit: new Map<string, { qty: number; eta: string | null; number: string }>() };
+      if (stockIssueIds.length === 0) return empty;
+      try {
+        const [units, sales, transit] = await Promise.all([
+          prisma.product.findMany({ where: { id: { in: stockIssueIds } }, select: { id: true, unit: true } }),
+          prisma.$queryRaw<{ product_id: string; qty: string }[]>(
+            Prisma.sql`SELECT di.product_id, COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty
+             FROM deal_items di JOIN deals d ON d.id = di.deal_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND di.product_id IN (${Prisma.join(stockIssueIds)})
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${thirtyDaysAgo}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
+             GROUP BY di.product_id`,
+          ),
+          prisma.importOrderItem.findMany({
+            where: {
+              productId: { in: stockIssueIds },
+              importOrder: { status: { in: ['ORDERED', 'IN_PRODUCTION', 'SHIPPED', 'IN_TRANSIT', 'AT_CUSTOMS', 'CLEARED'] } },
+            },
+            select: { productId: true, qty: true, importOrder: { select: { number: true, eta: true } } },
+          }),
+        ]);
+        let workDays = 0;
+        for (let t = thirtyDaysAgo.getTime(); t < startOfTomorrow.getTime(); t += 86_400_000) {
+          if (new Date(t + TASHKENT_OFFSET).getUTCDay() !== 0) workDays += 1;
+        }
+        const avg = new Map(sales.map((r) => [r.product_id, workDays ? (Number(r.qty) || 0) / workDays : 0]));
+        const tr = new Map<string, { qty: number; eta: string | null; number: string }>();
+        for (const it of transit) {
+          const eta = it.importOrder.eta ? it.importOrder.eta.toISOString().slice(0, 10) : null;
+          const prev = tr.get(it.productId);
+          tr.set(it.productId, {
+            qty: (prev?.qty ?? 0) + Number(it.qty),
+            // Ближайший срок прибытия и номер того заказа
+            eta: prev?.eta && (!eta || prev.eta <= eta) ? prev.eta : eta,
+            number: prev?.eta && (!eta || prev.eta <= eta) ? prev.number : it.importOrder.number,
+          });
+        }
+        return { units: new Map(units.map((u) => [u.id, u.unit])), avg, transit: tr };
+      } catch {
+        return empty;
+      }
+    })();
+    const stockExtra = (id: string) => ({
+      unit: stockExtras.units.get(id) ?? null,
+      avgDailyQty: stockExtras.avg.get(id) ?? 0,
+      inTransit: stockExtras.transit.get(id) ?? null,
+    });
+
     const lowStockMapped = lowStockProducts.map((p) => ({
       id: p.id,
       name: p.name,
       sku: p.sku,
       stock: Number(p.stock),
       minStock: Number(p.min_stock),
+      ...stockExtra(p.id),
     }));
 
     const debtSplit = totalDebtSplitRaw[0];
@@ -485,6 +541,7 @@ router.get(
       zeroStockProducts: zeroStockProducts.map((p) => ({
         id: p.id, name: p.name, sku: p.sku,
         stock: Number(p.stock), minStock: Number(p.minStock),
+        ...stockExtra(p.id),
       })),
       lowStockProducts: lowStockMapped,
       revenueLast30Days: revenueChartRaw.map((r) => ({

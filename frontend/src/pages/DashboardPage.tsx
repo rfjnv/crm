@@ -1,13 +1,12 @@
 import { useMemo, useState, useCallback, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, DatePicker } from 'antd';
+import { Card, Col, Row, Typography, Spin, theme, Progress, Segmented, DatePicker } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
-  CheckCircleOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import { dashboardApi, type DashboardPeriod } from '../api/warehouse.api';
 import { financeApi } from '../api/finance.api';
@@ -24,6 +23,7 @@ import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
 import CallsKpi from '../components/dashboard/CallsKpi';
+import StockIssuesBlock from '../components/dashboard/StockIssuesBlock';
 import { TopCard, TopList, MyRank, QuietClients } from '../components/dashboard/TopsRow';
 import SalesOfDayBlock from '../components/dashboard/SalesOfDayBlock';
 import RevenueBlock from '../components/dashboard/RevenueBlock';
@@ -37,8 +37,6 @@ import MissedCallsWidget from '../components/calls/MissedCallsWidget';
 
 const DEFAULT_GOAL = 250_000_000;
 
-/** Сколько проблемных остатков показывать на дашборде в новом дизайне. */
-const STOCK_PREVIEW_LIMIT = 8;
 
 
 function pctChange(curr: number, prev: number): number | null {
@@ -144,9 +142,7 @@ export default function DashboardPage() {
 
   const user = useAuthStore((s) => s.user);
   const { token: tk } = theme.useToken();
-  const navigate = useNavigate();
   const design = useThemeStore((s) => s.design);
-  const modern = design === 'modern';
   const isMobile = useIsMobile();
 
   const role = user?.role as UserRole | undefined;
@@ -274,14 +270,6 @@ export default function DashboardPage() {
     myGoal.targets.callNotes != null
   );
 
-  const allStockIssues = [
-    ...(data.zeroStockProducts || []).map((p) => ({ ...p, issue: 'zero' as const })),
-    ...(data.lowStockProducts || []).map((p) => ({ ...p, issue: 'low' as const })),
-  ].filter((p) => !p.sku?.startsWith('TARGET'));
-  // Дашборд — сводка: в новом дизайне показываем самые критичные позиции, остальные — на складе.
-  // Нулевые остатки идут первыми, поэтому в превью попадают они.
-  const stockPreview = modern ? allStockIssues.slice(0, STOCK_PREVIEW_LIMIT) : allStockIssues;
-  const stockHidden = allStockIssues.length - stockPreview.length;
 
   /* ── KPI-карточки: база сравнения, разбивка, подписи ── */
   // Диапазон мини-графиков — как у графика выручки: 30 дней до сегодня или выбранный период
@@ -846,75 +834,11 @@ export default function DashboardPage() {
         );
       })()}
 
-      {/* ── Stock issues ── */}
+      {/* ── Склад: что заканчивается ── */}
       <div className={isMobile ? 'section' : undefined}>
-      <Card
-        bordered={false}
-        style={{ ...card, marginTop: isMobile ? 0 : 16 }}
-        styles={{ body: { padding: '16px 20px' } }}
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Typography.Text strong style={{ fontSize: 14 }}>Проблемные остатки</Typography.Text>
-            {allStockIssues.length > 0 && (
-              <Badge count={allStockIssues.length} style={{ backgroundColor: tk.colorError }} />
-            )}
-          </div>
-        }
-        extra={stockHidden > 0 ? (
-          <Link to="/inventory/warehouse">Показать все {allStockIssues.length}</Link>
-        ) : undefined}
-      >
-        {allStockIssues.length === 0 ? (
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            <CheckCircleOutlined style={{ color: tk.colorSuccess, marginRight: 6 }} />
-            Все товары в достаточном количестве
-          </Typography.Text>
-        ) : isMobile ? (
-          <div className="dashboard-stock-mobile" style={{ display: 'flex', flexDirection: 'column' }}>
-            {stockPreview.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
-                  borderLeft: `3px solid ${item.issue === 'zero' ? tk.colorError : tk.colorWarning}`,
-                  background: tk.colorFillQuaternary,
-                }}
-                onClick={() => navigate(`/inventory/products/${item.id}`)}
-              >
-                <div>
-                  <Typography.Text strong style={{ fontSize: 13 }}>{item.name}</Typography.Text>
-                  <div><Tag style={{ marginTop: 2 }}>{item.sku}</Tag></div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ color: item.issue === 'zero' ? tk.colorError : tk.colorWarning, fontWeight: 700 }}>{item.stock}</span>
-                  <div style={{ fontSize: 11, color: tk.colorTextSecondary }}>мин: {item.minStock}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Table
-            dataSource={stockPreview}
-            rowKey="id"
-            pagination={false}
-            size="small"
-            bordered={false}
-            onRow={(r) => ({ onClick: () => navigate(`/inventory/products/${r.id}`), style: { cursor: 'pointer' } })}
-            columns={[
-              { title: 'Товар', dataIndex: 'name', ellipsis: true },
-              { title: 'Артикул', dataIndex: 'sku', width: 120, render: (v: string) => <Tag>{v}</Tag> },
-              {
-                title: 'Остаток', dataIndex: 'stock', width: 90, align: 'right' as const,
-                render: (v: number, r) => (
-                  <span style={{ color: r.issue === 'zero' ? tk.colorError : tk.colorWarning, fontWeight: 600 }}>{v}</span>
-                ),
-              },
-              { title: 'Мин.', dataIndex: 'minStock', width: 70, align: 'right' as const },
-            ]}
-          />
-        )}
-      </Card>
+        <Card bordered={false} style={{ ...card, marginTop: isMobile ? 0 : 16 }} styles={{ body: { padding: isMobile ? 16 : '18px 20px' } }}>
+          <StockIssuesBlock zero={data.zeroStockProducts ?? []} low={data.lowStockProducts ?? []} />
+        </Card>
       </div>
     </div>
   );

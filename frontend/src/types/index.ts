@@ -744,8 +744,8 @@ export interface DashboardSummary {
   closedDealsToday: number;
   closedDealsYesterday: number;
   zeroStockCount: number;
-  zeroStockProducts: { id: string; name: string; sku: string; stock: number; minStock: number }[];
-  lowStockProducts: { id: string; name: string; sku: string; stock: number; minStock: number }[];
+  zeroStockProducts: DashboardStockIssue[];
+  lowStockProducts: DashboardStockIssue[];
   revenueLast30Days: { day: string; total: number }[];
   dealsByStatusCounts: { status: string; count: number }[];
   /** Закрытые сделки по дням (по Ташкенту) за диапазон графика выручки. */
@@ -779,6 +779,20 @@ export interface DashboardProductOfDay {
   rollStock?: number | null;
   avgDailyQty?: number;
   clients?: string[];
+}
+
+/** Товар в «Склад: что заканчивается» */
+export interface DashboardStockIssue {
+  id: string;
+  name: string;
+  sku: string;
+  stock: number;
+  minStock: number;
+  unit?: string | null;
+  /** Средняя продажа в рабочий день за 30 дней */
+  avgDailyQty?: number;
+  /** Уже едет в импортных заказах: сколько, ближайший срок и номер заказа */
+  inTransit?: { qty: number; eta: string | null; number: string } | null;
 }
 
 export interface RevenueTodayPayment {
