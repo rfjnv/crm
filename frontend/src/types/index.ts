@@ -765,17 +765,20 @@ export interface DashboardSummary {
     } | null;
   };
   productOfDayList?: {
-    today: Array<{
-      product: { id: string; name: string; sku?: string | null; unit?: string | null };
-      qty: number;
-      revenue: number;
-    }>;
-    yesterday: Array<{
-      product: { id: string; name: string; sku?: string | null; unit?: string | null };
-      qty: number;
-      revenue: number;
-    }>;
+    today: DashboardProductOfDay[];
+    yesterday: DashboardProductOfDay[];
   };
+}
+
+/** Товар в «Продажах дня»: остаток и средняя продажа в рабочий день за 30 дней — для прогноза */
+export interface DashboardProductOfDay {
+  product: { id: string; name: string; sku?: string | null; unit?: string | null; category?: string | null };
+  qty: number;
+  revenue: number;
+  stock?: number | null;
+  rollStock?: number | null;
+  avgDailyQty?: number;
+  clients?: string[];
 }
 
 export interface RevenueTodayPayment {

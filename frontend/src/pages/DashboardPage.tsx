@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useMemo, useState, useCallback, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, Pagination, DatePicker } from 'antd';
+import { Card, Col, Row, Typography, Spin, Tag, theme, Progress, Table, Badge, Segmented, DatePicker } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -19,12 +19,12 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuthStore } from '../store/authStore';
 import { SHOW_MY_MONTHLY_GOALS } from '../constants/featureFlags';
 import { useThemeStore } from '../store/themeStore';
-import { Column } from '@ant-design/charts';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import VedEventsQuickAccessCard from '../components/VedEventsQuickAccessCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import { ActiveStages, KpiFoot, KpiShareBar, KpiSparkline } from '../components/dashboard/KpiExtras';
 import CallsKpi from '../components/dashboard/CallsKpi';
+import SalesOfDayBlock from '../components/dashboard/SalesOfDayBlock';
 import RevenueBlock from '../components/dashboard/RevenueBlock';
 import DealStagesBlock from '../components/dashboard/DealStagesBlock';
 import GoalsBlock from '../components/dashboard/GoalsBlock';
@@ -36,49 +36,9 @@ import MissedCallsWidget from '../components/calls/MissedCallsWidget';
 
 const DEFAULT_GOAL = 250_000_000;
 
-/** Bar + rank badge colors for «Товар дня» (top-N order matches chart). */
 /** Сколько проблемных остатков показывать на дашборде в новом дизайне. */
 const STOCK_PREVIEW_LIMIT = 8;
 
-const PRODUCT_DAY_BAR_COLORS = [
-  '#22c55e',
-  '#14b8a6',
-  '#64748b',
-  '#f59e0b',
-  '#a855f7',
-  '#38bdf8',
-  '#fb923c',
-  '#94a3b8',
-] as const;
-
-/** Новый дизайн: та же последовательность, но спокойнее — на стекле насыщенные цвета режут глаз. */
-const PRODUCT_DAY_BAR_COLORS_MODERN = [
-  '#4ade80',
-  '#5eead4',
-  '#a5b4fc',
-  '#fcd34d',
-  '#d8b4fe',
-  '#7dd3fc',
-  '#fdba74',
-  '#cbd5e1',
-] as const;
-
-const PRODUCT_DAY_PAGE_SIZE = 5;
-
-/** G2 adds extra tooltip rows for color (hex) and raw y; keep only our formatted row. */
-function stripProductDayTooltipExtraRows(): void {
-  document.querySelectorAll('.g2-tooltip .g2-tooltip-list-item').forEach((row) => {
-    const valueCell = row.querySelector('.g2-tooltip-list-item-value');
-    const valTxt = (valueCell?.textContent ?? '').trim();
-    if (/^#[0-9a-f]{3,8}$/i.test(valTxt)) {
-      (row as HTMLElement).style.display = 'none';
-      return;
-    }
-    if (/^\d+$/.test(valTxt) && valTxt.length >= 4) {
-      (row as HTMLElement).style.display = 'none';
-    }
-  });
-}
 
 function pctChange(curr: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -187,7 +147,6 @@ export default function DashboardPage() {
   const isDark = useThemeStore((s) => s.mode) === 'dark';
   const design = useThemeStore((s) => s.design);
   const modern = design === 'modern';
-  const productDayColors = modern ? PRODUCT_DAY_BAR_COLORS_MODERN : PRODUCT_DAY_BAR_COLORS;
   const isMobile = useIsMobile();
 
   const role = user?.role as UserRole | undefined;
@@ -257,79 +216,6 @@ export default function DashboardPage() {
   const topClients = useMemo(() => {
     return (monthAnalytics?.sales?.topClients ?? []).slice(0, 5);
   }, [monthAnalytics]);
-
-  const [productDayPeriod, setProductDayPeriod] = useState<'today' | 'yesterday'>('today');
-  const [productDayPage, setProductDayPage] = useState(1);
-  const [activeProductId, setActiveProductId] = useState<string | null>(null);
-
-  // NOTE: must be before the early return — React rules of hooks
-  const productDayItems = useMemo(() => {
-    const list = data?.productOfDayList?.[productDayPeriod];
-    if (list?.length) {
-      const merged = new Map<string, (typeof list)[number]>();
-      for (const item of list) {
-        const key = `${item.product.name}__${item.product.sku || ''}__${item.product.unit || ''}`;
-        const existing = merged.get(key);
-        if (!existing) {
-          merged.set(key, { ...item, qty: Number(item.qty || 0), revenue: Number(item.revenue || 0) });
-        } else {
-          existing.qty += Number(item.qty || 0);
-          existing.revenue += Number(item.revenue || 0);
-        }
-      }
-      return [...merged.values()].sort((a, b) => b.revenue - a.revenue);
-    }
-    const topOnly = data?.productOfDay?.[productDayPeriod];
-    return topOnly ? [topOnly] : [];
-  }, [data, productDayPeriod]);
-
-  const pagedProductDayItems = useMemo(() => {
-    const start = (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE;
-    return productDayItems.slice(start, start + PRODUCT_DAY_PAGE_SIZE);
-  }, [productDayItems, productDayPage]);
-
-  const productDayChartData = useMemo(() => {
-    const topRows = productDayItems.slice(0, 8);
-    return topRows.map((item, index) => {
-      const revenue = Number(item.revenue || 0);
-      const fill = productDayColors[index % productDayColors.length];
-      return {
-        id: item.product.id,
-        name: item.product.name || 'Товар',
-        revenue,
-        fill,
-      };
-    });
-  }, [productDayItems, productDayColors]);
-
-  const productDayChartYMax = useMemo(() => {
-    const top8 = productDayItems.slice(0, 8).map((i) => Number(i.revenue || 0));
-    const maxRev = Math.max(1, ...top8);
-    return Math.max(5_000_000, Math.ceil(maxRev / 5_000_000) * 5_000_000);
-  }, [productDayItems]);
-
-  const productDayListMeasureRef = useRef<HTMLDivElement>(null);
-  const [productDayChartHeight, setProductDayChartHeight] = useState(260);
-
-  useLayoutEffect(() => {
-    const el = productDayListMeasureRef.current;
-    if (!el) return;
-    const measure = () => {
-      const h = el.getBoundingClientRect().height;
-      if (h > 0) setProductDayChartHeight(Math.round(Math.max(180, h)));
-    };
-    measure();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    ro?.observe(el);
-    return () => ro?.disconnect();
-  }, [productDayItems.length, productDayPage, pagedProductDayItems.length, isMobile]);
-  const maxProductDayPage = Math.max(1, Math.ceil(productDayItems.length / PRODUCT_DAY_PAGE_SIZE));
-  useEffect(() => {
-    if (productDayPage > maxProductDayPage) setProductDayPage(maxProductDayPage);
-  }, [productDayPage, maxProductDayPage]);
-  useEffect(() => {
-    setActiveProductId(null);
-  }, [productDayPeriod]);
 
   const handlePeriodChange = useCallback((val: string | number) => {
     const v = val as DashboardPeriod;
@@ -849,206 +735,24 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Product of the day ── */}
+      {/* ── Продажи дня: категории, товары, хватит ли остатка ── */}
       {(isAdmin || role === 'MANAGER') && (
         <div className={isMobile ? 'section' : undefined}>
         <Row gutter={blockGutter} style={{ marginTop: isMobile ? 0 : 16 }}>
           <Col xs={24}>
-            <Card
-              bordered={false}
-              style={card}
-              styles={{ body: { padding: '14px 16px' } }}
-              title={(
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <Typography.Text strong style={{ fontSize: 14 }}>
-                    {period === 'day' ? 'Товар дня (по выручке)' : `Топ товаров ${PERIOD_LABELS[period]}`}
-                  </Typography.Text>
-                  {period === 'day' && (
-                    <Segmented
-                      size="small"
-                      value={productDayPeriod}
-                      onChange={(v) => setProductDayPeriod(v as 'today' | 'yesterday')}
-                      options={[
-                        { label: 'Сегодня', value: 'today' },
-                        { label: 'Вчера', value: 'yesterday' },
-                      ]}
-                    />
-                  )}
-                </div>
-              )}
-            >
-              {productDayItems.length === 0 ? (
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  Нет продаж за выбранный день
-                </Typography.Text>
-              ) : (
-                <>
-                  <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
-                    Показано {Math.min(productDayItems.length, (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE + 1)}-
-                    {Math.min(productDayItems.length, productDayPage * PRODUCT_DAY_PAGE_SIZE)} из {productDayItems.length}
-                  </Typography.Text>
-
-                  <Row gutter={[16, 12]} align="stretch" wrap>
-                    <Col xs={24} lg={14} style={{ display: 'flex', minWidth: 0 }}>
-                      <div
-                        ref={productDayListMeasureRef}
-                        style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}
-                      >
-                        {pagedProductDayItems.map((item, idx) => {
-                          const unit = item.product.unit?.trim() || 'шт';
-                          const rank = (productDayPage - 1) * PRODUCT_DAY_PAGE_SIZE + idx + 1;
-                          const isActive = activeProductId === item.product.id;
-                          const badgeColor =
-                            productDayColors[(rank - 1) % productDayColors.length];
-                          return (
-                            <div
-                              key={item.product.id}
-                              onMouseEnter={() => setActiveProductId(item.product.id)}
-                              onMouseLeave={() => setActiveProductId(null)}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                gap: 12,
-                                padding: '9px 10px',
-                                borderRadius: 10,
-                                border: `1px solid ${isActive ? badgeColor : tk.colorBorderSecondary}`,
-                                background: isActive ? `${badgeColor}1f` : 'transparent',
-                                boxShadow: isActive ? `0 0 0 1px ${badgeColor}33` : 'none',
-                                transition: 'all 160ms ease',
-                              }}
-                            >
-                              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span
-                                  style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 7,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: '#f8fafc',
-                                    background: badgeColor,
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {rank}
-                                </span>
-                                <Typography.Text strong style={{ fontSize: 14 }}>
-                                  {rank === 1 ? '👑 ' : ''}{item.product.name}
-                                </Typography.Text>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                                  {item.product.sku ? `${item.product.sku} · ` : ''}{formatCount(item.qty)} {unit}
-                                </Typography.Text>
-                                <Typography.Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                                  {formatUZS(item.revenue)}
-                                </Typography.Text>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {productDayItems.length > PRODUCT_DAY_PAGE_SIZE ? (
-                          <Pagination
-                            size="small"
-                            current={productDayPage}
-                            pageSize={PRODUCT_DAY_PAGE_SIZE}
-                            total={productDayItems.length}
-                            showSizeChanger={false}
-                            onChange={(p) => setProductDayPage(p)}
-                          />
-                        ) : null}
-                      </div>
-                    </Col>
-
-                    <Col xs={24} lg={10} style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    {productDayChartData.length > 0 ? (
-                      <Column
-                        data={productDayChartData}
-                        xField="name"
-                        yField="revenue"
-                        colorField="fill"
-                        height={productDayChartHeight}
-                        padding={[4, 12, 4, 12]}
-                        legend={false}
-                        interaction={{ elementHighlight: true }}
-                        scale={{
-                          y: {
-                            min: 0,
-                            max: productDayChartYMax,
-                            nice: false,
-                            tickCount: productDayChartYMax / 5_000_000 + 1,
-                          },
-                          color: { type: 'identity' as const },
-                        }}
-                        axis={{
-                          x: {
-                            label: false,
-                            title: false,
-                            tick: false,
-                            line: false,
-                          },
-                          y: {
-                            labelFormatter: (v: string | number) => {
-                              const n = Number(v);
-                              if (!Number.isFinite(n)) return '0';
-                              if (n === 0) return '0';
-                              return `${Math.round(n / 1_000_000)} млн`;
-                            },
-                            labelFill: tk.colorTextSecondary,
-                            grid: true,
-                            gridLineDash: [4, 4],
-                            gridStroke: isDark ? 'rgba(148,163,184,0.2)' : 'rgba(51,65,85,0.15)',
-                          },
-                        }}
-                        tooltip={{
-                          title: { field: 'name' },
-                          items: [
-                            (datum: { revenue?: number | string; fill?: string }) => ({
-                              color: datum.fill || productDayColors[0],
-                              name: '',
-                              value: formatUZS(Number(datum.revenue ?? 0)),
-                            }),
-                          ],
-                        }}
-                        style={() => ({
-                          radius: [10, 10, 0, 0],
-                        })}
-                        onReady={(plot) => {
-                          const scheduleStrip = () => {
-                            requestAnimationFrame(() => {
-                              requestAnimationFrame(() => stripProductDayTooltipExtraRows());
-                            });
-                          };
-                          plot.on('element:mouseenter', (evt: unknown) => {
-                            const id = ((evt as { data?: { data?: { id?: string } } })?.data?.data)?.id;
-                            if (id) setActiveProductId(id);
-                            scheduleStrip();
-                            window.setTimeout(scheduleStrip, 24);
-                          });
-                          plot.on('element:mouseleave', () => {
-                            setActiveProductId(null);
-                          });
-                          (plot as { on?: (ev: string, fn: () => void) => void }).on?.(
-                            'tooltip:show',
-                            scheduleStrip,
-                          );
-                        }}
-                      />
-                    ) : null}
-                    </Col>
-                  </Row>
-                </>
-              )}
+            <Card bordered={false} style={card} styles={{ body: { padding: isMobile ? 16 : '18px 20px' } }}>
+              <SalesOfDayBlock
+                title={period === 'day' ? 'Продажи дня' : `Продажи ${PERIOD_LABELS[period]}`}
+                isDay={period === 'day'}
+                current={data.productOfDayList?.today ?? []}
+                previous={data.productOfDayList?.yesterday ?? []}
+                prevWord={PREV_BASE_LABELS[period]}
+              />
             </Card>
           </Col>
         </Row>
         </div>
       )}
-
       {/* ── Tops ── */}
       {showExtras && (
         <div className={isMobile ? 'section' : undefined}>

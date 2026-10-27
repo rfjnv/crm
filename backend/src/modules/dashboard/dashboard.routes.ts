@@ -368,8 +368,68 @@ router.get(
         revenue: Number(row.revenue),
       }));
 
-    const productsOfDayToday = mapProductsOfDay(productsOfDayTodayRaw);
-    const productsOfDayYesterday = mapProductsOfDay(productsOfDayYesterdayRaw);
+    /**
+     * Блок «Продажи дня»: категория, остаток, средняя продажа в рабочий день за 30 дней
+     * (по всей компании — склад общий) и клиенты товара за день (в границах доступа).
+     */
+    const enrichProductsOfDay = async (
+      rows: ReturnType<typeof mapProductsOfDay>,
+      rangeStart: Date,
+      rangeEndExclusive: Date,
+    ) => {
+      if (rows.length === 0) return [];
+      const ids = rows.map((r) => r.product.id);
+      try {
+        const [products, sales, buyers] = await Promise.all([
+          prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, category: true, stock: true, rollStock: true } }),
+          prisma.$queryRaw<{ product_id: string; qty: string }[]>(
+            Prisma.sql`SELECT di.product_id, COALESCE(SUM(COALESCE(di.requested_qty, 0)), 0)::text AS qty
+             FROM deal_items di JOIN deals d ON d.id = di.deal_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND di.product_id IN (${Prisma.join(ids)})
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${thirtyDaysAgo}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${startOfTomorrow}
+             GROUP BY di.product_id`,
+          ),
+          prisma.$queryRaw<{ product_id: string; client_name: string }[]>(
+            Prisma.sql`SELECT DISTINCT di.product_id, c.company_name AS client_name
+             FROM deal_items di JOIN deals d ON d.id = di.deal_id JOIN clients c ON c.id = d.client_id
+             WHERE ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+               AND di.product_id IN (${Prisma.join(ids)})
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${rangeStart}
+               AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} < ${rangeEndExclusive}
+               ${dealScope.managerId ? Prisma.sql`AND d.manager_id = ${dealScope.managerId}` : Prisma.empty}`,
+          ),
+        ]);
+        // Рабочие дни за 30 дней (воскресенье — выходной)
+        let workDays = 0;
+        for (let t = thirtyDaysAgo.getTime(); t < startOfTomorrow.getTime(); t += 86_400_000) {
+          if (new Date(t + TASHKENT_OFFSET).getUTCDay() !== 0) workDays += 1;
+        }
+        const byId = new Map(products.map((p) => [p.id, p]));
+        const qty30 = new Map(sales.map((r) => [r.product_id, Number(r.qty) || 0]));
+        const clients = new Map<string, string[]>();
+        for (const b of buyers) clients.set(b.product_id, [...(clients.get(b.product_id) ?? []), b.client_name]);
+        return rows.map((r) => {
+          const p = byId.get(r.product.id);
+          return {
+            ...r,
+            product: { ...r.product, category: p?.category ?? null },
+            stock: p ? Number(p.stock) : null,
+            rollStock: p?.rollStock != null ? Number(p.rollStock) : null,
+            avgDailyQty: workDays > 0 ? (qty30.get(r.product.id) ?? 0) / workDays : 0,
+            clients: (clients.get(r.product.id) ?? []).sort((a, b) => a.localeCompare(b, 'ru')),
+          };
+        });
+      } catch {
+        return rows;
+      }
+    };
+
+    const [productsOfDayToday, productsOfDayYesterday] = await Promise.all([
+      enrichProductsOfDay(mapProductsOfDay(productsOfDayTodayRaw), periodStart, periodEnd),
+      enrichProductsOfDay(mapProductsOfDay(productsOfDayYesterdayRaw), prevPeriodStart, prevPeriodEnd),
+    ]);
 
     const lowStockMapped = lowStockProducts.map((p) => ({
       id: p.id,
