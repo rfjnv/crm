@@ -12,7 +12,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
   FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined, LockOutlined,
-  DownloadOutlined,
+  DownloadOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import ProductHierarchyPanel from '../components/ProductHierarchyPanel';
+import { PALLET_FORMATS, SHEETS_PER_PALLET, formatPallets, palletFormatOf, sheetsPerPalletOf } from '../lib/pallets';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)»,
  * как в исходном складском учёте — сначала физическое кол-во рулонов, вес в скобках. */
@@ -100,6 +101,8 @@ export default function ProductsPage() {
   const [mobilePage, setMobilePage] = useState(1);
   const mobilePageSize = 20;
   const [listMode, setListMode] = useState<'table' | 'hierarchy'>('table');
+  /** «Палеты»: остаток и бронь самоклейки в листах считаем в палетах, в списке — только она. */
+  const [palletView, setPalletView] = useState(false);
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const user = useAuthStore((s) => s.user);
@@ -178,6 +181,7 @@ export default function ProductsPage() {
     return (products ?? []).filter((p) => {
       if (!showHidden && hiddenRowIds.includes(p.id)) return false;
       if (showHidden && !hiddenRowIds.includes(p.id)) return false;
+      if (palletView && !palletFormatOf(p)) return false;
       if (debouncedSearch) {
         const haystack = [p.name, p.sku ?? '', p.category ?? '', p.countryOfOrigin ?? '', p.format ?? ''].join(' ');
         if (!matchesSearch(haystack, debouncedSearch)) return false;
@@ -198,7 +202,39 @@ export default function ProductsPage() {
       }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange, hiddenRowIds, showHidden]);
+  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange, hiddenRowIds, showHidden, palletView]);
+
+  const hasPalletProducts = useMemo(() => (products ?? []).some((p) => palletFormatOf(p)), [products]);
+
+  /** Сводка для режима «Палеты»: остаток, бронь и свободно по каждому формату листа. */
+  const palletSummary = useMemo(() => {
+    if (!palletView) return [];
+    const byFormat = new Map<string, { stock: number; reserved: number; count: number }>();
+    for (const p of filtered) {
+      const format = palletFormatOf(p);
+      if (!format) continue;
+      const row = byFormat.get(format) ?? { stock: 0, reserved: 0, count: 0 };
+      row.stock += Number(p.stock) || 0;
+      row.reserved += Number(p.reservedQty) || 0;
+      row.count += 1;
+      byFormat.set(format, row);
+    }
+    return PALLET_FORMATS.filter((f) => byFormat.has(f)).map((f) => ({ format: f, perPallet: SHEETS_PER_PALLET[f], ...byFormat.get(f)! }));
+  }, [filtered, palletView]);
+
+  /** Количество в палетах крупно и в листах мелко — для самоклейки в режиме «Палеты». */
+  const renderPalletQty = (qty: number, p: Product, color?: string) => {
+    const perPallet = sheetsPerPalletOf(p);
+    if (!perPallet) return null;
+    return (
+      <span style={{ whiteSpace: 'nowrap' }}>
+        <span style={{ fontWeight: 600, color }}>{formatPallets(qty / perPallet)}</span>
+        <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, fontWeight: 400 }}>
+          {qty.toLocaleString('ru-RU')} {p.unit}
+        </Typography.Text>
+      </span>
+    );
+  };
 
   const filteredMobileSlice = useMemo(() => {
     const start = (mobilePage - 1) * mobilePageSize;
@@ -367,8 +403,13 @@ export default function ProductsPage() {
       render: (v: number, r: Product) => {
         const stock = Number(v);
         const min = Number(r.minStock || 10);
+        const color = stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess;
+        if (palletView) {
+          const pallets = renderPalletQty(stock, r, color);
+          if (pallets) return pallets;
+        }
         return (
-          <span style={{ fontWeight: 600, color: stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess }}>
+          <span style={{ fontWeight: 600, color }}>
             {formatStockCell(stock, r.rollStock)}
           </span>
         );
@@ -383,6 +424,14 @@ export default function ProductsPage() {
       render: (v: number | undefined, r: Product) => {
         const reserved = Number(v) || 0;
         if (reserved <= 0) return <span style={{ color: token.colorTextTertiary }}>—</span>;
+        const perPallet = palletView ? sheetsPerPalletOf(r) : null;
+        if (perPallet) {
+          return (
+            <Tooltip title={`Доступно к продаже: ${formatPallets(Number(r.availableStock ?? 0) / perPallet)} (${Number(r.availableStock ?? 0).toLocaleString('ru-RU')} ${r.unit})`}>
+              <Tag color="gold" icon={<LockOutlined />}>{formatPallets(reserved / perPallet)}</Tag>
+            </Tooltip>
+          );
+        }
         return (
           <Tooltip title={`Доступно к продаже: ${Number(r.availableStock ?? 0)} ${r.unit}`}>
             <Tag color="gold" icon={<LockOutlined />}>{reserved} {r.unit}</Tag>
@@ -586,6 +635,19 @@ export default function ProductsPage() {
               { label: isMobile ? 'Дерево' : <><ApartmentOutlined /> Иерархия</>, value: 'hierarchy' },
             ]}
           />
+          {hasPalletProducts && (
+            <Tooltip title={`Самоклейка в листах — остаток и бронь в палетах. В палете: ${PALLET_FORMATS.map((f) => `${f} — ${SHEETS_PER_PALLET[f].toLocaleString('ru-RU')} л.`).join(', ')}`}>
+              <Segmented
+                value={palletView ? 'pallets' : 'units'}
+                onChange={(v) => setPalletView(v === 'pallets')}
+                options={[
+                  { label: 'Ед. изм.', value: 'units' },
+                  { label: <><AppstoreOutlined /> Палеты</>, value: 'pallets' },
+                ]}
+                block={isMobile}
+              />
+            </Tooltip>
+          )}
           <Select
             allowClear
             placeholder="Категория"
@@ -785,6 +847,25 @@ export default function ProductsPage() {
         </div>
       )}
 
+      {palletView && palletSummary.length > 0 && (
+        <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+          {palletSummary.map((row) => (
+            <Col key={row.format} xs={24} sm={12} lg={8}>
+              <Card size="small">
+                <Statistic
+                  title={`Самоклейка ${row.format} · ${row.count} поз. · ${row.perPallet.toLocaleString('ru-RU')} л. в палете`}
+                  value={formatPallets(row.stock / row.perPallet)}
+                />
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {row.stock.toLocaleString('ru-RU')} л. на складе
+                  {row.reserved > 0 && ` · в брони ${formatPallets(row.reserved / row.perPallet)}, свободно ${formatPallets(Math.max(0, row.stock - row.reserved) / row.perPallet)}`}
+                </Typography.Text>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
+
       {/* Selection bar */}
       {selectedRowKeys.length > 0 && listMode === 'table' && !isMobile && (
         <div
@@ -869,7 +950,7 @@ export default function ProductsPage() {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <Typography.Text strong style={{ fontSize: 16, color: stockColor }}>
-                      {formatStockCell(stock, p.rollStock)}
+                      {(palletView && renderPalletQty(stock, p, stockColor)) || formatStockCell(stock, p.rollStock)}
                     </Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
                       мин {min}
