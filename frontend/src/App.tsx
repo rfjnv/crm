@@ -81,6 +81,7 @@ const LaminationKgUsagePage = lazy(() => import('./pages/LaminationKgUsagePage')
 const PaymentOverduePage = lazy(() => import('./pages/PaymentOverduePage'));
 const MarketAnalysisPage = lazy(() => import('./pages/MarketAnalysisPage'));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'));
+const ProductFeedbackPage = lazy(() => import('./pages/ProductFeedbackPage'));
 const WarehouseManagerPage = lazy(() => import('./pages/WarehouseManagerPage'));
 const MyLoadingTasksPage = lazy(() => import('./pages/MyLoadingTasksPage'));
 const MyVehiclePage = lazy(() => import('./pages/MyVehiclePage'));
@@ -220,6 +221,7 @@ export default function App() {
                   <Route path="/clients/inns" element={<InnRegistryPage />} />
                 </Route>
                 <Route path="/reviews" element={<ReviewsPage />} />
+                <Route path="/product-feedback" element={<ProductFeedbackPage />} />
                 <Route path="/contracts" element={<ContractsPage />} />
                 <Route path="/contracts/:id" element={<ContractDetailPage />} />
                 <Route path="/power-of-attorney" element={<PowerOfAttorneyPage />} />

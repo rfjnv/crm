@@ -312,6 +312,7 @@ model User {
   /** Произвольная подпись медали (как тег SVIP): «упорный», «лентяй» и т.д. */
   badgeLabel          String?          @map("badge_label")
   clientNotes         ClientNote[]
+  productFeedbackAuthored ProductFeedback[] @relation("ProductFeedbackAuthor")
   clientStockEventsAuthored ClientStockEvent[] @relation("ClientStockEventAuthor")
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
@@ -536,6 +537,7 @@ model Client {
   payments    Payment[]
   clientNotes ClientNote[]
   notesBoardRows NotesBoardRow[]
+  productFeedback ProductFeedback[]
   stockPositions ClientStockPosition[]
   stockEvents ClientStockEvent[]
   reservations ProductReservation[]
@@ -881,6 +883,7 @@ model Product {
   importOrderItems ImportOrderItem[]
   posterPhotos ProductPosterPhoto[]
   reservations ProductReservation[]
+  feedback  ProductFeedback[]
 
   @@index([category])
   @@index([countryOfOrigin])
@@ -1293,6 +1296,30 @@ model Task {
   @@index([createdById])
   @@index([plannedDate, status])
   @@map("tasks")
+}
+
+/// Отзыв клиента о товаре из обзвона «как вам товар»: менеджер звонит покупателям партии после прихода.
+model ProductFeedback {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  clientId  String   @map("client_id")
+  authorId  String   @map("author_id")
+  /// false — не дозвонился: попытка записана, оценки нет
+  reached   Boolean  @default(true)
+  /// 1–5; null, если не дозвонился
+  rating    Int?
+  comment   String?  @db.Text
+  /// Дата прихода партии, по которой шёл обзвон
+  arrivalAt DateTime? @map("arrival_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author  User    @relation("ProductFeedbackAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([productId, createdAt])
+  @@index([clientId, createdAt])
+  @@map("product_feedback")
 }
 
 model NotesBoardRow {

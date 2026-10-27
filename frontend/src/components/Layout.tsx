@@ -387,6 +387,10 @@ export default function Layout() {
         key: '/reviews',
         icon: <StarOutlined />,
         label: <Link to="/reviews">Отзывы</Link>,
+      }, {
+        key: '/product-feedback',
+        icon: <StarOutlined />,
+        label: <Link to="/product-feedback">Обзвон по товару</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent')
