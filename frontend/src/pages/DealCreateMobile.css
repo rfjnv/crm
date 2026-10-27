@@ -27,6 +27,7 @@
   --dcm-text-2: var(--c-text-2, var(--text-secondary, rgba(15, 23, 42, 0.65)));
   --dcm-text-3: var(--c-text-3, var(--text-secondary, rgba(15, 23, 42, 0.5)));
   --dcm-accent: var(--c-accent-fill, #22609a);
+  --dcm-fill: var(--fill-2, rgba(15, 23, 42, 0.06));
 }
 
 .dcm {
@@ -598,7 +599,7 @@ html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
   color: var(--dcm-text-3);
 }
 
-/* ── Панель снизу: жидкое стекло (components/ui/LiquidGlass) ── */
+/* ── Панель снизу: то же матовое стекло, что у панели профиля (hdr-panel в glass.css) ── */
 .dcm-bar {
   position: fixed;
   right: 12px;
@@ -608,18 +609,16 @@ html[data-design='modern'][data-theme='dark'] .dcm-seg > button.is-on {
   max-width: 560px;
   margin: 0 auto;
   padding: 12px 14px 14px;
-  color: #fff;
+  border: 1px solid var(--hdr-panel-border, var(--border-color, rgba(15, 23, 42, 0.08)));
+  border-radius: 20px;
+  background: var(--hdr-panel-bg, var(--card-bg, #fff));
+  -webkit-backdrop-filter: blur(40px) saturate(170%);
+  backdrop-filter: blur(40px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 16px 40px rgba(0, 0, 0, 0.25);
+  color: var(--dcm-text-1);
   /* Панель живёт в body (вне antd) — шрифт приложения задаём сами, как в theme/tokens.ts */
   font-family: Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-/* Светлая тема: чуть молочнее, текст тёмный */
-html[data-theme='light'] .dcm-bar {
-  --lg-tint: rgba(255, 255, 255, 0.28);
-  color: #1c1a17;
-  text-shadow: none;
 }
 
 .dcm-bar__line {
@@ -634,7 +633,7 @@ html[data-theme='light'] .dcm-bar {
   min-width: 0;
   overflow: hidden;
   font-size: 12.5px;
-  opacity: 0.85;
+  color: var(--dcm-text-2);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -651,41 +650,30 @@ html[data-theme='light'] .dcm-bar {
   font-variant-numeric: tabular-nums;
 }
 
-/* Кнопка — капля стекла, тонированная акцентом: прозрачная заливка, светящаяся кайма */
+/* Кнопка — обычная главная кнопка приложения, крупнее для пальца */
 .dcm-bar .dcm-bar__cta.ant-btn {
   height: 50px;
-  border: 0;
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--dcm-accent) 62%, transparent);
-  -webkit-backdrop-filter: blur(2px) saturate(180%);
-  backdrop-filter: blur(2px) saturate(180%);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-    inset 2px 2px 1px -1px rgba(255, 255, 255, 0.95),
-    inset -2px -2px 1px -1px rgba(255, 255, 255, 0.4),
-    inset 0 0 12px rgba(255, 255, 255, 0.25),
-    0 8px 18px -6px color-mix(in srgb, var(--dcm-accent) 70%, transparent);
-  color: #fff;
+  border-radius: 14px;
   font-size: 16px;
   font-weight: 650;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 
-.dcm-bar .dcm-bar__cta.ant-btn:not(:disabled):hover,
-.dcm-bar .dcm-bar__cta.ant-btn:not(:disabled):focus-visible {
-  background: color-mix(in srgb, var(--dcm-accent) 75%, transparent);
+.dcm-bar .dcm-bar__cta.ant-btn-primary:not(:disabled) {
+  background: var(--dcm-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 16px -6px color-mix(in srgb, var(--dcm-accent) 70%, transparent);
   color: #fff;
 }
 
-.dcm-bar .dcm-bar__cta.ant-btn:not(:disabled):active {
-  transform: scale(0.985);
+.dcm-bar .dcm-bar__cta.ant-btn:disabled {
+  border-color: transparent;
+  background: var(--dcm-fill);
+  color: var(--dcm-text-3);
+  box-shadow: none;
 }
 
-/* Неактивная — прозрачная капля без цвета */
-.dcm-bar .dcm-bar__cta.ant-btn:disabled {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), inset 2px 2px 1px -1px rgba(255, 255, 255, 0.6);
-  color: currentColor;
-  opacity: 0.6;
-  text-shadow: none;
+/* Без размытия — сплошная подложка */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dcm-bar {
+    background: var(--card-bg, #fff);
+  }
 }
