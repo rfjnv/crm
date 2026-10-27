@@ -1,0 +1,245 @@
+/* «ВЭД · праздники у поставщиков» на главной. Токены нового дизайна, в классике — antd. */
+.ved-quick {
+  --vq-text-1: var(--c-text-1, var(--ant-color-text));
+  --vq-text-2: var(--c-text-2, var(--ant-color-text-secondary));
+  --vq-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --vq-fill: var(--fill-2, var(--ant-color-fill-tertiary));
+  --vq-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  color: var(--vq-text-1);
+}
+
+.ved-quick__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.ved-quick__title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.ved-quick__sub {
+  font-size: 12.5px;
+  color: var(--vq-text-3);
+}
+
+.ved-quick__link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--vq-text-2);
+}
+
+.ved-quick__link:hover {
+  color: var(--vq-text-1);
+}
+
+.ved-quick__summary {
+  margin: 6px 0 14px;
+  font-size: 13.5px;
+  color: var(--vq-text-2);
+}
+
+.ved-quick__summary b {
+  color: var(--vq-text-1);
+}
+
+/* Лента дней */
+.ved-quick__strip {
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.ved-quick__day {
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--vq-fill);
+}
+
+.ved-quick__day > i {
+  position: absolute;
+  inset: 0;
+}
+
+.ved-quick__day--off {
+  background: repeating-linear-gradient(-45deg, var(--vq-fill) 0 3px, transparent 3px 6px);
+}
+
+.ved-quick__day--today {
+  overflow: visible;
+  box-shadow: 0 0 0 2px var(--vq-text-1);
+}
+
+.ved-quick__day--today > i {
+  border-radius: 5px;
+}
+
+.ved-quick__caps {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0 12px;
+  font-size: 11px;
+  color: var(--vq-text-3);
+}
+
+.ved-quick__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--vq-text-2);
+}
+
+.ved-quick__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ved-quick__legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ved-quick__legend .ved-quick__legend-off {
+  background: repeating-linear-gradient(-45deg, var(--vq-text-3) 0 2px, transparent 2px 4px);
+}
+
+/* Список */
+.ved-quick__ev {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+}
+
+.ved-quick__ev + .ved-quick__ev {
+  border-top: 1px solid var(--vq-hair);
+}
+
+.ved-quick__date b {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ved-quick__date small {
+  font-size: 12px;
+  color: var(--vq-text-3);
+}
+
+.ved-quick__t {
+  min-width: 0;
+}
+
+.ved-quick__name {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ved-quick__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--vq-text-3);
+}
+
+.ved-quick__cc {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.ved-quick__when {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--vq-fill);
+  color: var(--vq-text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ved-quick__when--soon {
+  background: var(--c-warn-bg, var(--ant-color-warning-bg));
+  color: var(--c-warn-fg, var(--ant-color-warning-text));
+}
+
+.ved-quick__more {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--vq-text-2);
+  text-align: center;
+}
+
+/* Заказы под угрозой */
+.ved-quick__risk {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--c-neg-fg, #dc2626) 30%, transparent);
+  border-radius: 14px;
+  background: var(--c-neg-bg, var(--ant-color-error-bg));
+}
+
+.ved-quick__risk b {
+  font-size: 13px;
+  color: var(--c-neg-fg, var(--ant-color-error-text));
+}
+
+.ved-quick__risk-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: var(--vq-text-1);
+}
+
+.ved-quick__risk-row span:last-child {
+  color: var(--vq-text-2);
+}
+
+.ved-quick__risk-row:hover {
+  color: var(--vq-text-1);
+  text-decoration: underline;
+}
+
+@media (max-width: 767px) {
+  .ved-quick__strip {
+    gap: 2px;
+  }
+
+  .ved-quick__day {
+    height: 24px;
+    border-radius: 3px;
+  }
+
+  .ved-quick__ev {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .ved-quick__when {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

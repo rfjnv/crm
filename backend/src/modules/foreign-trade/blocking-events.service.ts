@@ -1,4 +1,5 @@
 import Holidays from 'date-holidays';
+import { CUSTOM_CALENDARS, LUNAR_SOURCE_NAMES, russianHolidayName } from './blocking-events.extra';
 
 export type BlockingCountryCode = 'CN' | 'TR' | 'GE' | 'RU' | 'KZ' | 'IR' | 'KG' | 'TM';
 
@@ -186,6 +187,19 @@ export function listSupportedBlockingCountries(): SupportedBlockingCountry[] {
   return SUPPORTED_COUNTRIES.map(({ code, label, isPrimary }) => ({ code, label, isPrimary }));
 }
 
+/** Первый день Рамазан/Курбан-байрама в году — по расчёту date-holidays для Турции */
+const lunarCache = new Map<string, string | null>();
+function lunarHolidayDate(year: number, kind: keyof typeof LUNAR_SOURCE_NAMES): string | null {
+  const key = `${year}|${kind}`;
+  if (lunarCache.has(key)) return lunarCache.get(key)!;
+  const tr = new Holidays('TR');
+  tr.setLanguages('en');
+  const row = (tr.getHolidays(year) as HolidayRow[]).find((r) => r.name === LUNAR_SOURCE_NAMES[kind]);
+  const date = toDateOnly(row?.date);
+  lunarCache.set(key, date);
+  return date;
+}
+
 export function listBlockingEvents(params: {
   from: string;
   to: string;
@@ -203,9 +217,48 @@ export function listBlockingEvents(params: {
   const seen = new Set<string>();
   const items: BlockingCalendarEvent[] = [];
 
+  const push = (country: SupportedCountryDefinition, date: string, startDate: string, endDate: string, name: string, localName: string | null, type: string, note: string | null) => {
+    const uniqueKey = `${country.code}|${date}|${localName ?? name}`;
+    if (seen.has(uniqueKey)) return;
+    seen.add(uniqueKey);
+    items.push({
+      id: uniqueKey,
+      countryCode: country.code,
+      countryLabel: country.label,
+      isPrimaryCountry: country.isPrimary,
+      name,
+      localName,
+      date,
+      startDate,
+      endDate,
+      type,
+      source: 'date-holidays',
+      note,
+    });
+  };
+
   for (const countryCode of selectedCodes) {
     const country = COUNTRY_BY_CODE.get(countryCode);
     if (!country) continue;
+
+    // Казахстан, Кыргызстан, Туркменистан: в date-holidays их нет — свой календарь
+    const custom = CUSTOM_CALENDARS[countryCode];
+    if (custom) {
+      for (const year of years) {
+        for (const h of custom.fixed) {
+          const date = `${year}-${String(h.month).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`;
+          if (date < from || date > to) continue;
+          const end = new Date(parseDateOnly(date).getTime() + ((h.days ?? 1) - 1) * 86_400_000).toISOString().slice(0, 10);
+          push(country, date, date, end, h.name, null, 'public', null);
+        }
+        for (const h of custom.lunar) {
+          const date = lunarHolidayDate(year, h.kind);
+          if (!date || date < from || date > to) continue;
+          push(country, date, date, date, h.name, null, 'public', null);
+        }
+      }
+      continue;
+    }
 
     const holidays = new Holidays(country.holidayCode);
     holidays.setLanguages('en');
@@ -223,24 +276,16 @@ export function listBlockingEvents(params: {
         const eventName = String(row.name ?? '').trim();
         if (!eventName) continue;
 
-        const uniqueKey = `${countryCode}|${date}|${eventName}`;
-        if (seen.has(uniqueKey)) continue;
-        seen.add(uniqueKey);
-
-        items.push({
-          id: uniqueKey,
-          countryCode,
-          countryLabel: country.label,
-          isPrimaryCountry: country.isPrimary,
-          name: eventName,
-          localName: null,
+        push(
+          country,
           date,
           startDate,
           endDate,
+          russianHolidayName(countryCode, eventName),
+          eventName,
           type,
-          source: 'date-holidays',
-          note: row.substitute ? 'Перенесенный / observed holiday' : null,
-        });
+          row.substitute ? 'Перенесённый выходной' : null,
+        );
       }
     }
   }

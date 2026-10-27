@@ -1166,29 +1166,6 @@ html[data-design='modern'] .sider-menu-scroll .ant-menu-sub .ant-menu-item-selec
 
 /* ── Блоки дашборда в новом дизайне ── */
 
-/* ВЭД: плашки «Сегодня / 7 дней / Блокирующие» — стекло, цвет только у числа и точки */
-html[data-design='modern'] .dashboard-page .ved-stat {
-  position: relative;
-  background: var(--panel-bg) !important;
-  border-color: var(--panel-border) !important;
-}
-
-html[data-design='modern'] .dashboard-page .ved-stat::after {
-  content: '';
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--ved-accent);
-  box-shadow: 0 0 10px var(--ved-accent);
-}
-
-html[data-design='modern'] .dashboard-page .ved-stat__value {
-  color: var(--ved-accent) !important;
-}
-
 /* Пустое состояние без огромной картинки */
 html[data-design='modern'] .dashboard-page .ant-empty-normal {
   margin-block: 8px;
@@ -1225,11 +1202,6 @@ html[data-design='modern'] .dashboard-page .ant-progress-small .ant-progress-rai
   background: var(--panel-bg) !important;
 }
 
-/* Точка не налезает на подпись */
-html[data-design='modern'] .dashboard-page .ved-stat {
-  padding-right: 24px !important;
-}
-
 @media (max-width: 767px) {
   /* Заголовок карточки и ссылка справа переносятся, а не обрезают друг друга */
   html[data-design='modern'] .dashboard-page .ant-card-head-wrapper {
@@ -1241,12 +1213,6 @@ html[data-design='modern'] .dashboard-page .ved-stat {
     white-space: normal;
   }
 
-  html[data-design='modern'] .dashboard-page .ved-stat .ant-typography-secondary {
-    font-size: 11px !important;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 /* ── Общие элементы всех страниц в новом дизайне ── */
