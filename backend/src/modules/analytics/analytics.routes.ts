@@ -1031,8 +1031,23 @@ router.get(
       ]),
     );
 
+    // Менеджер со своей областью видимости получает только свою строку: чужие суммы ему
+    // не положены. Место в рейтинге и отставание от следующего считаем здесь же.
+    const myIdx = dealScope.managerId ? managerRevenueRaw.findIndex((m) => m.manager_id === dealScope.managerId) : -1;
+    const rank = dealScope.managerId && myIdx >= 0
+      ? {
+          place: myIdx + 1,
+          of: managerRevenueRaw.length,
+          gap: myIdx > 0 ? Number(managerRevenueRaw[myIdx - 1].total_revenue) - Number(managerRevenueRaw[myIdx].total_revenue) : null,
+        }
+      : null;
+    const visibleManagerRows = dealScope.managerId
+      ? managerRevenueRaw.filter((m) => m.manager_id === dealScope.managerId)
+      : managerRevenueRaw;
+
     const managers = {
-      rows: managerRevenueRaw.map((m) => {
+      rank,
+      rows: visibleManagerRows.map((m) => {
         const cohort = cohortMap.get(m.manager_id);
         return {
           managerId: m.manager_id,

@@ -764,8 +764,8 @@ export default function DashboardPage() {
         const clientsTotal = (abcData?.clients ?? []).reduce((sum, c) => sum + c.revenue, 0);
         const managerRows = monthAnalytics?.managers?.rows ?? [];
         const managersTotal = managerRows.reduce((sum, m) => sum + m.totalRevenue, 0);
-        const sortedManagers = [...managerRows].sort((x, z) => z.totalRevenue - x.totalRevenue);
-        const myIdx = sortedManagers.findIndex((m) => m.managerId === user?.id);
+        // Менеджеру сервер отдаёт только его строку и готовое место в рейтинге
+        const myRank = monthAnalytics?.managers?.rank;
         const share = (v: number, total: number) => (total > 0 ? `${Math.round((v / total) * 100)}%` : '');
         const productRows = topProducts.map((p) => ({ key: p.entityId, label: p.name, value: p.revenue, note: share(p.revenue, productsTotal), href: `/inventory/products/${p.entityId}` }));
         const clientRows = topClients.map((c) => ({
@@ -805,13 +805,7 @@ export default function DashboardPage() {
             <TopList rows={productRows} loading={extLoading} />
           </TopCard>,
           <TopCard key="c" title="Мои клиенты" sub={periodSub} link={{ to: '/clients', label: 'Клиенты' }}
-            extra={myIdx >= 0 && (
-              <MyRank
-                place={myIdx + 1}
-                of={sortedManagers.length}
-                gap={myIdx > 0 ? sortedManagers[myIdx - 1].totalRevenue - sortedManagers[myIdx].totalRevenue : null}
-              />
-            )}>
+            extra={myRank && <MyRank place={myRank.place} of={myRank.of} gap={myRank.gap} />}>
             <TopList rows={clientRows} loading={extLoading} />
           </TopCard>,
           <TopCard key="q" title="Пора позвонить" sub="кого вернуть" link={{ to: '/manager/reanimation', label: 'Реанимация' }}

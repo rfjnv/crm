@@ -854,6 +854,8 @@ export interface AnalyticsWarehouse {
 }
 
 export interface AnalyticsManagers {
+  /** Только для менеджера (у него в `rows` одна своя строка): место по выручке среди всех. */
+  rank?: { place: number; of: number; gap: number | null } | null;
   rows: {
     managerId: string;
     fullName: string;
