@@ -350,7 +350,7 @@ export default function DeliveryRoutePage() {
   return (
     <div style={isMobile
       ? { display: 'flex', flexDirection: 'column', gap: 12 }
-      : { display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(100vh - 120px)', minHeight: 520 }}
+      : { display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(var(--app-vh, 100vh) - 120px)', minHeight: 520 }}
     >
       {header}
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, flex: 1, minHeight: 0 }}>

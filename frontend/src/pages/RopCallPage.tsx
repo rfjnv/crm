@@ -73,7 +73,7 @@ function CallScreen() {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      minHeight: 'var(--app-vh, 100vh)', display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '24px 16px', background: token.colorBgLayout, boxSizing: 'border-box',
     }}>
       <Title level={4} style={{ margin: 0 }}>РОП-агент</Title>

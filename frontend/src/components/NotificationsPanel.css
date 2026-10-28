@@ -4,7 +4,7 @@ html[data-design='modern'] .hdr-panel.ntf-panel {
   flex-direction: column;
   width: 380px;
   max-width: calc(100vw - 24px);
-  max-height: min(640px, calc(100dvh - 96px));
+  max-height: min(640px, calc(var(--app-vh, 100dvh) - 96px));
 }
 
 .ntf-panel__head {

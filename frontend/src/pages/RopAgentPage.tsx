@@ -322,7 +322,7 @@ export default function RopAgentPage() {
 
   return (
     <div style={{
-      display: 'flex', height: 'calc(100vh - 120px)', minHeight: 480,
+      display: 'flex', height: 'calc(var(--app-vh, 100vh) - 120px)', minHeight: 480,
       background: token.colorBgContainer, borderRadius: 12, overflow: 'hidden',
       border: `1px solid ${token.colorBorderSecondary}`,
     }}>

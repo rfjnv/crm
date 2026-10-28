@@ -208,7 +208,7 @@
   }
 
   .stock-confirm-modal--mobile .ant-modal-body {
-    max-height: calc(100vh - 220px);
+    max-height: calc(var(--app-vh, 100vh) - 220px);
     overflow-y: auto;
     padding-top: 8px;
   }

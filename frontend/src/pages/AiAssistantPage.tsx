@@ -577,7 +577,7 @@ export default function AiAssistantPage() {
 
   return (
     <div style={{
-      height: isMobile ? 'calc(100vh - 56px)' : 'calc(100vh - 56px)',
+      height: 'calc(var(--app-vh, 100vh) - 56px)',
       margin: isMobile ? 0 : -24,
       display: 'flex',
       overflow: 'hidden',

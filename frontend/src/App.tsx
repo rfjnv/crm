@@ -168,7 +168,7 @@ export default function App() {
 
   if (tgAuthChecking) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Spin size="large" />
       </div>
     );
@@ -183,7 +183,7 @@ export default function App() {
         <BrowserRouter>
           <Suspense
             fallback={(
-              <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ minHeight: 'var(--app-vh, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Spin size="large" />
               </div>
             )}

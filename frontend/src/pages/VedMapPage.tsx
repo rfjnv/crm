@@ -651,7 +651,7 @@ export default function VedMapPage() {
         .ved-map-route-modal-wrap { pointer-events: none !important; }
         .ved-map-route-modal { pointer-events: auto !important; margin: 24px 0 0 24px !important; }
       `}</style>
-    <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : 'calc(100vh - 120px)', minHeight: 480 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : 'calc(var(--app-vh, 100vh) - 120px)', minHeight: 480 }}>
       <Space style={{ marginBottom: 12 }} wrap>
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>

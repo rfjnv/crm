@@ -924,7 +924,7 @@ export default function ClientsMapPage() {
   return (
     <div style={isMobile
       ? { display: 'flex', flexDirection: 'column' }
-      : { display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 520 }}
+      : { display: 'flex', flexDirection: 'column', height: 'calc(var(--app-vh, 100vh) - 120px)', minHeight: 520 }}
     >
       <div style={{ marginBottom: 12 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Маршрут доставки</Typography.Title>
