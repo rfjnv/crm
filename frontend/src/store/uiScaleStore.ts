@@ -45,6 +45,10 @@ export function applyUiScale(scale: number): void {
   // экрана по высоте и внизу остаётся полоса пустоты. Через эту переменную
   // --app-vh в mobile.css делит высоту на масштаб и снова достаёт до низа.
   root.style.setProperty('--ui-scale', String(scale));
+  // Окно при смене zoom не меняется, и события resize нет, а графики (autoFit в
+  // @ant-design/charts) и прочие замеры слушают именно его — без этого они остаются
+  // прежней ширины и при увеличении вылезают вправо, давая горизонтальный скролл.
+  window.dispatchEvent(new Event('resize'));
 }
 
 interface UiScaleState {

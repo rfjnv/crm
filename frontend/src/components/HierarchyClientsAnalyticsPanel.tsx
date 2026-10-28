@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Affix, Input, DatePicker, Checkbox, Tag, Tooltip, message } from 'antd';
+import { Card, Col, Row, Segmented, Select, Space, Spin, Table, Typography, theme, InputNumber, Button, Input, DatePicker, Checkbox, Tag, Tooltip, message } from 'antd';
 import { AppstoreOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
@@ -1397,39 +1397,40 @@ export default function HierarchyClientsAnalyticsPanel({
               </>
             )}
 
-            <Affix offsetBottom={16}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: 180, pointerEvents: 'none' }}>
-                <Card
-                  size="small"
-                  style={{
-                    pointerEvents: 'auto',
-                    boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.45)' : '0 8px 22px rgba(0,0,0,0.12)',
-                    borderRadius: 10,
-                  }}
-                >
-                  <Space size={8}>
-                    <Typography.Text type="secondary">Быстрый вид:</Typography.Text>
-                    <Segmented
-                      value={clientViewMode}
-                      onChange={(v) => setClientViewMode(v as ClientViewMode)}
-                      options={[
-                        { label: 'Таблица', value: 'table' },
-                        { label: 'Матрица', value: 'matrix' },
-                      ]}
-                    />
-                    {hasPalletProducts && (
-                      <Button
-                        size="small"
-                        icon={<AppstoreOutlined />}
-                        onClick={() => palletsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                      >
-                        Палеты
-                      </Button>
-                    )}
-                  </Space>
-                </Card>
-              </div>
-            </Affix>
+            {/* Не antd Affix: он меряет getBoundingClientRect (уже с учётом zoom масштаба интерфейса)
+                и пишет эти пиксели в стиль, где zoom применяется ещё раз — плашка уезжала вбок
+                и давала горизонтальный скролл. sticky браузер считает сам. */}
+            <div style={{ position: 'sticky', bottom: 16, zIndex: 10, marginTop: 16, display: 'flex', justifyContent: 'flex-start', paddingLeft: 180, pointerEvents: 'none' }}>
+              <Card
+                size="small"
+                style={{
+                  pointerEvents: 'auto',
+                  boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.45)' : '0 8px 22px rgba(0,0,0,0.12)',
+                  borderRadius: 10,
+                }}
+              >
+                <Space size={8}>
+                  <Typography.Text type="secondary">Быстрый вид:</Typography.Text>
+                  <Segmented
+                    value={clientViewMode}
+                    onChange={(v) => setClientViewMode(v as ClientViewMode)}
+                    options={[
+                      { label: 'Таблица', value: 'table' },
+                      { label: 'Матрица', value: 'matrix' },
+                    ]}
+                  />
+                  {hasPalletProducts && (
+                    <Button
+                      size="small"
+                      icon={<AppstoreOutlined />}
+                      onClick={() => palletsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    >
+                      Палеты
+                    </Button>
+                  )}
+                </Space>
+              </Card>
+            </div>
           </>
         )}
       </Card>
