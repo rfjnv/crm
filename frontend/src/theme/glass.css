@@ -34,7 +34,7 @@ html[data-design='modern']:has(.app-shell) {
   --chip-active-text: #1c1a17;
   --menu-active-bg: rgba(255, 255, 255, 0.16);
   --glass-text: #ffffff;
-  --table-solid: rgba(44, 48, 50, 0.82);
+  --table-solid: rgba(44, 48, 50, 0.92);
   --field-bg: rgba(255, 255, 255, 0.06);
 
   /* Уровни материала внутри окна (DASHBOARD.md §3) и смысловые цвета (§5) — sync glassPalette.ts */
@@ -76,7 +76,7 @@ html[data-design='modern'][data-theme='light']:has(.app-shell) {
   --chip-active-text: #ffffff;
   --menu-active-bg: rgba(255, 255, 255, 0.4);
   --glass-text: #1c1a17;
-  --table-solid: rgba(246, 247, 248, 0.78);
+  --table-solid: rgba(246, 247, 248, 0.92);
   --field-bg: rgba(255, 255, 255, 0.3);
 
   /* sync glassPalette.ts */
@@ -134,6 +134,25 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
   backdrop-filter: var(--win-blur);
   border: 1px solid var(--win-border) !important;
   box-shadow: var(--win-rim), var(--win-shadow) !important;
+}
+
+/*
+ * Меню и окно стоят на месте, под ними только неподвижное фото — вместо живого
+ * размытия кладём заранее размытую копию фото (lib/glassBackdrop.ts), выровненную
+ * по экрану. Слои те же, что у сцены: затемнение поверх фото, сверху тон стекла.
+ * На телефоне fixed-фон в Safari не держится, а нижняя панель плавает над содержимым —
+ * там остаётся живое размытие.
+ */
+@media (min-width: 768px) {
+  html[data-design='modern'][data-glass-baked]:has(.app-shell) .ant-layout-sider,
+  html[data-design='modern'][data-glass-baked]:has(.app-shell) .ant-layout:has(> .ant-layout-header) {
+    background:
+      linear-gradient(var(--win-bg), var(--win-bg)),
+      linear-gradient(rgba(0, 0, 0, var(--scene-dim)), rgba(0, 0, 0, var(--scene-dim))),
+      var(--glass-bg-blurred) center / cover no-repeat fixed !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 html[data-design='modern']:has(.app-shell) .ant-layout-sider {
@@ -469,15 +488,14 @@ html[data-design='modern']:has(.app-shell) .ant-input-affix-wrapper .ant-input {
 /*
  * Закреплённые колонки и липкая шапка таблицы лежат поверх прокручиваемых строк —
  * прозрачными их делать нельзя, иначе строки просвечивают. Даём им плотную заливку
- * в тон стекла.
+ * в тон стекла. Без размытия: оно стояло на каждой закреплённой ячейке каждой строки
+ * и пересчитывалось при любой прокрутке таблицы — на слабых машинах это тормозило.
  */
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-left,
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-right,
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder,
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder .ant-table-thead > tr > th {
   background: var(--table-solid) !important;
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
 }
 
 /* ── Запасные варианты ── */

@@ -8,6 +8,7 @@ import { installBlankScreenReporter } from './lib/blankScreenReporter';
 import { safeStorage } from './lib/safeStorage';
 import { applyUiScale, useUiScaleStore } from './store/uiScaleStore';
 import { useBackgroundStore } from './store/backgroundStore';
+import { installGlassBackdrop } from './lib/glassBackdrop';
 import { applyDocumentTheme } from './theme/applyDocumentTheme';
 import type { ThemeMode } from './theme/tokens';
 import './theme/theme-variables.css';
@@ -46,6 +47,8 @@ applyDocumentTheme(
 
 // Свой фон стеклянного дизайна с этого устройства (IndexedDB, асинхронно — до него виден стандартный)
 void useBackgroundStore.getState().init();
+// Размытое фото под меню и окном считаем один раз вместо живого размытия на каждом кадре
+installGlassBackdrop();
 
 // До первой отрисовки, иначе интерфейс скакнёт в размере на глазах у пользователя.
 applyUiScale(useUiScaleStore.getState().scale);
