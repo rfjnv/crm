@@ -9,7 +9,7 @@ import { ownerScope, type AuthUser } from '../../lib/scope';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import { hasRole } from '../../lib/roles';
-import { cashOnlyFilter } from '../../lib/payment-kind';
+import { buildClientCreditNote, cashOnlyFilter } from '../../lib/payment-kind';
 import { tashkentStartOfToday } from '../../lib/tz';
 import { storeFinanceTelegramLog } from '../telegram/telegram-deal-groups.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
@@ -156,11 +156,15 @@ router.get(
 
     let prepayment = 0;
     const openDeals = [];
+    const creditSources: { dealId: string; title: string | null; surplus: number }[] = [];
     for (const d of allDeals) {
       const amount = Number(d.amount);
       const paidAmount = Number(d.paidAmount);
       const remaining = amount - paidAmount;
-      if (remaining < -0.009) prepayment += -remaining;
+      if (remaining < -0.009) {
+        prepayment += -remaining;
+        creditSources.push({ dealId: d.id, title: d.title, surplus: -remaining });
+      }
       if (remaining > 0.009) {
         openDeals.push({
           dealId: d.id,
@@ -195,6 +199,8 @@ router.get(
       deals: openDeals,
       totalDebt: openDeals.reduce((s, d) => s + d.remaining, 0),
       prepayment,
+      // Порядок списания при зачёте — от большей переплаты, как в apply-client-credit.
+      creditSources: creditSources.sort((a, b) => b.surplus - a.surplus),
       recentPayments: recentPayments.map((p) => ({
         id: p.id,
         amount: Number(p.amount),
@@ -356,6 +362,176 @@ router.post(
         paymentStatus: c.paymentStatus,
       })),
       overpayment: result.overpayment,
+    });
+  }),
+);
+
+// ──── ЗАЧЁТ ПЕРЕПЛАТЫ НА СДЕЛКИ КЛИЕНТА ────
+/**
+ * То же, что `/finance/deals/:dealId/apply-client-credit`, но сразу на несколько сделок:
+ * переплата раскладывается на выбранные долги от старых к новым, а списывается с
+ * сделок-источников от большей переплаты. Деньги в кассу не поступают — проводки
+ * `CREDIT_TRANSFER` в кассовые итоги не входят.
+ */
+const clientCreditDto = z.object({
+  /** Сколько зачесть; без суммы — сколько хватит переплаты, но не больше долга. */
+  amount: z.number().positive('Сумма должна быть положительной').max(MAX_PAYMENT_AMOUNT).optional(),
+  dealIds: z.array(z.string().uuid()).min(1, 'Выберите хотя бы одну сделку'),
+  paidAt: z.string().datetime().optional(),
+  note: z.string().max(500).optional(),
+});
+
+router.post(
+  '/clients/:clientId/apply-credit',
+  authorize(...FINANCE_ROLES),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = authUser(req);
+    const clientId = req.params.clientId as string;
+    const parsed = clientCreditDto.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, parsed.error.issues[0]?.message || 'Некорректные данные');
+    const dto = parsed.data;
+
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+    if (paidAt > new Date()) throw new AppError(400, 'Дата оплаты не может быть в будущем');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const scope = ownerScope(user);
+      const targets = await tx.deal.findMany({
+        where: {
+          id: { in: dto.dealIds },
+          clientId,
+          ...scope,
+          isArchived: false,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (targets.length !== new Set(dto.dealIds).size) {
+        throw new AppError(404, 'Часть сделок не найдена или недоступна — обновите страницу');
+      }
+
+      const sources = (await tx.deal.findMany({
+        where: {
+          clientId,
+          id: { notIn: dto.dealIds },
+          ...scope,
+          isArchived: false,
+          status: { notIn: ['CANCELED', 'REJECTED'] },
+        },
+        select: { id: true, title: true, amount: true, paidAmount: true, version: true },
+      }))
+        .map((d) => ({ ...d, surplus: toCents(d.paidAmount) - toCents(d.amount), taken: 0 }))
+        .filter((d) => d.surplus > 0)
+        .sort((a, b) => b.surplus - a.surplus);
+
+      const pool = sources.reduce((s, d) => s + d.surplus, 0);
+      const debt = targets.reduce((s, d) => s + Math.max(0, toCents(d.amount) - toCents(d.paidAmount)), 0);
+      const requested = dto.amount != null ? toCents(dto.amount) : Math.min(pool, debt);
+      // Переносить переплату туда, где она снова станет переплатой, бессмысленно.
+      const applyTotal = Math.min(requested, pool, debt);
+      if (applyTotal <= 0) {
+        throw new AppError(400, pool <= 0
+          ? 'У клиента нет переплаты на других сделках (в вашей зоне видимости)'
+          : 'По выбранным сделкам нет долга');
+      }
+
+      let left = applyTotal;
+      let srcIdx = 0;
+      const created: { paymentId: string; dealId: string; title: string | null; amount: number; newPaid: number; sources: { id: string; title: string | null; amount: number }[] }[] = [];
+
+      for (const target of targets) {
+        if (left <= 0) break;
+        const remaining = Math.max(0, toCents(target.amount) - toCents(target.paidAmount));
+        let portion = Math.min(remaining, left);
+        if (portion <= 0) continue;
+        left -= portion;
+
+        const used: { id: string; title: string | null; amount: number }[] = [];
+        const targetCents = portion;
+        while (portion > 0) {
+          const src = sources[srcIdx];
+          const take = Math.min(src.surplus - src.taken, portion);
+          src.taken += take;
+          portion -= take;
+          used.push({ id: src.id, title: src.title, amount: fromCents(take) });
+          if (src.taken >= src.surplus) srcIdx += 1;
+        }
+
+        const amount = fromCents(targetCents);
+        const newPaid = fromCents(toCents(target.paidAmount) + targetCents);
+        const upd = await tx.deal.updateMany({
+          where: { id: target.id, version: target.version },
+          data: {
+            paidAmount: newPaid,
+            paymentStatus: paymentStatusFromAmounts(Number(target.amount), newPaid),
+            version: { increment: 1 },
+          },
+        });
+        if (upd.count === 0) {
+          throw new AppError(409, `Сделка «${target.title || target.id.slice(0, 8)}» изменилась — обновите страницу и повторите.`);
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            dealId: target.id,
+            clientId,
+            amount,
+            paidAt,
+            method: 'TRANSFER',
+            kind: 'CREDIT_TRANSFER',
+            note: buildClientCreditNote(used, dto.note),
+            createdBy: user.userId,
+          },
+          select: { id: true },
+        });
+
+        created.push({ paymentId: payment.id, dealId: target.id, title: target.title, amount, newPaid, sources: used });
+      }
+
+      // Источники списываем одним обновлением на сделку, даже если она кормила несколько долгов.
+      for (const src of sources) {
+        if (src.taken <= 0) continue;
+        const newPaid = fromCents(toCents(src.paidAmount) - src.taken);
+        const upd = await tx.deal.updateMany({
+          where: { id: src.id, version: src.version },
+          data: {
+            paidAmount: newPaid,
+            paymentStatus: paymentStatusFromAmounts(Number(src.amount), newPaid),
+            version: { increment: 1 },
+          },
+        });
+        if (upd.count === 0) {
+          throw new AppError(409, 'Сделка-источник была изменена. Обновите страницу и повторите.');
+        }
+      }
+
+      return { created, applied: fromCents(applyTotal), requested: fromCents(requested) };
+    });
+
+    // Формат совпадает с apply-client-credit: по `paymentId` и `sources` из этой записи
+    // работает сторнирование зачёта (reverse-client-credit).
+    for (const c of result.created) {
+      await auditLog({
+        userId: user.userId,
+        action: 'PAYMENT_CREATE',
+        entityType: 'deal',
+        entityId: c.dealId,
+        after: {
+          paymentId: c.paymentId,
+          kind: 'CLIENT_CREDIT_APPLY',
+          amount: c.amount,
+          newPaidAmount: c.newPaid,
+          sources: c.sources,
+          source: 'cashbox-v2',
+        },
+      });
+    }
+
+    res.status(201).json({
+      payments: result.created.map((c) => ({ paymentId: c.paymentId, dealId: c.dealId, title: c.title, amount: c.amount })),
+      appliedAmount: result.applied,
+      requestedAmount: result.requested,
+      partiallyApplied: result.applied + 0.01 < result.requested,
     });
   }),
 );

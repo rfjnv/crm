@@ -46,6 +46,8 @@ export interface ClientPayCard {
   deals: ClientOpenDeal[];
   totalDebt: number;
   prepayment: number;
+  /** Сделки с переплатой — от большей к меньшей, в этом порядке они списываются при зачёте. */
+  creditSources: { dealId: string; title: string | null; surplus: number }[];
   recentPayments: {
     id: string;
     amount: number;
@@ -60,6 +62,14 @@ export interface ClientPayCard {
 export interface ClientPaymentResult {
   payments: { paymentId: string; dealId: string; title: string | null; amount: number; paymentStatus: string }[];
   overpayment: number;
+}
+
+export interface ClientCreditResult {
+  payments: { paymentId: string; dealId: string; title: string | null; amount: number }[];
+  appliedAmount: number;
+  requestedAmount: number;
+  /** Переплаты оказалось меньше запрошенного — например, её успел зачесть другой кассир. */
+  partiallyApplied: boolean;
 }
 
 export const cashboxV2Api = {
@@ -78,4 +88,7 @@ export const cashboxV2Api = {
     receivedById?: string;
   }) =>
     client.post<ClientPaymentResult>(`/cashbox-v2/clients/${clientId}/payments`, body).then((r) => r.data),
+
+  applyCredit: (clientId: string, body: { amount: number; dealIds: string[]; paidAt?: string; note?: string }) =>
+    client.post<ClientCreditResult>(`/cashbox-v2/clients/${clientId}/apply-credit`, body).then((r) => r.data),
 };

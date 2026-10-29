@@ -38,6 +38,12 @@ describe('matchesSearch', () => {
     expect(matchesSearch('Хорезм', 'khorezm')).toBe(true);
   });
 
+  it('«ж» и «дж» находят узбекское «j»: андижан → Andijan', () => {
+    expect(matchesSearch('Andijan Print House', 'андижан')).toBe(true);
+    expect(matchesSearch('Jamshid', 'джамшид')).toBe(true);
+    expect(matchesSearch('Жасур', 'jasur')).toBe(true);
+  });
+
   it('«Баез» и «Баёз» находят обе карточки', () => {
     for (const q of ['Баез', 'Баёз', 'баез']) {
       expect(matchesSearch(baez, q)).toBe(true);

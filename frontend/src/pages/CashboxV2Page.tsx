@@ -480,6 +480,7 @@ function PaymentPanel({
     enabled: open,
   });
 
+  const [mode, setMode] = useState<'cash' | 'credit'>('cash');
   const [selected, setSelected] = useState<string[]>([]);
   const [amount, setAmount] = useState<number | null>(null);
   const [amountTouched, setAmountTouched] = useState(false);
@@ -497,6 +498,7 @@ function PaymentPanel({
       ? [target.dealId]
       : card.deals.map((d) => d.dealId);
     setSelected(preselect);
+    setMode('cash');
     setAmountTouched(false);
     setPaidAt(dayjs());
     setReceivedById(undefined);
@@ -509,16 +511,24 @@ function PaymentPanel({
     [card, selected],
   );
 
-  // Пока кассир сам не трогал сумму, она равна долгу по выбранным сделкам.
+  const isCredit = mode === 'credit';
+  /** Больше, чем есть переплаты и чем долг по выбранным сделкам, зачесть нельзя. */
+  const creditMax = Math.min(card?.prepayment ?? 0, selectedDebt);
+  const fullAmount = isCredit ? creditMax : selectedDebt;
+
+  // Пока кассир сам не трогал сумму, она равна долгу по выбранным сделкам (при зачёте —
+  // сколько хватит переплаты).
   useEffect(() => {
-    if (!amountTouched) setAmount(selectedDebt > 0 ? Math.round(selectedDebt * 100) / 100 : null);
-  }, [selectedDebt, amountTouched]);
+    if (!amountTouched) setAmount(fullAmount > 0 ? Math.round(fullAmount * 100) / 100 : null);
+  }, [fullAmount, amountTouched]);
+
+  const effectiveAmount = isCredit && amount ? Math.min(amount, creditMax) : amount;
 
   /** Повторяет раскладку бэкенда: от старой сделки к новой, остаток — переплатой на последней. */
   const allocation = useMemo(() => {
     const result = new Map<string, number>();
-    if (!card || !amount || amount <= 0) return { byDeal: result, overpayment: 0, lastTitle: undefined };
-    let left = Math.round(amount * 100);
+    if (!card || !effectiveAmount || effectiveAmount <= 0) return { byDeal: result, overpayment: 0, lastTitle: undefined };
+    let left = Math.round(effectiveAmount * 100);
     const chosen = card.deals.filter((d) => selected.includes(d.dealId));
     for (const d of chosen) {
       if (left <= 0) break;
@@ -529,7 +539,55 @@ function PaymentPanel({
     const last = chosen[chosen.length - 1];
     if (left > 0 && last) result.set(last.dealId, (result.get(last.dealId) ?? 0) + left / 100);
     return { byDeal: result, overpayment: left / 100, lastTitle: last?.title || last?.dealId.slice(0, 8) };
-  }, [card, amount, selected]);
+  }, [card, effectiveAmount, selected]);
+
+  /** С каких сделок спишется переплата — тот же порядок, что на бэкенде (от большей). */
+  const creditDrain = useMemo(() => {
+    if (!isCredit || !card || !effectiveAmount) return [];
+    let left = Math.round(effectiveAmount * 100);
+    const out: { dealId: string; title: string | null; amount: number }[] = [];
+    for (const src of card.creditSources) {
+      if (left <= 0) break;
+      const take = Math.min(Math.round(src.surplus * 100), left);
+      out.push({ dealId: src.dealId, title: src.title, amount: take / 100 });
+      left -= take;
+    }
+    return out;
+  }, [isCredit, card, effectiveAmount]);
+
+  const invalidateAll = () => {
+    for (const key of ['cashbox2-to-pay', 'cashbox2-client', 'cashbox', 'finance-debts', 'finance-active-deals']) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
+  const creditMut = useMutation({
+    mutationFn: () => cashboxV2Api.applyCredit(target!.clientId, {
+      amount: effectiveAmount!,
+      dealIds: selected,
+      paidAt: paidAt.isSame(dayjs(), 'day') ? undefined : paidAt.toISOString(),
+      note: note.trim() || undefined,
+    }),
+    onSuccess: (res) => {
+      const debtLeft = (card?.totalDebt ?? 0) - res.appliedAmount;
+      if (res.partiallyApplied) {
+        // Переплату мог успеть израсходовать другой кассир — молча рапортовать нельзя.
+        message.warning(`Зачтено ${formatUZS(res.appliedAmount)} из ${formatUZS(res.requestedAmount)} — больше переплаты нет`, 6);
+      } else {
+        message.success(
+          `Зачтено ${formatUZS(res.appliedAmount)}`
+          + (debtLeft > 0.009 ? ` — остаток ${formatUZS(debtLeft)} можно принять деньгами` : ''),
+        );
+      }
+      invalidateAll();
+      // Долг остался — панель не закрываем: после обновления карточки она сама
+      // переключится на «Деньгами» с оставшимися сделками.
+      if (debtLeft <= 0.009) onClose();
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.error || err?.response?.data?.message || 'Не удалось зачесть переплату');
+    },
+  });
 
   const payMut = useMutation({
     mutationFn: () => cashboxV2Api.payClient(target!.clientId, {
@@ -547,9 +605,7 @@ function PaymentPanel({
         + (res.payments.length > 1 ? ` на ${res.payments.length} ${plural(res.payments.length, 'сделку', 'сделки', 'сделок')}` : ''),
       );
       saveLastMethod(method!);
-      for (const key of ['cashbox2-to-pay', 'cashbox2-client', 'cashbox', 'finance-debts', 'finance-active-deals']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateAll();
       onClose();
     },
     onError: (err: any) => {
@@ -557,11 +613,17 @@ function PaymentPanel({
     },
   });
 
-  const canSubmit = !!card && !!amount && amount > 0 && !!method && selected.length > 0 && !payMut.isPending;
+  const pending = payMut.isPending || creditMut.isPending;
+  const canSubmit = !!card && !!effectiveAmount && effectiveAmount > 0 && (isCredit || !!method)
+    && selected.length > 0 && !pending;
 
   const submit = () => {
     if (!canSubmit) {
-      if (!method) message.warning('Выберите способ оплаты');
+      if (!isCredit && !method) message.warning('Выберите способ оплаты');
+      return;
+    }
+    if (isCredit) {
+      creditMut.mutate();
       return;
     }
     if (allocation.overpayment > 0) {
@@ -598,8 +660,10 @@ function PaymentPanel({
         <ClientCompanyDisplay client={{ id: card.client.id, companyName: card.client.companyName, isSvip: card.client.isSvip }} link />
       ) : 'Оплата'}
       footer={
-        <Button type="primary" size="large" block disabled={!canSubmit} loading={payMut.isPending} onClick={submit}>
-          {amount ? `Провести ${formatUZS(amount)}` : 'Провести'}
+        <Button type="primary" size="large" block disabled={!canSubmit} loading={pending} onClick={submit}>
+          {isCredit
+            ? (effectiveAmount ? `Зачесть ${formatUZS(effectiveAmount)}` : 'Зачесть')
+            : (amount ? `Провести ${formatUZS(amount)}` : 'Провести')}
         </Button>
       }
     >
@@ -619,21 +683,33 @@ function PaymentPanel({
             </Typography.Text>
           )}
 
-          {card.prepayment > 0 && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              title={`У клиента переплата ${formatUZS(card.prepayment)} на других сделках`}
-              description={<>Зачесть её пока можно в <Link to="/finance/cashbox?tab=active">старой кассе</Link>.</>}
-            />
-          )}
-
           {card.deals.length === 0 ? (
-            <Empty description="Открытых долгов нет" style={{ margin: '24px 0' }} />
+            <Empty
+              description={card.prepayment > 0
+                ? `Открытых долгов нет · переплата ${formatUZS(card.prepayment)}`
+                : 'Открытых долгов нет'}
+              style={{ margin: '24px 0' }}
+            />
           ) : (
             <>
-              <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>Сумма</Typography.Text>
+              {/* Переплата на других сделках — тоже способ закрыть долг, поэтому режим
+                  стоит рядом с суммой, а не в отдельной кассе. */}
+              {card.prepayment > 0 && (
+                <Segmented
+                  block
+                  value={mode}
+                  onChange={(v) => { setMode(v as 'cash' | 'credit'); setAmountTouched(false); }}
+                  options={[
+                    { label: 'Деньгами', value: 'cash' },
+                    { label: <span title="Зачёт переплаты с других сделок клиента">Зачёт · {formatUZS(card.prepayment)}</span>, value: 'credit' },
+                  ]}
+                  style={{ marginBottom: 14 }}
+                />
+              )}
+
+              <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
+                {isCredit ? 'Сколько зачесть' : 'Сумма'}
+              </Typography.Text>
               <InputNumber
                 autoFocus
                 size="large"
@@ -645,26 +721,65 @@ function PaymentPanel({
                 formatter={moneyFormatter}
                 parser={(v) => Number(moneyParser(v))}
               />
-              {amountTouched && amount !== selectedDebt && selectedDebt > 0 && (
+              {amountTouched && amount !== fullAmount && fullAmount > 0 && (
                 <Button
                   type="link"
                   size="small"
                   style={{ padding: 0 }}
                   onClick={() => setAmountTouched(false)}
                 >
-                  Весь долг: {formatUZS(selectedDebt)}
+                  {isCredit ? 'Максимум' : 'Весь долг'}: {formatUZS(fullAmount)}
                 </Button>
               )}
+              {isCredit && !!amount && amount > creditMax + 0.009 && (
+                <Typography.Text type="warning" style={{ display: 'block', fontSize: 12 }}>
+                  Зачтётся не больше {formatUZS(creditMax)}
+                  {creditMax < (card.prepayment - 0.009) ? ' — это весь долг по выбранным сделкам' : ' — больше переплаты нет'}
+                </Typography.Text>
+              )}
 
-              <Typography.Text strong style={{ display: 'block', margin: '14px 0 6px' }}>Способ оплаты</Typography.Text>
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                options={METHODS}
-                style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
-              />
+              {isCredit ? (
+                <div style={{ marginTop: 14 }}>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
+                    Спишется со сделок
+                    <Typography.Text type="secondary" style={{ fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
+                      деньги в кассу не поступают
+                    </Typography.Text>
+                  </Typography.Text>
+                  {card.creditSources.map((src) => {
+                    const take = creditDrain.find((d) => d.dealId === src.dealId)?.amount ?? 0;
+                    return (
+                      <div
+                        key={src.dealId}
+                        style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '2px 0', opacity: take > 0 ? 1 : 0.55 }}
+                      >
+                        <Link
+                          to={`/deals/${src.dealId}`}
+                          style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {src.title || src.dealId.slice(0, 8)}
+                        </Link>
+                        <span style={{ whiteSpace: 'nowrap', color: tk.colorTextSecondary }}>
+                          {take > 0 && <span style={{ color: tk.colorText }}>−{formatUZS(take)} </span>}
+                          из {formatUZS(src.surplus)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  <Typography.Text strong style={{ display: 'block', margin: '14px 0 6px' }}>Способ оплаты</Typography.Text>
+                  <Radio.Group
+                    optionType="button"
+                    buttonStyle="solid"
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                    options={METHODS}
+                    style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
+                  />
+                </>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '18px 0 6px' }}>
                 <Typography.Text strong>
@@ -749,7 +864,7 @@ function PaymentPanel({
               >
                 {moreOpen
                   ? 'Скрыть'
-                  : `Дата, кто принял, комментарий${!paidAt.isSame(dayjs(), 'day') || receivedById || note ? ' · изменено' : ''}`}
+                  : `${isCredit ? 'Дата, комментарий' : 'Дата, кто принял, комментарий'}${!paidAt.isSame(dayjs(), 'day') || (!isCredit && receivedById) || note ? ' · изменено' : ''}`}
               </Button>
               {moreOpen && (
                 <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
@@ -761,15 +876,17 @@ function PaymentPanel({
                     disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))}
                     style={{ width: '100%' }}
                   />
-                  <Select
-                    allowClear
-                    showSearch
-                    placeholder="Принял: вы"
-                    value={receivedById}
-                    onChange={setReceivedById}
-                    options={staff}
-                    filterOption={(input, option) => matchesSearch(String(option?.label ?? ''), input)}
-                  />
+                  {!isCredit && (
+                    <Select
+                      allowClear
+                      showSearch
+                      placeholder="Принял: вы"
+                      value={receivedById}
+                      onChange={setReceivedById}
+                      options={staff}
+                      filterOption={(input, option) => matchesSearch(String(option?.label ?? ''), input)}
+                    />
+                  )}
                   <Input.TextArea
                     rows={2}
                     maxLength={500}

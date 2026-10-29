@@ -32,6 +32,9 @@ function normalizeWith(input: string, yoAsE: boolean): string {
   return toLatin(s)
     // «х» транслитерируется в «h», а в латинских названиях пишут «kh» (Bukhara, Khorezm).
     .replace(/kh/g, 'h')
+    // «ж» и «дж» → «zh»/«dzh», а в узбекской латинице это «j» (Andijan, Jamshid).
+    .replace(/dzh/g, 'j')
+    .replace(/zh/g, 'j')
     .replace(SEARCH_PUNCT_RE, '')
     .replace(/\s+/g, ' ')
     .trim();
