@@ -30,8 +30,9 @@ async function hydrate(rows: ChangeRow[]) {
         status: true,
         amount: true,
         paymentMethod: true,
+        transferInn: true,
         client: { select: { id: true, companyName: true, inn: true } },
-        contract: { select: { id: true, contractNumber: true } },
+        contract: { select: { id: true, contractNumber: true, contractType: true, startDate: true } },
         manager: { select: { id: true, fullName: true } },
       },
     }),
@@ -39,6 +40,13 @@ async function hydrate(rows: ChangeRow[]) {
   ]);
   const dealById = new Map(deals.map((d) => [d.id, d]));
   const nameById = new Map(users.map((u) => [u.id, u.fullName]));
+  // ИНН — тот, на который шло перечисление, иначе ИНН клиента; юр. имя — из справочника «ИНН и сверка»
+  const innOf = (d: (typeof deals)[number]) => (d.transferInn || d.client?.inn || '').replace(/\D/g, '') || null;
+  const inns = [...new Set(deals.map(innOf).filter((x): x is string => !!x))];
+  const registry = inns.length
+    ? await prisma.innRegistry.findMany({ where: { inn: { in: inns } }, select: { inn: true, legalName: true } })
+    : [];
+  const legalNameByInn = new Map(registry.map((r) => [r.inn, r.legalName]));
   return rows.map((r) => {
     const deal = dealById.get(r.dealId);
     return {
@@ -55,7 +63,10 @@ async function hydrate(rows: ChangeRow[]) {
       changedBy: { id: r.changedById, fullName: nameById.get(r.changedById) ?? '—' },
       reviewedBy: r.reviewedById ? { id: r.reviewedById, fullName: nameById.get(r.reviewedById) ?? '—' } : null,
       deal: deal
-        ? { ...deal, amount: Number(deal.amount) }
+        ? (() => {
+          const inn = innOf(deal);
+          return { ...deal, amount: Number(deal.amount), inn, legalName: inn ? legalNameByInn.get(inn) ?? null : null };
+        })()
         : null,
     };
   });
@@ -81,7 +92,7 @@ router.get(
       orderBy: q.status === 'open' ? { lastChangedAt: 'desc' } : { reviewedAt: 'desc' },
       take: q.status === 'open' ? 500 : 200,
     });
-    res.json(await hydrate(rows));
+    res.json((await hydrate(rows)).filter((r) => r.deal?.contract));
   }),
 );
 
@@ -90,12 +101,18 @@ router.get(
   '/summary',
   authorize(...ROLES),
   asyncHandler(async (_req: Request, res: Response) => {
-    const where: Prisma.DealAccountingChangeWhereInput = { reviewedAt: null };
-    const [open, latest] = await Promise.all([
-      prisma.dealAccountingChange.count({ where }),
-      prisma.dealAccountingChange.findMany({ where, orderBy: { lastChangedAt: 'desc' }, take: 5 }),
-    ]);
-    res.json({ open, latest: await hydrate(latest) });
+    // Непроверенных записей немного — фильтр «с договором» дешевле сделать здесь, чем держать связь
+    const rows = await prisma.dealAccountingChange.findMany({
+      where: { reviewedAt: null },
+      orderBy: { lastChangedAt: 'desc' },
+      take: 500,
+    });
+    const withContract = new Set((await prisma.deal.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.dealId))] }, contractId: { not: null } },
+      select: { id: true },
+    })).map((d) => d.id));
+    const open = rows.filter((r) => withContract.has(r.dealId));
+    res.json({ open: open.length, latest: await hydrate(open.slice(0, 5)) });
   }),
 );
 

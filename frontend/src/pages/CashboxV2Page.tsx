@@ -569,7 +569,8 @@ export default function CashboxV2Page() {
 
 // ─────────────────────────── Панель оплаты ───────────────────────────
 
-function PaymentPanel({
+/** Экспортируется для дашборда бухгалтера — принять оплату, не уходя в кассу. */
+export function PaymentPanel({
   target,
   staff,
   onClose,

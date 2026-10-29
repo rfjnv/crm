@@ -8,6 +8,7 @@ import { accountingChangesApi, type AccountingChange } from '../api/accountingCh
 import AccountingChangeLines from '../components/AccountingChangeLines';
 import BackButton from '../components/BackButton';
 import DealStatusTag from '../components/DealStatusTag';
+import AccountingDealDocs from '../components/AccountingDealDocs';
 import MobileCardList from '../components/MobileCardList';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -69,12 +70,9 @@ export default function DealChangesPage() {
               <ClientCompanyDisplay client={r.deal.client} link secondary />
             </div>
           )}
-          <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <AccountingDealDocs deal={r.deal} />
+          <div style={{ marginTop: 6 }}>
             <DealStatusTag status={r.deal.status} />
-            {r.deal.contract
-              ? <Tag style={{ marginInlineEnd: 0 }}>Договор №{r.deal.contract.contractNumber}</Tag>
-              : <Tag color="error" style={{ marginInlineEnd: 0 }}>Без договора</Tag>}
-            {r.deal.client?.inn && <Tag style={{ marginInlineEnd: 0 }}>ИНН {r.deal.client.inn}</Tag>}
           </div>
         </>
       ) : (

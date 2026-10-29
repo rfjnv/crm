@@ -29,8 +29,11 @@ export interface AccountingChange {
     status: DealStatus;
     amount: number;
     paymentMethod: string | null;
+    /** ИНН перечисления (или клиента) и юр. имя из справочника «ИНН и сверка». */
+    inn: string | null;
+    legalName: string | null;
     client: { id: string; companyName: string; inn: string | null } | null;
-    contract: { id: string; contractNumber: string } | null;
+    contract: { id: string; contractNumber: string; contractType: 'ONE_TIME' | 'ANNUAL'; startDate: string } | null;
     manager: { id: string; fullName: string } | null;
   } | null;
 }

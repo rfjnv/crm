@@ -37,6 +37,8 @@ export interface AccountingSnapshot {
   title: string;
   status: DealStatus;
   paymentMethod: string | null;
+  /** Без договора бухгалтер документов не делал — такие сделки не отслеживаем. */
+  contractId?: string | null;
   amount: number;
   discount: number;
   includeVat: boolean;
@@ -62,6 +64,7 @@ export async function takeAccountingSnapshot(dealId: string): Promise<Accounting
       title: true,
       status: true,
       paymentMethod: true,
+      contractId: true,
       amount: true,
       discount: true,
       includeVat: true,
@@ -81,6 +84,7 @@ export async function takeAccountingSnapshot(dealId: string): Promise<Accounting
     title: deal.title,
     status: deal.status,
     paymentMethod: deal.paymentMethod,
+    contractId: deal.contractId,
     amount: num(deal.amount),
     discount: num(deal.discount),
     includeVat: deal.includeVat,
@@ -254,9 +258,9 @@ export async function recordAccountingChange(dealId: string, before: AccountingS
   );
 }
 
-/** Нужно ли следить за сделкой: перечисление, и бухгалтер её уже видел. */
+/** Нужно ли следить за сделкой: перечисление с прикреплённым договором, и бухгалтер её уже видел. */
 function isTracked(s: AccountingSnapshot): boolean {
-  return s.paymentMethod === 'TRANSFER' && !NOT_YET_AT_ACCOUNTANT.includes(s.status);
+  return s.paymentMethod === 'TRANSFER' && !!s.contractId && !NOT_YET_AT_ACCOUNTANT.includes(s.status);
 }
 
 /**
