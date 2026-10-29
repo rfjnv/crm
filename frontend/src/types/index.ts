@@ -84,7 +84,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   MANAGER: ['manage_deals', 'manage_inventory', 'view_all_clients', 'edit_client'],
   // HR работает и в отделе ВЭД — те же права, что у FOREIGN_TRADE
   HR: ['manage_inventory', 'create_inventory_in', 'manage_products', 'view_all_deals', 'view_all_clients', 'manage_contract', 'manage_expenses', 'manage_suppliers', 'manage_import_orders', 'view_import_orders'],
-  ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses', 'view_import_orders'],
+  ACCOUNTANT: ['finance_approve', 'view_all_deals', 'manage_contract', 'manage_expenses'],
   FOREIGN_TRADE: ['manage_inventory', 'create_inventory_in', 'manage_products', 'view_all_deals', 'view_all_clients', 'manage_contract', 'manage_expenses', 'manage_suppliers', 'manage_import_orders', 'view_import_orders'],
   WAREHOUSE: ['stock_confirm', 'manage_inventory', 'view_all_deals', 'create_inventory_in'],
   WAREHOUSE_MANAGER: ['stock_confirm', 'confirm_shipment', 'manage_inventory', 'view_all_deals', 'create_inventory_in', 'shipment_execute', 'manage_expenses', 'loading_execute'],

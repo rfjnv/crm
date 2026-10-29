@@ -164,7 +164,8 @@ export default function CashboxV2Page() {
     }, { replace: true });
   }, [setSearchParams]);
 
-  const [search, setSearch] = useState('');
+  // ?q= — поиск с дашборда бухгалтера
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const [view, setView] = useState<'clients' | 'deals'>('clients');
   const [managerId, setManagerId] = useState<string>();
   const [panel, setPanel] = useState<{ clientId: string; dealId?: string } | null>(null);

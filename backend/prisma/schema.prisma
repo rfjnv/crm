@@ -1012,6 +1012,32 @@ model ClientStockEvent {
 
 // ==================== AUDIT ====================
 
+/**
+ * Сделка на перечисление изменилась (цены, количество, товары, сумма, скидка, НДС, способ оплаты)
+ * после того, как попала к бухгалтеру: документы (счёт-фактура, акт сверки) могли устареть.
+ * Пока запись не проверена, новые правки той же сделки дописываются в неё: before — как было
+ * при последней проверке, after — как сейчас. Связей нет нарочно: таблица живёт сама по себе.
+ */
+model DealAccountingChange {
+  id            String    @id @default(uuid())
+  dealId        String    @map("deal_id")
+  before        Json
+  after         Json
+  changes       Json
+  /** Кто правил последним */
+  changedById   String    @map("changed_by_id")
+  editCount     Int       @default(1) @map("edit_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  lastChangedAt DateTime  @default(now()) @map("last_changed_at")
+  reviewedAt    DateTime? @map("reviewed_at")
+  reviewedById  String?   @map("reviewed_by_id")
+  reviewNote    String?   @map("review_note")
+
+  @@index([dealId])
+  @@index([reviewedAt, lastChangedAt])
+  @@map("deal_accounting_changes")
+}
+
 model AuditLog {
   id         String      @id @default(uuid())
   userId     String      @map("user_id")

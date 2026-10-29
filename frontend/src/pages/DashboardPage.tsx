@@ -34,6 +34,8 @@ import type { Permission, UserRole } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
 import MissedCallsWidget from '../components/calls/MissedCallsWidget';
+import AccountantBlocks from '../components/dashboard/AccountantBlocks';
+import { userHasRole } from '../lib/roles';
 
 const DEFAULT_GOAL = 250_000_000;
 
@@ -159,6 +161,7 @@ export default function DashboardPage() {
   // Без доступа к стратегическим деньгам дашборд показывает только счётчики: графики выручки,
   // ABC и цели скрываются целиком — сервер их всё равно обнулит, а пустые графики только путают.
   const canSeeMoney = (user?.moneyAccess ?? 'FULL') === 'FULL';
+  const isAccountant = userHasRole(user, 'ACCOUNTANT');
   const showExtras = (isAdmin || role === 'MANAGER') && canSeeMoney;
 
   const analyticsPeriodQuery = useMemo((): AnalyticsPeriodQuery => {
@@ -668,6 +671,13 @@ export default function DashboardPage() {
               )}
             </Row>
           </Card>
+        </div>
+      )}
+
+      {/* Бухгалтеру: изменения в сделках на перечисление и быстрый вход в «Кассу 2.0» */}
+      {isAccountant && (
+        <div className={isMobile ? 'section' : undefined}>
+          <AccountantBlocks cardStyle={card} showCashbox={canSeeMoney} />
         </div>
       )}
 

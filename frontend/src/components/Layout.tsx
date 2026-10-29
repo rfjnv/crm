@@ -90,6 +90,7 @@ import { useMenuDragPin } from '../hooks/useMenuDragPin';
 import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
+import { accountingChangesApi } from '../api/accountingChanges.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
 import { useActivityTracking } from '../hooks/useActivityTracking';
@@ -312,6 +313,14 @@ export default function Layout() {
     queryKey: ['unread-counts'],
     queryFn: conversationsApi.getUnreadCounts,
     refetchInterval: 30_000,
+  });
+
+  // Изменения в сделках на перечисление, которые бухгалтер ещё не сверил
+  const { data: dealChanges } = useQuery({
+    queryKey: ['accounting-changes-summary'],
+    queryFn: accountingChangesApi.summary,
+    enabled: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'),
+    refetchInterval: 60_000,
   });
 
   const totalUnread = unreadCounts
@@ -575,6 +584,16 @@ export default function Layout() {
           icon: <AuditOutlined />,
           label: <Link to="/finance/review">На проверке</Link>,
         },
+        {
+          key: '/finance/deal-changes',
+          icon: <HistoryOutlined />,
+          label: (
+            <Link to="/finance/deal-changes">
+              <span>Изменения в сделках</span>
+              {(dealChanges?.open ?? 0) > 0 && <Badge count={dealChanges?.open} size="small" style={{ marginLeft: 8 }} />}
+            </Link>
+          ),
+        },
       ]
       : []),
     ...(hasPermission('manage_expenses')
@@ -606,7 +625,7 @@ export default function Layout() {
       : []),
 
     // ── ВЭД ──
-    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'FOREIGN_TRADE', 'ACCOUNTANT') || hasPermission('view_import_orders')
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'FOREIGN_TRADE') || hasPermission('view_import_orders')
       ? [
         { type: 'divider' as const },
         ...(showGroupLabels ? [{ type: 'group' as const, label: 'ВЭД' }] : []),

@@ -12,10 +12,13 @@ import {
   assignLoadingDto, assignDriverDto, startDeliveryDto,
   warehouseOverrideDealDto, warehouseDeletePaymentDto,
 } from './deals.dto';
+import { DEAL_ID_IN_PATH, trackDealAccountingChanges } from '../accounting-changes/accounting-changes.service';
 
 const router = Router();
 
 router.use(authenticate);
+// Правки сделок на перечисление после бухгалтера → «Изменения в сделках»
+router.use(trackDealAccountingChanges((req) => DEAL_ID_IN_PATH.exec(req.path)?.[1]));
 
 // Workflow Queues (MUST be before /:id to avoid param conflicts)
 router.get('/finance-queue', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.findForFinanceReview.bind(dealsController)));

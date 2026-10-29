@@ -13,10 +13,12 @@ import { AuthUser } from '../../lib/scope';
 import { listAuditLogsForSuperAdmin } from './admin.audit-logs.service';
 import { getDailyActivityReport } from '../activity-tracking/activity-tracking.service';
 import { backdatedDealsDto, backdatedDealsService } from './backdatedDeals.service';
+import { ADMIN_DEAL_OVERRIDE_PATH, trackDealAccountingChanges } from '../accounting-changes/accounting-changes.service';
 
 const router = Router();
 
 router.use(authenticate);
+router.use(trackDealAccountingChanges((req) => ADMIN_DEAL_OVERRIDE_PATH.exec(req.path)?.[1]));
 
 function getUser(req: Request): AuthUser {
   return { userId: req.user!.userId, role: req.user!.role as Role, permissions: req.user!.permissions || [] };

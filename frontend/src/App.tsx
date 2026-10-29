@@ -67,6 +67,7 @@ const ContractsPage = lazy(() => import('./pages/ContractsPage'));
 const ArchivedDealsPage = lazy(() => import('./pages/ArchivedDealsPage'));
 const CashboxPage = lazy(() => import('./pages/CashboxPage'));
 const CashboxV2Page = lazy(() => import('./pages/CashboxV2Page'));
+const DealChangesPage = lazy(() => import('./pages/DealChangesPage'));
 const CompanyBalancePage = lazy(() => import('./pages/CompanyBalancePage'));
 const ContractDetailPage = lazy(() => import('./pages/ContractDetailPage'));
 const PowerOfAttorneyPage = lazy(() => import('./pages/PowerOfAttorneyPage'));
@@ -291,6 +292,9 @@ export default function App() {
                   <Route path="/deals/archived" element={<ArchivedDealsPage />} />
                 </Route>
                 <Route path="/finance/review" element={<FinanceReviewPage />} />
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT']} />}>
+                  <Route path="/finance/deal-changes" element={<DealChangesPage />} />
+                </Route>
                 <Route path="/finance/expenses" element={<MoneyAccessGuard><ExpensesPage /></MoneyAccessGuard>} />
                 {/* Роли совпадают с FINANCE_ROLES на бэкенде и с условием показа пункта меню:
                     иначе по прямой ссылке страница открывалась, а API отвечал 403. */}

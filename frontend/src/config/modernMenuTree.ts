@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChartBar,
   ChatCircle,
+  ClockCounterClockwise,
   CurrencyCircleDollar,
   Files,
   Gauge,
@@ -220,6 +221,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
         { key: '/finance/cashbox-v2', to: '/finance/cashbox-v2', text: 'Касса 2.0', icon: CashRegister, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR') },
         { key: '/finance/cashbox?tab=debtors', to: '/finance/cashbox?tab=debtors', text: 'Долги', icon: Receipt, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/review', to: '/finance/review', text: 'На проверке', icon: Scales, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
+        { key: '/finance/deal-changes', to: '/finance/deal-changes', text: 'Изменения в сделках', icon: ClockCounterClockwise, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/expenses', to: '/finance/expenses', text: 'Расходы', icon: Wallet, show: hasPermission('manage_expenses') },
         { key: '/finance/balance', to: '/finance/balance', text: 'Баланс компании', icon: Bank, show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER') },
       ],
@@ -228,7 +230,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
       key: 'ved',
       title: 'ВЭД',
       items: (() => {
-        const ved = hasRole('SUPER_ADMIN', 'ADMIN', 'FOREIGN_TRADE', 'ACCOUNTANT') || hasPermission('view_import_orders');
+        const ved = hasRole('SUPER_ADMIN', 'ADMIN', 'FOREIGN_TRADE') || hasPermission('view_import_orders');
         return [
           { key: '/foreign-trade/suppliers', to: '/foreign-trade/suppliers', text: 'Поставщики', icon: Factory, show: ved },
           { key: '/foreign-trade/import-orders', to: '/foreign-trade/import-orders', text: 'Импорт-заказы', icon: Boat, show: ved },
