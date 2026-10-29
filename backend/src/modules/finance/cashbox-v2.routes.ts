@@ -14,6 +14,7 @@ import { tashkentStartOfToday } from '../../lib/tz';
 import { storeFinanceTelegramLog } from '../telegram/telegram-deal-groups.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
 import { resolveUsdPart, type UsdPart } from '../../lib/paymentUsd';
+import { buildSearchVariants } from '../../lib/translit';
 
 /**
  * «Касса 2.0» — приём денег за минимум шагов.
@@ -124,6 +125,65 @@ router.get(
   }),
 );
 
+// ──── ПОИСК КЛИЕНТА БЕЗ ДОЛГА ────
+/**
+ * Список «К оплате» показывает только должников, а предоплату вносят и клиенты, у которых
+ * всё оплачено. Поиск находит их по имени или телефону — среди тех, у кого есть
+ * незакрытая сделка, потому что деньги можно внести только на сделку.
+ */
+const PREPAY_DEAL_WHERE: Prisma.DealWhereInput = {
+  isArchived: false,
+  status: { notIn: ['CLOSED', 'CANCELED', 'REJECTED'] },
+};
+
+router.get(
+  '/clients-search',
+  authorize(...FINANCE_ROLES),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = authUser(req);
+    const q = String(req.query.q || '').trim();
+    const variants = q.length >= 2 ? buildSearchVariants(q) : [];
+    const digits = q.replace(/\D/g, '');
+    if (variants.length === 0 && digits.length < 4) {
+      res.json({ clients: [] });
+      return;
+    }
+
+    const textMatch: Prisma.ClientWhereInput[] = variants.flatMap((v) => [
+      { companyName: { contains: v, mode: 'insensitive' as const } },
+      { contactName: { contains: v, mode: 'insensitive' as const } },
+    ]);
+    // Телефоны хранятся как «+998 XX XXX XX XX» — ищем последние цифры и в такой записи, и слитно.
+    if (digits.length >= 4) {
+      const tail = digits.slice(-7);
+      const spaced = tail.length === 7 ? `${tail.slice(0, 3)} ${tail.slice(3, 5)} ${tail.slice(5)}` : tail;
+      textMatch.push({ phone: { contains: spaced } }, { phone: { contains: tail } });
+    }
+
+    const scope: Prisma.DealWhereInput = { ...PREPAY_DEAL_WHERE, ...ownerScope(user) };
+    const clients = await prisma.client.findMany({
+      where: { OR: textMatch, deals: { some: scope } },
+      select: {
+        id: true,
+        companyName: true,
+        isSvip: true,
+        _count: { select: { deals: { where: scope } } },
+      },
+      orderBy: { companyName: 'asc' },
+      take: 10,
+    });
+
+    res.json({
+      clients: clients.map((c) => ({
+        clientId: c.id,
+        clientName: c.companyName,
+        clientIsSvip: !!c.isSvip,
+        activeDeals: c._count.deals,
+      })),
+    });
+  }),
+);
+
 // ──── ЧЕКИ К ПРОБИТИЮ ────
 /**
  * Сделки, по которым деньги уже пришли, а чек не отмечен.
@@ -222,6 +282,7 @@ router.get(
 
     let prepayment = 0;
     const openDeals = [];
+    const prepayDeals = [];
     const creditSources: { dealId: string; title: string | null; surplus: number }[] = [];
     for (const d of allDeals) {
       const amount = Number(d.amount);
@@ -240,6 +301,19 @@ router.get(
           amount,
           paidAmount,
           remaining,
+          createdAt: d.createdAt,
+          manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
+        });
+      } else if (d.status !== 'CLOSED') {
+        // Оплаченная, но ещё не закрытая сделка — на неё вносят предоплату вперёд.
+        prepayDeals.push({
+          dealId: d.id,
+          title: d.title,
+          status: d.status,
+          contractNumber: d.contract?.contractNumber ?? null,
+          amount,
+          paidAmount,
+          remaining: 0,
           createdAt: d.createdAt,
           manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
         });
@@ -264,6 +338,8 @@ router.get(
       client: { ...client, isSvip: !!client.isSvip },
       deals: openDeals,
       totalDebt: openDeals.reduce((s, d) => s + d.remaining, 0),
+      // Новые сверху: предоплату обычно вносят на последний заказ.
+      prepayDeals: prepayDeals.reverse(),
       prepayment,
       // Порядок списания при зачёте — от большей переплаты, как в apply-client-credit.
       creditSources: creditSources.sort((a, b) => b.surplus - a.surplus),

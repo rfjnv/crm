@@ -21,6 +21,7 @@ import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { downloadCsv } from '../utils/csv';
 import { UsdPaymentTag } from '../components/UsdPaymentFields';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { getFirstName } from '../lib/name-utils';
 import type { DealStatus } from '../types';
 
@@ -227,11 +228,28 @@ export default function CashboxV2Page() {
     return [...map.values()].sort((a, b) => b.debt - a.debt);
   }, [filteredDeals]);
 
+  // В «К оплате» только должники; клиента без долга (пришёл с предоплатой) ищем на сервере.
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const { data: searchHits } = useQuery({
+    queryKey: ['cashbox2-client-search', debouncedSearch],
+    queryFn: () => cashboxV2Api.searchClients(debouncedSearch),
+    enabled: debouncedSearch.length >= 2,
+    staleTime: 30_000,
+  });
+  const noDebtClients = useMemo(() => {
+    if (!search.trim() || !searchHits) return [];
+    const debtors = new Set((toPay?.deals ?? []).map((d) => d.clientId));
+    return searchHits.filter((c) => !debtors.has(c.clientId));
+  }, [searchHits, toPay, search]);
+
+  const emptyToPay = !search ? 'Долгов нет' : noDebtClients.length > 0 ? 'Должников не найдено' : 'Ничего не найдено';
+
   const openClient = (clientId: string, dealId?: string) => setPanel({ clientId, dealId });
 
   // Enter в поиске при единственном совпадении сразу открывает оплату.
   const onSearchEnter = () => {
     if (clientRows.length === 1) openClient(clientRows[0].clientId);
+    else if (clientRows.length === 0 && noDebtClients.length === 1) openClient(noDebtClients[0].clientId);
   };
 
   const clientColumns = [
@@ -385,7 +403,7 @@ export default function CashboxV2Page() {
           <List
             loading={toPayLoading}
             dataSource={clientRows}
-            locale={{ emptyText: <Empty description={search ? 'Ничего не найдено' : 'Долгов нет'} /> }}
+            locale={{ emptyText: <Empty description={emptyToPay} /> }}
             pagination={{ pageSize: 20, size: 'small' }}
             renderItem={(r) => (
               <Card
@@ -411,7 +429,7 @@ export default function CashboxV2Page() {
           <List
             loading={toPayLoading}
             dataSource={filteredDeals}
-            locale={{ emptyText: <Empty description={search ? 'Ничего не найдено' : 'Долгов нет'} /> }}
+            locale={{ emptyText: <Empty description={emptyToPay} /> }}
             pagination={{ pageSize: 20, size: 'small' }}
             renderItem={(r) => (
               <Card
@@ -441,7 +459,7 @@ export default function CashboxV2Page() {
           size="middle"
           pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
           onRow={(r) => ({ onClick: () => openClient(r.clientId), style: { cursor: 'pointer' } })}
-          locale={{ emptyText: search ? 'Ничего не найдено' : 'Долгов нет' }}
+          locale={{ emptyText: emptyToPay }}
         />
       ) : (
         <Table
@@ -452,8 +470,33 @@ export default function CashboxV2Page() {
           size="middle"
           pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
           onRow={(r) => ({ onClick: () => openClient(r.clientId, r.dealId), style: { cursor: 'pointer' } })}
-          locale={{ emptyText: search ? 'Ничего не найдено' : 'Долгов нет' }}
+          locale={{ emptyText: emptyToPay }}
         />
+      )}
+
+      {noDebtClients.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
+            Без долга — можно внести предоплату
+          </Typography.Text>
+          {noDebtClients.map((c) => (
+            <Card
+              key={c.clientId}
+              size="small"
+              hoverable
+              style={{ marginBottom: 6 }}
+              styles={{ body: { padding: '8px 12px' } }}
+              onClick={() => openClient(c.clientId)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <ClientCompanyDisplay client={{ id: c.clientId, companyName: c.clientName, isSvip: c.clientIsSvip }} />
+                <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                  {c.activeDeals} {plural(c.activeDeals, 'сделка в работе', 'сделки в работе', 'сделок в работе')}
+                </Typography.Text>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
     </>
   );
@@ -565,7 +608,10 @@ function PaymentPanel({
     if (!card || !target || card.client.id !== target.clientId) return;
     const preselect = target.dealId && card.deals.some((d) => d.dealId === target.dealId)
       ? [target.dealId]
-      : card.deals.map((d) => d.dealId);
+      : card.deals.length > 0
+        ? card.deals.map((d) => d.dealId)
+        // Долга нет — предоплата ложится на одну сделку, по умолчанию на самую новую.
+        : card.prepayDeals.slice(0, 1).map((d) => d.dealId);
     setSelected(preselect);
     setMode('cash');
     setAmountTouched(false);
@@ -576,6 +622,14 @@ function PaymentPanel({
     setUsdOn(false);
     setUsdAmount(null);
   }, [card, target]);
+
+  /**
+   * Долгов нет, но есть оплаченные сделки в работе — клиент вносит деньги вперёд.
+   * Старая касса позволяла это на вкладке «Активные»; здесь та же оплата, просто сумма
+   * целиком ложится переплатой на выбранную сделку, и её потом можно зачесть.
+   */
+  const isPrepay = !!card && card.deals.length === 0 && card.prepayDeals.length > 0;
+  const listDeals = useMemo(() => (card ? (isPrepay ? card.prepayDeals : card.deals) : []), [card, isPrepay]);
 
   const selectedDebt = useMemo(
     () => (card?.deals ?? []).filter((d) => selected.includes(d.dealId)).reduce((s, d) => s + d.remaining, 0),
@@ -615,7 +669,7 @@ function PaymentPanel({
     const result = new Map<string, number>();
     if (!card || !effectiveAmount || effectiveAmount <= 0) return { byDeal: result, overpayment: 0, lastTitle: undefined };
     let left = Math.round(effectiveAmount * 100);
-    const chosen = card.deals.filter((d) => selected.includes(d.dealId));
+    const chosen = listDeals.filter((d) => selected.includes(d.dealId));
     for (const d of chosen) {
       if (left <= 0) break;
       const take = Math.min(Math.round(d.remaining * 100), left);
@@ -625,7 +679,7 @@ function PaymentPanel({
     const last = chosen[chosen.length - 1];
     if (left > 0 && last) result.set(last.dealId, (result.get(last.dealId) ?? 0) + left / 100);
     return { byDeal: result, overpayment: left / 100, lastTitle: last?.title || last?.dealId.slice(0, 8) };
-  }, [card, effectiveAmount, selected]);
+  }, [card, listDeals, effectiveAmount, selected]);
 
   /** С каких сделок спишется переплата — тот же порядок, что на бэкенде (от большей). */
   const creditDrain = useMemo(() => {
@@ -681,7 +735,7 @@ function PaymentPanel({
    */
   const offerReceipt = (paidDealIds: string[]) => {
     const dealIds = paidDealIds.filter((id) => {
-      const d = card?.deals.find((x) => x.dealId === id);
+      const d = listDeals.find((x) => x.dealId === id);
       return d && receipt.canPunch(d.status);
     });
     if (dealIds.length === 0) return;
@@ -755,7 +809,8 @@ function PaymentPanel({
       creditMut.mutate();
       return;
     }
-    if (allocation.overpayment > 0) {
+    // При предоплате «сумма больше долга» и есть цель — переспрашивать незачем.
+    if (allocation.overpayment > 0 && !isPrepay) {
       Modal.confirm({
         title: 'Сумма больше долга',
         content: (
@@ -775,6 +830,11 @@ function PaymentPanel({
   };
 
   const toggleDeal = (dealId: string, checked: boolean) => {
+    // Предоплата — всегда на одну сделку: иначе вся сумма молча ушла бы на самую новую.
+    if (isPrepay) {
+      setSelected([dealId]);
+      return;
+    }
     setSelected((prev) => (checked ? [...prev, dealId] : prev.filter((id) => id !== dealId)));
   };
 
@@ -792,7 +852,9 @@ function PaymentPanel({
         <Button type="primary" size="large" block disabled={!canSubmit} loading={pending} onClick={submit}>
           {isCredit
             ? (effectiveAmount ? `Зачесть ${formatUZS(effectiveAmount)}` : 'Зачесть')
-            : (amount ? `Провести ${formatUZS(amount)}` : 'Провести')}
+            : isPrepay
+              ? (amount ? `Внести предоплату ${formatUZS(amount)}` : 'Внести предоплату')
+              : (amount ? `Провести ${formatUZS(amount)}` : 'Провести')}
         </Button>
       }
     >
@@ -812,18 +874,27 @@ function PaymentPanel({
             </Typography.Text>
           )}
 
-          {card.deals.length === 0 ? (
+          {listDeals.length === 0 ? (
             <Empty
               description={card.prepayment > 0
-                ? `Открытых долгов нет · переплата ${formatUZS(card.prepayment)}`
-                : 'Открытых долгов нет'}
+                ? `Долгов и сделок в работе нет · переплата ${formatUZS(card.prepayment)}`
+                : 'Долгов и сделок в работе нет'}
               style={{ margin: '24px 0' }}
             />
           ) : (
             <>
+              {isPrepay && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 14 }}
+                  title="Долга нет — это предоплата"
+                  description={`Сумма ляжет переплатой на выбранную сделку${card.prepayment > 0 ? ` (сейчас переплата ${formatUZS(card.prepayment)})` : ''} и потом зачтётся в следующий заказ.`}
+                />
+              )}
               {/* Переплата на других сделках — тоже способ закрыть долг, поэтому режим
                   стоит рядом с суммой, а не в отдельной кассе. */}
-              {card.prepayment > 0 && (
+              {card.prepayment > 0 && !isPrepay && (
                 <Segmented
                   block
                   value={mode}
@@ -848,7 +919,9 @@ function PaymentPanel({
                 onChange={(v) => { setAmount(v == null ? null : Number(v)); setAmountTouched(true); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit(); }}
                 formatter={moneyFormatter}
-                parser={(v) => Number(moneyParser(v))}
+                // Строкой, а не Number(): пустое поле иначе становится 0 и поднимается до min=1 —
+                // так при предоплате (сумма пустая) Enter из поиска вписывал «1».
+                parser={moneyParser}
               />
               {amountTouched && amount !== fullAmount && fullAmount > 0 && (
                 <Button
@@ -970,12 +1043,12 @@ function PaymentPanel({
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '18px 0 6px' }}>
                 <Typography.Text strong>
-                  Куда
+                  {isPrepay ? 'На какую сделку' : 'Куда'}
                   <Typography.Text type="secondary" style={{ fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
-                    сначала самые старые
+                    {isPrepay ? 'оплаченные, ещё в работе' : 'сначала самые старые'}
                   </Typography.Text>
                 </Typography.Text>
-                {card.deals.length > 1 && (
+                {!isPrepay && card.deals.length > 1 && (
                   <Button
                     type="link"
                     size="small"
@@ -987,10 +1060,10 @@ function PaymentPanel({
                 )}
               </div>
               <div>
-                {card.deals.map((d) => {
+                {listDeals.map((d) => {
                   const checked = selected.includes(d.dealId);
                   const gets = allocation.byDeal.get(d.dealId) ?? 0;
-                  const closes = checked && gets >= d.remaining - 0.009;
+                  const closes = !isPrepay && checked && gets >= d.remaining - 0.009;
                   return (
                     <div
                       key={d.dealId}
@@ -1007,13 +1080,21 @@ function PaymentPanel({
                       }}
                       onClick={() => toggleDeal(d.dealId, !checked)}
                     >
-                      <Checkbox checked={checked} style={{ marginTop: 2 }} />
+                      {isPrepay
+                        ? <Radio checked={checked} style={{ marginTop: 2 }} />
+                        : <Checkbox checked={checked} style={{ marginTop: 2 }} />}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {d.title || d.dealId.slice(0, 8)}
                           </span>
-                          <span style={{ whiteSpace: 'nowrap' }}>{formatUZS(d.remaining)}</span>
+                          {isPrepay ? (
+                            <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+                              {formatUZS(d.amount)} · {d.paidAmount > d.amount + 0.009 ? `переплата ${formatUZS(d.paidAmount - d.amount)}` : 'оплачено'}
+                            </Typography.Text>
+                          ) : (
+                            <span style={{ whiteSpace: 'nowrap' }}>{formatUZS(d.remaining)}</span>
+                          )}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -1032,7 +1113,7 @@ function PaymentPanel({
                 })}
               </div>
 
-              {allocation.overpayment > 0 && (
+              {allocation.overpayment > 0 && !isPrepay && (
                 <Alert
                   type="warning"
                   showIcon

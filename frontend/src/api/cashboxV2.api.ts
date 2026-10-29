@@ -45,6 +45,8 @@ export interface ClientPayCard {
   /** Открытые сделки — от старых к новым, в этом же порядке раскладывается оплата. */
   deals: ClientOpenDeal[];
   totalDebt: number;
+  /** Оплаченные незакрытые сделки (новые сверху) — на них вносят предоплату, когда долга нет. */
+  prepayDeals: ClientOpenDeal[];
   prepayment: number;
   /** Сделки с переплатой — от большей к меньшей, в этом порядке они списываются при зачёте. */
   creditSources: { dealId: string; title: string | null; surplus: number }[];
@@ -78,6 +80,13 @@ export interface ReceiptDeal {
   manager: { id: string; fullName: string } | null;
 }
 
+export interface ClientSearchHit {
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  activeDeals: number;
+}
+
 export interface ClientCreditResult {
   payments: { paymentId: string; dealId: string; title: string | null; amount: number }[];
   appliedAmount: number;
@@ -93,6 +102,10 @@ export const cashboxV2Api = {
   /** Сделки с оплатой, по которым чек ещё не отмечен (закрытые — за последнюю неделю). */
   receipts: () =>
     client.get<{ deals: ReceiptDeal[]; windowDays: number }>('/cashbox-v2/receipts').then((r) => r.data),
+
+  /** Клиенты с незакрытыми сделками — чтобы найти и тех, у кого нет долга (для предоплаты). */
+  searchClients: (q: string) =>
+    client.get<{ clients: ClientSearchHit[] }>('/cashbox-v2/clients-search', { params: { q } }).then((r) => r.data.clients),
 
   clientCard: (clientId: string) =>
     client.get<ClientPayCard>(`/cashbox-v2/clients/${clientId}`).then((r) => r.data),
