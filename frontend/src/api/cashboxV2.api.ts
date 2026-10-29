@@ -64,6 +64,20 @@ export interface ClientPaymentResult {
   overpayment: number;
 }
 
+export interface ReceiptDeal {
+  dealId: string;
+  title: string | null;
+  status: string;
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  amount: number;
+  paidAmount: number;
+  closedAt: string | null;
+  lastPaymentAt: string | null;
+  manager: { id: string; fullName: string } | null;
+}
+
 export interface ClientCreditResult {
   payments: { paymentId: string; dealId: string; title: string | null; amount: number }[];
   appliedAmount: number;
@@ -75,6 +89,10 @@ export interface ClientCreditResult {
 export const cashboxV2Api = {
   toPay: (params?: { managerId?: string }) =>
     client.get<ToPayResponse>('/cashbox-v2/to-pay', { params }).then((r) => r.data),
+
+  /** Сделки с оплатой, по которым чек ещё не отмечен (закрытые — за последнюю неделю). */
+  receipts: () =>
+    client.get<{ deals: ReceiptDeal[]; windowDays: number }>('/cashbox-v2/receipts').then((r) => r.data),
 
   clientCard: (clientId: string) =>
     client.get<ClientPayCard>(`/cashbox-v2/clients/${clientId}`).then((r) => r.data),

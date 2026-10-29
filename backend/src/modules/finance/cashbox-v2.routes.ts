@@ -124,6 +124,71 @@ router.get(
   }),
 );
 
+// ──── ЧЕКИ К ПРОБИТИЮ ────
+/**
+ * Сделки, по которым деньги уже пришли, а чек не отмечен.
+ *
+ * В старой кассе отметка жила во вкладке «Активные», куда закрытая сделка попадала только
+ * в день закрытия, — назавтра забытый чек пропадал из виду. Здесь закрытые держатся
+ * неделю: этого хватает, чтобы добить хвосты, и список не зарастает архивом.
+ */
+const RECEIPT_WINDOW_DAYS = 7;
+
+router.get(
+  '/receipts',
+  authorize(...FINANCE_ROLES),
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = authUser(req);
+    const since = new Date(tashkentStartOfToday().getTime() - (RECEIPT_WINDOW_DAYS - 1) * 86_400_000);
+
+    const rows = await prisma.deal.findMany({
+      where: {
+        ...ownerScope(user),
+        isArchived: false,
+        isReceiptPunched: false,
+        paidAmount: { gt: 0 },
+        status: { notIn: ['CANCELED', 'REJECTED'] },
+        OR: [{ status: { not: 'CLOSED' } }, { closedAt: { gte: since } }],
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        amount: true,
+        paidAmount: true,
+        closedAt: true,
+        client: { select: { id: true, companyName: true, isSvip: true } },
+        manager: { select: { id: true, fullName: true } },
+        payments: {
+          where: cashOnlyFilter,
+          select: { paidAt: true },
+          orderBy: { paidAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const deals = rows
+      .map((d) => ({
+        dealId: d.id,
+        title: d.title,
+        status: d.status,
+        clientId: d.client.id,
+        clientName: d.client.companyName,
+        clientIsSvip: !!d.client.isSvip,
+        amount: Number(d.amount),
+        paidAmount: Number(d.paidAmount),
+        closedAt: d.closedAt,
+        lastPaymentAt: d.payments[0]?.paidAt ?? null,
+        manager: d.manager ? { id: d.manager.id, fullName: d.manager.fullName } : null,
+      }))
+      // Свежие оплаты — наверх: чек пробивают сразу после приёма денег.
+      .sort((a, b) => (b.lastPaymentAt?.getTime() ?? 0) - (a.lastPaymentAt?.getTime() ?? 0));
+
+    res.json({ deals, windowDays: RECEIPT_WINDOW_DAYS });
+  }),
+);
+
 // ──── КАРТОЧКА КЛИЕНТА ДЛЯ ПАНЕЛИ ОПЛАТЫ ────
 router.get(
   '/clients/:clientId',

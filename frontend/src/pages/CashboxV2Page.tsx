@@ -4,10 +4,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Table, Typography, Select, Card, Tag, Space, Segmented, Tabs, Input, Button, InputNumber,
   message, Spin, DatePicker, List, Empty, Drawer, Badge, Alert, Checkbox, Radio, Popover, Modal, theme,
+  notification,
 } from 'antd';
 import { SearchOutlined, FilterOutlined, DownloadOutlined, PrinterOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
-import { cashboxV2Api, type ToPayDeal, type PaymentMethodCode } from '../api/cashboxV2.api';
+import { cashboxV2Api, type ToPayDeal, type PaymentMethodCode, type ReceiptDeal } from '../api/cashboxV2.api';
+import { useAuthStore } from '../store/authStore';
 import { financeApi, type CashboxPayment } from '../api/finance.api';
 import { dealsApi } from '../api/deals.api';
 import { usersApi } from '../api/users.api';
@@ -110,6 +112,33 @@ function periodRange(period: JournalPeriod, custom: [Dayjs, Dayjs] | null): { fr
   return { from: custom[0].startOf('day').toISOString(), to: custom[1].endOf('day').toISOString() };
 }
 
+/**
+ * Отметка «чек пробит». По закрытой сделке бэкенд разрешает её только админам, зав. складом
+ * и тем, у кого есть edit_closed_deal, — кнопку гасим заранее, а не ловим 403 после нажатия.
+ */
+function useReceiptPunch() {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const mayPunchClosed = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+    || user?.role === 'WAREHOUSE_MANAGER' || !!user?.permissions?.includes('edit_closed_deal');
+  const canPunch = (status: string) => status !== 'CLOSED' || mayPunchClosed;
+
+  const mut = useMutation({
+    mutationFn: ({ dealIds, value }: { dealIds: string[]; value: boolean }) =>
+      Promise.all(dealIds.map((id) => dealsApi.update(id, { isReceiptPunched: value }))),
+    onSuccess: (_res, { dealIds }) => {
+      queryClient.invalidateQueries({ queryKey: ['cashbox2-receipts'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-active-deals'] });
+      for (const id of dealIds) queryClient.invalidateQueries({ queryKey: ['deal', id] });
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.error || 'Не удалось изменить отметку чека');
+    },
+  });
+
+  return { canPunch, mut };
+}
+
 interface ClientRow {
   clientId: string;
   clientName: string;
@@ -124,7 +153,8 @@ export default function CashboxV2Page() {
   const isMobile = useIsMobile();
   const { token: tk } = theme.useToken();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') === 'journal' ? 'journal' : 'topay';
+  const tabParam = searchParams.get('tab');
+  const tab = tabParam === 'journal' || tabParam === 'receipts' ? tabParam : 'topay';
   const setTab = useCallback((key: string) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -145,6 +175,12 @@ export default function CashboxV2Page() {
   });
 
   const { data: users } = useQuery({ queryKey: ['users-list'], queryFn: () => usersApi.list() });
+
+  const { data: receipts, isLoading: receiptsLoading } = useQuery({
+    queryKey: ['cashbox2-receipts'],
+    queryFn: cashboxV2Api.receipts,
+    refetchInterval: 60_000,
+  });
 
   const managers = useMemo(() => (users ?? [])
     .filter((u: { role: string; isActive: boolean }) =>
@@ -439,7 +475,7 @@ export default function CashboxV2Page() {
         prefix={<SearchOutlined style={{ color: tk.colorTextTertiary }} />}
         placeholder="Клиент, сделка или № договора"
         value={search}
-        onChange={(e) => { setSearch(e.target.value); if (tab !== 'topay') setTab('topay'); }}
+        onChange={(e) => { setSearch(e.target.value); if (tab === 'journal') setTab('topay'); }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) onSearchEnter(); }}
         style={{ marginBottom: 12 }}
       />
@@ -462,6 +498,18 @@ export default function CashboxV2Page() {
         onChange={setTab}
         items={[
           { key: 'topay', label: 'К оплате', children: toPayTab },
+          {
+            key: 'receipts',
+            label: <Badge count={receipts?.deals.length ?? 0} size="small" offset={[8, -2]}>Чеки</Badge>,
+            children: (
+              <ReceiptsTab
+                deals={receipts?.deals ?? []}
+                windowDays={receipts?.windowDays ?? 7}
+                loading={receiptsLoading}
+                search={search}
+              />
+            ),
+          },
           { key: 'journal', label: 'Журнал', children: <JournalTab staff={staff} /> },
         ]}
       />
@@ -490,6 +538,7 @@ function PaymentPanel({
   const { token: tk } = theme.useToken();
   const queryClient = useQueryClient();
   const open = !!target;
+  const receipt = useReceiptPunch();
 
   const { data: card, isLoading } = useQuery({
     queryKey: ['cashbox2-client', target?.clientId],
@@ -626,6 +675,43 @@ function PaymentPanel({
     },
   });
 
+  /**
+   * Чек пробивают сразу после приёма денег, а сделка к этому моменту часто уже ушла из
+   * списка «К оплате». Поэтому после оплаты предлагаем отметить чек тут же, одним нажатием.
+   */
+  const offerReceipt = (paidDealIds: string[]) => {
+    const dealIds = paidDealIds.filter((id) => {
+      const d = card?.deals.find((x) => x.dealId === id);
+      return d && receipt.canPunch(d.status);
+    });
+    if (dealIds.length === 0) return;
+    const key = `receipt-offer-${dealIds.join('-')}`;
+    notification.info({
+      key,
+      title: 'Чек пробит?',
+      description: dealIds.length > 1
+        ? `Отметить чек сразу по ${dealIds.length} ${plural(dealIds.length, 'сделке', 'сделкам', 'сделкам')}`
+        : 'Отметьте, как только пробьёте — или позже во вкладке «Чеки».',
+      duration: 20,
+      placement: 'bottomRight',
+      actions: (
+        <Button
+          type="primary"
+          size="small"
+          onClick={() => {
+            notification.destroy(key);
+            receipt.mut.mutate(
+              { dealIds, value: true },
+              { onSuccess: () => message.success('Чек отмечен') },
+            );
+          }}
+        >
+          Да, пробит
+        </Button>
+      ),
+    });
+  };
+
   const payMut = useMutation({
     mutationFn: () => cashboxV2Api.payClient(target!.clientId, {
       amount: amount!,
@@ -646,6 +732,8 @@ function PaymentPanel({
       saveLastMethod(method!);
       if (usdActive) saveLastUsdRate(usdRate!);
       invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ['cashbox2-receipts'] });
+      offerReceipt(res.payments.map((p) => p.dealId));
       onClose();
     },
     onError: (err: any) => {
@@ -1016,6 +1104,155 @@ function PaymentPanel({
         </>
       )}
     </Drawer>
+  );
+}
+
+// ─────────────────────────── Чеки ───────────────────────────
+
+function ReceiptsTab({
+  deals,
+  windowDays,
+  loading,
+  search,
+}: {
+  deals: ReceiptDeal[];
+  windowDays: number;
+  loading: boolean;
+  search: string;
+}) {
+  const isMobile = useIsMobile();
+  const { canPunch, mut } = useReceiptPunch();
+
+  const filtered = useMemo(() => {
+    const q = search.trim();
+    if (!q) return deals;
+    return deals.filter((d) =>
+      matchesSearch(d.clientName, q) || matchesSearch(d.title, q) || matchesSearch(d.manager?.fullName, q));
+  }, [deals, search]);
+
+  const punch = (d: ReceiptDeal) => {
+    mut.mutate({ dealIds: [d.dealId], value: true }, {
+      onSuccess: () => {
+        // Строка сразу уходит из списка — промах мышью должен откатываться одним кликом.
+        const key = `receipt-${d.dealId}`;
+        message.success({
+          key,
+          duration: 6,
+          content: (
+            <span>
+              Чек отмечен: {d.title || d.dealId.slice(0, 8)}
+              {' · '}
+              <a onClick={() => { message.destroy(key); mut.mutate({ dealIds: [d.dealId], value: false }); }}>Отменить</a>
+            </span>
+          ),
+        });
+      },
+    });
+  };
+
+  const punchButton = (d: ReceiptDeal, block?: boolean) => {
+    const allowed = canPunch(d.status);
+    return (
+      <Button
+        type="primary"
+        ghost
+        size={block ? 'middle' : 'small'}
+        block={block}
+        disabled={!allowed}
+        title={allowed ? undefined : 'Сделка закрыта — отметить чек может зав. складом или админ'}
+        loading={mut.isPending && mut.variables?.dealIds.includes(d.dealId)}
+        onClick={(e) => { e.stopPropagation(); punch(d); }}
+      >
+        Чек пробит
+      </Button>
+    );
+  };
+
+  const columns = [
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (v: string | null, d: ReceiptDeal) => <Link to={`/deals/${d.dealId}`}>{v || d.dealId.slice(0, 8)}</Link>,
+    },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, d: ReceiptDeal) => (
+        <ClientCompanyDisplay client={{ id: d.clientId, companyName: d.clientName, isSvip: d.clientIsSvip }} />
+      ),
+    },
+    {
+      title: 'Оплачено',
+      dataIndex: 'paidAmount',
+      align: 'right' as const,
+      render: (v: number, d: ReceiptDeal) => (
+        <div style={{ whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+          <Typography.Text strong>{formatUZS(v)}</Typography.Text>
+          {v + 0.009 < d.amount && (
+            <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>из {formatUZS(d.amount)}</Typography.Text></div>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Последняя оплата',
+      dataIndex: 'lastPaymentAt',
+      width: 150,
+      render: (v: string | null) => (v ? dayjs(v).format('DD.MM HH:mm') : '—'),
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 150,
+      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+    },
+    {
+      title: 'Менеджер',
+      key: 'manager',
+      width: 110,
+      render: (_: unknown, d: ReceiptDeal) => getFirstName(d.manager?.fullName) || '—',
+    },
+    { title: '', key: 'punch', width: 130, render: (_: unknown, d: ReceiptDeal) => punchButton(d) },
+  ];
+
+  return (
+    <>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        Сделки, по которым пришли деньги, а чек не отмечен. Закрытые показываются {windowDays} дней.
+      </Typography.Paragraph>
+      {isMobile ? (
+        <List
+          loading={loading}
+          dataSource={filtered}
+          locale={{ emptyText: <Empty description={search ? 'Ничего не найдено' : 'Все чеки отмечены'} /> }}
+          pagination={{ pageSize: 20, size: 'small' }}
+          renderItem={(d) => (
+            <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <Link to={`/deals/${d.dealId}`} style={{ fontWeight: 600 }}>{d.title || d.dealId.slice(0, 8)}</Link>
+                <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(d.paidAmount)}</Typography.Text>
+              </div>
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                {d.clientName}
+                {d.lastPaymentAt && ` · ${dayjs(d.lastPaymentAt).format('DD.MM HH:mm')}`}
+              </Typography.Text>
+              {punchButton(d, true)}
+            </Card>
+          )}
+        />
+      ) : (
+        <Table
+          dataSource={filtered}
+          columns={columns}
+          rowKey="dealId"
+          loading={loading}
+          size="middle"
+          pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
+          scroll={{ x: 960 }}
+          locale={{ emptyText: search ? 'Ничего не найдено' : 'Все чеки отмечены' }}
+        />
+      )}
+    </>
   );
 }
 
